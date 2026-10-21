@@ -246,9 +246,10 @@ function inline(s, ctx) {
       }
     }
 
-    if ((c === 'h' || c === 'H') && /^https?:\/\//i.test(s.slice(i, i + 8)) && (i === 0 || /[\s(]/.test(s[i - 1]))) {
-      let url = s.slice(i).match(/^https?:\/\/[^\s<>"]+/i)[0];
-      url = url.replace(/[.,;:!?)\]'”’]+$/, '');
+    // Streaming text can stop right after “https://”, so the full match may not be there yet.
+    const bare = (c === 'h' || c === 'H') && (i === 0 || /[\s(]/.test(s[i - 1])) ? s.slice(i).match(/^https?:\/\/[^\s<>"]+/i) : null;
+    if (bare) {
+      const url = bare[0].replace(/[.,;:!?)\]'”’]+$/, '');
       if (isSafeUrl(url)) {
         flush();
         out += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;

@@ -84,3 +84,8 @@ test('mentions are marked, but not inside emails', () => {
 test('plain text for announcements', () => {
   assert.equal(toPlainText('**Hi** [there](https://x.y), see `code`.\n\n- one'), 'Hi there, see code. one');
 });
+
+test('a URL cut off mid-stream, right after “https://”, renders as text', () => {
+  assert.match(md('See https://'), /See https:\/\//);
+  assert.match(md('- item https://'), /<li>item https:\/\/<\/li>/);
+});
