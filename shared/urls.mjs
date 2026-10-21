@@ -9,9 +9,14 @@ const DEFAULT_SCHEMES = ['https:', 'http:', 'mailto:'];
  * @param {{ schemes?: string[], origins?: string[] }} [opts]
  */
 export function isSafeUrl(url, { schemes = DEFAULT_SCHEMES, origins } = {}) {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters in a URL are exactly what this rejects
   if (typeof url !== 'string' || url.length > 2048 || /[\u0000-\u001f\s]/.test(url)) return false;
   let u;
-  try { u = new URL(url); } catch { return false; }
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
   if (!schemes.includes(u.protocol)) return false;
   if (origins && u.protocol !== 'mailto:' && !origins.includes(u.origin)) return false;
   if (u.username || u.password) return false;

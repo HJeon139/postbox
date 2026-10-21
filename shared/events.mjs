@@ -6,7 +6,7 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 const fmtNum = (n) => Number(n).toLocaleString('en-US');
 
 /**
- * @param {object} block   a block that passed validateBlock
+ * @param {{ type: string, id: string, [field: string]: any }} block   a block that passed validateBlock, or an app
  * @param {string} action
  * @param {object} values
  * @returns {{ ok: true, event: { blockId: string, action: string, values: object }, voice: string }
@@ -46,7 +46,8 @@ const BUILDERS = {
 
   form(b, action, v) {
     if (action !== 'submit') return { ok: false, error: 'A form only accepts the “submit” action.' };
-    const out = {}, fieldErrors = {};
+    const out = {},
+      fieldErrors = {};
     for (const f of b.fields) {
       const r = checkField(f, v[f.id]);
       if (r.error) fieldErrors[f.id] = r.error;
@@ -55,8 +56,13 @@ const BUILDERS = {
     for (const k of Object.keys(v)) if (!b.fields.some((f) => f.id === k)) return { ok: false, error: `“${k}” isn’t a field in this form.` };
     const n = Object.keys(fieldErrors).length;
     if (n) return { ok: false, error: n === 1 ? '1 field needs fixing.' : `${n} fields need fixing.`, fieldErrors };
-    const shown = b.fields.filter((f) => out[f.id] !== undefined && out[f.id] !== '' && f.kind !== 'longtext').slice(0, 2)
-      .map((f) => `${f.label} ${f.kind === 'toggle' ? (out[f.id] ? 'on' : 'off') : f.kind === 'select' ? f.options.find((o) => o.id === out[f.id])?.label : f.kind === 'number' ? fmtNum(out[f.id]) : quote(out[f.id], 32)}`);
+    const shown = b.fields
+      .filter((f) => out[f.id] !== undefined && out[f.id] !== '' && f.kind !== 'longtext')
+      .slice(0, 2)
+      .map(
+        (f) =>
+          `${f.label} ${f.kind === 'toggle' ? (out[f.id] ? 'on' : 'off') : f.kind === 'select' ? f.options.find((o) => o.id === out[f.id])?.label : f.kind === 'number' ? fmtNum(out[f.id]) : quote(out[f.id], 32)}`,
+      );
     return { ok: true, values: out, voice: `Sent: ${b.title ?? 'form'}${shown.length ? ' · ' + shown.join(' · ') : ''}` };
   },
 
@@ -68,7 +74,7 @@ const BUILDERS = {
     return { ok: true, values: { rowId: row.id }, voice: `${b.rowAction.label}: ${first ?? row.id}` };
   },
 
-  card(b, action, v) {
+  card(b, action, _v) {
     const a = (b.actions ?? []).find((x) => x.id === action);
     if (!a) return { ok: false, error: 'This card has no such action.' };
     return { ok: true, values: {}, voice: b.title ? `${a.label} · ${b.title}` : a.label };
@@ -80,24 +86,33 @@ const BUILDERS = {
     return { ok: false, error: 'A confirm only accepts “confirm” or “cancel”.' };
   },
 
-  review(b, action, v) {
+  review(_b, action, v) {
     if (action !== 'submit') return { ok: false, error: 'A review only accepts the “submit” action.' };
     const verdicts = { comment: 'Comment', approve: 'Approve', request_changes: 'Request changes' };
     if (!(v.verdict in verdicts)) return { ok: false, error: 'Pick a verdict: comment, approve or request changes.' };
     const comments = Array.isArray(v.comments) ? v.comments : [];
     for (const c of comments) {
       if (typeof c?.text !== 'string' || !c.text.trim()) return { ok: false, error: 'A comment is empty.' };
-      if (c.line === undefined && c.anchor === undefined && c.threadId === undefined) return { ok: false, error: 'Each comment needs a line, an anchor or a thread.' };
+      if (c.line === undefined && c.anchor === undefined && c.threadId === undefined)
+        return { ok: false, error: 'Each comment needs a line, an anchor or a thread.' };
     }
     if (v.verdict !== 'approve' && comments.length === 0) return { ok: false, error: 'Add a comment, or approve.' };
     const n = comments.length;
-    return { ok: true, values: { verdict: v.verdict, comments }, voice: `Submitted review: ${verdicts[v.verdict]}${n ? ` · ${n} comment${n === 1 ? '' : 's'}` : ''}` };
+    return {
+      ok: true,
+      values: { verdict: v.verdict, comments },
+      voice: `Submitted review: ${verdicts[v.verdict]}${n ? ` · ${n} comment${n === 1 ? '' : 's'}` : ''}`,
+    };
   },
 
   app(b, action, v) {
     if (!ID.test(action)) return { ok: false, error: 'An app action must be a short id.' };
     let size = 0;
-    try { size = JSON.stringify(v).length; } catch { return { ok: false, error: 'App values must be plain JSON.' }; }
+    try {
+      size = JSON.stringify(v).length;
+    } catch {
+      return { ok: false, error: 'App values must be plain JSON.' };
+    }
     if (size > 65536) return { ok: false, error: 'App values are larger than 64 KB.' };
     const { summary, ...values } = v;
     const what = typeof summary === 'string' && summary.trim() ? summary.trim().slice(0, 160) : action;
@@ -115,18 +130,27 @@ function checkField(f, raw) {
   switch (f.kind) {
     case 'number': {
       const n = typeof raw === 'number' ? raw : Number(String(raw).replace(/,/g, '').trim());
-      const hasMin = typeof f.min === 'number', hasMax = typeof f.max === 'number';
-      const range = hasMin && hasMax ? `Enter a number from ${fmtNum(f.min)} to ${fmtNum(f.max)}.` : hasMin ? `Enter a number of at least ${fmtNum(f.min)}.` : hasMax ? `Enter a number no more than ${fmtNum(f.max)}.` : 'Enter a number.';
+      const hasMin = typeof f.min === 'number',
+        hasMax = typeof f.max === 'number';
+      const range =
+        hasMin && hasMax
+          ? `Enter a number from ${fmtNum(f.min)} to ${fmtNum(f.max)}.`
+          : hasMin
+            ? `Enter a number of at least ${fmtNum(f.min)}.`
+            : hasMax
+              ? `Enter a number no more than ${fmtNum(f.max)}.`
+              : 'Enter a number.';
       if (!Number.isFinite(n)) return { error: range };
       if ((hasMin && n < f.min) || (hasMax && n > f.max)) return { error: range };
-      if (typeof f.step === 'number' && f.step > 0 && Math.abs((n - (f.min ?? 0)) / f.step - Math.round((n - (f.min ?? 0)) / f.step)) > 1e-9) return { error: `Use steps of ${fmtNum(f.step)}.` };
+      if (typeof f.step === 'number' && f.step > 0 && Math.abs((n - (f.min ?? 0)) / f.step - Math.round((n - (f.min ?? 0)) / f.step)) > 1e-9)
+        return { error: `Use steps of ${fmtNum(f.step)}.` };
       return { value: n };
     }
     case 'date': {
       const s = String(raw).trim();
       const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       const d = m && new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-      if (!m || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return { error: 'Enter a date as YYYY-MM-DD, for example 2026-10-27.' };
+      if (!m || !d || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return { error: 'Enter a date as YYYY-MM-DD, for example 2026-10-27.' };
       if (typeof f.min === 'number' || typeof f.max === 'number') return { value: s };
       return { value: s };
     }

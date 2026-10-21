@@ -11,14 +11,31 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function launch({ port = 9333 } = {}) {
   const profile = join(tmpdir(), `pb-cdp-${process.pid}-${port}`);
-  const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run',
-    '--no-default-browser-check', '--hide-scrollbars', '--force-color-profile=srgb', 'about:blank'], { stdio: 'ignore' });
+  const chrome = spawn(
+    CHROME,
+    [
+      '--headless=new',
+      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${profile}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--hide-scrollbars',
+      '--force-color-profile=srgb',
+      'about:blank',
+    ],
+    { stdio: 'ignore' },
+  );
   let target;
   for (let i = 0; i < 60 && !target; i++) {
     await sleep(200);
-    try { target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === 'page'); } catch {}
+    try {
+      target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === 'page');
+    } catch {}
   }
-  if (!target) { chrome.kill(); throw new Error('Chrome didn’t start. Set CHROME to its path if it isn’t in the default macOS location.'); }
+  if (!target) {
+    chrome.kill();
+    throw new Error('Chrome didn’t start. Set CHROME to its path if it isn’t in the default macOS location.');
+  }
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((ok) => ws.addEventListener('open', ok, { once: true }));
   let seq = 0;
@@ -27,20 +44,35 @@ export async function launch({ port = 9333 } = {}) {
   const logs = [];
   ws.addEventListener('message', (e) => {
     const m = JSON.parse(e.data);
-    if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
-    else if (m.method) {
+    if (m.id && waiting.has(m.id)) {
+      waiting.get(m.id)(m);
+      waiting.delete(m.id);
+    } else if (m.method) {
       if (m.method === 'Runtime.exceptionThrown') logs.push(`exception: ${m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text}`);
-      if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') logs.push(`console.error: ${m.params.args.map((a) => a.value ?? a.description).join(' ')}`);
+      if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error')
+        logs.push(`console.error: ${m.params.args.map((a) => a.value ?? a.description).join(' ')}`);
       if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') logs.push(`log: ${m.params.entry.text} ${m.params.entry.url ?? ''}`);
-      listeners.forEach((l) => l(m));
+      listeners.forEach((l) => {
+        l(m);
+      });
     }
   });
-  const send = (method, params = {}) => new Promise((ok, fail) => {
-    const id = ++seq;
-    waiting.set(id, (m) => (m.error ? fail(new Error(`${method}: ${m.error.message}`)) : ok(m.result)));
-    ws.send(JSON.stringify({ id, method, params }));
-  });
-  const once = (method) => new Promise((ok) => { const l = (m) => { if (m.method === method) { listeners.splice(listeners.indexOf(l), 1); ok(m.params); } }; listeners.push(l); });
+  const send = (method, params = {}) =>
+    new Promise((ok, fail) => {
+      const id = ++seq;
+      waiting.set(id, (m) => (m.error ? fail(new Error(`${method}: ${m.error.message}`)) : ok(m.result)));
+      ws.send(JSON.stringify({ id, method, params }));
+    });
+  const once = (method) =>
+    new Promise((ok) => {
+      const l = (m) => {
+        if (m.method === method) {
+          listeners.splice(listeners.indexOf(l), 1);
+          ok(m.params);
+        }
+      };
+      listeners.push(l);
+    });
   const evaluate = async (expr) => {
     const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
     if (r.exceptionDetails) throw new Error(`In the page: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
@@ -58,22 +90,33 @@ export async function launch({ port = 9333 } = {}) {
   });
 
   const page = {
-    send, evaluate, logs,
+    send,
+    evaluate,
+    logs,
     pending: () => [...inflight.values()].map((r) => `${r.url.replace(/^https?:\/\/[^/]+/, '')} (${Math.round((Date.now() - r.at) / 1000)} s)`),
     async size(width, height, { mobile = width < 768, scale = mobile ? 2 : 1, theme } = {}) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile });
-      await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }, ...(theme ? [{ name: 'prefers-color-scheme', value: theme }] : [])] });
+      await send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }, ...(theme ? [{ name: 'prefers-color-scheme', value: theme }] : [])],
+      });
     },
     async goto(url) {
       const loaded = once('Page.loadEventFired');
       await send('Page.navigate', { url });
-      await Promise.race([loaded, sleep(15000).then(() => { throw new Error(`The page didn’t load: ${url}`); })]);
+      await Promise.race([
+        loaded,
+        sleep(15000).then(() => {
+          throw new Error(`The page didn’t load: ${url}`);
+        }),
+      ]);
       await evaluate('document.fonts.ready.then(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 120))))');
     },
     async waitFor(expr, { timeout = 15000, label = expr } = {}) {
       const end = Date.now() + timeout;
       while (Date.now() < end) {
-        try { if (await evaluate(expr)) return true; } catch {}
+        try {
+          if (await evaluate(expr)) return true;
+        } catch {}
         await sleep(150);
       }
       throw new Error(`Timed out waiting for: ${label}`);
@@ -82,18 +125,30 @@ export async function launch({ port = 9333 } = {}) {
     async shoot(file, { width, baseH, scale }) {
       const mobile = width < 768;
       const modal = await evaluate(`!!document.querySelector('.backdrop')`);
-      const contentH = modal ? baseH : await evaluate(`(() => { const a = document.querySelector('.app'); if (a) a.style.minHeight = '0px'; return Math.ceil(document.documentElement.scrollHeight); })()`);
+      const contentH = modal
+        ? baseH
+        : await evaluate(
+            `(() => { const a = document.querySelector('.app'); if (a) a.style.minHeight = '0px'; return Math.ceil(document.documentElement.scrollHeight); })()`,
+          );
       const h = Math.max(baseH, contentH);
       await send('Emulation.setDeviceMetricsOverride', { width, height: h, deviceScaleFactor: scale, mobile });
-      await evaluate(`(() => { const a = document.querySelector('.app'); if (a) a.style.minHeight = '${h}px'; document.documentElement.classList.add('shot'); })()`);
+      await evaluate(
+        `(() => { const a = document.querySelector('.app'); if (a) a.style.minHeight = '${h}px'; document.documentElement.classList.add('shot'); })()`,
+      );
       await sleep(250);
       const { data } = await send('Page.captureScreenshot', { format: 'png' });
       await writeFile(file, Buffer.from(data, 'base64'));
       await send('Emulation.setDeviceMetricsOverride', { width, height: baseH, deviceScaleFactor: scale, mobile });
-      await evaluate(`(() => { const a = document.querySelector('.app'); if (a) a.style.minHeight = ''; document.documentElement.classList.remove('shot'); })()`);
+      await evaluate(
+        `(() => { const a = document.querySelector('.app'); if (a) a.style.minHeight = ''; document.documentElement.classList.remove('shot'); })()`,
+      );
       return h;
     },
-    async close() { ws.close(); chrome.kill(); await rm(profile, { recursive: true, force: true }).catch(() => {}); },
+    async close() {
+      ws.close();
+      chrome.kill();
+      await rm(profile, { recursive: true, force: true }).catch(() => {});
+    },
   };
   return page;
 }

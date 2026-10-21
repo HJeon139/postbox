@@ -5,21 +5,47 @@
 
 import { apply } from '/shared/state.mjs';
 
-const EVENT_TYPES = ['settings', 'project', 'persona', 'boilerplate', 'thread', 'session', 'app', 'file', 'schedule', 'glossary', 'item.add', 'item.patch', 'item.text', 'remove', 'notify'];
+const EVENT_TYPES = [
+  'settings',
+  'project',
+  'persona',
+  'boilerplate',
+  'thread',
+  'session',
+  'app',
+  'file',
+  'schedule',
+  'glossary',
+  'item.add',
+  'item.patch',
+  'item.text',
+  'remove',
+  'notify',
+];
 
 export const client = {
-  state: null, config: null, seq: 0,
-  connection: 'connecting', attempts: 0,
+  state: null,
+  config: null,
+  seq: 0,
+  connection: 'connecting',
+  attempts: 0,
   listeners: new Set(),
-  on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
-  emit(change) { for (const fn of this.listeners) fn(change); },
+  on(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  },
+  emit(change) {
+    for (const fn of this.listeners) fn(change);
+  },
 };
 
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
   const { seq, state, config } = await r.json();
-  client.state = state; client.config = config; client.seq = seq;
+  client.state = state;
+  client.config = config;
+  client.seq = seq;
   client.emit({ type: 'load' });
 }
 
@@ -29,7 +55,8 @@ export function connect() {
   es = new EventSource(`/api/stream?since=${client.seq}`);
   es.onopen = () => {
     const was = client.connection;
-    client.connection = 'open'; client.attempts = 0;
+    client.connection = 'open';
+    client.attempts = 0;
     client.emit({ type: 'connection', was });
   };
   es.onerror = () => {
@@ -49,13 +76,21 @@ export function connect() {
       client.emit({ type: t, data });
     });
   }
-  es.addEventListener('resync', async () => { await load(); connect(); });
+  es.addEventListener('resync', async () => {
+    await load();
+    connect();
+  });
 }
 
 // Browsers allow 6 connections per host over HTTP/1.1, and each open tab’s stream holds one. Close the
 // stream when this page goes away (including into the back/forward cache) and reopen it when it returns.
-addEventListener('pagehide', () => { es?.close(); es = null; });
-addEventListener('pageshow', (e) => { if (e.persisted && client.state) connect(); });
+addEventListener('pagehide', () => {
+  es?.close();
+  es = null;
+});
+addEventListener('pageshow', (e) => {
+  if (e.persisted && client.state) connect();
+});
 
 /** API calls. Errors carry the server’s plain-English message. */
 export async function api(path, body, method = 'POST') {
@@ -71,7 +106,11 @@ export async function api(path, body, method = 'POST') {
 }
 
 export async function uploadFile(file) {
-  const r = await fetch('/api/files', { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream', 'x-filename': encodeURIComponent(file.name || 'pasted') }, body: file });
+  const r = await fetch('/api/files', {
+    method: 'POST',
+    headers: { 'content-type': file.type || 'application/octet-stream', 'x-filename': encodeURIComponent(file.name || 'pasted') },
+    body: file,
+  });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error ?? 'The upload failed.');
   return data;
@@ -80,13 +119,24 @@ export async function uploadFile(file) {
 // ── Selectors ───────────────────────────────────────────────────────────────────────────
 
 export const S = () => client.state;
-export const threadsOf = (projectId) => Object.values(S().threads).filter((t) => t.projectId === projectId && t.kind !== 'side');
+/** A project’s conversations: direct messages and rooms. Side threads and topic threads hang off them. */
+export const threadsOf = (projectId) =>
+  Object.values(S().threads).filter((t) => t.projectId === projectId && t.kind !== 'side' && t.kind !== 'topic' && !t.deleting);
+export const topicsOf = (projectId) => Object.values(S().threads).filter((t) => t.projectId === projectId && t.kind === 'topic' && S().threads[t.parentId]);
+/** Where a thread of any kind opens: a conversation in the main pane, a side or topic thread in the panel beside its conversation. */
+export const hrefOf = (threadId) => {
+  const t = S().threads[threadId];
+  return t && (t.kind === 'side' || t.kind === 'topic') ? `#/t/${t.parentId}/side/${t.id}` : `#/t/${threadId}`;
+};
 export const sessionsOf = (threadId) => (S().threads[threadId]?.members ?? []).map((id) => S().sessions[id]).filter((x) => x && !x.deleting);
 export const itemsOf = (threadId) => S().items[threadId] ?? [];
 export const persona = (id) => S().personas[id];
 export const busy = (se) => ['think', 'gen', 'tool'].includes(se?.state);
-export const liveSessions = () => Object.values(S().sessions).filter((se) => !se.archived && !se.deleting && S().threads[se.threadId] && S().threads[se.threadId].kind !== 'side');
-export const needsYou = () => liveSessions().filter((se) => se.needs && (se.needs.kind === 'block' || se.needs.kind === 'failed' || se.needs.kind === 'hop'));
+export const liveSessions = () =>
+  Object.values(S().sessions).filter(
+    (se) => !se.archived && !se.deleting && S().threads[se.threadId] && S().threads[se.threadId].kind !== 'side' && !S().threads[se.threadId].deleting,
+  );
+export const needsYou = () => liveSessions().filter((se) => se.needs && ['block', 'failed', 'hop', 'permission'].includes(se.needs.kind));
 
 /** The thread’s main state for its rail row: the most urgent of its agents. */
 export function threadState(t) {

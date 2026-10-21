@@ -2,38 +2,64 @@
 // limit, queues messages sent mid-reply, handles Stop, tracks what "needs you", and implements the UI
 // tools that agents call (over MCP, or in-process for the mock).
 
-import { newId } from './store.mjs';
-import { validateBlock, ASKING } from '../shared/catalog.mjs';
+import { basename, resolve, sep } from 'node:path';
+import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { parseMentions, formatDuration } from '../shared/text.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
+import { formatDuration, parseMentions } from '../shared/text.mjs';
+import { describeTool } from './adapters/claude-stream.mjs';
+import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { lintTerms } from './lint.mjs';
+import { newId } from './store.mjs';
 
 export const HOP_LIMIT = 3;
 const DELETE_UNDO_MS = 10000;
-const clip = (s, n = 200) => { const t = toPlainText(s); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+/** What a persona may do without asking: ask for anything risky, accept file edits, or run everything. */
+export const PERMISSION_MODES = ['ask', 'acceptEdits', 'bypass'];
+/** The model a real backend uses when a persona doesn’t name one. */
+export const DEFAULT_MODEL = 'claude-opus-5-5';
+const clip = (s, n = 200) => {
+  const t = toPlainText(s);
+  return t.length > n ? t.slice(0, n - 1) + '…' : t;
+};
 
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[] } }} deps
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any },
+   *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null }} deps
    */
-  constructor({ store, adapters, corpus, config }) {
+  constructor({ store, adapters, corpus, config, blobs, narrator }) {
     this.store = store;
     this.adapters = adapters;
     this.corpus = corpus;
     this.config = config;
-    this.turns = new Map();      // sessionId → live turn
-    this.viewing = new Map();    // threadId → last time a browser said it was open
-    this.timers = new Map();     // scheduleId or deletion → timeout
+    this.blobs = blobs ?? null;
+    this.narrator = narrator ?? null;
+    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId }
+    this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
+    this.turns = new Map(); // sessionId → live turn
+    this.viewing = new Map(); // threadId → last time a browser said it was open
+    this.timers = new Map(); // scheduleId or deletion → timeout
   }
 
-  get s() { return this.store.state; }
+  get s() {
+    return this.store.state;
+  }
 
   // ── Lookups ────────────────────────────────────────────────────────────────────────
 
-  persona(id) { return this.s.personas[id]; }
-  personaByHandle(handle) { return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired); }
+  persona(id) {
+    return this.s.personas[id];
+  }
+  /** The persona as this session started with it. Sessions from before snapshots use the current one. */
+  personaFor(se) {
+    const p = this.persona(se.personaId);
+    return p && { ...p, ...(se.personaSnapshot ?? {}) };
+  }
+  personaByHandle(handle) {
+    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
+  }
   thread(id) {
     const t = this.s.threads[id];
     if (!t) throw httpError(404, 'That thread doesn’t exist. It may have been deleted.');
@@ -44,19 +70,39 @@ export class Runtime {
     if (!se) throw httpError(404, 'That session doesn’t exist. It may have been deleted.');
     return se;
   }
-  sessionsIn(threadId) { return (this.s.threads[threadId]?.members ?? []).map((id) => this.s.sessions[id]).filter((x) => x && !x.deleting); }
-  handles() { return Object.values(this.s.personas).filter((p) => !p.retired).map((p) => p.handle); }
+  sessionsIn(threadId) {
+    return (this.s.threads[threadId]?.members ?? []).map((id) => this.s.sessions[id]).filter((x) => x && !x.deleting);
+  }
+  handles() {
+    return Object.values(this.s.personas)
+      .filter((p) => !p.retired)
+      .map((p) => p.handle);
+  }
 
   // ── Emit helpers ───────────────────────────────────────────────────────────────────
 
-  putThread(t) { this.store.emit('thread', { ...t }); return t; }
-  putSession(se) { this.store.emit('session', { ...se }); return se; }
+  putThread(t) {
+    this.store.emit('thread', { ...t });
+    return t;
+  }
+  putSession(se) {
+    this.store.emit('session', { ...se });
+    return se;
+  }
   addItem(threadId, item) {
     const it = { id: item.id ?? newId('it'), at: Date.now(), ...item };
     this.store.emit('item.add', { threadId, item: it });
+    // A reply in a topic thread counts on the message it branched from, as “3 replies”.
+    const t = this.s.threads[threadId];
+    if (t?.kind === 'topic' && (it.kind === 'user' || it.kind === 'agent')) {
+      const replies = this.store.items(threadId).filter((x) => x.kind === 'user' || x.kind === 'agent').length;
+      this.patchItem(t.parentId, t.rootItemId, { replies, lastReplyAt: it.at });
+    }
     return it;
   }
-  patchItem(threadId, id, patch) { this.store.emit('item.patch', { threadId, id, patch }); }
+  patchItem(threadId, id, patch) {
+    this.store.emit('item.patch', { threadId, id, patch });
+  }
   updateSession(id, patch) {
     const se = this.s.sessions[id];
     if (!se) return;
@@ -68,14 +114,28 @@ export class Runtime {
 
   // ── Projects, threads, sessions ────────────────────────────────────────────────────
 
+  /** @param {{ projectId: string, title: string, personaIds?: string[], kind?: string, parentId?: string|null }} opts */
   createThread({ projectId, title, personaIds = [], kind = 'thread', parentId = null }) {
     if (!this.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
-    const t = this.putThread({ id: newId('th'), projectId, title: title || 'New thread', kind, parentId, members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false });
+    const t = this.putThread({
+      id: newId('th'),
+      projectId,
+      title: title || 'New thread',
+      kind,
+      parentId,
+      members: [],
+      lastSpeaker: null,
+      hops: 0,
+      queue: [],
+      createdAt: Date.now(),
+      archived: false,
+    });
     for (const pid of personaIds) this.ensureSession(t.id, pid);
     return this.s.threads[t.id];
   }
 
   /** One session per persona per thread. Adding a second agent turns a thread into a room. */
+  /** @param {string} threadId @param {string} personaId @param {{ brief?: string|null }} [opts] */
   ensureSession(threadId, personaId, { brief } = {}) {
     const t = this.thread(threadId);
     const existing = this.sessionsIn(threadId).find((x) => x.personaId === personaId);
@@ -83,9 +143,29 @@ export class Runtime {
     const p = this.persona(personaId);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
     const se = this.putSession({
-      id: newId('se'), personaId, threadId, handle: p.handle, personaVersion: p.version ?? 1, backend: p.backend,
-      state: 'idle', ctx: 2, subagents: [], compactions: 0, toolCount: 0, toolCalls: [], currentStep: '', lastMessage: '',
-      agentMessages: [], needs: null, unread: 0, startedAt: Date.now(), finishedAt: null, archived: false, brief: brief ?? null,
+      id: newId('se'),
+      personaId,
+      threadId,
+      handle: p.handle,
+      personaVersion: p.version ?? 1,
+      // What the agent runs with is fixed when the session starts; editing the persona changes new sessions.
+      personaSnapshot: snapshotOf(p),
+      backend: p.backend,
+      state: 'idle',
+      ctx: 2,
+      subagents: [],
+      compactions: 0,
+      toolCount: 0,
+      toolCalls: [],
+      currentStep: '',
+      lastMessage: '',
+      agentMessages: [],
+      needs: null,
+      unread: 0,
+      startedAt: Date.now(),
+      finishedAt: null,
+      archived: false,
+      brief: brief ?? null,
     });
     const members = [...t.members, se.id];
     this.putThread({ ...this.s.threads[threadId], members, kind: t.kind === 'thread' && members.length > 1 ? 'room' : t.kind });
@@ -99,11 +179,17 @@ export class Runtime {
     const t = this.thread(threadId);
     text = String(text).slice(0, 50000);
     if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
-    const mentioned = parseMentions(text, this.handles()).map((h) => this.personaByHandle(h)).filter(Boolean);
+    const mentioned = parseMentions(text, this.handles())
+      .map((h) => this.personaByHandle(h))
+      .filter(Boolean);
     const targets = [];
     for (const p of mentioned) {
       const joined = !this.sessionsIn(threadId).some((x) => x.personaId === p.id);
-      const se = this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null });
+      // In a topic thread, an agent from the conversation joins as a fork of its session there.
+      const from = joined && t.kind === 'topic' ? this.sessionsIn(t.parentId).find((x) => x.personaId === p.id) : null;
+      const se = from
+        ? this.forkSession(from.id, threadId)
+        : this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null });
       targets.push({ se, woke: true });
     }
     if (!targets.length) {
@@ -151,7 +237,11 @@ export class Runtime {
     if (!q) throw httpError(404, 'That queued message was already sent or removed.');
     this.putThread({ ...t, queue: t.queue.filter((x) => x.id !== queueId) });
     for (const id of q.sessionIds) this.stop(id, { silent: true });
-    return this.postAndDeliver(threadId, q, q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se));
+    return this.postAndDeliver(
+      threadId,
+      q,
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se),
+    );
   }
 
   drainQueue(threadId) {
@@ -160,31 +250,70 @@ export class Runtime {
     const [q, ...rest] = t.queue;
     if (q.sessionIds.some((id) => this.turns.has(id))) return;
     this.putThread({ ...t, queue: rest });
-    this.postAndDeliver(threadId, q, q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se));
+    this.postAndDeliver(
+      threadId,
+      q,
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se),
+    );
   }
 
   // ── Turns ──────────────────────────────────────────────────────────────────────────
 
   /** Runs one agent turn through its adapter. */
-  deliver(sessionId, message, { replyTo = null } = {}) {
+  deliver(sessionId, message, { replyTo = null, summarizeTo = null } = {}) {
     const se = this.session(sessionId);
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
-      t.pending.push({ message, replyTo });
+      t.pending.push({ message, replyTo, summarizeTo });
       return;
+    }
+    // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
+    if (se.context?.length) {
+      message = { ...message, context: se.context };
+      this.updateSession(sessionId, { context: [] });
     }
     const persona = this.persona(se.personaId);
     const adapter = this.adapters.get(persona?.backend ?? 'mock');
     const abort = new AbortController();
-    const turn = { id: newId('turn'), kind: message.kind, from: message.kind === 'agent' ? String(message.from ?? '').replace(/^@/, '').toLowerCase() : null, sessionId, threadId: se.threadId, segment: null, first: null, steps: [], abort, closed: false, replyTo, pending: [], said: '', startedAt: Date.now() };
+    const turn = {
+      id: newId('turn'),
+      kind: message.kind,
+      from:
+        message.kind === 'agent'
+          ? String(message.from ?? '')
+              .replace(/^@/, '')
+              .toLowerCase()
+          : null,
+      sessionId,
+      threadId: se.threadId,
+      segment: null,
+      first: null,
+      steps: [],
+      abort,
+      closed: false,
+      replyTo,
+      summarizeTo,
+      checkpoint: null,
+      pending: [],
+      said: '',
+      startedAt: Date.now(),
+    };
     this.turns.set(sessionId, turn);
-    this.updateSession(sessionId, { state: 'think', needs: message.kind === 'event' || message.kind === 'user' ? null : se.needs, currentStep: 'Thinking', finishedAt: null });
+    this.updateSession(sessionId, {
+      state: 'think',
+      needs: message.kind === 'event' || message.kind === 'user' ? null : se.needs,
+      currentStep: 'Thinking',
+      finishedAt: null,
+    });
     const ctx = this.turnContext(se, turn);
     Promise.resolve()
       .then(() => adapter.deliver(this.s.sessions[sessionId], message, ctx))
-      .then(() => this.endTurn(turn, null), (err) => this.endTurn(turn, err));
+      .then(
+        () => this.endTurn(turn, null),
+        (err) => this.endTurn(turn, err),
+      );
   }
 
   turnContext(se0, turn) {
@@ -193,7 +322,16 @@ export class Runtime {
     const se = () => rt.s.sessions[turn.sessionId];
     const ensureSegment = () => {
       if (!turn.segment) {
-        const it = rt.addItem(turn.threadId, { kind: 'agent', sessionId: turn.sessionId, personaId: se0.personaId, handle: se0.handle, turnId: turn.id, text: '', status: 'streaming', activity: turn.first ? null : { steps: [] } });
+        const it = rt.addItem(turn.threadId, {
+          kind: 'agent',
+          sessionId: turn.sessionId,
+          personaId: se0.personaId,
+          handle: se0.handle,
+          turnId: turn.id,
+          text: '',
+          status: 'streaming',
+          activity: turn.first ? null : { steps: [] },
+        });
         turn.segment = it.id;
         if (!turn.first) turn.first = it.id;
         if (turn.said) turn.said += '\n\n';
@@ -202,9 +340,32 @@ export class Runtime {
       return turn.segment;
     };
     const tools = this.toolsFor(turn.sessionId, turn);
+    const thread = rt.s.threads[turn.threadId];
+    const persona = rt.personaFor(se0);
     return {
       signal: turn.abort.signal,
       mcpUrl: `${this.config.origin}/mcp?session=${encodeURIComponent(turn.sessionId)}`,
+      persona,
+      project: rt.s.projects[thread?.projectId] ?? null,
+      thread: { id: turn.threadId, title: thread?.title ?? '' },
+      handles: rt.handles(),
+      /** What the adapter saved for this session last time, such as its own session id. */
+      state: { ...(se0.backendState ?? {}) },
+      saveState(patch) {
+        const s = se();
+        if (s) rt.updateSession(s.id, { backendState: { ...(s.backendState ?? {}), ...patch } });
+      },
+      /** Where an attachment can be read on disk, or null. */
+      pathOf: (a) => rt.attachmentPath(turn.threadId, a),
+      /** Asks the person in the thread; resolves to { allow, message? }. */
+      askPermission: (req) => rt.requestPermission(turn.sessionId, req),
+      /**
+       * Where this turn ends in the backend’s own transcript, such as { claudeSessionId, uuid }. A topic
+       * thread that branches from this turn’s messages forks the agent’s session there.
+       */
+      checkpoint(ref) {
+        turn.checkpoint = ref;
+      },
       text(delta) {
         if (!live() || !delta) return;
         const id = ensureSegment();
@@ -217,13 +378,16 @@ export class Runtime {
         if (!turn.first) ensureSegment();
         const i = turn.steps.findIndex((s) => s.id === id);
         const step = { id: id ?? newId('st'), label: String(label).slice(0, 200), state, ms };
-        if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step }; else turn.steps.push(step);
+        if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
+        else turn.steps.push(step);
         rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
         const s = se();
         const calls = [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5);
         rt.updateSession(turn.sessionId, {
-          state: state === 'running' ? 'tool' : s.state, toolCalls: calls,
-          toolCount: s.toolCount + (i >= 0 ? 0 : 1), currentStep: state === 'running' ? step.label : s.currentStep,
+          state: state === 'running' ? 'tool' : s.state,
+          toolCalls: calls,
+          toolCount: s.toolCount + (i >= 0 ? 0 : 1),
+          currentStep: state === 'running' ? step.label : s.currentStep,
         });
       },
       status(patch) {
@@ -231,7 +395,13 @@ export class Runtime {
         const allowed = {};
         if (patch.state && ['think', 'gen', 'tool'].includes(patch.state)) allowed.state = patch.state;
         if (typeof patch.ctx === 'number') allowed.ctx = Math.max(0, Math.min(100, Math.round(patch.ctx)));
-        if (Array.isArray(patch.subagents)) allowed.subagents = patch.subagents.slice(0, 12).map((x) => ({ name: String(x.name).slice(0, 40), state: x.state, ctx: Math.max(0, Math.min(100, +x.ctx || 0)), doing: x.doing ? String(x.doing).slice(0, 120) : '' }));
+        if (Array.isArray(patch.subagents))
+          allowed.subagents = patch.subagents.slice(0, 12).map((x) => ({
+            name: String(x.name).slice(0, 40),
+            state: x.state,
+            ctx: Math.max(0, Math.min(100, +x.ctx || 0)),
+            doing: x.doing ? String(x.doing).slice(0, 120) : '',
+          }));
         if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
         rt.updateSession(turn.sessionId, allowed);
       },
@@ -239,13 +409,29 @@ export class Runtime {
         if (!live()) return;
         const n = se().compactions + 1;
         turn.segment = null;
-        rt.addItem(turn.threadId, { kind: 'system', variant: 'compaction', handle: se0.handle, n, kept, total, summary: String(summary ?? '').slice(0, 20000) });
+        rt.addItem(turn.threadId, {
+          kind: 'system',
+          variant: 'compaction',
+          handle: se0.handle,
+          n,
+          kept,
+          total,
+          summary: String(summary ?? '').slice(0, 20000),
+        });
         rt.updateSession(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
       },
       sources(list) {
         if (!live()) return;
         const id = ensureSegment();
-        rt.patchItem(turn.threadId, id, { sources: list.slice(0, 50).map((x) => ({ title: String(x.title ?? ''), authors: String(x.authors ?? ''), year: x.year ?? null, url: x.url ?? null, note: x.note ? String(x.note) : '' })) });
+        rt.patchItem(turn.threadId, id, {
+          sources: list.slice(0, 50).map((x) => ({
+            title: String(x.title ?? ''),
+            authors: String(x.authors ?? ''),
+            year: x.year ?? null,
+            url: x.url ?? null,
+            note: x.note ? String(x.note) : '',
+          })),
+        });
       },
       tools,
     };
@@ -255,30 +441,66 @@ export class Runtime {
     if (turn.closed) return;
     turn.closed = true;
     this.turns.delete(turn.sessionId);
+    for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
+    // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
+    this.mirrors.get(turn.sessionId)?.tail.skipToEnd();
     const se = this.s.sessions[turn.sessionId];
     if (!se) return;
     const items = this.store.items(turn.threadId);
-    for (const it of items) if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
+    for (const it of items)
+      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
+    if (turn.checkpoint && !err)
+      for (const it of items)
+        if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) this.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
+    // “Summarize back”: the reply goes to the conversation the topic branched from.
+    if (turn.summarizeTo && !err && turn.said.trim())
+      this.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
     if (err && err.name !== 'AbortError') {
       const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
-      const target = turn.segment ?? turn.first ?? this.addItem(turn.threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, turnId: turn.id, text: '', status: 'failed' }).id;
+      const target =
+        turn.segment ??
+        turn.first ??
+        this.addItem(turn.threadId, {
+          kind: 'agent',
+          sessionId: se.id,
+          personaId: se.personaId,
+          handle: se.handle,
+          turnId: turn.id,
+          text: '',
+          status: 'failed',
+        }).id;
       this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null });
-      this.updateSession(se.id, { state: 'failed', needs: { kind: 'failed', itemId: target, text: message }, subagents: [], currentStep: 'Failed', finishedAt: Date.now() });
+      this.updateSession(se.id, {
+        state: 'failed',
+        needs: { kind: 'failed', itemId: target, text: message },
+        subagents: [],
+        currentStep: 'Failed',
+        finishedAt: Date.now(),
+      });
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message);
       return;
     }
     // An app-check turn that ended without a new version: show the app with a note instead of waiting forever.
     if (turn.kind === 'app-check') {
-      for (const app of Object.values(this.s.apps)) if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: 'note' } });
+      for (const app of Object.values(this.s.apps))
+        if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: 'note' } });
     }
     const open = items.filter((it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
-    const needs = open.length ? { kind: 'block', itemId: open.at(-1).id, text: open.at(-1).block.title ?? clip(open.at(-1).block.prompt ?? open.at(-1).block.fallback, 120) } : (se.needs?.kind === 'hop' ? se.needs : null);
+    const needs = open.length
+      ? { kind: 'block', itemId: open.at(-1).id, text: open.at(-1).block.title ?? clip(open.at(-1).block.prompt ?? open.at(-1).block.fallback, 120) }
+      : se.needs?.kind === 'hop'
+        ? se.needs
+        : null;
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
     this.updateSession(se.id, {
-      state: needs ? 'needs' : 'idle', needs, subagents: [], currentStep: needs ? 'Waiting for you' : `Idle since ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
-      lastMessage: last ? clip(last.text) : se.lastMessage, finishedAt: Date.now(),
+      state: needs ? 'needs' : 'idle',
+      needs,
+      subagents: [],
+      currentStep: needs ? 'Waiting for you' : `Idle since ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
+      lastMessage: last ? clip(last.text) : se.lastMessage,
+      finishedAt: Date.now(),
       unread: viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
     });
     if (needs && needs.kind === 'block') this.notify('blocking', se, `@${se.handle} needs you`, needs.text);
@@ -309,7 +531,7 @@ export class Runtime {
     }
     const next = turn.pending.shift();
     if (next) {
-      this.deliver(se.id, next.message, { replyTo: next.replyTo });
+      this.deliver(se.id, next.message, { replyTo: next.replyTo, summarizeTo: next.summarizeTo });
       const t = this.turns.get(se.id);
       if (t) t.pending.push(...turn.pending);
     } else this.drainQueue(turn.threadId);
@@ -322,11 +544,23 @@ export class Runtime {
     turn.abort.abort();
     turn.closed = true;
     this.turns.delete(sessionId);
+    // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
+    for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', 'You stopped the agent.');
     for (const it of this.store.items(turn.threadId)) {
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, { status: 'stopped', stoppedAt: Date.now() });
+      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming')
+        this.patchItem(turn.threadId, it.id, { status: 'stopped', stoppedAt: Date.now() });
     }
     if (!turn.segment && !turn.first) {
-      this.addItem(turn.threadId, { kind: 'agent', sessionId, personaId: this.s.sessions[sessionId].personaId, handle: this.s.sessions[sessionId].handle, turnId: turn.id, text: '', status: 'stopped', stoppedAt: Date.now() });
+      this.addItem(turn.threadId, {
+        kind: 'agent',
+        sessionId,
+        personaId: this.s.sessions[sessionId].personaId,
+        handle: this.s.sessions[sessionId].handle,
+        turnId: turn.id,
+        text: '',
+        status: 'stopped',
+        stoppedAt: Date.now(),
+      });
     }
     this.updateSession(sessionId, { state: 'idle', subagents: [], currentStep: 'Stopped by you', finishedAt: Date.now() });
     if (!silent) this.drainQueue(turn.threadId);
@@ -336,7 +570,7 @@ export class Runtime {
   /** Retry a failed reply: sends the same message again. */
   retry(threadId, itemId) {
     const it = this.store.item(threadId, itemId);
-    if (!it || it.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
+    if (it?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
     const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
     this.patchItem(threadId, itemId, { status: 'retried' });
     this.updateSession(it.sessionId, { needs: null, state: 'idle' });
@@ -351,12 +585,24 @@ export class Runtime {
     const p = this.personaByHandle(handle);
     if (!from || !p) return { ok: false, message: `There’s no agent called @${handle}.` };
     const t = this.s.threads[from.threadId];
-    const parent = t.kind === 'side' ? this.s.threads[t.parentId] ?? t : t;
+    const parent = t.kind === 'side' ? (this.s.threads[t.parentId] ?? t) : t;
     if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) {
       // One request at a time: further wakes wait behind the one you haven’t answered.
-      if (this.store.items(parent.id).some((x) => x.kind === 'hop' && x.status === 'open')) return { ok: false, waiting: true, message: 'Another wake is already waiting for the person to allow it.' };
-      const it = this.addItem(parent.id, { kind: 'hop', fromSessionId, from: from.handle, to: p.handle, reason: clip(text, 200), status: 'open', n: (parent.hops ?? 0) + 1 });
-      this.updateSession(fromSessionId, { needs: { kind: 'hop', itemId: it.id, text: `@${from.handle} wants to wake @${p.handle}` }, state: this.turns.has(fromSessionId) ? from.state : 'needs' });
+      if (this.store.items(parent.id).some((x) => x.kind === 'hop' && x.status === 'open'))
+        return { ok: false, waiting: true, message: 'Another wake is already waiting for the person to allow it.' };
+      const it = this.addItem(parent.id, {
+        kind: 'hop',
+        fromSessionId,
+        from: from.handle,
+        to: p.handle,
+        reason: clip(text, 200),
+        status: 'open',
+        n: (parent.hops ?? 0) + 1,
+      });
+      this.updateSession(fromSessionId, {
+        needs: { kind: 'hop', itemId: it.id, text: `@${from.handle} wants to wake @${p.handle}` },
+        state: this.turns.has(fromSessionId) ? from.state : 'needs',
+      });
       this.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${(parent.hops ?? 0) + 1} since your last message.`);
       return { ok: false, waiting: true, message: `Waiting for the person to allow waking @${p.handle}.` };
     }
@@ -367,7 +613,20 @@ export class Runtime {
     const pair = [from.handle, p.handle].sort().join('|');
     let side = Object.values(this.s.threads).find((x) => x.kind === 'side' && x.parentId === parent.id && x.pair === pair);
     if (!side) {
-      side = this.putThread({ id: newId('th'), projectId: parent.projectId, title: `@${from.handle} ↔ @${p.handle}`, kind: 'side', parentId: parent.id, pair, members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false });
+      side = this.putThread({
+        id: newId('th'),
+        projectId: parent.projectId,
+        title: `@${from.handle} ↔ @${p.handle}`,
+        kind: 'side',
+        parentId: parent.id,
+        pair,
+        members: [],
+        lastSpeaker: null,
+        hops: 0,
+        queue: [],
+        createdAt: Date.now(),
+        archived: false,
+      });
       this.addItem(parent.id, { kind: 'sidelink', sideThreadId: side.id, from: from.handle, to: p.handle, count: 0 });
     }
     this.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done' });
@@ -381,7 +640,7 @@ export class Runtime {
 
   resolveHop(threadId, itemId, allow) {
     const it = this.store.item(threadId, itemId);
-    if (!it || it.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
+    if (it?.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
     this.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined' });
     this.addItem(threadId, { kind: 'voice', text: allow ? `Allowed: @${it.from} wakes @${it.to}` : `Didn’t allow @${it.from} to wake @${it.to}` });
     const from = this.s.sessions[it.fromSessionId];
@@ -410,7 +669,8 @@ export class Runtime {
     const it = this.store.item(threadId, itemId);
     if (!it) throw httpError(404, 'That block doesn’t exist any more.');
     if (it.kind === 'hop') return this.resolveHop(threadId, itemId, action === 'confirm');
-    if (it.kind === 'proposal') return this.resolveProposal(threadId, itemId, action, values);
+    if (it.kind === 'proposal') return this.resolveProposal(threadId, itemId, action);
+    if (it.kind === 'permission') return this.resolvePermission(threadId, itemId, action);
     if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
     if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
     const r = buildEvent(it.block, action, values);
@@ -434,7 +694,11 @@ export class Runtime {
       return { ok: true };
     }
     if (action !== 'create') throw httpError(400, 'A proposal accepts “create” or “dismiss”. To edit it first, open the new-agent sheet.');
-    const p = this.createPersona({ ...it.proposal, createdBy: it.sessionId });
+    // A proposed teammate runs where its proposer runs, asking before anything risky, on the default model.
+    const proposer = this.s.sessions[it.sessionId];
+    const backend = (proposer && this.persona(proposer.personaId)?.backend) ?? 'mock';
+    const { handle, description, instructions, tools } = it.proposal;
+    const p = this.createPersona({ handle, description, instructions, tools, backend, permissionMode: 'ask', createdBy: it.sessionId });
     this.patchItem(threadId, itemId, { status: 'created', personaId: p.id });
     this.addItem(threadId, { kind: 'voice', text: `Created @${p.handle}` });
     this.ensureSession(threadId, p.id, { brief: it.proposal.description });
@@ -442,14 +706,392 @@ export class Runtime {
     return { ok: true, personaId: p.id };
   }
 
+  // ── Topic threads ──────────────────────────────────────────────────────────────────
+  // Any message in a conversation can start a topic thread, as in Slack. Its agent is a fork of the agent’s
+  // session at that message: it remembers everything up to it and nothing after, and the conversation never
+  // sees the thread unless you send something back. That keeps a side topic out of the main session’s
+  // context, which is the point: conversations are how you manage what each agent remembers.
+
+  startTopic(threadId, itemId) {
+    const parent = this.thread(threadId);
+    if (parent.kind === 'topic' || parent.kind === 'side') throw httpError(409, 'A topic thread can’t start another one. Reply in this one instead.');
+    const items = this.store.items(threadId);
+    const idx = items.findIndex((x) => x.id === itemId);
+    const root = items[idx];
+    if (!root || !['user', 'agent', 'block', 'shared'].includes(root.kind)) throw httpError(404, 'That message can’t start a thread.');
+    if (root.topicId && this.s.threads[root.topicId]) return { threadId: root.topicId };
+    const topic = this.putThread({
+      id: newId('th'),
+      projectId: parent.projectId,
+      // Named after the message’s first line, which is its heading when it has one.
+      title: clip((root.text ?? '').split('\n').find((l) => l.trim()) || root.block?.title || root.block?.fallback || 'Thread', 60),
+      kind: 'topic',
+      parentId: threadId,
+      rootItemId: itemId,
+      members: [],
+      lastSpeaker: null,
+      hops: 0,
+      queue: [],
+      createdAt: Date.now(),
+      archived: false,
+    });
+    this.patchItem(threadId, itemId, { topicId: topic.id, replies: 0 });
+    // Who comes along: the agent that wrote the message, or for yours, the agent that answered it.
+    const answer = items.slice(idx + 1).find((x) => x.sessionId && (x.kind === 'agent' || x.kind === 'block'));
+    const members = this.sessionsIn(threadId).filter((x) => !x.archived);
+    const src =
+      (root.sessionId && this.s.sessions[root.sessionId]) ||
+      (answer && this.s.sessions[answer.sessionId]) ||
+      members.find((x) => x.id === parent.lastSpeaker) ||
+      members[0];
+    if (src) this.forkSession(src.id, topic.id);
+    return { threadId: topic.id };
+  }
+
+  /**
+   * Adds a fork of a conversation’s session to one of its topic threads. The fork point is the agent’s last
+   * finished turn at or before the topic’s root message; the adapter resumes the backend session there.
+   */
+  forkSession(sourceSessionId, topicId) {
+    const src = this.session(sourceSessionId);
+    const topic = this.thread(topicId);
+    const items = this.store.items(topic.parentId);
+    const idx = items.findIndex((x) => x.id === topic.rootItemId);
+    const at = items
+      .slice(0, idx + 1)
+      .reverse()
+      .find((x) => x.sessionId === src.id && x.checkpoint);
+    const se = this.ensureSession(topicId, src.personaId);
+    const root = items[idx];
+    const who = root?.kind === 'user' ? 'your' : root?.handle ? `@${root.handle}’s` : 'a';
+    this.updateSession(se.id, {
+      // The same persona version as the session it forks: it is the same agent, branching.
+      personaSnapshot: src.personaSnapshot,
+      forkOf: { sessionId: src.id, itemId: at?.id ?? null },
+      // With no checkpoint before the root, an agent that joined later starts fresh; replies from before
+      // checkpoints were kept fall back to the session’s latest point.
+      backendState: {
+        fork: at?.checkpoint ?? null,
+        forkFrom: at || items.some((x) => x.sessionId === src.id && x.checkpoint) ? null : (src.backendState ?? null),
+        contextWindow: src.backendState?.contextWindow,
+      },
+      ctx: src.ctx,
+      compactions: src.compactions,
+      context: [
+        `[Postbox] This is a topic thread that branches from ${who} message in the conversation “${this.s.threads[topic.parentId]?.title ?? ''}”: “${clip(root?.text || root?.block?.title || '', 400)}”. You remember the conversation up to there. It continues separately, and nothing from this thread reaches it unless the person sends it back.`,
+      ],
+    });
+    this.adapters.get(this.persona(src.personaId)?.backend ?? 'mock').fork?.(src, this.s.sessions[se.id]);
+    return this.s.sessions[se.id];
+  }
+
+  /** “Send to conversation”: a reply from a topic thread is posted in its conversation, for you and its agents. */
+  shareToConversation(topicId, itemId) {
+    const topic = this.thread(topicId);
+    if (topic.kind !== 'topic') throw httpError(409, 'Only replies in a topic thread can be sent to the conversation.');
+    const it = this.store.item(topicId, itemId);
+    if (!it?.text) throw httpError(404, 'That reply has no text to send.');
+    if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
+    this.patchItem(topicId, itemId, { sharedAt: Date.now() });
+    return this.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text });
+  }
+
+  /** “Summarize back”: the topic’s agent writes a short summary, which is posted in the conversation. */
+  summarizeBack(topicId) {
+    const topic = this.thread(topicId);
+    if (topic.kind !== 'topic') throw httpError(409, 'Only a topic thread can be summarized back.');
+    const se = this.sessionsIn(topicId).find((x) => !x.archived);
+    if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
+    this.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
+    this.deliver(
+      se.id,
+      {
+        kind: 'notice',
+        text: 'Summarize this topic thread for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.',
+      },
+      { summarizeTo: topic.parentId },
+    );
+    return { ok: true };
+  }
+
+  /**
+   * Posts text from a topic thread in its conversation. The conversation’s agents read it at the start of
+   * their next turn rather than being woken by it, so sharing never costs a turn.
+   */
+  shareText(threadId, { fromThreadId, handle, text, summary = false }) {
+    const from = this.s.threads[fromThreadId];
+    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary });
+    const note = `[Postbox] ${summary ? `A summary of the topic thread “${from?.title ?? ''}”, by @${handle}` : `Shared from the topic thread “${from?.title ?? ''}”${handle ? `, by @${handle}` : ', by the person'}`}:\n\n${text}`;
+    for (const se of this.sessionsIn(threadId)) this.updateSession(se.id, { context: [...(se.context ?? []), note].slice(-10) });
+    return it;
+  }
+
+  // ── Permission prompts ─────────────────────────────────────────────────────────────
+  // A real agent in “ask” mode stops before anything risky, such as running a command. Postbox shows a card
+  // in the thread, the agent needs you, and the tool call waits for your answer. Ending the turn, or Stop,
+  // turns any open card into “expired” and answers no.
+
+  /**
+   * @param {string} sessionId
+   * @param {{ tool: string, summary: string, detail?: string }} req
+   * @returns {Promise<{ allow: boolean, message?: string }>}
+   */
+  requestPermission(sessionId, { tool, summary, detail = '' }) {
+    const se = this.s.sessions[sessionId];
+    const turn = this.turns.get(sessionId);
+    if (!se || !turn) return Promise.resolve({ allow: false, message: 'The turn has ended.' });
+    const it = this.addItem(se.threadId, {
+      kind: 'permission',
+      sessionId,
+      handle: se.handle,
+      turnId: turn.id,
+      tool: String(tool).slice(0, 120),
+      summary: String(summary).slice(0, 200),
+      detail: String(detail).slice(0, 4000),
+      status: 'open',
+    });
+    // The text so far is finished; the reply continues below the card.
+    if (turn.segment) this.patchItem(se.threadId, turn.segment, { status: 'done' });
+    turn.segment = null;
+    this.updateSession(sessionId, { state: 'needs', needs: { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}` } });
+    this.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`);
+    return new Promise((resolve) => {
+      this.permissionWaits.set(it.id, { resolve, threadId: se.threadId, sessionId });
+    });
+  }
+
+  settlePermission(itemId, status, message) {
+    const w = this.permissionWaits.get(itemId);
+    if (!w) return false;
+    this.permissionWaits.delete(itemId);
+    this.patchItem(w.threadId, itemId, { status, answeredAt: Date.now() });
+    const se = this.s.sessions[w.sessionId];
+    if (se?.needs?.itemId === itemId) this.updateSession(se.id, { needs: null, state: this.turns.has(se.id) ? 'tool' : 'idle' });
+    w.resolve(status === 'allowed' ? { allow: true } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
+    return true;
+  }
+
+  resolvePermission(threadId, itemId, action) {
+    const it = this.store.item(threadId, itemId);
+    if (it?.kind !== 'permission' || it.status !== 'open' || !this.permissionWaits.has(itemId))
+      throw httpError(409, 'That request was already answered, or the turn that asked has ended.');
+    if (action !== 'allow' && action !== 'deny') throw httpError(400, 'A permission request takes “allow” or “deny”.');
+    const allow = action === 'allow';
+    this.addItem(threadId, { kind: 'voice', text: `${allow ? 'Allowed' : 'Didn’t allow'}: @${it.handle} to ${it.summary}` });
+    this.settlePermission(itemId, allow ? 'allowed' : 'denied', 'The person didn’t allow this. Ask them what to do instead, or find another way.');
+    return { ok: true };
+  }
+
+  /** After a restart, no tool call is waiting any more, so open cards can’t be answered. */
+  expireStalePermissions() {
+    for (const [threadId, items] of Object.entries(this.s.items))
+      for (const it of items) if (it.kind === 'permission' && it.status === 'open') this.patchItem(threadId, it.id, { status: 'expired' });
+  }
+
+  /** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
+  attachmentPath(threadId, a) {
+    if (a?.kind === 'file' && a.fileId) {
+      const f = this.s.files?.[a.fileId];
+      return f?.sha256 && this.blobs ? this.blobs.pathOf(f.sha256) : null;
+    }
+    if (a?.kind === 'project-file' && a.path) {
+      const folder = this.s.projects[this.s.threads[threadId]?.projectId]?.folder;
+      if (!folder) return null;
+      const full = resolve(folder, String(a.path).replace(/^\/+/, ''));
+      return full === resolve(folder) || full.startsWith(resolve(folder) + sep) ? full : null;
+    }
+    return null;
+  }
+
+  // ── Attached Claude Code sessions ──────────────────────────────────────────────────
+  // A session you started in a terminal can join Postbox: it becomes an agent whose folder is the session’s
+  // folder, and Postbox resumes that same Claude Code session when you write to it. What you type in the
+  // terminal is mirrored into the thread, marked “from terminal”. Lines written during Postbox’s own turns are
+  // skipped, so nothing shows twice.
+
+  async claudeSessions() {
+    const attached = new Set(
+      Object.values(this.s.sessions)
+        .map((se) => se.backendState?.claudeSessionId)
+        .filter(Boolean),
+    );
+    return (await listClaudeSessions({ root: this.config.claudeProjectsRoot })).map(({ file: _file, ...x }) => ({ ...x, attached: attached.has(x.id) }));
+  }
+
+  async attachClaudeSession({ claudeSessionId, projectId, handle }) {
+    if (!this.adapters.names().includes('claude-code'))
+      throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
+    const cs = (await listClaudeSessions({ root: this.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
+    if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
+    if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
+    if (Object.values(this.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId && !se.deleting))
+      throw httpError(409, 'That session is already attached.');
+    if (!this.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
+    const base =
+      String(handle || basename(cs.cwd))
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^[^a-z]+/, '')
+        .slice(0, 20) || 'terminal';
+    let name = base.length >= 2 ? base : `cc-${base}`;
+    for (let n = 2; this.personaByHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
+    const p = this.createPersona({
+      handle: name,
+      backend: 'claude-code',
+      description: `Attached from Claude Code in ${cs.cwd}`,
+      folder: cs.cwd,
+      permissionMode: 'ask',
+    });
+    const t = this.createThread({ projectId, title: cs.title, personaIds: [p.id] });
+    const se = this.sessionsIn(t.id)[0];
+    this.updateSession(se.id, { backendState: { claudeSessionId, transcript: cs.file, attached: true } });
+    for (const it of recentHistory(cs.file)) {
+      if (it.kind === 'user') this.addItem(t.id, { kind: 'user', text: it.text, via: 'terminal' });
+      else
+        this.addItem(t.id, {
+          kind: 'agent',
+          sessionId: se.id,
+          personaId: p.id,
+          handle: p.handle,
+          text: it.text,
+          status: 'done',
+          via: 'terminal',
+          activity: it.steps.length ? { steps: it.steps.map((s) => ({ ...s, state: s.state === 'running' ? 'done' : s.state })) } : null,
+        });
+    }
+    this.addItem(t.id, { kind: 'system', variant: 'attached', handle: p.handle, folder: cs.cwd });
+    this.mirror(se.id);
+    return { threadId: t.id, personaId: p.id, sessionId: se.id };
+  }
+
+  /** Starts following an attached session’s transcript. */
+  mirror(sessionId) {
+    const se = this.s.sessions[sessionId];
+    const file = se?.backendState?.transcript;
+    if (!file || this.mirrors.has(sessionId)) return;
+    const timer = setInterval(() => this.pollMirror(sessionId), 1500);
+    timer.unref?.();
+    this.mirrors.set(sessionId, { tail: new TranscriptTail(file), timer, agentItem: null, steps: [] });
+  }
+
+  rearmMirrors() {
+    for (const se of Object.values(this.s.sessions)) if (se.backendState?.attached && !se.deleting && !se.archived) this.mirror(se.id);
+  }
+
+  stopMirrors() {
+    for (const m of this.mirrors.values()) clearInterval(m.timer);
+    this.mirrors.clear();
+  }
+
+  pollMirror(sessionId) {
+    const m = this.mirrors.get(sessionId);
+    const se = this.s.sessions[sessionId];
+    if (!m) return;
+    if (!se || se.deleting) {
+      clearInterval(m.timer);
+      this.mirrors.delete(sessionId);
+      return;
+    }
+    let entries;
+    try {
+      entries = m.tail.poll();
+    } catch {
+      return; // the file is being rewritten; try again next time
+    }
+    // Lines written during Postbox’s own turn are that turn, already in the thread.
+    if (this.turns.has(sessionId) || !entries.length) return;
+    for (const e of entries) {
+      if (e.isSidechain) continue;
+      const typed = typedText(e);
+      if (typed) {
+        this.addItem(se.threadId, { kind: 'user', text: typed, via: 'terminal' });
+        m.agentItem = null;
+        m.steps = [];
+        this.updateSession(sessionId, { state: 'think', currentStep: 'Working in a terminal', finishedAt: null });
+        continue;
+      }
+      if (e.type === 'assistant') {
+        for (const b of e.message?.content ?? []) {
+          if (b.type === 'text' && b.text?.trim()) {
+            const it = m.agentItem && this.store.item(se.threadId, m.agentItem);
+            if (it) this.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
+            else m.agentItem = this.mirrorAgentItem(se, b.text);
+            this.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
+          }
+          if (b.type === 'tool_use') {
+            m.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running', ms: null });
+            if (!m.agentItem) m.agentItem = this.mirrorAgentItem(se, '');
+            this.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
+            this.updateSession(sessionId, { state: 'tool', currentStep: m.steps.at(-1).label });
+          }
+        }
+        if (e.message?.stop_reason === 'end_turn') this.updateSession(sessionId, { state: 'idle', currentStep: '', finishedAt: Date.now() });
+      }
+      if (e.type === 'user' && Array.isArray(e.message?.content) && m.agentItem) {
+        let changed = false;
+        for (const b of e.message.content) {
+          const step = b.type === 'tool_result' && m.steps.find((s) => s.id === b.tool_use_id);
+          if (step) {
+            step.state = b.is_error ? 'failed' : 'done';
+            changed = true;
+          }
+        }
+        if (changed) this.patchItem(se.threadId, m.agentItem, { activity: { steps: [...m.steps] } });
+      }
+    }
+  }
+
+  mirrorAgentItem(se, text) {
+    return this.addItem(se.threadId, {
+      kind: 'agent',
+      sessionId: se.id,
+      personaId: se.personaId,
+      handle: se.handle,
+      text,
+      status: 'done',
+      via: 'terminal',
+      activity: null,
+    }).id;
+  }
+
   // ── Personas ───────────────────────────────────────────────────────────────────────
 
-  createPersona({ handle, description = '', instructions = '', model = 'mock', backend = 'mock', tools = [], examples = [], createdBy = null }) {
-    handle = String(handle ?? '').replace(/^@/, '').trim();
+  createPersona({
+    handle,
+    description = '',
+    instructions = '',
+    backend = 'mock',
+    model = backend === 'mock' ? 'mock' : DEFAULT_MODEL,
+    permissionMode = 'ask',
+    folder = '',
+    tools = [],
+    examples = [],
+    createdBy = null,
+  }) {
+    handle = String(handle ?? '')
+      .replace(/^@/, '')
+      .trim();
     if (!/^[a-z][a-z0-9_-]{1,23}$/i.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
-    if (!this.adapters.names().includes(backend)) throw httpError(422, `“${backend}” isn’t available yet. Stage 2 runs agents on the mock only.`);
-    const p = { id: newId('pe'), handle, description, instructions, model, backend, tools: [...new Set(tools)], examples, createdBy, createdAt: Date.now(), version: 1, retired: false };
+    if (!this.adapters.names().includes(backend))
+      throw httpError(422, `“${backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}. See README, “Run real agents”.`);
+    if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    const p = {
+      id: newId('pe'),
+      handle,
+      description,
+      instructions,
+      model: String(model || DEFAULT_MODEL),
+      backend,
+      permissionMode,
+      folder: String(folder ?? ''),
+      tools: [...new Set(tools)],
+      examples,
+      createdBy,
+      createdAt: Date.now(),
+      version: 1,
+      retired: false,
+    };
     this.store.emit('persona', p);
     return p;
   }
@@ -457,7 +1099,17 @@ export class Runtime {
   updatePersona(id, patch) {
     const p = this.persona(id);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
-    const next = { ...p, ...pick(patch, ['description', 'instructions', 'model', 'tools', 'examples', 'retired']), version: (p.version ?? 1) + 1 };
+    if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode))
+      throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend))
+      throw httpError(422, `“${patch.backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}.`);
+    // A persona moved from the mock to a real model gets the default model.
+    if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: DEFAULT_MODEL };
+    const next = {
+      ...p,
+      ...pick(patch, ['description', 'instructions', 'backend', 'model', 'permissionMode', 'folder', 'tools', 'examples', 'retired']),
+      version: (p.version ?? 1) + 1,
+    };
     this.store.emit('persona', next);
     return next;
   }
@@ -486,14 +1138,75 @@ export class Runtime {
     const until = Date.now() + DELETE_UNDO_MS;
     this.updateSession(sessionId, { deleting: until });
     clearTimeout(this.timers.get(`del:${sessionId}`));
-    this.timers.set(`del:${sessionId}`, setTimeout(() => this.purgeSession(sessionId), DELETE_UNDO_MS));
+    this.timers.set(
+      `del:${sessionId}`,
+      // Unref’d, like every runtime timer: the HTTP server keeps the process alive, and a test shouldn’t wait.
+      setTimeout(() => this.purgeSession(sessionId), DELETE_UNDO_MS).unref(),
+    );
     return { until, handle: se.handle };
+  }
+
+  /**
+   * Deletes a whole conversation or room: every session in it, its apps, and its topic and side threads.
+   * Like deleting a session, it waits DELETE_UNDO_MS for Undo first. The personas stay.
+   */
+  deleteThread(threadId) {
+    const t = this.thread(threadId);
+    if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Delete the conversation it belongs to instead.');
+    const until = Date.now() + DELETE_UNDO_MS;
+    for (const se of this.sessionsIn(threadId)) this.stop(se.id, { silent: true });
+    this.putThread({ ...t, deleting: until });
+    clearTimeout(this.timers.get(`delt:${threadId}`));
+    this.timers.set(`delt:${threadId}`, setTimeout(() => this.purgeThread(threadId), DELETE_UNDO_MS).unref());
+    return { until, title: t.title };
+  }
+
+  undoDeleteThread(threadId) {
+    clearTimeout(this.timers.get(`delt:${threadId}`));
+    this.timers.delete(`delt:${threadId}`);
+    const t = this.thread(threadId);
+    this.putThread({ ...t, deleting: null });
+  }
+
+  purgeThread(threadId) {
+    this.timers.delete(`delt:${threadId}`);
+    const t = this.s.threads[threadId];
+    if (!t?.deleting) return;
+    const ids = [
+      threadId,
+      ...Object.values(this.s.threads)
+        .filter((x) => x.parentId === threadId)
+        .map((x) => x.id),
+    ];
+    for (const id of ids) {
+      for (const sid of this.s.threads[id]?.members ?? []) {
+        this.stopMirrorFor(sid);
+        if (this.s.sessions[sid]) this.store.emit('remove', { kind: 'session', id: sid });
+      }
+      for (const app of Object.values(this.s.apps)) if (app.threadId === id) this.store.emit('remove', { kind: 'app', id: app.id });
+    }
+    for (const id of ids.reverse()) this.store.emit('remove', { kind: 'thread', id });
+  }
+
+  stopMirrorFor(sessionId) {
+    const m = this.mirrors.get(sessionId);
+    if (m) clearInterval(m.timer);
+    this.mirrors.delete(sessionId);
+  }
+
+  renameThread(threadId, title) {
+    const t = this.thread(threadId);
+    const name = String(title ?? '')
+      .trim()
+      .slice(0, 120);
+    if (!name) throw httpError(422, 'A conversation needs a name.');
+    return this.putThread({ ...t, title: name });
   }
 
   undoDelete(sessionId) {
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.delete(`del:${sessionId}`);
-    const se = this.session(sessionId);
+    const _se = this.session(sessionId);
     this.updateSession(sessionId, { deleting: null });
   }
 
@@ -510,7 +1223,7 @@ export class Runtime {
       this.store.emit('remove', { kind: 'thread', id: t.id });
     } else if (t) {
       // In a room: it leaves, and its past messages stay, marked deleted.
-      this.putThread({ ...t, members: others, lastSpeaker: t.lastSpeaker === sessionId ? others[0] ?? null : t.lastSpeaker });
+      this.putThread({ ...t, members: others, lastSpeaker: t.lastSpeaker === sessionId ? (others[0] ?? null) : t.lastSpeaker });
       for (const it of this.store.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
       this.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
     }
@@ -533,26 +1246,34 @@ export class Runtime {
 
   arm(sc) {
     clearTimeout(this.timers.get(sc.id));
-    this.timers.set(sc.id, setTimeout(() => {
-      this.timers.delete(sc.id);
-      if (!this.s.schedules[sc.id]) return;
-      this.store.emit('schedule', { id: sc.id, removed: true });
-      if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'done' });
-      if (!this.s.sessions[sc.sessionId]) return;
-      this.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
-      this.deliver(sc.sessionId, { kind: 'wake', note: sc.note });
-    }, Math.max(0, sc.at - Date.now())));
+    this.timers.set(
+      sc.id,
+      setTimeout(
+        () => {
+          this.timers.delete(sc.id);
+          if (!this.s.schedules[sc.id]) return;
+          this.store.emit('schedule', { id: sc.id, removed: true });
+          if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'done' });
+          if (!this.s.sessions[sc.sessionId]) return;
+          this.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
+          this.deliver(sc.sessionId, { kind: 'wake', note: sc.note });
+        },
+        Math.max(0, sc.at - Date.now()),
+      ).unref(),
+    );
   }
 
   cancelSchedule(scheduleId) {
     const sc = this.s.schedules[scheduleId];
-    if (!sc) throw httpError(404, 'That wake-up already happened or was cancelled.');
+    if (!sc) throw httpError(404, 'That wake-up already happened or was canceled.');
     clearTimeout(this.timers.get(scheduleId));
     this.store.emit('schedule', { id: scheduleId, removed: true });
-    if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'cancelled' });
+    if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'canceled' });
   }
 
-  rearmSchedules() { for (const sc of Object.values(this.s.schedules)) this.arm(sc); }
+  rearmSchedules() {
+    for (const sc of Object.values(this.s.schedules)) this.arm(sc);
+  }
 
   // ── Apps ───────────────────────────────────────────────────────────────────────────
 
@@ -562,7 +1283,10 @@ export class Runtime {
     if (!app) throw httpError(404, 'That app doesn’t exist.');
     if (version !== app.current) return { ignored: true };
     const clean = problems.slice(0, 20).map((p) => ({ code: String(p.code).slice(0, 40), message: String(p.message).slice(0, 300) }));
-    if (!clean.length) { this.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } }); return { status: 'passed' }; }
+    if (!clean.length) {
+      this.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
+      return { status: 'passed' };
+    }
     if (clean.some((p) => p.code === 'script-error')) {
       this.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
       return { status: 'crashed' };
@@ -601,7 +1325,7 @@ export class Runtime {
     const app = this.s.apps[appId];
     if (!app) throw httpError(404, 'That app doesn’t exist.');
     const se = this.s.sessions[app.sessionId];
-    const persona = se && this.persona(se.personaId);
+    const persona = se && this.personaFor(se);
     const allowed = new Set((app.versions[app.current - 1].permissions ?? []).filter((t) => persona?.tools?.includes(t)));
     if (!allowed.has(tool)) throw httpError(403, `This app can’t use “${tool}”. It needs the permission, and its agent needs the tool.`);
     return hostTool(this, tool, args);
@@ -614,29 +1338,51 @@ export class Runtime {
     this.viewing.set(threadId, Date.now());
     for (const se of this.sessionsIn(threadId)) if (se.unread) this.updateSession(se.id, { unread: 0 });
   }
-  isViewing(threadId) { return Date.now() - (this.viewing.get(threadId) ?? 0) < 20000; }
+  isViewing(threadId) {
+    return Date.now() - (this.viewing.get(threadId) ?? 0) < 20000;
+  }
 
   // ── UI tools (the same set MCP exposes) ────────────────────────────────────────────
 
+  /** @param {string} sessionId @param {any} [turn]  the turn the tools act for; null outside a turn */
   toolsFor(sessionId, turn = null) {
     const rt = this;
     const se = () => rt.session(sessionId);
-    const endSegment = () => { if (turn) turn.segment = null; };
+    const endSegment = () => {
+      if (turn) turn.segment = null;
+    };
     const threadId = () => se().threadId;
     return {
       show_block({ block }) {
         const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
         endSegment();
-        const it = rt.addItem(threadId(), v.ok
-          ? { kind: 'block', sessionId, handle: se().handle, turnId: turn?.id ?? null, valid: true, block: v.block, answered: false }
-          : { kind: 'block', sessionId, handle: se().handle, turnId: turn?.id ?? null, valid: false, raw: block, errors: v.errors, reason: v.reason, fallback: v.fallback });
+        const it = rt.addItem(
+          threadId(),
+          v.ok
+            ? { kind: 'block', sessionId, handle: se().handle, turnId: turn?.id ?? null, valid: true, block: v.block, answered: false }
+            : {
+                kind: 'block',
+                sessionId,
+                handle: se().handle,
+                turnId: turn?.id ?? null,
+                valid: false,
+                raw: block,
+                errors: v.errors,
+                reason: v.reason,
+                fallback: v.fallback,
+              },
+        );
         if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id);
-        return v.ok ? { ok: true, message: `Shown block ${v.block.id}.` } : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
+        return v.ok
+          ? { ok: true, message: `Shown block ${v.block.id}.` }
+          : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
       },
       update_block({ block }) {
         const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
         if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
-        const existing = [...rt.store.items(threadId())].reverse().find((x) => x.kind === 'block' && x.valid && x.block.id === v.block.id && x.sessionId === sessionId);
+        const existing = [...rt.store.items(threadId())]
+          .reverse()
+          .find((x) => x.kind === 'block' && x.valid && x.block.id === v.block.id && x.sessionId === sessionId);
         if (!existing) return { ok: false, message: `There’s no block with id ${v.block.id} to update. Use show_block to add it.` };
         if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
         // An update can ask again, so it reopens a block you already answered.
@@ -647,27 +1393,68 @@ export class Runtime {
         const blockId = id ?? newId('app');
         const existing = rt.s.apps[blockId];
         if (existing) return this.update_app({ id: blockId, code, permissions, title });
-        return this.show_block({ block: { id: blockId, type: 'app', version: 1, title: title ?? 'App', fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`, code, permissions } });
+        return this.show_block({
+          block: {
+            id: blockId,
+            type: 'app',
+            version: 1,
+            title: title ?? 'App',
+            fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
+            code,
+            permissions,
+          },
+        });
       },
-      update_app({ id, code, permissions, title, summary }) {
+      update_app({ id, code, permissions, title, summary = '' }) {
         const app = rt.s.apps[id];
         if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
         const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
         if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
-        const versions = [...app.versions, { v: app.versions.length + 1, code, permissions: v.block.permissions ?? [], summary: summary ?? '', at: Date.now() }];
-        rt.store.emit('app', { ...app, title: title ?? app.title, versions, current: versions.length, check: { status: 'pending', attempt: app.check.attempt } });
+        const versions = [
+          ...app.versions,
+          { v: app.versions.length + 1, code, permissions: v.block.permissions ?? [], summary: summary ?? '', at: Date.now() },
+        ];
+        rt.store.emit('app', {
+          ...app,
+          title: title ?? app.title,
+          versions,
+          current: versions.length,
+          check: { status: 'pending', attempt: app.check.attempt },
+        });
         return { ok: true, message: `App ${id} is now v${versions.length}.` };
       },
       define_term({ term, definition, key, source }) {
         if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
-        const k = String(key ?? term).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64) || 'term';
-        rt.store.emit('glossary', { threadId: threadId(), entry: { key: k, term: String(term).slice(0, 80), definition: String(definition).slice(0, 2000), source: source ? String(source).slice(0, 200) : '', by: se().handle, at: Date.now() } });
+        const k =
+          String(key ?? term)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 64) || 'term';
+        rt.store.emit('glossary', {
+          threadId: threadId(),
+          entry: {
+            key: k,
+            term: String(term).slice(0, 80),
+            definition: String(definition).slice(0, 2000),
+            source: source ? String(source).slice(0, 200) : '',
+            by: se().handle,
+            at: Date.now(),
+          },
+        });
         return { ok: true, message: `Defined “${term}”.` };
       },
       propose_agent({ handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
         const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
         endSegment();
-        rt.addItem(threadId(), { kind: 'proposal', sessionId, handle: se().handle, status: 'open', proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend }, extraTools: tools.filter((t) => !mine.has(t)) });
+        rt.addItem(threadId(), {
+          kind: 'proposal',
+          sessionId,
+          handle: se().handle,
+          status: 'open',
+          proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend },
+          extraTools: tools.filter((t) => !mine.has(t)),
+        });
         return { ok: true, message: 'Proposed. The person decides whether to create it.' };
       },
       schedule_wake({ in_minutes, note }) {
@@ -677,16 +1464,24 @@ export class Runtime {
       wake_agent({ handle, message }) {
         return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
       },
-      corpus_search(args) { return { ok: true, results: hostTool(rt, 'corpus.search', args) }; },
+      corpus_search(args) {
+        return { ok: true, results: hostTool(rt, 'corpus.search', args) };
+      },
     };
   }
 
   registerApp(sessionId, block, itemId) {
     const se = this.s.sessions[sessionId];
     this.store.emit('app', {
-      id: block.id, threadId: se.threadId, sessionId, itemId, title: block.title ?? 'App',
-      versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], at: Date.now(), summary: '' }], current: 1,
-      state: null, check: { status: 'pending', attempt: 0, problems: [] },
+      id: block.id,
+      threadId: se.threadId,
+      sessionId,
+      itemId,
+      title: block.title ?? 'App',
+      versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], at: Date.now(), summary: '' }],
+      current: 1,
+      state: null,
+      check: { status: 'pending', attempt: 0, problems: [] },
     });
   }
 }
@@ -699,12 +1494,22 @@ export function hostTool(rt, tool, args = {}) {
       const mode = ['both', 'lexical', 'semantic'].includes(args.mode) ? args.mode : 'both';
       return rt.corpus.search(q, { mode, k: Math.min(50, +args.k || 12), books: Array.isArray(args.books) ? args.books : undefined });
     }
-    case 'corpus.read': return rt.corpus.read(String(args.id ?? ''));
-    case 'corpus.stats': return rt.corpus.stats();
-    default: throw httpError(404, `There’s no host tool called “${tool}”.`);
+    case 'corpus.read':
+      return rt.corpus.read(String(args.id ?? ''));
+    case 'corpus.stats':
+      return rt.corpus.stats();
+    case 'narrate.speak':
+      if (!rt.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');
+      return rt.narrator.speak(args);
+    default:
+      throw httpError(404, `There’s no host tool called “${tool}”.`);
   }
 }
 
-export function httpError(status, message) { return Object.assign(new Error(message), { status, userMessage: message }); }
+export function httpError(status, message) {
+  return Object.assign(new Error(message), { status, userMessage: message });
+}
+const snapshotOf = (p) => pick(p, ['description', 'instructions', 'model', 'permissionMode', 'folder', 'tools', 'version']);
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
+
 export { formatDuration };

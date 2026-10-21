@@ -1,18 +1,27 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Store } from '../server/store.mjs';
-import { Runtime, HOP_LIMIT } from '../server/runtime.mjs';
+import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { handleMcp } from '../server/mcp.mjs';
+import { HOP_LIMIT, Runtime } from '../server/runtime.mjs';
+import { Store } from '../server/store.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** An adapter whose replies the test scripts per call. */
 class ScriptedAdapter {
   name = 'mock';
-  constructor() { this.calls = []; this.next = []; }
+  constructor() {
+    this.calls = [];
+    this.next = [];
+    this.forks = [];
+  }
+  fork(source, target) {
+    this.forks.push([source.id, target.id]);
+  }
   async deliver(session, message, ctx) {
-    this.calls.push({ handle: session.handle, message });
+    this.calls.push({ handle: session.handle, message, sessionId: session.id, state: ctx.state });
+    // Each turn ends at a point a topic thread can fork from.
+    ctx.checkpoint?.({ turn: this.calls.length });
     const step = this.next.shift() ?? (async (c) => c.text('ok'));
     await step(ctx, message, session);
   }
@@ -29,15 +38,24 @@ function setup() {
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
   return { store, rt, adapter, t, a, b };
 }
-const settle = async (rt) => { for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5); await sleep(5); };
+const settle = async (rt) => {
+  for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);
+  await sleep(5);
+};
 
 test('a message goes to the thread’s agent and its reply streams into an item', async () => {
   const { rt, store, t, adapter } = setup();
-  adapter.next.push(async (c) => { c.text('Hello '); c.text('there.'); });
+  adapter.next.push(async (c) => {
+    c.text('Hello ');
+    c.text('there.');
+  });
   rt.sendMessage(t.id, { text: 'hi' });
   await settle(rt);
   const items = store.items(t.id);
-  assert.deepEqual(items.map((i) => i.kind), ['user', 'agent']);
+  assert.deepEqual(
+    items.map((i) => i.kind),
+    ['user', 'agent'],
+  );
   assert.equal(items[1].text, 'Hello there.');
   assert.equal(items[1].status, 'done');
 });
@@ -52,19 +70,31 @@ test('@-mentioning an agent that isn’t in the thread brings it in and turns th
 
 test('a message sent mid-reply is queued, then delivered when the agent finishes', async () => {
   const { rt, store, t, adapter } = setup();
-  adapter.next.push(async (c) => { c.text('working'); await sleep(40); });
+  adapter.next.push(async (c) => {
+    c.text('working');
+    await sleep(40);
+  });
   rt.sendMessage(t.id, { text: 'first' });
   const r = rt.sendMessage(t.id, { text: 'second' });
   assert.ok(r.queued);
   assert.equal(store.state.threads[t.id].queue.length, 1);
   await settle(rt);
   assert.equal(store.state.threads[t.id].queue.length, 0);
-  assert.deepEqual(store.items(t.id).filter((i) => i.kind === 'user').map((i) => i.text), ['first', 'second']);
+  assert.deepEqual(
+    store
+      .items(t.id)
+      .filter((i) => i.kind === 'user')
+      .map((i) => i.text),
+    ['first', 'second'],
+  );
 });
 
 test('Stop ends the turn cleanly and marks the reply stopped', async () => {
   const { rt, store, t, adapter } = setup();
-  adapter.next.push(async (c) => { c.text('partial'); await new Promise((res, rej) => c.signal.addEventListener('abort', () => rej(Object.assign(new Error('x'), { name: 'AbortError' })))); });
+  adapter.next.push(async (c) => {
+    c.text('partial');
+    await new Promise((_res, rej) => c.signal.addEventListener('abort', () => rej(Object.assign(new Error('x'), { name: 'AbortError' }))));
+  });
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(10);
   const se = rt.sessionsIn(t.id)[0];
@@ -76,7 +106,9 @@ test('Stop ends the turn cleanly and marks the reply stopped', async () => {
 
 test('a failing turn shows the error, asks for you, and can be retried', async () => {
   const { rt, store, t, adapter } = setup();
-  adapter.next.push(async () => { throw Object.assign(new Error('boom'), { userMessage: 'The model didn’t respond.' }); });
+  adapter.next.push(async () => {
+    throw Object.assign(new Error('boom'), { userMessage: 'The model didn’t respond.' });
+  });
   rt.sendMessage(t.id, { text: 'go' });
   await settle(rt);
   const failed = store.items(t.id).find((i) => i.status === 'failed');
@@ -91,7 +123,9 @@ test('a failing turn shows the error, asks for you, and can be retried', async (
 
 test('an open choice makes the agent need you; answering it sends one event and a line in your voice', async () => {
   const { rt, store, t, adapter } = setup();
-  adapter.next.push(async (c) => { c.tools.show_block({ block: { id: 'q', type: 'choice', version: 1, fallback: 'Pick', title: 'Pick one', options: [{ id: 'a', label: 'A' }] } }); });
+  adapter.next.push(async (c) => {
+    c.tools.show_block({ block: { id: 'q', type: 'choice', version: 1, fallback: 'Pick', title: 'Pick one', options: [{ id: 'a', label: 'A' }] } });
+  });
   rt.sendMessage(t.id, { text: 'ask me' });
   await settle(rt);
   const se = rt.sessionsIn(t.id)[0];
@@ -108,7 +142,9 @@ test('an open choice makes the agent need you; answering it sends one event and 
 test('an invalid block is stored with its fallback, never rendered as given', async () => {
   const { rt, store, t, adapter } = setup();
   let result;
-  adapter.next.push(async (c) => { result = c.tools.show_block({ block: { id: 'x', type: 'timeline', version: 1, fallback: 'Plain version' } }); });
+  adapter.next.push(async (c) => {
+    result = c.tools.show_block({ block: { id: 'x', type: 'timeline', version: 1, fallback: 'Plain version' } });
+  });
   rt.sendMessage(t.id, { text: 'go' });
   await settle(rt);
   const b = store.items(t.id).find((i) => i.kind === 'block');
@@ -146,7 +182,7 @@ test('a message from you resets the wake count', async () => {
 });
 
 test('agents wake each other in a side thread, and your thread shows one link to it', async () => {
-  const { rt, store, t, b, adapter } = setup();
+  const { rt, store, t, adapter } = setup();
   const alpha = rt.sessionsIn(t.id)[0];
   adapter.next.push(async (c) => c.text('Editions are fine.'));
   rt.agentWake(alpha.id, 'beta', 'Which editions?');
@@ -184,7 +220,12 @@ test('deleting an agent in a room keeps its messages, marked deleted', async () 
   rt.deleteSession(beta.id);
   rt.purgeSession(beta.id);
   assert.ok(store.state.threads[t.id]);
-  assert.ok(store.items(t.id).filter((i) => i.sessionId === beta.id).every((i) => i.deletedAgent));
+  assert.ok(
+    store
+      .items(t.id)
+      .filter((i) => i.sessionId === beta.id)
+      .every((i) => i.deletedAgent),
+  );
   assert.ok(store.items(t.id).some((i) => i.kind === 'system' && i.variant === 'left'));
 });
 
@@ -214,14 +255,261 @@ test('a failed pre-display check goes back to the agent once; a second failure s
 test('MCP: initialize, list tools, and a tool call that returns at once', async () => {
   const { rt, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
-  const init = handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+  const init = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
   assert.equal(init.result.serverInfo.name, 'postbox');
-  assert.equal(handleMcp(rt, se.id, { jsonrpc: '2.0', method: 'notifications/initialized' }), null);
-  const tools = handleMcp(rt, se.id, { jsonrpc: '2.0', id: 2, method: 'tools/list' }).result.tools.map((x) => x.name);
+  assert.equal(await handleMcp(rt, se.id, { jsonrpc: '2.0', method: 'notifications/initialized' }), null);
+  const tools = (await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).result.tools.map((x) => x.name);
   assert.ok(tools.includes('show_block') && tools.includes('wake_agent'));
-  const r = handleMcp(rt, se.id, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'show_block', arguments: { block: { id: 'c', type: 'confirm', version: 1, fallback: 'x', statement: 'Do it?', confirmLabel: 'Do it' } } } });
+  const r = await handleMcp(rt, se.id, {
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: { name: 'show_block', arguments: { block: { id: 'c', type: 'confirm', version: 1, fallback: 'x', statement: 'Do it?', confirmLabel: 'Do it' } } },
+  });
   assert.equal(r.result.isError, false);
-  const bad = handleMcp(rt, 'nope', { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'show_block', arguments: {} } });
+  const bad = await handleMcp(rt, 'nope', { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'show_block', arguments: {} } });
   assert.match(bad.error.message, /Unknown Postbox session/);
-  assert.equal(handleMcp(rt, se.id, { jsonrpc: '2.0', id: 5, method: 'nope' }).error.code, -32601);
+  assert.equal((await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 5, method: 'nope' })).error.code, -32601);
+});
+
+test('a permission prompt shows a card, makes the agent need you, and waits for your answer', async () => {
+  const { rt, store, t, adapter } = setup();
+  const answers = [];
+  adapter.next.push(async (c) => {
+    answers.push(await c.askPermission({ tool: 'Bash', summary: 'run a command', detail: 'npm test' }));
+    answers.push(await c.askPermission({ tool: 'Bash', summary: 'run a command', detail: 'rm -rf build' }));
+    c.text('Done.');
+  });
+  rt.sendMessage(t.id, { text: 'test it' });
+  await sleep(20);
+  const se = rt.sessionsIn(t.id)[0];
+  let card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
+  assert.equal(card.detail, 'npm test');
+  assert.equal(store.state.sessions[se.id].state, 'needs');
+  assert.equal(store.state.sessions[se.id].needs.kind, 'permission');
+  rt.act(t.id, card.id, 'allow');
+  await sleep(20);
+  card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
+  rt.act(t.id, card.id, 'deny');
+  await settle(rt);
+  assert.equal(answers[0].allow, true);
+  assert.equal(answers[1].allow, false);
+  assert.match(answers[1].message, /didn’t allow/);
+  assert.deepEqual(
+    store
+      .items(t.id)
+      .filter((i) => i.kind === 'voice')
+      .map((i) => i.text),
+    ['Allowed: @alpha to run a command', 'Didn’t allow: @alpha to run a command'],
+  );
+  assert.throws(() => rt.act(t.id, card.id, 'allow'), /already answered/);
+});
+
+test('Stop expires an open permission card and answers no', async () => {
+  const { rt, store, t, adapter } = setup();
+  let answer = null;
+  adapter.next.push(async (c) => {
+    answer = await c.askPermission({ tool: 'Write', summary: 'write notes.md' });
+  });
+  rt.sendMessage(t.id, { text: 'write it' });
+  await sleep(20);
+  const se = rt.sessionsIn(t.id)[0];
+  rt.stop(se.id);
+  await sleep(10);
+  assert.equal(answer.allow, false);
+  assert.equal(store.items(t.id).find((i) => i.kind === 'permission').status, 'expired');
+});
+
+test('MCP permission_prompt answers in the shape Claude Code expects', async () => {
+  const { rt, store, t, adapter } = setup();
+  let reply = null;
+  adapter.next.push(async (c) => {
+    const se = rt.sessionsIn(t.id)[0];
+    const pending = handleMcp(rt, se.id, {
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'tools/call',
+      params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'ls', description: 'List files' } } },
+    });
+    await sleep(10);
+    const card = store.items(t.id).find((i) => i.kind === 'permission');
+    assert.equal(card.summary, 'run a command: List files');
+    rt.act(t.id, card.id, 'allow');
+    reply = await pending;
+    c.text('ok');
+  });
+  rt.sendMessage(t.id, { text: 'list' });
+  await settle(rt);
+  assert.deepEqual(JSON.parse(reply.result.content[0].text), { behavior: 'allow', updatedInput: { command: 'ls', description: 'List files' } });
+});
+
+test('personas keep a permission mode and a model; real backends default to Claude Opus 5.5', () => {
+  const { rt } = setup();
+  rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
+  const p = rt.createPersona({ handle: 'coder', backend: 'claude-code' });
+  assert.equal(p.model, 'claude-opus-5-5');
+  assert.equal(p.permissionMode, 'ask');
+  assert.equal(rt.updatePersona(p.id, { permissionMode: 'acceptEdits' }).permissionMode, 'acceptEdits');
+  assert.throws(() => rt.updatePersona(p.id, { permissionMode: 'yolo' }), /Permissions are one of/);
+  assert.throws(() => rt.createPersona({ handle: 'nope', backend: 'agent-sdk' }), /isn’t available on this computer/);
+});
+
+test('attachments resolve to stored files, and project files stay inside the project folder', () => {
+  const { rt, store, t } = setup();
+  rt.blobs = { pathOf: (sha) => `/data/blobs/${sha.slice(0, 2)}/${sha}` };
+  store.emit('file', { id: 'fi1', name: 'a.png', sha256: 'ab12' });
+  assert.equal(rt.attachmentPath(t.id, { kind: 'file', fileId: 'fi1' }), '/data/blobs/ab/ab12');
+  assert.equal(rt.attachmentPath(t.id, { kind: 'project-file', path: 'notes/x.md' }), '/tmp/notes/x.md');
+  assert.equal(rt.attachmentPath(t.id, { kind: 'project-file', path: '../etc/passwd' }), null);
+});
+
+test('a session keeps the persona it started with; edits apply to new sessions', async () => {
+  const { rt, t, a, adapter } = setup();
+  rt.updatePersona(a.id, { instructions: 'Old.' });
+  const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
+  rt.updatePersona(a.id, { instructions: 'New.' });
+  const seen = [];
+  adapter.next.push(async (c) => seen.push(c.persona.instructions));
+  adapter.next.push(async (c) => seen.push(c.persona.instructions));
+  rt.sendMessage(t2.id, { text: 'hi' });
+  await settle(rt);
+  const t3 = rt.createThread({ projectId: 'p1', title: 'T3', personaIds: [a.id] });
+  rt.sendMessage(t3.id, { text: 'hi' });
+  await settle(rt);
+  assert.deepEqual(seen, ['Old.', 'New.']);
+  assert.ok(t);
+});
+
+// ── Topic threads ─────────────────────────────────────────────────────────────────────────
+
+async function conversation() {
+  const ctx = setup();
+  const { rt, t, adapter } = ctx;
+  adapter.next.push(async (c) => c.text('First answer.'));
+  rt.sendMessage(t.id, { text: 'First question' });
+  await settle(rt);
+  adapter.next.push(async (c) => c.text('Second answer.'));
+  rt.sendMessage(t.id, { text: 'Second question' });
+  await settle(rt);
+  return ctx;
+}
+
+test('a topic thread from an agent’s reply forks its session at that reply', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const items = store.items(t.id);
+  const first = items.find((i) => i.kind === 'agent' && i.text === 'First answer.');
+  assert.deepEqual(first.checkpoint, { turn: 1 });
+  const { threadId } = rt.startTopic(t.id, first.id);
+  const topic = store.state.threads[threadId];
+  assert.equal(topic.kind, 'topic');
+  assert.equal(topic.parentId, t.id);
+  assert.equal(store.item(t.id, first.id).topicId, threadId);
+  const [fork] = rt.sessionsIn(threadId);
+  assert.deepEqual(fork.backendState.fork, { turn: 1 }, 'it remembers up to the first answer, not the second');
+  assert.equal(fork.forkOf.itemId, first.id);
+  assert.deepEqual(adapter.forks, [[rt.sessionsIn(t.id)[0].id, fork.id]]);
+  assert.equal(rt.startTopic(t.id, first.id).threadId, threadId, 'a message has one thread');
+  // The first reply in the thread tells the agent where it branched from; the conversation isn’t woken.
+  adapter.next.push(async (c) => c.text('Thread answer.'));
+  rt.sendMessage(threadId, { text: 'Why?' });
+  await settle(rt);
+  const call = adapter.calls.at(-1);
+  assert.equal(call.sessionId, fork.id);
+  assert.match(call.message.context[0], /topic thread that branches from @alpha’s message/);
+  assert.equal(store.item(t.id, first.id).replies, 2);
+  assert.equal(store.items(t.id).length, items.length, 'nothing was added to the conversation');
+  assert.throws(() => rt.startTopic(threadId, store.items(threadId)[0].id), /can’t start another/);
+});
+
+test('a topic thread from your message forks the agent that answered, before its answer', async () => {
+  const { rt, store, t } = await conversation();
+  const second = store.items(t.id).find((i) => i.kind === 'user' && i.text === 'Second question');
+  const { threadId } = rt.startTopic(t.id, second.id);
+  const [fork] = rt.sessionsIn(threadId);
+  assert.deepEqual(fork.backendState.fork, { turn: 1 });
+  assert.equal(fork.handle, 'alpha');
+});
+
+test('sending a reply to the conversation reaches its agent on its next turn, without waking it', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const first = store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId } = rt.startTopic(t.id, first.id);
+  adapter.next.push(async (c) => c.text('Use chapter offsets.'));
+  rt.sendMessage(threadId, { text: 'Offsets or pages?' });
+  await settle(rt);
+  const reply = store.items(threadId).find((i) => i.kind === 'agent');
+  const calls = adapter.calls.length;
+  rt.shareToConversation(threadId, reply.id);
+  const shared = store.items(t.id).at(-1);
+  assert.equal(shared.kind, 'shared');
+  assert.equal(shared.text, 'Use chapter offsets.');
+  assert.equal(adapter.calls.length, calls, 'sharing costs no turn');
+  assert.throws(() => rt.shareToConversation(threadId, reply.id), /already in the conversation/);
+  rt.sendMessage(t.id, { text: 'Carry on' });
+  await settle(rt);
+  assert.match(adapter.calls.at(-1).message.context[0], /Shared from the topic thread .*Use chapter offsets\./s);
+});
+
+test('summarize back posts the thread agent’s summary in the conversation', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  adapter.next.push(async (c) => c.text('We chose offsets over pages.'));
+  rt.summarizeBack(threadId);
+  await settle(rt);
+  const shared = store.items(t.id).at(-1);
+  assert.equal(shared.kind, 'shared');
+  assert.equal(shared.summary, true);
+  assert.equal(shared.text, 'We chose offsets over pages.');
+  assert.match(adapter.calls.at(-1).message.text, /Summarize this topic thread/);
+});
+
+test('@-mentioning a conversation’s other agent in a topic forks its session too', async () => {
+  const { rt, store, t, b, adapter } = await conversation();
+  rt.sendMessage(t.id, { text: '@beta hello' });
+  await settle(rt);
+  const root = store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId } = rt.startTopic(t.id, root.id);
+  rt.sendMessage(threadId, { text: '@beta what do you think?' });
+  await settle(rt);
+  const betaFork = rt.sessionsIn(threadId).find((x) => x.personaId === b.id);
+  assert.ok(betaFork.forkOf);
+  assert.equal(adapter.forks.length, 2);
+});
+
+test('moving a persona from the mock to a real backend gives it the default model, and its conversations follow', async () => {
+  const { rt, store, t, a } = setup();
+  const calls = [];
+  rt.adapters.register({ name: 'claude-code', deliver: async (_se, _m, c) => calls.push(c.persona.model) });
+  assert.equal(store.state.personas[a.id].model, 'mock');
+  const p = rt.updatePersona(a.id, { backend: 'claude-code' });
+  assert.equal(p.backend, 'claude-code');
+  assert.equal(p.model, 'claude-opus-5-5');
+  rt.sendMessage(t.id, { text: 'hi' });
+  await settle(rt);
+  assert.equal(calls.length, 1, 'the existing conversation now runs on Claude Code');
+  assert.throws(() => rt.updatePersona(a.id, { backend: 'nope' }), /isn’t available/);
+});
+
+test('deleting a conversation removes its sessions, apps and threads after the undo window, and can be undone', () => {
+  const { rt, store, t } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  const r = rt.deleteThread(t.id);
+  assert.ok(r.until > Date.now());
+  assert.ok(store.state.threads[t.id].deleting);
+  rt.undoDeleteThread(t.id);
+  assert.equal(store.state.threads[t.id].deleting, null);
+  rt.deleteThread(t.id);
+  rt.purgeThread(t.id);
+  assert.equal(store.state.threads[t.id], undefined);
+  assert.equal(store.state.sessions[se.id], undefined);
+  assert.ok(store.state.personas[se.personaId], 'the persona stays');
+  for (const k of rt.timers.keys()) clearTimeout(rt.timers.get(k));
+});
+
+test('a conversation with several agents is a room, and can be renamed', () => {
+  const { rt, a, b } = setup();
+  const room = rt.createThread({ projectId: 'p1', title: 'Planning', personaIds: [a.id, b.id] });
+  assert.equal(room.kind, 'room');
+  assert.equal(rt.renameThread(room.id, '  Corpus planning ').title, 'Corpus planning');
+  assert.throws(() => rt.renameThread(room.id, ' '), /needs a name/);
 });

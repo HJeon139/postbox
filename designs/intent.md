@@ -14,6 +14,8 @@ Three situations shaped the design:
 
 None of these interfaces are built into Postbox. Agents generate them, and Postbox runs them safely.
 
+At its core, Postbox’s conversations are a way to manage what each agent remembers. A conversation is one agent session. A topic thread that starts from a message is a fork of that session at that message, so you can follow a side question without filling the main session’s context, and bring back only what you choose.
+
 ## Who it’s for
 
 One technical person running two to four agents on their own projects. They switch between two modes:
@@ -31,21 +33,29 @@ Density and speed matter more than onboarding. There is no sign-in and there are
 4. **Make good UI the easy path.** Agents do what is easiest, so the kit’s defaults (chart marks, tokens, controls) matter more than any written guidance.
 5. **Never rely on color, hover or motion alone.** Every value is also available as text, a label or a table view, and reduced motion is respected everywhere.
 6. **You stay in charge of your agents.** New personas need your approval, wake chains are capped, and tools are granted explicitly.
+7. **You decide what an agent remembers.** Side topics branch into threads with their own forked sessions, and nothing flows back into a conversation unless you send it.
 
 ## How the app is organized
 
 ```mermaid
 flowchart TD
-  O["Overview (home): one column per live session"] --> S
-  P[Project with a root folder] --> T[Thread: one agent]
+  TB["Top bar: the Postbox menu (overview and projects), the path, the conversation’s menu"] --> O
+  TB --> P
+  O["Overview (home): one column per live session; a column opens its conversation"] --> S
+  P[Project with a root folder] --> T[Direct message: one agent]
   P --> R[Room: several agents]
-  T --> S[Session: one per persona per thread]
+  T --> S[Session: one per persona per conversation]
   R --> S
-  RL["Rail: one row per thread or room, with rings"] --> T
+  RL["Rail: direct messages, rooms and Threads, with rings"] --> T
   RL --> R
-  T --> SP["Right panel: side threads between agents"]
+  T --> TT["Topic thread, from any message: a fork of the session at that message"]
+  R --> TT
+  T --> SP["Right panel: topic threads, and side threads between agents"]
+  TT --> SP
   T --> A["Inline agent apps and catalog blocks"]
 ```
+
+Postbox calls the main pane’s threads of messages **conversations**: a direct message with one agent, or a room with several. A **thread** is what starts from a message, as in Slack.
 
 ## The loop
 
@@ -75,16 +85,23 @@ sequenceDiagram
 | Decision | Why |
 |---|---|
 | The overview is home, with one tall column per live session | With 2–4 agents, each column can show everything at once: current step, last message, a quick answer, subagents, tool calls, messages between agents, compactions. |
-| The rail lists threads and rooms, each with the agent’s ring and name; the state is spelled out in text only when reduced motion is on, and always on hover and in the ring’s accessible name | You switch threads often and need to spot a blocked agent from anywhere. The rings carry the state; the text appears exactly when motion can’t. |
+| Clicking anywhere on a column opens that agent’s conversation; the agent’s name is the link, and each message between agents opens its side thread | Changed after Stage 3: a column showed the work but didn’t lead to it. |
+| The Postbox mark in the top bar opens a menu of places: the overview and every project, with what needs you in each. Beside it, the path (Project › Conversation) links back. A project opens the conversation you were last in there | Changed after Stage 3. Getting from the overview to a project took the palette or an agent’s menu; a tab per project was tried and dropped, since projects are switched rarely and tabs don’t scale. |
+| A conversation’s menu (⋯ in the top bar) renames it, adds an agent, or deletes it with 10 seconds of Undo; the rail’s Rooms section always offers New room, which asks for two or more agents | Added after Stage 3: rooms could only appear by @-mentioning a second agent, and nothing deleted a whole conversation. |
+| The rail lists the project’s conversations, as direct messages and rooms, each with the agent’s ring and name, plus a Threads entry for its topic threads; the state is spelled out in text only when reduced motion is on, and always on hover and in the ring’s accessible name | You switch conversations often and need to spot a blocked agent from anywhere. The rings carry the state; the text appears exactly when motion can’t. |
 | Apps and large blocks sit inline at full thread width, capped at about 80% of the viewport, with Expand | Agent software is part of the conversation, not a detour. Text stays at a readable width of about 760px. |
-| The right panel is only for side threads between agents | Apps never compete with it, so the panel has one meaning. |
+| The right panel holds threads: topic threads you start from a message, and side threads between agents | Changed after Stage 3, to follow Slack: the conversation stays in view while you follow a thread. Apps never compete with the panel, so it still has one meaning: a thread. |
 | On a phone, each view is a stacked full screen | The overview cards stack, rings sit in a strip under the top bar, and side threads open as full-screen sheets. |
 
 ### Agents and sessions
 
 | Decision | Why |
 |---|---|
-| An agent is a persona; each thread it joins runs its own session | Context use, compactions and subagents belong to a model session, so each thread’s ring is honest. |
+| An agent is a persona; each conversation it joins runs its own session | Context use, compactions and subagents belong to a model session, so each conversation’s ring is honest. |
+| Any message in a conversation can start a topic thread, which opens in the right panel. Its agent is a fork of the agent’s session at that message: it remembers everything up to there and nothing after | Decided after Stage 3. Conversations are how you manage agent memory: a side topic gets its own branch instead of filling the main session’s context. An agent you @-mention in the thread joins as a fork of its own session at the same point, or fresh if it joined the conversation later. |
+| Nothing from a topic thread reaches the conversation unless you send it: “Send to conversation” on any reply, or “Summarize back”, which asks the thread’s agent for a short summary and posts it | Decided after Stage 3. The conversation’s agents read what you send at the start of their next turn; sending never wakes them or costs a turn. |
+| A message with a thread shows “3 replies · last reply 5 min ago”; the rail’s Threads entry lists a project’s topic threads, newest reply first | Threads stay findable after you close the panel. |
+| A topic thread’s agent gets an overview column only while it’s working or waiting for you | Branches are many and mostly idle; the overview stays about what needs attention. |
 | Personas live in Postbox’s own store; `agents.json` only seeds it | You create and edit agents in the UI, never in a terminal. |
 | The `+` menu adds files and agents | Files: upload, pick from the project folder, paste, or add to the corpus. Agents: from a boilerplate, or recommended by an agent. |
 | Any agent may propose a teammate, but only your click creates one | This prevents privilege escalation: the proposal highlights any tools beyond what the proposing agent has. |
@@ -92,6 +109,9 @@ sequenceDiagram
 | A Personas page in settings lets you edit, duplicate, retire and save boilerplates | Edits apply to new sessions only. Running sessions keep the version they started with, so behavior doesn’t change underneath you. |
 | Subagents an agent creates inside its own session need no approval | They aren’t personas, and they run with their parent’s tools. |
 | Each project has one root folder | It bounds the file picker and is where Claude Code sessions start. |
+| A persona runs on Claude Code, the Agent SDK or the mock, and real agents default to Claude Opus 5.5 (`claude-opus-5-5`) | Decided in Stage 3. Both real backends use Claude Code’s own sign-in, so Postbox never holds a key. The model is a per-persona setting. |
+| Each persona has a permission mode: ask (the default), accept edits, or run everything | Decided in Stage 3. In ask mode, a risky tool call becomes a card in the thread that shows the exact command, with Allow and Don’t allow, and the agent needs you until you answer. Stop answers no. |
+| You can attach a Claude Code session you started in a terminal | It joins as an agent in that session’s folder, with its recent history; Postbox resumes the same session when you write to it. |
 | Archive puts a session to sleep; Delete erases it after a confirm, with 10 seconds of Undo | Archive is the safe default. Delete says exactly what goes and what stays. The persona always stays. |
 | Deleting an agent’s session in a room removes the agent from the room, but its past messages stay, marked “(deleted)” | The conversation still makes sense. To erase everything, delete the room. |
 
@@ -138,6 +158,7 @@ sequenceDiagram
 | Catalog: `choice`, `form` (with a long-text field), `table`, `progress`, `card`, `confirm`, `image`, `code`, `review`, `app` | Each block is validated against its schema. An invalid block shows its plain-text fallback and the raw JSON, and never breaks the transcript. |
 | Every block has an `id`, `type`, `version`, an optional `title` and a plain-text `fallback`. An unknown type, a bad field or a newer version shows the fallback plus a collapsed “Show the raw block” | Nothing fails silently. |
 | Blocks are append-only, except that sending the same `id` again updates the block in place | A progress list can move on without new copies. |
+| Apps can read aloud with a local voice (Kokoro), with a transcript that follows along and is always on screen | Decided in Stage 3, for narrated walkthroughs. No audio leaves the computer, and the walkthrough still works without sound. Recipes for it and for Slidev export are in [recipes.md](recipes.md). |
 | When you act in a block, the agent gets one event, `{ blockId, action, values }`; your action shows as a short line in your voice (“Chose: weekly · Monday 9:00”); the block turns read-only and shows your answer | Only a new block, or an update to the same id, can ask again. |
 | Links open in a new tab with `rel="noopener"`, URLs are checked, images load only from allowed origins and need alt text, and nothing an agent sends is used as a style or an attribute name | Agent content can’t restyle or script the page. |
 | Adding a catalog component needs an explicit decision | The catalog stays small enough to render consistently and to explain to agents. |
@@ -159,7 +180,7 @@ sequenceDiagram
 | Amber is the only interaction color, including inside apps | One meaning everywhere: you can act on this. |
 | Controls (inputs, buttons, chips, toggles, the composer) use `--line-strong`, which is at least 3:1 against every surface; dividers and card edges keep the quieter `--line` | You can always see where a control is, and the screens stay calm. |
 | Agent apps sit on a cool slate “stage” with a slate frame and an “Agent-written app” label; the title bar, with Postbox’s version menu, Review and Expand, is on the stage too | Changing the surface temperature shows whose interface you’re in without adding a second accent, and the whole frame reads as one object. |
-| Light mode is warm paper; the mode follows the system unless you pick Light or Dark, and the choice is saved in Postbox’s store | The design stays the same app in daylight. Apps swap tokens live. |
+| Light mode is bright warm paper (background #fcfaf6, panels near white), and the app stage is a light cool gray; the mode follows the system unless you pick Light or Dark, and the choice is saved in Postbox’s store | The design stays the same app in daylight. Apps swap tokens live. Brightened after Stage 3, when the first light palette read too dark. |
 | The dark mode is a step darker than the original brief (page `#15110e`, cards `#1f1a15`, text `#e6ddcf`), and checked boxes are an amber outline and check rather than a solid fill | This reduces glare in long sessions; the brightest elements were filled amber boxes. |
 | Extended color sets: agent status, 8 chart series in a fixed order, a sequential blue scale, a blue and red diverging pair, review diffs, and syntax highlighting | Each set is used only in its own context, so amber stays the only interaction color. |
 | Rings: a small center ring for the agent, one thinner ring outside for each subagent | Each ring shows that agent’s context use and activity, so subagents are visible without a list. |

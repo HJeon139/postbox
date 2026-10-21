@@ -8,15 +8,15 @@
 //   <dir>/snapshot.json          the state as of some sequence number (written atomically)
 //   <dir>/events-<from>.jsonl    events after that, one per line; a new segment starts at each snapshot
 
-import { readFile, writeFile, rename, mkdir, readdir, rm, appendFile, open, truncate, stat } from 'node:fs/promises';
-import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, truncate, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
 
 export { emptyState };
 
-const KEEP_EVENTS = 20000;          // events kept in memory for reconnecting browsers
-const SNAPSHOT_EVERY = 5000;        // events between snapshots
+const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
+const SNAPSHOT_EVERY = 5000; // events between snapshots
 
 export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8) || Date.now().toString(36)}`;
 
@@ -28,9 +28,9 @@ export class Store {
     this.state = emptyState();
     this.events = [];
     this.listeners = new Set();
-    this.queue = [];          // lines waiting to be appended
-    this.writing = null;      // the append in progress
-    this.segment = null;      // the current log file
+    this.queue = []; // lines waiting to be appended
+    this.writing = null; // the append in progress
+    this.segment = 'events-1.jsonl'; // the current log file; load() picks the real one
     this.sinceSnapshot = 0;
   }
 
@@ -48,7 +48,9 @@ export class Store {
         this.state = { ...emptyState(), ...JSON.parse(await readFile(legacy, 'utf8')) };
         await this.writeSnapshot();
         await rename(legacy, `${legacy}.migrated`);
-      } catch (le) { if (le.code !== 'ENOENT') throw new Error(`Couldn’t read the old store at ${legacy}: ${le.message}`); }
+      } catch (le) {
+        if (le.code !== 'ENOENT') throw new Error(`Couldn’t read the old store at ${legacy}: ${le.message}`);
+      }
     }
     // Replay the log after the snapshot. A torn last line (a crash mid-write) is dropped.
     for (const seg of await this.segments()) {
@@ -59,7 +61,9 @@ export class Store {
         const end = offset + Buffer.byteLength(line) + 1;
         if (line.trim()) {
           let ev;
-          try { ev = JSON.parse(line); } catch {
+          try {
+            ev = JSON.parse(line);
+          } catch {
             await truncate(path, offset);
             console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
             break;
@@ -77,10 +81,17 @@ export class Store {
     return this;
   }
 
+  /** A path in the data folder. Only the disk-backed paths call this, after checking there is one. */
+  at(name) {
+    return join(/** @type {string} */ (this.dir), name);
+  }
+
   async segments() {
     if (!this.dir) return [];
-    return (await readdir(this.dir)).filter((n) => /^events-\d+\.jsonl$/.test(n))
-      .map((name) => ({ name, from: Number(name.match(/\d+/)[0]) })).sort((a, b) => a.from - b.from);
+    return (await readdir(this.dir))
+      .filter((n) => /^events-\d+\.jsonl$/.test(n))
+      .map((name) => ({ name, from: Number(name.slice(7, -6)) }))
+      .sort((a, b) => a.from - b.from);
   }
 
   /** Applies a change and broadcasts it. The shared reducer is the only place state changes. */
@@ -102,12 +113,14 @@ export class Store {
   pump() {
     if (this.writing || !this.queue.length) return;
     const chunk = this.queue.splice(0).join('');
-    const file = join(this.dir, this.segment);
-    this.writing = appendFile(file, chunk).catch((e) => console.error(`Couldn’t append to the event log: ${e.message}`)).then(async () => {
-      if (this.sinceSnapshot >= this.snapshotEvery) await this.snapshot();
-      this.writing = null;
-      this.pump();
-    });
+    const file = this.at(this.segment);
+    this.writing = appendFile(file, chunk)
+      .catch((e) => console.error(`Couldn’t append to the event log: ${e.message}`))
+      .then(async () => {
+        if (this.sinceSnapshot >= this.snapshotEvery) await this.snapshot();
+        this.writing = null;
+        this.pump();
+      });
   }
 
   /** Writes a snapshot, starts a new log segment, and deletes segments the snapshot covers. */
@@ -116,11 +129,11 @@ export class Store {
     const old = await this.segments();
     this.segment = `events-${this.state.seq + 1}.jsonl`;
     this.sinceSnapshot = 0;
-    for (const seg of old) if (seg.name !== this.segment) await rm(join(this.dir, seg.name), { force: true });
+    for (const seg of old) if (seg.name !== this.segment) await rm(this.at(seg.name), { force: true });
   }
 
   async writeSnapshot() {
-    const path = join(this.dir, 'snapshot.json');
+    const path = this.at('snapshot.json');
     const tmp = `${path}.${process.pid}.tmp`;
     await writeFile(tmp, JSON.stringify(this.state));
     const fh = await open(tmp, 'r+');
@@ -132,12 +145,17 @@ export class Store {
   /** Waits for every queued event to reach the disk. */
   async flush() {
     if (!this.dir) return;
-    while (this.writing || this.queue.length) { this.pump(); await this.writing; }
+    while (this.writing || this.queue.length) {
+      this.pump();
+      await this.writing;
+    }
     try {
-      const fh = await open(join(this.dir, this.segment), 'r+');
+      const fh = await open(this.at(this.segment), 'r+');
       await fh.sync();
       await fh.close();
-    } catch { /* nothing written yet */ }
+    } catch {
+      /* nothing written yet */
+    }
   }
 
   /** Events after `seq`, or null when they’re no longer kept and the client must refetch the state. */
@@ -148,7 +166,10 @@ export class Store {
     return this.events.filter((e) => e.seq > seq);
   }
 
-  subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
+  subscribe(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
 
   async size() {
     if (!this.dir) return 0;
@@ -158,8 +179,12 @@ export class Store {
   }
 
   // Read helpers
-  items(threadId) { return this.state.items[threadId] ?? []; }
-  item(threadId, id) { return this.items(threadId).find((i) => i.id === id); }
+  items(threadId) {
+    return this.state.items[threadId] ?? [];
+  }
+  item(threadId, id) {
+    return this.items(threadId).find((i) => i.id === id);
+  }
   findItem(id) {
     for (const [threadId, list] of Object.entries(this.state.items)) {
       const it = list.find((i) => i.id === id);

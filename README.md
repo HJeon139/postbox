@@ -7,20 +7,26 @@ A chat room for directing several AI agents at once. You message them, wake them
 ## Status
 
 - **Stage 1, mockups: done.** The approved design is in [`mockups/`](mockups/) and [`screenshots/`](screenshots/), and the reasoning is in [designs/intent.md](designs/intent.md).
-- **Stage 2, the app: done.** It runs offline with a mock agent that can show every block type and every error state. Real models connect through one adapter interface and an MCP server.
-- **Stage 3: next.** Adapters for the Claude Agent SDK and Claude Code sessions, and narration.
+- **Stage 2, the app: done.** It runs offline with a mock agent that can show every block type and every error state.
+- **Stage 3, real agents: done.** Agents run on Claude Code or the Claude Agent SDK, ask before risky tool calls, and can be attached from a terminal session. Agent apps can read aloud with a local voice. Linting, type checks and accessibility checks run in CI. The engineering decisions are in [designs/architecture.md](designs/architecture.md).
 
 ## Run it
 
-Postbox needs Node 22 or later and nothing else: there are no dependencies to install and no build step.
+Postbox needs Node 22 or later. It runs with no dependencies at all:
 
 ```bash
 node server/index.mjs
 ```
 
-Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `data/store.json`, so they survive a restart. Add `--fresh` to start over.
+Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `data/` as an event log, so they survive a restart. Add `--fresh` to start over.
 
-To watch the demo, which plays every block type and every error state, run this and open the same address:
+On first run, the sample agents use Claude Code if it’s installed and signed in (`claude --version` works), and the mock otherwise. Agents from an earlier run keep their backend; change it under **Personas**, in **Runs on**. `--demo` always uses the mock, for the scripted tour. To use the Agent SDK, read aloud and run the development checks, install the optional packages once:
+
+```bash
+npm install
+```
+
+To watch the demo, which plays every block type and every error state on the mock (it starts its own Postbox in demo mode), run this and open the same address:
 
 ```bash
 node tools/demo.mjs
@@ -30,29 +36,37 @@ Keep the page open while it plays: agent-written apps are checked in your browse
 
 Things to try in a fresh Postbox:
 
-| Thread | Ask | You’ll see |
+| Conversation | Ask | You’ll see |
 |---|---|---|
 | Corpus explorer | Build me an explorer for my corpus | An agent-written app searching six books, and a v2 after you send passages |
 | Catalog tour | Show me every kind of block you can send | One of each catalog block, all live |
-| ReAct, step by step | Explain ReAct with something I can try | Citations with hover cards, a diagram, math, a glossary term and a practice app |
+| ReAct, step by step | Explain ReAct with something I can try · Walk me through ReAct, out loud · then **Reply in thread** under the explainer | Citations with hover cards, a diagram, math, a glossary term and a practice app · slides that follow a local voice · a topic thread with a forked agent, and Summarize back |
 | Corpus schema spec | Review my corpus schema line by line | Markdown, code and app reviews, then a revision shown as a diff |
-| Index the shelf | Index the shelf · Rebuild without the prefaces · Show it as a timeline · Show me the shelf map · Show me a dashboard | Progress, subagents and a compaction · a failed reply with Retry · blocks Postbox can’t show · a crashed app · an app that fails its check and gets fixed |
+| Index the shelf | Index the shelf · Rebuild without the prefaces · Show it as a timeline · Show me the shelf map · Show me a dashboard · Clear the old index cache | Progress, subagents and a compaction · a failed reply with Retry · blocks Postbox can’t show · a crashed app · an app that fails its check and gets fixed · a permission card |
 | Corpus planning | @indexer check the editions with the researcher, in a loop | Agents waking each other in a side thread until the limit asks you |
+
+## Conversations and threads
+
+The **Postbox** menu in the top bar goes to the overview or any project, from anywhere. In a project, the rail lists its **conversations**: direct messages with one agent, and rooms with several (**+** beside Rooms starts one with two or more agents). Each agent in a conversation has one session. The **⋯** beside a conversation’s title renames it, adds an agent, or deletes it, with 10 seconds of Undo.
+
+Any message can start a **topic thread**, as in Slack: choose **Reply in thread** under it. The thread opens in the panel beside the conversation, and its agent is a fork of the agent’s session at that message. It remembers the conversation up to there, and the conversation never sees the thread. That’s the point: you decide what each agent keeps in its context. To bring something back, choose **Send to conversation** under a reply, or **Summarize back** to have the thread’s agent post a short summary. The conversation’s agents read it at the start of their next turn. The rail’s **Threads** entry lists a project’s topic threads.
 
 ## How it fits together
 
 ```mermaid
 flowchart LR
   B[Browser: Postbox UI] <-->|HTTP and server-sent events| S[Node server]
-  S --> ST[(data/store.json)]
-  S --> RT[Runtime: threads, sessions, wakes, queue]
-  RT --> AD[Adapter]
+  S --> ST[(data/: event log, snapshots, blobs)]
+  S --> RT[Runtime: threads, sessions, wakes, queue, permissions]
+  RT --> AD[Adapters]
   AD --> MOCK[Mock agent]
-  AD -.->|Stage 3| SDK[Claude Agent SDK]
-  AD -.->|Stage 3| CC[Claude Code sessions]
-  SDK -.->|UI tools| MCP[MCP endpoint /mcp]
-  CC -.->|UI tools| MCP
+  AD --> CC[Claude Code: claude -p]
+  AD --> SDK[Claude Agent SDK]
+  CC -->|UI tools and permission prompts| MCP[MCP endpoint /mcp]
+  SDK -->|UI tools| MCP
   MCP --> RT
+  RT --> TM[Terminal mirror: ~/.claude/projects]
+  RT --> NR[Narration worker: Kokoro]
   B --> SB[Sandboxed agent apps]
   SB <-->|postMessage bridge| B
 ```
@@ -116,7 +130,7 @@ The event is built and checked by [`shared/events.mjs`](shared/events.mjs) befor
 
 ## Agent-written apps
 
-`show_app({ id, title, code, permissions })` shows an app inline at the thread’s full width. The app runs in `<iframe sandbox="allow-scripts">`, without same-origin access, so it gets an opaque origin. Its content-security policy allows its own inline code, the kit and bundled libraries, and nothing else: no fetch, no websockets, no forms, no nested frames. The page is served by [`server/sandbox.mjs`](server/sandbox.mjs).
+`show_app({ id, title, code, permissions })` shows an app inline at the thread’s full width. The app runs in an iframe whose page is served with the policy `sandbox allow-scripts`, so it gets an opaque origin and no same-origin access. (The policy is a response header rather than the iframe’s `sandbox` attribute, because some embedded browsers refuse frames with the attribute. Postbox’s bridge only answers frames with an opaque origin.) Its content-security policy allows its own inline code, the kit and bundled libraries, and nothing else: no fetch, no websockets, no forms, no nested frames. The page is served by [`server/sandbox.mjs`](server/sandbox.mjs).
 
 Inside the sandbox, the kit ([`app/kit/kit.js`](app/kit/kit.js)) provides:
 
@@ -130,6 +144,8 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](app/kit/kit.js)) provides:
 | `postbox.on('theme', fn)` | Light and dark tokens update by themselves; redraw canvas or D3 output here |
 | `postbox.load('d3' \| 'katex' \| 'mermaid')` | Loads a bundled library |
 | `postbox.charts.line / scatter / stacked / heatmap / table` | Charts built to the design rules, each with a Chart and Table view |
+| `postbox.narration(el, passages, opts)` | A player that reads passages aloud with a local voice, with a transcript that follows along. Needs `narrate.speak`. |
+| `postbox.narrate(text, opts)` | One clip, as `{ url, ms }` |
 
 The stylesheet is preloaded, so apps use the same classes and tokens as Postbox, on the cool app stage.
 
@@ -145,28 +161,52 @@ The first failure goes back to the agent as an `app-check` message. If the next 
 
 **Lifecycle.** An app reloads from its saved state as you approach it, and unloads when it’s well off screen. A same-size placeholder keeps the transcript from jumping. A new version replaces the app in place, and older versions stay in its version menu.
 
-## Plug in a real agent
+## Run real agents
 
-All of Postbox’s model access goes through one interface, in [`server/adapters/adapter.mjs`](server/adapters/adapter.mjs):
+A persona runs on one of three backends. Pick one in the new-agent sheet, under **Runs on**.
+
+| Backend | What it runs | Needs |
+|---|---|---|
+| Claude Code | The `claude` CLI you’re signed in to, in print mode. Each thread is one Claude Code session, resumed every turn. | Claude Code installed (`claude --version` works), or `POSTBOX_CLAUDE_BIN` pointing at it |
+| Agent SDK | `query()` from `@anthropic-ai/claude-agent-sdk`, inside Postbox’s server | `npm install` |
+| Mock agent | The scripted agent the demo uses | Nothing |
+
+Postbox never reads, stores or asks for an API key. Both real backends use Claude Code’s own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
+
+**Model.** New agents use `claude-opus-5-5`. Any model name Claude Code accepts works; change it per persona under **Personas**.
+
+**Permissions.** Each persona has one of three modes:
+
+| Mode | The agent… |
+|---|---|
+| Ask me (the default) | asks before it runs a command or changes a file. Postbox shows the exact command in a card in the thread, the agent needs you, and the tool call waits for **Allow** or **Don’t allow**. Stop answers no. |
+| Accept edits | edits files in its folders freely, and asks before it runs commands |
+| Run everything | never asks. Use it only in a folder you can lose. |
+
+Postbox always passes the mode explicitly, so a default from your own Claude Code settings never loosens it.
+
+**Folders.** An agent works in its project’s root folder, or in the folder its persona names, or, if neither is set, in `data/workspaces/<name>`. If its persona names a folder, it can also read the project’s. Its permission mode decides what it may change. Postbox’s own tools (show_block and the rest) never ask; they only show things in the thread.
+
+**Attach a Claude Code session.** Choose **+**, then **Attach a Claude Code session**, to bring in one you started in a terminal. It joins as an agent working in that session’s folder, with its recent history. When you write to it, Postbox resumes that same session. When you type in the terminal, your turn and the agent’s reply appear in the thread, marked “from terminal”. Let a terminal turn finish before you write to it from Postbox.
+
+**Your own adapter.** All model access goes through one interface, in [`server/adapters/adapter.mjs`](server/adapters/adapter.mjs):
 
 ```js
 export class MyAdapter {
-  name = 'agent-sdk';                       // a persona’s `backend` picks its adapter
+  name = 'my-backend';                      // a persona’s `backend` picks its adapter
   async deliver(session, message, ctx) {    // one turn; resolve when it ends, throw to fail it
-    // message: one of the kinds above
     ctx.status({ state: 'think', ctx: 12 }); // ring state and % of context used
-    ctx.activity({ id: 't1', label: 'read schema.md', state: 'running' });
-    ctx.activity({ id: 't1', label: 'read schema.md', state: 'done', ms: 310 });
+    ctx.activity({ id: 't1', label: 'Read schema.md', state: 'running' });
     ctx.text('Streaming **Markdown**…');     // reply text, in chunks
+    const ok = await ctx.askPermission({ tool: 'Bash', summary: 'run a command', detail: 'npm test' });
     // Blocks, apps, glossary terms and wakes go through the UI tools:
-    //   in-process: ctx.tools.show_block({ block })
-    //   or over MCP: the agent connects to ctx.mcpUrl
+    //   in-process: ctx.tools.show_block({ block }), or over MCP at ctx.mcpUrl
     if (ctx.signal.aborted) return;          // Stop aborts the signal
   }
 }
 ```
 
-Register it in [`server/index.mjs`](server/index.mjs) next to the mock (`new AdapterRegistry().register(new MockAdapter()).register(new MyAdapter())`). Then create a persona with that `backend`. You can do that in the UI, or seed it in `data/agents.json` before the first run; the seed uses the same fields as `DEFAULT_PERSONAS` in [`server/seed.mjs`](server/seed.mjs).
+The two real adapters share a system prompt that teaches the catalog, the kit and the [recipes](designs/recipes.md) ([`server/adapters/guide.mjs`](server/adapters/guide.mjs)), and a mapper from Claude Code’s stream to the turn context ([`server/adapters/claude-stream.mjs`](server/adapters/claude-stream.mjs)).
 
 **MCP.** The UI tools are served over JSON-RPC 2.0 at `POST /mcp?session=<session id>` ([`server/mcp.mjs`](server/mcp.mjs)):
 - `show_block`, `update_block`
@@ -175,30 +215,53 @@ Register it in [`server/index.mjs`](server/index.mjs) next to the mock (`new Ada
 - `propose_agent`
 - `schedule_wake`, `wake_agent`
 - `corpus_search`
+- `permission_prompt`, which Claude Code calls before a tool that needs your OK
 
-Every tool returns at once and never blocks. When you answer, your answer arrives later as an `event` message. A Claude Code session can add Postbox as an MCP server with that URL, and an Agent SDK agent can list it in its MCP servers. Stage 3 wires both up automatically.
+Every tool except `permission_prompt` returns at once. When you answer a block, your answer arrives later as an `event` message.
+
+## Narration
+
+Agent apps can read text aloud with `postbox.narration(el, passages)`, a player whose transcript follows the voice, or `postbox.narrate(text)` for one clip. The app needs the `narrate.speak` permission, and its agent the tool.
+
+The voice is [Kokoro](https://github.com/hexgrad/kokoro) (via `kokoro-js`). It runs on this computer in a child process, so its native packages stay out of the server. The model, about 100 MB, downloads into `data/models/` the first time anything is read aloud. After that, a passage takes a second or two, and the same text is never synthesized twice. See the narrated walkthrough in [designs/recipes.md](designs/recipes.md).
 
 ## Tests and tools
 
 ```bash
-node --test tests/*.test.mjs
+npm run check
 ```
 
-The 60 tests cover:
+That runs, in order:
+- **Biome:** lint and formatting.
+- **TypeScript:** types from JSDoc in `shared/` and `server/`, with no build.
+- **Project rules:**
+  - `lint-tokens`: no raw colors outside the token blocks
+  - `lint-dom`: no unsafe HTML or agent-named attributes and styles
+  - `lint-copy`: American spelling and curly quotes
+- **Contrast:** every token pair in both modes.
+- **Tests:** 112 `node:test` tests. Each file loads [`tests/guard.mjs`](tests/guard.mjs) first, which fails any test that touches the network or starts a process, so the suite runs in under a second.
+
+They cover:
 - the block validator, the Markdown renderer and the event builder
 - mentions, finished-sentence announcements, URL checks and BM25 search
-- the runtime: queueing, Stop, failures and Retry, needs-you, the wake limit, side threads, delete with undo, app permissions, the check-and-fix loop, and MCP
+- the store: the event log, crash recovery, snapshots and blobs
+- the runtime: queueing, Stop, failures and Retry, needs-you, the wake limit, side threads, topic threads with forked sessions, delete with undo, app permissions, the check-and-fix loop, permission cards and MCP
+- both real adapters, replaying streams recorded from real Claude Code turns ([`tests/fixtures/claude-code/`](tests/fixtures/claude-code/))
+- attaching and mirroring Claude Code sessions, narration, and the lint rules themselves
+
+Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs the same check on every pull request, then plays the demo in headless Chrome and runs axe-core on every scene.
 
 | Command | What it does |
 |---|---|
-| `node server/index.mjs [--port 4173] [--data ./data] [--fresh] [--demo]` | Runs Postbox. `--demo` enables the demo controls. |
+| `node server/index.mjs [--port 4173] [--data ./data] [--fresh] [--demo]` | Runs Postbox. `--demo` enables the demo controls and uses the mock only. |
 | `node tools/demo.mjs [--port] [--speed]` | Plays every block and error state on a fresh Postbox |
-| `node tools/shoot-app.mjs [--baseline]` | Plays the demo in headless Chrome and screenshots every scene at 375 and 1280 px in both modes, with the approved mockup beside each |
+| `node tools/shoot-app.mjs [--baseline]` | Plays the demo in headless Chrome, screenshots every scene at 375 and 1280 px in both modes, and checks each with axe-core (`AXE=0` skips it) |
 | `node tools/shoot.mjs [--baseline]` | Screenshots the static mockups |
 | `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage |
-| `node tools/serve.mjs` | Serves the repository statically, for the mockups |
+| `npm run format` | Applies Biome’s formatting and safe fixes |
+| `npm run test:coverage` | Runs the tests with coverage for `shared/`, `server/` and the lint rules |
 
-`package.json` has the same commands as `npm run` scripts, with no dependencies. Approved screenshots live in `screenshots/` and `screenshots/app/`. Working retakes go to `screenshots/latest/`, which git ignores.
+Approved screenshots live in `screenshots/` and `screenshots/app/`. Working retakes go to `screenshots/latest/`, which git ignores.
 
 ## Known limits
 
@@ -206,22 +269,28 @@ The 60 tests cover:
 - **The pre-display check is approximate.** It finds overflow, missing labels and alt text, positive tabindex, low contrast and script errors. It doesn’t yet detect every keyboard trap or verify that saved state restores correctly.
 - **Semantic search is a stub.** It uses a small table of related words until your own index is connected. Lexical search (BM25) is real.
 - **There’s no sign-in.** Postbox is for one person on one machine, and it refuses requests from other hosts and other sites.
+- **An attached session has two writers.** If you write to it from Postbox while a terminal turn is still running, both resume the same session. Postbox can’t see that a terminal is busy.
+- **Each Claude Code turn starts a new process.** Resuming a session adds a second or two before the first token. A long-lived process per session would remove it.
+- **Kokoro’s dependencies have open advisories** (`sharp`, and `sprintf-js` through `onnxruntime-node`) with no fixed versions yet. They run only in the narration process, never in the server.
 - **There’s no search across threads yet.**
 
 ## Repository layout
 
 ```text
 app/          the browser app: index.html, workbench.css (the one stylesheet), js/ modules, kit/ for app sandboxes
-server/       Node server, runtime, store, MCP, sandbox pages, adapters (mock), mock scripts and apps, corpus
+server/       Node server, runtime, store, blobs, MCP, sandbox pages, corpus
+  adapters/   mock, Claude Code, Agent SDK, the shared guide and stream mapper, the terminal mirror
+  narration/  the Kokoro narrator and its worker process
+  mock/       the mock agent’s apps
 shared/       pure modules used by both sides: catalog, Markdown, events, state, BM25, text helpers
-tests/        node:test suites
-tools/        demo, screenshot tools, contrast checker, static server
-designs/      design intent and decisions
+tests/        node:test suites, and fixtures recorded from real Claude Code turns
+tools/        demo, screenshot tools, contrast checker, project lint rules, static server
+designs/      product intent, architecture decisions and recipes
 mockups/      the approved Stage 1 mockups
 screenshots/  approved screenshots of the mockups and the app
 ```
 
-Third-party code is limited to the vendored libraries in `app/kit/vendor/` (Mermaid, KaTeX and D3, each with its license). The books in `server/corpus/books/` are Project Gutenberg texts, kept with their license headers.
+Third-party code shipped with the app is limited to the vendored libraries in `app/kit/vendor/` (Mermaid, KaTeX and D3, each with its license). The optional packages (the Agent SDK and Kokoro) and the development tools (Biome, TypeScript and axe-core) install with `npm install` and are never needed to run the mock. The books in `server/corpus/books/` are Project Gutenberg texts, kept with their license headers.
 
 ## License
 

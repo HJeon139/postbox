@@ -29,12 +29,19 @@
 /** @typedef {{ name: string, deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter */
 
 export class AdapterRegistry {
-  constructor() { this.adapters = new Map(); }
-  register(adapter) { this.adapters.set(adapter.name, adapter); return this; }
+  constructor() {
+    this.adapters = new Map();
+  }
+  register(adapter) {
+    this.adapters.set(adapter.name, adapter);
+    return this;
+  }
   get(name) {
     const a = this.adapters.get(name);
-    if (!a) throw new Error(`No adapter is registered for “${name}”. Stage 2 ships only the mock; see README, “Plug in a real agent”.`);
+    if (!a) throw new Error(`No adapter is registered for “${name}”. See README, “Run real agents”.`);
     return a;
   }
-  names() { return [...this.adapters.keys()]; }
+  names() {
+    return [...this.adapters.keys()];
+  }
 }

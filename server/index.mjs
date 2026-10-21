@@ -5,52 +5,95 @@
 //
 // --fresh starts from an empty store; --demo also enables the demo controls (reset, drop connections).
 
-import { createServer } from 'node:http';
-import { readFile, mkdir, stat, readdir, realpath, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { gzipSync } from 'node:zlib';
-import { extname, join, normalize, resolve, relative, sep } from 'node:path';
+import { readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store, newId } from './store.mjs';
-import { Runtime, httpError } from './runtime.mjs';
-import { Corpus } from './corpus.mjs';
+import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
+import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
+import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
-import { handleMcp } from './mcp.mjs';
-import { seed, KNOWN_TOOLS } from './seed.mjs';
-import { sandboxPage, mermaidPage } from './sandbox.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
+import { Corpus } from './corpus.mjs';
+import { handleMcp } from './mcp.mjs';
+import { Narrator, narrationInstalled } from './narration/narrator.mjs';
+import { DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
+import { mermaidPage, sandboxPage } from './sandbox.mjs';
+import { KNOWN_TOOLS, seed } from './seed.mjs';
+import { newId, Store } from './store.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); return i > -1 ? process.argv[i + 1] : dflt; };
+const arg = (name, dflt) => {
+  const i = process.argv.indexOf(`--${name}`);
+  return i > -1 ? process.argv[i + 1] : dflt;
+};
 const flag = (name) => process.argv.includes(`--${name}`);
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
-  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8' };
-const STATIC = { '/app/': join(ROOT, 'app'), '/shared/': join(ROOT, 'shared'), '/kit/': join(ROOT, 'app', 'kit'), '/media/': join(ROOT, 'app', 'media'), '/mockups/': join(ROOT, 'mockups') };
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+};
+const STATIC = {
+  '/app/': join(ROOT, 'app'),
+  '/shared/': join(ROOT, 'shared'),
+  '/kit/': join(ROOT, 'app', 'kit'),
+  '/media/': join(ROOT, 'app', 'media'),
+  '/mockups/': join(ROOT, 'mockups'),
+};
 
 export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh = false, demo = false, quiet = false } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
-  if (fresh) for (const n of await readdir(dataDir).catch(() => [])) if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
+  if (fresh)
+    for (const n of await readdir(dataDir).catch(() => []))
+      if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
   const store = await new Store(dataDir).load();
   const blobs = new Blobs(join(dataDir, 'blobs'));
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
-  const config = { origin, imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'] };
-  const rt = new Runtime({ store, adapters, corpus, config });
-  await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books') });
+  // Real backends register only when they can run here. POSTBOX_BACKENDS=mock turns them off (tests, demo).
+  const real = process.env.POSTBOX_BACKENDS !== 'mock' && !demo;
+  const claude = real ? await claudeVersion(findClaude()) : null;
+  if (claude) adapters.register(new ClaudeCodeAdapter({ workRoot: join(dataDir, 'workspaces') }));
+  const sdk = real ? await loadAgentSdk() : null;
+  if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot: join(dataDir, 'workspaces') }));
+  const config = { origin, imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'], versions: { claudeCode: claude } };
+  // Kokoro is optional; without it, narration says it isn’t installed.
+  const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
+  const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator });
+  const firstReal = ['claude-code', 'agent-sdk'].find((b) => adapters.names().includes(b)) ?? 'mock';
+  await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
-  for (const se of Object.values(store.state.sessions)) if (['think', 'gen', 'tool'].includes(se.state)) rt.updateSession(se.id, { state: 'idle', subagents: [], currentStep: 'Interrupted by a restart' });
-  for (const [threadId, list] of Object.entries(store.state.items)) for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
+  for (const se of Object.values(store.state.sessions))
+    if (['think', 'gen', 'tool'].includes(se.state)) rt.updateSession(se.id, { state: 'idle', subagents: [], currentStep: 'Interrupted by a restart' });
+  for (const [threadId, list] of Object.entries(store.state.items))
+    for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
   rt.rearmSchedules();
-  for (const f of Object.values(store.state.files)) if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
+  rt.expireStalePermissions();
+  rt.rearmMirrors();
+  for (const f of Object.values(store.state.files))
+    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
 
   const streams = new Set();
   let offlineUntil = 0;
-  store.subscribe((ev) => { for (const res of streams) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`); });
-  const keepAlive = setInterval(() => { for (const res of streams) res.write(': keep-alive\n\n'); }, 15000);
+  store.subscribe((ev) => {
+    for (const res of streams) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+  });
+  const keepAlive = setInterval(() => {
+    for (const res of streams) res.write(': keep-alive\n\n');
+  }, 15000);
 
   const server = createServer(async (req, res) => {
     try {
@@ -58,7 +101,11 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     } catch (e) {
       const status = e.status ?? 500;
       if (status === 500) console.error(e);
-      if (!res.headersSent) send(res, status, { error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message), fieldErrors: e.fieldErrors });
+      if (!res.headersSent)
+        send(res, status, {
+          error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
+          fieldErrors: e.fieldErrors,
+        });
       else res.end();
     }
   });
@@ -68,14 +115,23 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     const path = url.pathname;
     // Postbox listens on localhost only; refuse other hosts (DNS rebinding) and cross-site writes.
     const host = (req.headers.host ?? '').toLowerCase();
-    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) throw httpError(421, 'Postbox only answers requests addressed to 127.0.0.1 or localhost.');
-    if (req.method !== 'GET' && req.headers.origin && !['http://127.0.0.1:' + port, 'http://localhost:' + port].includes(req.headers.origin)) throw httpError(403, 'Requests from other sites aren’t allowed.');
+    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`)
+      throw httpError(421, 'Postbox only answers requests addressed to 127.0.0.1 or localhost.');
+    if (req.method !== 'GET' && req.headers.origin && !['http://127.0.0.1:' + port, 'http://localhost:' + port].includes(req.headers.origin))
+      throw httpError(403, 'Requests from other sites aren’t allowed.');
 
     if (path === '/' || path === '/index.html') return file(res, join(ROOT, 'app', 'index.html'), appHeaders(config), req);
     if (path === '/favicon.svg') return file(res, join(ROOT, 'app', 'media', 'favicon.svg'), {}, req);
-    if (path === '/kit/workbench.css' || path === '/app/workbench.css') return file(res, join(ROOT, 'app', 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
+    if (path === '/kit/workbench.css' || path === '/app/workbench.css')
+      return file(res, join(ROOT, 'app', 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
     for (const [prefix, dir] of Object.entries(STATIC)) {
-      if (path.startsWith(prefix)) return file(res, safeJoin(dir, path.slice(prefix.length)), prefix === '/kit/' || prefix === '/media/' ? { 'access-control-allow-origin': '*' } : {}, req);
+      if (path.startsWith(prefix))
+        return file(
+          res,
+          safeJoin(dir, path.slice(prefix.length)),
+          prefix === '/kit/' || prefix === '/media/' ? { 'access-control-allow-origin': '*' } : {},
+          req,
+        );
     }
 
     // Sandbox frames: agent apps and Mermaid diagrams. Each is its own page with a strict policy and,
@@ -85,8 +141,19 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       const app = store.state.apps[decodeURIComponent(m[1])];
       const v = app?.versions[+m[2] - 1];
       if (!v) throw httpError(404, 'That app version doesn’t exist.');
-      const page = sandboxPage({ origin, app, version: v, theme: url.searchParams.get('theme') === 'light' ? 'light' : 'dark', check: url.searchParams.has('check') });
-      return raw(res, 200, page.html, { 'content-type': TYPES['.html'], 'content-security-policy': page.csp, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      const page = sandboxPage({
+        origin,
+        app,
+        version: v,
+        theme: url.searchParams.get('theme') === 'light' ? 'light' : 'dark',
+        check: url.searchParams.has('check'),
+      });
+      return raw(res, 200, page.html, {
+        'content-type': TYPES['.html'],
+        'content-security-policy': page.csp,
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      });
     }
     if (path === '/sandbox/mermaid') {
       const page = mermaidPage({ origin, theme: url.searchParams.get('theme') === 'light' ? 'light' : 'dark' });
@@ -95,41 +162,85 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
 
     if (path === '/mcp') {
       if (req.method !== 'POST') return raw(res, 405, 'Use POST for MCP requests.', { allow: 'POST' });
-      const out = handleMcp(rt, url.searchParams.get('session'), await json(req));
+      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req));
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
     if (path === '/api/state' && req.method === 'GET') {
-      return send(res, 200, { seq: store.state.seq, state: store.state, config: { origin, hopLimit: 3, knownTools: KNOWN_TOOLS, adapters: adapters.names(), demo, corpus: corpus.stats() } });
+      return send(res, 200, {
+        seq: store.state.seq,
+        state: store.state,
+        config: {
+          origin,
+          hopLimit: 3,
+          knownTools: KNOWN_TOOLS,
+          adapters: adapters.names(),
+          defaultModel: DEFAULT_MODEL,
+          permissionModes: PERMISSION_MODES,
+          demo,
+          corpus: corpus.stats(),
+        },
+      });
     }
     if (path === '/api/stream' && req.method === 'GET') {
-      if (Date.now() < offlineUntil) { res.writeHead(503, { 'retry-after': '1' }); return res.end(); }
+      if (Date.now() < offlineUntil) {
+        res.writeHead(503, { 'retry-after': '1' });
+        return res.end();
+      }
       return stream(req, res, url);
     }
 
     const body = req.method === 'POST' || req.method === 'PATCH' || req.method === 'PUT' ? (path === '/api/files' ? null : await json(req)) : null;
 
     if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.renameThread(m[1], body.title));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/undo-delete$/)) && req.method === 'POST') {
+      rt.undoDeleteThread(m[1]);
+      return send(res, 200, { ok: true });
+    }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') { rt.view(m[1]); return send(res, 200, { ok: true }); }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
+      rt.view(m[1]);
+      return send(res, 200, { ok: true });
+    }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/))) {
-      if (req.method === 'PATCH') { rt.editQueued(m[1], m[2], body.text); return send(res, 200, { ok: true }); }
-      if (req.method === 'DELETE') { rt.cancelQueued(m[1], m[2]); return send(res, 200, { ok: true }); }
+      if (req.method === 'PATCH') {
+        rt.editQueued(m[1], m[2], body.text);
+        return send(res, 200, { ok: true });
+      }
+      if (req.method === 'DELETE') {
+        rt.cancelQueued(m[1], m[2]);
+        return send(res, 200, { ok: true });
+      }
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)\/send$/)) && req.method === 'POST') return send(res, 200, rt.sendQueuedNow(m[1], m[2]));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/act$/)) && req.method === 'POST') return send(res, 200, rt.act(m[1], m[2], body.action, body.values ?? {}));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/retry$/)) && req.method === 'POST') { rt.retry(m[1], m[2]); return send(res, 200, { ok: true }); }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/act$/)) && req.method === 'POST')
+      return send(res, 200, rt.act(m[1], m[2], body.action, body.values ?? {}));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/topic$/)) && req.method === 'POST') return send(res, 201, rt.startTopic(m[1], m[2]));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/share$/)) && req.method === 'POST')
+      return send(res, 201, rt.shareToConversation(m[1], m[2]));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/summarize$/)) && req.method === 'POST') return send(res, 200, rt.summarizeBack(m[1]));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/retry$/)) && req.method === 'POST') {
+      rt.retry(m[1], m[2]);
+      return send(res, 200, { ok: true });
+    }
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/(stop|archive|restore|undo-delete)$/)) && req.method === 'POST') {
-      const action = { stop: () => rt.stop(m[1]), archive: () => rt.archive(m[1]), restore: () => rt.restore(m[1]), 'undo-delete': () => rt.undoDelete(m[1]) }[m[2]];
+      const action = { stop: () => rt.stop(m[1]), archive: () => rt.archive(m[1]), restore: () => rt.restore(m[1]), 'undo-delete': () => rt.undoDelete(m[1]) }[
+        m[2]
+      ];
       rt.session(m[1]);
       return send(res, 200, { ok: true, result: action() ?? null });
     }
     if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteSession(m[1]));
+    if (path === '/api/claude-sessions' && req.method === 'GET') return send(res, 200, { sessions: await rt.claudeSessions() });
+    if (path === '/api/claude-sessions/attach' && req.method === 'POST') return send(res, 201, await rt.attachClaudeSession(body));
     if (path === '/api/personas' && req.method === 'POST') {
       const p = rt.createPersona(body);
       if (body.join?.threadId) rt.ensureSession(body.join.threadId, p.id, { brief: 'You were just created and added to this thread.' });
       else if (body.join?.projectId) rt.createThread({ projectId: body.join.projectId, title: body.join.title || `With @${p.handle}`, personaIds: [p.id] });
-      if (body.saveAsBoilerplate) store.emit('boilerplate', { id: newId('bp'), name: `@${p.handle}`, description: p.description, instructions: p.instructions, tools: p.tools });
+      if (body.saveAsBoilerplate)
+        store.emit('boilerplate', { id: newId('bp'), name: `@${p.handle}`, description: p.description, instructions: p.instructions, tools: p.tools });
       return send(res, 201, p);
     }
     if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updatePersona(m[1], body));
@@ -141,15 +252,21 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       store.emit('project', p);
       return send(res, 201, p);
     }
-    if ((m = path.match(/^\/api\/projects\/([^/]+)\/files$/)) && req.method === 'GET') return send(res, 200, await listFolder(store.state.projects[m[1]], url.searchParams.get('path') ?? ''));
+    if ((m = path.match(/^\/api\/projects\/([^/]+)\/files$/)) && req.method === 'GET')
+      return send(res, 200, await listFolder(store.state.projects[m[1]], url.searchParams.get('path') ?? ''));
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
     if ((m = path.match(/^\/api\/files\/([^/]+)$/)) && req.method === 'GET') {
       const f = store.state.files[m[1]];
       if (!f) throw httpError(404, 'That file doesn’t exist.');
       // Images from the safe list show inline; everything else downloads. Neither can run script.
       const inline = INLINE_TYPES.has(f.type);
-      return raw(res, 200, await blobs.get(f.sha256), { 'content-type': inline ? f.type : 'application/octet-stream', 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox; default-src \'none\'',
-        'content-disposition': `${inline ? 'inline' : 'attachment'}; filename="${f.name.replace(/[^\w.-]/g, '_')}"`, 'cache-control': 'private, max-age=31536000, immutable' });
+      return raw(res, 200, await blobs.get(f.sha256), {
+        'content-type': inline ? f.type : 'application/octet-stream',
+        'x-content-type-options': 'nosniff',
+        'content-security-policy': "sandbox; default-src 'none'",
+        'content-disposition': `${inline ? 'inline' : 'attachment'}; filename="${f.name.replace(/[^\w.-]/g, '_')}"`,
+        'cache-control': 'private, max-age=31536000, immutable',
+      });
     }
     if (path === '/api/corpus' && req.method === 'POST') {
       const f = store.state.files[body.fileId];
@@ -164,10 +281,16 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       const id = decodeURIComponent(m[1]);
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
       if (m[2] === 'event') return send(res, 200, rt.appEvent(id, body.action, body.values ?? {}));
-      if (m[2] === 'state') { rt.appState(id, body.state); return send(res, 200, { ok: true }); }
-      return send(res, 200, { ok: true, result: rt.appQuery(id, body.tool, body.args ?? {}) });
+      if (m[2] === 'state') {
+        rt.appState(id, body.state);
+        return send(res, 200, { ok: true });
+      }
+      return send(res, 200, { ok: true, result: await rt.appQuery(id, body.tool, body.args ?? {}) });
     }
-    if ((m = path.match(/^\/api\/schedules\/([^/]+)\/cancel$/)) && req.method === 'POST') { rt.cancelSchedule(m[1]); return send(res, 200, { ok: true }); }
+    if ((m = path.match(/^\/api\/schedules\/([^/]+)\/cancel$/)) && req.method === 'POST') {
+      rt.cancelSchedule(m[1]);
+      return send(res, 200, { ok: true });
+    }
     if (path === '/api/settings' && req.method === 'PUT') {
       const theme = ['system', 'light', 'dark'].includes(body.theme) ? body.theme : 'system';
       store.emit('settings', { theme });
@@ -180,7 +303,10 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       streams.clear();
       return send(res, 200, { ok: true, until: offlineUntil });
     }
-    if (demo && path === '/api/demo/speed' && req.method === 'POST') { process.env.POSTBOX_MOCK_SPEED = String(Math.max(0.05, Math.min(5, Number(body.speed) || 1))); return send(res, 200, { ok: true }); }
+    if (demo && path === '/api/demo/speed' && req.method === 'POST') {
+      process.env.POSTBOX_MOCK_SPEED = String(Math.max(0.05, Math.min(5, Number(body.speed) || 1)));
+      return send(res, 200, { ok: true });
+    }
     throw httpError(404, `There’s nothing at ${path}.`);
   }
 
@@ -197,7 +323,10 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
   }
 
   async function upload(req) {
-    const name = decodeURIComponent(String(req.headers['x-filename'] ?? 'file')).replace(/[\\/]/g, '_').slice(0, 200) || 'file';
+    const name =
+      decodeURIComponent(String(req.headers['x-filename'] ?? 'file'))
+        .replace(/[\\/]/g, '_')
+        .slice(0, 200) || 'file';
     const chunks = [];
     let size = 0;
     for await (const c of req) {
@@ -207,7 +336,18 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     }
     const id = newId('fi');
     const { sha256 } = await blobs.put(Buffer.concat(chunks));
-    const f = { id, name, size, type: String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0].trim().slice(0, 100), sha256, at: Date.now(), inCorpus: false };
+    const f = {
+      id,
+      name,
+      size,
+      type: String(req.headers['content-type'] ?? 'application/octet-stream')
+        .split(';')[0]
+        .trim()
+        .slice(0, 100),
+      sha256,
+      at: Date.now(),
+      inCorpus: false,
+    };
     store.emit('file', f);
     return { id, name, size, type: f.type, sha256 };
   }
@@ -229,14 +369,25 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     return { root: project.folder, path: relative(root, target), entries: list };
   }
 
-  await new Promise((ok, fail) => { server.once('error', fail); server.listen(port, '127.0.0.1', ok); });
-  if (!quiet) console.log(`Postbox is running at ${origin}/\nData: ${dataDir}${demo ? '\nDemo controls are on.' : ''}`);
+  await new Promise((ok, fail) => {
+    server.once('error', fail);
+    server.listen(port, '127.0.0.1', () => ok(undefined));
+  });
+  if (!quiet)
+    console.log(
+      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${adapters.names().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${demo ? '\nDemo controls are on.' : ''}`,
+    );
   return {
-    server, rt, store, origin,
+    server,
+    rt,
+    store,
+    origin,
     async close() {
       clearInterval(keepAlive);
       for (const r of streams) r.destroy();
       for (const t of rt.timers.values()) clearTimeout(t);
+      rt.stopMirrors();
+      narrator?.stop();
       await new Promise((ok) => server.close(ok));
       await store.flush();
     },
@@ -249,7 +400,8 @@ function appHeaders(config) {
   const imgs = config.imageOrigins.filter((o) => o !== config.origin).join(' ');
   return {
     'content-security-policy': `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: ${imgs}; font-src 'self'; frame-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
-    'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+    'x-content-type-options': 'nosniff',
   };
 }
 
@@ -262,9 +414,14 @@ function safeJoin(dir, rel) {
 // Static files carry an ETag, so a reload revalidates cheaply (304) instead of downloading everything,
 // and text is gzipped when the browser accepts it. Both are cached in memory by path and modification time.
 const staticCache = new Map();
+/** @param {import('node:http').ServerResponse} res @param {string} path @param {Record<string, string>} [headers] @param {import('node:http').IncomingMessage|null} [req] */
 async function file(res, path, headers = {}, req = null) {
   let st;
-  try { st = await stat(path); } catch { throw httpError(404, 'Not found.'); }
+  try {
+    st = await stat(path);
+  } catch {
+    throw httpError(404, 'Not found.');
+  }
   if (!st.isFile()) throw httpError(404, 'Not found.');
   let entry = staticCache.get(path);
   if (!entry || entry.mtime !== st.mtimeMs) {
@@ -274,15 +431,32 @@ async function file(res, path, headers = {}, req = null) {
     entry = { mtime: st.mtimeMs, data, type, etag: `"${createHash('sha1').update(data).digest('base64url')}"`, gz: compressible ? gzipSync(data) : null };
     staticCache.set(path, entry);
   }
-  const base = { 'content-type': entry.type, 'cache-control': 'no-cache', etag: entry.etag, 'x-content-type-options': 'nosniff', vary: 'accept-encoding', ...headers };
-  if (req?.headers['if-none-match'] === entry.etag) { res.writeHead(304, base); res.end(); return; }
+  const base = {
+    'content-type': entry.type,
+    'cache-control': 'no-cache',
+    etag: entry.etag,
+    'x-content-type-options': 'nosniff',
+    vary: 'accept-encoding',
+    ...headers,
+  };
+  if (req?.headers['if-none-match'] === entry.etag) {
+    res.writeHead(304, base);
+    res.end();
+    return;
+  }
   const gzip = entry.gz && /\bgzip\b/.test(req?.headers['accept-encoding'] ?? '');
   res.writeHead(200, { ...base, ...(gzip ? { 'content-encoding': 'gzip' } : {}) });
   res.end(gzip ? entry.gz : entry.data);
 }
 
-function raw(res, status, body, headers = {}) { res.writeHead(status, headers); res.end(body); }
-function send(res, status, obj) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); }
+function raw(res, status, body, headers = {}) {
+  res.writeHead(status, headers);
+  res.end(body);
+}
+function send(res, status, obj) {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(obj));
+}
 
 async function json(req) {
   let size = 0;
@@ -293,12 +467,19 @@ async function json(req) {
     chunks.push(c);
   }
   if (!size) return {};
-  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw httpError(400, 'The request body isn’t valid JSON.'); }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw httpError(400, 'The request body isn’t valid JSON.');
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const app = await start({ port: Number(arg('port', 4173)), dataDir: resolve(arg('data', join(ROOT, 'data'))), fresh: flag('fresh'), demo: flag('demo') });
-  const bye = async () => { await app.close(); process.exit(0); };
+  const bye = async () => {
+    await app.close();
+    process.exit(0);
+  };
   process.on('SIGINT', bye);
   process.on('SIGTERM', bye);
 }

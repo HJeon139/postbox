@@ -1,0 +1,45 @@
+# Runs Postbox’s checks on every pull request and every push to main. See designs/architecture.md, “Code quality”.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, types, project rules and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Install scripts are skipped: the checks need no native builds, and the optional narration
+      # packages would otherwise download models and binaries they don't use here.
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+
+  end-to-end:
+    name: Demo in Chrome, with accessibility checks
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Play the demo, screenshot every scene and run axe-core
+        run: CHROME="$(command -v google-chrome)" node tools/shoot-app.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/latest/app/
+          retention-days: 14

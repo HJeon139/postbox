@@ -31,25 +31,34 @@ function ringSvg(c, r, sw, state, ctx) {
   }
   if (state === 'tool') {
     const margin = ((sw * 1.6) / r) * (180 / Math.PI);
-    const a1 = 3.6 * ctx + margin, a2 = 360 - margin;
+    const a1 = 3.6 * ctx + margin,
+      a2 = 360 - margin;
     const rest = a1 < a2 ? a1 : 3.6 * ctx + (360 - 3.6 * ctx) / 2;
     out += `<circle class="dot${a1 >= a2 ? ' still' : ''}" cx="${c}" cy="${c - r}" r="${Math.max(1.3, sw * 0.8)}" fill="${color}" style="--a1:${a1}deg;--a2:${a2}deg;transform:rotate(${rest}deg)"/>`;
   }
   return out;
 }
 
-const parseSubs = (spec) => (spec || '').split(',').filter(Boolean).map((p) => {
-  const [state, ctx, name] = p.split(':');
-  return { state, ctx: Math.max(0, Math.min(100, +ctx || 0)), name: name || 'subagent' };
-});
+const parseSubs = (spec) =>
+  (spec || '')
+    .split(',')
+    .filter(Boolean)
+    .map((p) => {
+      const [state, ctx, name] = p.split(':');
+      return { state, ctx: Math.max(0, Math.min(100, +ctx || 0)), name: name || 'subagent' };
+    });
 
 /** Builds the subs attribute from a session’s subagents. */
 export const subsAttr = (subagents = []) => subagents.map((s) => `${s.state}:${Math.round(s.ctx)}:${String(s.name).replace(/[,:]/g, ' ')}`).join(',');
 
 class PbRing extends HTMLElement {
   static observedAttributes = ['state', 'ctx', 'subs', 'size', 'name'];
-  connectedCallback() { this.render(); }
-  attributeChangedCallback(_, a, b) { if (this.isConnected && a !== b) this.render(); }
+  connectedCallback() {
+    this.render();
+  }
+  attributeChangedCallback(_, a, b) {
+    if (this.isConnected && a !== b) this.render();
+  }
   render() {
     const state = this.getAttribute('state') || 'idle';
     const ctx = Math.max(0, Math.min(100, +this.getAttribute('ctx') || 0));
@@ -62,13 +71,19 @@ class PbRing extends HTMLElement {
     const S = Math.ceil(2 * (R + sw / 2 + 1));
     const c = S / 2;
     let inner = ringSvg(c, rb, sw, state, ctx);
-    shown.forEach((s, i) => { inner += ringSvg(c, rb + (i + 1) * pitch, sw * 0.8, s.state, s.ctx); });
+    shown.forEach((s, i) => {
+      inner += ringSvg(c, rb + (i + 1) * pitch, sw * 0.8, s.state, s.ctx);
+    });
     if (state === 'needs') inner += `<circle class="pulse" cx="${c}" cy="${c}" r="${R + sw}" fill="none" stroke-width="1.4"/>`;
     const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('width', S); svg.setAttribute('height', S); svg.setAttribute('viewBox', `0 0 ${S} ${S}`);
-    svg.innerHTML = inner;
+    svg.setAttribute('width', S);
+    svg.setAttribute('height', S);
+    svg.setAttribute('viewBox', `0 0 ${S} ${S}`);
+    svg.innerHTML = inner; // lint-allow dom: ringSvg() builds it from numbers and Postbox’s fixed state names.
     svg.setAttribute('role', 'img');
-    const subText = subs.length ? `; ${subs.length} subagent${subs.length === 1 ? '' : 's'}: ` + subs.map((x) => `${x.name} ${stateWord(x.state).toLowerCase()}, ${x.ctx}%`).join('; ') : '';
+    const subText = subs.length
+      ? `; ${subs.length} subagent${subs.length === 1 ? '' : 's'}: ` + subs.map((x) => `${x.name} ${stateWord(x.state).toLowerCase()}, ${x.ctx}%`).join('; ')
+      : '';
     const label = `${name}: ${stateWord(state)}, ${ctx}% of context used${subText}`;
     svg.setAttribute('aria-label', label);
     const title = document.createElementNS(NS, 'title');
@@ -90,9 +105,11 @@ if (!customElements.get('pb-ring')) customElements.define('pb-ring', PbRing);
 /** A ring element for a session, or updates an existing one in place (keeps its animation running). */
 export function ringFor(se, size = 'sm', el = null) {
   el ??= document.createElement('pb-ring');
-  const set = (k, v) => { if (el.getAttribute(k) !== v) el.setAttribute(k, v); };
+  const set = (k, v) => {
+    if (el.getAttribute(k) !== v) el.setAttribute(k, v); // lint-allow dom: k is one of the literal names below.
+  };
   set('name', `@${se.handle}`);
-  set('state', se.deleting ? 'idle' : se.state ?? 'idle');
+  set('state', se.deleting ? 'idle' : (se.state ?? 'idle'));
   set('ctx', String(se.ctx ?? 0));
   set('subs', subsAttr(se.subagents));
   set('size', size);

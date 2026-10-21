@@ -2,11 +2,13 @@
 // and the event log keeps only its metadata. See designs/architecture.md, “Attachments”.
 
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export class Blobs {
-  constructor(dir) { this.dir = dir; }
+  constructor(dir) {
+    this.dir = dir;
+  }
 
   pathOf(sha256) {
     if (!/^[a-f0-9]{64}$/.test(sha256)) throw new Error('Not a SHA-256 hash.');
@@ -17,10 +19,15 @@ export class Blobs {
   async put(buffer) {
     const sha256 = createHash('sha256').update(buffer).digest('hex');
     const path = this.pathOf(sha256);
-    const exists = await access(path).then(() => true, () => false);
+    const exists = await access(path).then(
+      () => true,
+      () => false,
+    );
     if (!exists) {
       await mkdir(join(this.dir, sha256.slice(0, 2)), { recursive: true });
-      await writeFile(path, buffer, { flag: 'wx' }).catch((e) => { if (e.code !== 'EEXIST') throw e; });
+      await writeFile(path, buffer, { flag: 'wx' }).catch((e) => {
+        if (e.code !== 'EEXIST') throw e;
+      });
     }
     return { sha256, size: buffer.length, path };
   }

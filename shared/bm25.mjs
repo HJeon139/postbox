@@ -1,11 +1,22 @@
 // Lexical search with BM25, plus a stub semantic score. Pure and dependency-free.
 
-const STOP = new Set(('a about after again all also am an and any are as at be been before being but by can could did do does for from had has have he her him his how i if in into is it its just me more most my no not now of on one only or other our out over she should so some such than ' +
-  'that the their them then there these they this those through to too up upon very was we were what when where which while who why will with would you your').split(' '));
+const STOP = new Set(
+  (
+    'a about after again all also am an and any are as at be been before being but by can could did do does for from had has have he her him his how i if in into is it its just me more most my no not now of on one only or other our out over she should so some such than ' +
+    'that the their them then there these they this those through to too up upon very was we were what when where which while who why will with would you your'
+  ).split(' '),
+);
 
 export function tokenize(text) {
-  return String(text).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    .match(/[a-z0-9]+(?:['’][a-z]+)?/g)?.map((t) => t.replace(/['’].*$/, '')).filter((t) => t.length > 1 && !STOP.has(t)) ?? [];
+  return (
+    String(text)
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .match(/[a-z0-9]+(?:['’][a-z]+)?/g)
+      ?.map((t) => t.replace(/['’].*$/, ''))
+      .filter((t) => t.length > 1 && !STOP.has(t)) ?? []
+  );
 }
 
 /**
@@ -30,10 +41,12 @@ export function buildIndex(docs) {
 export function search(index, query, { k = 20, k1 = 1.2, b = 0.75 } = {}) {
   const q = [...new Set(tokenize(query))];
   if (!q.length) return [];
-  const idf = new Map(q.map((t) => {
-    const n = index.df.get(t) ?? 0;
-    return [t, Math.log(1 + (index.N - n + 0.5) / (n + 0.5))];
-  }));
+  const idf = new Map(
+    q.map((t) => {
+      const n = index.df.get(t) ?? 0;
+      return [t, Math.log(1 + (index.N - n + 0.5) / (n + 0.5))];
+    }),
+  );
   const hits = [];
   for (const e of index.entries) {
     let score = 0;
@@ -42,7 +55,7 @@ export function search(index, query, { k = 20, k1 = 1.2, b = 0.75 } = {}) {
       const f = e.tf.get(t);
       if (!f) continue;
       terms.push(t);
-      score += idf.get(t) * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * e.len) / index.avgdl)));
+      score += (idf.get(t) ?? 0) * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * e.len) / index.avgdl)));
     }
     if (score > 0) hits.push({ id: e.id, score, terms });
   }
@@ -71,7 +84,10 @@ export function semanticStub(text, query) {
   if (!q.length || !doc.size) return 0;
   let total = 0;
   for (const t of q) {
-    if (doc.has(t)) { total += 1; continue; }
+    if (doc.has(t)) {
+      total += 1;
+      continue;
+    }
     const rel = RELATED[t] ?? Object.entries(RELATED).find(([, ws]) => ws.includes(t))?.[1] ?? [];
     const hits = rel.filter((w) => doc.has(w)).length;
     total += Math.min(0.85, hits * 0.3);

@@ -4,7 +4,7 @@
 // Retakes go to screenshots/latest/ (ignored by git). --baseline writes the approved set in screenshots/,
 // which is committed and only changes when a design change is approved.
 import { spawn } from 'node:child_process';
-import { mkdir, readdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,8 +14,12 @@ const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/M
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const baseline = process.argv.includes('--baseline');
 const OUT = join(ROOT, 'screenshots', ...(baseline ? [] : ['latest']));
-const PORT = 4174, DEBUG = 9333;
-const WIDTHS = [[1280, 900, 1], [375, 812, 2]];
+const PORT = 4174,
+  DEBUG = 9333;
+const WIDTHS = [
+  [1280, 900, 1],
+  [375, 812, 2],
+];
 const THEMES = ['dark', 'light'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -24,31 +28,61 @@ const pages = (await readdir(join(ROOT, 'mockups'))).filter((f) => /^\d\d-.*\.ht
 
 const server = await serve(PORT);
 const profile = join(tmpdir(), `pb-shoot-${process.pid}`);
-const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${DEBUG}`, `--user-data-dir=${profile}`, '--no-first-run',
-  '--no-default-browser-check', '--hide-scrollbars', '--force-color-profile=srgb', 'about:blank'], { stdio: 'ignore' });
+const chrome = spawn(
+  CHROME,
+  [
+    '--headless=new',
+    `--remote-debugging-port=${DEBUG}`,
+    `--user-data-dir=${profile}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--hide-scrollbars',
+    '--force-color-profile=srgb',
+    'about:blank',
+  ],
+  { stdio: 'ignore' },
+);
 
 let target;
 for (let i = 0; i < 50 && !target; i++) {
   await sleep(200);
-  try { target = (await (await fetch(`http://127.0.0.1:${DEBUG}/json/list`)).json()).find((t) => t.type === 'page'); } catch {}
+  try {
+    target = (await (await fetch(`http://127.0.0.1:${DEBUG}/json/list`)).json()).find((t) => t.type === 'page');
+  } catch {}
 }
 if (!target) throw new Error('Chrome did not start');
 
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((ok) => ws.addEventListener('open', ok, { once: true }));
 let seq = 0;
-const waiting = new Map(), listeners = [];
+const waiting = new Map(),
+  listeners = [];
 ws.addEventListener('message', (e) => {
   const m = JSON.parse(e.data);
-  if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
-  else if (m.method) listeners.forEach((l) => l(m));
+  if (m.id && waiting.has(m.id)) {
+    waiting.get(m.id)(m);
+    waiting.delete(m.id);
+  } else if (m.method)
+    listeners.forEach((l) => {
+      l(m);
+    });
 });
-const send = (method, params = {}) => new Promise((ok, fail) => {
-  const id = ++seq;
-  waiting.set(id, (m) => (m.error ? fail(new Error(`${method}: ${m.error.message}`)) : ok(m.result)));
-  ws.send(JSON.stringify({ id, method, params }));
-});
-const once = (method) => new Promise((ok) => { const l = (m) => { if (m.method === method) { listeners.splice(listeners.indexOf(l), 1); ok(m.params); } }; listeners.push(l); });
+const send = (method, params = {}) =>
+  new Promise((ok, fail) => {
+    const id = ++seq;
+    waiting.set(id, (m) => (m.error ? fail(new Error(`${method}: ${m.error.message}`)) : ok(m.result)));
+    ws.send(JSON.stringify({ id, method, params }));
+  });
+const once = (method) =>
+  new Promise((ok) => {
+    const l = (m) => {
+      if (m.method === method) {
+        listeners.splice(listeners.indexOf(l), 1);
+        ok(m.params);
+      }
+    };
+    listeners.push(l);
+  });
 const evaluate = async (expr) => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })).result.value;
 
 await send('Page.enable');
@@ -81,11 +115,12 @@ async function capture(url, width, baseH, scale, file) {
 const made = [];
 for (const page of pages) {
   const name = page.replace('.html', '');
-  for (const theme of THEMES) for (const [w, h, s] of WIDTHS) {
-    const file = join(OUT, `${name}-${theme}-${w}.png`);
-    const height = await capture(`http://127.0.0.1:${PORT}/mockups/${page}?theme=${theme}&shot=1`, w, h, s, file);
-    console.log(`${name}-${theme}-${w}.png  ${w}×${height}`);
-  }
+  for (const theme of THEMES)
+    for (const [w, h, s] of WIDTHS) {
+      const file = join(OUT, `${name}-${theme}-${w}.png`);
+      const height = await capture(`http://127.0.0.1:${PORT}/mockups/${page}?theme=${theme}&shot=1`, w, h, s, file);
+      console.log(`${name}-${theme}-${w}.png  ${w}×${height}`);
+    }
   made.push(name);
 }
 

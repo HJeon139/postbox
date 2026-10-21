@@ -17,7 +17,10 @@ export function lintTerms(text, glossary) {
   const keys = new Set(Object.keys(glossary));
   const out = new Map();
   // Headings like “### Step 1 · The loop” label the reply’s own structure; they aren’t coined terms.
-  const plain = String(text ?? '').replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ').replace(/^ {0,3}#{1,6}\s.*$/gm, ' ');
+  const plain = String(text ?? '')
+    .replace(/```[\s\S]*?(```|$)/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/^ {0,3}#{1,6}\s.*$/gm, ' ');
   for (const m of plain.matchAll(/\[([^\]]+)\]\(term:([A-Za-z0-9][A-Za-z0-9_.:-]{0,63})\)/g)) {
     if (!keys.has(m[2])) out.set(m[2], { term: m[1], key: m[2] });
   }

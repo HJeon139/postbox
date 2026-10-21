@@ -33,7 +33,12 @@ const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
  */
 export function renderMarkdown(src, opts = {}) {
   const ctx = { ...opts, glossaryRe: glossaryRegex(opts.glossary), mentionRe: mentionRegex(opts.mentions) };
-  return blocks(String(src ?? '').replace(/\r\n?/g, '\n').split('\n'), ctx);
+  return blocks(
+    String(src ?? '')
+      .replace(/\r\n?/g, '\n')
+      .split('\n'),
+    ctx,
+  );
 }
 
 function blocks(lines, ctx) {
@@ -45,16 +50,23 @@ function blocks(lines, ctx) {
   };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!line.trim()) { flush(); continue; }
+    if (!line.trim()) {
+      flush();
+      continue;
+    }
 
     const fence = line.match(FENCE);
     if (fence) {
       flush();
-      const marker = fence[1], lang = fence[2].toLowerCase();
+      const marker = fence[1],
+        lang = fence[2].toLowerCase();
       const body = [];
       let closed = false;
       for (i++; i < lines.length; i++) {
-        if (new RegExp(`^ {0,3}${marker[0]}{${marker.length},}\\s*$`).test(lines[i])) { closed = true; break; }
+        if (new RegExp(`^ {0,3}${marker[0]}{${marker.length},}\\s*$`).test(lines[i])) {
+          closed = true;
+          break;
+        }
         body.push(lines[i]);
       }
       const code = escapeHtml(body.join('\n'));
@@ -80,7 +92,11 @@ function blocks(lines, ctx) {
     }
 
     // "---", "***" and "- - -" are rules; "- item" is a list item, which RULE doesn't match.
-    if (RULE.test(line)) { flush(); out.push('<hr>'); continue; }
+    if (RULE.test(line)) {
+      flush();
+      out.push('<hr>');
+      continue;
+    }
 
     if (QUOTE.test(line)) {
       flush();
@@ -99,10 +115,16 @@ function blocks(lines, ctx) {
         if (!l.trim()) {
           // A blank line ends the list unless the next line continues it.
           const next = lines[i + 1];
-          if (next !== undefined && (LIST_ITEM.test(next) || /^\s{2,}\S/.test(next))) { body.push(''); continue; }
+          if (next !== undefined && (LIST_ITEM.test(next) || /^\s{2,}\S/.test(next))) {
+            body.push('');
+            continue;
+          }
           break;
         }
-        if (LIST_ITEM.test(l) || /^\s{2,}\S/.test(l) || body.length === 0) { body.push(l); continue; }
+        if (LIST_ITEM.test(l) || /^\s{2,}\S/.test(l) || body.length === 0) {
+          body.push(l);
+          continue;
+        }
         // A plain line right after an item continues that item (lazy continuation).
         body.push('  ' + l.trim());
       }
@@ -147,7 +169,13 @@ function list(lines, ctx) {
 }
 
 function table(rows, _lines, ctx) {
-  const cells = (row) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
+  const cells = (row) =>
+    row
+      .trim()
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .split(/(?<!\\)\|/)
+      .map((c) => c.trim().replace(/\\\|/g, '|'));
   const [head, ...body] = rows.map(cells);
   const th = head.map((c) => `<th>${inline(c, ctx)}</th>`).join('');
   const trs = body.map((r) => `<tr>${head.map((_, k) => `<td>${inline(r[k] ?? '', ctx)}</td>`).join('')}</tr>`).join('');
@@ -157,11 +185,20 @@ function table(rows, _lines, ctx) {
 // ── Inline ──────────────────────────────────────────────────────────────────────────────
 
 function inline(s, ctx) {
-  let out = '', buf = '', i = 0;
-  const flush = () => { out += textRun(buf, ctx); buf = ''; };
+  let out = '',
+    buf = '',
+    i = 0;
+  const flush = () => {
+    out += textRun(buf, ctx);
+    buf = '';
+  };
   while (i < s.length) {
     const c = s[i];
-    if (c === '\\' && /[\\`*_{}\[\]()#+\-.!|$~>@]/.test(s[i + 1] ?? '')) { buf += s[i + 1]; i += 2; continue; }
+    if (c === '\\' && /[\\`*_{}[\]()#+\-.!|$~>@]/.test(s[i + 1] ?? '')) {
+      buf += s[i + 1];
+      i += 2;
+      continue;
+    }
 
     if (c === '`') {
       const run = s.slice(i).match(/^`+/)[0];
@@ -172,7 +209,9 @@ function inline(s, ctx) {
         i = end + run.length;
         continue;
       }
-      buf += run; i += run.length; continue;
+      buf += run;
+      i += run.length;
+      continue;
     }
 
     if (c === '$' && s[i + 1] !== '$' && s[i + 1] && !/\s/.test(s[i + 1])) {
@@ -218,7 +257,8 @@ function inline(s, ctx) {
       }
     }
 
-    buf += c; i++;
+    buf += c;
+    i++;
   }
   flush();
   return out;
@@ -226,7 +266,10 @@ function inline(s, ctx) {
 
 function findMathEnd(s, from) {
   for (let j = from; j < s.length; j++) {
-    if (s[j] === '\\') { j++; continue; }
+    if (s[j] === '\\') {
+      j++;
+      continue;
+    }
     if (s[j] === '$') {
       // "$5 and $6" isn't math: the closing $ must follow a non-space and not be followed by a digit.
       if (/\s/.test(s[j - 1]) || /\d/.test(s[j + 1] ?? '')) return -1;
@@ -239,7 +282,10 @@ function findMathEnd(s, from) {
 function matchParen(s, open) {
   let depth = 0;
   for (let j = open; j < s.length; j++) {
-    if (s[j] === '\\') { j++; continue; }
+    if (s[j] === '\\') {
+      j++;
+      continue;
+    }
     if (s[j] === '(') depth++;
     else if (s[j] === ')' && --depth === 0) return j;
   }
@@ -258,7 +304,7 @@ function link(label, target, ctx) {
 // Escapes, then applies emphasis, then glossary terms and @mentions to text outside the tags it made.
 function textRun(raw, ctx) {
   if (!raw) return '';
-  let s = escapeHtml(raw)
+  const s = escapeHtml(raw)
     .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^\w])__(?=\S)([\s\S]*?\S)__(?!\w)/g, '$1<strong>$2</strong>')
     .replace(/\*(?=[^\s*])([^*]*?[^\s*])\*/g, '<em>$1</em>')
@@ -266,17 +312,27 @@ function textRun(raw, ctx) {
     .replace(/(^|[^\w])_(?=[^\s_])([^_]*?[^\s_])_(?!\w)/g, '$1<em>$2</em>')
     .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>');
   if (!ctx.glossaryRe && !ctx.mentionRe) return s;
-  return s.split(/(<[^>]+>)/).map((part) => {
-    if (part.startsWith('<')) return part;
-    if (ctx.mentionRe) part = part.replace(ctx.mentionRe, (m, pre, handle) => `${pre}<span class="mention">@${handle}</span>`);
-    if (ctx.glossaryRe) {
-      part = part.split(/(<[^>]+>)/).map((p) => (p.startsWith('<') ? p : p.replace(ctx.glossaryRe.re, (m) => {
-        const key = ctx.glossaryRe.keys.get(m.toLowerCase());
-        return `<span class="term" tabindex="0" data-term="${escapeHtml(key)}">${m}</span>`;
-      }))).join('');
-    }
-    return part;
-  }).join('');
+  return s
+    .split(/(<[^>]+>)/)
+    .map((part) => {
+      if (part.startsWith('<')) return part;
+      if (ctx.mentionRe) part = part.replace(ctx.mentionRe, (_m, pre, handle) => `${pre}<span class="mention">@${handle}</span>`);
+      if (ctx.glossaryRe) {
+        part = part
+          .split(/(<[^>]+>)/)
+          .map((p) =>
+            p.startsWith('<')
+              ? p
+              : p.replace(ctx.glossaryRe.re, (m) => {
+                  const key = ctx.glossaryRe.keys.get(m.toLowerCase());
+                  return `<span class="term" tabindex="0" data-term="${escapeHtml(key)}">${m}</span>`;
+                }),
+          )
+          .join('');
+      }
+      return part;
+    })
+    .join('');
 }
 
 function glossaryRegex(glossary) {

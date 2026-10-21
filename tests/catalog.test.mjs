@@ -1,21 +1,49 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateBlock, CATALOG } from '../shared/catalog.mjs';
+import { test } from 'node:test';
+import { CATALOG, validateBlock } from '../shared/catalog.mjs';
 
 const base = (type, extra) => ({ id: 'b1', type, version: 1, fallback: 'Plain text version.', ...extra });
-const ok = (b, opts) => { const r = validateBlock(b, opts); assert.equal(r.ok, true, JSON.stringify(r.errors)); return r; };
+const ok = (b, opts) => {
+  const r = validateBlock(b, opts);
+  assert.equal(r.ok, true, JSON.stringify(r.errors));
+  return r;
+};
 const bad = (b, re, opts) => {
   const r = validateBlock(b, opts);
   assert.equal(r.ok, false, 'expected the block to be rejected');
-  if (re) assert.ok(r.errors.some((e) => re.test(e)), `no error matched ${re}: ${JSON.stringify(r.errors)}`);
+  if (re)
+    assert.ok(
+      r.errors.some((e) => re.test(e)),
+      `no error matched ${re}: ${JSON.stringify(r.errors)}`,
+    );
   return r;
 };
 
 test('accepts one valid block of every type in the catalog', () => {
   const blocks = [
-    base('choice', { title: 'When?', options: [{ id: 'w', label: 'Weekly' }, { id: 'd', label: 'Daily' }], other: { label: 'Something else' } }),
-    base('form', { fields: [{ id: 'n', label: 'Name', kind: 'text', required: true }, { id: 'p', label: 'Pace', kind: 'select', options: [{ id: 's', label: 'Steady' }] }, { id: 'x', label: 'Notes', kind: 'longtext' }] }),
-    base('table', { columns: [{ id: 'book', label: 'Book' }, { id: 'n', label: 'Count', kind: 'number', sortable: true }], rows: [{ id: 'r1', cells: { book: 'Emma', n: 3 } }], rowAction: { id: 'open', label: 'Open' } }),
+    base('choice', {
+      title: 'When?',
+      options: [
+        { id: 'w', label: 'Weekly' },
+        { id: 'd', label: 'Daily' },
+      ],
+      other: { label: 'Something else' },
+    }),
+    base('form', {
+      fields: [
+        { id: 'n', label: 'Name', kind: 'text', required: true },
+        { id: 'p', label: 'Pace', kind: 'select', options: [{ id: 's', label: 'Steady' }] },
+        { id: 'x', label: 'Notes', kind: 'longtext' },
+      ],
+    }),
+    base('table', {
+      columns: [
+        { id: 'book', label: 'Book' },
+        { id: 'n', label: 'Count', kind: 'number', sortable: true },
+      ],
+      rows: [{ id: 'r1', cells: { book: 'Emma', n: 3 } }],
+      rowAction: { id: 'open', label: 'Open' },
+    }),
     base('progress', { steps: [{ id: 's1', label: 'Index', state: 'running' }] }),
     base('card', { facts: [{ label: 'Author', value: 'George Eliot' }], actions: [{ id: 'a', label: 'Open' }] }),
     base('confirm', { statement: 'This removes 14 passages.', confirmLabel: 'Remove 14 passages' }),
@@ -54,7 +82,15 @@ test('rejects an option with no label', () => {
 });
 
 test('rejects duplicate option ids', () => {
-  bad(base('choice', { options: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }] }), /two items with the id “a”/);
+  bad(
+    base('choice', {
+      options: [
+        { id: 'a', label: 'A' },
+        { id: 'a', label: 'B' },
+      ],
+    }),
+    /two items with the id “a”/,
+  );
 });
 
 test('rejects images from origins that aren’t allowed, and non-https images', () => {
@@ -88,4 +124,17 @@ test('card actions are capped at three', () => {
 test('ids must be simple, so they are safe to use anywhere', () => {
   bad({ ...base('code', { code: 'x' }), id: 'has space' }, /isn’t a valid id/);
   bad({ ...base('code', { code: 'x' }), id: '<script>' }, /isn’t a valid id/);
+});
+
+test('every sandbox page is served with a sandbox policy, so it never runs with Postbox’s origin', async () => {
+  const { csp, mermaidPage, sandboxPage } = await import('../server/sandbox.mjs');
+  const app = { id: 'a1', title: 'T', versions: [{ v: 1, code: '<p>hi</p>', permissions: [] }], current: 1 };
+  for (const page of [
+    sandboxPage({ origin: 'http://x', app, version: app.versions[0], theme: 'dark', check: false }),
+    mermaidPage({ origin: 'http://x', theme: 'light' }),
+  ]) {
+    assert.match(page.csp, /^sandbox allow-scripts;/);
+    assert.ok(!/allow-same-origin/.test(page.csp));
+  }
+  assert.match(csp('http://x'), /connect-src 'none'/);
 });

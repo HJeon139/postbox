@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { renderMarkdown as md, toPlainText } from '../shared/markdown.mjs';
 
 test('escapes raw HTML instead of rendering it', () => {
@@ -57,7 +57,10 @@ test('math: inline and display, but not prices', () => {
 
 test('pipe tables', () => {
   const out = md('| Book | n |\n|---|---|\n| Emma | 3 |');
-  assert.equal(out, '<div class="md-table"><table><thead><tr><th>Book</th><th>n</th></tr></thead><tbody><tr><td>Emma</td><td>3</td></tr></tbody></table></div>');
+  assert.equal(
+    out,
+    '<div class="md-table"><table><thead><tr><th>Book</th><th>n</th></tr></thead><tbody><tr><td>Emma</td><td>3</td></tr></tbody></table></div>',
+  );
 });
 
 test('citation markers only for sources that exist', () => {

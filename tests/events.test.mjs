@@ -1,13 +1,29 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { buildEvent } from '../shared/events.mjs';
 
-const choice = { id: 'freq', type: 'choice', version: 1, fallback: 'x', multiple: true, max: 2,
-  options: [{ id: 'weekly', label: 'weekly' }, { id: 'mon9', label: 'Monday 9:00' }, { id: 'fri', label: 'Friday 17:00' }], other: { label: 'Something else' } };
+const choice = {
+  id: 'freq',
+  type: 'choice',
+  version: 1,
+  fallback: 'x',
+  multiple: true,
+  max: 2,
+  options: [
+    { id: 'weekly', label: 'weekly' },
+    { id: 'mon9', label: 'Monday 9:00' },
+    { id: 'fri', label: 'Friday 17:00' },
+  ],
+  other: { label: 'Something else' },
+};
 
 test('a choice builds one event and a line in your voice', () => {
   const r = buildEvent(choice, 'choose', { selected: ['weekly', 'mon9'] });
-  assert.deepEqual(r, { ok: true, event: { blockId: 'freq', action: 'choose', values: { selected: ['weekly', 'mon9'] } }, voice: 'Chose: weekly · Monday 9:00' });
+  assert.deepEqual(r, {
+    ok: true,
+    event: { blockId: 'freq', action: 'choose', values: { selected: ['weekly', 'mon9'] } },
+    voice: 'Chose: weekly · Monday 9:00',
+  });
 });
 
 test('a choice rejects unknown options, too many, and nothing', () => {
@@ -22,14 +38,21 @@ test('“other” text counts as a choice and shows in quotes', () => {
   assert.equal(r.voice, 'Chose: “Dubliners”');
 });
 
-const form = { id: 'plan', type: 'form', version: 1, fallback: 'x', title: 'Reading plan', fields: [
-  { id: 'name', label: 'Plan name', kind: 'text', required: true },
-  { id: 'pages', label: 'Pages per day', kind: 'number', min: 5, max: 200 },
-  { id: 'pace', label: 'Pace', kind: 'select', options: [{ id: 'steady', label: 'Steady' }] },
-  { id: 'start', label: 'Start', kind: 'date' },
-  { id: 'remind', label: 'Remind me', kind: 'toggle' },
-  { id: 'notes', label: 'Notes', kind: 'longtext', maxLength: 10 },
-] };
+const form = {
+  id: 'plan',
+  type: 'form',
+  version: 1,
+  fallback: 'x',
+  title: 'Reading plan',
+  fields: [
+    { id: 'name', label: 'Plan name', kind: 'text', required: true },
+    { id: 'pages', label: 'Pages per day', kind: 'number', min: 5, max: 200 },
+    { id: 'pace', label: 'Pace', kind: 'select', options: [{ id: 'steady', label: 'Steady' }] },
+    { id: 'start', label: 'Start', kind: 'date' },
+    { id: 'remind', label: 'Remind me', kind: 'toggle' },
+    { id: 'notes', label: 'Notes', kind: 'longtext', maxLength: 10 },
+  ],
+};
 
 test('a form returns a message per field that says what to fix', () => {
   const r = buildEvent(form, 'submit', { name: '', pages: '400', pace: 'fast', start: '2026-02-30', notes: 'far too long here' });
@@ -63,7 +86,15 @@ test('confirm and cancel', () => {
 });
 
 test('table row actions and card actions', () => {
-  const t = { id: 't', type: 'table', version: 1, fallback: 'x', columns: [{ id: 'book', label: 'Book' }], rows: [{ id: 'r1', cells: { book: 'Emma' } }], rowAction: { id: 'open', label: 'Open' } };
+  const t = {
+    id: 't',
+    type: 'table',
+    version: 1,
+    fallback: 'x',
+    columns: [{ id: 'book', label: 'Book' }],
+    rows: [{ id: 'r1', cells: { book: 'Emma' } }],
+    rowAction: { id: 'open', label: 'Open' },
+  };
   assert.equal(buildEvent(t, 'open', { rowId: 'r1' }).voice, 'Open: Emma');
   assert.equal(buildEvent(t, 'open', { rowId: 'r9' }).ok, false);
   const c = { id: 'c', type: 'card', version: 1, fallback: 'x', title: 'Middlemarch', actions: [{ id: 'reindex', label: 'Re-index' }] };
@@ -73,7 +104,13 @@ test('table row actions and card actions', () => {
 test('a review needs a verdict, and comments unless it approves', () => {
   const b = { id: 'r', type: 'review', version: 1, fallback: 'x', format: 'markdown', content: 'x' };
   assert.match(buildEvent(b, 'submit', { verdict: 'request_changes', comments: [] }).error, /Add a comment/);
-  const r = buildEvent(b, 'submit', { verdict: 'request_changes', comments: [{ line: 5, text: 'Too coarse' }, { line: 9, text: 'Offsets?' }] });
+  const r = buildEvent(b, 'submit', {
+    verdict: 'request_changes',
+    comments: [
+      { line: 5, text: 'Too coarse' },
+      { line: 9, text: 'Offsets?' },
+    ],
+  });
   assert.equal(r.voice, 'Submitted review: Request changes · 2 comments');
   assert.equal(buildEvent(b, 'submit', { verdict: 'approve' }).voice, 'Submitted review: Approve');
 });

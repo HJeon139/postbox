@@ -1,9 +1,9 @@
 // The demo corpus: public-domain books from Project Gutenberg, split into passages and indexed with
 // BM25. Semantic scores come from the stub in shared/bm25.mjs until a real index is connected.
 
-import { readFile, readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { buildIndex, search as bm25, semanticStub } from '../shared/bm25.mjs';
+import { search as bm25, buildIndex, semanticStub } from '../shared/bm25.mjs';
 
 const BOOKS = {
   persuasion: { title: 'Persuasion', author: 'Jane Austen', year: 1817 },
@@ -17,7 +17,12 @@ const BOOKS = {
 const CHAPTER = /^\s*(?:CHAPTER|Chapter)\s+([IVXLC]+|\d+)\b\.?\s*(.*)$/;
 
 export class Corpus {
-  constructor() { this.passages = []; this.byId = new Map(); this.books = []; this.index = null; }
+  constructor() {
+    this.passages = [];
+    this.byId = new Map();
+    this.books = [];
+    this.index = null;
+  }
 
   async loadDir(dir) {
     const files = (await readdir(dir)).filter((f) => f.endsWith('.txt')).sort();
@@ -44,7 +49,9 @@ export class Corpus {
     this.books.push({ id, ...meta, passages: n, chapters: chapters.length });
   }
 
-  reindex() { this.index = buildIndex(this.passages); }
+  reindex() {
+    this.index = buildIndex(this.passages);
+  }
 
   /**
    * @param {string} query
@@ -72,13 +79,23 @@ export class Corpus {
       }
     }
     const rank = (h) => (h.lexical ? h.lexical.score / 10 : 0) + (h.semantic ?? 0);
-    return [...hits.values()].filter((h) => mode === 'both' || (mode === 'lexical' ? h.lexical : h.semantic !== null))
-      .sort((a, b) => rank(b) - rank(a)).slice(0, k);
+    return [...hits.values()]
+      .filter((h) => mode === 'both' || (mode === 'lexical' ? h.lexical : h.semantic !== null))
+      .sort((a, b) => rank(b) - rank(a))
+      .slice(0, k);
   }
 
-  read(id) { const p = this.byId.get(id); return p ? view(p) : null; }
+  read(id) {
+    const p = this.byId.get(id);
+    return p ? view(p) : null;
+  }
 
-  stats() { return { books: this.books.map(({ id, title, author, year, passages, chapters }) => ({ id, title, author, year, passages, chapters })), passages: this.passages.length }; }
+  stats() {
+    return {
+      books: this.books.map(({ id, title, author, year, passages, chapters }) => ({ id, title, author, year, passages, chapters })),
+      passages: this.passages.length,
+    };
+  }
 }
 
 const round = (n) => Math.round(n * 10) / 10;
@@ -97,9 +114,13 @@ export function splitChapters(body) {
   const lines = body.split('\n');
   const marks = [];
   // When chapter numbers start again (Emma's three volumes), labels name the volume too.
-  let vol = 1, prev = 0;
+  let vol = 1,
+    prev = 0;
   const numbered = [];
-  lines.forEach((l, i) => { const m = l.match(CHAPTER); if (m) numbered.push({ i, n: toNumber(m[1]) }); });
+  lines.forEach((l, i) => {
+    const m = l.match(CHAPTER);
+    if (m) numbered.push({ i, n: toNumber(m[1]) });
+  });
   // Contents entries sit within a few lines of a neighbor; real chapter headings don’t.
   const body2 = numbered.filter((m, k) => !((numbered[k + 1] && numbered[k + 1].i - m.i < 4) || (numbered[k - 1] && m.i - numbered[k - 1].i < 4)));
   const resets = body2.some((m, k) => k && m.n <= body2[k - 1].n);
@@ -116,7 +137,10 @@ export function splitChapters(body) {
       const names = [];
       for (let i = c + 1, blanks = 0; i < lines.length && blanks < 3; i++) {
         const t = lines[i].trim();
-        if (!t) { if (names.length) blanks++; continue; }
+        if (!t) {
+          if (names.length) blanks++;
+          continue;
+        }
         blanks = 0;
         names.push(t);
       }
@@ -132,7 +156,14 @@ export function splitChapters(body) {
     lines.forEach((l, i) => {
       const t = l.trim();
       const isolated = !lines[i - 1]?.trim() && !lines[i + 1]?.trim();
-      if (isolated && t.length > 3 && t.length < 48 && t === t.toUpperCase() && /[A-Z]{3}/.test(t) && !/^(CONTENTS|PREFACE|INTRODUCTION|FINIS|THE END)\b/.test(t)) {
+      if (
+        isolated &&
+        t.length > 3 &&
+        t.length < 48 &&
+        t === t.toUpperCase() &&
+        /[A-Z]{3}/.test(t) &&
+        !/^(CONTENTS|PREFACE|INTRODUCTION|FINIS|THE END)\b/.test(t)
+      ) {
         marks.push({ i, label: titleCase(t.replace(/[.]$/, '')) });
       }
     });
@@ -142,17 +173,30 @@ export function splitChapters(body) {
   for (const m of marks) seen.set(m.label, m);
   const real = [...seen.values()].sort((a, b) => a.i - b.i);
   if (!real.length) return [{ label: 'text', text: body }];
-  return real.map((m, k) => ({ label: m.label, text: lines.slice(m.i + 1, real[k + 1]?.i ?? lines.length).join('\n') }))
+  return real
+    .map((m, k) => ({ label: m.label, text: lines.slice(m.i + 1, real[k + 1]?.i ?? lines.length).join('\n') }))
     .filter((c) => c.text.trim().split(/\s+/).length > 40);
 }
 
 /** Paragraph-aware passages of roughly 60 to 180 words. */
 export function splitPassages(text, { target = 120, max = 180 } = {}) {
-  const paras = text.split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').replace(/_/g, '').trim()).filter((p) => p && !/^\[?Illustration/i.test(p));
+  const paras = text
+    .split(/\n\s*\n/)
+    .map((p) =>
+      p
+        .replace(/\s*\n\s*/g, ' ')
+        .replace(/_/g, '')
+        .trim(),
+    )
+    .filter((p) => p && !/^\[?Illustration/i.test(p));
   const out = [];
   let cur = [];
   let words = 0;
-  const push = () => { if (cur.length) out.push(cur.join(' ')); cur = []; words = 0; };
+  const push = () => {
+    if (cur.length) out.push(cur.join(' '));
+    cur = [];
+    words = 0;
+  };
   for (const p of paras) {
     const w = p.split(/\s+/).length;
     if (w > max) {
@@ -161,13 +205,15 @@ export function splitPassages(text, { target = 120, max = 180 } = {}) {
       for (const s of sentences) {
         const sw = s.split(/\s+/).length;
         if (words + sw > max) push();
-        cur.push(s.trim()); words += sw;
+        cur.push(s.trim());
+        words += sw;
       }
       push();
       continue;
     }
     if (words && words + w > max) push();
-    cur.push(p); words += w;
+    cur.push(p);
+    words += w;
     if (words >= target) push();
   }
   push();
@@ -181,4 +227,4 @@ function toNumber(s) {
   for (let i = 0; i < s.length; i++) n += v[s[i]] < (v[s[i + 1]] ?? 0) ? -v[s[i]] : v[s[i]];
   return n;
 }
-const titleCase = (s) => s.toLowerCase().replace(/(^|\s)(\w)/g, (m, a, b) => a + b.toUpperCase());
+const titleCase = (s) => s.toLowerCase().replace(/(^|\s)(\w)/g, (_m, a, b) => a + b.toUpperCase());

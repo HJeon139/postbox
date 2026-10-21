@@ -10,16 +10,21 @@ export function h(tag, props, ...children) {
   const [name, ...classes] = tag.split('.');
   const el = document.createElement(name || 'div');
   if (classes.length) el.className = classes.join(' ');
-  if (props && (typeof props !== 'object' || props instanceof Node || Array.isArray(props))) { children.unshift(props); props = null; }
+  if (props && (typeof props !== 'object' || props instanceof Node || Array.isArray(props))) {
+    children.unshift(props);
+    props = null;
+  }
   for (const [k, v] of Object.entries(props ?? {})) {
     if (v === undefined || v === null || v === false) continue;
     if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
     else if (k === 'class' || k === 'className') el.className = [el.className, v].filter(Boolean).join(' ');
     else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
     else if (k === 'dataset') Object.assign(el.dataset, v);
-    else if (k === 'html') el.innerHTML = v; // only ever trusted, escaped Markdown output
+    // lint-allow dom: callers pass only renderMarkdown() output, which escapes everything an agent wrote.
+    else if (k === 'html') el.innerHTML = v;
     else if (k === 'value' && 'value' in el) el.value = v;
     else if (k === 'checked' || k === 'disabled' || k === 'hidden' || k === 'open' || k === 'selected') el[k] = !!v;
+    // lint-allow dom: prop names come from Postbox’s own h() calls, never from agent data.
     else el.setAttribute(k, v === true ? '' : String(v));
   }
   append(el, children);
@@ -35,15 +40,22 @@ export function append(el, children) {
 }
 
 /** Replaces an element’s children, skipping null, false and nested arrays the way h() does. */
-export function fill(el, ...children) { el.replaceChildren(); return append(el, children); }
+export function fill(el, ...children) {
+  el.replaceChildren();
+  return append(el, children);
+}
 
 export const icon = (name, extra = '') => h(`span.i.i-${name}${extra ? '.' + extra : ''}`, { 'aria-hidden': 'true' });
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-export function timeOf(ms) { return new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }); }
-export function dayOf(ms) { return new Date(ms).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' }); }
+export function timeOf(ms) {
+  return new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+export function dayOf(ms) {
+  return new Date(ms).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+}
 export function ago(ms) {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   if (s < 60) return 'just now';
@@ -61,7 +73,13 @@ export function syncList(container, items, key, create, update) {
   for (const item of items) {
     const k = String(key(item));
     let node = existing.get(k);
-    if (node) { existing.delete(k); update?.(node, item); } else { node = create(item); node.dataset.key = k; }
+    if (node) {
+      existing.delete(k);
+      update?.(node, item);
+    } else {
+      node = create(item);
+      node.dataset.key = k;
+    }
     const next = prev ? prev.nextSibling : container.firstChild;
     if (node !== next) container.insertBefore(node, next);
     prev = node;

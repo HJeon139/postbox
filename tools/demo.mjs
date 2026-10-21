@@ -7,14 +7,18 @@
 // Agent apps are checked in the browser before they’re shown, so keep the page open while it plays.
 // tools/shoot-app.mjs imports these scenes and screenshots each one.
 
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolve, join } from 'node:path';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function client(origin) {
   const call = async (path, body, method = body === undefined ? 'GET' : 'POST') => {
-    const r = await fetch(origin + path, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const r = await fetch(origin + path, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(`${method} ${path}: ${data.error ?? r.status}`);
     return data;
@@ -29,7 +33,9 @@ export function client(origin) {
       await sleep(200);
     }
     const st = await state();
-    const apps = Object.values(st.apps).map((x) => `${x.id} v${x.current} ${x.check.status}${x.check.problems.length ? ' (' + x.check.problems.map((p) => p.code).join(', ') + ')' : ''}`).join('; ');
+    const apps = Object.values(st.apps)
+      .map((x) => `${x.id} v${x.current} ${x.check.status}${x.check.problems.length ? ' (' + x.check.problems.map((p) => p.code).join(', ') + ')' : ''}`)
+      .join('; ');
     throw new Error(`Timed out waiting for ${label}.${apps ? ` Apps: ${apps}.` : ''}`);
   };
   const thread = (s, title) => Object.values(s.threads).find((t) => t.title === title);
@@ -51,7 +57,8 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   let s = await c.state();
   const T = (title) => c.thread(s, title);
   const send = (t, text) => call(`/api/threads/${t.id}/messages`, { text });
-  const settled = (t, extra = () => true, label) => until((st) => c.idle(st, st.threads[t.id]) && extra(st) && st, { label: label ?? `${t.title} to finish`, timeout: 60000 });
+  const settled = (t, extra = () => true, label) =>
+    until((st) => c.idle(st, st.threads[t.id]) && extra(st) && st, { label: label ?? `${t.title} to finish`, timeout: 60000 });
   const act = (t, itemId, action, values = {}) => call(`/api/threads/${t.id}/items/${itemId}/act`, { action, values });
   const find = (st, t, pred) => c.items(st, st.threads[t.id]).find(pred);
 
@@ -66,8 +73,18 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await send(explorer, 'Build me an explorer for my corpus');
   await until((st) => st.apps['corpus-explorer']?.check.status === 'passed', { label: 'the explorer to pass its check', timeout: 25000 });
   const hits = (await call('/api/apps/corpus-explorer/query', { tool: 'corpus.search', args: { query: 'hope after loss', k: 4 } })).result;
-  await call('/api/apps/corpus-explorer/state', { state: { q: 'hope after loss', mode: 'both', picked: Object.fromEntries(hits.slice(0, 3).map((h) => [h.id, { title: h.title, chapter: h.chapter }])), year: '' } });
-  await call('/api/apps/corpus-explorer/event', { action: 'use-passages', values: { passages: hits.slice(0, 3).map((h) => h.id), summary: `3 passages · ${[...new Set(hits.slice(0, 3).map((h) => h.title))].join(', ')}` } });
+  await call('/api/apps/corpus-explorer/state', {
+    state: {
+      q: 'hope after loss',
+      mode: 'both',
+      picked: Object.fromEntries(hits.slice(0, 3).map((h) => [h.id, { title: h.title, chapter: h.chapter }])),
+      year: '',
+    },
+  });
+  await call('/api/apps/corpus-explorer/event', {
+    action: 'use-passages',
+    values: { passages: hits.slice(0, 3).map((h) => h.id), summary: `3 passages · ${[...new Set(hits.slice(0, 3).map((h) => h.title))].join(', ')}` },
+  });
   await settled(explorer, (st) => st.apps['corpus-explorer']?.current === 2 && st.apps['corpus-explorer'].check.status === 'passed', 'v2 of the explorer');
   await shot('04-corpus-app');
 
@@ -76,7 +93,11 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   log('@librarian sends one of each catalog block.');
   await view(`#/t/${tour.id}`);
   await send(tour, 'Show me every kind of block you can send');
-  s = await settled(tour, (st) => find(st, tour, (i) => i.valid && i.block.id === 'title-pages')?.block.steps.every((x) => x.state !== 'running' && x.state !== 'pending'), 'the catalog tour');
+  s = await settled(
+    tour,
+    (st) => find(st, tour, (i) => i.valid && i.block.id === 'title-pages')?.block.steps.every((x) => x.state !== 'running' && x.state !== 'pending'),
+    'the catalog tour',
+  );
   await act(tour, find(s, tour, (i) => i.valid && i.block.id === 'start-book').id, 'choose', { selected: ['walden'] });
   await settled(tour);
   await shot('06-catalog');
@@ -86,21 +107,68 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   log('@researcher explains ReAct with sources, a diagram, math and an exercise.');
   await view(`#/t/${react.id}`);
   await send(react, 'Explain ReAct with something I can try');
-  await until((st) => st.apps['react-practice']?.check.status === 'passed' && st.glossary[react.id]?.['observation-budget'] && c.idle(st, st.threads[react.id]), { label: 'the explainer', timeout: 60000 });
-  await shot('05-explainer', { prepare: async (page) => { await page.evaluate(`(() => { const c = document.querySelector('.cite'); c.scrollIntoView({ block: 'center' }); c.focus(); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`); await sleep(400); } });
+  await until(
+    (st) => st.apps['react-practice']?.check.status === 'passed' && st.glossary[react.id]?.['observation-budget'] && c.idle(st, st.threads[react.id]),
+    { label: 'the explainer', timeout: 60000 },
+  );
+  await shot('05-explainer', {
+    prepare: async (page) => {
+      await page.evaluate(
+        `(() => { const c = document.querySelector('.cite'); c.scrollIntoView({ block: 'center' }); c.focus(); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`,
+      );
+      await sleep(400);
+    },
+  });
+
+  // 4b · A narrated walkthrough: slides that follow a local voice, with the transcript always there
+  const st4 = await c.state();
+  const researcherId = st4.sessions[st4.threads[react.id].members[0]].personaId;
+  const walk = await call('/api/threads', { projectId: react.projectId, title: 'ReAct, out loud', personaIds: [researcherId] });
+  log('@researcher turns the explainer into a narrated walkthrough.');
+  await view(`#/t/${walk.id}`);
+  await send(walk, 'Walk me through ReAct, out loud');
+  await until((st) => st.apps['react-walkthrough']?.check.status === 'passed' && c.idle(st, st.threads[walk.id]), { label: 'the walkthrough', timeout: 60000 });
+  await shot('16-narration');
+
+  // 4c · A topic thread: a side question forks @researcher’s session at its message, and comes back as a summary
+  log('You reply in a thread to @researcher’s explainer; it answers there, then summarizes back.');
+  const st4c = await c.state();
+  const rootMsg = c.items(st4c, st4c.threads[react.id]).find((i) => i.kind === 'agent' && i.text);
+  const { threadId: topicId } = await call(`/api/threads/${react.id}/items/${rootMsg.id}/topic`, {});
+  const topic = { id: topicId, title: 'the thread' };
+  await view(`#/t/${react.id}/side/${topicId}`);
+  await send(topic, 'Why does the observation step matter so much?');
+  await settled(topic);
+  await call(`/api/threads/${topicId}/summarize`, {});
+  await settled(topic, (st) => find(st, react, (i) => i.kind === 'shared'), 'the summary');
+  await shot('18-topic-thread', {
+    prepare: async (page) => {
+      await page.evaluate(`document.querySelector('.shared-card')?.scrollIntoView({ block: 'center' })`);
+      await sleep(200);
+    },
+  });
+  await view(`#/p/${react.projectId}/threads`);
+  await shot('19-threads');
 
   // 5 · Review: comments, a verdict, then a revision shown as a diff
   const spec = T('Corpus schema spec');
   log('@critic asks for a review; you comment and request changes; it revises in place.');
   await view(`#/t/${spec.id}`);
   await send(spec, 'Review my corpus schema line by line');
-  s = await settled(spec, (st) => find(st, spec, (i) => i.valid && i.block.id === 'layout-review') && st.apps['layout-proposal']?.check.status === 'passed', 'the review blocks');
-  await act(spec, find(s, spec, (i) => i.valid && i.block.id === 'schema-review').id, 'submit', { verdict: 'request_changes', comments: [
-    { line: 5, text: 'Per chapter is too coarse for search. Can we go per passage?' },
-    { line: 6, text: 'No overlap will cut sentences in half.' },
-    { line: 10, text: 'Plain text has no pages. Store offsets instead?' },
-    { line: 13, text: 'Should we tune `k1` for short passages?' },
-  ] });
+  s = await settled(
+    spec,
+    (st) => find(st, spec, (i) => i.valid && i.block.id === 'layout-review') && st.apps['layout-proposal']?.check.status === 'passed',
+    'the review blocks',
+  );
+  await act(spec, find(s, spec, (i) => i.valid && i.block.id === 'schema-review').id, 'submit', {
+    verdict: 'request_changes',
+    comments: [
+      { line: 5, text: 'Per chapter is too coarse for search. Can we go per passage?' },
+      { line: 6, text: 'No overlap will cut sentences in half.' },
+      { line: 10, text: 'Plain text has no pages. Store offsets instead?' },
+      { line: 13, text: 'Should we tune `k1` for short passages?' },
+    ],
+  });
   await settled(spec, (st) => find(st, spec, (i) => i.valid && i.block.id === 'schema-review')?.block.revision === 2, 'the revision');
   await shot('07-review');
 
@@ -156,19 +224,48 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await view(`#/t/${quotes.id}`);
   await send(quotes, 'Can you double-check that the quotes in my notes match the books?');
   await settled(quotes, (st) => find(st, quotes, (i) => i.kind === 'proposal'), 'the proposal');
-  await shot('10-plus-menu', { prepare: async (page) => { await page.attach?.('README.md'); await page.evaluate(`(() => { const t = document.getElementById('composer-input'); t.value = 'Here are my notes, check these three quotes'; t.dispatchEvent(new Event('input')); document.querySelector('[aria-label="Add a file or a new agent"]').click(); })()`); await sleep(300); } });
-  await shot('11-new-agent', { prepare: async (page) => { await page.evaluate(`document.querySelector('[aria-label="Add a file or a new agent"]').click()`); await sleep(200); await page.evaluate(`[...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From a boilerplate')).click()`); await sleep(300); await page.evaluate(`(() => { const i = document.getElementById('na-h'); i.value = 'citer'; i.dispatchEvent(new Event('input')); })()`); } });
+  await shot('10-plus-menu', {
+    prepare: async (page) => {
+      await page.attach?.('README.md');
+      await page.evaluate(
+        `(() => { const t = document.getElementById('composer-input'); t.value = 'Here are my notes, check these three quotes'; t.dispatchEvent(new Event('input')); document.querySelector('[aria-label="Add a file or a new agent"]').click(); })()`,
+      );
+      await sleep(300);
+    },
+  });
+  await shot('11-new-agent', {
+    prepare: async (page) => {
+      await page.evaluate(`document.querySelector('[aria-label="Add a file or a new agent"]').click()`);
+      await sleep(200);
+      await page.evaluate(`[...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From a boilerplate')).click()`);
+      await sleep(300);
+      await page.evaluate(`(() => { const i = document.getElementById('na-h'); i.value = 'citer'; i.dispatchEvent(new Event('input')); })()`);
+    },
+  });
 
-  // 10 · A dashboard that fails its check at phone width, gets fixed, then shows
+  // 10 · Permission: the agent asks before it runs a command, and waits for you
+  const cache = await call('/api/threads', { projectId: index.projectId, title: 'Clear the index cache', personaIds: [ix.personaId] });
+  log('@indexer asks before it runs a command; you allow it.');
+  await view(`#/t/${cache.id}`);
+  await send(cache, 'Clear the old index cache');
+  const ask = await until((st) => find(st, cache, (i) => i.kind === 'permission' && i.status === 'open'), { label: 'the permission card' });
+  await shot('15-permission');
+  await call(`/api/threads/${cache.id}/items/${ask.id}/act`, { action: 'allow' });
+  await settled(cache);
+
+  // 11 · A dashboard that fails its check at phone width, gets fixed, then shows
   const dash = await call('/api/threads', { projectId: index.projectId, title: 'Corpus dashboard', personaIds: [ix.personaId] });
   log('@indexer writes a dashboard; the check finds it too wide for a phone; @indexer fixes it.');
   await view(`#/t/${dash.id}`);
   await send(dash, 'Show me a dashboard');
-  await until((st) => st.apps['corpus-dashboard']?.current === 2 && st.apps['corpus-dashboard'].check.status === 'passed', { label: 'the fixed dashboard', timeout: 60000 });
+  await until((st) => st.apps['corpus-dashboard']?.current === 2 && st.apps['corpus-dashboard'].check.status === 'passed', {
+    label: 'the fixed dashboard',
+    timeout: 60000,
+  });
   await settled(dash);
   await shot('14-charts');
 
-  // 11 · The overview, with one agent that needs you
+  // 12 · The overview, with one agent that needs you
   const papers = T('Agent memory papers');
   log('@researcher asks which papers to read, so it needs you; the overview shows it first.');
   await send(papers, 'Which agent memory papers should I read?');
@@ -177,13 +274,32 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await call(`/api/sessions/${archived}/archive`, {});
   await view('#/');
   await shot('01-overview');
-  await shot('12-card-menu', { prepare: async (page) => { await page.evaluate(`[...document.querySelectorAll('.ov-col')].find((n) => n.textContent.includes('@critic')).querySelector('[aria-haspopup="menu"]').click()`); await sleep(250); } });
-  await shot('13-delete-confirm', { prepare: async (page) => { await page.evaluate(`[...document.querySelectorAll('.ov-col')].find((n) => n.textContent.includes('@critic')).querySelector('[aria-haspopup="menu"]').click()`); await sleep(200); await page.evaluate(`[...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Delete session')).click()`); await sleep(250); } });
+  await shot('12-card-menu', {
+    prepare: async (page) => {
+      await page.evaluate(
+        `[...document.querySelectorAll('.ov-col')].find((n) => n.textContent.includes('@critic')).querySelector('[aria-haspopup="menu"]').click()`,
+      );
+      await sleep(250);
+    },
+  });
+  await shot('13-delete-confirm', {
+    prepare: async (page) => {
+      await page.evaluate(
+        `[...document.querySelectorAll('.ov-col')].find((n) => n.textContent.includes('@critic')).querySelector('[aria-haspopup="menu"]').click()`,
+      );
+      await sleep(200);
+      await page.evaluate(`[...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Delete session')).click()`);
+      await sleep(250);
+    },
+  });
   log('Done. Every block type and every error state has been shown.');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i > -1 ? process.argv[i + 1] : d; };
+  const arg = (n, d) => {
+    const i = process.argv.indexOf(`--${n}`);
+    return i > -1 ? process.argv[i + 1] : d;
+  };
   const port = Number(arg('port', 4173));
   const { start } = await import('../server/index.mjs');
   const root = fileURLToPath(new URL('..', import.meta.url));
@@ -192,8 +308,24 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   console.log(`\nOpen ${origin}/ in a browser and keep it open: apps are checked there before they’re shown.\n`);
   await sleep(4000);
   try {
-    await play({ origin, speed: Number(arg('speed', 0.6)), view: async (hash) => { console.log(`  → ${origin}/${hash}`); await sleep(1500); }, shot: async (name) => { console.log(`  ✓ ${name}`); await sleep(2500); } });
-  } catch (e) { console.error(`The demo stopped: ${e.message}`); }
+    await play({
+      origin,
+      speed: Number(arg('speed', 0.6)),
+      view: async (hash) => {
+        console.log(`  → ${origin}/${hash}`);
+        await sleep(1500);
+      },
+      shot: async (name) => {
+        console.log(`  ✓ ${name}`);
+        await sleep(2500);
+      },
+    });
+  } catch (e) {
+    console.error(`The demo stopped: ${e.message}`);
+  }
   console.log('\nThe demo server keeps running so you can look around. Press Ctrl+C to stop it.');
-  process.on('SIGINT', async () => { await app.close(); process.exit(0); });
+  process.on('SIGINT', async () => {
+    await app.close();
+    process.exit(0);
+  });
 }

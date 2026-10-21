@@ -27,8 +27,12 @@ export const explorerApp = ({ withYears = false } = {}) => `
   <aside class="xp-side" aria-label="Filters">
     <div class="field"><span class="label" id="m-l">Match</span>
       <div class="chips" role="radiogroup" aria-labelledby="m-l" id="modes"></div></div>
-    ${withYears ? `<div class="field"><label class="label" for="yr">Published before</label>
-      <div class="select-wrap"><select class="select" id="yr"><option value="">Any year</option><option value="1820">1820</option><option value="1860">1860</option><option value="1900">1900</option></select><span class="i i-down"></span></div></div>` : ''}
+    ${
+      withYears
+        ? `<div class="field"><label class="label" for="yr">Published before</label>
+      <div class="select-wrap"><select class="select" id="yr"><option value="">Any year</option><option value="1820">1820</option><option value="1860">1860</option><option value="1900">1900</option></select><span class="i i-down"></span></div></div>`
+        : ''
+    }
     <div class="field"><span class="label">Books with matches</span><ul class="books" id="books"></ul></div>
   </aside>
   <div class="xp-main">
@@ -223,4 +227,64 @@ export const layoutApp = () => `
 </div>
 <script>
   postbox.ready.then(() => postbox.anchors({ 'search box': document.getElementById('search'), 'result row 2': document.getElementById('row2'), 'send button': document.getElementById('sendrow') }));
+</script>`;
+
+// A narrated walkthrough: slides on top, the transcript below, and the slide follows the passage being
+// read. It works without sound too: Previous and Next move the slides, and the transcript is all there.
+// This is the recipe in designs/recipes.md, as an agent would write it.
+export const walkthroughApp = () => `
+<style>
+  .walk { display: flex; flex-direction: column; gap: 14px; padding: 14px; }
+  .slide { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 18px 20px; min-height: 150px; display: flex; flex-direction: column; gap: 8px; }
+  .slide h2 { margin: 0; font-size: 17px; }
+  .slide p { margin: 0; color: var(--dim); line-height: 1.5; }
+  .slide ol { margin: 4px 0 0; padding-left: 20px; line-height: 1.6; }
+  .nav { display: flex; align-items: center; gap: 8px; }
+  .nav .where { font-size: 12px; color: var(--dim); margin-right: auto; }
+</style>
+<div class="walk">
+  <section class="slide" id="slide" aria-live="polite"></section>
+  <div class="nav">
+    <span class="where" id="where"></span>
+    <button class="btn" type="button" id="prev">Previous</button>
+    <button class="btn" type="button" id="next">Next</button>
+  </div>
+  <div id="narration"></div>
+</div>
+<script>
+  const slides = [
+    { title: 'ReAct in one line', body: '<p>The model alternates between thinking about the task and acting on the world, and each observation feeds the next thought.</p>' },
+    { title: 'The loop', body: '<ol><li>Thought: what do I need?</li><li>Action: call one tool.</li><li>Observation: read what came back.</li></ol>' },
+    { title: 'Why it helps', body: '<p>Acting grounds the reasoning in facts it looked up, and the reasoning picks better actions than acting alone.</p>' },
+    { title: 'Try it', body: '<p>Open the practice app below and decide, at each step, whether the agent should think, act or answer.</p>' },
+  ];
+  const passages = [
+    'ReAct, short for reasoning and acting, has the model alternate between thinking about a task and acting on the world.',
+    'Each step is a loop. A thought says what it needs. An action calls one tool. The observation, what came back, feeds the next thought.',
+    'This helps both ways. Acting grounds the reasoning in facts it looked up, and the reasoning chooses better actions than acting alone would.',
+    'Now try it yourself. In the practice app, decide at each step whether the agent should think, act or answer.',
+  ];
+  const slide = document.getElementById('slide');
+  const where = document.getElementById('where');
+  let at = 0;
+  function show(i) {
+    at = Math.max(0, Math.min(slides.length - 1, i));
+    const s = slides[at];
+    slide.replaceChildren();
+    const h = document.createElement('h2');
+    h.textContent = s.title;
+    const body = document.createElement('div');
+    body.innerHTML = s.body;
+    slide.append(h, body);
+    where.textContent = 'Slide ' + (at + 1) + ' of ' + slides.length;
+    document.getElementById('prev').disabled = at === 0;
+    document.getElementById('next').disabled = at === slides.length - 1;
+    postbox.saveState({ at });
+  }
+  document.getElementById('prev').onclick = () => show(at - 1);
+  document.getElementById('next').onclick = () => show(at + 1);
+  postbox.ready.then(({ state }) => {
+    show(state?.at ?? 0);
+    postbox.narration(document.getElementById('narration'), passages, { label: 'Narration transcript', onPassage: (i) => show(i) });
+  });
 </script>`;

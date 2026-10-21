@@ -103,7 +103,7 @@ flowchart LR
 | End to end | `tools/shoot-app.mjs` in headless Chrome, plus **axe-core** | Every demo scene renders with no browser errors and no serious or critical accessibility violations |
 | Contrast | `tools/contrast.mjs` | Every token pair meets WCAG 2.1 AA in both modes, on the app stage too |
 | Design tokens | `tools/lint-tokens.mjs` | No raw colors outside the token blocks, in CSS or in JavaScript |
-| Safe DOM | `tools/lint-dom.mjs` | `innerHTML` only in the files allowed to use it, with output from the Markdown renderer or Postbox’s own templates |
+| Safe DOM | `tools/lint-dom.mjs` | `innerHTML` only where a `lint-allow dom:` comment names the source (the Markdown renderer or Postbox’s own templates); no attribute or style names chosen at run time; `target="_blank"` always with `noopener` |
 | Copy | `tools/lint-copy.mjs` | American spelling and curly quotes in user-facing strings |
 
 **Conventions**
@@ -112,4 +112,124 @@ flowchart LR
 - Every user-facing string follows the writing rules in [intent.md](intent.md).
 - No runtime dependencies without a decision recorded here.
 
+**Exceptions.** A deliberate exception to a project rule carries `lint-allow <rule>: <reason>` on its line or the line above, and a whole file can opt out of one rule with `lint-allow-file <rule>: <reason>` near its top. A reason is required, so every exception says why.
+
+**Where it stands (Stage 3).** Everything in the table runs, locally and in CI:
+- TypeScript runs in strict mode over `shared/` and `server/`; the client comes next.
+- axe-core found 92 violations on its first run, all fixed: radios that said pressed instead of checked, labels on elements with no role, a button whose name didn’t match its text, and dim text on the review highlight in dark mode. The contrast tool now checks translucent tokens too, which is how the last one was missed.
+- Coverage is 89% of lines overall. Of the pure modules, `state.mjs` (88%) is still below the 90% target.
+
 **Revisit when** a tool becomes a bottleneck. Biome and TypeScript are the only tools here that a contributor has to install.
+
+## 5. Real agents: two adapters over one stream
+
+**Decision.** Real agents run on Claude Code, in two ways that share everything but the transport:
+- **Claude Code backend:** one `claude -p` process per turn, with stream-json in and out, resuming the thread’s Claude Code session.
+- **Agent SDK backend:** `query()` in Postbox’s process.
+
+The SDK streams the same messages as the CLI, so one mapper ([`server/adapters/claude-stream.mjs`](../server/adapters/claude-stream.mjs)) turns either into the turn context: text, activity, ring state, context use, subagents and compactions. One guide ([`server/adapters/guide.mjs`](../server/adapters/guide.mjs)) is the system prompt both append, and it teaches the catalog, the kit and the [recipes](recipes.md).
+
+**What it rests on**
+- **No credentials in Postbox.** Both backends use Claude Code’s own sign-in. Postbox never sees a key, so there’s nothing to store, rotate or leak.
+- **Recorded, not guessed.** The stream shapes were taken from real turns (claude 2.1.296, `claude-opus-5-5`) and kept as test fixtures, with local paths removed. The SDK options follow its shipped type definitions.
+- **A process per turn is simple and robust.** A crash affects one turn; Stop is a signal; nothing leaks between turns. The cost is a second or two to resume. A long-lived process per session, with stream-json input, is the upgrade if that matters.
+- **Postbox’s tools load up front** (`alwaysLoad` on the MCP server), so the agent doesn’t spend a step searching for them.
+
+**Revisit when** the start-up delay matters more than isolation, or another model provider needs an adapter (the mapper is Claude-specific; the turn context isn’t).
+
+## 6. Permissions: a card in the thread, and an explicit mode
+
+**Decision.** Each persona has a permission mode: ask (the default), accept edits, or run everything. In ask mode, a risky tool call becomes a card in the thread that shows the exact command, and the call waits for your answer:
+- **Claude Code:** through `--permission-prompt-tool`, an MCP tool that doesn’t return until you answer.
+- **Agent SDK:** through `canUseTool`.
+
+```mermaid
+sequenceDiagram
+  participant A as Agent (Claude Code)
+  participant M as Postbox MCP
+  participant R as Runtime
+  participant Y as You
+  A->>M: permission_prompt(Bash, "rm -rf build")
+  M->>R: requestPermission
+  R->>Y: card in the thread, agent needs you
+  Y->>R: Allow, or Don't allow
+  R-->>M: allow, or deny with a message
+  M-->>A: behavior allow / deny
+  Note over R: Stop, or the turn ending, answers deny and marks the card expired
+```
+
+**What it rests on**
+- **The mode is always passed.** Left out, Claude Code would take `permissions.defaultMode` from your own settings, or `auto`, and an agent you set to ask could stop asking.
+- **Every permission tool call is a blocking call, and the only one.** All other Postbox tools return at once. A blocked call must always end, so Stop and the end of a turn release it with a no.
+- **Agents start in their project’s root folder**, as [intent.md](intent.md) decides, unless the persona names another. Permission mode is what protects that folder. The first live test showed why it matters: the sample project’s folder is the bundled books, and a command the test allowed wrote a file there (since removed).
+- **The card is Postbox’s, not a catalog block.** Your answer goes to the waiting tool call, not to the agent as a message.
+
+**Revisit when** you want “always allow this command”: the SDK’s `updatedPermissions` can carry a rule back, and the card would need a third button.
+
+## 7. Attached sessions: resume and mirror
+
+**Decision.** A Claude Code session started in a terminal can join Postbox as an agent:
+- **Writing to it:** Postbox resumes that session in its own folder.
+- **Watching it:** Postbox follows its transcript in `~/.claude/projects/` and mirrors turns typed in the terminal, marked “from terminal”.
+- **No duplicates:** lines written while a Postbox turn runs are that turn, already in the thread, so they’re skipped, and the tail jumps to the end when the turn finishes.
+
+**What it rests on.** The transcript is the only shared record, and it records who started each turn (`turnOrigin`: human or sdk). Reading it needs no cooperation from the terminal.
+
+**Revisit when** two writers become a problem in practice. Postbox can’t tell that a terminal turn is still running, so it relies on you to let it finish.
+
+## 8. Narration: a local voice in its own process
+
+**Decision.** Agent apps read aloud with Kokoro, through `kokoro-js`, in a child process that starts on first use and stops after five idle minutes.
+- **Audio:** each clip is stored once in the blob store, under its SHA-256, and reused for the same text and voice.
+- **Delivery:** the app gets the audio over the postMessage bridge and plays it from a `blob:` URL, the one media source the sandbox allows.
+- **Pace:** the kit synthesizes on Play, one passage at a time, so the pre-display check makes no audio.
+
+**What it rests on**
+- **Local and free.** No audio leaves the computer, and there’s no account.
+- **Isolation.** Kokoro brings native packages with open advisories (`sharp`, `onnxruntime-node`). In a child process, they never run inside the server that holds your conversations.
+- **It degrades to text.** The transcript is always on screen; without the voice, the player says so and the walkthrough still reads.
+
+**Revisit when** word-level timing matters (Kokoro gives none, so the transcript follows by passage), or a better local voice appears.
+
+
+## 9. Topic threads: forked sessions at checkpoints
+
+**Decision.** A topic thread is a thread of kind `topic` whose `parentId` is its conversation and whose `rootItemId` is the message it started from. Each agent in it runs a new session that forks the conversation’s session at that message.
+
+```mermaid
+sequenceDiagram
+  participant C as Conversation session
+  participant R as Runtime
+  participant T as Topic thread session
+  C->>R: turn ends, checkpoint { claudeSessionId, uuid of its last message }
+  R->>R: stamp the turn’s messages with the checkpoint
+  Note over R: You choose Reply in thread on a message
+  R->>T: new session, fork = the last checkpoint at or before that message
+  T->>T: first turn: claude --resume conv --fork-session --resume-session-at uuid
+  T-->>R: its own session id, kept for later turns
+  Note over R: Send to conversation / Summarize back
+  R->>C: the text waits as context for the conversation's next turn
+```
+
+**What it rests on**
+- **Checkpoints, not copies.** Every adapter reports where its turn ended in its own transcript (`ctx.checkpoint`): Claude Code and the Agent SDK give the last assistant message’s uuid, and the mock gives its session. The runtime stamps each message of the turn with it, so any message knows its fork point. Postbox never copies or edits a transcript.
+- **Verified live.** A session told “apple”, then “banana”, then forked at the first reply, remembered only “apple”, under a new session id. The original still remembered both. The CLI’s `--resume-session-at` is undocumented in `--help`; the Agent SDK documents it as `resumeSessionAt` with `forkSession`.
+- **Your message as the root.** For a message you wrote, the fork point is the agent’s last finished turn before it, and the message itself opens the thread as context. An agent that joined the conversation after the root starts fresh; replies from before checkpoints were kept fall back to the session’s latest point.
+- **Bringing things back costs no turn.** Shared text is queued as context on each of the conversation’s sessions and prepended to the next message they get, so the main agent reads it when it next works rather than being woken by it.
+- **No nesting.** A topic thread can’t start another one, as in Slack; a reply that deserves its own branch can be sent to the conversation and branched from there.
+
+**Revisit when** the Claude Code CLI documents or drops `--resume-session-at`. The Agent SDK path documents it and could take over the Claude Code backend’s forks.
+
+## 10. Sandboxed pages that load nothing
+
+**Decision.** An agent app or diagram page is sandboxed by its response header, `Content-Security-Policy: sandbox allow-scripts; …`, not by the iframe’s `sandbox` attribute. It is self-contained:
+- **Inline:** the kit, the stylesheet and the diagram script are inlined into the page when it’s served.
+- **Libraries:** D3, KaTeX and Mermaid reach it as text over the postMessage bridge, and run as inline scripts. KaTeX’s fonts travel inside its stylesheet as `data:` URLs.
+- **Policy:** it allows inline code, `data:` images and fonts, and `blob:` audio, and nothing that loads from a URL.
+
+**What it rests on**
+- **Measured in the browser people use.** The Claude desktop app’s browser pane refuses to load any frame that has the `sandbox` attribute (`ERR_BLOCKED_BY_CLIENT`). It also blocks every request a sandboxed, opaque-origin page makes, while letting its inline scripts run. Headless Chrome allowed all of it, which is why the end-to-end runs passed while apps and diagrams stayed blank in the pane.
+- **The same isolation.** The header sandbox gives the page an opaque origin, exactly as the attribute does. The host’s bridge only answers frames whose origin is `null`: if a page ever arrived without the header, it would be same-origin, and the bridge would shut it instead of serving it. A test checks that every sandbox page carries the policy.
+- **Sturdier everywhere.** A page that needs no requests can’t be broken by an extension, a proxy or a slow network.
+
+**Revisit when** apps need large assets of their own. Then serve them from a separate origin rather than relaxing the policy.

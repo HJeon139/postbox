@@ -1,8 +1,8 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMentions, finishedSentences, formatDuration } from '../shared/text.mjs';
-import { isSafeUrl } from '../shared/urls.mjs';
+import { test } from 'node:test';
 import { buildIndex, search, semanticStub, tokenize } from '../shared/bm25.mjs';
+import { finishedSentences, formatDuration, parseMentions } from '../shared/text.mjs';
+import { isSafeUrl } from '../shared/urls.mjs';
 
 test('mentions: known handles only, in order, not in code or emails', () => {
   const h = ['indexer', 'researcher', 'critic'];

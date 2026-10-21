@@ -8,7 +8,9 @@
  */
 export function parseMentions(text, handles) {
   const known = new Map(handles.map((h) => [h.toLowerCase(), h]));
-  const plain = String(text ?? '').replace(/```[\s\S]*?(```|$)/g, ' ').replace(/`[^`]*`/g, ' ');
+  const plain = String(text ?? '')
+    .replace(/```[\s\S]*?(```|$)/g, ' ')
+    .replace(/`[^`]*`/g, ' ');
   const found = [];
   for (const m of plain.matchAll(/(^|[^\w@.])@([A-Za-z0-9_-]+)/g)) {
     const h = known.get(m[2].toLowerCase());
@@ -32,7 +34,10 @@ export function finishedSentences(text, spoken, done = false) {
   const re = /[^.!?\n]*(?:[.!?]+["”’)\]]*|\n+)(?=\s|$)/g;
   let m;
   while ((m = re.exec(rest))) {
-    if (!m[0]) { re.lastIndex++; continue; }
+    if (!m[0]) {
+      re.lastIndex++;
+      continue;
+    }
     const end = m.index + m[0].length;
     // A sentence counts as finished only once something follows it, or the reply is done.
     if (end >= rest.length && !done) break;

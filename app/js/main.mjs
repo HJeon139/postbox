@@ -1,14 +1,14 @@
 // Boot, routing, color mode, notifications, keyboard shortcuts and hover-card content.
 
 import './ring.mjs';
-import { h, $, icon } from './dom.mjs';
-import { client, load, connect, needsYou } from './client.mjs';
-import { topbar, mountRail, mountOverview, nextNeedsYou } from './shell.mjs';
-import { mountTranscript, mountComposer, mountSidePanel, focusComposer } from './thread.mjs';
-import { route, navigate, toast, setAttention, initHoverCards, mdNode, say } from './ui.mjs';
-import { openPalette } from './sheets.mjs';
 import { onThemeChange } from './apps.mjs';
+import { client, connect, hrefOf, itemsOf, load, needsYou, threadsOf } from './client.mjs';
+import { $, h, icon } from './dom.mjs';
 import { ringFor } from './ring.mjs';
+import { openPalette } from './sheets.mjs';
+import { mountEmptyProject, mountOverview, mountRail, mountThreads, nextNeedsYou, topbar } from './shell.mjs';
+import { focusComposer, mountComposer, mountSidePanel, mountTranscript } from './thread.mjs';
+import { initHoverCards, mdNode, navigate, route, say, setAttention, toast } from './ui.mjs';
 
 const root = $('#root');
 let mounted = [];
@@ -19,17 +19,48 @@ function render() {
   mounted = [];
   const r = route();
   const archived = location.hash === '#/archived';
-  if (r.view === 'thread' && !client.state.threads[r.threadId]) { navigate('#/'); return; }
+  if (r.view === 'thread' && !client.state.threads[r.threadId]) {
+    navigate('#/');
+    return;
+  }
   current = r;
+  if (r.view === 'project' || r.view === 'threads') {
+    const project = client.state.projects[r.projectId];
+    if (!project) {
+      navigate('#/');
+      return;
+    }
+    // A project opens on the conversation you were last in there, else its latest.
+    if (r.view === 'project') {
+      const target = lastIn(project.id) ?? latestIn(project.id);
+      if (target) {
+        navigate(`#/t/${target}`);
+        return;
+      }
+    }
+    const rail = mountRail(null, { projectId: project.id, view: r.view });
+    const page = r.view === 'threads' ? mountThreads(project.id) : mountEmptyProject(project.id);
+    mounted.push(rail, page);
+    root.replaceChildren(
+      h('div.app', topbar({ title: r.view === 'threads' ? 'Threads' : '', projectId: project.id }), rail.el, h('div.main', rail.strip, page.el)),
+    );
+    setAttention(needsYou().length, `${r.view === 'threads' ? 'Threads · ' : ''}${project.name}`);
+    return;
+  }
   if (r.view === 'overview') {
     const ov = mountOverview({ archived });
     mounted.push(ov);
-    root.replaceChildren(h('div.app.no-rail', topbar({ title: archived ? 'Archived' : 'Overview' }), ov.el));
+    root.replaceChildren(h('div.app.no-rail', topbar({ title: archived ? 'Archived' : '' }), ov.el));
     setAttention(needsYou().length, 'Overview');
     return;
   }
   const t = client.state.threads[r.threadId];
-  if (t.kind === 'side') { navigate(`#/t/${t.parentId}/side/${t.id}`); return; }
+  // Side threads and topic threads open in the panel beside their conversation.
+  if (t.kind === 'side' || t.kind === 'topic') {
+    navigate(hrefOf(t.id));
+    return;
+  }
+  remember(t);
   const rail = mountRail(t.id);
   const tr = mountTranscript(t.id);
   const comp = mountComposer(t.id);
@@ -43,31 +74,72 @@ function render() {
   mounted.push(rail, tr, comp);
   const side = r.sideId ? mountSidePanel(t.id, r.sideId) : null;
   if (side) mounted.push(side);
-  const shell = h('div.app', { class: side ? 'has-panel' : '' }, topbar({ title: t.title, threadId: t.id }), rail.el, h('div.main', rail.strip, tr.el, comp.el), side?.el);
+  const shell = h(
+    'div.app',
+    { class: side ? 'has-panel' : '' },
+    topbar({ title: t.title, threadId: t.id }),
+    rail.el,
+    h('div.main', rail.strip, tr.el, comp.el),
+    side?.el,
+  );
   root.replaceChildren(shell);
   requestAnimationFrame(() => tr.scrollToEnd());
   view(t.id);
   setAttention(needsYou().length, t.title);
 }
 
+// The conversation you were last in, per project, so a project’s tab returns you there.
+function remember(t) {
+  try {
+    localStorage.setItem(`pb-last-${t.projectId}`, t.id);
+  } catch {}
+}
+function lastIn(projectId) {
+  let id = null;
+  try {
+    id = localStorage.getItem(`pb-last-${projectId}`);
+  } catch {}
+  const t = id && client.state.threads[id];
+  return t && t.projectId === projectId && !t.archived && t.kind !== 'side' && t.kind !== 'topic' ? id : null;
+}
+function latestIn(projectId) {
+  const at = (t) => itemsOf(t.id).at(-1)?.at ?? t.createdAt ?? 0;
+  return threadsOf(projectId)
+    .filter((t) => !t.archived)
+    .sort((a, b) => at(b) - at(a))[0]?.id;
+}
+
 // Tell the server which thread is open, so finished replies there don’t count as unread.
 let viewTimer = 0;
 function view(threadId) {
   clearInterval(viewTimer);
-  const ping = () => { if (document.visibilityState === 'visible' && route().threadId === threadId) fetch(`/api/threads/${threadId}/view`, { method: 'POST' }).catch(() => {}); };
+  const ping = () => {
+    if (document.visibilityState !== 'visible' || route().threadId !== threadId) return;
+    fetch(`/api/threads/${threadId}/view`, { method: 'POST' }).catch(() => {});
+    // A thread open in the panel is being read too.
+    const side = route().sideId;
+    if (side) fetch(`/api/threads/${side}/view`, { method: 'POST' }).catch(() => {});
+  };
   ping();
   viewTimer = setInterval(ping, 10000);
 }
-document.addEventListener('visibilitychange', () => { if (current?.threadId) view(current.threadId); });
+document.addEventListener('visibilitychange', () => {
+  if (current?.threadId) view(current.threadId);
+});
 
 // ── Color mode ──────────────────────────────────────────────────────────────────────────
 
 const media = matchMedia('(prefers-color-scheme: light)');
 function applyTheme() {
   const pref = client.state?.settings?.theme ?? 'system';
-  try { localStorage.setItem('pb-theme', pref); } catch {}
+  try {
+    localStorage.setItem('pb-theme', pref);
+  } catch {}
   const mode = pref === 'system' ? (media.matches ? 'light' : 'dark') : pref;
-  if (document.documentElement.dataset.theme !== mode) { document.documentElement.dataset.theme = mode; onThemeChange(); }
+  if (document.documentElement.dataset.theme !== mode) {
+    document.documentElement.dataset.theme = mode;
+    onThemeChange();
+  }
 }
 media.addEventListener('change', applyTheme);
 
@@ -82,7 +154,7 @@ client.on((ch) => {
     if (client.connection === 'reconnecting' && client.attempts === 1) say('Connection lost. Reconnecting.');
     if (client.connection === 'open' && ch.was === 'reconnecting') say('Reconnected.');
   }
-  setAttention(needsYou().length, current?.view === 'thread' ? client.state.threads[current.threadId]?.title ?? 'Postbox' : 'Overview');
+  setAttention(needsYou().length, current?.view === 'thread' ? (client.state.threads[current.threadId]?.title ?? 'Postbox') : 'Overview');
 });
 
 const topSig = new Map();
@@ -100,24 +172,46 @@ function refreshTop() {
     if (!t) return;
     // Members changed (an agent joined or left): rebuild the whole view.
     const members = old.querySelectorAll('.present .who-chip').length;
-    if (members !== t.members.filter((id) => client.state.sessions[id] && !client.state.sessions[id].archived && !client.state.sessions[id].deleting).length) { render(); return; }
+    if (members !== t.members.filter((id) => client.state.sessions[id] && !client.state.sessions[id].archived && !client.state.sessions[id].deleting).length) {
+      render();
+      return;
+    }
     old.replaceWith(topbar({ title: t.title, threadId: t.id }));
-  } else old.replaceWith(topbar({ title: location.hash === '#/archived' ? 'Archived' : 'Overview' }));
+  } else if (current.projectId) old.replaceWith(topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId }));
+  else old.replaceWith(topbar({ title: location.hash === '#/archived' ? 'Archived' : '' }));
 }
 
 function notify(d) {
   if (d.level !== 'blocking') return; // informational events are still badges, not toasts
-  if (route().threadId === d.threadId && document.visibilityState === 'visible') { say(`${d.title}. ${d.text}`); return; }
+  if (route().threadId === d.threadId && document.visibilityState === 'visible') {
+    say(`${d.title}. ${d.text}`);
+    return;
+  }
   const se = client.state.sessions[d.sessionId];
-  toast({ title: d.title, text: d.text, level: 'blocking', ring: se ? ringFor(se, 'sm') : null, action: { label: 'Go', run: () => navigate(`#/t/${d.threadId}`) }, timeout: 12000 });
+  toast({
+    title: d.title,
+    text: d.text,
+    level: 'blocking',
+    ring: se ? ringFor(se, 'sm') : null,
+    action: { label: 'Go', run: () => navigate(`#/t/${d.threadId}`) },
+    timeout: 12000,
+  });
 }
 
 // ── Keyboard ────────────────────────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
-  if (e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'j') { e.preventDefault(); nextNeedsYou(); return; }
-  if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); return; }
+  if (e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'j') {
+    e.preventDefault();
+    nextNeedsYou();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    openPalette();
+    return;
+  }
   // Alt+↑/↓ moves between turns and blocks; Alt+End returns to the composer.
   if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
     const items = [...document.querySelectorAll('#main > .item')];
@@ -128,7 +222,10 @@ document.addEventListener('keydown', (e) => {
     next.focus();
     next.scrollIntoView({ block: 'nearest' });
   }
-  if (e.altKey && e.key === 'End') { e.preventDefault(); focusComposer(); }
+  if (e.altKey && e.key === 'End') {
+    e.preventDefault();
+    focusComposer();
+  }
 });
 
 // ── Hover cards: citations and glossary terms ───────────────────────────────────────────
@@ -144,16 +241,44 @@ initHoverCards((trigger) => {
     const arxiv = s.url?.match(/arxiv\.org\/abs\/([\d.]+)/)?.[1];
     return {
       label: `Source ${n}`,
-      head: [h('span.label', `Source ${n}${arxiv ? ` · arXiv ${arxiv}` : ''}`), h('b', s.title), h('span.small.dim', [s.authors, s.year].filter(Boolean).join(' · '))],
-      body: [s.note ? h('p', h('span.dim', 'Why it’s cited: '), s.note) : null,
-        h('div.hc-links', s.url ? h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer' }, s.url.replace(/^https?:\/\//, ''), ' ', icon('link', 'i-sm')) : null,
-          h('a', { href: `#src-${it.id}-${n}`, onclick: (e) => { e.preventDefault(); document.getElementById(`src-${it.id}-${n}`)?.scrollIntoView({ block: 'center' }); } }, 'Show in sources'))],
+      head: [
+        h('span.label', `Source ${n}${arxiv ? ` · arXiv ${arxiv}` : ''}`),
+        h('b', s.title),
+        h('span.small.dim', [s.authors, s.year].filter(Boolean).join(' · ')),
+      ],
+      body: [
+        s.note ? h('p', h('span.dim', 'Why it’s cited: '), s.note) : null,
+        h(
+          'div.hc-links',
+          s.url ? h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer' }, s.url.replace(/^https?:\/\//, ''), ' ', icon('link', 'i-sm')) : null,
+          h(
+            'a',
+            {
+              href: `#src-${it.id}-${n}`,
+              onclick: (e) => {
+                e.preventDefault();
+                document.getElementById(`src-${it.id}-${n}`)?.scrollIntoView({ block: 'center' });
+              },
+            },
+            'Show in sources',
+          ),
+        ),
+      ],
     };
   }
   const t = client.state.threads[threadId];
   const g = { ...(client.state.glossary[t?.parentId] ?? {}), ...(client.state.glossary[threadId] ?? {}) }[trigger.dataset.term];
-  if (!g) return { label: 'Not defined yet', head: [h('span.label', 'Glossary'), h('b', trigger.textContent)], body: [h('p.dim', 'Not defined yet. The agent has been asked to define it.')] };
-  return { label: `Glossary: ${g.term}`, head: [h('span.label', 'Glossary'), h('b', g.term)], body: [mdNode(g.definition), h('span.small.dim', `Defined by @${g.by}${g.source ? ` · ${g.source}` : ''}`)] };
+  if (!g)
+    return {
+      label: 'Not defined yet',
+      head: [h('span.label', 'Glossary'), h('b', trigger.textContent)],
+      body: [h('p.dim', 'Not defined yet. The agent has been asked to define it.')],
+    };
+  return {
+    label: `Glossary: ${g.term}`,
+    head: [h('span.label', 'Glossary'), h('b', g.term)],
+    body: [mdNode(g.definition), h('span.small.dim', `Defined by @${g.by}${g.source ? ` · ${g.source}` : ''}`)],
+  };
 });
 
 // ── Boot ────────────────────────────────────────────────────────────────────────────────

@@ -1,10 +1,10 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, readFile, writeFile, appendFile, rm } from 'node:fs/promises';
+import { appendFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Store } from '../server/store.mjs';
+import { test } from 'node:test';
 import { Blobs } from '../server/blobs.mjs';
+import { Store } from '../server/store.mjs';
 
 const tmp = () => mkdtemp(join(tmpdir(), 'pb-store-'));
 
@@ -42,7 +42,10 @@ test('a torn last line from a crash is dropped, and earlier events survive', asy
 test('a snapshot starts a new segment and deletes the ones it covers', async () => {
   const dir = await tmp();
   const a = await new Store(dir, { snapshotEvery: 5 }).load();
-  for (let i = 0; i < 12; i++) { a.emit('thread', { id: `t${i}`, members: [] }); await a.flush(); }
+  for (let i = 0; i < 12; i++) {
+    a.emit('thread', { id: `t${i}`, members: [] });
+    await a.flush();
+  }
   const files = await readdir(dir);
   assert.ok(files.includes('snapshot.json'));
   assert.equal(files.filter((n) => n.startsWith('events-')).length, 1, 'only the segment after the last snapshot remains');
@@ -67,7 +70,10 @@ test('Stage 2’s store.json is read once as the first snapshot', async () => {
 test('since() gives the backlog for a reconnecting browser, or null when it’s gone', async () => {
   const s = new Store(null);
   for (let i = 0; i < 3; i++) s.emit('thread', { id: `t${i}`, members: [] });
-  assert.deepEqual(s.since(1).map((e) => e.seq), [2, 3]);
+  assert.deepEqual(
+    s.since(1).map((e) => e.seq),
+    [2, 3],
+  );
   assert.deepEqual(s.since(3), []);
   s.events.splice(0, 2);
   assert.equal(s.since(0), null);

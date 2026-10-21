@@ -1,19 +1,30 @@
 // A tiny static file server for the mockups (ES modules don't load from file://).
 // Usage: node tools/serve.mjs [port]   → http://127.0.0.1:4173/mockups/
-import { createServer } from 'node:http';
+
 import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+};
 
 export function serve(port = 4173) {
   const server = createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     let file = normalize(join(ROOT, path));
-    if (!file.startsWith(ROOT)) { res.writeHead(403).end('Forbidden'); return; }
+    if (!file.startsWith(ROOT)) {
+      res.writeHead(403).end('Forbidden');
+      return;
+    }
     if (path.endsWith('/')) file = join(file, 'index.html');
     try {
       const body = await readFile(file);
