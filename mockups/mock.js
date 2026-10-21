@@ -96,8 +96,11 @@ class PbRing extends HTMLElement {
     svg.setAttribute('width', S); svg.setAttribute('height', S); svg.setAttribute('viewBox', `0 0 ${S} ${S}`);
     svg.innerHTML = inner;
     svg.setAttribute('role', 'img');
+    const tip = document.createElementNS(NS, 'title');
     const subText = subs.length ? `; ${subs.length} subagent${subs.length === 1 ? '' : 's'}: ` + subs.map((x) => `${x.name} ${STATE_WORD[x.state].toLowerCase()}, ${x.ctx}%`).join('; ') : '';
     svg.setAttribute('aria-label', `${name}: ${STATE_WORD[state]}, ${ctx}% of context used${subText}`);
+    tip.textContent = svg.getAttribute('aria-label');
+    svg.prepend(tip);
     const parts = [svg];
     if (subs.length > cap) {
       const more = document.createElement('span');
@@ -120,9 +123,9 @@ function rowHtml(t, active) {
   const rings = t.agents
     ? `<span class="stack">${t.agents.map(([a, s, c, n]) => ring(a, s, c, n, 'xs')).join('')}</span>`
     : ring(t.agent, t.state, t.ctx, t.subs);
-  const who = t.agents ? t.agents.map(([a]) => '@' + a).join(', ') : `@${t.agent} · ${STATE_WORD[t.state].toLowerCase()}`;
+  const who = t.agents ? esc(t.agents.map(([a]) => '@' + a).join(', ')) : `${esc('@' + t.agent)}<span class="state-word"> · ${STATE_WORD[t.state].toLowerCase()}</span>`;
   const badge = t.badge ? `<span class="badge" aria-label="${t.badge} unread">${t.badge}</span>` : '';
-  return `<a class="row" href="${t.href}"${current}><span class="ring-slot">${rings}</span><span class="name"><span>${esc(t.title)}</span><span class="sub">${esc(who)}</span></span>${badge}</a>`;
+  return `<a class="row" href="${t.href}"${current}><span class="ring-slot">${rings}</span><span class="name"><span>${esc(t.title)}</span><span class="sub">${who}</span></span>${badge}</a>`;
 }
 
 // states="index:idle:62:0" lets a page show a thread in a different state from the sample data.

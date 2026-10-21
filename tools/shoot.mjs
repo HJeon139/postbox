@@ -1,6 +1,8 @@
 // Screenshots every mockup at 375 px and 1280 px, in dark and light, through headless Chrome over the
 // DevTools protocol (no dependencies). Then builds one review sheet per page.
-// Usage: node tools/shoot.mjs [page-prefix ...]     e.g. node tools/shoot.mjs 03 07
+// Usage: node tools/shoot.mjs [--baseline] [page-prefix ...]     e.g. node tools/shoot.mjs 03 07
+// Retakes go to screenshots/latest/ (ignored by git). --baseline writes the approved set in screenshots/,
+// which is committed and only changes when a design change is approved.
 import { spawn } from 'node:child_process';
 import { mkdir, readdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,13 +12,14 @@ import { serve } from './serve.mjs';
 
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const OUT = join(ROOT, 'screenshots');
+const baseline = process.argv.includes('--baseline');
+const OUT = join(ROOT, 'screenshots', ...(baseline ? [] : ['latest']));
 const PORT = 4174, DEBUG = 9333;
 const WIDTHS = [[1280, 900, 1], [375, 812, 2]];
 const THEMES = ['dark', 'light'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const only = process.argv.slice(2);
+const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const pages = (await readdir(join(ROOT, 'mockups'))).filter((f) => /^\d\d-.*\.html$/.test(f) && (!only.length || only.some((p) => f.startsWith(p)))).sort();
 
 const server = await serve(PORT);
@@ -100,7 +103,7 @@ const sheet = (name) => `<!doctype html><meta charset="utf-8"><style>
   <figure class="m"><figcaption>375 · light</figcaption><img src="../${name}-light-375.png"></figure></div>`;
 for (const name of made) {
   await writeFile(join(OUT, 'sheets', `${name}.html`), sheet(name));
-  await capture(`http://127.0.0.1:${PORT}/screenshots/sheets/${name}.html`, 1980, 600, 1, join(OUT, 'sheets', `${name}.png`));
+  await capture(`http://127.0.0.1:${PORT}/${OUT.slice(ROOT.length).replace(/^\//, '')}/sheets/${name}.html`, 1980, 600, 1, join(OUT, 'sheets', `${name}.png`));
   await rm(join(OUT, 'sheets', `${name}.html`));
   console.log(`sheets/${name}.png`);
 }

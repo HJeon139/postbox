@@ -75,7 +75,7 @@ sequenceDiagram
 | Decision | Why |
 |---|---|
 | The overview is home, with one tall column per live session | With 2–4 agents, each column can show everything at once: current step, last message, a quick answer, subagents, tool calls, messages between agents, compactions. |
-| The rail lists threads and rooms, with the agent’s ring and a plain-text state | You switch threads often, and you need to spot a blocked agent from anywhere. The text is the non-color cue when motion is reduced. |
+| The rail lists threads and rooms, each with the agent’s ring and name; the state is spelled out in text only when reduced motion is on, and always on hover and in the ring’s accessible name | You switch threads often and need to spot a blocked agent from anywhere. The rings carry the state; the text appears exactly when motion can’t. |
 | Apps and large blocks sit inline at full thread width, capped at about 80% of the viewport, with Expand | Agent software is part of the conversation, not a detour. Text stays at a readable width of about 760px. |
 | The right panel is only for side threads between agents | Apps never compete with it, so the panel has one meaning. |
 | On a phone, each view is a stacked full screen | The overview cards stack, rings sit in a strip under the top bar, and side threads open as full-screen sheets. |
@@ -147,6 +147,7 @@ sequenceDiagram
 | Apps unload when far off screen and reload from saved state as you approach | Memory stays bounded and you don’t lose your place. A same-size placeholder prevents layout jumps. |
 | The agent learns only what an app explicitly sends | Using an app is private until you choose to send something. Apps stay live afterward; catalog blocks become read-only. |
 | An app revision replaces it in place, with a version menu | The thread doesn’t fill up with old copies. |
+| Before an app is shown, Postbox checks it in your browser: it loads the app in a hidden frame at 375 and 1280 px and checks contrast, overflow, missing labels, keyboard traps and state restore. Problems go to the agent as an event; if the app still fails after one fix, it’s shown with a note | Agent-written UI meets the same bar as Postbox’s own, with no headless browser on the server. |
 | Reviews batch your comments with a verdict, then the revision shows as a diff | It works like a pull-request review. Comments on apps attach to anchors the app registers, so they survive re-layout. |
 
 ### Visual language
@@ -155,7 +156,8 @@ sequenceDiagram
 |---|---|
 | “Workbench”: warm, dense, calm; flat bordered controls; no shadows or gradients | It suits long working sessions. |
 | Amber is the only interaction color, including inside apps | One meaning everywhere: you can act on this. |
-| Agent apps sit on a cool slate “stage” with a slate frame and an “Agent-written app” label | Changing the surface temperature shows whose interface you’re in without adding a second accent. |
+| Controls (inputs, buttons, chips, toggles, the composer) use `--line-strong`, which is at least 3:1 against every surface; dividers and card edges keep the quieter `--line` | You can always see where a control is, and the screens stay calm. |
+| Agent apps sit on a cool slate “stage” with a slate frame and an “Agent-written app” label; the title bar, with Postbox’s version menu, Review and Expand, is on the stage too | Changing the surface temperature shows whose interface you’re in without adding a second accent, and the whole frame reads as one object. |
 | Light mode is warm paper; the mode follows the system unless you pick Light or Dark, and the choice is saved in Postbox’s store | The design stays the same app in daylight. Apps swap tokens live. |
 | The dark mode is a step darker than the original brief (page `#15110e`, cards `#1f1a15`, text `#e6ddcf`), and checked boxes are an amber outline and check rather than a solid fill | This reduces glare in long sessions; the brightest elements were filled amber boxes. |
 | Extended color sets: agent status, 8 chart series in a fixed order, a sequential blue scale, a blue and red diverging pair, review diffs, and syntax highlighting | Each set is used only in its own context, so amber stays the only interaction color. |
@@ -186,7 +188,7 @@ Plain English and sentence case, with curly quotes and American spelling everywh
 | UI tools are exposed once, through an MCP server inside Postbox | Claude Code sessions can only gain tools through MCP, and the Agent SDK accepts MCP natively, so both share one definition and one validator. |
 | UI tools never block; your answer arrives as a new message | MCP calls time out, and a reply may come hours later. The event shape is the same for every backend. |
 | The adapter starts and stops agents and reads their status | Tool calls, subagents, compactions and context use come from the backend. Nothing else touches the model. |
-| Stage 2 ships a mock agent, the adapter interface and the MCP server; real adapters come in Stage 3 | The app runs offline with no dependencies beyond Node. |
+| Stage 2 ships a mock agent, the adapter interface, the MCP server and the app check; real adapters and narration come in Stage 3 | The app runs offline with no dependencies beyond Node. |
 
 ### Scope and order
 
@@ -201,17 +203,12 @@ Plain English and sentence case, with curly quotes and American spelling everywh
 - Several people, sign-in or presence.
 - Search across threads.
 - OS notifications and sound.
-- Narrated slideshows as a built-in format. They may come later as recipes: a narrated walkthrough app, and a Slidev export for sharing.
+- Narrated slideshows as a built-in format. Narration arrives in Stage 3 instead, with the real adapters: a speech tool on the host (for example Kokoro) and two recipes, a narrated walkthrough app with a synced transcript and a Slidev export for sharing.
 - New catalog components without an explicit decision.
 
 ## Open questions
 
-- **Control borders.** `--line` is below the 3:1 contrast recommended for borders that identify a control. Strengthen it, or accept it?
-- **Checking apps before you see them.** Postbox could load each agent app headlessly at phone and desktop widths and send problems back to the agent: contrast, overflow, missing labels, focus traps, state that fails to restore.
-- **Narration.** Should a speech tool (for example Kokoro) run on the host, so apps can offer narration with a synced transcript?
-- **Screenshot storage.** Full retakes add about 28 MB to the history each time. Keep them in git, keep only the review sheets, or move them to Git LFS?
-- **App title bar.** Keep it on the cool stage, or make it warm Postbox chrome?
-- **State text in the rail.** Rows say “@indexer · calling tools” as the non-color cue for reduced motion. Keep it, or drop it now that rings show the state?
+None right now. Resolved on 21 October 2026: control borders (a stronger border for controls only), checking apps before you see them (Stage 2, in the browser), narration (Stage 3), screenshot storage (approved baselines only), the app title bar (stays on the stage), and state text in the rail (only with reduced motion).
 
 ## Quality bar
 
@@ -219,7 +216,7 @@ What’s checked today:
 
 - `node tools/contrast.mjs` checks every text, border and status token pair in both modes, including on the app stage.
 - The chart series were validated for color-vision deficiency.
-- Every page is screenshotted at 375 and 1280 px in both modes (`node tools/shoot.mjs`) and reviewed.
+- Every page is screenshotted at 375 and 1280 px in both modes and reviewed. The approved set lives in `screenshots/`; working retakes go to `screenshots/latest/`, which git ignores, and Stage 2 is compared against the approved set.
 
 What isn’t yet, and should be in Stage 2:
 

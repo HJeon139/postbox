@@ -8,7 +8,7 @@ A chat room for directing several AI agents at once. You message them, wake them
 
 **Stage 1, mockups: done.** Static pages show every screen, state and color token in light and dark modes, at phone and desktop widths. They are the reference for the build.
 
-**Stage 2, the app: next.** It will be a working app with a mock agent that runs offline, an MCP server for the UI tools, and one adapter interface where a real model connects. Adapters for the Claude Agent SDK and Claude Code come after that.
+**Stage 2, the app: next.** It will be a working app with a mock agent that runs offline, an MCP server for the UI tools, one adapter interface where a real model connects, and a check that runs on every agent-written app before you see it. Stage 3 adds adapters for the Claude Agent SDK and Claude Code, and narration.
 
 The reasoning behind the design is in [designs/intent.md](designs/intent.md).
 
@@ -33,7 +33,7 @@ Then open <http://127.0.0.1:4173/mockups/>. Add `?theme=light` or `?theme=dark` 
 | [Review](mockups/07-review.html) | Line-by-line comments on Markdown, code and an app, then the diff |
 | [Chart kit](mockups/14-charts.html) | Line, area, scatter, stacked bar, heatmap, diverging bar and stat tiles |
 
-The [mockup index](mockups/index.html) lists all 15 pages. Screenshots of every page, in both modes and at 375 and 1280 px, are in [`screenshots/`](screenshots/). The review sheets in `screenshots/sheets/` put all four versions of a page side by side.
+The [mockup index](mockups/index.html) lists all 15 pages. The approved screenshots of every page, in both modes and at 375 and 1280 px, are in [`screenshots/`](screenshots/). The review sheets in `screenshots/sheets/` put all four versions of a page side by side.
 
 ## How it fits together
 
@@ -63,7 +63,7 @@ flowchart LR
 |---|---|
 | `node tools/serve.mjs [port]` | Serves the repository at `http://127.0.0.1:4173/` |
 | `node tools/contrast.mjs` | Checks the WCAG contrast of every token pair in both modes; exits non-zero on a failure |
-| `node tools/shoot.mjs [page …]` | Screenshots each mockup at 375 and 1280 px in both modes with headless Chrome, and builds the review sheets. Set `CHROME` to point at Chrome if it isn’t in the default macOS location. |
+| `node tools/shoot.mjs [page …]` | Screenshots each mockup at 375 and 1280 px in both modes with headless Chrome, and builds the review sheets, in `screenshots/latest/` (ignored by git). Add `--baseline` to update the approved set in `screenshots/` once a design change is approved. Set `CHROME` to point at Chrome if it isn’t in the default macOS location. |
 
 None of them have dependencies beyond Node.
 
@@ -72,7 +72,7 @@ None of them have dependencies beyond Node.
 ```text
 designs/      design intent and decisions
 mockups/      Stage 1 pages, workbench.css (all tokens), mock.js (rings and rail)
-screenshots/  every page at 375 and 1280 px, dark and light, plus review sheets
+screenshots/  approved screenshots: every page at 375 and 1280 px, dark and light, plus review sheets
 tools/        server, contrast checker, screenshot script
 ```
 

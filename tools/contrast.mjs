@@ -36,6 +36,8 @@ const checks = [
   ['stage-dim', 'stage-bg', 4.5], ['stage-dim', 'stage-panel', 4.5], ['stage-dim', 'stage-sunk', 4.5], ['stage-dim', 'stage-chip', 4.5],
   ['accent', 'stage-bg', 4.5], ['accent', 'stage-panel', 4.5], ['stage-label', 'stage-panel', 4.5],
   ['stage-edge', 'bg', 3], ['stage-edge', 'stage-panel', 3],
+  ['line-strong', 'bg', 3], ['line-strong', 'panel', 3], ['line-strong', 'sunk', 3], ['line-strong', 'chip', 3],
+  ['stage-line-strong', 'stage-bg', 3], ['stage-line-strong', 'stage-panel', 3], ['stage-line-strong', 'stage-sunk', 3], ['stage-line-strong', 'stage-chip', 3],
   ['syn-kw', 'sunk', 4.5], ['syn-str', 'sunk', 4.5], ['syn-num', 'sunk', 4.5], ['syn-fn', 'sunk', 4.5], ['syn-com', 'sunk', 4.5],
 ];
 
