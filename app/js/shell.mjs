@@ -26,7 +26,12 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
           .map((se) => {
             const r = ringFor(se, 'xs');
             r.dataset.session = se.id;
-            return h('span.who-chip', r, h('b', `@${se.handle}`));
+            return h(
+              'span.who-chip',
+              r,
+              h('b', `@${se.handle}`),
+              h('span.who-state.hide-sm', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
+            );
           }),
       )
     : null;
@@ -52,8 +57,25 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       ],
       { label: 'Go to' },
     );
+  // The rail can be hidden, in any view that has one; the choice is remembered.
+  const railToggle =
+    t || pid
+      ? h(
+          'button.btn.icon.sm.ghost.hide-sm',
+          {
+            type: 'button',
+            id: 'rail-toggle',
+            'aria-label': railHidden() ? 'Show the sidebar' : 'Hide the sidebar',
+            'aria-pressed': String(!railHidden()),
+            'aria-keyshortcuts': 'Meta+Backslash',
+            onclick: toggleRail,
+          },
+          icon('sidebar'),
+        )
+      : null;
   return h(
     'header.topbar',
+    railToggle,
     h(
       'button.brand',
       { type: 'button', 'aria-haspopup': 'menu', 'aria-label': `Postbox: go to the overview or a project${n ? ` (${n} need you)` : ''}`, onclick: places },
@@ -100,6 +122,30 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
   );
 }
 
+// ── The sidebar ─────────────────────────────────────────────────────────────────────────
+
+export function railHidden() {
+  try {
+    return localStorage.getItem('pb-rail') === 'hidden';
+  } catch {
+    return false;
+  }
+}
+
+/** Shows or hides the rail (⌘\), and remembers it. */
+export function toggleRail() {
+  const hide = !railHidden();
+  try {
+    localStorage.setItem('pb-rail', hide ? 'hidden' : 'shown');
+  } catch {}
+  document.querySelector('.app')?.classList.toggle('rail-hidden', hide);
+  const b = document.getElementById('rail-toggle');
+  if (b) {
+    b.setAttribute('aria-label', hide ? 'Show the sidebar' : 'Hide the sidebar');
+    b.setAttribute('aria-pressed', String(!hide));
+  }
+}
+
 /** ⌃J: go to the next agent that needs you, and focus what it’s waiting on. */
 export function nextNeedsYou() {
   const list = needsYou().sort((a, b) => (a.needs.kind === 'failed') - (b.needs.kind === 'failed') || (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
@@ -129,45 +175,12 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
   const paint = () => {
     const t = threadId ? S().threads[threadId] : null;
     const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
-    const project = S().projects[projectId];
     const threads = threadsOf(projectId).filter((x) => !x.archived);
     const others = Object.values(S().projects).filter((p) => p.id !== projectId);
     const otherNeeds = others.map((p) => [p, needsYou().filter((se) => S().threads[se.threadId]?.projectId === p.id).length]).filter(([, n]) => n);
     const archived = Object.values(S().sessions).filter((se) => se.archived && !se.deleting).length;
     fill(
       el,
-      h(
-        'button.btn.ghost.rail-proj',
-        {
-          type: 'button',
-          'aria-haspopup': 'menu',
-          style: { justifyContent: 'flex-start', height: 'auto' },
-          onclick: (e) =>
-            openMenu(
-              e.currentTarget,
-              [
-                { heading: 'Projects' },
-                ...Object.values(S().projects).map((p) => ({
-                  label: p.name,
-                  desc: p.folder,
-                  icon: p.id === projectId ? 'check' : 'folder',
-                  run: () => navigate(`#/p/${p.id}`),
-                })),
-                'hr',
-                { label: 'New project…', icon: 'plus', run: () => openSettings('projects') },
-              ],
-              { label: 'Projects' },
-            ),
-        },
-        icon('folder'),
-        h(
-          'span.grow',
-          { style: { textAlign: 'left' } },
-          h('span.title', { style: { fontSize: '14px', display: 'block' } }, project?.name ?? ''),
-          h('span.small.dim.mono', project?.folder?.replace(/^\/Users\/[^/]+/, '~') ?? ''),
-        ),
-        icon('down'),
-      ),
       ...otherNeeds.map(([p, n]) =>
         h(
           'a.row',

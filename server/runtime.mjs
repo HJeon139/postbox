@@ -24,6 +24,9 @@ const DELETE_UNDO_MS = 10000;
 export const PERMISSION_MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
+const CATCH_UP_ITEMS = 40;
+const CATCH_UP_CHARS = 16000;
+const clipText = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const clip = (s, n = 200) => {
   const t = toPlainText(s);
   return t.length > n ? t.slice(0, n - 1) + '…' : t;
@@ -176,6 +179,8 @@ export class Runtime {
       finishedAt: null,
       archived: false,
       brief: brief ?? null,
+      // Nothing given yet: its first turn starts with the conversation so far (see catchUp).
+      seenItem: null,
     });
     const members = [...t.members, se.id];
     this.putThread({ ...this.s.threads[threadId], members, kind: t.kind === 'thread' && members.length > 1 ? 'room' : t.kind });
@@ -224,7 +229,7 @@ export class Runtime {
     this.putThread({ ...this.s.threads[threadId], hops: 0 });
     for (const { se, woke } of targets) {
       if (woke) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
-      this.deliver(se.id, { kind: 'user', text, attachments });
+      this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id });
     }
     return { item };
   }
@@ -284,6 +289,10 @@ export class Runtime {
       message = { ...message, context: se.context };
       this.updateSession(sessionId, { context: [] });
     }
+    // And before that, what happened in the conversation since this agent last took part: a room is shared
+    // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
+    const catchUp = this.catchUp(this.s.sessions[sessionId], message.itemId);
+    if (catchUp) message = { ...message, context: [catchUp, ...(message.context ?? [])] };
     const persona = this.persona(se.personaId);
     const adapter = this.adapters.get(persona?.backend ?? 'mock');
     const abort = new AbortController();
@@ -344,7 +353,10 @@ export class Runtime {
           // A reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check.
           ...(turn.kind === 'lint' ? { lintReply: true } : {}),
         });
+        // The text before a tool call or a block is finished; only the newest segment shows the caret.
+        if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
         turn.segment = it.id;
+        turn.lastSegment = it.id;
         if (!turn.first) turn.first = it.id;
         if (turn.said) turn.said += '\n\n';
         rt.putThread({ ...rt.s.threads[turn.threadId], lastSpeaker: turn.sessionId });
@@ -649,12 +661,12 @@ export class Runtime {
       });
       this.addItem(parent.id, { kind: 'sidelink', sideThreadId: side.id, from: from.handle, to: p.handle, count: 0 });
     }
-    this.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done' });
+    const said = this.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done' });
     this.recordAgentMessage(from.id, 'to', p.handle, text);
     const target = this.ensureSession(side.id, p.id);
     this.recordAgentMessage(target.id, 'from', from.handle, text);
     this.bumpSideLink(side.id);
-    this.deliver(target.id, { kind: 'agent', from: `@${from.handle}`, text }, { replyTo: from.id });
+    this.deliver(target.id, { kind: 'agent', from: `@${from.handle}`, text, itemId: said.id }, { replyTo: from.id });
     return { ok: true, message: `Woke @${p.handle}.` };
   }
 
@@ -840,10 +852,90 @@ export class Runtime {
    */
   shareText(threadId, { fromThreadId, handle, text, summary = false }) {
     const from = this.s.threads[fromThreadId];
+    // The conversation’s agents read it at the start of their next turn, with everything else they missed.
     const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary });
-    const note = `[Postbox] ${summary ? `A summary of the topic thread “${from?.title ?? ''}”, by @${handle}` : `Shared from the topic thread “${from?.title ?? ''}”${handle ? `, by @${handle}` : ', by the person'}`}:\n\n${text}`;
-    for (const se of this.sessionsIn(threadId)) this.updateSession(se.id, { context: [...(se.context ?? []), note].slice(-10) });
     return it;
+  }
+
+  // ── Shared memory in a conversation ────────────────────────────────────────────────
+  // Every agent in a conversation can read all of it. Each session keeps a marker of the last item it was given;
+  // a delivery starts with what came after it, from you and from the other agents, and an agent joining later
+  // gets the recent history the same way. read_conversation reads further back.
+
+  /** The catch-up text for a session, or null, and moves its marker to the end of the conversation. */
+  catchUp(se, excludeId = null) {
+    if (!se) return null;
+    const items = this.store.items(se.threadId);
+    const t = this.s.threads[se.threadId];
+    const at = se.seenItem ? items.findIndex((i) => i.id === se.seenItem) : -1;
+    this.updateSession(se.id, { seenItem: items.at(-1)?.id ?? null });
+    // A session from before markers were kept, alone in its conversation, already saw everything addressed to it.
+    if (se.seenItem === undefined && (t?.members?.length ?? 0) <= 1 && se.startedAt < (items.at(-1)?.at ?? 0)) return null;
+    const lines = items
+      .slice(at + 1)
+      .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
+      .map((i) => this.describeItem(i, se))
+      .filter(Boolean);
+    if (!lines.length) return null;
+    const kept = [];
+    let size = 0;
+    for (const line of lines.reverse()) {
+      if (kept.length >= CATCH_UP_ITEMS || size + line.length > CATCH_UP_CHARS) break;
+      kept.unshift(line);
+      size += line.length;
+    }
+    const dropped = lines.length - kept.length;
+    const where = t?.kind === 'room' ? 'this room' : t?.kind === 'topic' ? 'this thread' : 'this conversation';
+    return `[Postbox] What happened in ${where} since your last turn${dropped ? ` (the last ${kept.length}; ${dropped} earlier ${dropped === 1 ? 'item is' : 'items are'} left out, and read_conversation has them)` : ''}:\n\n${kept.join('\n\n')}`;
+  }
+
+  /**
+   * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out.
+   * @param {any} i @param {any} [se]
+   */
+  describeItem(i, se = null) {
+    const text = (s) => clipText(String(s ?? ''), 2000);
+    switch (i.kind) {
+      case 'user':
+        return `You: ${text(i.text)}${i.attachments?.length ? ` [attached: ${i.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
+      case 'agent':
+        return i.text && i.status !== 'failed' ? `@${i.handle}: ${text(i.text)}` : null;
+      case 'block':
+        return i.valid
+          ? `@${i.handle} showed ${i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`} “${text(i.block.title ?? i.block.fallback)}”`
+          : null;
+      case 'voice': {
+        // The agent hears about its own blocks as events already.
+        const block = i.blockItemId && this.store.item(se?.threadId, i.blockItemId);
+        return block && block.sessionId === se?.id ? null : `You: ${text(i.text)}`;
+      }
+      case 'shared':
+        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
+      case 'system':
+        if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
+        if (i.variant === 'joined') return `@${i.to} joined`;
+        if (i.variant === 'left') return `@${i.to} left`;
+        return null;
+      case 'sidelink':
+        return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages)`;
+      case 'proposal':
+        return `@${i.handle} proposed a new teammate, @${i.proposal?.handle}`;
+      default:
+        return null;
+    }
+  }
+
+  /** read_conversation: the conversation’s items, newest last, as text. */
+  readConversation(se, { limit = 50, skip = 0 } = {}) {
+    const items = this.store.items(se.threadId).filter((i) => i.kind !== 'system' || i.variant === 'wake');
+    const n = Math.max(1, Math.min(200, Number(limit) || 50));
+    const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
+    const slice = items.slice(Math.max(0, end - n), end);
+    const lines = slice
+      .map((i) => (i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipText(i.text ?? '', 2000)}` : this.describeItem(i)))
+      .filter(Boolean);
+    const before = end - slice.length;
+    return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
   }
 
   // ── Diagram legibility ─────────────────────────────────────────────────────────────
@@ -1378,6 +1470,8 @@ export class Runtime {
     if (!app) throw httpError(404, 'That app doesn’t exist.');
     const json = JSON.stringify(state ?? null);
     if (json.length > 256 * 1024) throw httpError(413, 'Saved app state is limited to 256 KB.');
+    // An app that saves the same state again (on every load, say) changes nothing.
+    if (json === JSON.stringify(app.state ?? null)) return;
     this.store.emit('app', { ...app, state: JSON.parse(json) });
   }
 
@@ -1524,6 +1618,9 @@ export class Runtime {
       },
       wake_agent({ handle, message }) {
         return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
+      },
+      read_conversation(args = {}) {
+        return { ok: true, message: rt.readConversation(se(), args) };
       },
       corpus_search(args) {
         return { ok: true, results: hostTool(rt, 'corpus.search', args) };

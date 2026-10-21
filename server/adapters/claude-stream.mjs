@@ -5,7 +5,7 @@
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
 const QUIET =
-  /^(?:mcp__postbox__(?:show_block|update_block|show_app|update_app|define_term|propose_agent|schedule_wake|wake_agent|permission_prompt)|ToolSearch)$/;
+  /^(?:mcp__postbox__(?:show_block|update_block|show_app|update_app|define_term|propose_agent|schedule_wake|wake_agent|permission_prompt|read_conversation)|ToolSearch)$/;
 // Default context windows until a turn’s result reports the real one.
 const WINDOWS = /** @type {[RegExp, number][]} */ ([[/^claude-(?:opus|sonnet|fable)-5/, 1_000_000]]);
 export const windowFor = (model, fallback = 200_000) => WINDOWS.find(([re]) => re.test(String(model ?? '')))?.[1] ?? fallback;
@@ -86,6 +86,8 @@ export function describeTool(name, input = {}) {
       return `Waking @${clip(String(i.handle ?? '').replace(/^@/, ''), 24)}`;
     case 'mcp__postbox__permission_prompt':
       return 'Asking you';
+    case 'mcp__postbox__read_conversation':
+      return 'Reading the conversation';
     case 'ToolSearch':
       return 'Loading tools';
     default: {

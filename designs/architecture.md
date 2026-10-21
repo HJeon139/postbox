@@ -247,3 +247,16 @@ sequenceDiagram
 - **No loops.** A reply to a lint message isn’t linted again by either check.
 
 **Revisit when** another diagram type becomes common (class, state and ER diagrams only get the count check), or Postbox’s column width or diagram font size changes; then re-measure and refit.
+
+## 12. A conversation is shared memory
+
+**Decision.** Every agent in a conversation can read all of it.
+- **A marker per session:** each session records the last item it was given (`seenItem`).
+- **Catch-up:** each delivery starts with the items after that marker, written as plain lines (“You: …”, “@indexer: …”, “@critic showed a review block …”), leaving out the agent’s own messages and the message being delivered.
+- **Caps:** at most 40 items or about 16,000 characters, saying how many earlier ones were left out.
+- **Joining:** a new session starts with no marker, so an agent that joins a room gets its recent history.
+- **Further back:** `read_conversation` returns older history on request.
+
+**What it rests on.** Issue #1: in a room, an agent woken by an @-mention saw only that message, and answered confidently about a discussion it had never seen. The catch-up costs nothing when nothing was missed, as in a direct message where the agent is woken by every message; it replaces the separate path shares from topic threads used to take.
+
+**Revisit when** rooms get long enough that 40 items is too little. Then summarize older stretches instead of dropping them.

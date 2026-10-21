@@ -88,6 +88,18 @@ export const TOOL_DEFS = [
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
+    name: 'read_conversation',
+    description:
+      'Read this conversation’s history: what the person and every agent in it said, newest last. Each turn already starts with what happened since your last one; use this for anything older.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'How many items, up to 200. Default 50.' },
+        skip: { type: 'number', description: 'Skip this many of the newest items, to read further back.' },
+      },
+    },
+  },
+  {
     name: 'permission_prompt',
     description: 'Postbox calls this for you before a tool needs the person’s permission. Don’t call it yourself.',
     inputSchema: {

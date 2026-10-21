@@ -32,11 +32,13 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   let raf = 0;
   let unseen = 0;
 
+  const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0]);
   const render = (it, prev) => {
     const ctx = { threadId, kind: S().threads[threadId]?.kind, rerender: () => rerender(it.id) };
     const node = renderItem(it, prev, ctx);
     messageActions(node, it, ctx);
     node.dataset.key = it.id;
+    if (it.kind === 'block' && it.valid && it.block.type === 'app' && S().apps[it.block.id]) node.dataset.appSig = appSig(S().apps[it.block.id]);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
     return node;
@@ -129,8 +131,17 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     } else if (ch.type === 'app') {
       for (const it of itemsOf(threadId))
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
-          if (it.block.type === 'app') rerender(it.id);
-          else if (it.block.type === 'review' && it.block.format === 'app') {
+          if (it.block.type === 'app') {
+            // Only what changes the frame re-renders it: a new version, a version picked, or the check’s result.
+            // Saved state never does; the running app already has it, and reloading would make it save again.
+            const sig = appSig(d);
+            const node = nodes.get(it.id);
+            if (node?.dataset.appSig !== sig) {
+              rerender(it.id);
+              const fresh = nodes.get(it.id);
+              if (fresh) fresh.dataset.appSig = sig;
+            }
+          } else if (it.block.type === 'review' && it.block.format === 'app') {
             // The review frame keeps its draft; only re-render when the app’s version changed.
             const prev = nodes.get(it.id)?.dataset.appVersion;
             if (prev !== String(d.current)) rerender(it.id);
@@ -192,7 +203,8 @@ const who = (it, { you = false } = {}) => {
   if (you) return h('div.who', ts, h('b', 'You'), via);
   const ring = se ? ringFor(se, 'xs') : h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' });
   if (se) ring.dataset.session = se.id;
-  return h('div.who', ring, h('b', `@${it.handle}`), it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
+  const state = se ? h('span.who-state', { dataset: { session: se.id, item: it.id }, 'aria-live': 'off' }) : null;
+  return h('div.who', ring, h('b', `@${it.handle}`), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a reply in a

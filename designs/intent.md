@@ -31,7 +31,7 @@ Density and speed matter more than onboarding. There is no sign-in and there are
 2. **Get the loop right before the looks.** Streaming that never loses a message, statuses that are correct, notifications that fire. If “needs you” can’t be trusted, nothing else matters.
 3. **Calm by default; draw the eye only when it matters.** Only blocking events pulse and notify. Every animation eases in, eases out, then rests.
 4. **Make good UI the easy path.** Agents do what is easiest, so the kit’s defaults (chart marks, tokens, controls) matter more than any written guidance.
-5. **Never rely on color, hover or motion alone.** Every value is also available as text, a label or a table view, and reduced motion is respected everywhere.
+5. **Never rely on color, hover or motion alone.** Every value is also available as text, a label or a table view, and reduced motion is respected everywhere. Every action is visible without hovering; hover only opens previews, such as glossary and citation cards.
 6. **You stay in charge of your agents.** New personas need your approval, wake chains are capped, and tools are granted explicitly.
 7. **You decide what an agent remembers.** Side topics branch into threads with their own forked sessions, and nothing flows back into a conversation unless you send it.
 
@@ -88,7 +88,7 @@ sequenceDiagram
 | Clicking anywhere on a column opens that agent’s conversation; the agent’s name is the link, and each message between agents opens its side thread | Changed after Stage 3: a column showed the work but didn’t lead to it. |
 | The Postbox mark in the top bar opens a menu of places: the overview and every project, with what needs you in each. Beside it, the path (Project › Conversation) links back. A project opens the conversation you were last in there | Changed after Stage 3. Getting from the overview to a project took the palette or an agent’s menu; a tab per project was tried and dropped, since projects are switched rarely and tabs don’t scale. |
 | A conversation’s menu (⋯ in the top bar) renames it, adds an agent, or deletes it with 10 seconds of Undo; the rail’s Rooms section always offers New room, which asks for two or more agents | Added after Stage 3: rooms could only appear by @-mentioning a second agent, and nothing deleted a whole conversation. |
-| The rail lists the project’s conversations, as direct messages and rooms, each with the agent’s ring and name, plus a Threads entry for its topic threads; the state is spelled out in text only when reduced motion is on, and always on hover and in the ring’s accessible name | You switch conversations often and need to spot a blocked agent from anywhere. The rings carry the state; the text appears exactly when motion can’t. |
+| The rail lists the project’s conversations, as direct messages and rooms, each with the agent’s ring, name and what it’s doing in words (“thinking”, “calling tools”), plus a Threads entry for its topic threads. Projects are switched from the Postbox menu, not the rail. The rail can be hidden (⌘\\), and stays as you left it | Changed after Stage 3: the words used to show only with reduced motion; the rail’s own project switcher duplicated the Postbox menu. |
 | Apps and large blocks sit inline at full thread width, capped at about 80% of the viewport, with Expand | Agent software is part of the conversation, not a detour. Text stays at a readable width of about 760px. |
 | The right panel holds threads: topic threads you start from a message, and side threads between agents | Changed after Stage 3, to follow Slack: the conversation stays in view while you follow a thread. Apps never compete with the panel, so it still has one meaning: a thread. |
 | On a phone, each view is a stacked full screen | The overview cards stack, rings sit in a strip under the top bar, and side threads open as full-screen sheets. |
@@ -106,6 +106,7 @@ sequenceDiagram
 | The `+` menu adds files and agents | Files: upload, pick from the project folder, paste, or add to the corpus. Agents: from a boilerplate, or recommended by an agent. |
 | Any agent may propose a teammate, but only your click creates one | This prevents privilege escalation: the proposal highlights any tools beyond what the proposing agent has. |
 | When you create an agent, you choose where it works: join this thread (the default, which makes it a room) or start a new thread | Joining gives it the recent messages and a short brief; a new thread starts clean. |
+| Everything said in a conversation is shared memory for every agent in it. Each turn starts with what happened since the agent’s last one, from you and the other agents; an agent that joins later gets the recent history; read_conversation reads further back | Fixed after Stage 3 (issue #1): agents in a room saw only messages addressed to them, and answered from partial information. |
 | A Personas page in settings lets you edit, duplicate, retire and save boilerplates | Edits apply to new sessions only. Running sessions keep the version they started with, so behavior doesn’t change underneath you. |
 | Subagents an agent creates inside its own session need no approval | They aren’t personas, and they run with their parent’s tools. |
 | Each project has one root folder | It bounds the file picker and is where Claude Code sessions start. |
@@ -137,7 +138,7 @@ sequenceDiagram
 | Mermaid and KaTeX render; the libraries are bundled locally, and each diagram has “Show source” | Agents explain with diagrams and math. Nothing loads from the network. |
 | A message sent mid-reply is queued, with Send now and Edit | You can keep thinking without derailing the agent. |
 | The composer: Enter sends, Shift+Enter adds a line, Stop replaces Send while an agent replies, and a short hint line says who will reply | These are standard chat conventions, plus the one thing a room needs: knowing who answers. |
-| Turns are grouped by speaker; timestamps appear on hover or focus | The transcript stays dense without losing the time. |
+| Turns are grouped by speaker; each speaker line shows the time, and while an agent works, what it’s doing (“· thinking”) beside its name. Messages sit at most a line apart | Changed after Stage 3: nothing waits for a hover, and the transcript stays dense. |
 | “Jump to latest” appears when you’ve scrolled up and something new arrives | Reading history never means missing a new message. |
 | Text streams as it arrives; a block appears once its JSON is complete, with a quiet placeholder line until then | Half a form is never shown. |
 | Tool use shows as one collapsed activity line per turn (“Searched 3 files · 2 s”) that expands to the steps and their durations | The work is visible without flooding the transcript. |

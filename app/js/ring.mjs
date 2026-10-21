@@ -12,6 +12,22 @@ const RING_SIZES = { xs: [4.5, 1.75, 3, 2], sm: [6, 2, 3.5, 2], lg: [10, 3, 5, 3
 const NS = 'http://www.w3.org/2000/svg';
 export const stateWord = (s) => STATE_WORD[s] ?? 'Idle';
 
+/**
+ * Status words beside agent names: a <span class="who-state" data-session> gets “· thinking” and so on. In the
+ * transcript (data-item set) it shows only on the agent’s latest message, and only while it’s busy or needs
+ * you; in the top bar it always shows.
+ */
+export function paintStateWords(root, sessions, latestItemOf) {
+  for (const el of root.querySelectorAll('.who-state[data-session]')) {
+    const se = sessions[el.dataset.session];
+    if (!se) continue;
+    const live = se.state !== 'idle';
+    const show = el.dataset.item ? live && latestItemOf(se) === el.dataset.item : true;
+    const text = show ? `· ${stateWord(se.state).toLowerCase()}` : '';
+    if (el.textContent !== text) el.textContent = text;
+  }
+}
+
 function ringSvg(c, r, sw, state, ctx) {
   const color = `var(${STATE_VAR[state] ?? '--st-idle'})`;
   const C = 2 * Math.PI * r;

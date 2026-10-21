@@ -47,7 +47,7 @@ Things to try in a fresh Postbox:
 
 ## Conversations and threads
 
-The **Postbox** menu in the top bar goes to the overview or any project, from anywhere. In a project, the rail lists its **conversations**: direct messages with one agent, and rooms with several (**+** beside Rooms starts one with two or more agents). Each agent in a conversation has one session. The **⋯** beside a conversation’s title renames it, adds an agent, or deletes it, with 10 seconds of Undo.
+The **Postbox** menu in the top bar goes to the overview or any project, from anywhere. In a project, the rail lists its **conversations**: direct messages with one agent, and rooms with several (**+** beside Rooms starts one with two or more agents). Each agent in a conversation has one session, and everything said there is shared: each turn starts with what the agent missed since its last one, so an agent you bring into a room knows what was discussed. ⌘\ hides the sidebar. The **⋯** beside a conversation’s title renames it, adds an agent, or deletes it, with 10 seconds of Undo.
 
 Any message can start a **topic thread**, as in Slack: choose **Reply in thread** under it. The thread opens in the panel beside the conversation, and its agent is a fork of the agent’s session at that message. It remembers the conversation up to there, and the conversation never sees the thread. That’s the point: you decide what each agent keeps in its context. To bring something back, choose **Send to conversation** under a reply, or **Summarize back** to have the thread’s agent post a short summary. The conversation’s agents read it at the start of their next turn. The rail’s **Threads** entry lists a project’s topic threads.
 
@@ -216,6 +216,7 @@ The two real adapters share a system prompt that teaches the catalog, the kit an
 - `propose_agent`
 - `schedule_wake`, `wake_agent`
 - `corpus_search`
+- `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one)
 - `permission_prompt`, which Claude Code calls before a tool that needs your OK
 
 Every tool except `permission_prompt` returns at once. When you answer a block, your answer arrives later as an `event` message.
@@ -240,7 +241,7 @@ That runs, in order:
   - `lint-dom`: no unsafe HTML or agent-named attributes and styles
   - `lint-copy`: American spelling and curly quotes
 - **Contrast:** every token pair in both modes.
-- **Tests:** 124 `node:test` tests. Each file loads [`tests/guard.mjs`](tests/guard.mjs) first, which fails any test that touches the network or starts a process, so the suite runs in under a second.
+- **Tests:** 127 `node:test` tests. Each file loads [`tests/guard.mjs`](tests/guard.mjs) first, which fails any test that touches the network or starts a process, so the suite runs in under a second.
 
 They cover:
 - the block validator, the Markdown renderer and the event builder

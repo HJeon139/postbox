@@ -447,7 +447,7 @@ test('sending a reply to the conversation reaches its agent on its next turn, wi
   assert.throws(() => rt.shareToConversation(threadId, reply.id), /already in the conversation/);
   rt.sendMessage(t.id, { text: 'Carry on' });
   await settle(rt);
-  assert.match(adapter.calls.at(-1).message.context[0], /Shared from the topic thread .*Use chapter offsets\./s);
+  assert.match(adapter.calls.at(-1).message.context[0], /Shared from the thread .*Use chapter offsets\./s);
 });
 
 test('summarize back posts the thread agent’s summary in the conversation', async () => {
@@ -558,4 +558,72 @@ test('a persona’s permission mode reaches its running conversations from their
   rt.sendMessage(t.id, { text: 'two' });
   await settle(rt);
   assert.deepEqual(seen, ['auto', 'ask']);
+});
+
+// ── Shared memory in a conversation (issue #1) ─────────────────────────────────────────
+
+test('issue #1: an agent mentioned into a room gets the exchange it wasn’t woken for', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('The editions differ in chapter 12.'));
+  rt.sendMessage(t.id, { text: 'Which edition of Emma should we index?' });
+  await settle(rt);
+  rt.sendMessage(t.id, { text: '@beta what did alpha say about the editions?' });
+  await settle(rt);
+  const b = adapter.calls.at(-1);
+  assert.equal(b.handle, 'beta');
+  assert.equal(b.message.text, '@beta what did alpha say about the editions?');
+  const ctx = b.message.context[0];
+  assert.match(ctx, /^\[Postbox\] What happened in this room since your last turn:/);
+  assert.match(ctx, /You: Which edition of Emma should we index\?/);
+  assert.match(ctx, /@alpha: The editions differ in chapter 12\./);
+  assert.ok(!ctx.includes('what did alpha say'), 'the message itself isn’t repeated as context');
+});
+
+test('each agent catches up only on what it missed, and never on its own replies', async () => {
+  const { rt, t, adapter } = setup();
+  rt.sendMessage(t.id, { text: '@beta hi' });
+  await settle(rt);
+  adapter.next.push(async (c) => c.text('Alpha here.'));
+  rt.sendMessage(t.id, { text: '@alpha status?' });
+  await settle(rt);
+  rt.sendMessage(t.id, { text: '@beta and you?' });
+  await settle(rt);
+  const ctx = adapter.calls.at(-1).message.context?.[0] ?? '';
+  assert.match(ctx, /You: @alpha status\?/);
+  assert.match(ctx, /@alpha: Alpha here\./);
+  assert.ok(!ctx.includes('@beta hi'), 'beta already had that');
+  assert.ok(!/@beta: /.test(ctx), 'its own replies aren’t played back');
+  // In a one-agent conversation nothing is missed, so there’s no catch-up.
+  const { rt: rt2, t: t2, adapter: a2 } = setup();
+  rt2.sendMessage(t2.id, { text: 'one' });
+  await settle(rt2);
+  rt2.sendMessage(t2.id, { text: 'two' });
+  await settle(rt2);
+  assert.equal(a2.calls.at(-1).message.context, undefined);
+});
+
+test('a long history is capped, says so, and read_conversation has the rest', async () => {
+  const { rt, store, t, b } = setup();
+  for (let i = 0; i < 60; i++) store.emit('item.add', { threadId: t.id, item: { id: `old${i}`, kind: 'user', text: `message ${i}`, at: i } });
+  const se = rt.ensureSession(t.id, b.id);
+  const ctx = rt.catchUp(se);
+  assert.match(ctx, /the last 40; 20 earlier items are left out, and read_conversation has them/);
+  assert.ok(ctx.includes('message 59') && !ctx.includes('message 19\n'));
+  const r = rt.toolsFor(se.id).read_conversation({ limit: 5, skip: 0 });
+  assert.match(r.message, /You: message 59/);
+  assert.match(r.message, /call again with skip: 5/);
+  assert.match(rt.readConversation(se, { limit: 2, skip: 58 }).message ?? rt.readConversation(se, { limit: 2, skip: 58 }), /message 1/);
+});
+
+test('saving the same app state again changes nothing, so it can’t start a render loop', () => {
+  const { rt, store, t } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  rt.toolsFor(se.id).show_app({ id: 'ap', title: 'A', code: '<p>x</p>', permissions: [] });
+  const seq = () => store.state.seq;
+  rt.appState('ap', { tab: 'one' });
+  const after = seq();
+  rt.appState('ap', { tab: 'one' });
+  assert.equal(seq(), after, 'no event for an unchanged state');
+  rt.appState('ap', { tab: 'two' });
+  assert.equal(seq(), after + 1);
 });

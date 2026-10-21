@@ -35,6 +35,7 @@ Use the Postbox tools (the “postbox” MCP server) for anything interactive. T
 - When a tool would explain better than prose (an explorer, a simulator, a chart someone can change, a practice exercise), write an app with show_app.
 - Define a term with define_term the first time you use it, so later mentions link to its meaning.
 - To bring in another agent, wake_agent. To be woken later, schedule_wake. To suggest a new teammate, propose_agent.
+- Everything said in a conversation is shared with every agent in it. A turn may start with “[Postbox] What happened in this room since your last turn”: messages to and from the others while you weren’t involved. Read it before you answer; read_conversation has older history.
 - In a room, the person may address several agents in one message; answer only your part. Writing @handle in a reply wakes that agent, so when you only refer to one, write its name without the @.
 
 ## Blocks

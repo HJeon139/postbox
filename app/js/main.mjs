@@ -4,9 +4,9 @@ import './ring.mjs';
 import { onThemeChange } from './apps.mjs';
 import { client, connect, hrefOf, itemsOf, load, needsYou, threadsOf } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
-import { ringFor } from './ring.mjs';
+import { paintStateWords, ringFor } from './ring.mjs';
 import { openPalette } from './sheets.mjs';
-import { mountEmptyProject, mountOverview, mountRail, mountThreads, nextNeedsYou, topbar } from './shell.mjs';
+import { mountEmptyProject, mountOverview, mountRail, mountThreads, nextNeedsYou, railHidden, toggleRail, topbar } from './shell.mjs';
 import { focusComposer, mountComposer, mountSidePanel, mountTranscript } from './thread.mjs';
 import { initHoverCards, mdNode, navigate, route, say, setAttention, toast } from './ui.mjs';
 
@@ -42,7 +42,13 @@ function render() {
     const page = r.view === 'threads' ? mountThreads(project.id) : mountEmptyProject(project.id);
     mounted.push(rail, page);
     root.replaceChildren(
-      h('div.app', topbar({ title: r.view === 'threads' ? 'Threads' : '', projectId: project.id }), rail.el, h('div.main', rail.strip, page.el)),
+      h(
+        'div.app',
+        { class: railHidden() ? 'rail-hidden' : '' },
+        topbar({ title: r.view === 'threads' ? 'Threads' : '', projectId: project.id }),
+        rail.el,
+        h('div.main', rail.strip, page.el),
+      ),
     );
     setAttention(needsYou().length, `${r.view === 'threads' ? 'Threads · ' : ''}${project.name}`);
     return;
@@ -76,13 +82,14 @@ function render() {
   if (side) mounted.push(side);
   const shell = h(
     'div.app',
-    { class: side ? 'has-panel' : '' },
+    { class: [side ? 'has-panel' : '', railHidden() ? 'rail-hidden' : ''].join(' ') },
     topbar({ title: t.title, threadId: t.id }),
     rail.el,
     h('div.main', rail.strip, tr.el, comp.el),
     side?.el,
   );
   root.replaceChildren(shell);
+  paintWords();
   requestAnimationFrame(() => tr.scrollToEnd());
   view(t.id);
   setAttention(needsYou().length, t.title);
@@ -145,7 +152,20 @@ media.addEventListener('change', applyTheme);
 
 // ── Live updates that change the shell ──────────────────────────────────────────────────
 
+// Status words beside agent names follow their sessions, like the rings do.
+const latestItemOf = (se) => {
+  const list = client.state.items[se.threadId] ?? [];
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].sessionId === se.id && (list[i].kind === 'agent' || list[i].kind === 'block')) return list[i].id;
+  return null;
+};
+let wordsFrame = 0;
+const paintWords = () => {
+  cancelAnimationFrame(wordsFrame);
+  wordsFrame = requestAnimationFrame(() => paintStateWords(document, client.state.sessions, latestItemOf));
+};
+
 client.on((ch) => {
+  if (['session', 'item.add', 'load'].includes(ch.type)) paintWords();
   if (ch.type === 'settings' || ch.type === 'load') applyTheme();
   if (ch.type === 'notify') notify(ch.data);
   if (['thread', 'remove', 'project'].includes(ch.type) || (ch.type === 'session' && topbarChanged(ch.data))) refreshTop();
@@ -205,6 +225,12 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'j') {
     e.preventDefault();
     nextNeedsYou();
+    return;
+  }
+  // ⌘\ shows or hides the sidebar.
+  if (mod && e.key === '\\') {
+    e.preventDefault();
+    toggleRail();
     return;
   }
   if (mod && e.key.toLowerCase() === 'k') {
