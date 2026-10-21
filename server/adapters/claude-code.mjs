@@ -6,8 +6,8 @@
 //          --model <persona model>  --session-id <uuid> | --resume <uuid>
 //          --mcp-config '{ postbox: { type: http, url: <ctx.mcpUrl>, alwaysLoad } }' --strict-mcp-config
 //          --append-system-prompt <guide>  --allowedTools mcp__postbox
-//          --permission-mode manual | acceptEdits | bypassPermissions
-//          --permission-prompt-tool mcp__postbox__permission_prompt   (ask and acceptEdits)
+//          --permission-mode auto | manual | acceptEdits | bypassPermissions
+//          --permission-prompt-tool mcp__postbox__permission_prompt   (all but bypass: what auto can’t decide comes here)
 //
 // The turn’s message goes in on stdin. Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit.
 // POSTBOX_CLAUDE_RECORD=<folder> saves each turn’s raw stream there, for test fixtures.
@@ -25,7 +25,12 @@ import { agentGuide, formatMessage } from './guide.mjs';
 const DEFAULT_MODEL = 'claude-opus-5-5';
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
 // settings, or auto, and an agent you set to ask could end up not asking. (manual is the CLI’s name for default.)
-const MODES = { ask: ['--permission-mode', 'manual'], acceptEdits: ['--permission-mode', 'acceptEdits'], bypass: ['--permission-mode', 'bypassPermissions'] };
+const MODES = {
+  auto: ['--permission-mode', 'auto'],
+  ask: ['--permission-mode', 'manual'],
+  acceptEdits: ['--permission-mode', 'acceptEdits'],
+  bypass: ['--permission-mode', 'bypassPermissions'],
+};
 
 /** The claude binary: POSTBOX_CLAUDE_BIN, then the native installer’s location, then the PATH. */
 export function findClaude(env = process.env) {
@@ -57,7 +62,7 @@ export function claudeVersion(bin = findClaude()) {
  *           fork?: { claudeSessionId: string, uuid?: string }|null }} turn
  */
 export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs = [], fork = null }) {
-  const mode = persona.permissionMode in MODES ? persona.permissionMode : 'ask';
+  const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   return [
     '-p',
     '--output-format',

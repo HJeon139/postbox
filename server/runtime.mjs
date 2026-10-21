@@ -2,8 +2,10 @@
 // limit, queues messages sent mid-reply, handles Stop, tracks what "needs you", and implements the UI
 // tools that agents call (over MCP, or in-process for the mock).
 
+import { createHash } from 'node:crypto';
 import { basename, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
+import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
@@ -14,8 +16,12 @@ import { newId } from './store.mjs';
 
 export const HOP_LIMIT = 3;
 const DELETE_UNDO_MS = 10000;
-/** What a persona may do without asking: ask for anything risky, accept file edits, or run everything. */
-export const PERMISSION_MODES = ['ask', 'acceptEdits', 'bypass'];
+/**
+ * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
+ * actions and asks you only when it can’t decide. ask: ask before anything risky. acceptEdits: edit files
+ * freely, ask before commands. bypass: never ask.
+ */
+export const PERMISSION_MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const clip = (s, n = 200) => {
@@ -52,10 +58,14 @@ export class Runtime {
   persona(id) {
     return this.s.personas[id];
   }
-  /** The persona as this session started with it. Sessions from before snapshots use the current one. */
+  /**
+   * The persona as this session started with it. Sessions from before snapshots use the current one. Where it
+   * runs and what it may do without asking follow the persona from the next turn, so changing them reaches
+   * conversations that are already going.
+   */
   personaFor(se) {
     const p = this.persona(se.personaId);
-    return p && { ...p, ...(se.personaSnapshot ?? {}) };
+    return p && { ...p, ...(se.personaSnapshot ?? {}), backend: p.backend, permissionMode: p.permissionMode ?? 'auto' };
   }
   personaByHandle(handle) {
     return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
@@ -331,6 +341,8 @@ export class Runtime {
           text: '',
           status: 'streaming',
           activity: turn.first ? null : { steps: [] },
+          // A reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check.
+          ...(turn.kind === 'lint' ? { lintReply: true } : {}),
         });
         turn.segment = it.id;
         if (!turn.first) turn.first = it.id;
@@ -509,8 +521,16 @@ export class Runtime {
 
     // Lint for coined terms the reply never defined; the agent gets the list and fixes it.
     const undefinedTerms = lintTerms(turn.said, this.s.glossary[turn.threadId] ?? {});
+    // And for diagrams too wide or too busy to read at the conversation’s width.
+    const diagrams = turn.kind === 'lint' ? [] : lintDiagrams(turn.said);
+    if (diagrams.length)
+      this.rememberDiagrams(
+        se.id,
+        diagrams.map((d) => d.src),
+      );
     // A lint turn is never linted again, so this can’t loop.
-    if (undefinedTerms.length && turn.kind !== 'lint') this.deliver(se.id, { kind: 'lint', undefinedTerms });
+    if ((undefinedTerms.length || diagrams.length) && turn.kind !== 'lint')
+      this.deliver(se.id, { kind: 'lint', undefinedTerms, diagrams: diagrams.map(({ src: _src, ...d }) => d) });
 
     // An agent that @-mentions another agent wakes it.
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
@@ -694,11 +714,11 @@ export class Runtime {
       return { ok: true };
     }
     if (action !== 'create') throw httpError(400, 'A proposal accepts “create” or “dismiss”. To edit it first, open the new-agent sheet.');
-    // A proposed teammate runs where its proposer runs, asking before anything risky, on the default model.
+    // A proposed teammate runs where its proposer runs, with the default permissions and model.
     const proposer = this.s.sessions[it.sessionId];
     const backend = (proposer && this.persona(proposer.personaId)?.backend) ?? 'mock';
     const { handle, description, instructions, tools } = it.proposal;
-    const p = this.createPersona({ handle, description, instructions, tools, backend, permissionMode: 'ask', createdBy: it.sessionId });
+    const p = this.createPersona({ handle, description, instructions, tools, backend, createdBy: it.sessionId });
     this.patchItem(threadId, itemId, { status: 'created', personaId: p.id });
     this.addItem(threadId, { kind: 'voice', text: `Created @${p.handle}` });
     this.ensureSession(threadId, p.id, { brief: it.proposal.description });
@@ -826,6 +846,48 @@ export class Runtime {
     return it;
   }
 
+  // ── Diagram legibility ─────────────────────────────────────────────────────────────
+  // The linter estimates from a diagram’s source; the browser measures the real text size after it renders and
+  // reports here what the estimate missed. Either way the agent hears about a diagram once.
+
+  rememberDiagrams(sessionId, sources) {
+    const se = this.s.sessions[sessionId];
+    if (!se) return;
+    const hashes = sources.map((s) => createHash('sha256').update(s.trim()).digest('hex').slice(0, 16));
+    this.updateSession(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
+  }
+
+  /** The browser measured a rendered diagram: { src, textPx, width }. */
+  diagramCheck(threadId, itemId, { src, textPx, width }) {
+    const it = this.store.item(threadId, itemId);
+    if (it?.kind !== 'agent' || it.lintReply || typeof src !== 'string') return { ok: true, sent: false };
+    const se = this.s.sessions[it.sessionId];
+    // Only a measurement at the conversation’s width counts; a narrow panel or phone shrinks every diagram.
+    if (!se || !(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)) return { ok: true, sent: false };
+    const hash = createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
+    if (se.diagramsLinted?.includes(hash)) return { ok: true, sent: false };
+    this.rememberDiagrams(se.id, [src]);
+    const index = [...String(it.text).matchAll(/^ {0,3}```mermaid/gm)].length > 1 ? null : 0;
+    this.deliver(se.id, {
+      kind: 'lint',
+      undefinedTerms: [],
+      diagrams: [
+        {
+          index,
+          kind: 'diagram',
+          excerpt: src.split('\n').slice(0, 3).join('\n'),
+          problems: [
+            {
+              code: 'text-too-small',
+              message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
+            },
+          ],
+        },
+      ],
+    });
+    return { ok: true, sent: true };
+  }
+
   // ── Permission prompts ─────────────────────────────────────────────────────────────
   // A real agent in “ask” mode stops before anything risky, such as running a command. Postbox shows a card
   // in the thread, the agent needs you, and the tool call waits for your answer. Ending the turn, or Stop,
@@ -940,7 +1002,6 @@ export class Runtime {
       backend: 'claude-code',
       description: `Attached from Claude Code in ${cs.cwd}`,
       folder: cs.cwd,
-      permissionMode: 'ask',
     });
     const t = this.createThread({ projectId, title: cs.title, personaIds: [p.id] });
     const se = this.sessionsIn(t.id)[0];
@@ -1062,7 +1123,7 @@ export class Runtime {
     instructions = '',
     backend = 'mock',
     model = backend === 'mock' ? 'mock' : DEFAULT_MODEL,
-    permissionMode = 'ask',
+    permissionMode = 'auto',
     folder = '',
     tools = [],
     examples = [],

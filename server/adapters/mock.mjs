@@ -187,6 +187,7 @@ const HANDLERS = {
     }
     if (has(text, /fail|preface|rebuild/)) return failingReply(a);
     if (has(text, /cache|clean/)) return cleanCache(a);
+    if (has(text, /pipeline/)) return pipelineDiagram(a);
     if (has(text, /timeline|broken|invalid/)) return brokenBlocks(a);
     if (has(text, /map/)) return brokenMap(a, mem);
     if (has(text, /dashboard|chart/)) return dashboard(a, mem);
@@ -229,6 +230,8 @@ const HANDLERS = {
 };
 
 async function defineAll(m, a) {
+  // A diagram the linter found too small to read: redraw it top to bottom, in two parts.
+  if (m.diagrams?.length) await redrawPipeline(a);
   // The linter found terms this agent used but never defined; define them quietly.
   const known = {
     'observation-budget':
@@ -236,7 +239,7 @@ async function defineAll(m, a) {
     'context-compaction':
       'Summarizing an agent’s older context so a long run fits its context window. Postbox shows each compaction as a divider you can expand.',
   };
-  for (const t of m.undefinedTerms) {
+  for (const t of m.undefinedTerms ?? []) {
     await a.sleep(150);
     a.t.define_term({ term: t.term, key: t.key, definition: known[t.key] ?? `${t.term}: a name used in this thread for a specific step or requirement.` });
   }
@@ -886,5 +889,22 @@ async function topicSummary(a) {
   await a.think(500);
   await a.say(
     'In the thread we looked at why observations matter in ReAct: they’re the only outside evidence in the loop, so they keep the plan grounded. Nothing in the explainer changes. One idea for later: a practice step that hides an observation, to show how the plan drifts without it.',
+  );
+}
+
+// A diagram drawn the way agents often first draw one: every step side by side, with long labels. Postbox’s
+// diagram linter flags it as too small to read, and the redraw below is what a good fix looks like.
+async function pipelineDiagram(a) {
+  await a.think(500);
+  await a.tool('read indexer/pipeline.md', 300);
+  await a.say(
+    'Here’s the whole indexing pipeline, from the raw files to both indexes:\n\n```mermaid\nflowchart LR\n  F[Gutenberg plain-text files] --> H[Strip license headers and footers]\n  H --> C[Detect chapter headings per book]\n  C --> P[Split chapters into passages of about 120 words]\n  P --> T[Tokenize, lowercase and drop stop words]\n  T --> B[Build the BM25 inverted index]\n  P --> E[Embed each passage for semantic search]\n  B --> M[Write manifest.json with counts]\n  E --> M\n```',
+  );
+}
+
+async function redrawPipeline(a) {
+  await a.think(400);
+  await a.say(
+    'That diagram was too wide to read here, so here it is top to bottom, in two parts.\n\n**Preparing the text**\n\n```mermaid\nflowchart TD\n  F[Plain-text files] --> H[Strip license text]\n  H --> C[Find chapters]\n  C --> P[Split into passages]\n```\n\n**Building the indexes**\n\n```mermaid\nflowchart TD\n  P[Passages] --> T[Tokenize]\n  T --> B[BM25 index]\n  P --> E[Embeddings]\n  B --> M[manifest.json]\n  E --> M\n```\n\nPassages are about 120 words, and tokenizing lowercases them and drops stop words.',
   );
 }

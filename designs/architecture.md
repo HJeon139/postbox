@@ -139,7 +139,7 @@ The SDK streams the same messages as the CLI, so one mapper ([`server/adapters/c
 
 ## 6. Permissions: a card in the thread, and an explicit mode
 
-**Decision.** Each persona has a permission mode: ask (the default), accept edits, or run everything. In ask mode, a risky tool call becomes a card in the thread that shows the exact command, and the call waits for your answer:
+**Decision.** Each persona has a permission mode: auto (the default), ask, accept edits, or run everything. In auto mode, Claude Code’s classifier approves routine actions and sends what it can’t decide to the same place ask mode does: a card in the thread that shows the exact command, while the call waits for your answer:
 - **Claude Code:** through `--permission-prompt-tool`, an MCP tool that doesn’t return until you answer.
 - **Agent SDK:** through `canUseTool`.
 
@@ -233,3 +233,17 @@ sequenceDiagram
 - **Sturdier everywhere.** A page that needs no requests can’t be broken by an extension, a proxy or a slow network.
 
 **Revisit when** apps need large assets of their own. Then serve them from a separate origin rather than relaxing the policy.
+
+## 11. Diagram legibility: estimate, then measure
+
+**Decision.** Two checks find Mermaid diagrams too small to read, and both reach the agent as a `lint` message that says what to change. Each diagram is reported once.
+- **The estimate** ([`shared/diagram-lint.mjs`](../shared/diagram-lint.mjs)) runs on each finished reply. It reads the Mermaid source well enough to estimate the layout’s width, and from that the size its text ends up at in the 728 px column. It also flags too many boxes, one row of many boxes, and long sequences.
+- **The measurement** happens in the browser after a diagram renders: its text size is 13 px × the scale it was drawn at. Anything under 10 px at the conversation’s width is reported to the server, unless the estimate already caught it.
+
+**What it rests on**
+- **It’s the symptom people see.** A wide diagram doesn’t fail; it shrinks. Text size is the measure that matches what a reader experiences, so both checks use it.
+- **Fitted, not guessed.** The estimate’s layout constants (8.5 px per character, about 56 px of padding per box, the gaps between sequence participants) were fitted to diagrams rendered in Chrome. They agree to within about half a pixel, and the measured values are a test.
+- **Prevention first.** The agent guide asks for about five boxes side by side, top-to-bottom chains, short labels and lists as text, so most diagrams never trip either check.
+- **No loops.** A reply to a lint message isn’t linted again by either check.
+
+**Revisit when** another diagram type becomes common (class, state and ER diagrams only get the count check), or Postbox’s column width or diagram font size changes; then re-measure and refit.

@@ -2,6 +2,7 @@
 // review mode, Expand, and unloading far-off-screen frames (they reload from saved state as you approach).
 // Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
 
+import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
 import { api, client } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
@@ -499,6 +500,14 @@ export function enhanceMarkdown(root) {
       if (e.data.type === 'size') {
         iframe.style.height = `${Math.min(e.data.height, 900)}px`;
         iframe.dataset.sized = '1';
+        // Too small to read: tell the server, once per diagram, so the agent can redraw it.
+        if (typeof e.data.textPx === 'number') iframe.dataset.textPx = String(e.data.textPx);
+        const itemEl = box.closest('[data-key]');
+        const threadId = box.closest('[data-thread]')?.dataset.thread;
+        if (e.data.textPx < MIN_TEXT_PX && itemEl && threadId && !iframe.dataset.reported) {
+          iframe.dataset.reported = '1';
+          api(`/api/threads/${threadId}/items/${itemEl.dataset.key}/diagram`, { src, textPx: e.data.textPx, width: e.data.width }).catch(() => {});
+        }
       }
       if (!iframe.isConnected) removeEventListener('message', onMsg);
     };

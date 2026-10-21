@@ -14,7 +14,7 @@ import { agentGuide, formatMessage } from './guide.mjs';
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
-const MODES = { ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
+const MODES = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
 
 /** Loads the SDK, or returns null when it isn’t installed. */
 export async function loadAgentSdk() {
@@ -32,7 +32,7 @@ export async function loadAgentSdk() {
  *           abortController: AbortController, canUseTool?: Function, fork?: any }} turn
  */
 export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpUrl, guide, abortController, canUseTool, fork = null }) {
-  const mode = persona.permissionMode in MODES ? persona.permissionMode : 'ask';
+  const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   return {
     cwd,
     additionalDirectories: addDirs,

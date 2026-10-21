@@ -42,7 +42,7 @@ Things to try in a fresh Postbox:
 | Catalog tour | Show me every kind of block you can send | One of each catalog block, all live |
 | ReAct, step by step | Explain ReAct with something I can try · Walk me through ReAct, out loud · then **Reply in thread** under the explainer | Citations with hover cards, a diagram, math, a glossary term and a practice app · slides that follow a local voice · a topic thread with a forked agent, and Summarize back |
 | Corpus schema spec | Review my corpus schema line by line | Markdown, code and app reviews, then a revision shown as a diff |
-| Index the shelf | Index the shelf · Rebuild without the prefaces · Show it as a timeline · Show me the shelf map · Show me a dashboard · Clear the old index cache | Progress, subagents and a compaction · a failed reply with Retry · blocks Postbox can’t show · a crashed app · an app that fails its check and gets fixed · a permission card |
+| Index the shelf | Index the shelf · Rebuild without the prefaces · Show it as a timeline · Show me the shelf map · Show me a dashboard · Clear the old index cache · Draw the whole indexing pipeline | Progress, subagents and a compaction · a failed reply with Retry · blocks Postbox can’t show · a crashed app · an app that fails its check and gets fixed · a permission card · a diagram too wide to read, flagged by the diagram linter and redrawn |
 | Corpus planning | @indexer check the editions with the researcher, in a loop | Agents waking each other in a side thread until the limit asks you |
 
 ## Conversations and threads
@@ -175,15 +175,16 @@ Postbox never reads, stores or asks for an API key. Both real backends use Claud
 
 **Model.** New agents use `claude-opus-5-5`. Any model name Claude Code accepts works; change it per persona under **Personas**.
 
-**Permissions.** Each persona has one of three modes:
+**Permissions.** Each persona has one of four modes:
 
 | Mode | The agent… |
 |---|---|
-| Ask me (the default) | asks before it runs a command or changes a file. Postbox shows the exact command in a card in the thread, the agent needs you, and the tool call waits for **Allow** or **Don’t allow**. Stop answers no. |
+| Auto (the default) | runs routine actions without asking: Claude Code’s safety classifier approves them. When it can’t decide, the agent asks you, the same way as Ask me. |
+| Ask me | asks before it runs a command or changes a file. Postbox shows the exact command in a card in the thread, the agent needs you, and the tool call waits for **Allow** or **Don’t allow**. Stop answers no. |
 | Accept edits | edits files in its folders freely, and asks before it runs commands |
 | Run everything | never asks. Use it only in a folder you can lose. |
 
-Postbox always passes the mode explicitly, so a default from your own Claude Code settings never loosens it.
+Postbox always passes the mode explicitly, so a default from your own Claude Code settings never changes it. A change to a persona’s mode, or to where it runs, reaches its conversations from their next turn.
 
 **Folders.** An agent works in its project’s root folder, or in the folder its persona names, or, if neither is set, in `data/workspaces/<name>`. If its persona names a folder, it can also read the project’s. Its permission mode decides what it may change. Postbox’s own tools (show_block and the rest) never ask; they only show things in the thread.
 
@@ -239,7 +240,7 @@ That runs, in order:
   - `lint-dom`: no unsafe HTML or agent-named attributes and styles
   - `lint-copy`: American spelling and curly quotes
 - **Contrast:** every token pair in both modes.
-- **Tests:** 112 `node:test` tests. Each file loads [`tests/guard.mjs`](tests/guard.mjs) first, which fails any test that touches the network or starts a process, so the suite runs in under a second.
+- **Tests:** 124 `node:test` tests. Each file loads [`tests/guard.mjs`](tests/guard.mjs) first, which fails any test that touches the network or starts a process, so the suite runs in under a second.
 
 They cover:
 - the block validator, the Markdown renderer and the event builder
@@ -247,6 +248,7 @@ They cover:
 - the store: the event log, crash recovery, snapshots and blobs
 - the runtime: queueing, Stop, failures and Retry, needs-you, the wake limit, side threads, topic threads with forked sessions, delete with undo, app permissions, the check-and-fix loop, permission cards and MCP
 - both real adapters, replaying streams recorded from real Claude Code turns ([`tests/fixtures/claude-code/`](tests/fixtures/claude-code/))
+- the diagram linter, against text sizes measured in Chrome
 - attaching and mirroring Claude Code sessions, narration, and the lint rules themselves
 
 Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs the same check on every pull request, then plays the demo in headless Chrome and runs axe-core on every scene.

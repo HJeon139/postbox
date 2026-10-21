@@ -348,7 +348,7 @@ test('personas keep a permission mode and a model; real backends default to Clau
   rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
   const p = rt.createPersona({ handle: 'coder', backend: 'claude-code' });
   assert.equal(p.model, 'claude-opus-5-5');
-  assert.equal(p.permissionMode, 'ask');
+  assert.equal(p.permissionMode, 'auto', 'auto mode is the default');
   assert.equal(rt.updatePersona(p.id, { permissionMode: 'acceptEdits' }).permissionMode, 'acceptEdits');
   assert.throws(() => rt.updatePersona(p.id, { permissionMode: 'yolo' }), /Permissions are one of/);
   assert.throws(() => rt.createPersona({ handle: 'nope', backend: 'agent-sdk' }), /isn’t available on this computer/);
@@ -512,4 +512,50 @@ test('a conversation with several agents is a room, and can be renamed', () => {
   assert.equal(room.kind, 'room');
   assert.equal(rt.renameThread(room.id, '  Corpus planning ').title, 'Corpus planning');
   assert.throws(() => rt.renameThread(room.id, ' '), /needs a name/);
+});
+
+// ── Diagram legibility ────────────────────────────────────────────────────────────────
+
+const WIDE_DIAGRAM =
+  '```mermaid\nflowchart LR\n  A[Read the plain-text files] --> B[Strip the license headers]\n  B --> C[Detect chapter headings]\n  C --> D[Split into passages]\n  D --> E[Tokenize and lowercase]\n  E --> F[Build the inverted index]\n  F --> G[Write the manifest]\n```';
+
+test('a reply with a diagram too wide to read gets a lint message, once; the redraw isn’t linted again', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text(`Here it is:\n\n${WIDE_DIAGRAM}`));
+  adapter.next.push(async (c) => c.text('Redrawn:\n\n```mermaid\nflowchart TD\nA-->B\n```'));
+  rt.sendMessage(t.id, { text: 'draw it' });
+  await settle(rt);
+  const lint = adapter.calls.find((c) => c.message.kind === 'lint');
+  assert.equal(lint.message.diagrams[0].problems[0].code, 'text-too-small');
+  assert.equal(adapter.calls.filter((c) => c.message.kind === 'lint').length, 1);
+  const redraw = store.items(t.id).find((i) => i.kind === 'agent' && i.lintReply);
+  assert.ok(redraw, 'the reply to the lint is marked, so the browser check skips it');
+});
+
+test('the browser’s measurement reaches the agent only for an unflagged diagram at the conversation’s width', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('```mermaid\ngraph LR\nA-->B\n```'));
+  rt.sendMessage(t.id, { text: 'draw' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  const src = 'graph LR\nA-->B';
+  assert.equal(rt.diagramCheck(t.id, item.id, { src, textPx: 12, width: 728 }).sent, false, 'readable');
+  assert.equal(rt.diagramCheck(t.id, item.id, { src, textPx: 7, width: 400 }).sent, false, 'a narrow panel doesn’t count');
+  assert.equal(rt.diagramCheck(t.id, item.id, { src, textPx: 7, width: 728 }).sent, true);
+  assert.equal(rt.diagramCheck(t.id, item.id, { src, textPx: 7, width: 728 }).sent, false, 'once per diagram');
+  await settle(rt);
+  assert.match(adapter.calls.at(-1).message.diagrams[0].problems[0].message, /drawn at 7 px/);
+});
+
+test('a persona’s permission mode reaches its running conversations from their next turn', async () => {
+  const { rt, t, a, adapter } = setup();
+  const seen = [];
+  adapter.next.push(async (c) => seen.push(c.persona.permissionMode));
+  adapter.next.push(async (c) => seen.push(c.persona.permissionMode));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  rt.updatePersona(a.id, { permissionMode: 'ask' });
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual(seen, ['auto', 'ask']);
 });

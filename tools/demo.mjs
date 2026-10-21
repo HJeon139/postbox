@@ -265,6 +265,14 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await settled(dash);
   await shot('14-charts');
 
+  // 11b · A diagram too wide to read: the linter tells @indexer, which redraws it top to bottom
+  const pipe = await call('/api/threads', { projectId: index.projectId, title: 'Indexing pipeline', personaIds: [ix.personaId] });
+  log('@indexer draws a diagram too wide to read; the diagram linter tells it, and it redraws the diagram.');
+  await view(`#/t/${pipe.id}`);
+  await send(pipe, 'Draw the whole indexing pipeline');
+  await settled(pipe, (st) => find(st, pipe, (i) => i.kind === 'agent' && i.lintReply && i.status === 'done'), 'the redrawn diagram');
+  await shot('20-diagram-lint');
+
   // 12 · The overview, with one agent that needs you
   const papers = T('Agent memory papers');
   log('@researcher asks which papers to read, so it needs you; the overview shows it first.');

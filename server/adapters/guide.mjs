@@ -25,6 +25,8 @@ const GUIDE = `## How Postbox shows your work
 
 Reply in Markdown. Postbox renders headings, lists, tables, links (https only), \`code\`, fenced code, \`\`\`mermaid diagrams, and math with $…$ or $$…$$. Raw HTML is shown as text, so never write it in a reply.
 
+Diagrams are scaled to fit a 728 px column, so a wide one shrinks until its text can’t be read. Keep a diagram to about five boxes side by side: draw longer chains top to bottom (flowchart TD), keep labels to a few words, put lists in the text rather than in one row of boxes, and split anything over about 15 boxes into smaller diagrams. Postbox checks each diagram and tells you if one is too small to read.
+
 Use the Postbox tools (the “postbox” MCP server) for anything interactive. They return at once and never wait for the person: when the person answers a block or uses an app, the answer arrives later as a new message from Postbox. So ask, end your turn, and continue when the answer comes.
 
 - To ask something with a fixed set of answers, show a choice block; to collect several values, a form; before anything destructive or costly, a confirm that says exactly what will happen.
@@ -114,8 +116,17 @@ function formatBody(message, pathOf) {
       return `[Postbox] A wake-up you scheduled is due. Your note: ${message.note || '(none)'}`;
     case 'app-check':
       return `[Postbox] Your app “${message.appId}” failed the pre-display check. Fix it with update_app:\n${(message.problems ?? []).map((p) => `- ${p.code}: ${p.message}`).join('\n')}`;
-    case 'lint':
-      return `[Postbox] Your reply used terms you haven’t defined. Define each with define_term:\n${(message.undefinedTerms ?? []).map((t) => `- ${t.term}`).join('\n')}`;
+    case 'lint': {
+      const parts = [];
+      if (message.undefinedTerms?.length)
+        parts.push(`Your reply used terms you haven’t defined. Define each with define_term:\n${message.undefinedTerms.map((t) => `- ${t.term}`).join('\n')}`);
+      for (const d of message.diagrams ?? [])
+        parts.push(
+          `${d.index === null || d.index === undefined ? 'A diagram' : `Diagram ${d.index + 1}`} in your reply can’t be read (it starts “${d.excerpt.split('\n')[0]}”):\n${d.problems.map((p) => `- ${p.message}`).join('\n')}`,
+        );
+      if (message.diagrams?.length) parts.push('Reply with a corrected version of each diagram, briefly, so the person can read it.');
+      return `[Postbox] ${parts.join('\n\n')}`;
+    }
     case 'notice':
       return `[Postbox] ${message.text}`;
     default:

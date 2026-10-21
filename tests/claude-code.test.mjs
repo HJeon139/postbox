@@ -149,6 +149,9 @@ test('labels and permission cards say what a tool does', () => {
 
 test('CLI arguments follow the persona’s permission mode and the session', () => {
   const base = { sessionId: 'abc', mcpUrl: 'http://x/mcp?session=1', guide: 'G' };
+  const auto = claudeArgs({ ...base, persona: { model: 'mock' }, resume: false });
+  assert.deepEqual(auto.slice(auto.indexOf('--permission-mode'), auto.indexOf('--permission-mode') + 2), ['--permission-mode', 'auto'], 'auto is the default');
+  assert.ok(auto.includes('--permission-prompt-tool'), 'what auto mode can’t decide comes to you');
   const ask = claudeArgs({ ...base, persona: { permissionMode: 'ask', model: 'mock' }, resume: false });
   assert.deepEqual(ask.slice(ask.indexOf('--model'), ask.indexOf('--model') + 2), ['--model', 'claude-opus-5-5']);
   assert.ok(ask.includes('--session-id') && !ask.includes('--resume'));
@@ -257,8 +260,12 @@ test('the Agent SDK adapter passes the mode explicitly, loads Postbox’s tools 
   const ctx = fakeCtx();
   await adapter.deliver({}, { kind: 'user', text: 'Tea or coffee?' }, ctx);
   const o = sdk.calls[0].options;
-  assert.equal(o.permissionMode, 'default');
+  assert.equal(o.permissionMode, 'default', 'this persona asks');
   assert.equal(typeof o.canUseTool, 'function');
+  assert.equal(
+    sdkOptions({ persona: {}, cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() }).permissionMode,
+    'auto',
+  );
   assert.equal(o.mcpServers.postbox.alwaysLoad, true);
   assert.equal(o.systemPrompt.preset, 'claude_code');
   assert.match(o.systemPrompt.append, /You are @coder/);

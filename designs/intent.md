@@ -110,7 +110,7 @@ sequenceDiagram
 | Subagents an agent creates inside its own session need no approval | They aren’t personas, and they run with their parent’s tools. |
 | Each project has one root folder | It bounds the file picker and is where Claude Code sessions start. |
 | A persona runs on Claude Code, the Agent SDK or the mock, and real agents default to Claude Opus 5.5 (`claude-opus-5-5`) | Decided in Stage 3. Both real backends use Claude Code’s own sign-in, so Postbox never holds a key. The model is a per-persona setting. |
-| Each persona has a permission mode: ask (the default), accept edits, or run everything | Decided in Stage 3. In ask mode, a risky tool call becomes a card in the thread that shows the exact command, with Allow and Don’t allow, and the agent needs you until you answer. Stop answers no. |
+| Each persona has a permission mode: auto (the default), ask, accept edits, or run everything. In auto mode, Claude Code’s safety classifier approves routine actions; anything it can’t decide, and everything in ask mode, becomes a card in the thread that shows the exact command, with Allow and Don’t allow, and the agent needs you until you answer. Stop answers no. A change to the mode reaches running conversations from their next turn | Decided in Stage 3 with ask as the default; changed to auto after Stage 3, because asking every time got in the way. |
 | You can attach a Claude Code session you started in a terminal | It joins as an agent in that session’s folder, with its recent history; Postbox resumes the same session when you write to it. |
 | Archive puts a session to sleep; Delete erases it after a confirm, with 10 seconds of Undo | Archive is the safe default. Delete says exactly what goes and what stays. The persona always stays. |
 | Deleting an agent’s session in a room removes the agent from the room, but its past messages stay, marked “(deleted)” | The conversation still makes sense. To erase everything, delete the room. |
@@ -149,6 +149,7 @@ sequenceDiagram
 | Citations are inline markers plus a sources list. A hover card fills a loading bar under its header, then becomes sticky; when the pointer leaves, the same bar counts down before it closes. Keyboard focus works the same way, Enter pins at once and Esc closes | Hover cards don’t flicker, and their links can be clicked. The same cards explain glossary terms. |
 | Agents define terms in a per-thread glossary, which links every later mention automatically, or with an explicit `term:` link for one-off or ambiguous mentions | Session-coined terms like “Step 7” or “Requirement F3” stay understandable. |
 | A pluggable linter flags coined terms that have no definition, and tells the agent | It is pattern-based offline and can be model-backed later. Until the agent defines the term, you see only a faint dotted underline. |
+| A diagram linter flags Mermaid diagrams people can’t read (a long chain side by side, one wide row, long labels, too many parts) and tells the agent what to change; the browser also measures each rendered diagram and reports any whose text ends up under 10 px | Added after Stage 3. Diagrams are scaled to fit the column, so the usual failure is quiet: the text shrinks until it can’t be read. The agent hears once per diagram, and its redraw isn’t linted again. |
 
 ### Dynamic UI
 

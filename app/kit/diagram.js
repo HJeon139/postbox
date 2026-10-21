@@ -49,7 +49,14 @@
       p.textContent = 'This diagram couldn’t be drawn: ' + (err?.message ? err.message.split('\n')[0] : 'unknown error') + '. Its source is still available.';
       out.appendChild(p);
     }
-    requestAnimationFrame(() => post({ type: 'size', height: Math.ceil(document.documentElement.scrollHeight) }));
+    requestAnimationFrame(() => {
+      // The diagram is scaled to fit; its text ends up at fontSize × (shown width ÷ natural width).
+      const svg = out.querySelector('svg');
+      const natural = svg?.viewBox?.baseVal?.width;
+      const shown = svg?.getBoundingClientRect().width;
+      const textPx = natural && shown ? Math.round(13 * Math.min(1, shown / natural) * 10) / 10 : null;
+      post({ type: 'size', height: Math.ceil(document.documentElement.scrollHeight), textPx, width: document.documentElement.clientWidth });
+    });
   });
   post({ type: 'ready' });
 })();

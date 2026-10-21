@@ -24,6 +24,7 @@ const BACKENDS = [
 ];
 const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
 const PERMISSIONS = [
+  ['auto', 'Auto', 'A safety check approves routine actions; it asks you only when it can’t decide.'],
   ['ask', 'Ask me', 'It asks before running commands or changing files.'],
   ['acceptEdits', 'Accept edits', 'It edits files in its folders freely, and asks before running commands.'],
   ['bypass', 'Run everything', 'It never asks. Use it only in a folder you can lose.'],
@@ -144,7 +145,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     where: threadId ? 'join' : 'new',
     backend: defaultBackend(),
     model: client.config.defaultModel ?? 'claude-opus-5-5',
-    permissionMode: 'ask',
+    permissionMode: 'auto',
     folder: '',
     saveBp: false,
     error: null,
@@ -687,7 +688,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
   };
   const personaForm = (p, back) => {
     const tools = new Set(p.tools);
-    const run = { backend: p.backend ?? 'mock', model: p.model, permissionMode: p.permissionMode ?? 'ask', folder: p.folder ?? '' };
+    const run = { backend: p.backend ?? 'mock', model: p.model, permissionMode: p.permissionMode ?? 'auto', folder: p.folder ?? '' };
     const runBox = h('div.form-grid');
     const paintRun = () => fill(runBox, backendFields(run, paintRun, { idp: 'pe' }));
     paintRun();
@@ -745,8 +746,8 @@ export function openSettings(tab = 'appearance', personaId = null) {
                   toast({
                     title: `Saved @${p.handle}`,
                     text:
-                      run.backend !== (p.backend ?? 'mock')
-                        ? 'Its conversations run on the new backend from their next turn; other changes apply to new sessions.'
+                      run.backend !== (p.backend ?? 'mock') || run.permissionMode !== (p.permissionMode ?? 'auto')
+                        ? 'Where it runs and its permissions apply to its conversations from their next turn; other changes apply to new sessions.'
                         : 'New sessions use this version.',
                   });
                   back();
@@ -996,7 +997,7 @@ export function openAttachSession(projectId) {
     .catch((e) => listEl.replaceChildren(h('li.err', e.message)));
   const dlg = openDialog({
     title: 'Attach a Claude Code session',
-    sub: `It joins ${S().projects[projectId]?.name ?? 'this project'} as an agent that works in the session’s folder and asks before it runs anything.`,
+    sub: `It joins ${S().projects[projectId]?.name ?? 'this project'} as an agent that works in the session’s folder, with the default permissions.`,
     body: [listEl, h('p.small.dim', 'If the session is still running in a terminal, let it finish before you write to it here.')],
     foot: [h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Close')],
   });
