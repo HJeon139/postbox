@@ -1,0 +1,91 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { validateBlock, CATALOG } from '../shared/catalog.mjs';
+
+const base = (type, extra) => ({ id: 'b1', type, version: 1, fallback: 'Plain text version.', ...extra });
+const ok = (b, opts) => { const r = validateBlock(b, opts); assert.equal(r.ok, true, JSON.stringify(r.errors)); return r; };
+const bad = (b, re, opts) => {
+  const r = validateBlock(b, opts);
+  assert.equal(r.ok, false, 'expected the block to be rejected');
+  if (re) assert.ok(r.errors.some((e) => re.test(e)), `no error matched ${re}: ${JSON.stringify(r.errors)}`);
+  return r;
+};
+
+test('accepts one valid block of every type in the catalog', () => {
+  const blocks = [
+    base('choice', { title: 'When?', options: [{ id: 'w', label: 'Weekly' }, { id: 'd', label: 'Daily' }], other: { label: 'Something else' } }),
+    base('form', { fields: [{ id: 'n', label: 'Name', kind: 'text', required: true }, { id: 'p', label: 'Pace', kind: 'select', options: [{ id: 's', label: 'Steady' }] }, { id: 'x', label: 'Notes', kind: 'longtext' }] }),
+    base('table', { columns: [{ id: 'book', label: 'Book' }, { id: 'n', label: 'Count', kind: 'number', sortable: true }], rows: [{ id: 'r1', cells: { book: 'Emma', n: 3 } }], rowAction: { id: 'open', label: 'Open' } }),
+    base('progress', { steps: [{ id: 's1', label: 'Index', state: 'running' }] }),
+    base('card', { facts: [{ label: 'Author', value: 'George Eliot' }], actions: [{ id: 'a', label: 'Open' }] }),
+    base('confirm', { statement: 'This removes 14 passages.', confirmLabel: 'Remove 14 passages' }),
+    base('image', { src: 'https://www.gutenberg.org/cover.jpg', alt: 'A title page' }),
+    base('code', { code: 'const x = 1;', language: 'js' }),
+    base('review', { format: 'markdown', content: '# Spec' }),
+    base('app', { code: '<p>Hi</p>', permissions: ['corpus.search'] }),
+  ];
+  assert.equal(blocks.length, Object.keys(CATALOG).length);
+  for (const b of blocks) ok(b, { imageOrigins: ['https://www.gutenberg.org'] });
+});
+
+test('rejects an unknown type, keeping the agent’s fallback', () => {
+  const r = bad(base('timeline', { items: [] }), /Unknown type “timeline”/);
+  assert.equal(r.reason, 'unknown-type');
+  assert.equal(r.fallback, 'Plain text version.');
+});
+
+test('rejects a newer version than the app reads', () => {
+  const r = bad(base('progress', { version: 3, steps: [] }), /version 3.*up to version 1/);
+  assert.equal(r.reason, 'newer-version');
+});
+
+test('rejects a misspelled field instead of ignoring it', () => {
+  bad(base('choice', { options: [{ id: 'a', label: 'A' }], multipel: true }), /unknown field “multipel”/);
+});
+
+test('rejects missing required fields', () => {
+  bad({ id: 'b', type: 'choice', version: 1, options: [{ id: 'a', label: 'A' }] }, /fallback is required/);
+  bad(base('confirm', { statement: 'Do it' }), /confirmLabel is required/);
+  bad(base('image', { src: 'https://www.gutenberg.org/x.png' }), /alt is required/, { imageOrigins: ['https://www.gutenberg.org'] });
+});
+
+test('rejects an option with no label', () => {
+  bad(base('choice', { options: [{ id: 'a', label: 'A' }, { id: 'b' }] }), /options\[1\]\.label is required/);
+});
+
+test('rejects duplicate option ids', () => {
+  bad(base('choice', { options: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }] }), /two items with the id “a”/);
+});
+
+test('rejects images from origins that aren’t allowed, and non-https images', () => {
+  bad(base('image', { src: 'https://evil.example/x.png', alt: 'x' }), /allowed origin/, { imageOrigins: ['https://www.gutenberg.org'] });
+  bad(base('image', { src: 'http://www.gutenberg.org/x.png', alt: 'x' }), /allowed origin/, { imageOrigins: ['http://www.gutenberg.org'] });
+  bad(base('image', { src: 'javascript:alert(1)', alt: 'x' }), /allowed origin/, { imageOrigins: ['https://www.gutenberg.org'] });
+});
+
+test('rejects table cells for columns that don’t exist', () => {
+  bad(base('table', { columns: [{ id: 'a', label: 'A' }], rows: [{ id: 'r', cells: { b: 1 } }] }), /unknown column “b”/);
+});
+
+test('a select field needs options, and only a select may have them', () => {
+  bad(base('form', { fields: [{ id: 's', label: 'S', kind: 'select' }] }), /needs options/);
+  bad(base('form', { fields: [{ id: 't', label: 'T', kind: 'text', options: [{ id: 'a', label: 'A' }] }] }), /only applies to a select/);
+});
+
+test('an app review needs an appId; other reviews need content', () => {
+  bad(base('review', { format: 'app' }), /needs appId/);
+  bad(base('review', { format: 'code' }), /needs content/);
+});
+
+test('rejects things that aren’t blocks at all', () => {
+  for (const v of [null, 'text', 42, [1, 2]]) bad(v, /must be an object/);
+});
+
+test('card actions are capped at three', () => {
+  bad(base('card', { actions: [1, 2, 3, 4].map((n) => ({ id: `a${n}`, label: `A${n}` })) }), /more than 3 items/);
+});
+
+test('ids must be simple, so they are safe to use anywhere', () => {
+  bad({ ...base('code', { code: 'x' }), id: 'has space' }, /isn’t a valid id/);
+  bad({ ...base('code', { code: 'x' }), id: '<script>' }, /isn’t a valid id/);
+});

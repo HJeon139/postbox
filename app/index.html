@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Postbox</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" id="favicon">
+<script src="/app/theme.js"></script>
+<link rel="stylesheet" href="/app/workbench.css">
+<script type="module" src="/app/js/main.mjs"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the conversation</a>
+<div id="root"><p style="padding:24px" class="dim">Loading Postbox…</p></div>
+<div class="sr-only" aria-live="polite" id="live"></div>
+<div class="sr-only" aria-live="assertive" id="live-urgent"></div>
+<div class="toasts" id="toasts" role="region" aria-label="Notifications"></div>
+<div class="toasts bottom" id="toasts-bottom" role="region" aria-label="Undo"></div>
+<noscript><p style="padding:24px">Postbox needs JavaScript.</p></noscript>
+</body>
+</html>

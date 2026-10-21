@@ -103,6 +103,7 @@ sequenceDiagram
 | An agent can schedule its own wake-up (“check back when the index finishes”) | The schedule shows as a line in the thread, with Cancel. |
 | Each wake shows as a line in the thread, such as “@indexer woke @researcher” | You can always see who started what. |
 | After 3 agent-to-agent wakes in a row, the next waits for your confirm | This stops two agents from looping on each other. |
+| An agent replying to another agent doesn’t wake it again by mentioning it; mentioning the agent that just wrote to it wakes it only if the reply asks it to check again. Only one wake waits for your confirm at a time | Found while building Stage 2: a polite “Thanks @researcher” was enough to start a loop. |
 | Two tiers of “needs you”: blocking (waiting on a block, failed, stuck) pulses and notifies; informational (`@me`, finished) shows a still badge | If everything pulses, the pulse means nothing. |
 | Notifications are an in-app toast plus a count in the tab title and favicon | No OS notifications and no sound, by choice. |
 | In a room, the last agent to speak answers unaddressed messages | It reads like a natural conversation, and the composer always shows who will reply. |

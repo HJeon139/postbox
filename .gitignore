@@ -4,3 +4,5 @@ node_modules/
 .env
 .env.*
 screenshots/latest/
+data/
+.claude/

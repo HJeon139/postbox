@@ -1,0 +1,17 @@
+{
+  "name": "postbox",
+  "version": "0.2.0",
+  "description": "A chat room for directing several AI agents, where agents reply with software they write.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "demo": "node tools/demo.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check:contrast": "node tools/contrast.mjs app/workbench.css",
+    "shoot:mockups": "node tools/shoot.mjs",
+    "shoot:app": "node tools/shoot-app.mjs"
+  }
+}
