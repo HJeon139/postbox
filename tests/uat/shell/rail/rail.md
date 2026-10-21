@@ -1,0 +1,29 @@
+# Rail (sidebar)
+
+![Rail (sidebar)](../../screenshots/rail.png)
+
+**Where:** Left side, in a project.
+
+## Why it exists
+
+You switch between a project’s conversations constantly and need to spot a blocked agent from anywhere.
+
+## Expected functionality
+
+- Shows Overview, Threads (topic threads, with how many have new replies), Direct messages and Rooms, each with a “+”.
+- Other projects with agents that need you are listed at the top.
+- Archived and Personas at the bottom.
+- Hidden and shown with the sidebar toggle or ⌘\.
+
+## Steps to reproduce
+
+1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
+2. Open a project and check the sections.
+3. Use “+” beside Direct messages and beside Rooms (cancel each).
+4. Open Threads.
+
+**Pass if:** All sections are present, each “+” opens the right sheet, and Threads lists the project’s topic threads.
+
+## Related
+
+- [rail row](rail-row.md)

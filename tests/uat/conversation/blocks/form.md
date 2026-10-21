@@ -1,0 +1,21 @@
+# Form block
+
+![Form block](../../screenshots/form-block.png)
+
+**Where:** Agent replies that need several values.
+
+## Why it exists
+
+Collects structured input in one step, checked before it’s sent.
+
+## Expected functionality
+
+- Text, long text, number, select, toggle and date fields with labels and help.
+- Invalid input shows a message under the field and doesn’t send; valid input sends numbers as numbers and dates as YYYY-MM-DD.
+
+## Steps to reproduce
+
+1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
+2. In “Catalog tour”, submit the form with an out-of-range number, then fix it.
+
+**Pass if:** The error appears under the field, and the fixed form sends once.
