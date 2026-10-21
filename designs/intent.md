@@ -88,14 +88,20 @@ sequenceDiagram
 | Personas live in Postbox’s own store; `agents.json` only seeds it | You create and edit agents in the UI, never in a terminal. |
 | The `+` menu adds files and agents | Files: upload, pick from the project folder, paste, or add to the corpus. Agents: from a boilerplate, or recommended by an agent. |
 | Any agent may propose a teammate, but only your click creates one | This prevents privilege escalation: the proposal highlights any tools beyond what the proposing agent has. |
+| When you create an agent, you choose where it works: join this thread (the default, which makes it a room) or start a new thread | Joining gives it the recent messages and a short brief; a new thread starts clean. |
+| A Personas page in settings lets you edit, duplicate, retire and save boilerplates | Edits apply to new sessions only. Running sessions keep the version they started with, so behavior doesn’t change underneath you. |
+| Subagents an agent creates inside its own session need no approval | They aren’t personas, and they run with their parent’s tools. |
 | Each project has one root folder | It bounds the file picker and is where Claude Code sessions start. |
 | Archive puts a session to sleep; Delete erases it after a confirm, with 10 seconds of Undo | Archive is the safe default. Delete says exactly what goes and what stays. The persona always stays. |
+| Deleting an agent’s session in a room removes the agent from the room, but its past messages stay, marked “(deleted)” | The conversation still makes sense. To erase everything, delete the room. |
 
 ### Attention and wakes
 
 | Decision | Why |
 |---|---|
 | `@name` wakes an agent; agents can wake each other | It uses one familiar gesture for people and agents alike. |
+| An agent can schedule its own wake-up (“check back when the index finishes”) | The schedule shows as a line in the thread, with Cancel. |
+| Each wake shows as a line in the thread, such as “@indexer woke @researcher” | You can always see who started what. |
 | After 3 agent-to-agent wakes in a row, the next waits for your confirm | This stops two agents from looping on each other. |
 | Two tiers of “needs you”: blocking (waiting on a block, failed, stuck) pulses and notifies; informational (`@me`, finished) shows a still badge | If everything pulses, the pulse means nothing. |
 | Notifications are an in-app toast plus a count in the tab title and favicon | No OS notifications and no sound, by choice. |
@@ -107,13 +113,21 @@ sequenceDiagram
 | Decision | Why |
 |---|---|
 | All text is Markdown; raw HTML is never rendered | Text is consistent everywhere, and agents can’t inject markup. Short labels stay plain text. |
-| Mermaid and KaTeX render; the libraries are bundled locally | Agents explain with diagrams and math. Nothing loads from the network. |
+| Mermaid and KaTeX render; the libraries are bundled locally, and each diagram has “Show source” | Agents explain with diagrams and math. Nothing loads from the network. |
 | A message sent mid-reply is queued, with Send now and Edit | You can keep thinking without derailing the agent. |
+| The composer: Enter sends, Shift+Enter adds a line, Stop replaces Send while an agent replies, and a short hint line says who will reply | These are standard chat conventions, plus the one thing a room needs: knowing who answers. |
+| Turns are grouped by speaker; timestamps appear on hover or focus | The transcript stays dense without losing the time. |
+| “Jump to latest” appears when you’ve scrolled up and something new arrives | Reading history never means missing a new message. |
+| Text streams as it arrives; a block appears once its JSON is complete, with a quiet placeholder line until then | Half a form is never shown. |
+| Tool use shows as one collapsed activity line per turn (“Searched 3 files · 2 s”) that expands to the steps and their durations | The work is visible without flooding the transcript. |
+| Stop ends the reply cleanly and marks it “stopped” | A stopped reply is clearly different from a failed one. |
+| The connection uses server-sent events, shows a visible “Reconnecting…” line, and loses or duplicates nothing | Everything is kept in Postbox’s own store, so it survives a reload. |
 | Stop ends this agent’s turn and its subagents | Agents it woke keep running, each with its own Stop. |
 | Each compaction gets a divider that expands to the summary the agent kept | You can see what it might have forgotten. |
 | Turns typed in an attached Claude Code session’s terminal are mirrored, marked “from terminal” | The thread stays the complete record. |
-| Citations are inline markers plus a sources list; hover cards fill a loading bar, then become sticky | Hover cards don’t flicker, and their links can be clicked. The same cards explain glossary terms. |
-| A pluggable linter flags coined terms that have no definition, and tells the agent | Session-coined terms like “Step 7” stay understandable. |
+| Citations are inline markers plus a sources list. A hover card fills a loading bar under its header, then becomes sticky; when the pointer leaves, the same bar counts down before it closes. Keyboard focus works the same way, Enter pins at once and Esc closes | Hover cards don’t flicker, and their links can be clicked. The same cards explain glossary terms. |
+| Agents define terms in a per-thread glossary, which links every later mention automatically, or with an explicit `term:` link for one-off or ambiguous mentions | Session-coined terms like “Step 7” or “Requirement F3” stay understandable. |
+| A pluggable linter flags coined terms that have no definition, and tells the agent | It is pattern-based offline and can be model-backed later. Until the agent defines the term, you see only a faint dotted underline. |
 
 ### Dynamic UI
 
@@ -121,7 +135,14 @@ sequenceDiagram
 |---|---|
 | Two tiers: catalog blocks and agent-written apps | Feedback needs consistency; explainers and explorers need freedom. |
 | Catalog: `choice`, `form` (with a long-text field), `table`, `progress`, `card`, `confirm`, `image`, `code`, `review`, `app` | Each block is validated against its schema. An invalid block shows its plain-text fallback and the raw JSON, and never breaks the transcript. |
+| Every block has an `id`, `type`, `version`, an optional `title` and a plain-text `fallback`. An unknown type, a bad field or a newer version shows the fallback plus a collapsed “Show the raw block” | Nothing fails silently. |
+| Blocks are append-only, except that sending the same `id` again updates the block in place | A progress list can move on without new copies. |
+| When you act in a block, the agent gets one event, `{ blockId, action, values }`; your action shows as a short line in your voice (“Chose: weekly · Monday 9:00”); the block turns read-only and shows your answer | Only a new block, or an update to the same id, can ask again. |
+| Links open in a new tab with `rel="noopener"`, URLs are checked, images load only from allowed origins and need alt text, and nothing an agent sends is used as a style or an attribute name | Agent content can’t restyle or script the page. |
+| Adding a catalog component needs an explicit decision | The catalog stays small enough to render consistently and to explain to agents. |
 | Apps run in a sandboxed iframe with no network; data comes only through the host bridge, using tools the agent already holds | Apps run automatically without risk to your files or accounts. |
+| The sandbox preloads the Workbench stylesheet, a small helper library, D3, a chart library, Mermaid and KaTeX; agents may add their own CSS for visualizations | Apps look native with little effort, and good charts and diagrams are the default. |
+| When the mode changes, apps get the new tokens live, plus a `themeChange` event to redraw canvas or D3 output | Apps follow light and dark without reloading. |
 | Bridge: `getTheme`, `resize`, `sendEvent`, `query`, `saveState`/`restoreState`, `registerAnchors` | A small surface is easy to secure and to explain to agents. |
 | Apps unload when far off screen and reload from saved state as you approach | Memory stays bounded and you don’t lose your place. A same-size placeholder prevents layout jumps. |
 | The agent learns only what an app explicitly sends | Using an app is private until you choose to send something. Apps stay live afterward; catalog blocks become read-only. |
@@ -135,12 +156,28 @@ sequenceDiagram
 | “Workbench”: warm, dense, calm; flat bordered controls; no shadows or gradients | It suits long working sessions. |
 | Amber is the only interaction color, including inside apps | One meaning everywhere: you can act on this. |
 | Agent apps sit on a cool slate “stage” with a slate frame and an “Agent-written app” label | Changing the surface temperature shows whose interface you’re in without adding a second accent. |
-| Light mode is warm paper; the mode follows the system unless you pick Light or Dark | The design stays the same app in daylight. Apps swap tokens live. |
+| Light mode is warm paper; the mode follows the system unless you pick Light or Dark, and the choice is saved in Postbox’s store | The design stays the same app in daylight. Apps swap tokens live. |
+| The dark mode is a step darker than the original brief (page `#15110e`, cards `#1f1a15`, text `#e6ddcf`), and checked boxes are an amber outline and check rather than a solid fill | This reduces glare in long sessions; the brightest elements were filled amber boxes. |
+| Extended color sets: agent status, 8 chart series in a fixed order, a sequential blue scale, a blue and red diverging pair, review diffs, and syntax highlighting | Each set is used only in its own context, so amber stays the only interaction color. |
 | Rings: a small center ring for the agent, one thinner ring outside for each subagent | Each ring shows that agent’s context use and activity, so subagents are visible without a list. |
 | State is shown by motion, not icons | Generating: the arc turns once and rests. Thinking: a short bulge of thickness runs along a still arc. Calling tools: a dot crosses the free part of the ring and back. Needs you: an amber pulse. Every motion eases in and out, then rests. |
 | Charts follow fixed mark specs, with a table view on every chart | The kit makes correct charts the default for agents. |
 
 All colors are defined as tokens on `:root` in [`mockups/workbench.css`](../mockups/workbench.css), with their contrast ratios on the [palette page](../mockups/00-palette.html). Every text pair passes WCAG 2.1 AA in both modes, and the chart series pass a color-vision-deficiency check.
+
+### Accessibility and keyboard
+
+| Decision | Why |
+|---|---|
+| Streaming text goes through an `aria-live="polite"` region that announces finished sentences, not every token | Screen readers stay usable while text streams. |
+| When a block appears, focus doesn’t jump to it; after you act in it, focus returns to the composer | You stay where you are. |
+| Every block and app is fully usable by keyboard; focus rings are 2px amber | It works without a mouse. |
+| One key goes to the next thing that needs you (⌃J), ⌘K opens a palette for threads, projects, agents and actions, and keys move through turns and blocks | Faster than clicking for a power user. |
+| Reduced motion stops every animation; rings hold still, and the rail’s text says the state | State never depends on motion alone. |
+
+### Writing
+
+Plain English and sentence case, with curly quotes and American spelling everywhere: the UI, the docs and code comments. Buttons say what they do (“Send”, “Stop”, “Open thread”). Error messages say what happened and what to do next.
 
 ### Integration
 
@@ -150,6 +187,14 @@ All colors are defined as tokens on `:root` in [`mockups/workbench.css`](../mock
 | UI tools never block; your answer arrives as a new message | MCP calls time out, and a reply may come hours later. The event shape is the same for every backend. |
 | The adapter starts and stops agents and reads their status | Tool calls, subagents, compactions and context use come from the backend. Nothing else touches the model. |
 | Stage 2 ships a mock agent, the adapter interface and the MCP server; real adapters come in Stage 3 | The app runs offline with no dependencies beyond Node. |
+
+### Scope and order
+
+| Decision | Why |
+|---|---|
+| The first flow to polish is the corpus explorer: an agent writes an app, it runs inline, queries your corpus through the bridge, and sends picks back | It proves the core idea end to end. |
+| The demo corpus is a few bundled public-domain books, with real BM25 search in plain Node and a stub semantic search that your own index replaces later | The demo runs offline and still searches for real. |
+| A demo script plays every block type and every error state | It’s the source of the screenshots once the app is real. |
 
 ## Not in scope, for now
 
@@ -166,6 +211,7 @@ All colors are defined as tokens on `:root` in [`mockups/workbench.css`](../mock
 - **Narration.** Should a speech tool (for example Kokoro) run on the host, so apps can offer narration with a synced transcript?
 - **Screenshot storage.** Full retakes add about 28 MB to the history each time. Keep them in git, keep only the review sheets, or move them to Git LFS?
 - **App title bar.** Keep it on the cool stage, or make it warm Postbox chrome?
+- **State text in the rail.** Rows say “@indexer · calling tools” as the non-color cue for reduced motion. Keep it, or drop it now that rings show the state?
 
 ## Quality bar
 
