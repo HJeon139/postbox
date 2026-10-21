@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReAct, step by step · Postbox</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+<style>
+  .diagram { border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
+  .diagram .d-bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line); }
+  .diagram .d-svg { overflow-x: auto; padding: 14px 12px; }
+  .diagram svg { display: block; width: 100%; min-width: 560px; height: auto; }
+  .diagram .node rect { fill: var(--panel); stroke: var(--line); }
+  .diagram .node.hl rect { stroke: var(--accent); }
+  .diagram .node text { fill: var(--text); font: 13px system-ui, sans-serif; }
+  .diagram .edge { stroke: var(--dim); fill: none; stroke-width: 1.4; }
+  .diagram .elabel { fill: var(--dim); font: 11px system-ui, sans-serif; }
+  .math-display { display: flex; justify-content: center; align-items: center; padding: 10px 0; font-family: "Latin Modern Math", "STIX Two Math", "Cambria Math", Georgia, serif; font-size: 18px; overflow-x: auto; }
+  .math-display i { font-style: italic; }
+  .sum { display: inline-flex; vertical-align: middle; margin: 0 4px; flex-direction: column; align-items: center; line-height: 1; }
+  .sum .op { font-size: 30px; }
+  .sum small { font-size: 11px; }
+  .practice { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+  .trace { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  .trace li { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 6px 10px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); }
+  .trace li .label { padding-top: 2px; }
+  .options { display: flex; flex-direction: column; gap: 8px; }
+  .opt { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  .opt:hover { border-color: var(--accent); }
+  .opt[aria-checked="true"] { border-color: var(--accent); }
+  .opt .dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--dim); margin-top: 1px; display: grid; place-items: center; }
+  .opt[aria-checked="true"] .dot { border-color: var(--on); background: var(--on); }
+  .opt[aria-checked="true"] .dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--on-ink); }
+  .feedback { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--good); border-radius: 6px; background: var(--panel); font-size: 13px; }
+  .feedback .g { margin-top: 2px; }
+  .pips { display: flex; gap: 4px; }
+  .pips i { width: 18px; height: 4px; border-radius: 999px; background: var(--line); }
+  .pips i.on { background: var(--accent); }
+  @media (max-width: 767px) { .trace li { grid-template-columns: 1fr; gap: 2px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="btn icon sm ghost" href="01-overview.html" aria-label="Back to overview"><span class="i i-back"></span></a>
+    <span class="crumbs"><span class="hide-sm">Agent research</span><span class="i i-right hide-sm"></span><span class="title">ReAct, step by step</span></span>
+    <div class="present"><span class="who-chip"><pb-ring name="@researcher" state="gen" ctx="41" subs="think:18:reader" size="xs"></pb-ring><b>@researcher</b></span></div>
+    <div class="top-actions">
+      <button class="btn sm"><span class="g g-needs"></span><span class="hide-sm">Next that needs you</span><kbd>⌃J</kbd></button>
+      <button class="btn icon sm ghost" aria-label="Settings"><span class="i i-gear"></span></button>
+    </div>
+  </header>
+  <pb-rail project="research" active="react"></pb-rail>
+  <div class="main">
+    <pb-strip project="research" active="react"></pb-strip>
+    <div class="transcript">
+
+      <div class="col turn me">
+        <div class="who"><span class="ts">10:02</span><b>You</b></div>
+        <div class="me-card md"><p>I keep hearing that agents “reason and act”. Walk me through what that actually means, with something I can try.</p></div>
+      </div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@researcher" state="idle" ctx="41" subs="think:18:reader" size="xs"></pb-ring><b>@researcher</b><span class="ts">10:03</span></div>
+        <details class="activity"><summary><span class="i i-right i-sm"></span>Read 3 papers on arxiv.org · 4 s</summary></details>
+        <div class="md" style="position:relative">
+          <h3>Step 1 · The loop</h3>
+          <p>ReAct <a class="cite open" href="#src-1" aria-describedby="hc-1" aria-expanded="true">1</a> interleaves <b>thoughts</b> (free-text reasoning) with <b>actions</b> (tool calls) and <b>observations</b> (what the tool returned). Each observation feeds the next thought, so the plan can change halfway through.</p>
+
+          <div class="hovercard pinned" id="hc-1" role="dialog" aria-label="Source 1" style="left:72px;top:58px">
+            <div class="hc-head"><span class="label">Source 1 · arXiv 2210.03629</span><b>ReAct: Synergizing Reasoning and Acting in Language Models</b><span class="small dim">Yao, Zhao, Yu, Du, Shafran, Narasimhan, Cao · 2022</span></div>
+            <div class="loadbar" aria-hidden="true"><i style="width:100%"></i></div>
+            <div class="hc-body">
+              <p><span class="dim">Why it’s cited:</span> it introduces the thought → action → observation loop this step describes, and compares it with reasoning-only and acting-only prompting.</p>
+              <div class="hc-links"><a href="#" target="_blank" rel="noopener">arxiv.org/abs/2210.03629 <span class="i i-link i-sm"></span></a><a href="#" target="_blank" rel="noopener">PDF <span class="i i-link i-sm"></span></a><a href="#src-1">Show in sources</a></div>
+              <span class="small dim">Pinned · move away to close · Esc closes</span>
+            </div>
+          </div>
+
+          <figure class="diagram" aria-labelledby="dg-cap">
+            <div class="d-bar"><span class="label grow" id="dg-cap">Diagram · the ReAct loop</span><button class="btn sm ghost">Show source</button></div>
+            <div class="d-svg">
+              <svg viewBox="0 0 640 170" role="img" aria-label="Flowchart: Question leads to Thought; Thought leads to Action; Action leads to Observation; Observation loops back to Thought; Thought leads to Answer when done.">
+                <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--dim)"/></marker></defs>
+                <g class="node"><rect x="8" y="64" width="104" height="36" rx="6"/><text x="60" y="87" text-anchor="middle">Question</text></g>
+                <g class="node hl"><rect x="160" y="64" width="104" height="36" rx="6"/><text x="212" y="87" text-anchor="middle">Thought</text></g>
+                <g class="node"><rect x="312" y="64" width="104" height="36" rx="6"/><text x="364" y="87" text-anchor="middle">Action</text></g>
+                <g class="node"><rect x="464" y="64" width="128" height="36" rx="6"/><text x="528" y="87" text-anchor="middle">Observation</text></g>
+                <g class="node"><rect x="312" y="6" width="104" height="36" rx="6"/><text x="364" y="29" text-anchor="middle">Answer</text></g>
+                <path class="edge" d="M112,82 L158,82" marker-end="url(#ah)"/>
+                <path class="edge" d="M264,82 L310,82" marker-end="url(#ah)"/>
+                <path class="edge" d="M416,82 L462,82" marker-end="url(#ah)"/>
+                <path class="edge" d="M528,100 C528,158 212,158 212,102" marker-end="url(#ah)"/>
+                <path class="edge" d="M240,64 L310,30" marker-end="url(#ah)"/>
+                <text class="elabel" x="370" y="152" text-anchor="middle">feeds the next thought</text>
+                <text class="elabel" x="236" y="40">when done</text>
+              </svg>
+            </div>
+          </figure>
+
+          <p>Reasoning alone can’t check facts, and acting alone can’t plan. Interleaving the two lets the model notice a wrong turn and correct it. Reflexion <a class="cite" href="#src-2">2</a> adds a step after a failed attempt: the agent writes down what went wrong and reads it on the next try.</p>
+
+          <h3>Step 2 · What it costs</h3>
+          <p>Every pass through the loop resends the growing transcript, so input cost rises with each step <i>t</i>:</p>
+          <div class="math-display" role="math" aria-label="C equals the sum from t equals 1 to T of c-in times n-t plus c-out times m-t">
+            <span><i>C</i> = <span class="sum"><small><i>T</i></small><span class="op">∑</span><small><i>t</i>=1</small></span> ( <i>c</i><sub>in</sub> · <i>n<sub>t</sub></i> + <i>c</i><sub>out</sub> · <i>m<sub>t</sub></i> )</span>
+          </div>
+          <p>Here <i>n<sub>t</sub></i> is the tokens in context at step <i>t</i> and <i>m<sub>t</sub></i> the tokens written. Long contexts cost quality too: models use the middle of a long context less reliably <a class="cite" href="#src-3">3</a>. That’s why long agent runs use <span class="term" tabindex="0">context compaction</span>, and why the <span class="term undef" title="Not defined yet; @researcher has been asked to define it">observation budget</span> matters.</p>
+
+          <h3>Step 3 · Try it</h3>
+        </div>
+      </div>
+
+      <section class="wide appframe" aria-labelledby="pr-title">
+        <div class="app-bar">
+          <span class="title" id="pr-title">Practice: what should the agent do next?</span>
+          <span class="authored">Agent-written app</span>
+          <span class="grow"></span>
+          <span class="small dim">2 of 4</span>
+          <button class="btn icon sm" aria-label="Expand"><span class="i i-expand"></span></button>
+        </div>
+        <div class="app-body">
+          <div class="practice">
+            <div class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+            <ol class="trace">
+              <li><span class="label">Question</span><span>Which is older, <i>Persuasion</i> or <i>Middlemarch</i>?</span></li>
+              <li><span class="label">Thought 1</span><span>I need both publication years.</span></li>
+              <li><span class="label">Action 1</span><span class="mono">corpus.lookup("Persuasion")</span></li>
+              <li><span class="label">Observation 1</span><span>Published 1817.</span></li>
+            </ol>
+            <div class="options" role="radiogroup" aria-label="Next step">
+              <button class="opt" role="radio" aria-checked="false"><span class="dot"></span><span><b>Answer now:</b> “<i>Persuasion</i> is older.”</span></button>
+              <button class="opt" role="radio" aria-checked="true"><span class="dot"></span><span><b>Thought 2:</b> “I still need the year for <i>Middlemarch</i>,” then look it up.</span></button>
+              <button class="opt" role="radio" aria-checked="false"><span class="dot"></span><span><b>Action 2:</b> search the web for “older novel”.</span></button>
+            </div>
+            <div class="feedback" role="status"><span class="g g-done"></span><span><b>Right.</b> One year can’t settle a comparison, so the next thought names the missing fact before acting. Answering now would be a guess that happens to be correct.</span></div>
+            <div class="row-flex"><button class="btn">Next exercise</button><button class="btn ghost">Tell @researcher I’m stuck</button></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="col turn">
+        <details class="sources" open>
+          <summary>Sources · 3</summary>
+          <ol>
+            <li id="src-1">Yao et al. (2022). <i>ReAct: Synergizing Reasoning and Acting in Language Models.</i> <a href="#" target="_blank" rel="noopener">arXiv:2210.03629</a></li>
+            <li id="src-2">Shinn et al. (2023). <i>Reflexion: Language Agents with Verbal Reinforcement Learning.</i> <a href="#" target="_blank" rel="noopener">arXiv:2303.11366</a></li>
+            <li id="src-3">Liu et al. (2023). <i>Lost in the Middle: How Language Models Use Long Contexts.</i> <a href="#" target="_blank" rel="noopener">arXiv:2307.03172</a></li>
+          </ol>
+        </details>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="col" style="position:relative">
+        <div class="jump"><button class="btn sm"><span class="i i-down i-sm"></span>Jump to latest · 1 new</button></div>
+        <div class="composer-box">
+          <button class="btn icon ghost" aria-label="Add a file or a new agent" aria-haspopup="menu"><span class="i i-plus"></span></button>
+          <textarea rows="1" placeholder="Reply to @researcher" aria-label="Message"></textarea>
+          <button class="btn stop">Stop</button>
+        </div>
+        <div class="hint"><span>Enter to send · Shift+Enter for a new line</span><span class="hide-sm">Hover a [1] or a dotted term to see where it comes from</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>(2) Corpus planning · Postbox</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+<style>
+  .composer .col { position: relative; }
+  .mention-menu .mi { align-items: center; }
+  .mention-menu mark { background: none; color: var(--accent); font-weight: 600; }
+  .sp-msg { display: flex; flex-direction: column; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="app has-panel">
+  <header class="topbar">
+    <a class="btn icon sm ghost" href="01-overview.html" aria-label="Back to overview"><span class="i i-back"></span></a>
+    <span class="crumbs"><span class="hide-sm">Book corpus</span><span class="i i-right hide-sm"></span><span class="title">Corpus planning</span></span>
+    <div class="present">
+      <span class="who-chip"><pb-ring name="@indexer" state="gen" ctx="64" subs="gen:22:chunker,tool:31:embedder" size="xs"></pb-ring><b>@indexer</b></span>
+      <span class="who-chip"><pb-ring name="@researcher" state="think" ctx="44" size="xs"></pb-ring><b>@researcher</b></span>
+    </div>
+    <div class="top-actions">
+      <button class="btn sm"><span class="g g-needs"></span><span class="hide-sm">2 need you</span><kbd>⌃J</kbd></button>
+      <button class="btn icon sm ghost" aria-label="Settings"><span class="i i-gear"></span></button>
+    </div>
+  </header>
+  <pb-rail project="corpus" active="planning" states="planning:think:44:0"></pb-rail>
+  <div class="main">
+    <pb-strip project="corpus" active="planning"></pb-strip>
+    <div class="transcript">
+
+      <div class="col turn me">
+        <div class="who"><span class="ts">15:02</span><b>You</b></div>
+        <div class="me-card md"><p><b>@researcher</b> can you check whether the editions @indexer picked have their prefaces marked?</p></div>
+      </div>
+      <div class="col sys-line"><span class="i i-agent i-sm"></span>You woke <b>@researcher</b></div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@researcher" state="think" ctx="44" size="xs"></pb-ring><b>@researcher</b><span class="ts">15:02</span></div>
+        <div class="md"><p>On it. I’ll ask @indexer which editions it kept, then check each one.</p></div>
+      </div>
+
+      <div class="col sys"><a class="pill" href="#side" style="text-decoration:none;border-color:var(--accent)"><span class="i i-thread i-sm"></span><b>@researcher</b> asked <b>@indexer</b> · 3 messages · Open</a></div>
+      <div class="col sys-line"><span class="i i-agent i-sm"></span><b>@researcher</b> woke <b>@indexer</b> · agent wake 1 of 3</div>
+      <div class="col sys-line"><span class="i i-agent i-sm"></span><b>@indexer</b> woke <b>@researcher</b> · agent wake 2 of 3</div>
+      <div class="col sys-line"><span class="i i-agent i-sm"></span><b>@researcher</b> woke <b>@indexer</b> · agent wake 3 of 3</div>
+
+      <div class="col block" role="group" aria-labelledby="hop" style="border-color:var(--accent)">
+        <div class="block-head"><span class="g g-needs"></span><span class="title grow" id="hop">Let @researcher wake @critic?</span><span class="kind">Confirm · from Postbox</span></div>
+        <div class="block-body md">
+          <p>That would be the 4th time agents have woken each other since your last message. After 3 in a row, the next one waits for you.</p>
+          <p class="dim small">@researcher’s reason: “@critic should check the preface rule before we rebuild the index.”</p>
+        </div>
+        <div class="block-foot"><button class="btn">Let @researcher wake @critic</button><button class="btn">Don’t wake @critic</button></div>
+      </div>
+
+      <div class="col sys-line"><span class="i i-clock i-sm"></span><b>@indexer</b> will wake itself at 15:30 · “Check the embedding run” · <a href="#">Cancel</a></div>
+      <div class="menu-room" style="height:250px" aria-hidden="true"></div>
+    </div>
+
+    <div class="composer">
+      <div class="col">
+        <div class="menu mention-menu" role="listbox" aria-label="Agents">
+          <div class="label">Wake an agent</div>
+          <a class="mi" role="option"><pb-ring name="@indexer" state="gen" ctx="64" subs="gen:22:chunker,tool:31:embedder" size="sm"></pb-ring><span class="grow">@indexer<span class="d">In this room · generating</span></span></a>
+          <a class="mi" role="option"><pb-ring name="@researcher" state="think" ctx="44" size="sm"></pb-ring><span class="grow">@researcher<span class="d">In this room · thinking</span></span></a>
+          <a class="mi active" role="option" aria-selected="true"><pb-ring name="@critic" state="idle" ctx="18" size="sm"></pb-ring><span class="grow">@<mark>c</mark>ritic<span class="d">Not in this room · joins when woken</span></span><span class="k">Enter</span></a>
+          <a class="mi" role="option"><pb-ring name="@librarian" state="idle" ctx="0" size="sm"></pb-ring><span class="grow">@librarian<span class="d">Not in this room · joins when woken</span></span></a>
+        </div>
+        <div class="composer-box">
+          <button class="btn icon ghost" aria-label="Add a file or a new agent" aria-haspopup="menu"><span class="i i-plus"></span></button>
+          <textarea rows="1" aria-label="Message">Before you rebuild, @c</textarea>
+          <button class="btn send">Send</button>
+        </div>
+        <div class="hint"><span>Replying to <b>@researcher</b> (last speaker)</span><span class="hide-sm">↑↓ to choose · Enter to insert · Esc to close</span></div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="sidepanel" id="side" aria-labelledby="sp-title">
+    <div class="sp-head">
+      <span class="i i-thread dim"></span>
+      <div class="grow"><b id="sp-title">@researcher ↔ @indexer</b><div class="small dim">Side thread from Corpus planning</div></div>
+      <button class="btn icon sm ghost" aria-label="Close side thread"><span class="i i-x"></span></button>
+    </div>
+    <div class="sp-body">
+      <div class="sp-msg"><div class="who"><pb-ring name="@researcher" state="think" ctx="44" size="xs"></pb-ring><b>@researcher</b><span class="ts show">15:03</span></div>
+        <div class="md"><p>@indexer which editions did you keep, and are prefaces marked in them?</p></div></div>
+      <div class="sp-msg"><div class="who"><pb-ring name="@indexer" state="gen" ctx="64" subs="gen:22:chunker,tool:31:embedder" size="xs"></pb-ring><b>@indexer</b><span class="ts show">15:03</span></div>
+        <div class="md"><p>The 1874 <i>Middlemarch</i> and the Gutenberg editions of <i>Emma</i> and <i>Persuasion</i>. Prefaces aren’t marked; I find them by their headings.</p></div></div>
+      <div class="sp-msg"><div class="who"><pb-ring name="@researcher" state="think" ctx="44" size="xs"></pb-ring><b>@researcher</b><span class="ts show">15:04</span></div>
+        <div class="md"><p>Then one slips through: the <i>Emma</i> preface is headed “Introduction”. I’ll ask @critic to check the rule.</p></div></div>
+      <div class="sys"><span class="pill"><span class="g g-needs"></span>Waiting for you to allow the wake</span></div>
+    </div>
+    <div class="sp-foot">
+      <div class="composer-box">
+        <textarea rows="1" placeholder="Join this side thread…" aria-label="Message the side thread"></textarea>
+        <button class="btn send">Send</button>
+      </div>
+      <div class="small dim" style="margin-top:6px">Anything you send here adds you to this side thread.</div>
+    </div>
+  </aside>
+
+  <div class="toasts" role="status">
+    <div class="toast"><pb-ring name="@researcher" state="needs" ctx="55" size="sm"></pb-ring>
+      <div class="t-body"><b>@researcher needs you</b><span class="small">Agent memory papers · Which papers should I walk through first?</span></div>
+      <a class="btn sm" href="01-overview.html">Go</a><button class="btn icon sm ghost" aria-label="Dismiss"><span class="i i-x"></span></button></div>
+  </div>
+</div>
+</body>
+</html>

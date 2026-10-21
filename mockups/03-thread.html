@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corpus planning · Postbox</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="btn icon sm ghost" href="01-overview.html" aria-label="Back to overview"><span class="i i-back"></span></a>
+    <span class="crumbs"><span class="hide-sm">Book corpus</span><span class="i i-right hide-sm"></span><span class="title">Corpus planning</span></span>
+    <div class="present">
+      <span class="who-chip"><pb-ring name="@indexer" state="tool" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="xs"></pb-ring><b>@indexer</b></span>
+      <span class="who-chip"><pb-ring name="@researcher" state="idle" ctx="41" size="xs"></pb-ring><b>@researcher</b></span>
+    </div>
+    <div class="top-actions">
+      <button class="btn sm"><span class="g g-needs"></span><span class="hide-sm">Next that needs you</span><kbd>⌃J</kbd></button>
+      <button class="btn icon sm ghost" aria-label="Settings"><span class="i i-gear"></span></button>
+    </div>
+  </header>
+  <pb-rail project="corpus" active="planning"></pb-rail>
+  <div class="main">
+    <pb-strip project="corpus" active="planning"></pb-strip>
+    <div class="transcript">
+      <div class="sr-only" aria-live="polite">@indexer: Yes, prefaces and editor’s notes are easy to spot by their headings.</div>
+
+      <div class="col sys"><span class="pill"><span class="i i-archive i-sm"></span>Context compacted · <b>@indexer</b> #1 · kept 38k of 180k tokens · <a href="#">Show summary</a></span></div>
+
+      <div class="col turn me">
+        <div class="who"><span class="ts">14:10</span><b>You</b></div>
+        <div class="me-card md"><p>Before we embed anything: which editions are we indexing, and do we keep page numbers?</p></div>
+      </div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@researcher" state="idle" ctx="41" size="xs"></pb-ring><b>@researcher</b><span class="ts show">14:11 · Tuesday 21 October</span></div>
+        <div class="md">
+          <p>All 14 books are Project Gutenberg plain-text editions. Three of them have more than one edition in the folder, so we should pick one each:</p>
+          <ul>
+            <li><i>Middlemarch</i>: keep the 1874 one-volume text; drop the serial parts.</li>
+            <li><i>Emma</i> and <i>Persuasion</i>: keep the editions with chapter headings intact.</li>
+          </ul>
+          <p>Plain text has no page numbers, so I suggest we keep <b>chapter and character offsets</b> per passage instead. They survive re-chunking.</p>
+        </div>
+      </div>
+
+      <div class="col turn me">
+        <div class="who"><span class="ts">14:12</span><b>You</b></div>
+        <div class="me-card md"><p>Agreed. <b>@indexer</b> go ahead: lexical index first, then embeddings.</p></div>
+      </div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@indexer" state="tool" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="xs"></pb-ring><b>@indexer</b><span class="ts">14:12</span></div>
+        <details class="activity" open>
+          <summary><span class="i i-right i-sm"></span>Searched 3 files · 2 s</summary>
+          <ul class="steps">
+            <li><span class="g g-done"></span><span class="mono">read books/manifest.json</span><span class="dur">0.3 s</span></li>
+            <li><span class="g g-done"></span><span class="mono">grep “edition” books/*.txt</span><span class="dur">0.9 s</span></li>
+            <li><span class="g g-done"></span><span class="mono">read books/middlemarch/meta.json</span><span class="dur">0.8 s</span></li>
+          </ul>
+        </details>
+        <div class="md"><p>Found the three duplicate editions @researcher mentioned and set them aside. Building now. This list updates as I go:</p></div>
+        <div class="block" role="group" aria-labelledby="pg-title">
+          <div class="block-head"><span class="title grow" id="pg-title">Index the shelf</span><span class="kind">Progress</span><span class="small dim">2 of 5</span></div>
+          <div class="block-body">
+            <ol class="progress">
+              <li data-s="done"><span class="g g-done" role="img" aria-label="Done"></span><span class="t">Build the BM25 index <span class="dim small">· 14 books, 41,288 passages</span></span><span class="small dim">12.4 s</span></li>
+              <li data-s="done"><span class="g g-done" role="img" aria-label="Done"></span><span class="t">Split into 512-token passages</span><span class="small dim">48 s</span></li>
+              <li data-s="running"><span class="g g-running" role="img" aria-label="Running"></span><span class="t">Embed passages <span class="dim small">· chapter 14 of 31</span><div class="bar" style="margin-top:6px"><i style="width:45%"></i></div></span><span class="small dim">6 min</span></li>
+              <li data-s="pending"><span class="g g-pending" role="img" aria-label="Pending"></span><span class="t">Write the manifest</span><span></span></li>
+              <li data-s="pending"><span class="g g-pending" role="img" aria-label="Pending"></span><span class="t">Check 20 sample queries</span><span></span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <div class="col turn me">
+        <div class="who"><span class="ts">14:19</span><b>You</b></div>
+        <div class="me-card md"><p>Can you also skip the prefaces? I don’t want editors’ introductions in search results.</p></div>
+      </div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@indexer" state="gen" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="xs"></pb-ring><b>@indexer</b></div>
+        <details class="activity">
+          <summary><span class="i i-right i-sm"></span>Read 2 files · 1 s</summary>
+        </details>
+        <div class="md">
+          <p>Yes. Prefaces and editors’ notes are easy to spot by their headings, so I’ll drop them from both indexes.</p>
+          <p>That means rebuilding the BM25 index for three books, <i>Middlemarch</i>, <i>Emma</i> and <span aria-hidden="true">the</span><span class="caret" aria-hidden="true"></span></p>
+        </div>
+        <div class="block-placeholder"><span class="g g-running"></span>Preparing a table…</div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="col">
+        <div class="queued">
+          <span class="i i-clock dim"></span>
+          <span class="q-text"><span class="small dim">Queued · sends when @indexer finishes</span><br>Also drop the illustration captions.</span>
+          <button class="btn sm">Send now</button>
+          <button class="btn sm ghost">Edit</button>
+        </div>
+        <div class="composer-box">
+          <button class="btn icon ghost" aria-label="Add a file or a new agent" aria-haspopup="menu"><span class="i i-plus"></span></button>
+          <textarea rows="1" placeholder="Reply to @indexer" aria-label="Message"></textarea>
+          <button class="btn stop">Stop</button>
+        </div>
+        <div class="hint"><span>Replying to <b>@indexer</b> (last speaker)</span><span class="hide-sm">Enter to send · Shift+Enter for a new line · @ to wake an agent</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

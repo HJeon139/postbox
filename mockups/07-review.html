@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corpus schema spec · Postbox</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+<style>
+  .rv-doc .tx code { background: var(--chip); border: 1px solid var(--line); padding: 0 4px; border-radius: 4px; }
+  .rv-doc.code-doc .tx { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; white-space: pre; padding-top: 2px; padding-bottom: 2px; }
+  .rv-doc.code-doc { overflow-x: auto; }
+  .mini-app { padding: 18px 14px 14px; display: flex; flex-direction: column; gap: 14px; }
+  .mini-app .r { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .pin { position: absolute; right: -8px; top: 50%; transform: translate(100%, -50%); width: 260px; z-index: 3; }
+  .pin-dot { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 50%; background: var(--on); color: var(--on-ink); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .app-review-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
+  @media (max-width: 767px) { .app-review-wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="btn icon sm ghost" href="01-overview.html" aria-label="Back to overview"><span class="i i-back"></span></a>
+    <span class="crumbs"><span class="hide-sm">Book corpus</span><span class="i i-right hide-sm"></span><span class="title">Corpus schema spec</span></span>
+    <div class="present"><span class="who-chip"><pb-ring name="@critic" state="idle" ctx="18" size="xs"></pb-ring><b>@critic</b></span></div>
+    <div class="top-actions">
+      <button class="btn sm"><span class="g g-needs"></span><span class="hide-sm">Next that needs you</span><kbd>⌃J</kbd></button>
+      <button class="btn icon sm ghost" aria-label="Settings"><span class="i i-gear"></span></button>
+    </div>
+  </header>
+  <pb-rail project="corpus" active="spec"></pb-rail>
+  <div class="main">
+    <pb-strip project="corpus" active="spec"></pb-strip>
+    <div class="transcript">
+
+      <div class="col turn me">
+        <div class="who"><span class="ts">13:41</span><b>You</b></div>
+        <div class="me-card md"><p>Here’s my corpus schema and the chunker. Review them with me, and the explorer too.</p><div class="attachments"><span class="att"><span class="i i-file i-sm"></span>schema.md</span><span class="att"><span class="i i-file i-sm"></span>chunk.js</span></div></div>
+      </div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@critic" state="idle" ctx="18" size="xs"></pb-ring><b>@critic</b><span class="ts">13:42</span></div>
+        <div class="md"><p>Comment on any line, then submit. Your comments stay drafts until you do. I’ll revise in place and show you the diff.</p></div>
+
+        <!-- Markdown review, drafting -->
+        <div class="block" role="group" aria-labelledby="r1">
+          <div class="block-head"><span class="title grow mono" id="r1" style="font-size:13px">schema.md</span><span class="kind">Review · Markdown</span><span class="small dim">v1</span></div>
+          <div class="rv-doc">
+            <div class="rv-line h"><span class="g-ln">1</span><span class="tx">Corpus schema</span></div>
+            <div class="rv-line h"><span class="g-ln">3</span><span class="tx">Passages</span></div>
+            <div class="rv-line"><span class="g-ln">4</span><span class="tx">Each passage keeps its <code>book_id</code>, chapter and character offsets.</span></div>
+            <div class="rv-line marked"><span class="g-ln">5</span><span class="tx">Embeddings are stored per chapter.</span></div>
+            <div class="rv-thread"><div class="c"><span class="meta"><b>You</b><span class="status-tag draft">Draft</span></span>Per chapter is too coarse for search. Can we go per passage?</div></div>
+            <div class="rv-line"><span class="g-ln">6</span><span class="tx">Passages are 1,024 tokens with no overlap.</span></div>
+            <div class="rv-line h"><span class="g-ln">7</span><span class="tx">Books</span></div>
+            <div class="rv-line"><span class="g-ln">8</span><span class="tx">Every book has a title, author, year and edition.</span></div>
+            <div class="rv-line marked hover"><span class="g-ln"><span class="add-c" aria-label="Comment on line 9"><span class="i i-plus i-sm"></span></span>9</span><span class="tx">Page numbers are stored for each passage.</span></div>
+            <div class="rv-thread">
+              <div class="reply" style="flex-direction:column">
+                <textarea class="textarea" style="min-height:56px" aria-label="Comment on line 9">Plain text has no pages. Store offsets instead?</textarea>
+                <div class="row-flex"><button class="btn sm send">Add draft comment</button><button class="btn sm ghost">Cancel</button><span class="small dim">Ctrl+Enter adds it</span></div>
+              </div>
+            </div>
+            <div class="rv-line h"><span class="g-ln">10</span><span class="tx">Search</span></div>
+            <div class="rv-line marked"><span class="g-ln">11</span><span class="tx">Lexical search uses BM25 with default parameters.</span></div>
+            <div class="rv-thread"><div class="c"><span class="meta"><b>You</b><span class="status-tag draft">Draft</span></span>Should we tune <code class="mono">k1</code> for short passages?</div></div>
+          </div>
+        </div>
+
+        <!-- Code review -->
+        <div class="block" role="group" aria-labelledby="r2">
+          <div class="block-head"><span class="title grow mono" id="r2" style="font-size:13px">chunk.js</span><span class="kind">Review · Code</span><span class="small dim">v1</span></div>
+          <div class="rv-doc code-doc code" style="border-radius:0">
+            <div class="rv-line"><span class="g-ln">1</span><span class="tx"><span class="kw">export function</span> <span class="fn">chunk</span>(text, size = <span class="num-t">1024</span>) {</span></div>
+            <div class="rv-line"><span class="g-ln">2</span><span class="tx">  <span class="kw">const</span> out = [];</span></div>
+            <div class="rv-line marked"><span class="g-ln">3</span><span class="tx">  <span class="kw">for</span> (<span class="kw">let</span> i = <span class="num-t">0</span>; i &lt; text.length; i += size) {</span></div>
+            <div class="rv-thread" style="font-family:system-ui"><div class="c"><span class="meta"><b>You</b><span class="status-tag draft">Draft</span></span>This counts characters, not tokens, and can split a word in half.</div></div>
+            <div class="rv-line"><span class="g-ln">4</span><span class="tx">    out.push(text.slice(i, i + size));</span></div>
+            <div class="rv-line"><span class="g-ln">5</span><span class="tx">  }</span></div>
+            <div class="rv-line"><span class="g-ln">6</span><span class="tx">  <span class="kw">return</span> out;</span></div>
+            <div class="rv-line"><span class="g-ln">7</span><span class="tx">}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- App review: anchors registered by the app -->
+      <section class="wide appframe" aria-labelledby="r3">
+        <div class="app-bar">
+          <span class="title" id="r3">Corpus explorer</span><span class="authored">Agent-written app</span><span class="small dim">v2</span>
+          <span class="grow"></span>
+          <span class="pill"><span class="i i-comment i-sm"></span><b>Review mode</b> · click a highlighted part</span>
+          <button class="btn sm">Done reviewing</button>
+        </div>
+        <div class="app-body">
+          <div class="app-review-wrap" style="padding:0 14px 0 0">
+            <div class="mini-app">
+              <div class="anchor" style="display:flex;gap:8px;align-items:center"><span class="anchor-tag">search box</span><span class="i i-search dim"></span><input class="input" value="hope after loss" aria-label="Search"><button class="btn">Search</button></div>
+              <div class="r"><span class="check" role="checkbox" aria-checked="true"><span class="box"></span></span><div><div class="small dim"><b style="color:var(--text)"><i>Persuasion</i></b> · chapter 23 <span class="pill">lexical · BM25 8.4</span></div>…loving longest, when existence or when <mark style="background:var(--mark);color:inherit">hope</mark> is gone.</div></div>
+              <div class="r anchor" style="position:relative"><span class="anchor-tag">result row 2</span><span class="check" role="checkbox" aria-checked="true"><span class="box"></span></span><div style="padding-right:30px"><div class="small dim"><b style="color:var(--text)"><i>Middlemarch</i></b> · chapter 20 <span class="pill">semantic · 0.66</span></div>…that roar which lies on the other side of silence.</div><span class="pin-dot" aria-label="Comment 1">1</span></div>
+              <div class="anchor" style="display:flex;justify-content:flex-end;padding:4px"><span class="anchor-tag">send button</span><button class="btn send">Send 2 passages</button></div>
+            </div>
+            <div class="rv-thread" style="margin:18px 0 14px;grid-column:auto">
+              <div class="c"><span class="meta"><span class="pin-dot" style="position:static;transform:none;width:18px;height:18px;font-size:10px">1</span><b>You</b> on <b>result row 2</b><span class="status-tag draft">Draft</span></span>For semantic hits, show the sentence that matched the idea. A score alone doesn’t tell me why it’s here.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="col block" style="border-color:var(--accent)">
+        <div class="block-foot review-bar" style="border-top:0">
+          <span class="small"><b>4 draft comments</b> <span class="dim">on 3 items</span></span>
+          <span class="grow"></span>
+          <div class="seg" role="radiogroup" aria-label="Verdict">
+            <button role="radio" aria-pressed="false">Comment</button>
+            <button role="radio" aria-pressed="false">Approve</button>
+            <button role="radio" aria-pressed="true">Request changes</button>
+          </div>
+          <button class="btn send">Submit review</button>
+        </div>
+      </div>
+      <div class="col turn me"><span class="voice"><span class="i i-thread i-sm"></span>Submitted review: <b>Request changes · 5 comments</b></span></div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@critic" state="idle" ctx="18" size="xs"></pb-ring><b>@critic</b><span class="ts">14:02</span></div>
+        <div class="md"><p>Revised <code>schema.md</code> in place. Four comments are resolved; I left one open with my reasoning.</p></div>
+        <div class="block" role="group" aria-labelledby="r4">
+          <div class="block-head"><span class="title grow mono" id="r4" style="font-size:13px">schema.md</span><span class="kind">Review · Markdown</span>
+            <span class="seg" role="radiogroup" aria-label="View"><button role="radio" aria-pressed="true">Diff v1 → v2</button><button role="radio" aria-pressed="false">v2</button></span></div>
+          <div class="rv-doc">
+            <div class="rv-line h"><span class="g-ln">3</span><span class="tx">Passages</span></div>
+            <div class="rv-line"><span class="g-ln">4</span><span class="tx">Each passage keeps its <code>book_id</code>, chapter and character offsets.</span></div>
+            <div class="rv-line del"><span class="g-ln">5</span><span class="tx">Embeddings are stored per chapter.</span></div>
+            <div class="rv-line del"><span class="g-ln">6</span><span class="tx">Passages are 1,024 tokens with no overlap.</span></div>
+            <div class="rv-line add"><span class="g-ln">5</span><span class="tx">Embeddings are stored per passage.</span></div>
+            <div class="rv-line add"><span class="g-ln">6</span><span class="tx">Passages are 512 tokens with 64 tokens of overlap, split on sentence boundaries.</span></div>
+            <div class="rv-thread resolved"><div class="c"><span class="meta"><b>You</b><span class="status-tag ok"><span class="i i-check i-sm"></span>Resolved</span></span>Per chapter is too coarse for search. Can we go per passage?</div><div class="c"><span class="meta"><b>@critic</b></span>Done, and I matched the chunker fix from <code class="mono">chunk.js</code>.</div></div>
+            <div class="rv-line del"><span class="g-ln">9</span><span class="tx">Page numbers are stored for each passage.</span></div>
+            <div class="rv-line add"><span class="g-ln">9</span><span class="tx">Each passage stores chapter and character offsets instead of page numbers.</span></div>
+            <div class="rv-line h"><span class="g-ln">10</span><span class="tx">Search</span></div>
+            <div class="rv-line marked"><span class="g-ln">11</span><span class="tx">Lexical search uses BM25 with default parameters.</span></div>
+            <div class="rv-thread"><div class="c"><span class="meta"><b>You</b><span class="status-tag open">Open</span></span>Should we tune <code class="mono">k1</code> for short passages?</div><div class="c"><span class="meta"><b>@critic</b></span>Not changed yet. Defaults are a fair baseline until the 20 sample queries run; then we’ll know whether tuning helps.</div>
+              <div class="reply"><input class="input" placeholder="Reply…" aria-label="Reply"><button class="btn sm">Resolve</button></div></div>
+          </div>
+          <div class="block-foot"><span class="small"><b>4 of 5 resolved</b></span><span class="grow"></span><button class="btn">Review again</button><button class="btn">Approve v2</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="col">
+        <div class="composer-box">
+          <button class="btn icon ghost" aria-label="Add a file or a new agent" aria-haspopup="menu"><span class="i i-plus"></span></button>
+          <textarea rows="1" placeholder="Reply to @critic" aria-label="Message"></textarea>
+          <button class="btn send">Send</button>
+        </div>
+        <div class="hint"><span>Enter to send · Shift+Enter for a new line</span><span class="hide-sm">C comments on the focused line</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

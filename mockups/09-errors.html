@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Index the shelf · Postbox</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+<style>
+  .stopped-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; height: 18px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); }
+  .stopped-tag::before { content: ""; width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
+  .reconnect { border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="btn icon sm ghost" href="01-overview.html" aria-label="Back to overview"><span class="i i-back"></span></a>
+    <span class="crumbs"><span class="hide-sm">Book corpus</span><span class="i i-right hide-sm"></span><span class="title">Index the shelf</span></span>
+    <div class="present"><span class="who-chip"><pb-ring name="@indexer" state="failed" ctx="71" size="xs"></pb-ring><b>@indexer</b></span></div>
+    <div class="top-actions">
+      <button class="btn sm"><span class="g g-needs"></span><span class="hide-sm">Next that needs you</span><kbd>⌃J</kbd></button>
+      <button class="btn icon sm ghost" aria-label="Settings"><span class="i i-gear"></span></button>
+    </div>
+  </header>
+  <pb-rail project="corpus" active="index" states="index:failed:71:0"></pb-rail>
+  <div class="main">
+    <pb-strip project="corpus" active="index" states="index:failed:71:0"></pb-strip>
+    <div class="transcript">
+
+      <!-- A failed reply -->
+      <div class="col turn me">
+        <div class="who"><span class="ts">15:10</span><b>You</b></div>
+        <div class="me-card md"><p>Rebuild the index without the prefaces.</p></div>
+      </div>
+      <div class="col turn">
+        <div class="who"><pb-ring name="@indexer" state="failed" ctx="71" size="xs"></pb-ring><b>@indexer</b></div>
+        <div class="md"><p>Rebuilding the BM25 index for <i>Middlemarch</i>, <i>Emma</i> and</p></div>
+        <div class="callout" role="alert">
+          <span class="g g-failed"></span>
+          <div class="grow"><b>This reply stopped partway.</b> The model didn’t respond for 60 seconds. Your message is saved, so Retry sends it again.</div>
+          <button class="btn sm"><span class="i i-retry i-sm"></span>Retry</button>
+        </div>
+      </div>
+
+      <!-- A stopped reply -->
+      <div class="col turn me">
+        <div class="who"><span class="ts">15:14</span><b>You</b></div>
+        <div class="me-card md"><p>Actually, list the chapters first.</p></div>
+      </div>
+      <div class="col turn">
+        <div class="who"><pb-ring name="@indexer" state="idle" ctx="71" size="xs"></pb-ring><b>@indexer</b><span class="stopped-tag">Stopped by you at 15:15</span></div>
+        <div class="md"><p>Here are the chapters, longest books first: <i>Moby-Dick</i> has 135, <i>Middlemarch</i> 86, <i>Emma</i> 55,</p></div>
+      </div>
+
+      <!-- Blocks the app can't render -->
+      <div class="col turn me">
+        <div class="who"><span class="ts">15:16</span><b>You</b></div>
+        <div class="me-card md"><p>Show it as a timeline instead.</p></div>
+      </div>
+      <div class="col turn">
+        <div class="who"><pb-ring name="@indexer" state="idle" ctx="71" size="xs"></pb-ring><b>@indexer</b><span class="ts">15:16</span></div>
+        <div class="md"><p>Here’s the timeline:</p></div>
+        <div class="block" role="group" aria-labelledby="bad1">
+          <div class="block-head"><span class="i i-warn" style="color:var(--accent)"></span><span class="title grow" id="bad1">Chapters by book</span><span class="kind">Can’t show this block</span></div>
+          <div class="block-body">
+            <div class="md"><p>Chapters by length: <i>Moby-Dick</i> 135, <i>Middlemarch</i> 86, <i>Emma</i> 55, <i>Persuasion</i> 24, <i>Walden</i> 18.</p></div>
+            <p class="small dim">This is the agent’s plain-text version. The block itself asked for a “timeline”, which isn’t in this app’s catalog.</p>
+            <details class="raw" open>
+              <summary>Hide the raw block</summary>
+              <pre class="mono">{
+  "id": "chapters-1",
+  "type": "timeline",          <span class="st-failed">← unknown type</span>
+  "version": 1,
+  "title": "Chapters by book",
+  "fallback": "Chapters by length: Moby-Dick 135, …",
+  "items": [ … 14 items … ]
+}</pre>
+            </details>
+          </div>
+        </div>
+        <div class="block" role="group" aria-labelledby="bad2">
+          <div class="block-head"><span class="i i-warn" style="color:var(--accent)"></span><span class="title grow" id="bad2">Rebuild steps</span><span class="kind">Can’t show this block</span></div>
+          <div class="block-body">
+            <div class="md"><p>Steps: drop prefaces (done), rebuild BM25 (running), re-embed 3 books (waiting).</p></div>
+            <p class="small dim">This progress block is version 3, and this app reads up to version 1. Update Postbox to see it in full.</p>
+            <details class="raw"><summary>Show the raw block</summary></details>
+          </div>
+        </div>
+        <div class="block" role="group" aria-labelledby="bad3">
+          <div class="block-head"><span class="i i-warn" style="color:var(--accent)"></span><span class="title grow" id="bad3">Pick a book</span><span class="kind">Can’t show this block</span></div>
+          <div class="block-body">
+            <div class="md"><p>Which book should I rebuild first: <i>Middlemarch</i>, <i>Emma</i> or <i>Persuasion</i>? Reply in the chat.</p></div>
+            <p class="small dim">The choice block had a problem: option 2 is missing its label. You can still answer by typing.</p>
+            <details class="raw"><summary>Show the raw block</summary></details>
+          </div>
+        </div>
+      </div>
+
+      <!-- A crashed app -->
+      <div class="col turn">
+        <div class="md"><p>And the shelf map, with the new chapter counts:</p></div>
+      </div>
+      <section class="wide appframe" aria-labelledby="crash">
+        <div class="app-bar"><span class="title" id="crash">Shelf map</span><span class="authored">Agent-written app</span><span class="small dim grow">v2</span></div>
+        <div class="app-placeholder" style="height:200px">
+          <div class="inner" style="align-items:flex-start;text-align:left;max-width:520px;gap:8px">
+            <span class="row-flex" style="color:var(--text)"><span class="g g-failed"></span><b style="font-weight:600">Shelf map stopped working</b></span>
+            <span>It hit a script error and was shut down. Nothing outside the app was affected. Reload it, or ask @indexer to fix it.</span>
+            <code class="mono" style="color:var(--text)">TypeError: rows is undefined · line 42</code>
+            <span class="row-flex"><button class="btn sm"><span class="i i-retry i-sm"></span>Reload app</button><button class="btn sm">Ask @indexer to fix it</button></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Lost connection -->
+      <div class="col sys"><span class="pill reconnect" role="status"><span class="g g-running"></span><b>Reconnecting…</b> attempt 3 · nothing is lost; replies pick up where they stopped</span></div>
+    </div>
+
+    <div class="composer">
+      <div class="col">
+        <div class="composer-box">
+          <button class="btn icon ghost" aria-label="Add a file or a new agent" aria-haspopup="menu"><span class="i i-plus"></span></button>
+          <textarea rows="1" placeholder="Message @indexer" aria-label="Message"></textarea>
+          <button class="btn send">Send</button>
+        </div>
+        <div class="hint"><span>You’re offline. Messages you send now go out when the connection is back.</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

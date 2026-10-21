@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workbench palette</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+<style>
+  .pal { width: 100%; max-width: 1120px; margin: 0 auto; padding: 24px 24px 48px; display: flex; flex-direction: column; gap: 28px; }
+  .pal section { display: flex; flex-direction: column; gap: 10px; }
+  .sw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .sw { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+  .sw .chipc { height: 44px; border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 10px; font-weight: 600; }
+  .sw .meta { padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+  .sw .meta .mono { font-size: 11.5px; }
+  .sw .ratio { color: var(--dim); }
+  .sw .ratio b { color: var(--text); font-weight: 600; }
+  .legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .legend .item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  .bars { display: flex; flex-direction: column; gap: 6px; }
+  .bars .b { display: grid; grid-template-columns: 110px 1fr 44px; align-items: center; gap: 10px; font-size: 12px; }
+  .bars .b .fill { height: 14px; border-radius: 0 4px 4px 0; }
+  .type-row { display: flex; align-items: baseline; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .type-row .k { width: 160px; flex: none; }
+  .shapes { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .note { font-size: 12px; color: var(--dim); max-width: 80ch; }
+  @media (max-width: 767px) { .pal { padding: 16px 12px 32px; } .type-row { flex-direction: column; gap: 2px; } .type-row .k { width: auto; } }
+</style>
+</head>
+<body>
+<div class="app no-rail">
+  <header class="topbar">
+    <span class="brand"><span class="mark"></span>Postbox</span>
+    <span class="crumbs"><span class="i i-right"></span><span class="title">Workbench palette</span></span>
+    <div class="top-actions"><span class="pill"><span class="i i-moon i-sm"></span><b class="theme-name">Dark</b> · follows System</span></div>
+  </header>
+  <main class="pal">
+    <section>
+      <h1 class="title" style="font-size:20px">Workbench palette</h1>
+      <p class="dim" style="max-width:80ch">Every color the app may use, in the current mode. Ratios are measured live against the page (<code class="mono">--bg</code>) and cards (<code class="mono">--panel</code>). Text needs 4.5:1; borders, icons and focus rings need 3:1. Each extended set is used only in its own context, and amber stays the only interaction color.</p>
+    </section>
+
+    <section>
+      <h2 class="label">Surfaces and ink</h2>
+      <div class="sw-grid" data-set="--bg --panel --sunk --chip --line --text --dim"></div>
+    </section>
+
+    <section>
+      <h2 class="label">Interaction and meaning</h2>
+      <div class="sw-grid" data-set="--accent --on --on-ink --good --alert --alert-ink --overlay"></div>
+      <p class="note"><code class="mono">--alert</code> is for borders and icons only. Error text uses <code class="mono">--alert-ink</code>, which passes 4.5:1 in both modes.</p>
+    </section>
+
+    <section>
+      <h2 class="label">Agent-app stage · agent-written software only</h2>
+      <p class="note">Postbox is warm; an agent’s app sits on a cool stage with a slate frame and label, so you can tell at a glance whose interface you’re in. Inside the sandbox these values replace the base tokens. Amber keeps one meaning everywhere: you can act on this.</p>
+      <div class="appframe">
+        <div class="app-bar"><span class="title">Corpus explorer</span><span class="authored">Agent-written app</span><span class="small dim grow">v2</span><button class="btn sm">Review</button></div>
+        <div class="app-body" style="padding:14px;display:flex;flex-direction:column;gap:10px">
+          <div class="chips"><button class="chip sm on" aria-pressed="true">Both</button><button class="chip sm">Lexical</button><button class="chip sm">Semantic</button></div>
+          <span class="check" role="checkbox" aria-checked="true"><span class="box"></span><span><i>Persuasion</i> · chapter 23 <span class="dim small">· lexical · BM25 8.4</span></span></span>
+          <div><button class="btn send">Send 1 passage</button></div>
+        </div>
+      </div>
+      <div class="sw-grid" data-set="--stage-bg --stage-panel --stage-sunk --stage-chip --stage-line --stage-text --stage-dim --stage-edge --stage-label"></div>
+    </section>
+
+    <section>
+      <h2 class="label">Agent status · rings and glyphs only</h2>
+      <div class="legend">
+        <div class="item"><pb-ring state="idle" ctx="18" size="lg" name="@critic"></pb-ring><div><b>Idle</b><div class="small dim">The arc holds still</div><code class="mono small">--st-idle</code></div></div>
+        <div class="item"><pb-ring state="think" ctx="46" size="lg" name="@researcher"></pb-ring><div><b>Thinking</b><div class="small dim">A short bulge runs along the arc, then rests</div><code class="mono small">--st-think</code></div></div>
+        <div class="item"><pb-ring state="gen" ctx="34" size="lg" name="@librarian"></pb-ring><div><b>Generating</b><div class="small dim">The arc turns once, then rests</div><code class="mono small">--st-gen</code></div></div>
+        <div class="item"><pb-ring state="tool" ctx="62" size="lg" name="@indexer"></pb-ring><div><b>Calling tools</b><div class="small dim">A dot crosses the free space and back</div><code class="mono small">--st-tool</code></div></div>
+        <div class="item"><pb-ring state="needs" ctx="55" size="lg" name="@researcher"></pb-ring><div><b>Needs you</b><div class="small dim">Amber pulse, then rest · blocking only</div><code class="mono small">--accent</code></div></div>
+        <div class="item"><pb-ring state="failed" ctx="71" size="lg" name="@indexer"></pb-ring><div><b>Failed</b><div class="small dim">A still red arc</div><code class="mono small">--alert</code></div></div>
+        <div class="item"><pb-ring state="tool" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="lg" name="@indexer"></pb-ring><div><b>With 2 subagents</b><div class="small dim">Each subagent adds a thinner ring outside, showing its own context and activity</div></div></div>
+        <div class="item"><pb-ring state="think" ctx="40" subs="tool:30:fetcher,gen:55:writer,idle:12:checker,think:20:planner" size="lg" name="@researcher"></pb-ring><div><b>With 4 subagents</b><div class="small dim">Up to 3 rings on the overview and 2 in the rail; the rest show as “+n”</div></div></div>
+      </div>
+      <p class="note">The arc of each ring is the share of that agent’s context window in use. Rings are the only activity indicator: there are no separate state icons. Every ring size moves the same way, and every motion eases in, eases out, then rests. With reduced motion the rings hold still, and the state is spelled out in each rail row and in the ring’s accessible name.</p>
+      <div class="sw-grid" data-set="--st-idle --st-think --st-gen --st-tool"></div>
+    </section>
+
+    <section>
+      <h2 class="label">Chart series · inside charts only, fixed order · <a href="14-charts.html" style="text-transform:none;letter-spacing:0">see every chart type</a></h2>
+      <div class="block"><div class="block-body">
+        <div class="bars" id="bars"></div>
+        <p class="note">Validated for color-vision deficiency in this order (worst adjacent ΔE 9.1 light, 8.4 dark). Past three series in scatter-like charts, fold into “Other” or split into small multiples. Labels and values always use text colors, never the series color.</p>
+      </div></div>
+    </section>
+
+    <section>
+      <h2 class="label">Sequential and diverging · heatmaps and polarity</h2>
+      <div class="sw-grid" data-set="--seq-1 --seq-2 --seq-3 --seq-4 --seq-5 --seq-6 --div-neg --div-mid --div-pos"></div>
+      <p class="note">Sequential is one hue: step 1 means “near zero” and recedes toward the surface, so in dark mode more is lighter and in light mode more is darker. Diverging pairs a warm and a cool pole around a neutral middle.</p>
+    </section>
+
+    <section>
+      <h2 class="label">Review diffs and highlights</h2>
+      <div class="block"><div class="rv-doc">
+        <div class="rv-line"><span class="g-ln">12</span><span class="tx">Each passage keeps its <code class="mono">book_id</code>, chapter and character offsets.</span></div>
+        <div class="rv-line del"><span class="g-ln">13</span><span class="tx">Embeddings are stored per chapter.</span></div>
+        <div class="rv-line add"><span class="g-ln">13</span><span class="tx">Embeddings are stored per passage, 512 tokens with 64 of overlap.</span></div>
+        <div class="rv-line marked"><span class="g-ln">14</span><span class="tx">A commented line is highlighted with <code class="mono">--mark</code>.</span></div>
+      </div></div>
+      <div class="sw-grid" data-set="--diff-add --diff-del --diff-mod --mark"></div>
+    </section>
+
+    <section>
+      <h2 class="label">Syntax highlighting · code blocks only</h2>
+      <div class="block"><div class="code"><pre><span class="com">// Rank passages by BM25, then blend in the semantic score.</span>
+<span class="kw">export function</span> <span class="fn">rank</span>(hits, alpha = <span class="num-t">0.6</span>) {
+  <span class="kw">return</span> hits.map((h) =&gt; ({ ...h, score: alpha * h.bm25 + (<span class="num-t">1</span> - alpha) * h.cosine }))
+    .sort((a, b) =&gt; b.score - a.score); <span class="com">// highest first</span>
+}
+<span class="kw">const</span> label = <span class="str">"lexical · semantic"</span>;</pre></div></div>
+      <div class="sw-grid" data-set="--syn-kw --syn-str --syn-num --syn-fn --syn-com"></div>
+    </section>
+
+    <section>
+      <h2 class="label">Type</h2>
+      <div>
+        <div class="type-row"><span class="k label">Title · 16 / 600</span><span class="title">Corpus explorer</span></div>
+        <div class="type-row"><span class="k label">Body · 14 / 1.4</span><span>Searches 14 books by meaning and by exact words.</span></div>
+        <div class="type-row"><span class="k label">Secondary · 12 dim</span><span class="small dim">Updated 2 min ago · v2</span></div>
+        <div class="type-row"><span class="k label">Label · 11 caps</span><span class="label">Tool calls</span></div>
+        <div class="type-row"><span class="k label">Numbers · tabular</span><span>1,204 · 38.2 s · 62%</span></div>
+        <div class="type-row"><span class="k label">Code · mono 12.5</span><code class="mono">corpus.search({ q: "grief" })</code></div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="label">Shape and controls</h2>
+      <div class="shapes">
+        <button class="btn">Default</button>
+        <button class="btn is-hover">Hover · amber border</button>
+        <button class="btn send">Send</button>
+        <button class="btn stop">Stop</button>
+        <button class="btn" style="outline:2px solid var(--accent);outline-offset:2px">Focus ring</button>
+        <span class="chip">Chip</span>
+        <span class="chip on"><span class="i i-check"></span>Selected chip</span>
+        <span class="pill">Pill · 999px</span>
+        <input class="input" style="width:180px" value="Control · 6px">
+      </div>
+      <p class="note">Controls 6px radius, cards 8px, pills 999px. No shadows, no gradients, no filled primary buttons. A selected chip is the only filled shape.</p>
+    </section>
+  </main>
+</div>
+<script type="module">
+  const lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const parse = (s) => { const m = s.match(/rgba?\(([^)]+)\)/); if (m) return m[1].split(',').map(Number); const h = s.trim().replace('#', ''); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).concat(1); };
+  const over = ([r, g, b, a = 1], [R, G, B]) => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a)];
+  const lum = ([r, g, b]) => 0.2126 * lin(r / 255) + 0.7152 * lin(g / 255) + 0.0722 * lin(b / 255);
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const cs = getComputedStyle(document.documentElement);
+  const v = (n) => cs.getPropertyValue(n).trim();
+  const bg = parse(v('--bg')), panel = parse(v('--panel'));
+  document.querySelector('.theme-name').textContent = document.documentElement.dataset.theme === 'light' ? 'Light' : 'Dark';
+  for (const grid of document.querySelectorAll('[data-set]')) {
+    for (const name of grid.dataset.set.split(' ')) {
+      const raw = v(name), c = parse(raw);
+      const onBg = over(c, bg), onPanel = over(c, panel);
+      const textOnIt = ratio(parse(v('--text')), onBg);
+      const el = document.createElement('div');
+      el.className = 'sw';
+      el.innerHTML = `<div class="chipc" style="background:${raw};color:${textOnIt >= 4.5 ? 'var(--text)' : 'var(--on-ink)'}">Aa</div>
+        <div class="meta"><code class="mono">${name}</code><span class="mono dim">${raw}</span>
+        <span class="ratio">on bg <b>${ratio(onBg, bg) < 1.05 ? '—' : ratio(onBg, bg).toFixed(2)}</b> · on panel <b>${ratio(onPanel, panel) < 1.05 ? '—' : ratio(onPanel, panel).toFixed(2)}</b></span></div>`;
+      grid.append(el);
+    }
+  }
+  const data = [['Middlemarch', 412], ['Persuasion', 268], ['Moby-Dick', 233], ['Walden', 190], ['Dubliners', 151], ['Emma', 132], ['Ulysses', 97], ['Other', 64]];
+  document.getElementById('bars').innerHTML = data.map(([k, n], i) =>
+    `<div class="b"><span>${k}</span><span class="fill" style="width:${(n / 412) * 100}%;background:var(--s${i + 1})"></span><span class="num dim" style="text-align:right">${n}</span></div>`).join('') +
+    '<p class="small dim">Passages matched per book · series 1–8</p>';
+</script>
+</body>
+</html>

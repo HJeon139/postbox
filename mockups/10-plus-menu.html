@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Index the shelf · Postbox</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+<style>
+  .composer .col { position: relative; }
+  .plus-menu { bottom: calc(100% + 6px); left: 0; width: 330px; }
+  .new-tag { color: var(--accent); font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tool { display: inline-flex; align-items: center; gap: 5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--chip); }
+  .tool.extra { border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="btn icon sm ghost" href="01-overview.html" aria-label="Back to overview"><span class="i i-back"></span></a>
+    <span class="crumbs"><span class="hide-sm">Book corpus</span><span class="i i-right hide-sm"></span><span class="title">Index the shelf</span></span>
+    <div class="present"><span class="who-chip"><pb-ring name="@indexer" state="idle" ctx="62" size="xs"></pb-ring><b>@indexer</b></span></div>
+    <div class="top-actions">
+      <button class="btn sm"><span class="g g-needs"></span><span class="hide-sm">Next that needs you</span><kbd>⌃J</kbd></button>
+      <button class="btn icon sm ghost" aria-label="Settings"><span class="i i-gear"></span></button>
+    </div>
+  </header>
+  <pb-rail project="corpus" active="index" states="index:idle:62:0"></pb-rail>
+  <div class="main">
+    <pb-strip project="corpus" active="index" states="index:idle:62:0"></pb-strip>
+    <div class="transcript">
+      <div class="col turn me">
+        <div class="who"><span class="ts">16:01</span><b>You</b></div>
+        <div class="me-card md"><p>Can you double-check that the quotes in my notes match the books?</p></div>
+      </div>
+      <div class="col turn">
+        <div class="who"><pb-ring name="@indexer" state="idle" ctx="62" size="xs"></pb-ring><b>@indexer</b><span class="ts">16:02</span></div>
+        <div class="md"><p>I can check them against the corpus, but some of your notes quote other editions online, and I can’t fetch web pages. Checking citations will keep coming up, so I’d suggest a teammate for it:</p></div>
+        <div class="block" role="group" aria-labelledby="prop" style="border-color:var(--accent)">
+          <div class="block-head"><span class="i i-spark" style="color:var(--accent)"></span><span class="title grow" id="prop">New teammate: @citer</span><span class="kind">Proposed by @indexer</span></div>
+          <div class="block-body">
+            <p>Checks every quoted passage against its source, in the corpus or on the web, and flags any that don’t match.</p>
+            <dl class="facts">
+              <dt>Model</dt><dd>Claude Sonnet 5.5 · Agent SDK</dd>
+              <dt>Tools</dt><dd><div class="tools"><span class="tool">corpus.search</span><span class="tool">corpus.read</span><span class="tool extra">web.fetch</span></div>
+                <span class="new-tag"><span class="i i-warn i-sm"></span>web.fetch is more than @indexer has. It needs your OK.</span></dd>
+              <dt>Joins</dt><dd>This thread, with the last 20 messages as context</dd>
+            </dl>
+          </div>
+          <div class="block-foot"><button class="btn">Create @citer</button><button class="btn">Edit first</button><button class="btn ghost">Dismiss</button></div>
+        </div>
+      </div>
+      <div class="menu-room" style="height:330px" aria-hidden="true"></div>
+    </div>
+
+    <div class="composer">
+      <div class="col">
+        <div class="menu plus-menu" role="menu" aria-label="Add">
+          <div class="label">Add a file</div>
+          <a class="mi active" role="menuitem"><span class="i i-upload"></span><span class="grow">Upload from computer<span class="d">Or drop files anywhere in the thread</span></span></a>
+          <a class="mi" role="menuitem"><span class="i i-folder"></span><span class="grow">From the project folder<span class="d mono">~/books</span></span></a>
+          <a class="mi" role="menuitem"><span class="i i-books"></span><span class="grow">Add to the corpus<span class="d">Index books or documents for search</span></span></a>
+          <hr>
+          <div class="label">New agent</div>
+          <a class="mi" role="menuitem" href="11-new-agent.html"><span class="i i-agent"></span><span class="grow">From a boilerplate<span class="d">Researcher, Critic, Indexer, or one you saved</span></span><span class="i i-right i-sm dim"></span></a>
+          <a class="mi" role="menuitem"><span class="i i-spark"></span><span class="grow">Recommend one<span class="d">@indexer drafts a teammate for this thread</span></span></a>
+        </div>
+        <div class="attachments" aria-label="Attachments">
+          <span class="att"><span class="thumb"><span class="i i-image i-sm"></span></span>Pasted image.png<span class="dim">· 214 KB</span><button class="btn icon sm ghost" aria-label="Remove Pasted image.png"><span class="i i-x i-sm"></span></button></span>
+          <span class="att"><span class="thumb"><span class="i i-file i-sm"></span></span>Pasted text<span class="dim">· 2,340 characters</span><button class="btn icon sm ghost" aria-label="Remove pasted text"><span class="i i-x i-sm"></span></button></span>
+          <span class="att"><span class="thumb"><span class="i i-folder i-sm"></span></span>notes/quotes.md<span class="dim">· from ~/books</span><button class="btn icon sm ghost" aria-label="Remove notes/quotes.md"><span class="i i-x i-sm"></span></button></span>
+        </div>
+        <div class="composer-box">
+          <button class="btn icon is-hover" aria-label="Add a file or a new agent" aria-haspopup="menu" aria-expanded="true"><span class="i i-plus"></span></button>
+          <textarea rows="1" aria-label="Message">Here are my notes, check these three quotes</textarea>
+          <button class="btn send">Send</button>
+        </div>
+        <div class="hint"><span>Enter to send · Shift+Enter for a new line</span><span class="hide-sm">Paste an image or long text to attach it</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

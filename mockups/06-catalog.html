@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalog tour · Postbox</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+<style>
+  .chip[disabled] { cursor: default; }
+  .chip[disabled]:not(.on) { opacity: .55; }
+  .counter { margin-left: auto; font-size: 12px; color: var(--dim); }
+  .titlepage { background: #f3ead8; color: #2a221b; font-family: Georgia, "Times New Roman", serif; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <a class="btn icon sm ghost" href="01-overview.html" aria-label="Back to overview"><span class="i i-back"></span></a>
+    <span class="crumbs"><span class="hide-sm">Book corpus</span><span class="i i-right hide-sm"></span><span class="title">Catalog tour</span></span>
+    <div class="present"><span class="who-chip"><pb-ring name="@librarian" state="needs" ctx="12" size="xs"></pb-ring><b>@librarian</b></span></div>
+    <div class="top-actions">
+      <button class="btn sm"><span class="g g-needs"></span><span class="hide-sm">Next that needs you</span><kbd>⌃J</kbd></button>
+      <button class="btn icon sm ghost" aria-label="Settings"><span class="i i-gear"></span></button>
+    </div>
+  </header>
+  <pb-rail project="corpus" active="tour"></pb-rail>
+  <div class="main">
+    <pb-strip project="corpus" active="tour"></pb-strip>
+    <div class="transcript">
+
+      <div class="col turn me">
+        <div class="who"><span class="ts">09:12</span><b>You</b></div>
+        <div class="me-card md"><p>Show me every kind of block you can send.</p></div>
+      </div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@librarian" state="idle" ctx="12" size="xs"></pb-ring><b>@librarian</b><span class="ts">09:12</span></div>
+        <div class="md"><p>First, the one you answered earlier. It stays here read-only so you can see what you chose.</p></div>
+
+        <!-- 4. An answered block, read-only -->
+        <div class="block answered" role="group" aria-labelledby="b0">
+          <div class="block-head"><span class="title grow" id="b0">How often should I send a reading plan?</span><span class="kind">Choice</span></div>
+          <div class="block-body">
+            <div class="chips" aria-label="Frequency, answered">
+              <button class="chip sm" disabled>Daily</button>
+              <button class="chip sm on" disabled aria-pressed="true"><span class="i i-check"></span>Weekly</button>
+              <button class="chip sm" disabled>Monthly</button>
+            </div>
+            <div class="chips" aria-label="Time, answered">
+              <button class="chip sm on" disabled aria-pressed="true"><span class="i i-check"></span>Monday 9:00</button>
+              <button class="chip sm" disabled>Friday 17:00</button>
+            </div>
+            <span class="answered-note"><span class="i i-check i-sm"></span>Answered at 09:14 · only a new block can ask again</span>
+          </div>
+        </div>
+      </div>
+      <div class="col turn me"><span class="voice"><span class="i i-thread i-sm"></span>Chose: <b>weekly · Monday 9:00</b></span></div>
+
+      <div class="col turn">
+        <div class="who"><pb-ring name="@librarian" state="needs" ctx="12" size="xs"></pb-ring><b>@librarian</b><span class="ts">09:15</span></div>
+        <div class="md"><p>Now the live ones, one of each type in the catalog.</p></div>
+
+        <!-- choice: single, with other -->
+        <div class="block" role="group" aria-labelledby="b1">
+          <div class="block-head"><span class="title grow" id="b1">Which book should we start with?</span><span class="kind">Choice</span></div>
+          <div class="block-body">
+            <div class="chips" role="radiogroup" aria-labelledby="b1">
+              <button class="chip" role="radio" aria-checked="false">Middlemarch</button>
+              <button class="chip" role="radio" aria-checked="false">Persuasion</button>
+              <button class="chip" role="radio" aria-checked="false">Walden</button>
+              <button class="chip" role="radio" aria-checked="true"><span class="i i-check"></span>Something else</button>
+            </div>
+            <div class="field"><label class="label" for="other1">Something else</label><input class="input" id="other1" value="Dubliners"></div>
+          </div>
+          <div class="block-foot"><button class="btn send">Send choice</button><span class="small dim">or press 1–4</span></div>
+        </div>
+      </div>
+
+      <!-- choice: several -->
+      <div class="col block" role="group" aria-labelledby="b2">
+        <div class="block-head"><span class="title grow" id="b2">Which kinds of passage interest you?</span><span class="kind">Choice · several</span></div>
+        <div class="block-body">
+          <div class="chips" role="group" aria-labelledby="b2">
+            <button class="chip" aria-pressed="true"><span class="i i-check"></span>Letters</button>
+            <button class="chip" aria-pressed="false">Dialogue</button>
+            <button class="chip" aria-pressed="true"><span class="i i-check"></span>Landscape</button>
+            <button class="chip" aria-pressed="false">Endings</button>
+            <button class="chip" aria-pressed="false">Openings</button>
+          </div>
+        </div>
+        <div class="block-foot"><button class="btn send">Send 2 choices</button></div>
+      </div>
+
+      <!-- form -->
+      <div class="col block" role="group" aria-labelledby="b3">
+        <div class="block-head"><span class="title grow" id="b3">Set up your reading plan</span><span class="kind">Form</span></div>
+        <div class="block-body">
+          <div class="form-grid">
+            <div class="field"><label class="label" for="f1">Plan name</label><input class="input" id="f1" value="Autumn with Eliot"></div>
+            <div class="field"><label class="label" for="f2">Pages per day</label><input class="input invalid" id="f2" value="400" inputmode="numeric" aria-invalid="true" aria-describedby="f2e"><span class="err" id="f2e"><span class="i i-warn"></span>Enter a number from 5 to 200.</span></div>
+            <div class="field"><label class="label" for="f3">Pace</label><div class="select-wrap"><select class="select" id="f3"><option>Steady</option></select><span class="i i-down"></span></div></div>
+            <div class="field"><label class="label" for="f4">Start date</label><input class="input" id="f4" value="2026-10-27" aria-describedby="f4h"><span class="help" id="f4h">Monday, 27 October 2026</span></div>
+            <div class="field span"><span class="label">Reminders</span><span class="toggle" role="switch" aria-checked="true" tabindex="0"><span class="track"></span>Remind me on the morning of each session</span></div>
+            <div class="field span"><label class="label" for="f6">Anything else? <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· optional, Markdown</span></label><textarea class="textarea" id="f6">I’d rather read whole chapters than stop mid-scene.</textarea><span class="counter">52 / 2,000</span></div>
+          </div>
+        </div>
+        <div class="block-foot"><button class="btn send">Send form</button><span class="err"><span class="i i-warn"></span>1 field needs fixing</span></div>
+      </div>
+
+      <!-- table: 200 rows, inline and capped -->
+      <div class="col block" role="group" aria-labelledby="b4">
+        <div class="block-head"><span class="title grow" id="b4">Passages that mention a letter</span><span class="kind">Table</span><span class="small dim">200 rows</span><button class="btn icon sm" aria-label="Expand table"><span class="i i-expand"></span></button></div>
+        <div class="tbl-wrap" tabindex="0" aria-label="Table, scrolls">
+          <table class="tbl">
+            <thead><tr>
+              <th><button>Book<span class="i i-sort i-sm"></span></button></th>
+              <th class="num"><button>Chapter<span class="i i-sort i-sm"></span></button></th>
+              <th class="num"><button>Words<span class="i i-sort i-sm"></span></button></th>
+              <th class="num" aria-sort="descending"><button>Score<span class="i i-sortdown i-sm"></span></button></th>
+              <th><span class="sr-only">Action</span></th>
+            </tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- progress with a failure -->
+      <div class="col block" role="group" aria-labelledby="b5">
+        <div class="block-head"><span class="title grow" id="b5">Fetch title pages</span><span class="kind">Progress</span><span class="small dim">3 of 5</span></div>
+        <div class="block-body">
+          <ol class="progress">
+            <li data-s="done"><span class="g g-done" role="img" aria-label="Done"></span><span class="t">Middlemarch</span><span class="small dim">1.2 s</span></li>
+            <li data-s="done"><span class="g g-done" role="img" aria-label="Done"></span><span class="t">Persuasion</span><span class="small dim">0.9 s</span></li>
+            <li data-s="failed"><span class="g g-failed" role="img" aria-label="Failed"></span><span class="t">Walden<span class="err">That address isn’t on the allowed list, so I skipped it.</span></span><button class="btn sm"><span class="i i-retry i-sm"></span>Retry</button></li>
+            <li data-s="running"><span class="g g-running" role="img" aria-label="Running"></span><span class="t">Moby-Dick</span><span class="small dim">2 s</span></li>
+            <li data-s="pending"><span class="g g-pending" role="img" aria-label="Pending"></span><span class="t">Emma</span><span></span></li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- card -->
+      <div class="col block" role="group" aria-labelledby="b6">
+        <div class="block-head"><span class="title grow" id="b6"><i>Middlemarch</i></span><span class="kind">Card</span></div>
+        <div class="block-body">
+          <dl class="facts">
+            <dt>Author</dt><dd>George Eliot</dd>
+            <dt>Published</dt><dd>1871–72, in eight parts</dd>
+            <dt>Passages</dt><dd>6,412</dd>
+            <dt>Indexed</dt><dd><span class="g g-done" style="vertical-align:-2px"></span> Today at 14:32</dd>
+          </dl>
+        </div>
+        <div class="block-foot"><button class="btn">Open in explorer</button><button class="btn">Re-index</button><button class="btn">Show chapters</button></div>
+      </div>
+
+      <!-- confirm -->
+      <div class="col block" role="group" aria-labelledby="b7" style="border-color:var(--accent)">
+        <div class="block-head"><span class="g g-needs"></span><span class="title grow" id="b7">Remove 14 duplicate passages?</span><span class="kind">Confirm</span></div>
+        <div class="block-body md">
+          <p>This deletes 14 passages from both the lexical and semantic indexes. The source books in <code>~/books</code> aren’t touched, and <b>Re-index</b> brings the passages back.</p>
+        </div>
+        <div class="block-foot"><button class="btn">Remove 14 passages</button><button class="btn">Keep them</button></div>
+      </div>
+
+      <!-- image -->
+      <div class="col block img-block" role="group" aria-labelledby="b8">
+        <div class="block-head"><span class="title grow" id="b8">Title page, first edition</span><span class="kind">Image</span></div>
+        <div class="block-body">
+          <figure>
+            <svg class="titlepage" viewBox="0 0 600 300" role="img" aria-label="The title page of Middlemarch: A Study of Provincial Life, by George Eliot, book one, published by William Blackwood and Sons, 1871.">
+              <rect width="600" height="300" fill="#f3ead8"/>
+              <rect x="16" y="16" width="568" height="268" fill="none" stroke="#2a221b" stroke-width="1"/>
+              <text x="300" y="96" text-anchor="middle" font-size="40" letter-spacing="6" fill="#2a221b">MIDDLEMARCH</text>
+              <text x="300" y="130" text-anchor="middle" font-size="15" letter-spacing="3" fill="#2a221b">A STUDY OF PROVINCIAL LIFE</text>
+              <text x="300" y="170" text-anchor="middle" font-size="14" font-style="italic" fill="#2a221b">by George Eliot</text>
+              <text x="300" y="206" text-anchor="middle" font-size="12" letter-spacing="2" fill="#2a221b">BOOK I. MISS BROOKE</text>
+              <text x="300" y="256" text-anchor="middle" font-size="12" letter-spacing="1" fill="#2a221b">WILLIAM BLACKWOOD AND SONS · MDCCCLXXI</text>
+            </svg>
+            <figcaption>From <span class="mono">www.gutenberg.org</span> (allowed) · Alt text: “The title page of Middlemarch, book one, 1871.”</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <!-- code -->
+      <div class="col block" role="group" aria-labelledby="b9">
+        <div class="block-head"><span class="title grow mono" id="b9" style="font-size:13px">passage.schema.json</span><span class="kind">Code · JSON</span><button class="btn sm"><span class="i i-copy i-sm"></span>Copy</button></div>
+        <div class="code"><pre><span class="ln">1</span>{
+<span class="ln">2</span>  <span class="str">"book_id"</span>: <span class="str">"middlemarch"</span>,
+<span class="ln">3</span>  <span class="str">"chapter"</span>: <span class="num-t">20</span>,
+<span class="ln">4</span>  <span class="str">"start"</span>: <span class="num-t">18342</span>, <span class="str">"end"</span>: <span class="num-t">20871</span>,
+<span class="ln">5</span>  <span class="str">"tokens"</span>: <span class="num-t">512</span>,
+<span class="ln">6</span>  <span class="str">"skip"</span>: <span class="kw">false</span>  <span class="com">// prefaces and editors’ notes are skipped</span>
+<span class="ln">7</span>}</pre></div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="col">
+        <div class="composer-box">
+          <button class="btn icon ghost" aria-label="Add a file or a new agent" aria-haspopup="menu"><span class="i i-plus"></span></button>
+          <textarea rows="1" placeholder="Reply to @librarian" aria-label="Message"></textarea>
+          <button class="btn send">Send</button>
+        </div>
+        <div class="hint"><span>Enter to send · Shift+Enter for a new line</span><span class="hide-sm">Tab moves between blocks · focus returns here after you answer</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="module">
+  const books = [['Middlemarch', 86], ['Persuasion', 24], ['Emma', 55], ['Walden', 18], ['Moby-Dick', 135], ['Dubliners', 15], ['Ulysses', 18]];
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const rows = Array.from({ length: 200 }, (_, i) => {
+    const [b, chs] = books[Math.floor(rnd() * books.length)];
+    return { b, ch: 1 + Math.floor(rnd() * chs), w: 120 + Math.floor(rnd() * 900), s: +(9.6 - i * 0.041 - rnd() * 0.03).toFixed(2) };
+  });
+  document.getElementById('rows').innerHTML = rows.map((r) =>
+    `<tr><td><i>${r.b}</i></td><td class="num">${r.ch}</td><td class="num">${r.w.toLocaleString('en-US')}</td><td class="num">${r.s.toFixed(2)}</td><td class="act"><button class="btn sm ghost">Open</button></td></tr>`).join('');
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Postbox mockups</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<style>
+  .idx { width: 100%; max-width: 760px; margin: 0 auto; padding: 32px 16px; display: flex; flex-direction: column; gap: 16px; }
+  .idx ol { padding-left: 24px; display: flex; flex-direction: column; gap: 8px; }
+  .idx li a { font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="idx">
+  <h1 class="title" style="font-size:20px">Postbox · Stage 1 mockups</h1>
+  <p class="dim">Static pages, no backend. Add <code class="mono">?theme=light</code> or <code class="mono">?theme=dark</code> to any page; without it, pages follow your system setting.</p>
+  <p class="row-flex"><a class="btn" href="?theme=dark">Dark</a><a class="btn" href="?theme=light">Light</a><a class="btn" href="index.html">System</a></p>
+  <ol start="0">
+    <li><a href="00-palette.html">Palette</a> <span class="dim">· every token, ring state, chart, diff and syntax color, with live contrast ratios</span></li>
+    <li><a href="01-overview.html">Overview</a> <span class="dim">· one column per live session; one blocking, one finished</span></li>
+    <li><a href="02-empty.html">Empty thread</a> <span class="dim">· welcome and three example prompts</span></li>
+    <li><a href="03-thread.html">Conversation in progress</a> <span class="dim">· two agents, streaming reply with Stop, activity line, compaction, queued message</span></li>
+    <li><a href="04-corpus-app.html">Corpus explorer</a> <span class="dim">· agent-written app inline, version menu, unloaded placeholder, sent event</span></li>
+    <li><a href="05-explainer.html">Explainer</a> <span class="dim">· citations with a pinned hover card, terms, diagram, math, practice app</span></li>
+    <li><a href="06-catalog.html">Block catalog</a> <span class="dim">· every catalog block, plus one answered read-only</span></li>
+    <li><a href="07-review.html">Review</a> <span class="dim">· Markdown, code and app reviews, then the diff after revision</span></li>
+    <li><a href="08-wakes.html">Wakes</a> <span class="dim">· @ autocomplete, wake lines, side thread, hop-limit confirm, toast</span></li>
+    <li><a href="09-errors.html">Error states</a> <span class="dim">· failed, stopped, invalid blocks, crashed app, reconnecting</span></li>
+    <li><a href="10-plus-menu.html">+ menu</a> <span class="dim">· files and agents, attachments, an agent’s proposed teammate</span></li>
+    <li><a href="11-new-agent.html">New agent</a> <span class="dim">· boilerplate, tools, where it works</span></li>
+    <li><a href="12-card-menu.html">Session menu</a> <span class="dim">· archive or delete from a card, archived list, undo</span></li>
+    <li><a href="13-delete-confirm.html">Delete confirm</a> <span class="dim">· what goes and what stays</span></li>
+    <li><a href="14-charts.html">Chart kit</a> <span class="dim">· line, area, scatter, stacked bar, heatmap, diverging bar, stat tiles</span></li>
+  </ol>
+</main>
+<script>
+  const t = new URLSearchParams(location.search).get('theme');
+  if (t) document.querySelectorAll('ol a').forEach((a) => (a.href += `?theme=${t}`));
+</script>
+</body>
+</html>

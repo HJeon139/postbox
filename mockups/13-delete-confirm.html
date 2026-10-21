@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>(1) Overview · Postbox</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="mock.js"></script>
+<style>.ov-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }</style>
+</head>
+<body>
+<div class="app no-rail">
+  <header class="topbar">
+    <span class="brand"><span class="mark"></span>Postbox</span>
+    <span class="crumbs hide-sm"><span class="i i-right"></span><span class="title">Overview</span></span>
+    <div class="top-actions">
+      <button class="btn sm hide-sm"><span class="i i-search i-sm"></span>Jump to… <kbd>⌘K</kbd></button>
+      <button class="btn sm"><span class="g g-needs"></span>Next that needs you <kbd class="hide-sm">⌃J</kbd></button>
+      <button class="btn icon sm ghost" aria-label="Settings"><span class="i i-gear"></span></button>
+    </div>
+  </header>
+
+  <main class="ov">
+    <div class="ov-head">
+      <div class="grow">
+        <h1 class="title" style="font-size:20px">Overview</h1>
+        <p class="small dim">4 live sessions in 2 projects · <span class="st-needs">1 needs you</span> · 1 finished</p>
+      </div>
+      <button class="btn"><span class="i i-plus"></span>New agent</button>
+    </div>
+
+    <div class="ov-grid">
+
+      <!-- Needs you: blocking -->
+      <article class="ov-col needs" aria-label="@researcher, needs you">
+        <div class="oc-head">
+          <pb-ring name="@researcher" state="needs" ctx="55" size="lg"></pb-ring>
+          <div class="who-name"><b>@researcher</b><span class="small dim">Agent research · Agent memory papers</span><span class="small st-needs">Needs you · waiting 4 min</span></div>
+          <button class="btn icon sm ghost" aria-label="Session actions"><span class="i i-more"></span></button>
+        </div>
+        <div class="oc-sec">
+          <span class="label">Needs you</span>
+          <p>Which papers should I walk through first? Pick up to three.</p>
+          <div class="chips" role="group" aria-label="Papers">
+            <button class="chip sm on" aria-pressed="true"><span class="i i-check"></span>ReAct</button>
+            <button class="chip sm" aria-pressed="false">Reflexion</button>
+            <button class="chip sm on" aria-pressed="true"><span class="i i-check"></span>MemGPT</button>
+            <button class="chip sm" aria-pressed="false">Lost in the Middle</button>
+          </div>
+          <div class="row-flex"><button class="btn sm send">Send 2 choices</button><a class="btn sm ghost" href="05-explainer.html">Open thread</a></div>
+        </div>
+        <div class="oc-sec"><span class="label">Current step</span><p>Waiting for your choice</p></div>
+        <div class="oc-sec"><span class="label">Last message</span><p class="clamp2">I found 11 papers on agent memory. Four are worth a walkthrough; the rest repeat their ideas.</p></div>
+        <div class="oc-sec">
+          <span class="label">Tool calls <span class="dim">6</span></span>
+          <ul class="mini-list">
+            <li><span class="g g-done"></span><span class="t mono">arxiv.search “agent memory”</span><span class="small dim">1.8 s</span></li>
+            <li><span class="g g-done"></span><span class="t mono">arxiv.fetch 2310.08560</span><span class="small dim">0.9 s</span></li>
+            <li><span class="g g-done"></span><span class="t mono">arxiv.fetch 2210.03629</span><span class="small dim">0.7 s</span></li>
+            <li><span class="small dim">+ 3 more</span></li>
+          </ul>
+        </div>
+        <div class="oc-sec">
+          <span class="label">Agent messages <span class="dim">2</span></span>
+          <ul class="mini-list small">
+            <li><span class="i i-thread i-sm dim"></span><span class="t">to <b>@indexer</b>: Do we keep page numbers?</span></li>
+            <li><span class="i i-thread i-sm dim" style="transform:scaleX(-1)"></span><span class="t">from <b>@indexer</b>: Yes, per passage.</span></li>
+          </ul>
+        </div>
+        <div class="oc-sec"><span class="label">Subagents</span><p class="small dim">None</p></div>
+        <div class="oc-sec stats"><div><span class="label">Context</span><b>55%</b></div><div><span class="label">Compactions</span><b>0</b></div><div><span class="label">Running</span><b>22 min</b></div></div>
+      </article>
+
+      <!-- Working: calling tools -->
+      <article class="ov-col" aria-label="@indexer, calling tools">
+        <div class="oc-head">
+          <pb-ring name="@indexer" state="tool" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="lg"></pb-ring>
+          <div class="who-name"><b>@indexer</b><span class="small dim">Book corpus · Index the shelf</span><span class="small st-tool">Calling tools · 38 min</span></div>
+          <button class="btn icon sm ghost" aria-label="Session actions"><span class="i i-more"></span></button>
+        </div>
+        <div class="oc-sec">
+          <span class="label">Current step</span>
+          <p>Embedding chapter 14 of 31 · <i>Middlemarch</i></p>
+          <div class="bar" role="progressbar" aria-valuenow="45" aria-valuemin="0" aria-valuemax="100" aria-label="Chapter progress"><i style="width:45%"></i></div>
+        </div>
+        <div class="oc-sec">
+          <span class="label">Subagents <span class="dim">2</span></span>
+          <ul class="mini-list">
+            <li><pb-ring name="chunker" state="gen" ctx="22" size="xs"></pb-ring><span class="t"><b>chunker</b> <span class="dim">splitting <i>Persuasion</i></span></span></li>
+            <li><pb-ring name="embedder" state="tool" ctx="31" size="xs"></pb-ring><span class="t"><b>embedder</b> <span class="dim">batch 14 of 31</span></span></li>
+          </ul>
+        </div>
+        <div class="oc-sec">
+          <span class="label">Tool calls <span class="dim">41</span></span>
+          <ul class="mini-list">
+            <li><span class="g g-running"></span><span class="t mono">corpus.embed batch 14</span><span class="small dim">6 s</span></li>
+            <li><span class="g g-done"></span><span class="t mono">corpus.embed batch 13</span><span class="small dim">3.1 s</span></li>
+            <li><span class="g g-done"></span><span class="t mono">read middlemarch.txt</span><span class="small dim">0.2 s</span></li>
+            <li><span class="g g-done"></span><span class="t mono">bm25 build --books 14</span><span class="small dim">12.4 s</span></li>
+            <li><span class="small dim">+ 37 more</span></li>
+          </ul>
+        </div>
+        <div class="oc-sec"><span class="label">Last message</span><p class="clamp2">The BM25 index is built: 14 books, 41,288 passages. Embeddings are next, about 20 minutes.</p></div>
+        <div class="oc-sec">
+          <span class="label">Agent messages <span class="dim">2</span></span>
+          <ul class="mini-list small">
+            <li><span class="i i-thread i-sm dim" style="transform:scaleX(-1)"></span><span class="t">from <b>@researcher</b>: Do we keep page numbers?</span></li>
+            <li><span class="i i-thread i-sm dim"></span><span class="t">to <b>@researcher</b>: Yes, per passage.</span></li>
+          </ul>
+        </div>
+        <div class="oc-sec stats"><div><span class="label">Context</span><b>62%</b></div><div><span class="label">Compactions</span><b>1</b></div><div><span class="label">Running</span><b>38 min</b></div></div>
+      </article>
+
+      <!-- Working: generating -->
+      <article class="ov-col" aria-label="@librarian, generating">
+        <div class="oc-head">
+          <pb-ring name="@librarian" state="gen" ctx="34" size="lg"></pb-ring>
+          <div class="who-name"><b>@librarian</b><span class="small dim">Book corpus · Corpus explorer</span><span class="small st-gen">Generating · 1 min</span></div>
+          <button class="btn icon sm ghost" aria-label="Session actions"><span class="i i-more"></span></button>
+        </div>
+        <div class="oc-sec"><span class="label">Current step</span><p>Writing Corpus explorer v3 · adds a date filter</p></div>
+        <div class="oc-sec"><span class="label">Last message</span><p class="clamp2">You picked 3 passages from <i>Middlemarch</i> and <i>Persuasion</i>. I’ll add a filter for publication year so you can…</p></div>
+        <div class="oc-sec">
+          <span class="label">Tool calls <span class="dim">9</span></span>
+          <ul class="mini-list">
+            <li><span class="g g-done"></span><span class="t mono">corpus.search “grief and memory”</span><span class="small dim">0.4 s</span></li>
+            <li><span class="g g-done"></span><span class="t mono">show_app corpus-explorer v2</span><span class="small dim">0.1 s</span></li>
+            <li><span class="small dim">+ 7 more</span></li>
+          </ul>
+        </div>
+        <div class="oc-sec"><span class="label">Agent messages</span><p class="small dim">None</p></div>
+        <div class="oc-sec"><span class="label">Subagents</span><p class="small dim">None</p></div>
+        <div class="oc-sec stats"><div><span class="label">Context</span><b>34%</b></div><div><span class="label">Compactions</span><b>0</b></div><div><span class="label">Running</span><b>15 min</b></div></div>
+      </article>
+
+      <!-- Idle: finished (informational) -->
+      <article class="ov-col" aria-label="@critic, finished">
+        <div class="oc-head">
+          <pb-ring name="@critic" state="idle" ctx="18" size="lg"></pb-ring>
+          <div class="who-name"><b>@critic</b><span class="small dim">Book corpus · Corpus schema spec</span><span class="small dim">Finished 12 min ago <span class="badge">1</span></span></div>
+          <button class="btn icon sm ghost" aria-label="Session actions"><span class="i i-more"></span></button>
+        </div>
+        <div class="oc-sec"><span class="label">Last message</span><p class="clamp2">Spec v2 is ready: 4 of your 5 comments are resolved, and I left a note on the one I didn’t change.</p><a class="btn sm" href="07-review.html" style="align-self:flex-start">Open review</a></div>
+        <div class="oc-sec"><span class="label">Current step</span><p class="dim">Idle since 14:02</p></div>
+        <div class="oc-sec">
+          <span class="label">Tool calls <span class="dim">4</span></span>
+          <ul class="mini-list">
+            <li><span class="g g-done"></span><span class="t mono">update_block spec-review v2</span><span class="small dim">0.1 s</span></li>
+            <li><span class="g g-done"></span><span class="t mono">read schema.md</span><span class="small dim">0.1 s</span></li>
+            <li><span class="small dim">+ 2 more</span></li>
+          </ul>
+        </div>
+        <div class="oc-sec"><span class="label">Subagents</span><p class="small dim">None</p></div>
+        <div class="oc-sec stats"><div><span class="label">Context</span><b>18%</b></div><div><span class="label">Compactions</span><b>0</b></div><div><span class="label">Ran for</span><b>9 min</b></div></div>
+      </article>
+    </div>
+  </main>
+</div>
+
+  <div class="backdrop">
+    <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="del-title" aria-describedby="del-body">
+      <div class="d-head"><span class="i i-trash" style="color:var(--alert-ink);margin-top:2px"></span><div class="grow"><h2 class="title" id="del-title">Delete @critic’s session?</h2><p class="small dim">Book corpus · Corpus schema spec</p></div></div>
+      <div class="d-body" id="del-body">
+        <div class="field"><span class="label">This erases</span>
+          <ul class="what-goes">
+            <li><span class="i i-x i-sm" style="color:var(--alert-ink)"></span>The thread: 42 messages and 3 review blocks with their comments</li>
+            <li><span class="i i-x i-sm" style="color:var(--alert-ink)"></span>@critic’s context for this session, including 1 compaction summary</li>
+          </ul></div>
+        <div class="field"><span class="label">This stays</span>
+          <ul class="what-goes">
+            <li><span class="i i-check i-sm" style="color:var(--good)"></span>The @critic persona and its other sessions</li>
+            <li><span class="i i-check i-sm" style="color:var(--good)"></span>Files in <code class="mono">~/books</code>, including schema.md v2</li>
+          </ul></div>
+        <p class="small dim">You’ll have 10 seconds to undo. To keep the thread but stop the session, archive it instead.</p>
+      </div>
+      <div class="d-foot"><button class="btn">Cancel</button><button class="btn">Archive instead</button><button class="btn danger"><span class="i i-trash i-sm"></span>Delete session</button></div>
+    </div>
+  </div>
+</body>
+</html>
