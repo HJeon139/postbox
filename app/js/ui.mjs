@@ -3,7 +3,7 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { finishedSentences } from '/shared/text.mjs';
-import { $, $$, h, icon } from './dom.mjs';
+import { $, $$, h, icon, trusted } from './dom.mjs';
 
 // ── Navigation ──────────────────────────────────────────────────────────────────────────
 // Routes: #/ (overview), #/t/<threadId>, #/t/<threadId>/side/<sideThreadId>
@@ -15,8 +15,10 @@ export function route() {
   if (p) return { view: p[2] ? 'threads' : 'project', projectId: p[1] };
   return { view: 'overview' };
 }
-export function navigate(hash) {
-  if (location.hash !== hash) location.hash = hash;
+export function navigate(hash, { replace = false } = {}) {
+  if (location.hash === hash) return;
+  if (replace) location.replace(hash);
+  else location.hash = hash;
 }
 
 // ── Toasts ──────────────────────────────────────────────────────────────────────────────
@@ -53,8 +55,9 @@ export function toast({ title, text = '', ring = null, action = null, level = 'i
 
 /** Undo toast with a visible countdown. */
 export function undoToast({ text, until, onUndo }) {
+  // Each deletion keeps its own Undo; only the oldest goes when a fourth arrives.
   const box = $('#toasts-bottom');
-  box.replaceChildren();
+  while (box.children.length >= 3) box.firstElementChild.remove();
   const bar = h('i', { style: { width: '100%' } });
   const label = h('span');
   const el = h(
@@ -347,9 +350,11 @@ export function initHoverCards(resolve) {
     const t = triggerOf(e.target);
     if (t && card?.trigger === t && !card.el.contains(e.relatedTarget)) leave();
   });
+  let quiet = null; // the trigger Escape just returned focus to: that focus mustn’t reopen its card
   document.addEventListener('focusin', (e) => {
     const t = triggerOf(e.target);
-    if (t) show(t);
+    if (t && t === quiet) quiet = null;
+    else if (t) show(t);
   });
   document.addEventListener('focusout', (e) => {
     const t = triggerOf(e.target);
@@ -365,7 +370,10 @@ export function initHoverCards(resolve) {
     if (e.key === 'Escape' && card) {
       const tr = card.trigger;
       hide();
-      tr.focus();
+      if (document.activeElement !== tr) {
+        quiet = tr;
+        tr.focus();
+      }
     }
   });
   document.addEventListener('click', (e) => {
@@ -389,4 +397,4 @@ function place(el, trigger) {
 }
 
 /** Markdown for hover-card bodies (definitions are agent text, so they go through the renderer). */
-export const mdNode = (src, opts) => h('div.md', { html: renderMarkdown(src, opts) });
+export const mdNode = (src, opts) => h('div.md', { html: trusted(renderMarkdown(src, opts)) });

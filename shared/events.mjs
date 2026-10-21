@@ -121,7 +121,7 @@ const BUILDERS = {
 };
 
 function checkField(f, raw) {
-  const empty = raw === undefined || raw === null || raw === '';
+  const empty = raw === undefined || raw === null || (typeof raw === 'string' && !raw.trim());
   if (f.kind === 'toggle') {
     if (empty) return { value: f.default === true };
     return typeof raw === 'boolean' ? { value: raw } : { error: 'Turn this on or off.' };
@@ -129,7 +129,9 @@ function checkField(f, raw) {
   if (empty) return f.required ? { error: 'This field is required.' } : { value: undefined };
   switch (f.kind) {
     case 'number': {
-      const n = typeof raw === 'number' ? raw : Number(String(raw).replace(/,/g, '').trim());
+      // Plain decimal only: Number() would also read “0x10” as 16 and “1e3” as 1000.
+      const t = String(raw).replace(/,/g, '').trim();
+      const n = typeof raw === 'number' ? raw : /^[-+]?(\d+\.?\d*|\.\d+)$/.test(t) ? Number(t) : Number.NaN;
       const hasMin = typeof f.min === 'number',
         hasMax = typeof f.max === 'number';
       const range =

@@ -10,6 +10,7 @@ import { openMenu, toast } from './ui.mjs';
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
 const checks = new Map(); // `${appId}:${v}` → { results: Map(width → problems), frames }
 const crashes = new Map(); // `${appId}:${v}` → message (a script error after the app was shown)
+const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
 const expanded = new Set();
 const unloaded = new Set(); // appIds whose frames are unloaded while off screen
@@ -287,7 +288,7 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
   const v = viewing.get(appId) ?? app.current;
   const old = v !== app.current;
   const key = `${appId}:${v}`;
-  const status = old ? 'passed' : app.check.status;
+  const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
   const body = h('div.app-body', { dataset: { appId } });
   if (expanded.has(appId) || review) body.style.maxHeight = 'none';
@@ -311,6 +312,7 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
                 type: 'button',
                 onclick: () => {
                   crashes.delete(key);
+                  reloaded.add(key);
                   mountApp(container, appId, { review, onPin });
                 },
               },

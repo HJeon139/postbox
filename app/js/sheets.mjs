@@ -496,7 +496,7 @@ export function openRename(threadId) {
     title: `Rename the ${t?.kind === 'room' ? 'room' : 'conversation'}`,
     body: [h('div.field', h('label.label', { for: 'rn-title' }, 'Name'), input)],
     foot: [h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'), h('button.btn.send', { type: 'button', onclick: save }, 'Rename')],
-    initialFocus: input,
+    initialFocus: () => input,
   });
 }
 
@@ -820,6 +820,9 @@ export function openSettings(tab = 'appearance', personaId = null) {
 // ── Command palette ─────────────────────────────────────────────────────────────────────
 
 export function openPalette() {
+  // Already open: ⌘K again goes back to its field rather than stacking a second palette.
+  const open = document.querySelector('.dialog.palette input');
+  if (open) return open.focus();
   const input = h('input.input', {
     'aria-label': 'Jump to a thread, project, agent or action',
     placeholder: 'Jump to a thread, an agent, or an action…',

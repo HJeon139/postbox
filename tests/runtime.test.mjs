@@ -506,6 +506,33 @@ test('deleting a conversation removes its sessions, apps and threads after the u
   for (const k of rt.timers.keys()) clearTimeout(rt.timers.get(k));
 });
 
+test('a conversation being deleted takes no new messages', () => {
+  const { rt, store, t } = setup();
+  rt.deleteThread(t.id);
+  assert.throws(() => rt.sendMessage(t.id, { text: 'still there?' }), /being deleted/);
+  assert.equal(store.items(t.id).length, 0);
+  for (const k of rt.timers.keys()) clearTimeout(rt.timers.get(k));
+});
+
+test('a message to an archived agent is refused before anything is posted', () => {
+  const { rt, store, a, b } = setup();
+  const room = rt.createThread({ projectId: 'p1', title: 'Room', personaIds: [a.id, b.id] });
+  const beta = rt.sessionsIn(room.id).find((x) => x.personaId === b.id);
+  rt.archive(beta.id);
+  assert.throws(() => rt.sendMessage(room.id, { text: '@beta hello' }), /archived/);
+  assert.equal(store.items(room.id).length, 0, 'no user line and no wake line');
+});
+
+test('deletions still pending when the server stopped finish after a restart', async () => {
+  const { rt, store, t } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  store.emit('thread', { ...store.state.threads[t.id], deleting: Date.now() - 1 });
+  rt.rearmDeletions();
+  await sleep(5);
+  assert.equal(store.state.threads[t.id], undefined);
+  assert.equal(store.state.sessions[se.id], undefined);
+});
+
 test('a conversation with several agents is a room, and can be renamed', () => {
   const { rt, a, b } = setup();
   const room = rt.createThread({ projectId: 'p1', title: 'Planning', personaIds: [a.id, b.id] });
@@ -626,4 +653,31 @@ test('saving the same app state again changes nothing, so it can’t start a ren
   assert.equal(seq(), after, 'no event for an unchanged state');
   rt.appState('ap', { tab: 'two' });
   assert.equal(seq(), after + 1);
+});
+
+test('another agent’s show_block can’t take over an app; it gets a fresh id instead', () => {
+  const { rt, store, t, b } = setup();
+  const owner = rt.sessionsIn(t.id)[0];
+  rt.toolsFor(owner.id).show_app({ id: 'ap', title: 'Mine', code: '<p>x</p>', permissions: [] });
+  rt.appState('ap', { tab: 'one' });
+  const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [b.id] });
+  const intruder = rt.sessionsIn(other.id)[0];
+  const r = rt.toolsFor(intruder.id).show_block({ block: { id: 'ap', type: 'app', version: 1, title: 'Replaced', fallback: 'x', code: '<h1>y</h1>' } });
+  assert.match(r.message, /taken/);
+  assert.equal(store.state.apps.ap.title, 'Mine');
+  assert.equal(store.state.apps.ap.threadId, t.id);
+  assert.deepEqual(store.state.apps.ap.state, { tab: 'one' });
+  // The owner’s own show_block with the same id is a new version, not a reset.
+  rt.toolsFor(owner.id).show_block({ block: { id: 'ap', type: 'app', version: 1, title: 'Mine', fallback: 'x', code: '<p>v2</p>' } });
+  assert.equal(store.state.apps.ap.versions.length, 2);
+  assert.deepEqual(store.state.apps.ap.state, { tab: 'one' });
+});
+
+test('a proposal’s fields are stored as text, whatever JSON the agent sends', () => {
+  const { rt, store, t } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  rt.toolsFor(se.id).propose_agent({ handle: 'helper', description: { html: '<a>x</a>' }, tools: ['shell', { x: 1 }] });
+  const p = store.items(t.id).find((i) => i.kind === 'proposal').proposal;
+  assert.equal(typeof p.description, 'string');
+  assert.deepEqual(p.tools, ['shell']);
 });

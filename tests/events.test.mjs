@@ -126,3 +126,11 @@ test('apps send their own summary; the summary isn’t part of the values', () =
 test('blocks that don’t take actions say so', () => {
   assert.equal(buildEvent({ id: 'p', type: 'progress' }, 'x').ok, false);
 });
+
+test('a number field takes plain decimals only; blank is empty', () => {
+  const form = { id: 'f', type: 'form', version: 1, fallback: 'x', fields: [{ id: 'c', kind: 'number', label: 'Copies', required: true }] };
+  assert.equal(buildEvent(form, 'submit', { c: ' ' }).ok, false);
+  assert.equal(buildEvent(form, 'submit', { c: '0x10' }).ok, false);
+  assert.equal(buildEvent(form, 'submit', { c: '1e3' }).ok, false);
+  assert.equal(buildEvent(form, 'submit', { c: '1,200' }).ok, true);
+});

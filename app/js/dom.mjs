@@ -1,6 +1,14 @@
 // Tiny DOM helpers. Text always goes in as text nodes; the only HTML strings inserted come from
 // shared/markdown.mjs, which escapes everything an agent wrote.
 
+/** HTML that Postbox made itself (renderMarkdown’s output). h() sets innerHTML only from these. */
+class TrustedHtml {
+  constructor(s) {
+    this.s = s;
+  }
+}
+export const trusted = (s) => new TrustedHtml(String(s));
+
 /**
  * h('button.btn.sm', { onclick, 'aria-label': 'Close' }, 'Close')
  * Props starting with "on" become listeners; class/className, style (object), dataset and hidden are
@@ -20,8 +28,9 @@ export function h(tag, props, ...children) {
     else if (k === 'class' || k === 'className') el.className = [el.className, v].filter(Boolean).join(' ');
     else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
     else if (k === 'dataset') Object.assign(el.dataset, v);
-    // lint-allow dom: callers pass only renderMarkdown() output, which escapes everything an agent wrote.
-    else if (k === 'html') el.innerHTML = v;
+    // Agent data that lands in the props slot by mistake is a plain object: its html becomes text, never markup.
+    // lint-allow dom: a TrustedHtml is only ever renderMarkdown() output, which escapes everything an agent wrote.
+    else if (k === 'html') v instanceof TrustedHtml ? (el.innerHTML = v.s) : el.append(String(v));
     else if (k === 'value' && 'value' in el) el.value = v;
     else if (k === 'checked' || k === 'disabled' || k === 'hidden' || k === 'open' || k === 'selected') el[k] = !!v;
     // lint-allow dom: prop names come from Postbox’s own h() calls, never from agent data.

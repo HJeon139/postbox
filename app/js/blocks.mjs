@@ -5,14 +5,14 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mountApp } from './apps.mjs';
 import { client } from './client.mjs';
-import { h, icon, plural, timeOf } from './dom.mjs';
+import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 
 const drafts = new Map(); // item id → local, unsent input
 const draft = (id, init) => {
   if (!drafts.has(id)) drafts.set(id, init());
   return drafts.get(id);
 };
-const md = (src, cls = '') => h(`div.md${cls}`, { html: renderMarkdown(src) });
+const md = (src, cls = '') => h(`div.md${cls}`, { html: trusted(renderMarkdown(src)) });
 const KIND = {
   choice: 'Choice',
   form: 'Form',
@@ -37,6 +37,7 @@ export function renderBlock(item, ctx) {
   const node = r(b, item, ctx);
   node.classList.add('block');
   node.setAttribute('role', 'group');
+  node.dataset.blockItem = item.id;
   return node;
 }
 
@@ -94,7 +95,13 @@ const RENDER = {
       fn();
       rerender();
     };
-    const rerender = () => node.replaceWith(Object.assign(renderBlock(item, ctx), {}));
+    // A pick re-renders the block; focus goes back to the same option so the keyboard keeps its place.
+    const rerender = () => {
+      const n = node.contains(document.activeElement) ? document.activeElement.dataset.n : null;
+      const next = renderBlock(item, ctx);
+      node.replaceWith(next);
+      if (n) next.querySelector(`.chip[data-n="${n}"]`)?.focus();
+    };
     const chips = h('div.chips', { role: b.multiple ? 'group' : 'radiogroup', 'aria-labelledby': titleId });
     const opts = [...b.options, ...(b.other ? [{ id: '__other', label: b.other.label }] : [])];
     opts.forEach((o, i) => {
@@ -167,10 +174,19 @@ const RENDER = {
             { type: 'button', onclick: () => submit(item, ctx, 'choose', { selected: d.selected, ...(d.otherOn ? { other: d.other } : {}) }, setError) },
             label,
           ),
-          !b.multiple ? h('span.small.dim', `or press 1–${opts.length}`) : null,
+          !b.multiple ? h('span.small.dim', `or press 1–${Math.min(9, opts.length)}`) : null,
           err,
         ),
       );
+      chips.addEventListener('keydown', (e) => {
+        const dir = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+        if (!dir) return;
+        const all = [...chips.querySelectorAll('.chip')];
+        const i = all.indexOf(document.activeElement);
+        if (i < 0) return;
+        e.preventDefault();
+        all[(i + dir + all.length) % all.length].focus();
+      });
       node.addEventListener('keydown', (e) => {
         if (b.multiple || e.target.matches('input, textarea') || !/^[1-9]$/.test(e.key)) return;
         const btn = chips.querySelector(`[data-n="${e.key}"]`);
@@ -294,7 +310,11 @@ const RENDER = {
       hd,
       h('div.block-body', b.prompt ? md(b.prompt) : null, grid, done ? answeredNote(item) : null),
     );
-    const rerender = () => node.replaceWith(renderBlock(item, ctx));
+    // submit() clears the error (one re-render) before it sets the new one, so replace the copy on screen now.
+    const rerender = () => {
+      const live = node.isConnected ? node : document.querySelector(`[data-block-item="${CSS.escape(item.id)}"]`);
+      live?.replaceWith(renderBlock(item, ctx));
+    };
     if (!done) {
       const setError = (m, fieldErrors) => {
         d.error = m;
@@ -638,7 +658,7 @@ function renderReview(b, item, ctx) {
                     )
                   : null,
               ),
-              h('div', { html: renderMarkdown(c.text) }),
+              h('div', { html: trusted(renderMarkdown(c.text)) }),
             ),
           ),
         ),
@@ -775,7 +795,7 @@ function renderReview(b, item, ctx) {
               : null,
             String(r.kind === 'del' ? r.o : r.n),
           ),
-          h('span.tx', b.format === 'markdown' ? { html: inlineMd(text) } : null, b.format === 'markdown' ? null : text || ' '),
+          h('span.tx', b.format === 'markdown' ? { html: trusted(inlineMd(text)) } : null, b.format === 'markdown' ? null : text || ' '),
         ),
       );
       if (key !== null) for (const p of threadBox(key)) doc.append(p);

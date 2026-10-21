@@ -103,12 +103,11 @@ export async function launch({ port = 9333 } = {}) {
     async goto(url) {
       const loaded = once('Page.loadEventFired');
       await send('Page.navigate', { url });
-      await Promise.race([
-        loaded,
-        sleep(15000).then(() => {
-          throw new Error(`The page didn’t load: ${url}`);
-        }),
-      ]);
+      let timer;
+      const late = new Promise((_, fail) => {
+        timer = setTimeout(() => fail(new Error(`The page didn’t load: ${url}`)), 15000);
+      });
+      await Promise.race([loaded, late]).finally(() => clearTimeout(timer));
       await evaluate('document.fonts.ready.then(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 120))))');
     },
     async waitFor(expr, { timeout = 15000, label = expr } = {}) {

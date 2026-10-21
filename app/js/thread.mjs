@@ -5,7 +5,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { enhanceMarkdown, renderAppItem } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, uploadFile } from './client.mjs';
-import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
+import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent } from './sheets.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
@@ -275,7 +275,7 @@ function renderItem(it, prev, ctx) {
         showWho ? who(it, { you: true }) : null,
         h(
           'div.me-card',
-          h('div.md', { html: renderMarkdown(it.text, { mentions: handles() }) }),
+          h('div.md', { html: trusted(renderMarkdown(it.text, { mentions: handles() })) }),
           it.attachments?.length ? h('div.attachments', it.attachments.map(attChip)) : null,
         ),
       );
@@ -392,7 +392,7 @@ function renderItem(it, prev, ctx) {
             h('span.grow', it.summary ? 'Summary of the thread ' : 'From the thread ', h('b', `“${it.fromTitle}”`), it.handle ? ` · @${it.handle}` : ' · you'),
             S().threads[it.fromThreadId] ? h('a.small', { href: hrefOf(it.fromThreadId) }, 'Open thread') : null,
           ),
-          h('div.md', { html: renderMarkdown(it.text, { mentions: handles() }) }),
+          h('div.md', { html: trusted(renderMarkdown(it.text, { mentions: handles() })) }),
         ),
       );
     case 'system':
@@ -469,7 +469,7 @@ function systemLine(it, _ctx) {
         'div.block',
         { hidden: true, style: { marginTop: '8px' } },
         h('div.block-head', h('span.title.grow', `What @${it.handle} kept`), h('span.kind', 'Compaction')),
-        h('div.block-body', h('div.md', { html: renderMarkdown(it.summary || 'No summary was kept.') })),
+        h('div.block-body', h('div.md', { html: trusted(renderMarkdown(it.summary || 'No summary was kept.')) })),
       );
       const btn = h(
         'button.btn.sm.ghost',
@@ -619,7 +619,7 @@ function proposalBlock(it, ctx, showWho) {
       h('div.block-head', icon('spark'), h('span.title.grow', `New teammate: @${p.handle}`), h('span.kind', `Proposed by @${it.handle}`)),
       h(
         'div.block-body',
-        h('p', p.description),
+        h('p', String(p.description ?? '')),
         h(
           'dl.facts',
           h('dt', 'Runs on'),
@@ -670,7 +670,7 @@ function welcome(threadId) {
   return h(
     'section.col',
     { style: { display: 'flex', flexDirection: 'column', gap: '18px', padding: '32px 0' } },
-    h('div.row-flex', { style: { gap: '14px' } }, ring, h('div', h('h1.title', `@${p.handle} is ready`), h('p.dim', p.description))),
+    h('div.row-flex', { style: { gap: '14px' } }, ring, h('div', h('h1.title', `@${p.handle} is ready`), h('p.dim', String(p.description ?? '')))),
     h(
       'div',
       { role: 'list', 'aria-label': 'Example prompts', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' } },
@@ -704,7 +704,24 @@ function welcome(threadId) {
 
 // ── Composer ────────────────────────────────────────────────────────────────────────────
 
-const outbox = []; // messages typed while offline
+// Messages typed while offline. Kept in localStorage so a reload doesn’t lose them, and sent whenever the
+// connection returns, whether or not a composer is open.
+const OUTBOX_KEY = 'pb-outbox';
+const outbox = (() => {
+  try {
+    return JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+})();
+const saveOutbox = () => {
+  try {
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox));
+  } catch {}
+};
+client.on((ch) => {
+  if (ch.type === 'connection' && client.connection === 'open') flushOutbox();
+});
 export const focusComposer = () => $('#composer-input')?.focus();
 
 export async function sendMessage(threadId, text, attachments = [], { sendNow = false } = {}) {
@@ -715,6 +732,7 @@ export async function sendMessage(threadId, text, attachments = [], { sendNow = 
   } catch (e) {
     if (e.offline) {
       outbox.push({ threadId, text, attachments });
+      saveOutbox();
       client.emit({ type: 'outbox' });
       return true;
     }
@@ -725,6 +743,7 @@ export async function sendMessage(threadId, text, attachments = [], { sendNow = 
 
 export function flushOutbox() {
   const items = outbox.splice(0);
+  saveOutbox();
   for (const m of items) sendMessage(m.threadId, m.text, m.attachments);
   if (items.length) client.emit({ type: 'outbox' });
 }
@@ -958,7 +977,11 @@ export function mountComposer(threadId, { side = false } = {}) {
             },
           },
           ring,
-          h('span.grow', `@${p.handle}`, h('span.d', se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken')),
+          h(
+            'span.grow',
+            `@${p.handle}`,
+            h('span.d', se?.archived ? 'Archived · restore it to wake it' : se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken'),
+          ),
           i === mention.index ? h('span.k', 'Enter') : null,
         );
       }),
@@ -1069,6 +1092,10 @@ export function mountComposer(threadId, { side = false } = {}) {
     action.setAttribute('aria-label', b ? `Stop @${b.handle}’s reply` : 'Send');
     const last = S().sessions[t.lastSpeaker];
     const members = sessionsOf(threadId).filter((x) => !x.archived);
+    // Every agent here is archived: the conversation is read-only until you restore one.
+    const archived = !topic && !side && !members.length ? sessionsOf(threadId) : [];
+    ta.disabled = archived.length > 0;
+    action.disabled = archived.length > 0;
     ta.placeholder = topic
       ? 'Reply in thread'
       : side
@@ -1080,6 +1107,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       (q) => q.id,
       (q) => queuedRow(q),
       (node, q) => {
+        if (node.dataset.editing) return; // keep an inline edit open while the agent works
         const fresh = queuedRow(q);
         node.replaceChildren(...fresh.childNodes);
       },
@@ -1089,19 +1117,39 @@ export function mountComposer(threadId, { side = false } = {}) {
     const offline = client.connection !== 'open';
     fill(
       status,
-      offline
+      archived.length
         ? h(
             'div.sys',
             { style: { marginBottom: '6px' } },
             h(
               'span.pill',
-              { role: 'status', style: { borderColor: 'var(--accent)' } },
-              h('span.g.g-running', { 'aria-hidden': 'true' }),
-              h('b', 'Reconnecting…'),
-              ` attempt ${client.attempts} · nothing is lost; replies pick up where they stopped`,
+              { role: 'status' },
+              `Archived: read-only. `,
+              archived.map((se) =>
+                h(
+                  'button.btn.sm',
+                  {
+                    type: 'button',
+                    onclick: () => api(`/api/sessions/${se.id}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message })),
+                  },
+                  `Restore @${se.handle}`,
+                ),
+              ),
             ),
           )
-        : '',
+        : offline
+          ? h(
+              'div.sys',
+              { style: { marginBottom: '6px' } },
+              h(
+                'span.pill',
+                { role: 'status', style: { borderColor: 'var(--accent)' } },
+                h('span.g.g-running', { 'aria-hidden': 'true' }),
+                h('b', 'Reconnecting…'),
+                ` attempt ${client.attempts} · nothing is lost; replies pick up where they stopped`,
+              ),
+            )
+          : '',
     );
     fill(
       hint,
@@ -1142,16 +1190,25 @@ export function mountComposer(threadId, { side = false } = {}) {
         {
           type: 'button',
           onclick: () => {
+            // The row may have been refreshed in place, so mark the node it’s in now, not the one built here.
+            const live = text.closest('.queued');
+            const done = () => {
+              delete live.dataset.editing;
+              paint();
+            };
             const input = h('input.input', {
               value: q.text,
               'aria-label': 'Edit the queued message',
               onkeydown: (e) => {
                 if (e.key === 'Enter') saveEdit();
-                if (e.key === 'Escape') paint();
+                if (e.key === 'Escape') done();
               },
             });
             const saveEdit = () =>
-              api(`/api/threads/${threadId}/queue/${q.id}`, { text: input.value }, 'PATCH').catch((e) => toast({ title: 'Couldn’t edit', text: e.message }));
+              api(`/api/threads/${threadId}/queue/${q.id}`, { text: input.value }, 'PATCH')
+                .then(done)
+                .catch((e) => toast({ title: 'Couldn’t edit', text: e.message }));
+            live.dataset.editing = '1';
             text.replaceChildren(input, h('button.btn.sm', { type: 'button', onclick: saveEdit }, 'Save'));
             input.focus();
           },
@@ -1170,7 +1227,6 @@ export function mountComposer(threadId, { side = false } = {}) {
   autosize();
   const off = client.on((ch) => {
     if (['thread', 'session', 'connection', 'outbox', 'load'].includes(ch.type)) paint();
-    if (ch.type === 'connection' && client.connection === 'open') flushOutbox();
   });
   return {
     el,
@@ -1251,7 +1307,7 @@ function threadRoot(root, agents) {
   const text = root.kind === 'block' ? `${root.block?.title ?? root.block?.type ?? 'A block'}${root.block?.type === 'app' ? ' (app)' : ''}` : (root.text ?? '');
   const one = agents.length === 1;
   // A long message is clamped to a few lines here; it’s all in the conversation beside it.
-  const md = h('div.md.clamped', { html: renderMarkdown(text, { mentions: handles() }) });
+  const md = h('div.md.clamped', { html: trusted(renderMarkdown(text, { mentions: handles() })) });
   queueMicrotask(() => enhanceMarkdown(md));
   const more = h(
     'button.btn.sm.ghost',

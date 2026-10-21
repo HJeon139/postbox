@@ -290,7 +290,7 @@ export function validateBlock(raw, opts = {}) {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     return { ok: false, errors: [`A block must be an object, not ${typeName(raw)}.`], fallback, reason: 'invalid' };
   }
-  if (!(raw.type in CATALOG)) {
+  if (typeof raw.type !== 'string' || !Object.hasOwn(CATALOG, raw.type)) {
     return {
       ok: false,
       errors: [`Unknown type “${String(raw.type)}”. This app’s catalog has ${Object.keys(CATALOG).join(', ')}.`],

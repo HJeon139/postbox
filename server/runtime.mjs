@@ -192,12 +192,16 @@ export class Runtime {
   /** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
   sendMessage(threadId, { text = '', attachments = [], sendNow = false } = {}) {
     const t = this.thread(threadId);
+    if (t.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
     text = String(text).slice(0, 50000);
     if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
     const mentioned = parseMentions(text, this.handles())
       .map((h) => this.personaByHandle(h))
       .filter(Boolean);
     const targets = [];
+    // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
+    const archived = mentioned.map((p) => this.sessionsIn(threadId).find((x) => x.personaId === p.id)).find((x) => x?.archived);
+    if (archived) throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
     for (const p of mentioned) {
       const joined = !this.sessionsIn(threadId).some((x) => x.personaId === p.id);
       // In a topic thread, an agent from the conversation joins as a fork of its session there.
@@ -1127,6 +1131,15 @@ export class Runtime {
     this.mirrors.set(sessionId, { tail: new TranscriptTail(file), timer, agentItem: null, steps: [] });
   }
 
+  /** Deletions whose Undo window was still open when the server stopped: finish them on time, or now if overdue. */
+  rearmDeletions() {
+    const wait = (until) => Math.max(0, until - Date.now());
+    for (const se of Object.values(this.s.sessions))
+      if (se.deleting) this.timers.set(`del:${se.id}`, setTimeout(() => this.purgeSession(se.id), wait(se.deleting)).unref());
+    for (const t of Object.values(this.s.threads))
+      if (t.deleting) this.timers.set(`delt:${t.id}`, setTimeout(() => this.purgeThread(t.id), wait(t.deleting)).unref());
+  }
+
   rearmMirrors() {
     for (const se of Object.values(this.s.sessions)) if (se.backendState?.attached && !se.deleting && !se.archived) this.mirror(se.id);
   }
@@ -1510,6 +1523,16 @@ export class Runtime {
     return {
       show_block({ block }) {
         const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
+        // App ids are global. Yours already: it’s a new version. Another agent’s: yours gets a fresh id, and
+        // theirs (its versions and saved state) is left alone.
+        /** @type {string | null} */
+        let renamed = null;
+        if (v.ok && v.block.type === 'app' && rt.s.apps[v.block.id]) {
+          const { id, code, permissions, title } = /** @type {any} */ (v.block);
+          if (rt.s.apps[id].sessionId === sessionId) return this.update_app({ id, code, permissions, title });
+          renamed = newId(String(id).slice(0, 40));
+          v.block = { ...v.block, id: renamed };
+        }
         endSegment();
         const it = rt.addItem(
           threadId(),
@@ -1529,7 +1552,7 @@ export class Runtime {
         );
         if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id);
         return v.ok
-          ? { ok: true, message: `Shown block ${v.block.id}.` }
+          ? { ok: true, message: renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown block ${v.block.id}.` }
           : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
       },
       update_block({ block }) {
@@ -1547,7 +1570,7 @@ export class Runtime {
       show_app({ id, title, code, permissions = [], fallback }) {
         const blockId = id ?? newId('app');
         const existing = rt.s.apps[blockId];
-        if (existing) return this.update_app({ id: blockId, code, permissions, title });
+        if (existing?.sessionId === sessionId) return this.update_app({ id: blockId, code, permissions, title });
         return this.show_block({
           block: {
             id: blockId,
@@ -1567,11 +1590,11 @@ export class Runtime {
         if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
         const versions = [
           ...app.versions,
-          { v: app.versions.length + 1, code, permissions: v.block.permissions ?? [], summary: summary ?? '', at: Date.now() },
+          { v: app.versions.length + 1, code, permissions: v.block.permissions ?? [], summary: String(summary ?? '').slice(0, 300), at: Date.now() },
         ];
         rt.store.emit('app', {
           ...app,
-          title: title ?? app.title,
+          title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
           versions,
           current: versions.length,
           check: { status: 'pending', attempt: app.check.attempt },
@@ -1601,6 +1624,14 @@ export class Runtime {
       },
       propose_agent({ handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
         const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
+        // Agents send JSON: anything that isn’t a string here is coerced, so it can only ever show as text.
+        const str = (v, max) => String(v ?? '').slice(0, max);
+        handle = str(handle, 40);
+        description = str(description, 500);
+        instructions = str(instructions, 20000);
+        tools = (Array.isArray(tools) ? tools : []).filter((t) => typeof t === 'string').slice(0, 40);
+        model = str(model, 80);
+        backend = str(backend, 40);
         endSegment();
         rt.addItem(threadId(), {
           kind: 'proposal',

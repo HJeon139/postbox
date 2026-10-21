@@ -138,3 +138,11 @@ test('every sandbox page is served with a sandbox policy, so it never runs with 
   }
   assert.match(csp('http://x'), /connect-src 'none'/);
 });
+
+test('a type named after an Object property is unknown, not a crash', () => {
+  for (const type of ['constructor', 'toString', '__proto__']) {
+    const r = validateBlock(base(type));
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'unknown-type');
+  }
+});

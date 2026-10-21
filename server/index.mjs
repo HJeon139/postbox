@@ -80,6 +80,7 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
   for (const [threadId, list] of Object.entries(store.state.items))
     for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
   rt.rearmSchedules();
+  rt.rearmDeletions();
   rt.expireStalePermissions();
   rt.rearmMirrors();
   for (const f of Object.values(store.state.files))

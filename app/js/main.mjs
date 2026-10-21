@@ -34,7 +34,8 @@ function render() {
     if (r.view === 'project') {
       const target = lastIn(project.id) ?? latestIn(project.id);
       if (target) {
-        navigate(`#/t/${target}`);
+        // Replace, not push: Back from the conversation should skip the project link that led here.
+        navigate(`#/t/${target}`, { replace: true });
         return;
       }
     }
@@ -107,7 +108,7 @@ function lastIn(projectId) {
     id = localStorage.getItem(`pb-last-${projectId}`);
   } catch {}
   const t = id && client.state.threads[id];
-  return t && t.projectId === projectId && !t.archived && t.kind !== 'side' && t.kind !== 'topic' ? id : null;
+  return t && t.projectId === projectId && !t.archived && !t.deleting && t.kind !== 'side' && t.kind !== 'topic' ? id : null;
 }
 function latestIn(projectId) {
   const at = (t) => itemsOf(t.id).at(-1)?.at ?? t.createdAt ?? 0;
@@ -166,6 +167,9 @@ const paintWords = () => {
 
 client.on((ch) => {
   if (['session', 'item.add', 'load'].includes(ch.type)) paintWords();
+  // The top bar keeps its chips between rebuilds, so its rings follow the session in place (issue #2).
+  if (ch.type === 'session')
+    for (const r of root.querySelectorAll(`header.topbar pb-ring[data-session="${CSS.escape(ch.data.id)}"]`)) ringFor(ch.data, r.getAttribute('size'), r);
   if (ch.type === 'settings' || ch.type === 'load') applyTheme();
   if (ch.type === 'notify') notify(ch.data);
   if (['thread', 'remove', 'project'].includes(ch.type) || (ch.type === 'session' && topbarChanged(ch.data))) refreshTop();
