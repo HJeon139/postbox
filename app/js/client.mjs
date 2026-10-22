@@ -92,11 +92,29 @@ addEventListener('pageshow', (e) => {
   if (e.persisted && client.state) connect();
 });
 
+/**
+ * A write with the page’s token (#74), which the browser sends as a cookie. The server makes a new token each time
+ * it starts, so after a restart this page’s cookie is stale: loading the page again (`/`) gets the new one, then
+ * the write is tried once more.
+ * @param {string} path @param {RequestInit} init
+ */
+async function write(path, init) {
+  const r = await fetch(path, init);
+  if (r.status !== 403 || init.method === 'GET') return r;
+  const data = await r
+    .clone()
+    .json()
+    .catch(() => ({}));
+  if (data.code !== 'token') return r;
+  await fetch('/', { cache: 'no-store' });
+  return fetch(path, init);
+}
+
 /** API calls. Errors carry the server’s plain-English message. */
 export async function api(path, body, method = 'POST') {
   let r;
   try {
-    r = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    r = await write(path, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch {
     throw Object.assign(new Error('You’re offline, so that didn’t go through. It will work again once the connection is back.'), { offline: true });
   }
@@ -106,7 +124,7 @@ export async function api(path, body, method = 'POST') {
 }
 
 export async function uploadFile(file) {
-  const r = await fetch('/api/files', {
+  const r = await write('/api/files', {
     method: 'POST',
     headers: { 'content-type': file.type || 'application/octet-stream', 'x-filename': encodeURIComponent(file.name || 'pasted') },
     body: file,

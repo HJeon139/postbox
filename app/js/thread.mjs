@@ -3,12 +3,14 @@
 
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { mockMarker } from './agent-facts.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, uploadFile } from './client.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
+import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { openAttachSession, openFolderPicker, openNewAgent } from './sheets.mjs';
+import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -241,7 +243,7 @@ const who = (it, { you = false } = {}) => {
   const ring = se ? ringFor(se, 'xs') : h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' });
   if (se) ring.dataset.session = se.id;
   const state = se ? h('span.who-state', { dataset: { session: se.id, item: it.id }, 'aria-live': 'off' }) : null;
-  return h('div.who', ring, h('b', `@${it.handle}`), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
+  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a reply in a
@@ -441,6 +443,8 @@ function renderItem(it, prev, ctx) {
       return hopBlock(it, ctx);
     case 'permission':
       return permissionBlock(it, ctx);
+    case 'command':
+      return commandBlock(it, ctx);
     case 'denial':
       return denialBlock(it, ctx);
     case 'appsend':
@@ -640,39 +644,213 @@ function hopBlock(it, ctx) {
   );
 }
 
+/**
+ * A `!command` you ran (#67): the command line, where it ran, its output as it streams (the last 64 KB, saying when
+ * earlier output was cut), Stop while it runs, then the exit code and how long it took. The agents read it on their
+ * next turn.
+ */
+function commandBlock(it, ctx) {
+  const running = it.status === 'running';
+  const secs = it.ms != null ? `${(it.ms / 1000).toFixed(it.ms < 10000 ? 1 : 0)} s` : '';
+  const ended =
+    it.status === 'done'
+      ? [icon('check', 'i-sm'), `Exit 0 · ${secs}`]
+      : it.status === 'stopped'
+        ? [icon('x', 'i-sm'), it.error ? `Stopped: ${it.error}` : `Stopped by you${secs ? ` · ${secs}` : ''}`]
+        : it.error
+          ? [icon('warn', 'i-sm'), `Couldn’t run: ${it.error}`]
+          : [icon('warn', 'i-sm'), `Exit ${it.exitCode ?? it.signal ?? '?'} · ${secs}`];
+  const titleId = `cmd-${it.id}`;
+  const out = it.text ? h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${it.command}` }, h('code', it.text)) : null;
+  // While it runs, the newest output is in view: the item is drawn again as output arrives.
+  if (out && running) requestAnimationFrame(() => out.scrollTo({ top: out.scrollHeight }));
+  return h(
+    'div.col.block.cmd-block',
+    { role: 'group', 'aria-labelledby': titleId, class: it.status === 'failed' ? 'cmd-failed' : '' },
+    h('div.block-head', h('code.title.grow.cmd-line', { id: titleId }, `! ${it.command}`), h('span.kind', `Command · ${it.cwd}`)),
+    h(
+      'div.block-body',
+      it.cut ? h('p.small.dim', 'Earlier output was cut: this is the last 64 KB.') : null,
+      it.paused && running ? h('p.small.dim', 'It’s still printing. The end of its output shows here when it finishes.') : null,
+      out ?? h('p.small.dim', running ? 'No output yet.' : 'No output.'),
+    ),
+    h(
+      'div.block-foot',
+      running
+        ? [
+            h('span.small', h('span.g.g-running', { 'aria-hidden': 'true' }), ' Running'),
+            h(
+              'button.btn.sm',
+              {
+                type: 'button',
+                onclick: () => api(`/api/threads/${ctx.threadId}/shell/${it.id}/stop`, {}).catch((e) => toast({ title: 'Couldn’t stop it', text: e.message })),
+              },
+              'Stop',
+            ),
+          ]
+        : h('span.answered-note.cmd-exit', { role: 'status' }, ...ended),
+      h('span.small.dim.grow.cmd-note', 'The agents read this on their next turn.'),
+    ),
+  );
+}
+
 // An agent in “ask” mode waits here before a risky tool call. It isn’t a catalog block: Postbox draws it,
 // and your answer goes straight back to the waiting tool call rather than to the agent as a message.
-const PERMISSION_DONE = { allowed: 'Allowed', denied: 'Not allowed', expired: 'Expired: the turn ended before you answered' };
+const PERMISSION_DONE = {
+  allowed: 'Allowed',
+  'allowed-always': 'Always allowed',
+  'allowed-edited': 'Allowed with your edit',
+  denied: 'Not allowed',
+  expired: 'Expired: the turn ended before you answered',
+};
+/**
+ * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
+ * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.
+ */
 function permissionBlock(it, ctx) {
   const open = it.status === 'open';
-  const act = (action) =>
-    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
+  const act = (action, values = {}) =>
+    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action, values })
       .then(focusComposer)
-      .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
+      .catch((e) => {
+        toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' });
+        throw e;
+      });
   const titleId = `pm-${it.id}`;
+  const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
+  const bash = it.tool === 'Bash';
+  // Edit and Don’t allow open a small form in the card; only one at a time.
+  const form = h('div.perm-form');
+  const foot = h('div.block-foot');
+  const buttons = () => [
+    h('button.btn', { type: 'button', onclick: () => act('allow') }, 'Allow'),
+    it.always ? h('button.btn', { type: 'button', 'aria-describedby': `${titleId}-always`, onclick: () => act('always') }, 'Always allow') : null,
+    // Edit needs the call’s whole input: one too large to keep here can only be allowed as it is.
+    it.input ? h('button.btn', { type: 'button', 'aria-expanded': 'false', onclick: (e) => showEdit(e.currentTarget) }, 'Edit…') : null,
+    h('button.btn', { type: 'button', 'aria-expanded': 'false', onclick: (e) => showDeny(e.currentTarget) }, 'Don’t allow…'),
+    h('span.small.dim', `${by} is waiting for you.`),
+  ];
+  const close = (back) => {
+    form.replaceChildren();
+    for (const b of foot.querySelectorAll('[aria-expanded]')) b.setAttribute('aria-expanded', 'false');
+    back?.focus();
+  };
+  function showEdit(button) {
+    close();
+    button.setAttribute('aria-expanded', 'true');
+    const start = bash ? String(it.input.command ?? '') : JSON.stringify(it.input, null, 2);
+    const id = `${titleId}-edit`;
+    const err = h('p.err', { id: `${id}-err`, hidden: true });
+    const box = h(
+      `textarea.textarea.mono`,
+      { id, rows: String(Math.min(12, start.split('\n').length + 1)), spellcheck: 'false', 'aria-describedby': `${id}-err` },
+      start,
+    );
+    const submit = () => {
+      let values;
+      if (bash) values = { command: box.value };
+      else {
+        // Checked here first, so a typo is caught before it reaches the agent; the server checks it again.
+        try {
+          const v = JSON.parse(box.value);
+          if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('It has to be a JSON object, like the one it started from.');
+        } catch (e) {
+          err.hidden = false;
+          err.textContent = `This doesn’t parse: ${e.message}`;
+          box.classList.add('invalid');
+          box.focus();
+          return;
+        }
+        values = { input: box.value };
+      }
+      act('edit', values).catch(() => box.focus());
+    };
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close(button);
+      }
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        submit();
+      }
+    });
+    form.replaceChildren(
+      h('label.label', { for: id }, bash ? 'The command to run instead' : 'The input to use instead (JSON)'),
+      box,
+      err,
+      h(
+        'div.row-flex',
+        h('button.btn.send', { type: 'button', onclick: submit }, 'Allow with this edit'),
+        h('button.btn.ghost', { type: 'button', onclick: () => close(button) }, 'Cancel'),
+      ),
+    );
+    box.focus();
+  }
+  function showDeny(button) {
+    close();
+    button.setAttribute('aria-expanded', 'true');
+    const id = `${titleId}-why`;
+    const why = h('input.input', { id, placeholder: 'Optional: what to do instead', maxlength: '1000' });
+    const submit = () => act('deny', { reason: why.value }).catch(() => why.focus());
+    why.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close(button);
+      }
+    });
+    form.replaceChildren(
+      h('label.label', { for: id }, `Why not? @${it.handle} reads this`),
+      why,
+      h(
+        'div.row-flex',
+        h('button.btn.send', { type: 'button', onclick: submit }, 'Don’t allow'),
+        h('button.btn.ghost', { type: 'button', onclick: () => close(button) }, 'Cancel'),
+      ),
+    );
+    why.focus();
+  }
+  if (open) foot.append(...buttons().filter(Boolean));
+  const done = it.status.startsWith('allowed');
   return h(
     'div.col.block',
     { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
     h(
       'div.block-head',
       open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h('span.title.grow', { id: titleId }, `Let @${it.handle} ${it.summary}?`),
+      h('span.title.grow', { id: titleId }, `Let ${by} ${it.summary}?`),
       h('span.kind', `Permission · ${it.tool}`),
     ),
     h(
       'div.block-body',
       // The whole command, wrapped: you decide on what you can see.
       it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
-      !open ? h('span.answered-note', icon(it.status === 'allowed' ? 'check' : 'x', 'i-sm'), PERMISSION_DONE[it.status] ?? it.status) : null,
+      // What Always allow saves, in words, before you click it.
+      open && it.always
+        ? h(
+            'div.small.perm-always',
+            { id: `${titleId}-always` },
+            it.always.lines.map((l) => h('p', l.rule ? ['Always allow ', h('code', l.rule), l.text.slice(`Always allow ${l.rule}`.length)] : l.text)),
+            it.always.moved ? h('p.dim', it.always.moved) : null,
+          )
+        : null,
+      open ? form : null,
+      !open
+        ? h(
+            'span.answered-note',
+            icon(done ? 'check' : 'x', 'i-sm'),
+            PERMISSION_DONE[it.status] ?? it.status,
+            it.status === 'allowed-always' && it.always ? ` (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')})` : '',
+          )
+        : null,
+      !open && it.edited ? h('pre.md-code.perm-detail', { 'aria-label': 'What ran instead' }, h('code', it.edited)) : null,
+      !open && it.reason ? h('p.small', h('b', 'Your reason: '), it.reason) : null,
     ),
-    open
-      ? h(
-          'div.block-foot',
-          h('button.btn', { type: 'button', onclick: () => act('allow') }, 'Allow'),
-          h('button.btn', { type: 'button', onclick: () => act('deny') }, 'Don’t allow'),
-          h('span.small.dim', `@${it.handle} is waiting for you.`),
-        )
-      : null,
+    open ? foot : null,
   );
 }
 
@@ -882,6 +1060,8 @@ export function flushOutbox() {
 
 export function mountComposer(threadId, { side = false } = {}) {
   const topic = S().threads[threadId]?.kind === 'topic';
+  // / and ! (#67) live in a conversation’s own composer, not in a thread panel’s.
+  const commands = !side && !topic;
   const key = `pb-draft-${threadId}`;
   let attachments = [];
   let mention = null; // { start, query, index }
@@ -901,6 +1081,29 @@ export function mountComposer(threadId, { side = false } = {}) {
     onclick: () => plusMenu(plus),
   });
   plus.append(icon('plus'));
+  // The / menu (#67): Postbox’s commands and the agents’ skills, by typing / or with this button. Only in a
+  // conversation’s own composer, where ! runs commands too.
+  let slash = null; // { query, index }
+  let slashTarget = null; // the agent skill or command picked: { sessionId, handle, name, argumentHint }
+  const commandsButton = !commands
+    ? null
+    : h(
+        'button.btn.icon.ghost.cmd-button',
+        {
+          type: 'button',
+          'aria-label': 'Commands',
+          title: 'Commands (/)',
+          'aria-haspopup': 'listbox',
+          onclick: () => {
+            if (!ta.value.startsWith('/')) ta.value = `/${ta.value.trimStart()}`;
+            ta.focus();
+            ta.setSelectionRange(1, 1);
+            updateSlash();
+            autosize();
+          },
+        },
+        h('span.cmd-glyph', { 'aria-hidden': 'true' }, '/'),
+      );
   const action = h('button.btn', { type: 'button' });
   const att = h('div.attachments', { role: 'group', 'aria-label': 'Attachments' });
   const queue = h('div.outbox');
@@ -1034,6 +1237,217 @@ export function mountComposer(threadId, { side = false } = {}) {
     );
   }
 
+  const clear = () => {
+    ta.value = '';
+    slashTarget = null;
+    save();
+    autosize();
+    paint();
+  };
+
+  // ── / and ! (#67) ──
+  /** The agent / and ! act for by default: the one the composer replies to. */
+  const target = () => {
+    const members = sessionsOf(threadId).filter((x) => !x.archived);
+    return members.find((x) => x.id === thread()?.lastSpeaker) ?? members[0] ?? null;
+  };
+  const isMock = (se) => S().personas[se?.personaId]?.backend === 'mock';
+  /** Postbox’s own commands, which act on Postbox without a turn. */
+  const POSTBOX = [
+    ['permissions', 'Its mode, rules, folders and MCP servers', () => openPermissions({ threadId, sessionId: target()?.id })],
+    ['mode', 'Ask me, Auto, Accept edits or Run everything', () => openRunChoice('mode', { threadId, sessionId: target()?.id })],
+    ['model', 'The model for this conversation', () => openRunChoice('model', { threadId, sessionId: target()?.id })],
+    ['effort', 'How much it thinks, for this conversation', () => openRunChoice('effort', { threadId, sessionId: target()?.id })],
+    ['add-dir', 'Let it work in another folder', () => addDir()],
+    ['mcp', 'Its MCP servers: status, on or off', () => openPermissions({ threadId, sessionId: target()?.id, focus: 'mcp' })],
+    ['compact', 'Summarize its context to make room', () => compact()],
+    ['stop', 'Stop the agents that are working', () => stopAll()],
+    ['rename', 'Rename this conversation', () => openRename(threadId)],
+    ['archive', 'Archive its session; restore it any time', () => archive()],
+  ];
+  const POSTBOX_NAMES = new Set(POSTBOX.map(([n]) => n));
+  function addDir() {
+    const se = target();
+    const projectId = thread()?.projectId;
+    if (!se || !projectId) return;
+    openFolderPicker(
+      projectId,
+      (path) =>
+        api('/api/permissions/folders', { sessionId: se.id, path })
+          .then((r) => toast({ title: `@${se.handle} may work in ${r.path}`, text: 'From its next turn.' }))
+          .catch((e) => toast({ title: 'Couldn’t add the folder', text: e.message, level: 'blocking' })),
+      { folders: true },
+    );
+  }
+  function compact() {
+    const se = target();
+    if (!se) return;
+    if (isMock(se)) return toast({ title: 'Nothing to compact', text: `@${se.handle} is a mock agent.` });
+    runAgentCommand(se, '/compact');
+  }
+  function stopAll() {
+    const working = sessionsOf(threadId).filter(busy);
+    if (!working.length) return say('Nothing is running here.');
+    for (const se of working)
+      api(`/api/sessions/${se.id}/stop`, {}).then(
+        () => say(`Stopped @${se.handle}.`),
+        (e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }),
+      );
+  }
+  function archive() {
+    const se = target();
+    if (!se) return;
+    api(`/api/sessions/${se.id}/archive`, {}).then(
+      () => toast({ title: `Archived @${se.handle}’s session`, action: { label: 'Restore', run: () => api(`/api/sessions/${se.id}/restore`, {}) } }),
+      (e) => toast({ title: 'Couldn’t archive', text: e.message, level: 'blocking' }),
+    );
+  }
+  /** An agent’s skills and commands: its session’s, else the latest from another session of its persona. */
+  function agentCommands(se) {
+    if (se.commands?.list?.length) return { list: se.commands.list, earlier: false };
+    const other = Object.values(S().sessions)
+      .filter((x) => x.personaId === se.personaId && x.id !== se.id && x.commands?.list?.length)
+      .sort((a, b) => b.commands.at - a.commands.at)[0];
+    return other ? { list: other.commands.list, earlier: true } : { list: [], earlier: false };
+  }
+  /** Everything the / menu offers for the query, in groups: Postbox’s, then each agent’s. */
+  function slashOptions() {
+    const q = slash?.query ?? '';
+    const match = (name) => name.toLowerCase().includes(q);
+    const groups = [{ label: 'Postbox', options: POSTBOX.filter(([n]) => match(n)).map(([name, desc, run]) => ({ name, desc, run })) }];
+    for (const se of sessionsOf(threadId).filter((x) => !x.archived)) {
+      const { list, earlier } = agentCommands(se);
+      const options = list
+        .filter((c) => !POSTBOX_NAMES.has(c.name) && match(c.name))
+        .slice(0, 40)
+        .map((c) => ({ name: c.name, desc: c.description ?? (c.skill ? 'Skill' : 'Command'), hint: c.argumentHint ?? '', se }));
+      if (options.length) groups.push({ label: `@${se.handle}’s skills and commands${earlier ? ' · from an earlier session' : ''}`, options });
+    }
+    return groups.filter((g) => g.options.length);
+  }
+  const flatOptions = () => slashOptions().flatMap((g) => g.options);
+  function updateSlash() {
+    const upto = ta.value.slice(0, ta.selectionStart);
+    if (!commands || !/^\/[^\s]*$/.test(upto)) {
+      if (slash) {
+        slash = null;
+        paintSlash();
+      }
+      return;
+    }
+    const query = upto.slice(1).toLowerCase();
+    slash = { query, index: slash?.query === query ? slash.index : 0 };
+    paintSlash();
+  }
+  function paintSlash() {
+    if (mention) return;
+    menuBox.replaceChildren();
+    ta.removeAttribute('aria-activedescendant');
+    if (!slash) {
+      ta.removeAttribute('aria-controls');
+      return;
+    }
+    const groups = slashOptions();
+    const n = groups.reduce((a, g) => a + g.options.length, 0);
+    if (!n) {
+      menuBox.append(h('div.menu.mention-menu.slash-menu', h('div.label', 'No command by that name'), h('p.small.dim', 'Enter sends it as a message.')));
+      return;
+    }
+    slash.index = Math.min(slash.index, n - 1);
+    let i = 0;
+    const box = h(
+      'div.menu.mention-menu.slash-menu',
+      { role: 'listbox', id: 'slash-list', 'aria-label': 'Commands' },
+      groups.map((g, gi) =>
+        h(
+          'div',
+          { role: 'group', 'aria-labelledby': `slash-g-${gi}` },
+          h('div.label', { id: `slash-g-${gi}` }, g.label),
+          g.options.map((o) => {
+            const k = i++;
+            return h(
+              'div.mi',
+              {
+                role: 'option',
+                id: `slash-${k}`,
+                'aria-selected': String(k === slash.index),
+                class: k === slash.index ? 'active' : '',
+                onmousedown: (e) => {
+                  e.preventDefault();
+                  pickSlash(o);
+                },
+              },
+              h('span.grow', h('span.mono', `/${o.name}`), o.hint ? h('span.dim.mono', ` ${o.hint}`) : null, h('span.d', o.desc)),
+              k === slash.index ? h('span.k', 'Enter') : null,
+            );
+          }),
+        ),
+      ),
+    );
+    menuBox.append(box);
+    ta.setAttribute('aria-controls', 'slash-list');
+    ta.setAttribute('aria-activedescendant', `slash-${slash.index}`);
+    document.getElementById(`slash-${slash.index}`)?.scrollIntoView({ block: 'nearest' });
+  }
+  function pickSlash(o) {
+    slash = null;
+    paintSlash();
+    if (o.run) {
+      clear();
+      ta.focus();
+      o.run();
+      return;
+    }
+    // An agent’s skill or command: fill /name, show its hint, and send it as that agent’s turn.
+    slashTarget = { sessionId: o.se.id, handle: o.se.handle, name: o.name, argumentHint: o.hint };
+    ta.value = `/${o.name} `;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    save();
+    autosize();
+    paint();
+  }
+  /** Runs a skill or command as an agent’s turn: the line is the whole prompt. */
+  async function runAgentCommand(se, line) {
+    try {
+      await api(`/api/threads/${threadId}/agent-command`, { sessionId: se.id, text: line });
+      return true;
+    } catch (e) {
+      toast({ title: `@${se.handle} couldn’t run ${line.split(/\s/)[0]}`, text: e.message, level: 'blocking' });
+      return false;
+    }
+  }
+  /** What a line starting with / or ! does when sent, or null to send it as a message. */
+  function commandFor(text) {
+    if (!commands) return null;
+    if (text.startsWith('!'))
+      return async () => {
+        try {
+          await api(`/api/threads/${threadId}/shell`, { command: text.slice(1).trim() });
+          return true;
+        } catch (e) {
+          toast({ title: 'The command didn’t run', text: e.message, level: 'blocking' });
+          return false;
+        }
+      };
+    const m = text.match(/^\/([\w:.@/-]+)(\s[\s\S]*)?$/);
+    if (!m) return null;
+    const [, name, rest] = m;
+    const own = POSTBOX.find(([n]) => n === name);
+    if (own && !rest?.trim())
+      return async () => {
+        own[2]();
+        return true;
+      };
+    const picked = slashTarget?.name === name ? sessionsOf(threadId).find((x) => x.id === slashTarget.sessionId) : null;
+    const reply = target();
+    const se =
+      picked ??
+      (reply && agentCommands(reply).list.some((c) => c.name === name) ? reply : null) ??
+      sessionsOf(threadId).find((x) => !x.archived && agentCommands(x).list.some((c) => c.name === name));
+    return se ? () => runAgentCommand(se, text) : null;
+  }
+
   async function submit(sendNow = false) {
     const text = ta.value.trim();
     if (attachments.some((a) => a.uploading)) {
@@ -1041,6 +1455,11 @@ export function mountComposer(threadId, { side = false } = {}) {
       return;
     }
     if (!text && !attachments.length) return;
+    const command = !attachments.length ? commandFor(text) : null;
+    if (command) {
+      if (await command()) clear();
+      return;
+    }
     const ok = await sendMessage(
       threadId,
       text,
@@ -1108,6 +1527,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           h(
             'span.grow',
             `@${p.handle}`,
+            mockMarker(se ?? p),
             h('span.d', se?.archived ? 'Archived · restore it to wake it' : se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken'),
           ),
           i === mention.index ? h('span.k', 'Enter') : null,
@@ -1135,15 +1555,54 @@ export function mountComposer(threadId, { side = false } = {}) {
     autosize();
     save();
     updateMention();
+    updateSlash();
+    // The hint line follows what the line will do: a picked skill, a ! command, or a message.
+    if (slashTarget && !ta.value.startsWith(`/${slashTarget.name}`)) slashTarget = null;
+    if (commands && (ta.value.startsWith('!') || ta.value.startsWith('/') || hint.dataset.mode)) paint();
   });
-  ta.addEventListener('click', updateMention);
+  ta.addEventListener('click', () => {
+    updateMention();
+    updateSlash();
+  });
   ta.addEventListener('blur', () =>
     setTimeout(() => {
+      // The menus stay when focus came straight back (the window lost it and got it back).
+      if (document.activeElement === ta) return;
       mention = null;
       paintMention();
+      if (slash) {
+        slash = null;
+        paintSlash();
+      }
     }, 120),
   );
   ta.addEventListener('keydown', (e) => {
+    if (slash && !mention) {
+      const n = flatOptions().length;
+      if (n && e.key === 'ArrowDown') {
+        e.preventDefault();
+        slash.index = (slash.index + 1) % n;
+        paintSlash();
+        return;
+      }
+      if (n && e.key === 'ArrowUp') {
+        e.preventDefault();
+        slash.index = (slash.index - 1 + n) % n;
+        paintSlash();
+        return;
+      }
+      if (n && (e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+        e.preventDefault();
+        pickSlash(flatOptions()[slash.index]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        slash = null;
+        paintSlash();
+        return;
+      }
+    }
     if (mention && candidates().length) {
       const n = candidates().length;
       if (e.key === 'ArrowDown') {
@@ -1188,7 +1647,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     }
   });
 
-  const el = h('div.composer', h('div.col', status, queue, menuBox, att, h('div.composer-box', plus, ta, action), hint, file, corpusFile));
+  const el = h('div.composer', h('div.col', status, queue, menuBox, att, h('div.composer-box', plus, commandsButton, ta, action), hint, file, corpusFile));
 
   // Drop files: the main composer takes drops anywhere in the window. A side or topic composer takes drops on
   // its own panel (see dropZone below), and stops them there so the main composer doesn’t take them too.
@@ -1290,20 +1749,55 @@ export function mountComposer(threadId, { side = false } = {}) {
             )
           : '',
     );
+    // What Enter will do with a / or ! line (#67).
+    const line = ta.value.trimStart();
+    const mode = !commands || offline ? '' : line.startsWith('!') ? 'shell' : slashTarget && line.startsWith(`/${slashTarget.name}`) ? 'skill' : '';
+    if (mode) hint.dataset.mode = mode;
+    else delete hint.dataset.mode;
+    const folder = mode === 'shell' ? commandFolder() : null;
     fill(
       hint,
-      offline
-        ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
-        : topic
-          ? h('span', 'Replies stay in this thread. @ brings in another agent from the conversation.')
-          : side
-            ? h('span', 'Anything you send here adds you to this side thread.')
-            : [
-                members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), ' (last speaker)') : null,
-                h('span', 'Enter to send · Shift+Enter for a new line'),
-                h('span.hide-sm', '@ to wake an agent · + to add a file or an agent'),
-              ],
+      mode === 'shell'
+        ? h(
+            'span',
+            folder
+              ? ['Runs in ', h('span.mono', folder), ' as you, with Enter. ']
+              : target() && !isMock(target())
+                ? ['Runs in ', h('b', `@${target().handle}`), '’s own workspace, as you, with Enter. ']
+                : 'This conversation has no folder to run commands in. ',
+            'The agents read it and its output on their next turn.',
+          )
+        : mode === 'skill'
+          ? h(
+              'span',
+              'Enter runs ',
+              h('span.mono', `/${slashTarget.name}`),
+              slashTarget.argumentHint ? [' ', h('span.mono.dim', slashTarget.argumentHint)] : null,
+              ' as ',
+              h('b', `@${slashTarget.handle}`),
+              '’s turn',
+            )
+          : offline
+            ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
+            : topic
+              ? h('span', 'Replies stay in this thread. @ brings in another agent from the conversation.')
+              : side
+                ? h('span', 'Anything you send here adds you to this side thread.')
+                : [
+                    members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), mockMarker(last), ' (last speaker)') : null,
+                    h('span', 'Enter to send · Shift+Enter for a new line'),
+                    h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
+                  ],
     );
+  }
+  /**
+   * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude
+   * Code or Agent SDK agent with neither works in a workspace of its own, which the server finds (its adapter’s folderFor).
+   */
+  function commandFolder() {
+    const se = target();
+    const p = se ? S().personas[se.personaId] : null;
+    return se?.personaSnapshot?.folder || p?.folder || S().projects[thread()?.projectId]?.folder || null;
   }
   function queuedRow(q) {
     const names = q.sessionIds

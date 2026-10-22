@@ -17,7 +17,9 @@ export function freshInstall() {
       {
         handle: 'assistant',
         description: 'A general-purpose agent. Ask it anything, or give it work to do in your project.',
-        tools: [],
+        // Commands and the web, as in your terminal: with #5 an unticked tool is denied, and the first run is the
+        // first loop. The permission mode still decides what it asks you about; agents outside Postbox stay off.
+        tools: ['shell', 'web.fetch'],
         instructions: 'Help the person with what they ask. Ask when something is unclear, and say what you did and what is left.',
         examples: [['What can you help me with?', 'What it can do here, and how to ask']],
       },

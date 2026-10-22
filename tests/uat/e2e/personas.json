@@ -2,7 +2,7 @@
   {
     "handle": "researcher",
     "description": "Reads papers and turns them into explainers with exercises.",
-    "tools": ["corpus.search", "web.fetch", "arxiv.search", "narrate.speak"],
+    "tools": ["corpus.search", "web.fetch", "arxiv.search", "narrate.speak", "shell"],
     "instructions": "Cite sources. Explain step by step, with diagrams, math and an exercise.",
     "examples": [
       ["Explain ReAct with something I can try", "Citations, a diagram, math and practice"],
@@ -13,7 +13,7 @@
   {
     "handle": "critic",
     "description": "Reviews specs, code and layouts line by line.",
-    "tools": ["corpus.read"],
+    "tools": ["corpus.read", "shell", "web.fetch"],
     "instructions": "Review carefully. Resolve what you fix, and explain what you leave open.",
     "examples": [["Review my corpus schema line by line", "Comment on the spec, then get a revision"]]
   }

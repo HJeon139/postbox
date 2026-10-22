@@ -5,16 +5,19 @@
 //
 // --fresh starts from an empty store; --demo also enables the demo controls (reset, drop connections).
 
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { homedir } from 'node:os';
 import { extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
+import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
+import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { Corpus } from './corpus.mjs';
 import { handleMcp } from './mcp.mjs';
@@ -22,6 +25,7 @@ import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
+import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -52,7 +56,26 @@ const STATIC = {
   '/mockups/': join(ROOT, 'mockups'),
 };
 
-export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh = false, demo = false, quiet = false } = {}) {
+/**
+ * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
+ *           host?: string, spawnShell?: typeof import('node:child_process').spawn }} [opts]
+ *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
+ *   checks pass a temp folder, so they never read the real one)
+ *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
+ *   host: the address it listens on, 127.0.0.1; `!` commands refuse to run on any other (tests check that)
+ *   spawnShell: how `!` commands start (tests pass a fake)
+ */
+export async function start({
+  port = 4173,
+  dataDir = join(ROOT, 'data'),
+  fresh = false,
+  demo = false,
+  quiet = false,
+  claudeHome = homedir(),
+  listen = true,
+  host = '127.0.0.1',
+  spawnShell = undefined,
+} = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
   if (fresh)
@@ -68,10 +91,16 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
   if (claude) adapters.register(new ClaudeCodeAdapter({ workRoot: join(dataDir, 'workspaces') }));
   const sdk = real ? await loadAgentSdk() : null;
   if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot: join(dataDir, 'workspaces') }));
-  const config = { origin, imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'], versions: { claudeCode: claude } };
+  const config = {
+    origin,
+    imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'],
+    versions: { claudeCode: claude },
+    // The person’s Claude Code user settings live here: the permissions panel reads and writes their rules (#66).
+    home: claudeHome,
+  };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
-  const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator });
+  const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell });
   const firstReal = ['claude-code', 'agent-sdk'].find((b) => adapters.names().includes(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
@@ -82,10 +111,38 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
   rt.rearmSchedules();
   rt.rearmDeletions();
   rt.expireStalePermissions();
+  rt.expireStaleCommands();
   rt.rearmMirrors();
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
+
+  // The page’s token (#74): a secret made at each launch, which a browser gets in a cookie when it loads `/`. Every
+  // write needs it, so an agent that uses Postbox’s API with curl, casually or because something told it to, can’t
+  // post as the person. The cookie is HttpOnly (neither the page’s script nor an app can read it) and SameSite=Strict
+  // (another site can’t make the browser send it). A page on another port of this computer is the same site, so the
+  // browser does send it there: the Origin check refuses those. Cookies don’t keep ports apart, so its name has the
+  // port, and two Postboxes on one computer don’t overwrite each other’s.
+  const token = Buffer.from(randomBytes(32).toString('base64url'));
+  const cookieName = `pb_token_${port}`;
+  const cookieRe = new RegExp(`(?:^|;\\s*)${cookieName}=([^;]*)`);
+  const hasToken = (req) => {
+    const sent = Buffer.from(String(req.headers.cookie ?? '').match(cookieRe)?.[1] ?? '');
+    return sent.length === token.length && timingSafeEqual(sent, token);
+  };
+  // Only a browser gets it: a navigation, or the page’s own fetch of `/` (its token refresh after a restart), which
+  // browsers mark with Fetch Metadata headers. A plain `curl /` sends none, so it gets the page and no cookie. A
+  // process that forges these headers on purpose still can; see designs/architecture.md §13.
+  const fromBrowser = (req) =>
+    req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
+
+  // `!` runs commands as the person (#67), so it’s off unless Postbox listens on this computer alone and the request
+  // came from it, on top of the page’s token. Postbox listens on 127.0.0.1 today; a later change to that can’t open
+  // this silently.
+  const shellAllowed = (req) => {
+    if (!isLoopback(host)) throw httpError(403, `! commands run only while Postbox listens on this computer alone (127.0.0.1), and it’s listening on ${host}.`);
+    if (!isLoopback(req.socket?.remoteAddress)) throw httpError(403, '! commands run only from this computer.');
+  };
 
   const streams = new Set();
   let offlineUntil = 0;
@@ -96,7 +153,8 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     for (const res of streams) res.write(': keep-alive\n\n');
   }, 15000);
 
-  const server = createServer(async (req, res) => {
+  /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
+  const handle = async (req, res) => {
     try {
       await route(req, res);
     } catch (e) {
@@ -106,10 +164,12 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
         send(res, status, {
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
           fieldErrors: e.fieldErrors,
+          code: e.code,
         });
       else res.end();
     }
-  });
+  };
+  const server = createServer(handle);
 
   async function route(req, res) {
     const url = new URL(req.url, origin);
@@ -120,8 +180,23 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       throw httpError(421, 'Postbox only answers requests addressed to 127.0.0.1 or localhost.');
     if (req.method !== 'GET' && req.headers.origin && !['http://127.0.0.1:' + port, 'http://localhost:' + port].includes(req.headers.origin))
       throw httpError(403, 'Requests from other sites aren’t allowed.');
+    // Every write needs the page’s token (#74), except /mcp, where agents call Postbox’s tools with their session.
+    if (req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && !hasToken(req))
+      throw Object.assign(
+        httpError(
+          403,
+          'This request came from outside the Postbox page, so Postbox refused it. Changes need the token that only the page you opened has; if this is that page, reload it.',
+        ),
+        { code: 'token' },
+      );
 
-    if (path === '/' || path === '/index.html') return file(res, join(ROOT, 'app', 'index.html'), appHeaders(config), req);
+    if (path === '/' || path === '/index.html')
+      return file(
+        res,
+        join(ROOT, 'app', 'index.html'),
+        { ...appHeaders(config), ...(fromBrowser(req) ? { 'set-cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/` } : {}) },
+        req,
+      );
     if (path === '/favicon.svg') return file(res, join(ROOT, 'app', 'media', 'favicon.svg'), {}, req);
     if (path === '/kit/workbench.css' || path === '/app/workbench.css')
       return file(res, join(ROOT, 'app', 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
@@ -174,14 +249,32 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
         config: {
           origin,
           hopLimit: 3,
-          knownTools: KNOWN_TOOLS,
+          // Postbox’s tools, then those only real backends have (#5).
+          knownTools: [...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS],
           adapters: adapters.names(),
           defaultModel: DEFAULT_MODEL,
+          effortLevels: EFFORT_LEVELS,
+          defaultEffort: DEFAULT_EFFORT,
           permissionModes: PERMISSION_MODES,
           demo,
+          // Whether Postbox looked for real backends, and the Claude Code it found (null if none): without it, the
+          // overview says how to install it (#12).
+          realBackends: real,
+          versions: config.versions,
           corpus: corpus.stats(),
         },
       });
+    }
+    // The MCP servers a persona would load, with their status (#59): names, scopes and statuses only, never config.
+    if (path === '/api/mcp-servers' && req.method === 'GET') {
+      const { persona, folder, seen } = rt.mcpContext(url.searchParams.get('personaId'), url.searchParams.get('projectId'));
+      const found = await yourMcpServers(folder, { home: claudeHome });
+      return send(res, 200, { folder, servers: mcpServerList({ found, seen, off: persona?.mcpOff ?? [] }) });
+    }
+    // The permissions panel (#66): one agent’s mode, rules with their sources, folders and tools.
+    if (path === '/api/permissions' && req.method === 'GET') {
+      const q = (k) => url.searchParams.get(k) || null;
+      return send(res, 200, await rt.permissionsView({ sessionId: q('sessionId'), personaId: q('personaId'), projectId: q('projectId') }));
     }
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
@@ -205,15 +298,13 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       rt.view(m[1]);
       return send(res, 200, { ok: true });
     }
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/))) {
-      if (req.method === 'PATCH') {
-        rt.editQueued(m[1], m[2], body.text);
-        return send(res, 200, { ok: true });
-      }
-      if (req.method === 'DELETE') {
-        rt.cancelQueued(m[1], m[2]);
-        return send(res, 200, { ok: true });
-      }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/)) && req.method === 'PATCH') {
+      rt.editQueued(m[1], m[2], body.text);
+      return send(res, 200, { ok: true });
+    }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/)) && req.method === 'DELETE') {
+      rt.cancelQueued(m[1], m[2]);
+      return send(res, 200, { ok: true });
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)\/send$/)) && req.method === 'POST') return send(res, 200, rt.sendQueuedNow(m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/act$/)) && req.method === 'POST')
@@ -236,6 +327,14 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       return send(res, 200, { ok: true, result: action() ?? null });
     }
     if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteSession(m[1]));
+    // The composer’s commands (#67): /model and /effort for this conversation, an agent’s skill as its turn, and !.
+    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/run$/)) && req.method === 'POST') return send(res, 200, await rt.setSessionRun(m[1], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell$/)) && req.method === 'POST') {
+      shellAllowed(req);
+      return send(res, 201, await rt.runShellCommand(m[1], body.command));
+    }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell\/([^/]+)\/stop$/)) && req.method === 'POST') return send(res, 200, rt.stopShellCommand(m[1], m[2]));
     if (path === '/api/claude-sessions' && req.method === 'GET') return send(res, 200, { sessions: await rt.claudeSessions() });
     if (path === '/api/claude-sessions/attach' && req.method === 'POST') return send(res, 201, await rt.attachClaudeSession(body));
     if (path === '/api/personas' && req.method === 'POST') {
@@ -247,6 +346,9 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       return send(res, 201, p);
     }
     if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updatePersona(m[1], body));
+    if (path === '/api/permissions/rules' && req.method === 'POST') return send(res, 200, await rt.changePermissionRule(body));
+    if (path === '/api/permissions/folders' && req.method === 'POST') return send(res, 200, await rt.changePermissionFolder(body));
+    if (path === '/api/permissions/mode' && req.method === 'POST') return send(res, 200, await rt.setPermissionMode(body.personaId, body.mode));
     if (path === '/api/projects' && req.method === 'POST') {
       const folder = resolve(String(body.folder ?? ''));
       const st = await stat(folder).catch(() => null);
@@ -376,10 +478,11 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     return { root: project.folder, path: relative(root, target), entries: list };
   }
 
-  await new Promise((ok, fail) => {
-    server.once('error', fail);
-    server.listen(port, '127.0.0.1', () => ok(undefined));
-  });
+  if (listen)
+    await new Promise((ok, fail) => {
+      server.once('error', fail);
+      server.listen(port, host, () => ok(undefined));
+    });
   if (!quiet)
     console.log(
       `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${adapters.names().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${demo ? '\nDemo controls are on.' : ''}`,
@@ -389,13 +492,17 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     rt,
     store,
     origin,
+    /** The request handler, for tests that call routes without a network (start({ listen: false })). */
+    handle,
     async close() {
       clearInterval(keepAlive);
       for (const r of streams) r.destroy();
       for (const t of rt.timers.values()) clearTimeout(t);
       rt.stopMirrors();
+      // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67).
+      await rt.stopShellCommands();
       narrator?.stop();
-      await new Promise((ok) => server.close(ok));
+      if (listen) await new Promise((ok) => server.close(ok));
       await store.flush();
     },
   };

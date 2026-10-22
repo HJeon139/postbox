@@ -10,7 +10,7 @@ The agent’s answer, streamed as it’s written, in Markdown.
 
 ## Expected functionality
 
-- Speaker line: ring, @name, status word while it works, time.
+- Speaker line: ring, @name, “mock” for a mock agent (#12), status word while it works, time.
 - Text streams with a caret; only the newest segment of a turn shows the caret.
 - Raw HTML is shown as text, never rendered; links open in a new tab with noopener.
 - The one exception: `<details><summary>Answer</summary> … </details>`, with no attributes, folds its Markdown away until you open it (agents use it to hide an exercise’s answer). It opens by click or by Enter on the summary, and folds can nest. A `<details>` with attributes, or one that’s never closed, stays text.

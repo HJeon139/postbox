@@ -1,8 +1,10 @@
 // Dialogs: new agent, new conversation, settings (appearance, personas, projects, connection), the command
 // palette, the delete confirm, and the project folder picker.
 
+import { mockMarker } from './agent-facts.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
+import { openPermissions } from './permissions.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
@@ -22,7 +24,9 @@ const BACKENDS = [
   ['agent-sdk', 'Agent SDK', 'Runs the Claude Agent SDK in Postbox’s server.'],
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
-const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
+export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
+// The levels come from the server (server/adapters/setup.mjs, EFFORT_LEVELS); these are their names.
+export const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 const PERMISSIONS = [
   ['auto', 'Auto', 'A safety check approves routine actions; it asks you only when it can’t decide.'],
   ['ask', 'Ask me', 'It asks before running commands or changing files.'],
@@ -87,11 +91,103 @@ function checkField({ id, label, help, on, onToggle }) {
   );
 }
 
+// What an MCP server’s status and scope say, from GET /api/mcp-servers (server/adapters/mcp-config.mjs).
+export const MCP_STATUS = {
+  connected: 'Connected',
+  failed: 'Couldn’t connect',
+  'needs-auth': 'Needs sign-in',
+  pending: 'Starting',
+  disabled: 'Turned off in your Claude Code settings',
+  'not-started': 'Not started yet',
+};
+export const MCP_SCOPE = {
+  user: 'your settings',
+  project: 'this project',
+  local: 'your settings for this folder',
+  plugin: 'plugin',
+  'claude.ai': 'claude.ai connector',
+};
+
 /**
- * Fields for st.backend, st.model, st.permissionMode, st.folder, st.usesHostSetup and st.canPublish.
- * idp prefixes element ids.
+ * Your MCP servers (#59): each one found, with its status from the agent’s latest turn and a checkbox that’s on by
+ * default. Unticked, it goes in st.mcpOff and doesn’t load for this agent. st.mcpServers holds the list once it
+ * arrives (null while it loads).
+ * @param {any} st @param {() => void} paint @param {{ idp: string, personaId?: string|null, projectId?: string|null }} opts
  */
-function backendFields(st, paint, { idp, fixedBackend = false }) {
+function mcpField(st, paint, { idp, personaId = null, projectId = null }) {
+  if (st.mcpServers === undefined) {
+    st.mcpServers = null;
+    const q = new URLSearchParams({ ...(personaId ? { personaId } : {}), ...(projectId ? { projectId } : {}) });
+    api(`/api/mcp-servers?${q}`, undefined, 'GET').then(
+      (r) => {
+        st.mcpServers = r.servers ?? [];
+        paint();
+      },
+      (e) => {
+        st.mcpServers = { error: e.message };
+        paint();
+      },
+    );
+  }
+  const list = st.mcpServers;
+  const off = new Set(st.mcpOff);
+  const body =
+    st.usesHostSetup === false
+      ? h('span.help', 'It’s isolated, so only Postbox’s own server loads, not yours.')
+      : list === null
+        ? h('span.help', 'Looking for your MCP servers…')
+        : !Array.isArray(list)
+          ? h('span.err', icon('warn'), `Couldn’t list your MCP servers: ${list.error}`)
+          : !list.length
+            ? h('span.help', 'None found in your Claude Code setup. Postbox’s own server always loads.')
+            : h(
+                'div',
+                { style: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' } },
+                list.map((m, i) =>
+                  h(
+                    'span.check',
+                    {
+                      id: `${idp}-mcp-${i}`,
+                      role: 'checkbox',
+                      tabindex: '0',
+                      'aria-checked': String(!off.has(m.name)),
+                      'data-server': m.name,
+                      onclick: (e) => {
+                        if (off.has(m.name)) off.delete(m.name);
+                        else off.add(m.name);
+                        st.mcpOff = [...off];
+                        e.currentTarget.setAttribute('aria-checked', String(!off.has(m.name)));
+                      },
+                      onkeydown: (e) => {
+                        if (e.key === ' ' || e.key === 'Enter') {
+                          e.preventDefault();
+                          e.currentTarget.click();
+                        }
+                      },
+                    },
+                    h('span.box'),
+                    h('span.mono', m.name),
+                    h('span.small.dim', [MCP_STATUS[m.status] ?? m.status, MCP_SCOPE[m.scope]].filter(Boolean).join(' · ')),
+                  ),
+                ),
+              );
+  return h(
+    'fieldset.field.span',
+    { style: { border: 0, padding: 0, margin: 0 } },
+    h('legend.label', 'MCP servers'),
+    body,
+    st.usesHostSetup !== false && Array.isArray(list) && list.length
+      ? h('span.help', 'Yours load as in your terminal. Untick one to keep it from loading for this agent. The status is from its latest turn.')
+      : null,
+  );
+}
+
+/**
+ * Fields for st.backend, st.model, st.effort, st.permissionMode, st.folder, st.usesHostSetup, st.mcpOff and
+ * st.canPublish.
+ * idp prefixes element ids; personaId and projectId say whose MCP servers to list.
+ */
+function backendFields(st, paint, { idp, fixedBackend = false, personaId = null, projectId = null }) {
   const available = new Set(client.config.adapters ?? ['mock']);
   const real = st.backend !== 'mock';
   const perm = PERMISSIONS.find(([id]) => id === st.permissionMode) ?? PERMISSIONS[0];
@@ -137,6 +233,31 @@ function backendFields(st, paint, { idp, fixedBackend = false }) {
           ),
         )
       : null,
+    // Next to the model, and always passed with it, so your own settings don’t decide it (#60).
+    real
+      ? h(
+          'div.field',
+          h('label.label', { for: `${idp}-e` }, 'Effort'),
+          h(
+            'div.select-wrap',
+            h(
+              'select.select',
+              {
+                id: `${idp}-e`,
+                'aria-describedby': `${idp}-e-help`,
+                onchange: (e) => {
+                  st.effort = e.target.value;
+                },
+              },
+              (client.config.effortLevels ?? Object.keys(EFFORT_NAMES)).map((l) =>
+                h('option', { value: l, selected: (st.effort ?? client.config.defaultEffort) === l }, EFFORT_NAMES[l] ?? l),
+              ),
+            ),
+            icon('down'),
+          ),
+          h('span.help', { id: `${idp}-e-help` }, 'How much it thinks before it answers. Higher is slower and costs more.'),
+        )
+      : null,
     real
       ? h(
           'div.field.span',
@@ -174,6 +295,7 @@ function backendFields(st, paint, { idp, fixedBackend = false }) {
           on: st.usesHostSetup !== false,
           onToggle: (on) => {
             st.usesHostSetup = on;
+            paint();
           },
         })
       : null,
@@ -188,8 +310,12 @@ function backendFields(st, paint, { idp, fixedBackend = false }) {
           },
         })
       : null,
+    real ? mcpField(st, paint, { idp, personaId, projectId }) : null,
   ];
 }
+
+// What the Tools checklist means on Claude Code and the Agent SDK (#5): server/adapters/setup.mjs, TOOL_RULES.
+const TOOLS_HELP = 'On Claude Code and the Agent SDK, an unticked tool is turned off. A ticked one still follows its permissions.';
 
 // ── New agent ───────────────────────────────────────────────────────────────────────────
 
@@ -206,9 +332,11 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     where: threadId ? 'join' : 'new',
     backend: defaultBackend(),
     model: client.config.defaultModel ?? 'claude-opus-5-5',
+    effort: client.config.defaultEffort ?? 'medium',
     permissionMode: 'auto',
     usesHostSetup: true,
     canPublish: false,
+    mcpOff: [],
     folder: '',
     saveBp: false,
     error: null,
@@ -270,7 +398,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
           ),
           h('span.help', { id: 'na-h-help' }, '2–24 letters, digits, - or _'),
         ),
-        ...backendFields(st, paint, { idp: 'na' }),
+        ...backendFields(st, paint, { idp: 'na', projectId }),
         h(
           'div.field.span',
           h('label.label', { for: 'na-d' }, 'What it does'),
@@ -336,6 +464,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
             );
           }),
         ),
+        st.backend === 'mock' ? null : h('span.help', TOOLS_HELP),
       ),
       h(
         'div.field',
@@ -381,8 +510,9 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         tools: [...st.tools],
         backend: st.backend,
         model: st.backend === 'mock' ? 'mock' : st.model,
+        ...(st.backend === 'mock' ? {} : { effort: st.effort }),
         permissionMode: st.permissionMode,
-        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish }),
+        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish, mcpOff: st.mcpOff }),
         folder: st.folder,
         saveAsBoilerplate: st.saveBp,
         join: st.where === 'join' ? { threadId } : { projectId, title: `With @${st.handle}` },
@@ -729,6 +859,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
           h(
             'li',
             h('b', `@${p.handle}`),
+            mockMarker(p),
             h('span.small.dim.grow', p.retired ? 'Retired' : p.description),
             h('span.small.dim', `v${p.version ?? 1}`),
             h(
@@ -771,13 +902,15 @@ export function openSettings(tab = 'appearance', personaId = null) {
     const run = {
       backend: p.backend ?? 'mock',
       model: p.model,
+      effort: p.effort ?? client.config.defaultEffort ?? 'medium',
       permissionMode: p.permissionMode ?? 'auto',
       folder: p.folder ?? '',
       usesHostSetup: p.usesHostSetup !== false,
       canPublish: p.canPublish === true,
+      mcpOff: [...(p.mcpOff ?? [])],
     };
     const runBox = h('div.form-grid');
-    const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe' })));
+    const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe', personaId: p.id })));
     paintRun();
     const desc = h('input.input', { id: 'pe-d', value: p.description });
     const ins = h('textarea.textarea', { id: 'pe-i', style: { minHeight: '100px' } }, p.instructions);
@@ -810,7 +943,16 @@ export function openSettings(tab = 'appearance', personaId = null) {
             ),
           ),
         ),
+        run.backend === 'mock' ? null : h('span.help', TOOLS_HELP),
       ),
+      // Its rules, folders and MCP servers, with where each comes from (#66), over this sheet.
+      p.backend && p.backend !== 'mock'
+        ? h(
+            'div.row-flex',
+            h('button.btn.sm', { type: 'button', id: 'pe-perms', onclick: () => openPermissions({ personaId: p.id }) }, icon('gear', 'i-sm'), 'Permissions…'),
+            h('span.help', 'Its rules, with where each comes from, and which rule decides a call.'),
+          )
+        : null,
       h(
         'div.row-flex',
         h(
@@ -829,10 +971,12 @@ export function openSettings(tab = 'appearance', personaId = null) {
                     ? {}
                     : {
                         model: run.model,
+                        effort: run.effort,
                         permissionMode: run.permissionMode,
                         folder: run.folder,
                         usesHostSetup: run.usesHostSetup,
                         canPublish: run.canPublish,
+                        mcpOff: run.mcpOff,
                       }),
                 },
                 'PATCH',
@@ -844,8 +988,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
                       run.backend !== (p.backend ?? 'mock') ||
                       run.permissionMode !== (p.permissionMode ?? 'auto') ||
                       run.usesHostSetup !== (p.usesHostSetup !== false) ||
-                      run.canPublish !== (p.canPublish === true)
-                        ? 'Where it runs and its permissions apply to its conversations from their next turn; other changes apply to new sessions.'
+                      run.canPublish !== (p.canPublish === true) ||
+                      String(run.mcpOff) !== String(p.mcpOff ?? []) ||
+                      String([...tools].sort()) !== String([...(p.tools ?? [])].sort())
+                        ? 'Where it runs, its permissions and its tools apply to its conversations from their next turn; other changes apply to new sessions.'
                         : 'New sessions use this version.',
                   });
                   back();
@@ -1007,7 +1153,12 @@ export function openPalette() {
 
 // ── Folder picker ───────────────────────────────────────────────────────────────────────
 
-export function openFolderPicker(projectId, onPick) {
+/**
+ * The project folder’s files, to attach one; with folders: true, its folders, to add one an agent may work in (#66).
+ * onPick gets the path relative to the project’s folder ("" for the folder itself).
+ * @param {string} projectId @param {(path: string) => void} onPick @param {{ folders?: boolean }} [opts]
+ */
+export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
   const listEl = h('ul.list-rows');
   const where = h('p.small.dim.mono');
   const load = async (path) => {
@@ -1015,33 +1166,47 @@ export function openFolderPicker(projectId, onPick) {
       const r = await fetch(`/api/projects/${projectId}/files?path=${encodeURIComponent(path)}`).then((x) => x.json());
       if (r.error) throw new Error(r.error);
       where.textContent = `${r.root}${r.path ? '/' + r.path : ''}`;
+      const pick = (path) => {
+        dlg.close();
+        onPick(path);
+      };
       fill(
         listEl,
+        folders
+          ? h(
+              'li',
+              icon('folder', 'dim'),
+              h('span.grow', 'This folder'),
+              h('button.btn.sm', { type: 'button', onclick: () => pick(r.path) }, 'Add this folder'),
+            )
+          : null,
         r.path
           ? h('li', h('button.btn.sm.ghost', { type: 'button', onclick: () => load(r.path.split('/').slice(0, -1).join('/')) }, icon('back', 'i-sm'), 'Up'))
           : null,
-        ...r.entries.map((e) =>
-          h(
-            'li',
-            icon(e.dir ? 'folder' : 'file', 'dim'),
-            h('span.grow', e.name),
-            e.dir
-              ? h('button.btn.sm', { type: 'button', 'aria-label': `Open ${e.name}`, onclick: () => load(e.path) }, 'Open')
-              : h(
-                  'button.btn.sm',
-                  {
-                    type: 'button',
-                    'aria-label': `Attach ${e.name}`,
-                    onclick: () => {
-                      dlg.close();
-                      onPick(e.path);
+        ...r.entries
+          .filter((e) => !folders || e.dir)
+          .map((e) =>
+            h(
+              'li',
+              icon(e.dir ? 'folder' : 'file', 'dim'),
+              h('span.grow', e.name),
+              e.dir
+                ? [
+                    h('button.btn.sm', { type: 'button', 'aria-label': `Open ${e.name}`, onclick: () => load(e.path) }, 'Open'),
+                    folders ? h('button.btn.sm', { type: 'button', 'aria-label': `Add ${e.name}`, onclick: () => pick(e.path) }, 'Add') : null,
+                  ]
+                : h(
+                    'button.btn.sm',
+                    {
+                      type: 'button',
+                      'aria-label': `Attach ${e.name}`,
+                      onclick: () => pick(e.path),
                     },
-                  },
-                  'Attach',
-                ),
+                    'Attach',
+                  ),
+            ),
           ),
-        ),
-        r.entries.length ? null : h('li.empty-note', 'This folder is empty.'),
+        r.entries.some((e) => !folders || e.dir) ? null : h('li.empty-note', folders ? 'No folders in here.' : 'This folder is empty.'),
       );
       // Focus starts on the first entry, and moves to the first entry of each folder you open (#26).
       const buttons = listEl.querySelectorAll('button');
@@ -1052,8 +1217,8 @@ export function openFolderPicker(projectId, onPick) {
   };
   load('');
   const dlg = openDialog({
-    title: 'Attach from the project folder',
-    sub: 'Postbox attaches a reference; nothing is copied.',
+    title: folders ? 'Add a folder' : 'Attach from the project folder',
+    sub: folders ? 'The agent may work in it from its next turn.' : 'Postbox attaches a reference; nothing is copied.',
     body: [where, listEl],
     size: 'lg',
   });

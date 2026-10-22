@@ -20,6 +20,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Top bar](shell/top-bar/top-bar.md)
     - [Postbox menu](shell/top-bar/postbox-menu.md)
     - [Conversation menu](shell/top-bar/conversation-menu.md)
+  - [Permissions panel](shell/permissions-panel.md)
   - [Command palette](shell/command-palette.md)
   - [Toast](shell/toast.md)
   - **rail/**
@@ -47,6 +48,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Failed and stopped replies](conversation/transcript/failed-and-stopped.md)
     - [Message actions](conversation/transcript/message-actions.md)
     - [Shared from a thread](conversation/transcript/shared-from-thread.md)
+    - [Command item (!)](conversation/transcript/command-item.md)
   - **blocks/**
     - [Choice block](conversation/blocks/choice.md)
     - [Form block](conversation/blocks/form.md)
@@ -73,6 +75,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Composer](conversation/composer/composer.md)
     - [Add menu (+)](conversation/composer/plus-menu.md)
     - [Mention menu](conversation/composer/mention-menu.md)
+    - [Command menu (/)](conversation/composer/command-menu.md)
   - **panels/**
     - [Topic thread panel](conversation/panels/topic-thread-panel.md)
     - [Side thread panel](conversation/panels/side-thread-panel.md)

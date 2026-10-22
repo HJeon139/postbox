@@ -12,6 +12,7 @@ Where you write to agents; it must say who will answer.
 
 - Enter sends, Shift+Enter adds a line; drafts are kept per conversation.
 - The hint says who replies (the last speaker in a room); Stop replaces Send while an agent works.
+- / opens the [command menu](command-menu.md), as does the Commands button beside +; a line that starts with ! runs a [command](../transcript/command-item.md) in the conversation’s folder. The hint line says what Enter will do with either.
 - Messages sent while an agent is busy are queued with Send now, Edit and remove ([screenshot](../../screenshots/queued-message.png)).
 - Messages typed offline are sent when the connection returns.
 - Files attach from + (Upload from computer), by pasting, or by dropping them. A file dropped anywhere in the conversation attaches to its composer; a file dropped on an open topic or side thread panel attaches to the panel’s composer, and only there.
@@ -36,3 +37,4 @@ The headless check `node tools/checks/attachments.mjs` covers steps 3 and 4 with
 
 - [plus menu](plus-menu.md)
 - [mention menu](mention-menu.md)
+- [command menu](command-menu.md)

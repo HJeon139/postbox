@@ -443,6 +443,11 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .block.answered .block-head { border-bottom-style: dashed; }
 .answered-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
 .answered-note .i-check { color: var(--good); }
+/* A result the agent reported on an answered block (#94): a line under your answer. */
+.outcome { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
+.outcome > .i { flex: none; color: var(--good); }
+.outcome > .md > :first-child { margin-top: 0; }
+.outcome > .md > :last-child { margin-bottom: 0; }
 .block.pending { background: transparent; border-style: dashed; }
 .block-placeholder { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
 
@@ -702,13 +707,53 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .mini-list li .mono { font-size: 12px; }
 .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
+/* ───────── Agent header and card: what each agent runs with (#60) ───────── */
+
+.present .who-facts { display: contents; }
+.ov-col .oc-head { flex-wrap: wrap; row-gap: 8px; }
+.ov-col .oc-head .oc-runs { flex: 1 0 100%; overflow-wrap: anywhere; }
+
+/* Mock agents and demo mode, marked in words wherever an agent is named (#12). */
+/* The space before it is text (mockMarker), so it needs no margin. */
+.mock-tag { display: inline-block; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px;
+  font-size: 11px; font-weight: 500; line-height: 14px; color: var(--dim); background: var(--chip); vertical-align: 1px; white-space: nowrap; }
+/* Rail rows set every span in a name to a line of its own; the marker stays on its agent’s line. */
+.rail .row .name .mock-mark { display: inline; }
+.rail .row .name .mock-tag { display: inline-block; }
+.demo-note { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border: 1px solid var(--accent); border-radius: 999px;
+  font-size: 12px; color: var(--text); background: var(--sunk); white-space: nowrap; }
+.demo-note .demo-short { display: none; }
+.install-note p { margin: 0; }
+.install-note p + p { margin-top: 4px; }
+
+/* ───────── Agent header at any width (#72) ───────── */
+/* The chips keep their size, and the conversation’s title gives way first. When they still don’t fit, the
+   top bar’s data-drop (fitTopbar in shell.mjs, measured) drops their parts in order; the rings always show. */
+
+.present { flex: none; }
+.present .who-chip { white-space: nowrap; }
+.topbar[data-drop~="names"] .present { gap: 6px; }
+/* The crumbs shorten with an ellipsis rather than run under the chips. */
+.crumbs > * { flex: none; }
+.crumbs > .crumb, .crumbs > .title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.topbar[data-drop~="crumb"] .crumbs .up { display: none; }
+.topbar[data-drop~="state"] .present .who-state,
+.topbar[data-drop~="model"] .present .who-model,
+.topbar[data-drop~="effort"] .present .who-effort,
+.topbar[data-drop~="asks"] .present [data-open-asks],
+.topbar[data-drop~="names"] .present .who-chip > b,
+.topbar[data-drop~="names"] .present .who-mock { display: none; }
+/* Folded to “Demo”, the whole sentence is still read. */
+.topbar[data-drop~="demo"] .demo-note .demo-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.topbar[data-drop~="demo"] .demo-note .demo-short { display: inline; }
+
 /* ───────── Phone ───────── */
 
 @media (max-width: 767px) {
   .app, .app.no-rail { grid-template-columns: minmax(0, 1fr); }
   .rail { display: none; }
   .topbar { padding: 0 8px; gap: 8px; }
-  .present, .hide-sm { display: none !important; }
+  .hide-sm { display: none !important; }
   .only-sm { display: inline-flex !important; }
   .sr-sm { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .ringstrip { display: flex; gap: 4px; overflow-x: auto; padding: 8px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 48px; z-index: 18; background: var(--bg); }
@@ -848,3 +893,34 @@ button.toggle[disabled] { cursor: default; opacity: .8; }
 /* App frames, wherever they appear (transcript or review) */
 iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--stage-bg); }
 .callout b { font-weight: 600; }
+
+/* Permissions: the panel (app/js/permissions.mjs) and the permission card’s answers (#66, #10) */
+.perm-panel { display: flex; flex-direction: column; gap: 18px; }
+.perm-sec { display: flex; flex-direction: column; gap: 8px; }
+.perm-sec > h3.label, .perm-list > h4.label, .perm-add > h4.label { margin: 0; }
+.perm-list { display: flex; flex-direction: column; gap: 4px; }
+.perm-list .list-rows li { flex-wrap: wrap; row-gap: 4px; }
+.perm-rule { overflow-wrap: anywhere; }
+.perm-path { overflow-wrap: anywhere; min-width: 0; }
+.perm-add { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
+.perm-dir-add { flex-wrap: wrap; }
+.perm-dir-add .input { flex: 1 1 220px; width: auto; }
+.perm-verdict p { margin: 0; }
+.perm-status { margin: 0; padding: 6px 10px; border-left: 2px solid var(--accent); background: var(--sunk); }
+.perm-always p { margin: 0; }
+.perm-always code { overflow-wrap: anywhere; }
+.perm-form:empty { display: none; }
+.perm-form { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 560px) { .perm-add .form-grid { grid-template-columns: 1fr; } }
+
+/* Commands in the composer: the / menu, and a !command’s item (#67) */
+.cmd-button .cmd-glyph { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; font-size: 15px; line-height: 1; }
+.slash-menu { max-height: min(50vh, 420px); overflow: auto; }
+.slash-menu .mi .mono { font-size: 12.5px; }
+.seg-wrap { flex-wrap: wrap; }
+.cmd-line { overflow-wrap: anywhere; white-space: pre-wrap; }
+.cmd-block .block-head .kind { text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
+.cmd-out { max-height: 320px; overflow: auto; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmd-out:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cmd-failed .cmd-exit, .cmd-failed .cmd-exit .i { color: var(--alert-ink); }
+.cmd-note { text-align: right; }

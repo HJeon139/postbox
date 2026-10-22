@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { test } from 'node:test';
+import { readdirSync, readFileSync } from 'node:fs';
+import { describe, test } from 'node:test';
 import { runChecks } from '../tools/uat/checks.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 
@@ -77,9 +77,78 @@ test('options asked in prose, without a block in the turn, are #63', () => {
   f.state.items.t1 = [
     { id: 'a', kind: 'agent', turnId: 'u1', handle: 'researcher', text: 'Which should we do first?\n\n1. Load the corpus\n2. Load the claims\n3. Both' },
   ];
-  assert.deepEqual(issuesOf(f), [63]);
+  // The other finding is the run’s block counts (below), information with no issue.
+  assert.deepEqual(issuesOf(f), [63, null]);
   f.state.items.t1.push({ id: 'b', kind: 'block', turnId: 'u1', valid: true, block: { type: 'choice' } });
-  assert.deepEqual(issuesOf(f), []);
+  assert.deepEqual(issuesOf(f), [null]);
+});
+
+describe('M1’s exit check: the replies that called for a block, and the ones that used the right one (#64)', () => {
+  const reply = (turn, text, extra = {}) => ({ id: `a-${turn}`, kind: 'agent', turnId: turn, handle: 'researcher', text, at: 0, ...extra });
+  const block = (turn, type, at = 0) => ({ id: `b-${turn}-${type}`, kind: 'block', turnId: turn, handle: 'researcher', valid: true, block: { type }, at });
+  const steps = (n, ms = 1000) => ({ activity: { steps: Array.from({ length: n }, (_, i) => ({ id: `s${i}`, label: `Read ${i}`, state: 'done', ms })) } });
+  const run = (items) => {
+    const f = base();
+    f.state.items.t1 = items;
+    const found = runChecks(f).filter((x) => x.check === 'prose-instead-of-block');
+    return { prose: found.filter((x) => x.issue === 63).length, counts: found.find((x) => x.key.startsWith('block-use:')) };
+  };
+  const options = 'Which should we do first?\n\n1. Load the corpus\n2. Load the claims\n3. Both';
+  const questions = 'Before I start:\nWho reads it?\nHow long should it be?\nWhen is it due?';
+  const draft = Array.from({ length: 45 }, (_, i) => `Line ${i + 1} of the announcement.`).join('\n');
+
+  test('options in a choice block count as right; options in prose count as should-have, with their #63 finding', () => {
+    let r = run([reply('u1', 'Here are the ways forward.'), block('u1', 'choice')]);
+    assert.equal(r.prose, 0);
+    assert.equal(r.counts.title, 'M1 exit check: 1 of 1 replies that called for a block used the right one');
+    assert.deepEqual(r.counts.counts, { right: 1, wrong: 0, byType: { choice: 1 }, missed: {} });
+    r = run([reply('u1', options)]);
+    assert.equal(r.prose, 1);
+    assert.equal(r.counts.evidence, '0 right; 1 without the block they called for (options 1).');
+  });
+
+  test('a draft in a review block counts as right; in prose it doesn’t', () => {
+    const r = run([reply('u1', 'The draft is ready for your review.'), block('u1', 'review'), reply('u2', draft)]);
+    assert.equal(r.counts.title, 'M1 exit check: 1 of 2 replies that called for a block used the right one');
+    assert.equal(r.counts.evidence, '1 right (review 1); 1 without the block they called for (a draft 1).');
+    assert.equal(r.counts.key, 'block-use:1-of-2');
+  });
+
+  test('only the right block counts: a choice doesn’t cover a draft, a form doesn’t cover options, and questions take a form or a choice', () => {
+    assert.equal(run([reply('u1', draft), block('u1', 'choice')]).counts.counts.wrong, 1);
+    assert.equal(run([reply('u1', options), block('u1', 'form')]).counts.counts.wrong, 1);
+    assert.equal(run([reply('u1', questions), block('u1', 'form')]).counts.counts.right, 1);
+    assert.equal(run([reply('u1', questions), block('u1', 'choice')]).counts.counts.right, 1);
+    assert.equal(run([reply('u1', questions), block('u1', 'review')]).counts.counts.wrong, 1);
+  });
+
+  test('a long job calls for a progress block: 2 minutes or more, or 10 or more tool calls', () => {
+    // The review’s case: minutes of work, then a reply in prose, with no progress block. It was “0 of 0” before.
+    let r = run([reply('u1', 'Here is the survey of twelve papers.', steps(6, 30_000))]);
+    assert.equal(r.counts.evidence, '0 right; 1 without the block they called for (a long job 1).');
+    // The same by the items’ own times: a block shown 3 minutes after the reply began.
+    assert.equal(run([reply('u1', 'Started.'), block('u1', 'card', 180_000)]).counts.counts.wrong, 1);
+    // Many quick steps.
+    assert.equal(run([reply('u1', 'Done.', steps(12, 100))]).counts.counts.wrong, 1);
+    // With a progress block, it’s right.
+    r = run([reply('u1', 'Done.', steps(12, 30_000)), block('u1', 'progress')]);
+    assert.deepEqual(r.counts.counts, { right: 1, wrong: 0, byType: { progress: 1 }, missed: {} });
+    // A short turn with a few steps calls for nothing; nor does a reply to a lint message.
+    assert.equal(run([reply('u1', 'Done.', steps(3, 2000))]).counts, undefined);
+    assert.equal(run([reply('u1', 'Fixed.', { ...steps(12, 30_000), lintReply: true })]).counts, undefined);
+    // Thoughts aren’t tool calls.
+    const thoughts = {
+      activity: { steps: Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, label: 'Thinking', state: 'done', kind: 'thought', ms: 10 })) },
+    };
+    assert.equal(run([reply('u1', 'Done.', thoughts)]).counts, undefined);
+  });
+
+  test('the counts are information, not a defect: no issue, and a verdict the runner neither verifies nor files', () => {
+    const { counts } = run([reply('u1', options)]);
+    assert.equal(counts.issue, null);
+    assert.equal(counts.verdict, 'measurement');
+    assert.equal(counts.note, 'Not a defect: the block counts for M1’s exit check (#64).');
+  });
 });
 
 test('the person’s output style and missing MCP servers are #57 and #59', () => {
@@ -112,8 +181,32 @@ test('#57: publishing tools in a real init are a finding, unless the persona may
   assert.match(leak[0].evidence, /@researcher had Artifact, ArtifactComments, ArtifactData, PushNotification, mcp__claude_ai_Claude_Docs__batch/);
   assert.deepEqual(runChecks(base({ streams: [{ handle: 'researcher', events: [fixed] }] })), []);
   const allowed = base({ streams: [{ handle: 'researcher', events: [own] }] });
-  allowed.state.personas = { pe1: { id: 'pe1', handle: 'researcher', canPublish: true } };
+  allowed.state.personas = { pe1: { id: 'pe1', handle: 'researcher', canPublish: true, tools: ['shell', 'web.fetch', 'agents.outside'] } };
   assert.deepEqual(runChecks(allowed), []);
+});
+
+test('#5: a tool the persona doesn’t allow in a real init is a finding; the init with its rules passed isn’t', () => {
+  // Real inits: the person’s own setup, then a turn with every rule for a persona that ticks nothing passed.
+  const [own, denied] = stream('host-mcp-init');
+  const run = (events, persona) => {
+    const f = base({ streams: [{ handle: 'researcher', events }] });
+    if (persona) f.state.personas = { pe1: { id: 'pe1', handle: 'researcher', canPublish: true, ...persona } };
+    return runChecks(f);
+  };
+  const leak = run([own], { tools: [] });
+  assert.deepEqual(
+    leak.map((x) => x.issue),
+    [5],
+  );
+  assert.match(leak[0].evidence, /@researcher had .*CronCreate/);
+  assert.match(leak[0].evidence, /Bash/);
+  assert.deepEqual(run([denied], { tools: [] }), [], 'Claude Code removed every rule');
+  // Ticked tools are allowed, and a persona the run doesn’t know is skipped.
+  assert.deepEqual(run([own], { tools: ['shell', 'web.fetch', 'agents.outside'] }), []);
+  assert.deepEqual(
+    run([own], null).filter((x) => x.issue === 5),
+    [],
+  );
 });
 
 test('UI probes: an Expand that changes nothing is #45; an image shown as a chip is #48', () => {
@@ -143,11 +236,32 @@ test('apps: a missing-data message is #47, tiny marks are #53, status colors for
   assert.deepEqual(issuesOf(f).sort(), [47, 52, 53]);
 });
 
+// M1’s exit check (#64): the person never asks for a block, so the agent has to choose one by itself.
+const EXIT = ['wikisearch', 'announcement', 'papersurvey'];
+
 test('the scenarios parse into phases the tester works through', () => {
-  for (const name of ['scifact', 'hotpotqa']) {
-    const s = parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8'));
-    assert.equal(s.phases.length, 3, name);
-    assert.deepEqual(s.agents, ['researcher']);
-    assert.ok(s.persona.length > 40 && s.project && s.conversation, name);
+  const dir = new URL('uat/e2e/scenarios/', import.meta.url);
+  const names = readdirSync(dir)
+    .filter((n) => n.endsWith('.md'))
+    .map((n) => n.slice(0, -3));
+  const personas = JSON.parse(readFileSync(new URL('uat/e2e/personas.json', import.meta.url), 'utf8')).map((p) => p.handle);
+  for (const name of ['scifact', 'hotpotqa', ...EXIT]) assert.ok(names.includes(name), name);
+  for (const name of names) {
+    // uat-run.mjs --recheck reads a scenario’s name back from its run folder as word characters.
+    assert.match(name, /^\w+$/, name);
+    const s = parseScenario(readFileSync(new URL(`${name}.md`, dir), 'utf8'));
+    assert.ok(s.phases.length >= 2 && s.phases.length <= 3, name);
+    assert.ok(
+      s.agents.every((h) => personas.includes(h)),
+      name,
+    );
+    assert.ok(s.persona.length > 40 && s.project && s.conversation && s.summary, name);
+  }
+});
+
+test('the M1 exit scenarios never name a block', () => {
+  for (const name of EXIT) {
+    const md = readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8');
+    assert.doesNotMatch(md, /\b(?:blocks?|choices?|forms?|reviews?|progress|confirms?|checklists?|buttons?)\b/i, name);
   }
 });

@@ -121,6 +121,20 @@ test('card actions are capped at three', () => {
   bad(base('card', { actions: [1, 2, 3, 4].map((n) => ({ id: `a${n}`, label: `A${n}` })) }), /more than 3 items/);
 });
 
+test('#94: choice, form and confirm take an outcome, in Markdown and bounded; other blocks don’t', () => {
+  const asking = [
+    base('choice', { options: [{ id: 'a', label: 'A' }] }),
+    base('form', { fields: [{ id: 'f', label: 'F', kind: 'text' }] }),
+    base('confirm', { statement: 'Delete 23 frames?', confirmLabel: 'Delete' }),
+  ];
+  for (const b of asking) {
+    ok({ ...b, outcome: 'Done: **23 frames** deleted' });
+    bad({ ...b, outcome: 'x'.repeat(501) }, /outcome is longer than 500 characters/);
+    bad({ ...b, outcome: '' }, /outcome can’t be empty/);
+  }
+  bad(base('review', { format: 'markdown', content: 'x', outcome: 'Done' }), /unknown field “outcome”/);
+});
+
 test('ids must be simple, so they are safe to use anywhere', () => {
   bad({ ...base('code', { code: 'x' }), id: 'has space' }, /isn’t a valid id/);
   bad({ ...base('code', { code: 'x' }), id: '<script>' }, /isn’t a valid id/);

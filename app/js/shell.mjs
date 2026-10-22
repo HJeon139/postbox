@@ -1,10 +1,13 @@
 // The shell: top bar, rail (conversations and rooms with rings), the phone ring strip, and the overview —
 // one column per live session, with quick answers, tool calls, subagents, agent messages and stats.
 
+import { chipEffort, chipModel, factsText, installNote } from '/shared/agent-facts.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
+import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
+import { openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import { navigate, openMenu, route, toast, undoToast } from './ui.mjs';
@@ -27,11 +30,13 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
           .map((se) => {
             const r = ringFor(se, 'xs');
             r.dataset.session = se.id;
+            // Ring, name, what it runs with, then its state. #73’s “subagents running” goes after the state.
             return h(
               'span.who-chip',
               r,
               h('b', `@${se.handle}`),
-              h('span.who-state.hide-sm', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
+              chipFacts(se),
+              h('span.who-state', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
               openAsksEl(se, true),
             );
           }),
@@ -75,7 +80,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
           icon('sidebar'),
         )
       : null;
-  return h(
+  const up = title ? '.up' : '';
+  const bar = h(
     'header.topbar',
     railToggle,
     h(
@@ -93,9 +99,10 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
     ),
     h(
       'span.crumbs',
+      // The crumb above the title (.up) is the first thing the top bar drops for room after the chips’ words (#72).
       project
-        ? [icon('right', 'i-sm'), h('a.crumb', { href: `#/p/${project.id}` }, project.name)]
-        : [icon('right', 'i-sm'), h(t || title ? 'a.crumb' : 'span.title', t || title ? { href: '#/' } : {}, 'Overview')],
+        ? [icon('right', `i-sm${up}`), h(`a.crumb${up}`, { href: `#/p/${project.id}` }, project.name)]
+        : [icon('right', `i-sm${up}`), h(t || title ? `a.crumb${up}` : 'span.title', t || title ? { href: '#/' } : {}, 'Overview')],
       title ? [icon('right', 'i-sm'), h('span.title', title)] : null,
     ),
     present,
@@ -114,6 +121,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       : null,
     h(
       'div.top-actions',
+      demoNote(),
       h('button.btn.sm.hide-sm', { type: 'button', onclick: openPalette }, icon('search', 'i-sm'), 'Jump to… ', h('kbd', '⌘K')),
       h(
         'button.btn.sm',
@@ -134,6 +142,58 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       h('button.btn.icon.sm.ghost', { type: 'button', 'aria-label': 'Settings', onclick: () => openSettings() }, icon('gear')),
     ),
   );
+  fitter?.observe(bar);
+  if (present) refitter?.observe(present, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
+  return bar;
+}
+
+// ── Fitting the top bar (#72) ───────────────────────────────────────────────────────────
+// When the top bar doesn’t fit, it drops, in this order: the chips’ status words, their models, the project
+// above the conversation’s title, the demo banner’s sentence (it folds to “Demo”), the chips’ efforts, their
+// open-blocks buttons, and last their names. The rings always show. It’s measured, not a fixed breakpoint,
+// because what fits depends on how many agents there are and what their chips say. What a chip drops is still in
+// the overview card and the conversation’s ⋯ menu, as text, and each ring’s label reads the name and state.
+
+const DROPS = ['state', 'model', 'crumb', 'demo', 'effort', 'asks', 'names'];
+/** The room the open conversation’s title keeps, in pixels, before a chip drops anything for it. */
+const TITLE_ROOM = 96;
+
+/** Drops the fewest parts that let the top bar fit. */
+function fitTopbar(bar) {
+  if (!bar.isConnected) return;
+  const title = bar.querySelector('.crumbs > :last-child');
+  const fits = () => bar.scrollWidth <= bar.clientWidth && (!title || title.clientWidth >= Math.min(title.scrollWidth, TITLE_ROOM));
+  let n = 0;
+  bar.dataset.drop = '';
+  while (n < DROPS.length && !fits()) bar.dataset.drop = DROPS.slice(0, ++n).join(' ');
+}
+
+// It refits when the top bar’s width changes, and when a chip’s words change, even words it had dropped: a status
+// word that went from “calling tools” back to “idle” may fit again.
+const fitter =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        for (const { target } of entries) {
+          if (target.isConnected) fitTopbar(target);
+          else fitter?.unobserve(target);
+        }
+      })
+    : null;
+const refitter =
+  typeof MutationObserver === 'function'
+    ? new MutationObserver((records) => {
+        const bars = new Set(records.map((r) => (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest('header.topbar')));
+        for (const bar of bars) if (bar) fitTopbar(bar);
+      })
+    : null;
+
+/**
+ * Under --demo, every view says the agents are scripted (#12). It isn’t a live region, and it can’t be closed:
+ * where room is short it folds to “Demo”, and the whole sentence is still read.
+ */
+function demoNote() {
+  if (!client.config?.demo) return null;
+  return h('span.demo-note', h('span.demo-long', 'Demo mode: scripted agents'), h('span.demo-short', { 'aria-hidden': 'true' }, 'Demo'));
 }
 
 // ── Open blocks ─────────────────────────────────────────────────────────────────────────
@@ -169,7 +229,36 @@ function paintOpenAsks(el) {
 }
 client.on((ch) => {
   if (['session', 'item.add', 'item.patch', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-open-asks]')) paintOpenAsks(el);
+  if (['session', 'persona', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-facts]')) paintFacts(el);
 });
+// ── What an agent runs with ─────────────────────────────────────────────────────────────
+// Its chip says the model that answered its last turn and the effort, short; its card and the menus say the
+// same with full model ids (#60). A model or effort that isn’t the one set says so in words.
+
+/** The mock marker, or the model and effort, in an agent’s chip, kept up to date in place. */
+function chipFacts(se) {
+  const el = h('span.who-facts', { dataset: { facts: se.id } }, h('span.who-mock'), h('span.who-model'), h('span.who-effort'));
+  paintFacts(el);
+  return el;
+}
+function paintFacts(el) {
+  const se = S().sessions[el.dataset.facts];
+  if (!se) return;
+  const f = factsOf(se);
+  const [mock, model, effort] = el.children;
+  if (mock.dataset.on !== String(f.mock)) {
+    mock.dataset.on = String(f.mock);
+    fill(mock, mockMarker(se));
+    mock.hidden = !f.mock;
+  }
+  const text = (n, t) => {
+    if (n.textContent !== t) n.textContent = t;
+    n.hidden = !t;
+  };
+  text(model, f.mock ? '' : `· ${chipModel(f)}`);
+  text(effort, f.mock ? '' : `· ${chipEffort(f)}`);
+}
+
 function goToItem(itemId) {
   const node = document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
   if (!node) return;
@@ -313,7 +402,7 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
   paint();
   // Rail rows reuse their rings, so status changes update in place and animations keep running.
   const off = client.on((ch) => {
-    if (['session', 'thread', 'project', 'load', 'remove'].includes(ch.type)) {
+    if (['session', 'thread', 'project', 'load', 'remove', 'persona'].includes(ch.type)) {
       if (ch.type === 'session') {
         // A topic thread’s agent changed: the Threads count may have.
         let structural = S().threads[ch.data.threadId]?.kind === 'topic';
@@ -381,8 +470,9 @@ function updateRow(n, t, active, fresh = false) {
   const unread = ses.reduce((a, x) => a + (x.unread ?? 0), 0);
   if (t.id === active) n.setAttribute('aria-current', 'page');
   else n.removeAttribute('aria-current');
-  const who = t.kind === 'room' ? ses.map((x) => `@${x.handle}`).join(', ') : `@${main?.handle ?? '—'}`;
-  const sig = JSON.stringify([t.title, who, main?.state, unread, ses.map((x) => x.id)]);
+  const named = t.kind === 'room' ? ses : main ? [main] : [];
+  const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', `@${x.handle}`, mockMarker(x)]) : '@—';
+  const sig = JSON.stringify([t.title, named.map((x) => [x.handle, isMock(x)]), main?.state, unread, ses.map((x) => x.id)]);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
   const oldRings = n.querySelector('.ring-slot');
@@ -417,7 +507,7 @@ export function mountOverview({ archived = false } = {}) {
   const grid = h('div.ov-grid', { style: { gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' } });
   const headEl = h('div.ov-head');
   const archive = h('div');
-  el.append(headEl, grid, archive);
+  el.append(...[headEl, archived ? null : installLine(), grid, archive].filter((x) => x !== null));
   const order = (se) => (se.needs ? 0 : busy(se) ? 1 : 2);
   const paint = () => {
     // A topic thread’s agent gets a column only while it’s working or waiting for you.
@@ -474,7 +564,7 @@ export function mountOverview({ archived = false } = {}) {
   paint();
   let t = 0;
   const off = client.on((ch) => {
-    if (!['session', 'thread', 'load', 'remove', 'project', 'app'].includes(ch.type)) return;
+    if (!['session', 'thread', 'load', 'remove', 'project', 'app', 'persona'].includes(ch.type)) return;
     if (ch.type === 'session') {
       const node = grid.querySelector(`[data-key="${CSS.escape(ch.data.id)}"]`);
       if (node) {
@@ -489,6 +579,32 @@ export function mountOverview({ archived = false } = {}) {
   return { el, destroy: off };
 }
 
+/**
+ * When Postbox looked for Claude Code at startup and didn’t find it, the overview says what agents run on until
+ * then, and how to install it (#12). It shows from the first run, on a fresh install’s empty overview, until
+ * Claude Code is installed and Postbox restarted.
+ */
+function installLine() {
+  const lead = installNote(client.config ?? {});
+  if (!lead) return null;
+  return h(
+    'div.callout.warn.install-note',
+    icon('warn'),
+    h(
+      'div',
+      h('p', lead),
+      h(
+        'p.small',
+        'To run real agents, install Claude Code so ',
+        h('code', 'claude --version'),
+        ' works, or set ',
+        h('code', 'POSTBOX_CLAUDE_BIN'),
+        ' to where it is, then restart Postbox. The README’s “Run real agents” says more.',
+      ),
+    ),
+  );
+}
+
 function archivedList(collapsed = false) {
   const list = Object.values(S().sessions).filter((se) => se.archived && !se.deleting);
   if (!list.length) return collapsed ? h('span') : h('p.empty-note', 'Nothing is archived.');
@@ -501,7 +617,7 @@ function archivedList(collapsed = false) {
         const ring = ringFor(se, 'xs');
         return h(
           'tr',
-          h('td', h('span.row-flex', ring, h('b', `@${se.handle}`))),
+          h('td', h('span.row-flex', ring, h('b', `@${se.handle}`), mockMarker(se))),
           h('td', `${S().projects[t?.projectId]?.name ?? ''} · ${t?.title ?? ''}`),
           h('td.dim.small', `Archived ${ago(se.archivedAt ?? se.updatedAt ?? Date.now())}`),
           h(
@@ -548,7 +664,9 @@ function updateCard(node, se, fresh = false) {
   const t = S().threads[se.threadId];
   if (!t) return;
   const project = S().projects[t.projectId];
+  const runs = factsText(factsOf(se));
   const sig = JSON.stringify([
+    runs,
     se.state,
     se.needs,
     se.currentStep,
@@ -567,7 +685,7 @@ function updateCard(node, se, fresh = false) {
   if (!fresh && node.dataset.sig === sig) return;
   node.dataset.sig = sig;
   node.classList.toggle('needs', !!se.needs);
-  node.setAttribute('aria-label', `@${se.handle}, ${stateWord(se.state).toLowerCase()}`);
+  node.setAttribute('aria-label', `@${se.handle}${isMock(se) ? ', mock' : ''}, ${stateWord(se.state).toLowerCase()}`);
   const ring = node.querySelector('.oc-head pb-ring') ?? Object.assign(document.createElement('pb-ring'), {});
   ringFor(se, 'lg', ring);
   ring.dataset.session = se.id;
@@ -598,7 +716,7 @@ function updateCard(node, se, fresh = false) {
         h(
           'a.oc-link',
           { href: hrefOf(t.id) },
-          h('b', `@${se.handle}`),
+          h('span.oc-name', h('b', `@${se.handle}`), mockMarker(se)),
           h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'topic thread: ' : ''}${t.title}`),
         ),
         stateLine,
@@ -609,6 +727,8 @@ function updateCard(node, se, fresh = false) {
         { type: 'button', 'aria-label': `Session actions for @${se.handle}`, 'aria-haspopup': 'menu', onclick: (e) => sessionMenu(e.currentTarget, se) },
         icon('more'),
       ),
+      // What it runs with, in full, on a line of its own: nothing the top bar drops at a narrow width is lost (#60).
+      h('span.small.dim.oc-runs', runs),
     ),
     se.needs
       ? sec(
@@ -773,7 +893,14 @@ export function sessionMenu(anchor, se) {
     anchor,
     [
       { label: 'Open conversation', icon: 'thread', run: () => navigate(`#/t/${se.threadId}`) },
-      { label: `Edit @${se.handle} persona`, icon: 'edit', kbd: 'Personas', run: () => openSettings('personas', se.personaId) },
+      {
+        label: [`Edit @${se.handle} persona`, mockMarker(se)],
+        icon: 'edit',
+        kbd: 'Personas',
+        // What it runs with, as text (#60).
+        desc: factsText(factsOf(se)),
+        run: () => openSettings('personas', se.personaId),
+      },
       ...(busy(se) ? [{ label: 'Stop', icon: 'x', run: () => api(`/api/sessions/${se.id}/stop`, {}) }] : []),
       'hr',
       {
@@ -810,7 +937,14 @@ function conversationMenu(anchor, t) {
         desc: room ? 'It joins the room' : 'This conversation becomes a room',
         run: () => openNewAgent({ threadId: t.id }),
       },
+      {
+        label: 'Permissions…',
+        icon: 'gear',
+        desc: room ? 'An agent’s mode, rules and folders here' : 'Its mode, rules and folders here',
+        run: () => openPermissions({ threadId: t.id }),
+      },
       'hr',
+      ...agentLines(t),
       {
         label: `Delete ${room ? 'room' : 'conversation'}…`,
         icon: 'trash',
@@ -821,6 +955,26 @@ function conversationMenu(anchor, t) {
     ],
     { label: `Actions for ${t.title}` },
   );
+}
+
+/**
+ * Each agent in the conversation, with its backend, model, effort and state as text: everything its chip in the
+ * top bar shows, and what a narrow window drops from it (#60, #72). Choosing one opens its persona.
+ */
+function agentLines(t) {
+  const ses = sessionsOf(t.id).filter((x) => !x.archived);
+  if (!ses.length) return [];
+  return [
+    { heading: ses.length > 1 ? 'Agents' : 'Agent' },
+    ...ses.map((se) => ({
+      label: [`@${se.handle}`, mockMarker(se)],
+      icon: 'agent',
+      desc: `${factsText(factsOf(se))} · ${stateWord(se.state).toLowerCase()}`,
+      kbd: 'Edit',
+      run: () => openSettings('personas', se.personaId),
+    })),
+    'hr',
+  ];
 }
 
 export function afterDelete(se, until) {

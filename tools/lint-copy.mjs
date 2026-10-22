@@ -45,9 +45,10 @@ export function straightQuotes(text) {
 // thread between agents (#4). In the shell and the sheets, where both appear, text people read says which
 // kind of thread it means; “Threads” (the rail entry and its view) and “Reply in thread” only ever mean
 // topic threads. The conversation view (thread.mjs) isn’t checked: its panel is a topic thread, so there a
-// bare “thread” is the one you’re in.
-const THREAD_FILES = new Set(['app/js/shell.mjs', 'app/js/sheets.mjs', 'app/js/main.mjs', 'app/js/ui.mjs']);
-const THREAD_OK = /\b(?:topic|side) threads?\b|^Threads(?: · )?$|\bReply in thread\b/gi;
+// bare “thread” is the one you’re in. What agents read is checked too (#75): the guide and the MCP tool
+// descriptions, where a review block’s field “threads?” is a name, not a word.
+const THREAD_FILES = new Set(['app/js/shell.mjs', 'app/js/sheets.mjs', 'app/js/main.mjs', 'app/js/ui.mjs', 'server/mcp.mjs', 'server/adapters/guide.mjs']);
+const THREAD_OK = /\b(?:topic|side) threads?\b|^Threads(?: · )?$|\bReply in thread\b|\bthreads\?/gi;
 /** “thread” in a piece of text, where it doesn’t say it’s a topic or side thread. */
 export function threadWords(text) {
   return [...text.replace(THREAD_OK, ' ').matchAll(/\bthreads?\b/gi)].map((m) => m[0]);
@@ -75,9 +76,12 @@ export function checkJs(text, file) {
     // Names, selectors and paths (“thread”, “ul.thread-list”) aren’t words people read, except a noun given
     // to plural(), as in plural(n, 'thread').
     const noun = /\bplural\([^()]*,\s*['"]$/.test(text.slice(Math.max(0, t.start - 60), t.start));
+    // A template can span many lines (the agent guide is one); each finding points at its own line.
     if (THREAD_FILES.has(file) && t.kind !== 'comment' && (noun || /\s|^[A-Z]/.test(t.text)))
-      for (const w of threadWords(t.text))
-        add(t.line, 'thread', `“${w}” where a conversation may be meant. Say “conversation”, or “topic thread” or “side thread” for a thread.`);
+      t.text.split('\n').forEach((part, k) => {
+        for (const w of threadWords(part))
+          add(t.line + k, 'thread', `“${w}” where a conversation may be meant. Say “conversation”, or “topic thread” or “side thread” for a thread.`);
+      });
   }
   return findings;
 }

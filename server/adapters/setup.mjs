@@ -1,14 +1,18 @@
 // What a real agent loads from the person’s own Claude Code setup (#57), shared by both adapters.
 //
 // By default a persona loads the person’s setup, as in their terminal: user, project and local settings, so the
-// same skills, slash commands, plugins and permission rules. Not their MCP servers or claude.ai connectors yet:
-// both adapters pass --strict-mcp-config / strictMcpConfig, which loads only Postbox’s own server (#59).
-// Postbox overrides two things:
+// same skills, slash commands, plugins, permission rules and MCP servers, claude.ai connectors included (#59).
+// Postbox’s own server is added to them under the name `postbox`. Postbox overrides these:
 // - The output style is forced to the default, because a style such as Concise is repeated on every turn and
 //   fights the agent guide (#63).
 // - Tools that publish outside Postbox are denied, unless the persona allows them. In a UAT run, an agent
 //   published its result as a claude.ai artifact instead of a Postbox app, so the work left the conversation.
-// A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own.
+// - MCP servers the persona turned off (mcpOff) don’t load: see settingsFor.
+// - The model and the effort are always passed (modelOf, effortOf), so neither comes from the person’s settings.
+// - The persona’s Tools checklist reaches the backend as deny rules (#5), and tools that act outside Postbox’s
+//   record are denied unless the persona allows them: see TOOL_RULES and deniedTools.
+// A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own, and
+// only Postbox’s MCP server: both adapters pass --strict-mcp-config / strictMcpConfig for it.
 
 /** Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. */
 export const HOST_SOURCES = ['user', 'project', 'local'];
@@ -22,6 +26,40 @@ export const ISOLATED_SOURCES = ['project', 'local'];
  * standard style, which adds no style instructions.
  */
 export const SETTINGS_OVERLAY = { outputStyle: 'default' };
+
+/** The model a real backend uses when a persona doesn’t name one (or names the mock). */
+export const DEFAULT_MODEL = 'claude-opus-5-5';
+export const modelOf = (persona) => (persona?.model && persona.model !== 'mock' ? String(persona.model) : DEFAULT_MODEL);
+
+/** Effort levels, as `claude --effort <level>` and the SDK’s EffortLevel (sdk.d.ts) spell them. */
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+/**
+ * The effort a persona runs with when it names none: what Claude Code itself uses for claude-opus-5-5 with no
+ * --effort and no effortLevel in the person’s settings. A real turn (claude 2.1.296) ran `printenv CLAUDE_EFFORT`,
+ * which Claude Code sets to the turn’s effort, and it printed “medium”; with --effort high it printed “high”. The
+ * stream itself doesn’t report effort: in print mode, init has no `effort` field.
+ */
+export const DEFAULT_EFFORT = 'medium';
+export const effortOf = (persona) => (EFFORT_LEVELS.includes(persona?.effort) ? persona.effort : DEFAULT_EFFORT);
+
+/** Postbox’s own MCP server’s name. It always loads, and a persona can’t turn it off. */
+export const POSTBOX_SERVER = 'postbox';
+/** Postbox’s own server, as `--mcp-config` and the SDK’s `mcpServers` take it. */
+export const postboxServer = (mcpUrl) => ({ [POSTBOX_SERVER]: { type: 'http', url: mcpUrl, alwaysLoad: true } });
+// alwaysLoad: Postbox’s tools are in the first prompt, so the agent doesn’t have to search for them.
+
+/**
+ * The overlay for one persona. MCP servers it turned off go in `deniedMcpServers` ([{ serverName }]), the one
+ * denylist Claude Code merges from every settings source (sdk.d.ts: “users can deny servers for themselves”).
+ * How it was checked: a real turn (claude 2.1.296, the person’s setup, outside the repo) with a project server,
+ * a claude.ai connector and a plugin server denied by name. Its init no longer listed any of the three in
+ * `mcp_servers`, and none of their tools (tests/fixtures/claude-code/host-mcp-init.jsonl). Isolated personas
+ * load no other server, so they need no denylist.
+ */
+export function settingsFor(persona) {
+  const { usesHostSetup, mcpOff } = setupOf(persona);
+  return { ...SETTINGS_OVERLAY, ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}) };
+}
 
 /**
  * Deny rules for tools that publish outside Postbox, passed as `--disallowedTools` / `disallowedTools`.
@@ -63,7 +101,67 @@ const RULES = PUBLISHING_TOOLS.map((r) => new RegExp(`^${r.replace(/[.+?^${}()|[
 /** Whether the deny list covers a tool name, such as one in an init event’s `tools` (the UAT checks this). */
 export const isPublishingTool = (name) => RULES.some((r) => r.test(String(name)));
 
+/**
+ * Tools that act outside Postbox’s record, denied for real backends unless the persona has `agents.outside`. They
+ * bypass the wake cap and the record of who woke whom (intent.md, principle 6); Postbox’s own schedule_wake and
+ * wake_agent are the way to do that here.
+ *
+ * How the list was derived: from the `tools` of real `init` events (claude 2.1.296, the person’s setup;
+ * tests/fixtures/claude-code/host-mcp-init.jsonl), and wave 1’s UAT, which saw them on a critic’s turn (#5):
+ * - SendMessage and ListAgents message and list the person’s other Claude sessions on this computer.
+ * - RemoteTrigger starts cloud agents.
+ * - CronCreate, CronDelete and ScheduleWakeup schedule work Postbox doesn’t show. CronList only lists those
+ *   schedules, which then belong to the person’s other sessions, so it goes with them, as ListAgents does.
+ * - Workflow runs a script of agents (agent(), parallel(), pipeline()) that Postbox doesn’t see as teammates.
+ * Left out, with the reason:
+ * - Monitor runs a shell command, or opens a WebSocket, and streams what comes back: `shell` and `web.fetch`
+ *   decide it (TOOL_RULES).
+ * - EnterWorktree and ExitWorktree move the agent into a git worktree of its own folder. That stays on this
+ *   computer, in the conversation’s record, and the permission mode governs it; worktrees per conversation are #9.
+ * - TaskStop only stops the agent’s own background tasks.
+ */
+export const OUTSIDE_TOOLS = ['SendMessage', 'ListAgents', 'RemoteTrigger', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'Workflow'];
+
+/**
+ * The persona’s Tools checklist, as deny rules for real backends (#5): each id maps to the Claude Code tools it
+ * stands for, and an id that isn’t ticked denies them (`--disallowedTools`, the SDK’s `disallowedTools`).
+ *
+ * A ticked tool is not an allow rule. `--allowedTools Bash` would skip the permission mode’s ask for every
+ * command, which “Run commands in the project folder” doesn’t promise: ticked means “not denied”, and the
+ * permission mode still decides. The allow side is Postbox’s own tools and the rules allowed once, as before.
+ *
+ * How the map was derived: from the same real `init` events’ `tools`.
+ * - shell → Bash, and Monitor, which runs a command too. With Bash denied, Claude Code offers Glob and Grep
+ *   instead (recorded), which only read.
+ * - web.fetch (“Fetch web pages”) → WebFetch, and WebSearch: both send the agent’s requests to the web, so a
+ *   persona kept off the web is kept off both. Also Monitor, which can open a WebSocket.
+ * - agents.outside → OUTSIDE_TOOLS.
+ * corpus.*, arxiv.search and narrate.speak are Postbox’s own (its apps’ host tools), with nothing in Claude Code
+ * to deny. No rule here may match Postbox’s own MCP tools (mcp__postbox__*): deny beats allow.
+ */
+export const TOOL_RULES = /** @type {Record<string, string[]>} */ ({
+  shell: ['Bash', 'Monitor'],
+  'web.fetch': ['WebFetch', 'WebSearch', 'Monitor'],
+  'agents.outside': OUTSIDE_TOOLS,
+});
+/**
+ * Tool ids only real backends have, appended to the checklist that /api/state serves (server/seed.mjs’s
+ * KNOWN_TOOLS holds the rest). Personas from before an id existed don’t have it, so its tools are denied.
+ */
+export const REAL_BACKEND_TOOLS = [['agents.outside', 'Message, schedule or start agents outside Postbox']];
+
+/** Every deny rule for a persona’s turn: the publishing tools unless it may publish, then its unticked tools. */
+export function deniedTools(persona) {
+  const { canPublish } = setupOf(persona);
+  const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
+  return [...new Set([...(canPublish ? [] : PUBLISHING_TOOLS), ...Object.entries(TOOL_RULES).flatMap(([id, rules]) => (has.has(id) ? [] : rules))])];
+}
+
 /** The setup choices for a persona, with the defaults for personas from before they existed. */
 export function setupOf(persona) {
-  return { usesHostSetup: persona?.usesHostSetup !== false, canPublish: persona?.canPublish === true };
+  return {
+    usesHostSetup: persona?.usesHostSetup !== false,
+    canPublish: persona?.canPublish === true,
+    mcpOff: Array.isArray(persona?.mcpOff) ? persona.mcpOff.filter((n) => typeof n === 'string' && n && n !== POSTBOX_SERVER) : [],
+  };
 }

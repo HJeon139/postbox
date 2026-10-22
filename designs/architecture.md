@@ -132,18 +132,23 @@ The SDK streams the same messages as the CLI, so one mapper ([`server/adapters/c
 Both backends ask for summarized thinking (`--thinking-display summarized`) and subagents’ own messages (`--forward-subagent-text`). Without them, thinking arrives empty and subagents are a single line. With them:
 - While an agent thinks or calls tools, a working row at the end of the conversation shows a glimpse of its thinking.
 - Each thought is a step in the activity list.
-- Every subagent tool call is a step, under the subagent’s name. One guide ([`server/adapters/guide.mjs`](../server/adapters/guide.mjs)) is the system prompt both append, and it teaches the catalog, the kit and the [recipes](recipes.md).
+- Every subagent tool call is a step, under the subagent’s name. One guide ([`server/adapters/guide.mjs`](../server/adapters/guide.mjs)) is the system prompt both append, and it teaches the catalog, the kit and the [recipes](recipes.md). It starts from what a reply contains, not from what the person asked for ([#63](https://github.com/HJeon139/postbox/issues/63)): options become a choice, questions a form, a draft to approve a review block, and a long job a progress block, with one example each. Agents follow defaults more than prose, so it stays short, and a test keeps it under 9,000 characters.
 
 **What it rests on**
 - **No credentials in Postbox.** Both backends use Claude Code’s own sign-in. Postbox never sees a key, so there’s nothing to store, rotate or leak.
 - **Recorded, not guessed.** The stream shapes were taken from real turns (claude 2.1.296, `claude-opus-5-5`) and kept as test fixtures, with local paths removed. The SDK options follow its shipped type definitions.
 - **A process per turn is simple and robust.** A crash affects one turn; Stop is a signal; nothing leaks between turns. The cost is a second or two to resume. A long-lived process per session, with stream-json input, is the upgrade if that matters.
+- **One set of limits** ([#50](https://github.com/HJeon139/postbox/issues/50)). The limits an agent can reach (an app event’s 64 KB, an app’s size, each block’s counts and text lengths) live in one module, [`shared/limits.mjs`](../shared/limits.mjs). The catalog, the event builder and the app kit enforce them from it, and the guide and the MCP tool descriptions are written from it, so an agent is told the number Postbox enforces. A test fails when a limit isn’t in the guide. `postbox.send` over the event limit rejects inside the app, naming the limit, before anything is posted. The chart palettes live there too ([#52](https://github.com/HJeon139/postbox/issues/52)), each with when to use it: `--s1`…`--s8` for categories, `--seq-*` for magnitude, `--div-*` for polarity, and `--good` and `--alert` for status only. A test fails when one isn’t defined in `app/workbench.css`.
 - **Postbox’s tools load up front** (`alwaysLoad` on the MCP server), so the agent doesn’t spend a step searching for them.
-- **Your own setup, with two overrides** ([#57](https://github.com/HJeon139/postbox/issues/57)). Everything that shapes a turn is passed explicitly, in one place ([`server/adapters/setup.mjs`](../server/adapters/setup.mjs)):
+- **Your own setup, with a few overrides** ([#57](https://github.com/HJeon139/postbox/issues/57)). Everything that shapes a turn is passed explicitly, in one place ([`server/adapters/setup.mjs`](../server/adapters/setup.mjs)):
   - **Setting sources:** `--setting-sources user,project,local` (the SDK’s `settingSources`), so an agent has the same skills, slash commands, plugins and permission rules as your terminal. A persona set to Isolated (“Uses your Claude Code setup” off) gets `project,local`: the project’s settings, and the local file where Always allow saves its rules.
   - **Output style:** `--settings '{"outputStyle":"default"}'` (the SDK’s `settings`). The flag layer sits above your user, project and local files, so a style such as Concise can’t fight the agent guide. A real turn confirmed it: with Concise in the folder’s local settings, `init.output_style` read `default`.
-  - **Publishing tools:** `--disallowedTools` (the SDK’s `disallowedTools`) removes tools that publish outside Postbox, unless the persona “Can publish outside Postbox”. In a UAT run an agent published its result as a claude.ai artifact, so the work left the conversation. The list is the built-in Artifact, ArtifactComments, ArtifactData and PushNotification, plus connector tools matched by verb (deny rules take globs in the tool name). Outward verbs such as `mcp__*__send_*` match any server; `create` and `upload` match only claude.ai connectors (`mcp__claude_ai_*__create_*`), so a local server’s `create_directory` or `git_create_branch` stays usable. It was built from a real `init` event’s `tools`, and a second real turn confirmed Claude Code removed exactly those. Read-only connector tools stay, and no rule may match Postbox’s own tools, since deny beats allow. Your MCP servers and claude.ai connectors don’t load yet: `--strict-mcp-config` keeps only Postbox’s own ([#59](https://github.com/HJeon139/postbox/issues/59)), so for now the connector rules wait for that.
-  - **Your global CLAUDE.md reaches agents by choice.** A session’s persona snapshot records both settings; like the permission mode, they follow the persona from the next turn.
+  - **Publishing tools:** `--disallowedTools` (the SDK’s `disallowedTools`) removes tools that publish outside Postbox, unless the persona “Can publish outside Postbox”. In a UAT run an agent published its result as a claude.ai artifact, so the work left the conversation. The list is the built-in Artifact, ArtifactComments, ArtifactData and PushNotification, plus connector tools matched by verb (deny rules take globs in the tool name). Outward verbs such as `mcp__*__send_*` match any server; `create` and `upload` match only claude.ai connectors (`mcp__claude_ai_*__create_*`), so a local server’s `create_directory` or `git_create_branch` stays usable. It was built from a real `init` event’s `tools`, and a second real turn confirmed Claude Code removed exactly those. Read-only connector tools stay, and no rule may match Postbox’s own tools, since deny beats allow. A real turn with your connectors and plugin servers loading confirmed it again ([#59](https://github.com/HJeon139/postbox/issues/59)).
+  - **Your MCP servers** ([#59](https://github.com/HJeon139/postbox/issues/59)): they load as in your terminal, claude.ai connectors and plugin servers included. Postbox adds its own with `--mcp-config` (the SDK’s `mcpServers`), always named `postbox`. An Isolated persona gets `--strict-mcp-config` (`strictMcpConfig`), so only Postbox’s loads. A persona can turn any of yours off: they go in the settings overlay’s `deniedMcpServers`, the denylist Claude Code merges from every source. A real turn confirmed a turned-off server leaves the `init`’s `mcp_servers`, with its tools. The persona sheet lists the servers found in your config (user, project and local scopes, names only) and the ones the last `init` reported, with that init’s status.
+  - **The Tools checklist** ([#5](https://github.com/HJeon139/postbox/issues/5)): an unticked tool is a deny rule in `--disallowedTools` (`disallowedTools`): `shell` denies Bash and Monitor, `web.fetch` denies WebFetch, WebSearch and Monitor. A ticked tool is not an allow rule: `--allowedTools Bash` would skip the permission mode’s ask for every command, so ticked only means “not denied”, and the mode still decides. The map lives in `setup.mjs` (`TOOL_RULES`), taken from a real `init`’s `tools`.
+  - **Agents outside Postbox:** SendMessage, ListAgents, RemoteTrigger, CronCreate, CronDelete, CronList, ScheduleWakeup and Workflow are denied unless the persona has `agents.outside` (“Message, schedule or start agents outside Postbox”). They bypass the wake cap and the record of who woke whom; `schedule_wake` and `wake_agent` are Postbox’s way. Personas from before the id existed don’t have it, so they’re denied. Monitor is a command (the Tools above decide it), and EnterWorktree stays: it works in a git worktree of the agent’s own folder, which the permission mode governs.
+  - **Model and effort** ([#60](https://github.com/HJeon139/postbox/issues/60)): both are always passed (`--model` and `--effort`, the SDK’s `model` and `effort`), so your own `effortLevel` doesn’t decide them. A persona’s effort is one of low, medium, high, xhigh and max, and defaults to medium, which is what Claude Code uses for `claude-opus-5-5` when none is given (a real turn printed it from `CLAUDE_EFFORT`). Like the model, it’s fixed in a session’s snapshot. The stream reports the model in `init` and in each assistant message, but not the effort, so a session keeps the model that answered its last turn (`lastModel`) and the effort Postbox started it with (`lastEffort`).
+  - **Your global CLAUDE.md reaches agents by choice.** A session’s persona snapshot records these settings; like the permission mode, they follow the persona from the next turn, and so do its tools.
 
 **Revisit when** the start-up delay matters more than isolation, or another model provider needs an adapter (the mapper is Claude-specific; the turn context isn’t).
 
@@ -162,8 +167,8 @@ sequenceDiagram
   A->>M: permission_prompt(Bash, "rm -rf build")
   M->>R: requestPermission
   R->>Y: card in the thread, agent needs you
-  Y->>R: Allow, or Don't allow
-  R-->>M: allow, or deny with a message
+  Y->>R: Allow, Always allow, Edit, or Don't allow (with a reason)
+  R-->>M: allow (with updatedInput or updatedPermissions), or deny with a message
   M-->>A: behavior allow / deny
   Note over R: Stop, or the turn ending, answers deny and marks the card expired
 ```
@@ -194,7 +199,25 @@ sequenceDiagram
 
 - **A call you declined isn’t a refusal.** The result’s list includes calls you said no to on a permission card. The prompt tool passes the call’s `tool_use_id`, the card keeps it, and the runtime skips those.
 - **A deny rule still wins.** Claude Code checks deny before allow, so Always allow can’t override your own deny rules, and the card says so.
-- **Revisit when** the permissions panel lands ([#66](https://github.com/HJeon139/postbox/issues/66)): the prompt’s own `permission_suggestions` can replace the rules Postbox builds, and cards gain Edit.
+
+**Answers on a permission card** ([#66](https://github.com/HJeon139/postbox/issues/66), [#10](https://github.com/HJeon139/postbox/issues/10)). The waiting call gets one of four answers:
+- **Allow:** `{ behavior: "allow", updatedInput }`, as asked.
+- **Always allow:** allow, and keep allowing calls like it. The card says the rule and where it’s saved before you click.
+  - The Agent SDK passes Claude Code’s own suggestions (`canUseTool`’s `suggestions`), and they go back as `updatedPermissions`. Rules go to the folder’s local settings: one suggested for the session only would end with the turn, since each Postbox turn is a new session, and one for the project’s shared settings belongs to the person’s team. The card says when it moved one. A mode is offered only for the rest of the turn, never saved as a default. When the SDK sends no suggestions, or says a saved rule would grant more than the call (`suppressAlwaysAllowRule`), there’s no Always allow.
+  - The CLI’s prompt tool gets no suggestions and no agent id: a real turn recorded only `tool_name`, `input` and `tool_use_id`, for the agent’s call and for a subagent’s ([`permission-prompts.json`](../tests/fixtures/claude-code/permission-prompts.json)). So Postbox makes the rule as it does for a refusal ([`server/permission-rules.mjs`](../server/permission-rules.mjs)) and saves it in `.claude/settings.local.json` itself. A rule too long to keep (a command with a heredoc only ever gets its exact text) isn’t offered.
+- **Edit:** allow with the input you changed, as `updatedInput`: the command for Bash, with the call’s other fields kept, else the input’s JSON, which has to parse. An input too large to keep on the card (16,000 characters) can’t be edited, only allowed as it is. The recorded turn ran the edited command.
+- **Don’t allow:** `{ behavior: "deny", message }`, with your reason in the message, when you give one.
+
+A subagent’s prompt names the subagent. The SDK passes its id (`agentID`, the task’s id, as a refusal’s `agent_id`); the CLI passes only the call’s id, but the subagent’s `tool_use` streams before its prompt arrives, so the stream mapper already knows who made the call.
+
+**The permissions panel** shows one agent in one conversation: its mode, its rules, its folders and its MCP servers. It’s reached from the conversation’s ⋯ and the persona editor.
+- **Rules** come from where Claude Code reads them, each with its source: the person’s user settings (only when the persona loads their setup), the project’s shared `.claude/settings.json` (shown, never written), the folder’s `.claude/settings.local.json`, this conversation, and the persona’s Tools (#5) as deny rules. So a rule made in the panel shows in the CLI’s `/permissions`, and the reverse.
+- **Saving:** in the folder’s local settings by default, as the CLI saves “don’t ask again”; or for this conversation only, kept on the session and passed with every turn (allow as `--allowedTools`, deny as `--disallowedTools`, ask in the `--settings` overlay’s `permissions.ask`); or in the person’s user settings. Changes to one file run one at a time, and each is written atomically, beside the real file: a settings file that’s a link stays a link. One that isn’t valid JSON is named and left alone. User settings follow `CLAUDE_CONFIG_DIR`, as Claude Code’s do.
+- **Folders** added for a conversation go to `--add-dir` (the SDK’s `additionalDirectories`) from the next turn.
+- **The mode** is the persona’s, so it reaches running conversations from their next turn, as [intent.md](intent.md) says. On an Agent SDK turn that’s running, Postbox also tries the query’s `setPermissionMode`; the SDK documents it for streaming input only, and Postbox sends one prompt string, so the panel says whether it applied now.
+- **Which rule decides** a typed call is answered in Claude Code’s order: deny, then ask, then allow, then the mode, with the rule forms Claude Code documents ([`shared/permission-match.mjs`](../shared/permission-match.mjs)). The panel says Claude Code has the final say: hooks, managed settings and its own checks aren’t modeled.
+
+**Revisit when** the CLI’s prompt tool passes `permission_suggestions` (then the CLI’s cards can use them too), or Postbox runs SDK turns with streaming input, so the mode and rules can change during a turn.
 
 ## 7. Attached sessions: resume and mirror
 
@@ -288,7 +311,43 @@ sequenceDiagram
 - **Caps:** at most 40 items or about 16,000 characters, saying how many earlier ones were left out.
 - **Joining:** a new session starts with no marker, so an agent that joins a room gets its recent history.
 - **Further back:** `read_conversation` returns older history on request.
+- **Commands you ran** with `!` ([#67](https://github.com/HJeon139/postbox/issues/67)) are items like any other: each agent reads the command, where it ran, how it ended and the last 4,000 characters of its output, on its next turn. Running one wakes nobody, as Claude Code’s bash mode only adds to the context.
+- **A skill or command** an agent runs from the / menu is the whole prompt, since Claude Code runs `/name args` only at the start of one. Its catch-up waits for the agent’s next turn.
 
 **What it rests on.** Issue #1: in a room, an agent woken by an @-mention saw only that message, and answered confidently about a discussion it had never seen. The catch-up costs nothing when nothing was missed, as in a direct message where the agent is woken by every message; it replaces the separate path shares from topic threads used to take.
 
 **Revisit when** rooms get long enough that 40 items is too little. Then summarize older stretches instead of dropping them.
+
+## 13. Writes need the page’s token
+
+**Decision** ([#74](https://github.com/HJeon139/postbox/issues/74)). Every write to Postbox’s API (any method but GET and HEAD) needs a secret that the page you opened holds. Writes without it get 403, with a message saying why.
+- **The secret:** 32 random bytes, made each time the server starts.
+- **How the page gets it:** in a cookie set when a browser loads `/`, named for the port (`pb_token_<port>`), with `HttpOnly`, `SameSite=Strict` and `Path=/`. The browser sends it with the page’s own requests, so the page’s code never handles it.
+- **Only a browser gets it:** the cookie comes only with a request that carries a browser’s Fetch Metadata: a navigation (`Sec-Fetch-Mode: navigate`), or `Sec-Fetch-Site` of `same-origin` (the page’s own fetch of `/`, its refresh after a restart) or `none`. A request without them, such as a plain `curl /`, gets the page and no cookie.
+- **The check:** a constant-time comparison, before any route runs.
+- **Agents keep their own way in:** `/mcp`, which carries the agent’s session and is checked as before.
+
+```mermaid
+sequenceDiagram
+  participant P as The page
+  participant S as Postbox
+  participant A as An agent’s curl
+  P->>S: GET /
+  S-->>P: the app, and Set-Cookie pb_token_port (HttpOnly, SameSite=Strict)
+  P->>S: POST /api/threads/…/messages, with the cookie
+  S-->>P: 201, posted as you
+  A->>S: GET /, no Fetch Metadata headers
+  S-->>A: the app, no cookie
+  A->>S: POST /api/threads/…/messages, no cookie
+  S-->>A: 403, the request came from outside the Postbox page
+```
+
+**What it protects against.** An agent that uses Postbox’s own API casually, or on generic instructions, to speak as you: one `curl` used to post a message as you, with no click, no card and no “Sent from” line, and the other agents in a room acted on it as your instruction. Now that `curl` gets 403, and so does one that loads `/` first. Another website can’t do it either: the browser doesn’t send a `SameSite=Strict` cookie with another site’s requests. A page on another port of this computer is the same site, so the browser does send the cookie with its requests; the `Origin` check is what refuses those. Apps can’t reach it: their frames have an opaque origin and no network.
+
+**What it doesn’t.** A process running as you that sets out to get in still can: it can forge a browser’s headers when it loads `/` and keep the cookie, or read the data folder. That includes an agent whose instructions, from you or from a page it read, tell it exactly how. Postbox runs on your computer as you, so anything else running as you is out of its reach. The token makes the casual path fail; it isn’t a boundary against a determined process.
+
+**What it costs.** A restart makes a new token, so an open page’s next write is refused once; the page then loads `/` again, gets the new cookie, and retries. Tools that write from Node (`tools/demo.mjs`, the checks) are the person’s own, so they load `/` with a navigation’s headers, as a browser does.
+
+**`!` commands** ([#67](https://github.com/HJeon139/postbox/issues/67)) run as you, through your shell, in the conversation’s folder, so they need more than the token, which a determined process can get (above): the route also refuses unless Postbox listens on 127.0.0.1 and the request came from this computer. Each runs in its own process group, so Postbox stops them all when it shuts down (SIGINT, then SIGKILL), and keeps a bounded amount of each one’s output. Postbox listens there today; the check means a later change to the listen address can’t open it silently. Your shell is the point here: you typed a command line, as in your terminal. That’s different from the rule against spawning through a shell, which is about strings from agents and data.
+
+**Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` stays off.

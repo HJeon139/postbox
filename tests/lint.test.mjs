@@ -103,6 +103,22 @@ test('lint-copy: “thread” in the shell says it’s a topic or side thread, o
   assert.deepEqual(threadWords('Threads off this conversation'), ['Threads']);
 });
 
+test('lint-copy: what agents read says “conversation” for one, too (#75)', () => {
+  const said = 'Show a block in the thread.';
+  assert.equal(copyJs(`const d = '${said}';`, 'server/mcp.mjs').length, 1);
+  assert.equal(copyJs(`const d = '${said.replace('thread', 'conversation')}';`, 'server/mcp.mjs').length, 0);
+  // The guide is one long template: a finding points at its own line, and a review’s “threads?” field is a name.
+  const guide = 'const g = `## Blocks\n- review: content, previous?, threads?, language?\nThis thread belongs to the project.`;';
+  assert.deepEqual(
+    copyJs(guide, 'server/adapters/guide.mjs').map((f) => f.line),
+    [3],
+  );
+  // Its straight quotes mark literal values, and stay allowed; spelling is still checked.
+  const allowQuotes = '// lint-allow-file quotes: literal values.\n';
+  assert.equal(copyJs(`${allowQuotes}const g = \`Use "chips" here.\`;`, 'server/adapters/guide.mjs').length, 0);
+  assert.equal(copyJs(`${allowQuotes}const g = \`The colour.\`;`, 'server/adapters/guide.mjs').length, 1);
+});
+
 test('lint-copy: docs are checked for spelling outside code', () => {
   assert.equal(checkMarkdown('The colour.\n\n```\ncolour\n```\n`colour`', 'a.md').length, 1);
 });

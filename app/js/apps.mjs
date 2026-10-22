@@ -547,7 +547,7 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
           h('span.g.g-running', { 'aria-hidden': 'true' }),
           h('b', { style: { color: 'var(--text)', fontWeight: 500 } }, 'Checking the app before showing it…'),
         ),
-        h('span', 'Contrast, layout at phone and desktop widths, labels, and keyboard order.'),
+        h('span', 'Contrast, layout in narrow and wide windows, labels, and keyboard order.'),
       ]),
     );
   } else if (status === 'fixing') {

@@ -18,7 +18,7 @@
 //                    purpose, so it reaching them isn’t a finding; no check uses it now.
 // }
 
-import { isPublishingTool } from '../../server/adapters/setup.mjs';
+import { deniedTools, isPublishingTool, PUBLISHING_TOOLS } from '../../server/adapters/setup.mjs';
 import { freshInstall } from '../../server/seed.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
@@ -28,6 +28,90 @@ const clip = (s, n = 240) => {
     .trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
+// ── M1’s exit check: did a reply that called for a block use the right one? (#64) ──────────────────────
+// What a turn’s reply contains decides the block it calls for, as the agent guide says. From its prose, by the
+// same rules as the #63 finding: three or more question marks are questions, one question over a list is options,
+// and over 40 lines is a draft. A long job is a turn that ran 2 minutes or more, or called 10 or more tools: the
+// guide asks for a progress update at least every minute, so 2 minutes is past that, and 10 tool calls is a job of
+// several steps however fast it ran. A block the agent used also says what its reply held (a review, a draft). A
+// turn counts as right only if everything it called for has one of its expected blocks.
+const BLOCK_USE = {
+  options: { blocks: ['choice'], words: 'options' },
+  questions: { blocks: ['form', 'choice'], words: 'questions' },
+  draft: { blocks: ['review'], words: 'a draft' },
+  long: { blocks: ['progress'], words: 'a long job' },
+  decision: { blocks: ['confirm'], words: 'a decision' },
+};
+/** @type {Record<string, keyof typeof BLOCK_USE>} */
+const SERVES = { choice: 'options', form: 'questions', review: 'draft', progress: 'long', confirm: 'decision' };
+export const LONG_TURN_MS = 120_000;
+export const LONG_TURN_TOOLS = 10;
+
+function blockUseTally() {
+  let right = 0;
+  let wrong = 0;
+  /** @type {Record<string, number>} */
+  const used = {};
+  /** @type {Record<string, number>} */
+  const missed = {};
+  const count = (o, k) => {
+    o[k] = (o[k] ?? 0) + 1;
+  };
+  const list = (o) =>
+    Object.entries(o)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([k, n]) => `${k} ${n}`)
+      .join(', ');
+  return {
+    /** @param {any[]} items  the turn’s items  @param {string[]} types  its valid blocks */
+    add(items, types, { numbered, questions, draft }) {
+      /** @type {Set<keyof typeof BLOCK_USE>} */
+      const calls = new Set(types.flatMap((t) => (SERVES[t] ? [SERVES[t]] : [])));
+      if (questions >= 3) calls.add('questions');
+      else if (numbered >= 2 && questions >= 1) calls.add('options');
+      if (draft) calls.add('draft');
+      // How long it ran: from its first item to its last, or its tool steps’ own times, whichever is longer. A turn
+      // that writes only at the end has one reply item, made at its first step, so the items alone can read as 0.
+      const at = items.map((it) => it.at).filter((n) => typeof n === 'number');
+      const steps = items.flatMap((it) => it.activity?.steps ?? []).filter((st) => st.kind !== 'thought');
+      const ms = Math.max(
+        at.length ? Math.max(...at) - Math.min(...at) : 0,
+        steps.reduce((a, st) => a + (Number(st.ms) || 0), 0),
+      );
+      const tools = steps.length;
+      // A reply to Postbox’s own lint message isn’t the job the person asked for.
+      if (!items.some((it) => it.lintReply) && (ms >= LONG_TURN_MS || tools >= LONG_TURN_TOOLS)) calls.add('long');
+      if (!calls.size) return;
+      const lacking = [...calls].filter((c) => !BLOCK_USE[c].blocks.some((b) => types.includes(b)));
+      if (lacking.length) {
+        wrong++;
+        for (const c of lacking) count(missed, BLOCK_USE[c].words);
+      } else {
+        right++;
+        for (const t of new Set(types)) if (SERVES[t]) count(used, t);
+      }
+    },
+    /**
+     * The run’s counts, as information rather than a defect: no issue, so “Known issues caught again” doesn’t list
+     * it, and a verdict of its own, so the runner neither verifies nor files it. Its key carries the counts, so a
+     * live run logs each new total, and the last is the run’s.
+     */
+    finding() {
+      const called = right + wrong;
+      if (!called) return null;
+      return {
+        key: `block-use:${right}-of-${called}`,
+        issue: null,
+        title: `M1 exit check: ${right} of ${called} replies that called for a block used the right one`,
+        evidence: `${right} right${right ? ` (${list(used)})` : ''}; ${wrong} without the block they called for${wrong ? ` (${list(missed)})` : ''}.`,
+        verdict: 'measurement',
+        note: 'Not a defect: the block counts for M1’s exit check (#64).',
+        counts: { right, wrong, byType: used, missed },
+      };
+    },
+  };
+}
+
 export const CHECKS = [
   {
     id: 'fresh-install-agents',
@@ -46,6 +130,31 @@ export const CHECKS = [
           evidence: `Seeded: ${seeded.join(' and ')}.${specific.length ? ` Use-case: ${specific.map((p) => `@${p.handle}`).join(', ')}.` : ''}`,
         },
       ];
+    },
+  },
+  {
+    // A real agent’s init holding a tool its persona doesn’t allow: an unticked tool, or one that acts outside
+    // Postbox’s record (SendMessage, CronCreate…), which wave 1’s UAT saw on every agent. The publishing tools are
+    // settings-leak’s. A stream whose persona isn’t in the run’s state is skipped: its ticks aren’t known.
+    id: 'tool-not-allowed',
+    issue: 5,
+    run: (f) => {
+      const personas = Object.values(f.state.personas ?? {});
+      const hits = f.streams.flatMap(({ handle, events }) => {
+        const persona = personas.find((p) => p.handle === handle);
+        if (!persona) return [];
+        const denied = new Set(deniedTools(persona).filter((r) => !PUBLISHING_TOOLS.includes(r)));
+        const tools = events.filter((e) => e.subtype === 'init').flatMap((e) => (Array.isArray(e.tools) ? e.tools : []));
+        return [...new Set(tools.filter((x) => denied.has(x)))].map((tool) => ({ handle, tool }));
+      });
+      return hits.length
+        ? [
+            {
+              title: 'Agents carry tools their persona doesn’t allow',
+              evidence: `${[...new Set(hits.map(({ handle }) => `@${handle}`))].join(', ')} had ${[...new Set(hits.map(({ tool }) => tool))].slice(0, 8).join(', ')}.`,
+            },
+          ]
+        : [];
     },
   },
   {
@@ -162,6 +271,8 @@ export const CHECKS = [
     },
   },
   {
+    // Besides a finding per reply that should have been a block, it counts M1’s exit check (#64) over the run: the
+    // replies that called for a block, and the ones that used the right one. See BLOCK_USE above.
     id: 'prose-instead-of-block',
     issue: 63,
     run: (f) => {
@@ -169,8 +280,9 @@ export const CHECKS = [
       const turns = new Map();
       for (const it of items) if (it.turnId && (it.kind === 'agent' || it.kind === 'block')) turns.set(it.turnId, [...(turns.get(it.turnId) ?? []), it]);
       const out = [];
+      const tally = blockUseTally();
       for (const list of turns.values()) {
-        if (list.some((it) => it.kind === 'block' && it.valid && ['choice', 'form', 'review', 'confirm'].includes(it.block.type))) continue;
+        const types = list.filter((it) => it.kind === 'block' && it.valid).map((it) => it.block.type);
         const text = list
           .filter((it) => it.kind === 'agent')
           .map((it) => it.text ?? '')
@@ -179,6 +291,8 @@ export const CHECKS = [
         const numbered = (tail.match(/^\s*(?:\d+[.)]|[-*])\s+\S/gm) ?? []).length;
         const questions = (tail.match(/\?/g) ?? []).length;
         const draft = text.split('\n').length > 40;
+        tally.add(list, types, { numbered, questions, draft });
+        if (types.some((t) => ['choice', 'form', 'review', 'confirm'].includes(t))) continue;
         if ((numbered >= 2 && questions >= 1) || questions >= 3 || draft)
           out.push({
             key: list[0].id,
@@ -186,6 +300,8 @@ export const CHECKS = [
             evidence: `@${list[0].handle}: “${clip(tail, 200)}”`,
           });
       }
+      const counts = tally.finding();
+      if (counts) out.push(counts);
       return out;
     },
   },
@@ -438,7 +554,17 @@ export const CHECKS = [
 export function runChecks(facts) {
   return CHECKS.flatMap((c) => {
     try {
-      return c.run(facts).map((x) => ({ check: c.id, issue: c.issue, key: x.key ?? c.id, title: x.title, evidence: x.evidence }));
+      // A finding can set its own issue (null for information), and carry a verdict, a note and counts for the
+      // report: the block counts for M1’s exit check do.
+      return c.run(facts).map((x) => ({
+        check: c.id,
+        issue: x.issue === undefined ? c.issue : x.issue,
+        key: x.key ?? c.id,
+        title: x.title,
+        evidence: x.evidence,
+        ...(x.verdict ? { verdict: x.verdict, note: x.note } : {}),
+        ...(x.counts ? { counts: x.counts } : {}),
+      }));
     } catch (e) {
       return [{ check: c.id, issue: null, key: `${c.id}-error`, title: `The ${c.id} check failed`, evidence: e.message }];
     }

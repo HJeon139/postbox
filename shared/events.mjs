@@ -2,6 +2,8 @@
 // { blockId, action, values }, plus the short line shown in your voice ("Chose: weekly · Monday 9:00").
 // It also validates form input and returns messages that say what to fix.
 
+import { LIMITS, limitText } from './limits.mjs';
+
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 const fmtNum = (n) => Number(n).toLocaleString('en-US');
 
@@ -113,7 +115,7 @@ const BUILDERS = {
     } catch {
       return { ok: false, error: 'App values must be plain JSON.' };
     }
-    if (size > 65536) return { ok: false, error: 'App values are larger than 64 KB.' };
+    if (size > LIMITS.eventBytes) return { ok: false, error: `App values are larger than ${limitText('eventBytes')}.` };
     const { summary, ...values } = v;
     const what = typeof summary === 'string' && summary.trim() ? summary.trim().slice(0, 160) : action;
     return { ok: true, values, voice: `Sent from ${b.title ?? 'the app'}: ${what}` };

@@ -9,11 +9,11 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
+import { withAskRules } from '../permission-rules.mjs';
+import { commandsOf, createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
-import { HOST_SOURCES, ISOLATED_SOURCES, PUBLISHING_TOOLS, SETTINGS_OVERLAY, setupOf } from './setup.mjs';
+import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
-const DEFAULT_MODEL = 'claude-opus-5-5';
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
 const MODES = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
 
@@ -30,15 +30,34 @@ export async function loadAgentSdk() {
 /** The query() options for one turn. Pure apart from the callbacks, so the tests can check them. */
 /**
  * @param {{ persona: any, cwd: string, addDirs?: string[], sessionId: string, resume: boolean, mcpUrl: string, guide: string,
- *           abortController: AbortController, canUseTool?: Function, fork?: any, allowOnce?: string[] }} turn
+ *           abortController: AbortController, canUseTool?: Function, fork?: any, allowOnce?: string[],
+ *           rules?: { allow?: string[], ask?: string[], deny?: string[] } }} turn
+ *   rules: the ones the person made for this conversation only (#66), passed every turn
  */
-export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpUrl, guide, abortController, canUseTool, fork = null, allowOnce = [] }) {
+export function sdkOptions({
+  persona,
+  cwd,
+  addDirs = [],
+  sessionId,
+  resume,
+  mcpUrl,
+  guide,
+  abortController,
+  canUseTool,
+  fork = null,
+  allowOnce = [],
+  rules = {},
+}) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
+  const denied = [...deniedTools(persona), ...(rules.deny ?? [])];
+  const allowed = [...allowOnce, ...(rules.allow ?? [])];
   return {
     cwd,
     additionalDirectories: addDirs,
-    model: persona.model && persona.model !== 'mock' ? persona.model : DEFAULT_MODEL,
+    // Both always passed, as for the CLI: left out, your own settings would decide (#60).
+    model: modelOf(persona),
+    effort: effortOf(persona),
     // A topic thread’s first turn forks the conversation’s session at the message it branched from.
     ...(fork
       ? { resume: fork.sdkSessionId ?? fork.claudeSessionId, forkSession: true, ...(fork.uuid ? { resumeSessionAt: fork.uuid } : {}) }
@@ -46,16 +65,18 @@ export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpU
         ? { resume: sessionId }
         : { sessionId }),
     includePartialMessages: true,
-    mcpServers: { postbox: { type: 'http', url: mcpUrl, alwaysLoad: true } },
-    strictMcpConfig: true,
+    // Postbox’s server, next to your own; an Isolated persona loads Postbox’s only.
+    mcpServers: postboxServer(mcpUrl),
+    ...(setup.usesHostSetup ? {} : { strictMcpConfig: true }),
     // No allowedTools rule for Postbox’s tools: one would shadow canUseTool, which allows them itself. Only
-    // rules the person allowed once, after a refusal, go here.
-    ...(allowOnce.length ? { allowedTools: allowOnce } : {}),
-    // As for the CLI: the person’s setup (or the project’s only, when Isolated), the default output style, and
-    // no tools that publish outside Postbox unless the persona may (server/adapters/setup.mjs).
+    // rules the person allowed once, after a refusal, and those for this conversation (#66), go here.
+    ...(allowed.length ? { allowedTools: allowed } : {}),
+    // As for the CLI: the person’s setup (or the project’s only, when Isolated), the default output style, no MCP
+    // servers the persona turned off, and none of the tools it may not use (server/adapters/setup.mjs).
+    // A ticked tool is never an allow rule: the permission mode still decides.
     settingSources: [...(setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES)],
-    settings: { ...SETTINGS_OVERLAY },
-    ...(setup.canPublish ? {} : { disallowedTools: [...PUBLISHING_TOOLS] }),
+    settings: withAskRules(settingsFor(persona), rules.ask),
+    ...(denied.length ? { disallowedTools: denied } : {}),
     // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
     thinking: { type: 'adaptive', display: 'summarized' },
     forwardSubagentText: true,
@@ -64,6 +85,70 @@ export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpU
     ...(mode === 'bypass' ? { allowDangerouslySkipPermissions: true } : { canUseTool }),
     abortController,
   };
+}
+
+/**
+ * What the person can change while a turn runs: the permission mode (#66), the model and the effort (#67), with the
+ * running query’s setPermissionMode, setModel and applyFlagSettings({ effortLevel }). The SDK documents them for
+ * streaming input only, and Postbox sends a turn’s prompt as one string, so each change is tried, and resolves to
+ * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn.
+ * @param {any} q  the running query
+ */
+export function liveControl(q) {
+  return {
+    /** @param {string} mode  one of Postbox’s modes */
+    async setPermissionMode(mode) {
+      if (typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
+      try {
+        await q.setPermissionMode(MODES[/** @type {keyof typeof MODES} */ (mode)]);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    /** @param {string} model */
+    async setModel(model) {
+      if (typeof q?.setModel !== 'function') return false;
+      try {
+        await q.setModel(model);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    /** @param {string} effort  one of EFFORT_LEVELS */
+    async setEffort(effort) {
+      if (typeof q?.applyFlagSettings !== 'function') return false;
+      try {
+        await q.applyFlagSettings({ effortLevel: effort });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+}
+
+/**
+ * The SDK’s supportedCommands() (name, description, argumentHint), marked as skills where init says so, and without
+ * the ones bound to a terminal. It’s a control request, which the SDK documents for streaming input only: if it
+ * fails, init’s list stands.
+ * @param {any} q @param {any} init @param {any} ctx
+ */
+export function listCommands(q, init, ctx) {
+  if (typeof q?.supportedCommands !== 'function' || !ctx.commands) return;
+  const skills = new Set(
+    commandsOf(init)
+      .filter((c) => c.skill)
+      .map((c) => c.name),
+  );
+  const terminal = new Set(Array.isArray(init?.terminal_slash_commands) ? init.terminal_slash_commands : []);
+  Promise.resolve()
+    .then(() => q.supportedCommands())
+    .then(
+      (list) => Array.isArray(list) && ctx.commands(list.filter((c) => !terminal.has(c?.name)).map((c) => (skills.has(c?.name) ? { ...c, skill: true } : c))),
+      () => {},
+    );
 }
 
 /** Where a forked session starts: the branch point’s checkpoint, or the latest point of the session it forks. */
@@ -92,7 +177,8 @@ export class AgentSdkAdapter {
   async deliver(session, message, ctx) {
     const persona = ctx.persona;
     const cwd = await this.folderFor(persona, ctx.project);
-    const addDirs = [ctx.project?.folder].filter((d) => d && d !== cwd);
+    // The project’s folder, and the folders the person added for this conversation (#66).
+    const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
     const guide = agentGuide({ persona, handles: ctx.handles, project: ctx.project, brief: session?.brief });
     const prompt = formatMessage(message, ctx.pathOf);
     const resume = Boolean(ctx.state.sdkSessionId);
@@ -109,14 +195,45 @@ export class AgentSdkAdapter {
       // Postbox’s own tools only show things in the thread.
       if (toolName.startsWith('mcp__postbox__')) return { behavior: 'allow', updatedInput: input };
       const { summary, detail } = describePermission(toolName, input);
-      const answer = await ctx.askPermission({ tool: toolName, summary, detail, ...(opts.toolUseID ? { toolUseId: opts.toolUseID } : {}) });
-      return answer.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
+      // The prompt’s own suggestions go to Always allow (none, when it has none or says a saved rule would grant more
+      // than this call), and its agent id names the subagent that asks (#66).
+      const answer = await ctx.askPermission({
+        tool: toolName,
+        summary,
+        detail,
+        input,
+        suggestions: Array.isArray(opts.suggestions) ? opts.suggestions : [],
+        suppressAlways: opts.suppressAlwaysAllowRule === true,
+        agentId: opts.agentID ?? null,
+        ...(opts.toolUseID ? { toolUseId: opts.toolUseID } : {}),
+      });
+      return answer.allow
+        ? {
+            behavior: 'allow',
+            updatedInput: answer.updatedInput ?? input,
+            ...(answer.updatedPermissions ? { updatedPermissions: answer.updatedPermissions } : {}),
+          }
+        : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
     };
 
-    const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model) });
+    const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model), effort: effortOf(persona) });
+    ctx.subagentNames?.((ids) => mapper.who(ids));
     let stderr = '';
     const options = {
-      ...sdkOptions({ persona, cwd, addDirs, sessionId, resume, mcpUrl: ctx.mcpUrl, guide, abortController, canUseTool, fork, allowOnce: ctx.allowOnce ?? [] }),
+      ...sdkOptions({
+        persona,
+        cwd,
+        addDirs,
+        sessionId,
+        resume,
+        mcpUrl: ctx.mcpUrl,
+        guide,
+        abortController,
+        canUseTool,
+        fork,
+        allowOnce: ctx.allowOnce ?? [],
+        rules: ctx.rules ?? {},
+      }),
       stderr: (d) => {
         stderr = (stderr + d).slice(-4000);
       },
@@ -124,8 +241,13 @@ export class AgentSdkAdapter {
     /** @type {any} */
     let thrown = null;
     try {
-      for await (const m of this.sdk.query({ prompt, options })) {
+      const q = this.sdk.query({ prompt, options });
+      ctx.control?.(liveControl(q));
+      for await (const m of q) {
         mapper.push(m);
+        // The skills and commands with their descriptions and argument hints (#67), once the session is up; init’s
+        // list (names only, from the stream mapper) stands if the SDK can’t say.
+        if (m.type === 'system' && m.subtype === 'init') listCommands(q, m, ctx);
         if (m.type === 'system' && m.subtype === 'init' && m.session_id && m.session_id !== ctx.state.sdkSessionId) {
           ctx.saveState({ sdkSessionId: m.session_id, fork: null });
           ctx.state.sdkSessionId = m.session_id;

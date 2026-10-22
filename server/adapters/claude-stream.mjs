@@ -131,13 +131,15 @@ export function contextPercent(usage, window) {
 /**
  * Feeds one stream to a turn context.
  * @param {any} ctx  the turn context (see server/adapters/adapter.mjs)
- * @param {{ contextWindow?: number, now?: () => number }} [opts]
+ * @param {{ contextWindow?: number, now?: () => number, effort?: string|null }} [opts]  effort: what the turn was
+ *   started with, reported with the model, since the stream doesn’t say
  */
-export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.now } = {}) {
+export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.now, effort = null } = {}) {
   /** @type {any} */
   const st = {
     sessionId: null,
     model: null,
+    answered: null, // the model the last assistant message came from
     contextWindow,
     result: null,
     wroteText: false, // reply text so far this turn, so separate text blocks get a paragraph break
@@ -301,7 +303,19 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       if (e.subtype === 'init') {
         st.sessionId = e.session_id ?? st.sessionId;
         st.model = e.model ?? st.model;
+        // The MCP servers that loaded, with their status, for the persona sheet (#59), and the model and effort
+        // the turn runs with (#60).
+        ctx.reported?.({
+          ...(Array.isArray(e.mcp_servers) ? { mcpServers: e.mcp_servers } : {}),
+          ...(e.model ? { model: e.model } : {}),
+          ...(effort ? { effort } : {}),
+        });
+        // Its skills and commands, for the composer’s / menu (#67).
+        if (Array.isArray(e.slash_commands)) ctx.commands?.(commandsOf(e));
         status({ state: 'think', currentStep: 'Thinking' });
+      } else if (e.subtype === 'commands_changed' && Array.isArray(e.commands)) {
+        // The list changed mid-session (skills found as it works): it replaces the one init gave (sdk.d.ts).
+        ctx.commands?.(e.commands);
       } else if (e.subtype === 'status' && e.status === 'compacting') {
         status({ currentStep: 'Summarizing the conversation' });
       } else if (e.subtype === 'permission_denied') {
@@ -378,6 +392,12 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       // The last top-level assistant message is where this turn ends in the transcript: a fork point.
       if (e.uuid) st.lastUuid = e.uuid;
       const m = e.message ?? {};
+      // The model that actually answered (#60). Claude Code’s own messages, such as an interruption, say
+      // “<synthetic>”, which isn’t a model.
+      if (typeof m.model === 'string' && m.model && !m.model.startsWith('<') && m.model !== st.answered) {
+        st.answered = m.model;
+        ctx.reported?.({ model: m.model });
+      }
       for (const b of m.content ?? []) {
         if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') {
           startTool(b.id, b.name, b.input);
@@ -420,6 +440,16 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
 
   return {
     push,
+    /**
+     * The subagent behind a permission prompt (#66), by the SDK’s agent id (a task id, as a refusal’s agent_id) or by
+     * the call’s tool_use id. The CLI’s prompt tool sends only the call’s id (recorded:
+     * tests/fixtures/claude-code/permission-subagent.jsonl), and the subagent’s tool_use streams before the prompt,
+     * so the call is known by then, with the subagent that made it. Null for the agent’s own calls.
+     * @param {{ agentId?: string|null, toolUseId?: string|null }} ids
+     */
+    who({ agentId = null, toolUseId = null }) {
+      return (agentId && st.subNames.get(st.tasks.get(agentId))) || (toolUseId && st.tools.get(toolUseId)?.who) || null;
+    },
     get sessionId() {
       return st.sessionId;
     },
@@ -436,6 +466,21 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       return st.lastUuid ?? null;
     },
   };
+}
+
+/**
+ * An init’s skills and commands (#67): `slash_commands` lists both, by name, `skills` says which are skills, and
+ * `terminal_slash_commands` are bound to a terminal (recorded: doctor, color, focus, reload-plugins), so they’re left
+ * out of other surfaces. Recorded in tests/fixtures/claude-code/permission-subagent.jsonl.
+ * @param {any} init @returns {{ name: string, skill?: true }[]}
+ */
+export function commandsOf(init) {
+  const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+  const terminal = new Set(strings(init?.terminal_slash_commands));
+  const skills = new Set(strings(init?.skills));
+  return strings(init?.slash_commands)
+    .filter((n) => !terminal.has(n))
+    .map((name) => (skills.has(name) ? { name, skill: true } : { name }));
 }
 
 /** Why a finished stream failed, in words for the person, or null if it didn’t. */

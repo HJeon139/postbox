@@ -108,7 +108,7 @@ Every block is validated before it’s shown ([`shared/catalog.mjs`](shared/cata
 
 Long text fields (`prompt`, `body`, `statement`, review content) are Markdown. Short labels are plain text.
 
-**Answering.** A `choice`, `form`, `confirm` or `review` turns read-only once you answer, and shows what you chose. Only a new block, or an update to the same id, can ask again. Your action also appears in the transcript as a short line in your voice, such as “Chose: weekly · Monday 9:00”. An open asking block makes its agent **need you**: its ring pulses and you get a notification.
+**Answering.** A `choice`, `form`, `confirm` or `review` turns read-only once you answer, and shows what you chose. Only a new block, or an update to the same id, can ask again. An update that sets `outcome` (Markdown, up to 500 characters) on an answered `choice`, `form` or `confirm` doesn’t ask: it reports the result as a line under your answer, the block stays answered, and its agent doesn’t need you. Your action also appears in the transcript as a short line in your voice, such as “Chose: weekly · Monday 9:00”. An open asking block makes its agent **need you**: its ring pulses and you get a notification.
 
 **Safety.** Markdown is rendered by [`shared/markdown.mjs`](shared/markdown.mjs), which escapes everything. Raw HTML is shown as text, links are checked and open in a new tab with `rel="noopener noreferrer"`, and nothing an agent sends becomes a tag, an attribute name or a style.
 

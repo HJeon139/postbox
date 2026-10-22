@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { DEFAULT_MODEL as ADAPTERS_DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { HOP_LIMIT, Runtime } from '../server/runtime.mjs';
+import { DEFAULT_MODEL, HOP_LIMIT, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1105,6 +1106,110 @@ test('#69: an asking block asked again with update_block belongs to the turn tha
   assert.equal(it.turnId, second);
 });
 
+test('#75: a conversation started without a title is a “New conversation”, and agents are told what they define where', () => {
+  const { rt, store, t } = setup();
+  assert.equal(rt.createThread({ projectId: 'p1' }).title, 'New conversation');
+  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  assert.equal(tools.define_term({ term: 'BM25', definition: 'A ranking function.' }).message, 'Defined “BM25”.');
+  // A topic thread’s definition over its conversation’s says “here”, not “this thread”.
+  rt.putThread({ ...store.state.threads[t.id], id: 'th-topic', kind: 'topic', parentId: t.id, members: [] });
+  const se = rt.ensureSession('th-topic', rt.sessionsIn(t.id)[0].personaId);
+  assert.equal(
+    rt.toolsFor(se.id).define_term({ term: 'BM25', definition: 'Here, the baseline.' }).message,
+    'Defined “BM25” here, over the conversation’s definition.',
+  );
+});
+
+test('#94: an outcome on an answered confirm reports the result: it stays answered and nobody is asked again', async () => {
+  const { rt, store, t, adapter } = setup();
+  const confirm = {
+    id: 'frames',
+    type: 'confirm',
+    version: 1,
+    fallback: 'Delete?',
+    title: 'Delete the video frames?',
+    statement: 'Delete 23 frames?',
+    confirmLabel: 'Delete',
+  };
+  adapter.next.push(async (c) => c.tools.show_block({ block: confirm }));
+  rt.sendMessage(t.id, { text: 'clean up' });
+  await settle(rt);
+  const se = rt.sessionsIn(t.id)[0];
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  rt.act(t.id, item.id, 'confirm', {});
+  // As in the UAT that found it: the agent reports back on the same block, retitled, with an “OK” button.
+  let said;
+  adapter.next.push(async (c) => {
+    said = c.tools.update_block({
+      block: { ...confirm, title: 'Video frames deleted', confirmLabel: 'OK', outcome: 'Done: 23 frames deleted' },
+    });
+    c.text('Deleted them.');
+  });
+  await settle(rt);
+  const it = store.item(t.id, item.id);
+  assert.equal(it.answered, true);
+  assert.equal(it.answer.action, 'confirm');
+  assert.equal(it.block.outcome, 'Done: 23 frames deleted');
+  // The question the person answered stays as they saw it, and the agent is told its other changes didn’t apply.
+  assert.equal(it.block.title, 'Delete the video frames?');
+  assert.equal(it.block.confirmLabel, 'Delete');
+  assert.equal(it.turnId, item.turnId);
+  assert.equal(said.ok, true);
+  assert.match(said.message, /stays answered\. Your other changes weren’t applied/);
+  assert.equal(store.state.sessions[se.id].needs, null);
+  assert.equal(store.state.sessions[se.id].state, 'idle');
+  assert.throws(() => rt.act(t.id, item.id, 'confirm', {}), /already answered/);
+
+  // An update without outcome asks again, as before.
+  adapter.next.push(async (c) => c.tools.update_block({ block: { ...confirm, statement: 'Delete 4 more?' } }));
+  rt.sendMessage(t.id, { text: 'more?' });
+  await settle(rt);
+  assert.equal(store.item(t.id, item.id).answered, false);
+  assert.equal(store.item(t.id, item.id).block.outcome, undefined);
+  assert.equal(store.state.sessions[se.id].needs?.kind, 'block');
+});
+
+test('#94: an outcome on a block nobody answered yet is refused, and the block is left alone', () => {
+  const { rt, store, t } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  const tools = rt.toolsFor(se.id);
+  const choice = { id: 'c', type: 'choice', version: 1, fallback: 'Pick', options: [{ id: 'a', label: 'A' }] };
+  tools.show_block({ block: choice });
+  const r = tools.update_block({ block: { ...choice, outcome: 'Done.' } });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /hasn’t been answered yet/);
+  assert.equal(store.items(t.id).find((i) => i.kind === 'block').block.outcome, undefined);
+  // An outcome with nothing else changed gets no note about other changes.
+  rt.act(t.id, store.items(t.id).find((i) => i.kind === 'block').id, 'choose', { selected: ['a'] });
+  assert.equal(
+    tools.update_block({ block: { ...choice, outcome: 'Done.' } }).message,
+    'Recorded the outcome under the person’s answer to c; it stays answered.',
+  );
+  // Reopened by an update without outcome, it’s unanswered again, so an outcome is refused again.
+  tools.update_block({ block: { ...choice, prompt: 'Pick again?' } });
+  const again = tools.update_block({ block: { ...choice, prompt: 'Pick again?', outcome: 'Done.' } });
+  assert.equal(again.ok, false);
+  assert.match(again.message, /^The update wasn’t applied\. .*set outcome with update_block once they’ve answered/);
+  assert.equal(store.items(t.id).find((i) => i.kind === 'block').block.outcome, undefined);
+});
+
+test('#94: show_block refuses an outcome, so a result can’t show under an answer it didn’t come from', () => {
+  const { rt, store, t } = setup();
+  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  // The review’s scenario: an outcome sent with the question would show under Cancel too.
+  const confirm = { id: 'frames', type: 'confirm', version: 1, fallback: 'Delete?', statement: 'Delete 23 frames?', confirmLabel: 'Delete' };
+  const r = tools.show_block({ block: { ...confirm, outcome: 'Deleted 23 frames' } });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /^The block wasn’t shown\. outcome reports the result of the person’s answer, and frames hasn’t been answered yet\./);
+  assert.match(r.message, /set outcome with update_block once they’ve answered/);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'block').length, 0);
+  // Without it, the block shows, and a Cancel gets no outcome.
+  assert.equal(tools.show_block({ block: confirm }).ok, true);
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  rt.act(t.id, item.id, 'cancel', {});
+  assert.equal(store.item(t.id, item.id).block.outcome, undefined);
+});
+
 test('a persona’s permission mode reaches its running conversations from their next turn', async () => {
   const { rt, t, a, adapter } = setup();
   const seen = [];
@@ -1338,4 +1443,137 @@ test('a call you answered on a permission card never gets a refusal card too', a
   rt.sendMessage(t.id, { text: 'go' });
   await settle(rt);
   assert.equal(store.items(t.id).filter((i) => i.kind === 'denial').length, 0);
+});
+
+// ── #59: your MCP servers ─────────────────────────────────────────────────────────────────
+
+test('#59: a persona keeps the MCP servers it turned off, checked, and they follow it from the next turn', async () => {
+  const { rt, t, a, adapter } = setup();
+  assert.deepEqual(rt.createPersona({ handle: 'coder' }).mcpOff, [], 'all on by default');
+  assert.deepEqual(rt.updatePersona(a.id, { mcpOff: [' search ', 'search', 'postbox', 'claude.ai Gmail'] }).mcpOff, ['search', 'claude.ai Gmail']);
+  for (const bad of ['search', [1], [''], ['x'.repeat(201)], Array.from({ length: 101 }, (_, i) => `s${i}`), null]) {
+    assert.throws(
+      () => rt.updatePersona(a.id, { mcpOff: bad }),
+      (e) => e.status === 422 && /MCP servers turned off/.test(e.message),
+    );
+    assert.throws(
+      () => rt.createPersona({ handle: 'nope', mcpOff: bad }),
+      (e) => e.status === 422,
+    );
+  }
+  const seen = [];
+  adapter.next.push(async (c) => seen.push(c.persona.mcpOff));
+  adapter.next.push(async (c) => seen.push(c.persona.mcpOff));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  rt.updatePersona(a.id, { mcpOff: [] });
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual(seen, [['search', 'claude.ai Gmail'], []]);
+});
+
+test('#59: the MCP servers a turn reports are kept on its session, bounded, for the sheet’s status', async () => {
+  const { rt, t, a, adapter, store } = setup();
+  const many = Array.from({ length: 120 }, (_, i) => ({ name: `s${i}`, status: 'connected', source: 'user', config: { secret: 'x' } }));
+  adapter.next.push(async (c) => c.reported({ mcpServers: [{ name: 'search', status: 'needs-auth', source: 'claudeai' }, { status: 'x' }, ...many] }));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  const se = rt.sessionsIn(t.id)[0];
+  const kept = store.state.sessions[se.id].mcpServers;
+  assert.equal(typeof kept.at, 'number');
+  assert.equal(kept.servers.length, 100);
+  assert.deepEqual(kept.servers[0], { name: 'search', status: 'needs-auth', source: 'claudeai' });
+  assert.ok(!JSON.stringify(kept).includes('secret'), 'never a server’s config');
+  // The sheet reads the latest, from this persona’s sessions, in the folder of its latest conversation.
+  const ctx = rt.mcpContext(a.id, null);
+  assert.equal(ctx.folder, '/tmp');
+  assert.equal(ctx.seen[0].name, 'search');
+  assert.equal(rt.mcpContext(null, 'p1').folder, '/tmp');
+  assert.deepEqual(rt.mcpContext(null, null), { persona: null, folder: null, seen: [] }, 'mock sessions don’t lend their servers to a new agent');
+});
+
+test('#59: a sheet that reads an init from another folder shows only the servers that load everywhere', async () => {
+  const { rt, t, a, adapter, store } = setup();
+  const servers = [
+    { name: 'docs', status: 'connected', source: 'project' },
+    { name: 'notes', status: 'connected', source: 'local' },
+    { name: 'search', status: 'connected', source: 'user' },
+    { name: 'Gmail', status: 'needs-auth', source: 'claudeai' },
+  ];
+  adapter.next.push(async (c) => c.reported({ mcpServers: servers }));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  // The same folder: everything that init saw.
+  assert.deepEqual(
+    rt.mcpContext(a.id, 'p1').seen.map((s) => s.name),
+    ['docs', 'notes', 'search', 'Gmail'],
+  );
+  // Another folder: its project and local servers aren’t known there.
+  store.emit('project', { id: 'p2', name: 'Q', folder: '/elsewhere' });
+  assert.deepEqual(
+    rt.mcpContext(a.id, 'p2').seen.map((s) => s.name),
+    ['search', 'Gmail'],
+  );
+});
+
+test('#5: a persona’s tools, which real backends deny when unticked, follow it from the next turn', async () => {
+  const { rt, t, a, adapter } = setup();
+  const seen = [];
+  adapter.next.push(async (c) => seen.push(c.persona.tools));
+  adapter.next.push(async (c) => seen.push(c.persona.tools));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  rt.updatePersona(a.id, { tools: ['corpus.search', 'shell'] });
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual(seen, [['corpus.search'], ['corpus.search', 'shell']]);
+});
+
+// ── #60: model and effort ────────────────────────────────────────────────────────────────
+
+test('#60: a persona has an effort next to its model, checked, fixed in a session’s snapshot like the model', async () => {
+  const { rt, t, a, adapter, store } = setup();
+  assert.equal(rt.createPersona({ handle: 'coder' }).effort, 'medium', 'Claude Code’s own default for Opus 5.5');
+  assert.equal(DEFAULT_MODEL, ADAPTERS_DEFAULT_MODEL, 'the runtime and the adapters default to the same model');
+  assert.equal(rt.createPersona({ handle: 'deep', effort: 'xhigh' }).effort, 'xhigh');
+  for (const bad of ['ultra', '', null, 3]) {
+    assert.throws(
+      () => rt.updatePersona(a.id, { effort: bad }),
+      (e) => e.status === 422 && /Effort is one of low, medium, high, xhigh, max/.test(e.message),
+    );
+    assert.throws(
+      () => rt.createPersona({ handle: 'nope', effort: bad }),
+      (e) => e.status === 422,
+    );
+  }
+  assert.equal(rt.updatePersona(a.id, { effort: 'max' }).effort, 'max');
+  assert.equal(rt.updatePersona(a.id, { description: 'x' }).effort, 'max', 'other edits keep it');
+  const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
+  rt.updatePersona(a.id, { effort: 'low' });
+  const seen = [];
+  adapter.next.push(async (c) => seen.push(c.persona.effort));
+  rt.sendMessage(t2.id, { text: 'hi' });
+  await settle(rt);
+  assert.deepEqual(seen, ['max'], 'the session runs with the effort it started with, as with the model');
+  assert.equal(rt.sessionsIn(t2.id)[0].personaSnapshot.effort, 'max');
+  assert.ok(t && store);
+});
+
+test('#60: the model that answered and the effort a turn ran with are kept on the session', async () => {
+  const { rt, t, adapter, store } = setup();
+  adapter.next.push(async (c) => {
+    c.reported({ model: 'claude-sonnet-5-5', effort: 'high' });
+    c.reported({ model: 'claude-haiku-5-5' });
+    c.reported({ model: '', effort: 'ultra' });
+    c.reported({ model: 'x'.repeat(300) });
+  });
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  const se = store.state.sessions[rt.sessionsIn(t.id)[0].id];
+  assert.equal(se.lastModel, 'x'.repeat(100), 'bounded');
+  assert.equal(se.lastEffort, 'high', 'an unknown level is ignored');
+  adapter.next.push(async (c) => c.reported({ model: 'claude-haiku-5-5', effort: 'low' }));
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual([store.state.sessions[se.id].lastModel, store.state.sessions[se.id].lastEffort], ['claude-haiku-5-5', 'low']);
 });
