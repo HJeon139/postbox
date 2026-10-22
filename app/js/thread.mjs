@@ -107,8 +107,17 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
 
   const box = () => (inPanel ? el.parentElement : document.scrollingElement);
   const viewTop = (s) => (inPanel ? s.getBoundingClientRect().top : 0);
+  const gapOf = (s) => s.scrollHeight - s.scrollTop - s.clientHeight;
   // At the bottom, give or take a pixel of rounding.
-  const atEnd = (s) => s.scrollHeight - s.scrollTop - s.clientHeight <= 2;
+  const atEnd = (s) => gapOf(s) <= 2;
+  // The pill floats just above the composer. It shows only while the end is further below than that, so what it
+  // floats over is never the working rows or the end of the last message (#91).
+  const PILL_ROOM = 48;
+  let shown = -1;
+  const showJump = (s) => {
+    const n = s && gapOf(s) > PILL_ROOM ? unseen : 0;
+    if (n !== shown) jump?.((shown = n));
+  };
   const findAnchor = () => {
     const s = box();
     if (!s) return null;
@@ -127,9 +136,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (Math.abs(d) >= 1) s.scrollTop += d;
   };
   const seen = () => {
-    if (!unseen) return;
     unseen = 0;
-    jump?.(0);
+    showJump(null);
   };
   const scrollToEnd = (smooth = false) => {
     stuck = true;
@@ -138,6 +146,22 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
     else if (s) s.scrollTop = s.scrollHeight;
     seen();
+  };
+  // While stuck, what comes after the newest message shrinking (a working row going, a card getting shorter once
+  // answered, the composer) would shorten the page and pull everything down, under your pointer, just as a card
+  // that needs you arrives. Instead the transcript keeps its height, until the next message or a new width.
+  let held = { end: 0, last: 0, width: 0 };
+  const lastItem = () => {
+    for (let n = el.lastElementChild; n; n = n.previousElementSibling) if (n instanceof HTMLElement && n.dataset.key) return n;
+    return null;
+  };
+  const measure = (s) => ({
+    end: s.scrollHeight,
+    last: (lastItem()?.getBoundingClientRect().top ?? 0) - viewTop(s) + s.scrollTop,
+    width: el.clientWidth,
+  });
+  const release = () => {
+    if (el.style.minHeight) el.style.minHeight = '';
   };
   // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
   const follow = () => {
@@ -149,8 +173,14 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       anchor = findAnchor();
     }
     if (stuck) {
+      const now = measure(s);
+      if (now.width !== held.width) release();
+      else if (now.end < held.end && Math.abs(now.last - held.last) < 1 && held.end > s.clientHeight)
+        el.style.minHeight = `${el.getBoundingClientRect().height + held.end - now.end}px`;
       if (!atEnd(s)) s.scrollTop = s.scrollHeight;
+      held = measure(s);
     } else holdAnchor();
+    showJump(s);
   };
   // Only your own scrolling unsticks the view: content growing never scrolls, and the browser doesn’t anchor
   // (overflow-anchor is off), so the view moving up means you moved it, by wheel, keys or a drag, even over an app.
@@ -159,10 +189,11 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const s = box();
     if (!s) return;
     if (atEnd(s)) {
+      if (!stuck) held = measure(s);
       stuck = true;
-      // However you got here, there’s nothing unread below any more (#91).
-      seen();
     } else if (s.scrollTop < lastTop) stuck = false;
+    // However you got near the end, there’s nothing unread below any more (#91).
+    if (gapOf(s) <= PILL_ROOM) seen();
     lastTop = s.scrollTop;
     if (!stuck) anchor = findAnchor();
   };
@@ -183,19 +214,21 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     // A rebuild can replace this transcript before the frame it was to settle in.
     if (dead) return;
     bind();
+    const s = box();
     if (stuck) scrollToEnd();
-    else {
-      holdAnchor();
-      jump?.(unseen);
+    else holdAnchor();
+    if (s) {
+      showJump(s);
+      held = measure(s);
     }
-    lastTop = box()?.scrollTop ?? 0;
+    lastTop = s?.scrollTop ?? 0;
   };
   let jump = null;
   const grew = () => {
     if (stuck) follow();
     else {
       unseen++;
-      jump?.(unseen);
+      showJump(box());
     }
   };
 
@@ -207,6 +240,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const d = ch.data;
     if (ch.type === 'item.add' && d.threadId === threadId) {
       if (nodes.size === 0) el.replaceChildren();
+      // A new message takes the place of any height held below the last one.
+      release();
       const list = itemsOf(threadId);
       const n = render(d.item, list[list.length - 2]);
       nodes.set(d.item.id, n);

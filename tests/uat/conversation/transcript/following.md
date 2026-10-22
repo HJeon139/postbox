@@ -11,7 +11,8 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 - **At the bottom, you stay at the bottom** through anything that changes the transcript: a reply streaming, an item updated in place (its activity, sources, a block answered), a working row coming or going, an app frame growing after it loads, the thread panel opening or closing, and a window resize. The panel’s own transcript does the same.
 - **Scrolled up, nothing moves you.** Only your own scrolling up (wheel, trackpad, keys or dragging the scrollbar, even over an app) leaves the bottom. After that, new messages, streaming, an item or app above you growing, a resize, and opening or closing the panel all leave the message you’re reading where it is.
 - **Jump to latest · N new** appears only while you’re scrolled up and new messages arrive below. It counts them, and it goes, with its count, as soon as you reach the bottom by any means: the pill, the wheel, End, or dragging.
-- The pill sits in the composer, above the message box, so it never covers the last message or the working rows.
+- The pill floats just above the composer and takes no room, so showing or hiding it never moves the page. It shows only while the end is further below than the pill’s own height, so it never sits over the working rows or the end of the last message.
+- **A card at the bottom stays still.** When what follows the newest message shrinks (a working row going away, a card getting shorter once answered, the composer), the transcript keeps its height instead of pulling everything down, so a button you’re about to click doesn’t slide out from under the pointer. The space fills with the next message, or goes when the window’s width changes.
 - Every browser behaves the same: the browser’s own scroll anchoring is off, and Postbox keeps the place itself.
 
 ## Steps to reproduce
@@ -22,7 +23,7 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 4. Open a thread from an older message while scrolled up, then close it.
 
 **Pass if:**
-- At the bottom, the newest message never drifts out of view.
+- At the bottom, the newest message never drifts out of view, and a card’s buttons don’t move when the working row below it goes away.
 - Scrolled up, the message you’re reading doesn’t move, including when the panel opens or closes.
 - The pill shows the right count, and disappears the moment you reach the bottom without clicking it.
 
