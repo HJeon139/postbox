@@ -664,6 +664,28 @@ test('#55: a numbered term the person introduced isn’t linted, and one the age
   );
 });
 
+test('#56: a topic thread uses its conversation’s terms, and its own definition wins there', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.define_term({ term: 'Step 2', definition: 'Show matches as highlights.' });
+    c.text('Step 2 is next.');
+  });
+  rt.sendMessage(t.id, { text: 'plan it' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0);
+  const root = store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId: topic } = rt.startTopic(t.id, root.id);
+  adapter.next.push(async (c) => c.text('Step 2 looks right to me.'));
+  rt.sendMessage(topic, { text: 'check it' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0, 'the parent’s term isn’t linted in the topic');
+  assert.equal(rt.glossaryFor(topic)['step-2'].definition, 'Show matches as highlights.');
+  const r = rt.toolsFor(adapter.calls.at(-1).sessionId).define_term({ term: 'Step 2', definition: 'Quote the match instead.' });
+  assert.match(r.message, /over the conversation’s definition/);
+  assert.equal(rt.glossaryFor(topic)['step-2'].definition, 'Quote the match instead.');
+  assert.equal(rt.glossaryFor(t.id)['step-2'].definition, 'Show matches as highlights.', 'the conversation keeps its own');
+});
+
 test('problems from a turn that failed don’t reach the agent', async () => {
   const { rt, store, t, adapter } = setup();
   adapter.next.push(async (c) => {

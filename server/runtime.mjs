@@ -980,11 +980,32 @@ export class Runtime {
   // at most one lint turn per agent turn, a lint turn is never linted, and problems from a turn that failed or was
   // stopped are dropped.
 
+  /** A thread, then the conversation it branched from, following parentId (a topic or side thread’s is one level). */
+  lineage(threadId) {
+    const out = [];
+    for (let id = threadId; id && this.s.threads[id] && !out.includes(id) && out.length < 8; id = this.s.threads[id].parentId) out.push(id);
+    return out;
+  }
+
+  /**
+   * The terms a thread knows: its own glossary over its parent’s, so a topic thread inherits its conversation’s
+   * terms and its own definition wins. The browser’s glossaryOf (app/js/thread.mjs) merges the same way.
+   */
+  glossaryFor(threadId) {
+    return Object.assign(
+      {},
+      ...this.lineage(threadId)
+        .map((id) => this.s.glossary[id] ?? {})
+        .reverse(),
+    );
+  }
+
   /** The server’s checks over a finished turn. */
   checkTurn(turn, se) {
-    const items = this.store.items(turn.threadId);
-    const apps = Object.values(this.s.apps).filter((a) => a.threadId === turn.threadId);
-    const problems = termProblems(turn.said, this.s.glossary[turn.threadId] ?? {}, introducedTerms(items, apps));
+    const lineage = this.lineage(turn.threadId);
+    const items = lineage.flatMap((id) => this.store.items(id));
+    const apps = Object.values(this.s.apps).filter((a) => lineage.includes(a.threadId));
+    const problems = termProblems(turn.said, this.glossaryFor(turn.threadId), introducedTerms(items, apps));
     // Diagrams too wide or too busy to read at the conversation’s width.
     const diagrams = lintDiagrams(turn.said);
     if (diagrams.length)
@@ -1802,7 +1823,11 @@ export class Runtime {
             at: Date.now(),
           },
         });
-        return { ok: true, message: `Defined “${term}”.` };
+        const inherited = rt
+          .lineage(threadId())
+          .slice(1)
+          .some((id) => rt.s.glossary[id]?.[k]);
+        return { ok: true, message: inherited ? `Defined “${term}” in this thread, over the conversation’s definition.` : `Defined “${term}”.` };
       },
       propose_agent({ handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
         const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
