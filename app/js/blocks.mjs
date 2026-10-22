@@ -597,6 +597,17 @@ function renderReview(b, item, ctx) {
     node.replaceWith(n);
     return n;
   };
+  const compose = (key) => {
+    d.composing = key;
+    rerender();
+  };
+  // Closing a comment box puts focus back on the line it was for, so the keyboard keeps its place.
+  const closeComposer = (key) => {
+    d.composing = null;
+    rerender()
+      .querySelector(`.g-mark[data-line="${CSS.escape(String(key))}"]`)
+      ?.focus();
+  };
   const done = item.answered;
   const isDiff = !!b.previous && d.view === 'diff';
   const viewSeg = b.previous
@@ -702,18 +713,14 @@ function renderReview(b, item, ctx) {
             e.preventDefault();
             add();
           }
-          if (e.key === 'Escape') {
-            d.composing = null;
-            rerender();
-          }
+          if (e.key === 'Escape') closeComposer(key);
         },
       });
       const add = () => {
         const text = ta.value.trim();
         if (!text) return;
         d.comments.push(b.format === 'app' ? { anchor: key, text } : { line: key, text });
-        d.composing = null;
-        rerender();
+        closeComposer(key);
       };
       parts.push(
         h(
@@ -729,10 +736,7 @@ function renderReview(b, item, ctx) {
                 'button.btn.sm.ghost',
                 {
                   type: 'button',
-                  onclick: () => {
-                    d.composing = null;
-                    rerender();
-                  },
+                  onclick: () => closeComposer(key),
                 },
                 'Cancel',
               ),
@@ -772,28 +776,29 @@ function renderReview(b, item, ctx) {
     const groups = b.format === 'markdown' ? groupReviewLines(rows) : rows.map((r) => ({ type: 'line', depth: 0, unit: rowUnit(r) }));
     const marked = (u) => u.lines.some((k) => threadsAt(k).length || draftsAt(k).length);
     const unitClass = (u) => [u.kind === 'same' ? '' : u.kind, marked(u) ? 'marked' : ''].join(' ');
+    // The line is the comment target: clicking it, or its gutter mark (the button keyboards and screen
+    // readers reach), opens its comment box. A click on a link or a thread inside it does its own thing.
     const gutter = (u, cls = '') => {
-      const r = u.rows[0];
+      const n = String(u.key ?? u.rows[0].o);
+      if (done || u.key === null) return h(`span.g-ln${cls}`, h('span.sr-only', u.key === null ? 'Removed line ' : 'Line '), n);
       return h(
         `span.g-ln${cls}`,
-        { 'aria-label': u.key === null ? `Removed line ${r.o}` : `Line ${u.key}` },
-        !done && u.key !== null
-          ? h(
-              'button.add-c',
-              {
-                type: 'button',
-                'aria-label': `Comment on line ${u.key}`,
-                onclick: () => {
-                  d.composing = u.key;
-                  rerender();
-                },
-              },
-              icon('plus', 'i-sm'),
-            )
-          : null,
-        String(u.key ?? r.o),
+        h(
+          'button.g-mark',
+          { type: 'button', 'aria-label': `Comment on line ${u.key}`, dataset: { line: n }, onclick: () => compose(u.key) },
+          n,
+          h('span.dot', { 'aria-hidden': 'true' }),
+        ),
       );
     };
+    const onLine = (u, el = null) =>
+      done || u.key === null
+        ? null
+        : (e) => {
+            if (el && e.target.closest('.rv-u') !== el) return;
+            if (e.target.closest('a, button, textarea, input, summary, .term, .rv-thread') || getSelection()?.toString()) return;
+            compose(u.key);
+          };
     const threadsOf = (u) => u.lines.flatMap((k) => threadBox(k));
     const quoted = (depth) => (depth ? `quote q${Math.min(depth, 3)}` : '');
     // code: a line of a fence, drawn as part of one code box ('first' carries the language label).
@@ -806,10 +811,15 @@ function renderReview(b, item, ctx) {
         h(
           'div.rv-line',
           {
-            class: [unitClass(u), heading ? 'h' : '', code ? `code ${code.first ? 'code-first' : ''} ${code.last ? 'code-last' : ''}` : '', quoted(depth)].join(
-              ' ',
-            ),
+            class: [
+              unitClass(u),
+              heading ? 'h' : '',
+              code ? `code ${code.first ? 'code-first' : ''} ${code.last ? 'code-last' : ''}` : '',
+              quoted(depth),
+              onLine(u) ? 'can-c' : '',
+            ].join(' '),
             role: 'listitem',
+            onclick: onLine(u),
           },
           gutter(u),
           h(
@@ -832,7 +842,9 @@ function renderReview(b, item, ctx) {
       const cols = box.querySelector('tr')?.children.length ?? 1;
       g.units.forEach((u, i) => {
         const el = els[i];
-        el.className = ['rv-u', unitClass(u)].join(' ').trim();
+        el.className = ['rv-u', unitClass(u), onLine(u) ? 'can-c' : ''].join(' ').trim();
+        const click = onLine(u, el);
+        if (click) el.addEventListener('click', click);
         (g.type === 'table' ? el.firstElementChild : el)?.prepend(gutter(u, '.g-abs'));
         const threads = threadsOf(u);
         if (!threads.length) return;

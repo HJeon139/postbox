@@ -513,10 +513,18 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rv-line { display: contents; }
 .rv-doc .g-ln { color: var(--dim); font-size: 11.5px; text-align: right; padding: 4px 10px 4px 0; user-select: none; position: relative; }
 .rv-line > .g-ln { border-right: 1px solid var(--line); }
-.rv-doc .g-ln .add-c { position: absolute; left: 4px; top: 4px; width: 18px; height: 18px; border-radius: 4px; display: none; place-items: center; background: var(--on); color: var(--on-ink); }
-.rv-doc .g-ln .add-c { display: grid; opacity: .55; }
-.rv-line:hover > .g-ln .add-c, .rv-line.hover > .g-ln .add-c, .rv-u:hover > .g-ln .add-c, .rv-doc .g-ln .add-c:focus-visible { opacity: 1; }
 .rv-line > .tx { padding: 4px 12px; }
+/* The gutter mark: the line number and a dim dot, filled when the line has comments. It's the button the
+   keyboard reaches; the whole line takes a click. */
+.rv-doc .g-ln:has(.g-mark) { padding-right: 4px; }
+.rv-doc .g-mark { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0 2px; font: inherit; color: inherit; cursor: pointer; border-radius: 3px; }
+.rv-doc .g-mark .dot { width: 5px; height: 5px; border-radius: 50%; box-shadow: inset 0 0 0 1px currentColor; }
+.rv-line.marked > .g-ln .dot, .rv-u.marked > .g-abs .dot, .rv-u.marked > :first-child > .g-abs .dot { background: var(--accent); box-shadow: none; }
+.rv-doc .g-mark:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rv-line.can-c > .tx, .rv-u.can-c { cursor: pointer; }
+.rv-line.can-c:hover > .g-ln .g-mark, .rv-u.can-c:hover > .g-abs .g-mark, .rv-u.can-c:hover > :first-child > .g-abs .g-mark { color: var(--text); }
+.rv-line:has(> .g-ln .g-mark:focus-visible) > .tx { box-shadow: inset 2px 0 var(--accent); }
+.rv-u:has(> .g-abs .g-mark:focus-visible), .rv-u:has(> :first-child > .g-abs .g-mark:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
 .rv-line.marked > .tx, .rv-line.marked > .g-ln { background: var(--mark); }
 .rv-line.add > .tx, .rv-line.add > .g-ln { background: var(--diff-add); }
 .rv-line.del > .tx, .rv-line.del > .g-ln { background: var(--diff-del); }
@@ -526,7 +534,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* A table or list renders whole; each row or item puts its gutter in the gutter column, level with it. */
 .rv-block > .tx { padding: 8px 12px; white-space: normal; }
 .rv-doc .g-ln.g-abs { position: absolute; left: 0; width: 44px; padding: 0 10px 0 0; }
-.rv-doc .g-abs .add-c { top: 0; }
 .rv-u.marked { background: var(--mark); }
 .rv-u.add, .rv-u.mod { background: var(--diff-add); }
 .rv-u.del { background: var(--diff-del); text-decoration: line-through; text-decoration-color: var(--dim); }
@@ -769,9 +776,6 @@ html.pb-sandbox body { margin: 0; }
 
 /* Review */
 .rv-doc .tx { white-space: pre-wrap; word-break: break-word; }
-.rv-doc .g-ln { cursor: pointer; }
-.rv-doc .g-ln .add-c { border: 0; cursor: pointer; }
-.rv-line:focus-within > .g-ln .add-c { display: grid; }
 .rv-pins { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 
 /* Command palette, settings and lists */
