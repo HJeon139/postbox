@@ -1,6 +1,7 @@
 // A headless Chrome check of the shell, driven with real key presses and clicks: open blocks shown
 // quietly instead of “needs you” (#69), the words for conversations (#4), and focus that stays on the
-// control you used in a sheet and goes back to where you opened it (#26).
+// control you used in a sheet and goes back to where you opened it (#26), and menus that close when you
+// click their button again (#29).
 //
 //   node tools/check-shell.mjs
 //
@@ -204,6 +205,57 @@ await check('#26 the folder picker opens with focus on its first entry, and Esca
   );
   await press('Escape');
   assert.equal(await focused(), 'button: Add a file or a new agent');
+});
+
+// ── #29: clicking a menu’s button again closes it ──────────────────────────────────────
+
+const MENUS = [
+  ['the Postbox mark', 'conversation', 'header.topbar button.brand'],
+  ['the conversation’s ⋯', 'conversation', 'header.topbar button[aria-label^="Actions for"]'],
+  ['the composer’s +', 'conversation', 'button[aria-label="Add a file or a new agent"]'],
+  ['a session card’s ⋯', 'overview', 'main.ov button[aria-label^="Session actions for"]'],
+];
+for (const [name, view, sel] of MENUS)
+  await check(`#29 a second click on ${name} closes its menu`, async () => {
+    await open(view === 'overview' ? '#/' : `#/t/${threadNamed('Corpus planning').id}`);
+    const state = () => page.evaluate(`[document.querySelectorAll('.menu').length, ${q(sel)}.getAttribute('aria-expanded')]`);
+    await click(q(sel));
+    assert.deepEqual(await state(), [1, 'true'], 'The first click opens it');
+    await click(q(sel));
+    assert.deepEqual(await state(), [0, 'false'], 'The second click closes it');
+    await click(q(sel));
+    assert.deepEqual(await state(), [1, 'true'], 'A third click opens it again');
+  });
+
+await check('#29 a second click closes a card’s menu even after the card repainted under it', async () => {
+  await open('#/');
+  const t = threadNamed('Corpus planning');
+  const se = rt.sessionsIn(t.id).find((x) => x.handle === 'indexer');
+  const sel = `document.querySelector('.ov-col[data-key="${se.id}"] button[aria-haspopup=menu]')`;
+  await click(sel);
+  await page.evaluate(`window.__first = ${sel}`);
+  // A working agent’s card repaints as it goes, which rebuilds its ⋯ button.
+  rt.updateSession(se.id, { currentStep: 'Reading the shelf' });
+  await page.waitFor(`${sel} !== window.__first`, { label: 'the card to repaint' });
+  await click(sel);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.menu').length`), 0);
+});
+
+await check('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the top bar repaints with the new name', async () => {
+  const t = threadNamed('Index the shelf');
+  await open(`#/t/${t.id}`);
+  await focus(q('header.topbar button[aria-label^="Actions for"]'));
+  await press('Enter');
+  assert.equal(await focused(), 'menuitem: Rename…');
+  await press('Enter');
+  await page.waitFor(dialogOpen);
+  await page.send('Input.insertText', { text: ' (2)' });
+  await press('Enter');
+  await page.waitFor(`!${dialogOpen} && document.querySelector('header.topbar button[aria-label="Actions for Index the shelf (2)"]')`, {
+    label: 'the renamed top bar',
+  });
+  await settle();
+  assert.equal(await focused(), 'button: Actions for Index the shelf (2)');
 });
 
 await page.close();

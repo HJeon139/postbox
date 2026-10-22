@@ -80,7 +80,13 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
     railToggle,
     h(
       'button.brand',
-      { type: 'button', 'aria-haspopup': 'menu', 'aria-label': `Postbox: go to the overview or a project${n ? ` (${n} need you)` : ''}`, onclick: places },
+      {
+        type: 'button',
+        id: 'places-button',
+        'aria-haspopup': 'menu',
+        'aria-label': `Postbox: go to the overview or a project${n ? ` (${n} need you)` : ''}`,
+        onclick: places,
+      },
       h('span.mark', { 'aria-hidden': 'true' }),
       h('span.hide-sm', 'Postbox'),
       icon('down', 'i-sm'),
@@ -96,7 +102,13 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
     t
       ? h(
           'button.btn.icon.sm.ghost',
-          { type: 'button', 'aria-haspopup': 'menu', 'aria-label': `Actions for ${t.title}`, onclick: (e) => conversationMenu(e.currentTarget, t) },
+          {
+            type: 'button',
+            id: 'conversation-actions',
+            'aria-haspopup': 'menu',
+            'aria-label': `Actions for ${t.title}`,
+            onclick: (e) => conversationMenu(e.currentTarget, t),
+          },
           icon('more'),
         )
       : null,

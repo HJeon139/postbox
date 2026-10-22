@@ -150,23 +150,37 @@ export function keepFocus(root, paint) {
   return result;
 }
 
+/**
+ * Finds a control again after a repaint may have replaced it: the element itself while it’s on the page,
+ * else the one with its id, else the one with its label in the same card. The top bar and the overview
+ * cards rebuild their buttons while a menu or dialog they opened is still open.
+ * @param {Element} el
+ * @returns {() => HTMLElement | null}
+ */
+function refind(el) {
+  const id = el.id;
+  const label = el.getAttribute('aria-label');
+  const scope = el.parentElement?.closest('[data-key]');
+  return () => {
+    if (el.isConnected) return /** @type {HTMLElement} */ (el);
+    if (id) return document.getElementById(id);
+    if (!label) return null;
+    return (scope?.isConnected ? scope : document).querySelector(`[aria-label="${CSS.escape(label)}"]`);
+  };
+}
+
 // ── Dialogs ─────────────────────────────────────────────────────────────────────────────
 // Modal, with focus kept inside and returned to where it came from when closed.
 
 export function openDialog({ title, sub, body, foot, size = '', role = 'dialog', onClose, initialFocus }) {
-  const back = document.activeElement;
-  // If the control that opened it was rebuilt meanwhile (the top bar repaints), go back to its replacement.
-  const backId = back?.id;
-  const backLabel = back?.getAttribute('aria-label');
+  // Focus goes back where it came from, or to what replaced it if that was rebuilt meanwhile.
+  const back = document.activeElement && document.activeElement !== document.body ? refind(document.activeElement) : null;
   const titleId = `dlg-${Math.random().toString(36).slice(2, 8)}`;
   const close = () => {
     backdrop.remove();
     document.removeEventListener('keydown', onKey, true);
     onClose?.();
-    const to = back?.isConnected
-      ? back
-      : ((backId ? document.getElementById(backId) : null) ?? (backLabel ? document.querySelector(`[aria-label="${CSS.escape(backLabel)}"]`) : null));
-    /** @type {HTMLElement | null} */ (to)?.focus();
+    back?.()?.focus();
   };
   const dialog = h(
     `div.dialog${size ? '.' + size : ''}`,
@@ -214,15 +228,24 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
 // ── Menus ───────────────────────────────────────────────────────────────────────────────
 
 let openMenuEl = null;
+/** @type {(() => HTMLElement | null) | null} */
+let openAnchor = null;
 export function closeMenu() {
   openMenuEl?.();
   openMenuEl = null;
+  openAnchor = null;
 }
 /**
  * A popover menu anchored to a button. items: [{ label, icon?, desc?, kbd?, danger?, run }] or 'hr' or { heading }.
  */
 export function openMenu(anchor, items, { className = '', placement = 'below', label = 'Menu' } = {}) {
+  // Clicking the menu’s own button again closes it, rather than closing and reopening it (#29).
+  if (openMenuEl && openAnchor?.() === anchor) {
+    closeMenu();
+    return null;
+  }
   closeMenu();
+  const button = refind(anchor);
   const menu = h('div.menu', { role: 'menu', 'aria-label': label, class: className });
   const buttons = [];
   for (const it of items) {
@@ -244,7 +267,7 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
           closeMenu();
           // Focus goes back to the menu’s button first, so a dialog the item opens returns focus there when it
           // closes, and an item that only acts doesn’t drop focus to the page (#26).
-          anchor.focus();
+          button()?.focus();
           it.run();
         },
       },
@@ -282,18 +305,21 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
     } else if (e.key === 'Escape' || e.key === 'Tab') {
       e.preventDefault();
       closeMenu();
-      anchor.focus();
+      button()?.focus();
     }
   };
   const onDown = (e) => {
-    if (!menu.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) closeMenu();
+    const b = button();
+    if (!menu.contains(e.target) && !b?.contains(e.target)) closeMenu();
   };
   menu.addEventListener('keydown', onKey);
   setTimeout(() => document.addEventListener('mousedown', onDown), 0);
+  openAnchor = button;
   openMenuEl = () => {
     menu.remove();
     document.removeEventListener('mousedown', onDown);
     anchor.setAttribute('aria-expanded', 'false');
+    button()?.setAttribute('aria-expanded', 'false');
   };
   return menu;
 }
