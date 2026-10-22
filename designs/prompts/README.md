@@ -1,6 +1,8 @@
 # Work prompts
 
-Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139/postbox/issues/64), in waves of sessions that run in parallel, each in its own worktree. Every session follows [engineering-practices.md](../engineering-practices.md) and the rules on this page. Prompts for issues that are still blocked get written when the wave before them merges. #73 (subagents as a hierarchy) is in wave 2: it changes the stream mapper and the activity list, which wave 1 is editing.
+Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139/postbox/issues/64), in waves of sessions that run in parallel, each in its own worktree. Every session follows [engineering-practices.md](../engineering-practices.md) and the rules on this page. Prompts for issues that are still blocked get written when the wave before them merges.
+
+M1 core runs alone, as one dedicated session, and M2 starts only after M1 core merges, as #64 decided. M1 core changes how every agent turn is built and what agents are told (the adapters, the guide, the MCP tool descriptions, `kit.js`), and M2 edits the same files. Measuring agent behavior also needs M1 settled first. #73 (subagents as a hierarchy) waits for wave 3, because it changes the stream mapper and the agent header, which M1 core is editing.
 
 ```mermaid
 flowchart LR
@@ -10,16 +12,19 @@ flowchart LR
     c["M3: checks"]
     d["M4: shell"]
   end
-  subgraph w2["Wave 2 (prompts later)"]
-    e["M1 core"]
-    f["M2: apps"]
-    i["#73: subagent tree"]
+  subgraph w2["Wave 2 (prompt later)"]
+    e["M1 core, one session"]
   end
   subgraph w3["Wave 3 (prompts later)"]
+    f["M2: apps"]
+    j["M3: the block check (#63)"]
+    i["#73: subagent tree"]
+  end
+  subgraph w4["Wave 4 (prompts later)"]
     g["M4: supervision"]
     h["#9: worktrees"]
   end
-  w1 --> w2 --> w3
+  w1 --> w2 --> w3 --> w4
 ```
 
 ## Wave 1
