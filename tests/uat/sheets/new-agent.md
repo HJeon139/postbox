@@ -12,6 +12,7 @@ Creating agents happens in the app, with clear control over where they run and w
 
 - Start from a boilerplate; name; runs on (Claude Code, Agent SDK, Mock); model; permissions (Auto default, Ask me, Accept edits, Run everything); folder; description; instructions; tools.
 - Where it works: “Join this conversation” (a direct message becomes a room; a room gains an agent; from a topic thread’s +, “Join this topic thread”) or “New conversation in <project>”. The sheet says “conversation”, never “thread” (#4). Errors show inline.
+- Space or Enter on a Tools checkbox, a boilerplate or a backend option keeps focus on that control as the sheet updates (#26).
 
 ## Steps to reproduce
 

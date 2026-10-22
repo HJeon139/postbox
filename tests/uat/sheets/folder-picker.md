@@ -11,6 +11,7 @@ Attach project files by reference without uploading.
 ## Expected functionality
 
 - Browses the project’s root folder only; Up, Open, Attach.
+- Opens with focus on the first entry, and Open moves focus to the first entry of that folder. Escape returns focus to the + button (#26).
 
 ## Steps to reproduce
 

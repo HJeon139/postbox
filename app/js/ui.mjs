@@ -124,17 +124,49 @@ export function setAttention(count, label) {
   $('#favicon').href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+// ── Focus ───────────────────────────────────────────────────────────────────────────────
+
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Runs paint, which rebuilds what’s inside root, and puts focus back on the control you used: the one
+ * with the same id, or else the one in the same place. Without this, a sheet that repaints as you use it
+ * drops focus to the page (#26).
+ * @template T
+ * @param {Element | null} root
+ * @param {() => T} paint
+ * @returns {T}
+ */
+export function keepFocus(root, paint) {
+  const was = document.activeElement;
+  if (!root || !was || !root.contains(was)) return paint();
+  const at = $$(FOCUSABLE, root).indexOf(was);
+  const result = paint();
+  if (!was.isConnected) {
+    const same = was.id ? document.getElementById(was.id) : null;
+    const list = $$(FOCUSABLE, root);
+    /** @type {HTMLElement | undefined} */ (same && root.contains(same) ? same : list[Math.min(at, list.length - 1)])?.focus();
+  }
+  return result;
+}
+
 // ── Dialogs ─────────────────────────────────────────────────────────────────────────────
 // Modal, with focus kept inside and returned to where it came from when closed.
 
 export function openDialog({ title, sub, body, foot, size = '', role = 'dialog', onClose, initialFocus }) {
   const back = document.activeElement;
+  // If the control that opened it was rebuilt meanwhile (the top bar repaints), go back to its replacement.
+  const backId = back?.id;
+  const backLabel = back?.getAttribute('aria-label');
   const titleId = `dlg-${Math.random().toString(36).slice(2, 8)}`;
   const close = () => {
     backdrop.remove();
     document.removeEventListener('keydown', onKey, true);
     onClose?.();
-    if (back?.isConnected) back.focus();
+    const to = back?.isConnected
+      ? back
+      : ((backId ? document.getElementById(backId) : null) ?? (backLabel ? document.querySelector(`[aria-label="${CSS.escape(backLabel)}"]`) : null));
+    /** @type {HTMLElement | null} */ (to)?.focus();
   };
   const dialog = h(
     `div.dialog${size ? '.' + size : ''}`,
@@ -162,7 +194,7 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
       close();
     }
     if (e.key === 'Tab') {
-      const f = $$('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])', dialog).filter((x) => !x.disabled && x.offsetParent !== null);
+      const f = $$(FOCUSABLE, dialog).filter((x) => !x.disabled && x.offsetParent !== null);
       if (!f.length) return;
       if (e.shiftKey && document.activeElement === f[0]) {
         e.preventDefault();
@@ -210,6 +242,9 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
         class: it.danger ? 'danger' : '',
         onclick: () => {
           closeMenu();
+          // Focus goes back to the menu’s button first, so a dialog the item opens returns focus there when it
+          // closes, and an item that only acts doesn’t drop focus to the page (#26).
+          anchor.focus();
           it.run();
         },
       },

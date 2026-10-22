@@ -3,7 +3,7 @@
 
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
-import { navigate, openDialog, toast, undoToast } from './ui.mjs';
+import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
 const toolsInProject = (projectId) =>
@@ -152,7 +152,9 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   };
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
-  const paint = () => {
+  // Each change repaints the sheet; focus stays on the control you used (#26).
+  const paint = () => keepFocus(body, repaint);
+  const repaint = () => {
     fill(
       body,
       preset
@@ -383,7 +385,8 @@ export function openNewThread(projectId, { room = false } = {}) {
   const list = h('div.chips', { role: 'group', 'aria-label': 'Agents' });
   const err = h('div');
   const startBtn = h('button.btn.send', { type: 'button', onclick: () => create() });
-  const paint = () => {
+  const paint = () => keepFocus(list, repaint);
+  const repaint = () => {
     list.replaceChildren(
       ...personas.map((p) =>
         h(
@@ -593,7 +596,9 @@ export function openSettings(tab = 'appearance', personaId = null) {
   let cur = tab;
   const tabs = h('div.tabs', { role: 'tablist' });
   const panel = h('div', { role: 'tabpanel', style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
-  const paint = () => {
+  // The tabs and the panel repaint together; focus stays on the tab or control you used (#26).
+  const paint = () => keepFocus(tabs.parentElement, repaint);
+  const repaint = () => {
     tabs.replaceChildren(
       ...[
         ['appearance', 'Appearance'],
@@ -646,10 +651,12 @@ export function openSettings(tab = 'appearance', personaId = null) {
   const personas = () => {
     const list = Object.values(S().personas);
     const editing = personaId && S().personas[personaId];
+    // Between the list and a persona’s form, focus goes to the form’s first field, and back to its Edit button.
     if (editing)
       return personaForm(editing, () => {
         personaId = null;
         paint();
+        document.getElementById(`pe-edit-${editing.id}`)?.focus();
       });
     return [
       h(
@@ -664,9 +671,12 @@ export function openSettings(tab = 'appearance', personaId = null) {
               'button.btn.sm',
               {
                 type: 'button',
+                id: `pe-edit-${p.id}`,
+                'aria-label': `Edit @${p.handle}`,
                 onclick: () => {
                   personaId = p.id;
                   paint();
+                  document.getElementById('pe-d')?.focus();
                 },
               },
               'Edit',
@@ -696,7 +706,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
     const tools = new Set(p.tools);
     const run = { backend: p.backend ?? 'mock', model: p.model, permissionMode: p.permissionMode ?? 'auto', folder: p.folder ?? '' };
     const runBox = h('div.form-grid');
-    const paintRun = () => fill(runBox, backendFields(run, paintRun, { idp: 'pe' }));
+    const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe' })));
     paintRun();
     const desc = h('input.input', { id: 'pe-d', value: p.description });
     const ins = h('textarea.textarea', { id: 'pe-i', style: { minHeight: '100px' } }, p.instructions);
@@ -934,11 +944,12 @@ export function openFolderPicker(projectId, onPick) {
             icon(e.dir ? 'folder' : 'file', 'dim'),
             h('span.grow', e.name),
             e.dir
-              ? h('button.btn.sm', { type: 'button', onclick: () => load(e.path) }, 'Open')
+              ? h('button.btn.sm', { type: 'button', 'aria-label': `Open ${e.name}`, onclick: () => load(e.path) }, 'Open')
               : h(
                   'button.btn.sm',
                   {
                     type: 'button',
+                    'aria-label': `Attach ${e.name}`,
                     onclick: () => {
                       dlg.close();
                       onPick(e.path);
@@ -950,6 +961,9 @@ export function openFolderPicker(projectId, onPick) {
         ),
         r.entries.length ? null : h('li.empty-note', 'This folder is empty.'),
       );
+      // Focus starts on the first entry, and moves to the first entry of each folder you open (#26).
+      const buttons = listEl.querySelectorAll('button');
+      if (dlg?.dialog.isConnected) /** @type {HTMLElement | undefined} */ (buttons[r.path && buttons.length > 1 ? 1 : 0])?.focus();
     } catch (e) {
       listEl.replaceChildren(h('li.err', e.message));
     }
