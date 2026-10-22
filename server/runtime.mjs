@@ -933,12 +933,14 @@ export class Runtime {
     this.updateSession(se.id, { seenItem: items.at(-1)?.id ?? null });
     // A session from before markers were kept, alone in its conversation, already saw everything addressed to it.
     if (se.seenItem === undefined && (t?.members?.length ?? 0) <= 1 && se.startedAt < (items.at(-1)?.at ?? 0)) return null;
+    // Its first catch-up in a topic thread starts with the message the thread is about, unless it holds it already.
+    const root = se.seenItem === null ? this.topicRootLine(se, t) : null;
     const lines = items
       .slice(at + 1)
       .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
       .map((i) => this.describeItem(i, se))
       .filter(Boolean);
-    if (!lines.length) return null;
+    if (!lines.length) return root && `[Postbox] ${root}`;
     const kept = [];
     let size = 0;
     for (const line of lines.reverse()) {
@@ -948,7 +950,36 @@ export class Runtime {
     }
     const dropped = lines.length - kept.length;
     const where = t?.kind === 'room' ? 'this room' : t?.kind === 'topic' ? 'this thread' : 'this conversation';
-    return `[Postbox] What happened in ${where} since your last turn${dropped ? ` (the last ${kept.length}; ${dropped} earlier ${dropped === 1 ? 'item is' : 'items are'} left out, and read_conversation has them)` : ''}:\n\n${kept.join('\n\n')}`;
+    return `[Postbox] ${root ? `${root}\n\n` : ''}What happened in ${where} since your last turn${dropped ? ` (the last ${kept.length}; ${dropped} earlier ${dropped === 1 ? 'item is' : 'items are'} left out, and read_conversation has them)` : ''}:\n\n${kept.join('\n\n')}`;
+  }
+
+  /**
+   * The message a topic thread started from, for a session in it with no fork point to resume (it joined fresh,
+   * or its agent joined the conversation after that message); null for anything else. Issue #81.
+   */
+  topicRootLine(se, t) {
+    if (t?.kind !== 'topic' || (se.forkOf && (se.backendState?.fork || se.backendState?.forkFrom))) return null;
+    const root = this.store.item(t.parentId, t.rootItemId);
+    if (!root) return null;
+    // The thread is about this message, so it gets more room than an item in the catch-up.
+    const text = (s) => clipText(String(s ?? ''), 4000);
+    const from = 'This thread started from';
+    switch (root.kind) {
+      case 'user':
+        return `${from} your message: ${text(root.text)}${root.attachments?.length ? ` [attached: ${root.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
+      case 'agent':
+        return `${from} @${root.handle}’s message: ${text(root.text)}`;
+      case 'block': {
+        // The title names it; the fallback is the plain text an agent can quote (a table’s rows, say).
+        const b = root.block ?? {};
+        const what = b.type === 'app' ? 'app' : b.type ? `${b.type} block` : 'block';
+        return `${from} @${root.handle}’s ${what}${b.title ? ` “${clipText(String(b.title), 200)}”` : ''}: ${text(b.fallback ?? root.fallback)}`;
+      }
+      default: {
+        const line = this.describeItem(root, se);
+        return line ? `${from} this message: ${line}` : null;
+      }
+    }
   }
 
   /**
