@@ -65,15 +65,38 @@ test('options asked in prose, without a block in the turn, are #63', () => {
   assert.deepEqual(issuesOf(f), []);
 });
 
-test('the person’s output style, rules and missing MCP servers are #57 and #59', () => {
+test('the person’s output style and missing MCP servers are #57 and #59', () => {
   const init = { type: 'system', subtype: 'init', output_style: 'Concise', mcp_servers: [{ name: 'postbox' }] };
+  const f = base({ streams: [{ handle: 'researcher', events: [init] }], userMcpServers: ['search'] });
+  assert.deepEqual(issuesOf(f).sort(), [57, 59]);
+  const reminder = base({ transcripts: [{ handle: 'researcher', lines: ['Concise output style is active. Be concise…'] }] });
+  assert.deepEqual(issuesOf(reminder), [57]);
+  // A plain init can spell the default style either way.
+  for (const output_style of ['default', 'Default'])
+    assert.deepEqual(runChecks(base({ streams: [{ handle: 'researcher', events: [{ type: 'system', subtype: 'init', output_style }] }] })), [], output_style);
+});
+
+test('#57: the person’s global CLAUDE.md reaching agents is intended, so it’s no finding', () => {
   const f = base({
-    streams: [{ handle: 'researcher', events: [init] }],
     transcripts: [{ handle: 'researcher', lines: ['… Draw every diagram as Mermaid …'] }],
     userRulesMarker: 'Draw every diagram as Mermaid',
-    userMcpServers: ['search'],
   });
-  assert.deepEqual(issuesOf(f).sort(), [57, 59]);
+  assert.deepEqual(runChecks(f), []);
+});
+
+test('#57: publishing tools in a real init are a finding, unless the persona may publish', () => {
+  // Real inits (tests/claude-code.test.mjs says how they were recorded): the person’s own setup, then Postbox’s flags.
+  const [own, , fixed] = stream('host-setup-init');
+  const leak = runChecks(base({ streams: [{ handle: 'researcher', events: [own] }] }));
+  assert.deepEqual(
+    leak.map((x) => x.issue),
+    [57],
+  );
+  assert.match(leak[0].evidence, /@researcher had Artifact, ArtifactComments, ArtifactData, PushNotification, mcp__claude_ai_Claude_Docs__batch/);
+  assert.deepEqual(runChecks(base({ streams: [{ handle: 'researcher', events: [fixed] }] })), []);
+  const allowed = base({ streams: [{ handle: 'researcher', events: [own] }] });
+  allowed.state.personas = { pe1: { id: 'pe1', handle: 'researcher', canPublish: true } };
+  assert.deepEqual(runChecks(allowed), []);
 });
 
 test('UI probes: an Expand that changes nothing is #45; an image shown as a chip is #48', () => {

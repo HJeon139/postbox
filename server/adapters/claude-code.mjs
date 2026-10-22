@@ -7,9 +7,15 @@
 //          --model <persona model>  --session-id <uuid> | --resume <uuid>
 //          --mcp-config '{ postbox: { type: http, url: <ctx.mcpUrl>, alwaysLoad } }' --strict-mcp-config
 //          --append-system-prompt <guide>  --allowedTools mcp__postbox [rules allowed once after a refusal]
+//          --setting-sources user,project,local | project,local (Isolated)
+//          --settings '{"outputStyle":"default"}'
+//          --disallowedTools <tools that publish outside Postbox>   (unless the persona can publish)
 //          --permission-mode auto | manual | acceptEdits | bypassPermissions
 //          --permission-prompt-tool mcp__postbox__permission_prompt   (all but bypass: what auto can’t decide comes here)
 //
+// Your own setup (skills, commands, plugins, permission rules) loads as in your terminal, except the output
+// style and the tools that publish outside Postbox: see server/adapters/setup.mjs. Your MCP servers don’t:
+// --strict-mcp-config loads only Postbox’s own (#59).
 // The turn’s message goes in on stdin. Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit.
 // POSTBOX_CLAUDE_RECORD=<folder> saves each turn’s raw stream there, for test fixtures.
 
@@ -20,8 +26,9 @@ import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { createStreamMapper, resultError, windowFor } from './claude-stream.mjs';
+import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
+import { HOST_SOURCES, ISOLATED_SOURCES, PUBLISHING_TOOLS, SETTINGS_OVERLAY, setupOf } from './setup.mjs';
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
@@ -64,6 +71,7 @@ export function claudeVersion(bin = findClaude()) {
  */
 export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs = [], fork = null, allowOnce = [] }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
+  const setup = setupOf(persona);
   return [
     '-p',
     '--output-format',
@@ -93,6 +101,13 @@ export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs 
     'mcp__postbox',
     // Rules the person allowed once, after a refusal, for this turn only.
     ...allowOnce,
+    // The person’s Claude Code setup (or the project’s only, when Isolated), with the default output style,
+    // and without tools that publish outside Postbox unless the persona may (server/adapters/setup.mjs).
+    '--setting-sources',
+    (setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES).join(','),
+    '--settings',
+    JSON.stringify(SETTINGS_OVERLAY),
+    ...(setup.canPublish ? [] : ['--disallowedTools', ...PUBLISHING_TOOLS]),
     ...MODES[mode],
     ...addDirs.flatMap((d) => ['--add-dir', d]),
     ...(mode === 'bypass' ? [] : ['--permission-prompt-tool', 'mcp__postbox__permission_prompt']),
@@ -137,7 +152,15 @@ export class ClaudeCodeAdapter {
     const guide = agentGuide({ persona, handles: ctx.handles, project: ctx.project, brief: session?.brief });
     const addDirs = [ctx.project?.folder].filter((d) => d && d !== cwd);
     const fork = !ctx.state.claudeSessionId ? forkPoint(ctx.state) : null;
-    const first = await this.run({ ctx, cwd, addDirs, prompt, guide, resume: Boolean(ctx.state.claudeSessionId), sessionId: ctx.state.claudeSessionId, fork });
+    let first = await this.run({ ctx, cwd, addDirs, prompt, guide, resume: Boolean(ctx.state.claudeSessionId), sessionId: ctx.state.claudeSessionId, fork });
+    // A branch point Claude Code can no longer find (#61): fork from the conversation’s latest point instead,
+    // once. The fork is saved without its uuid first, so a later turn never goes back to the bad one.
+    if (first.missingForkPoint && fork) {
+      const latest = { claudeSessionId: fork.claudeSessionId };
+      ctx.saveState({ claudeSessionId: null, fork: latest });
+      const note = '[Postbox] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message.\n\n';
+      first = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, guide, resume: false, sessionId: null, fork: latest });
+    }
     // A session Claude Code no longer has (its history was cleared) starts over, once.
     if (first.missingSession) {
       ctx.saveState({ claudeSessionId: null });
@@ -204,6 +227,8 @@ export class ClaudeCodeAdapter {
       child.on('close', (code) => {
         clearTimeout(killTimer);
         ctx.signal.removeEventListener('abort', onAbort);
+        // A fork whose branch point is gone keeps nothing from this run: no session id, no checkpoint.
+        if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr)) return resolve({ missingForkPoint: true });
         ctx.saveState({ contextWindow: mapper.contextWindow, model: mapper.model ?? undefined, ...(mapper.sessionId ? { fork: null } : {}) });
         const current = mapper.sessionId ?? ctx.state.claudeSessionId;
         if (mapper.lastUuid && current) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });

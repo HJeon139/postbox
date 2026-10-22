@@ -40,5 +40,5 @@ export class Blobs {
   }
 }
 
-/** Only these are shown inline; everything else downloads. */
-export const INLINE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+// Only these are shown inline; everything else downloads. The app reads the same list to show thumbnails.
+export { INLINE_TYPES } from '../shared/files.mjs';

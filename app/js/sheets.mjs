@@ -52,7 +52,45 @@ function seg(label, options, value, onPick, { disabled = () => false, titleOf = 
   );
 }
 
-/** Fields for st.backend, st.model, st.permissionMode and st.folder. idp prefixes element ids. */
+/**
+ * A labeled checkbox with help text under it, in the sheet’s .check style. Space or Enter toggles it.
+ * @param {{ id: string, label: string, help: string, on: boolean, onToggle: (on: boolean) => void }} opts
+ */
+function checkField({ id, label, help, on, onToggle }) {
+  return h(
+    'div.field.span',
+    h(
+      'span.check',
+      {
+        id,
+        role: 'checkbox',
+        tabindex: '0',
+        'aria-checked': String(on),
+        'aria-describedby': `${id}-help`,
+        style: { alignSelf: 'flex-start' },
+        onclick: (e) => {
+          on = !on;
+          e.currentTarget.setAttribute('aria-checked', String(on));
+          onToggle(on);
+        },
+        onkeydown: (e) => {
+          if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            e.currentTarget.click();
+          }
+        },
+      },
+      h('span.box'),
+      h('span', label),
+    ),
+    h('span.help', { id: `${id}-help` }, help),
+  );
+}
+
+/**
+ * Fields for st.backend, st.model, st.permissionMode, st.folder, st.usesHostSetup and st.canPublish.
+ * idp prefixes element ids.
+ */
 function backendFields(st, paint, { idp, fixedBackend = false }) {
   const available = new Set(client.config.adapters ?? ['mock']);
   const real = st.backend !== 'mock';
@@ -127,6 +165,29 @@ function backendFields(st, paint, { idp, fixedBackend = false }) {
           h('span.help', { id: `${idp}-f-help` }, 'Where it works. Leave it empty to work in the project’s root folder.'),
         )
       : null,
+    // What it takes from your own Claude Code setup (#57). Your output style never applies.
+    real
+      ? checkField({
+          id: `${idp}-setup`,
+          label: 'Uses your Claude Code setup',
+          help: 'Your skills, commands, plugins and permission rules, as in your terminal. Off, it uses only the project’s settings and the folder’s local file, where Always allow saves.',
+          on: st.usesHostSetup !== false,
+          onToggle: (on) => {
+            st.usesHostSetup = on;
+          },
+        })
+      : null,
+    real
+      ? checkField({
+          id: `${idp}-publish`,
+          label: 'Can publish outside Postbox',
+          help: 'Lets it use artifacts, and connectors that post or send. Off, its work stays in the conversation.',
+          on: st.canPublish === true,
+          onToggle: (on) => {
+            st.canPublish = on;
+          },
+        })
+      : null,
   ];
 }
 
@@ -146,6 +207,8 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     backend: defaultBackend(),
     model: client.config.defaultModel ?? 'claude-opus-5-5',
     permissionMode: 'auto',
+    usesHostSetup: true,
+    canPublish: false,
     folder: '',
     saveBp: false,
     error: null,
@@ -311,6 +374,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         backend: st.backend,
         model: st.backend === 'mock' ? 'mock' : st.model,
         permissionMode: st.permissionMode,
+        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish }),
         folder: st.folder,
         saveAsBoilerplate: st.saveBp,
         join: st.where === 'join' ? { threadId } : { projectId, title: `With @${st.handle}` },
@@ -688,7 +752,14 @@ export function openSettings(tab = 'appearance', personaId = null) {
   };
   const personaForm = (p, back) => {
     const tools = new Set(p.tools);
-    const run = { backend: p.backend ?? 'mock', model: p.model, permissionMode: p.permissionMode ?? 'auto', folder: p.folder ?? '' };
+    const run = {
+      backend: p.backend ?? 'mock',
+      model: p.model,
+      permissionMode: p.permissionMode ?? 'auto',
+      folder: p.folder ?? '',
+      usesHostSetup: p.usesHostSetup !== false,
+      canPublish: p.canPublish === true,
+    };
     const runBox = h('div.form-grid');
     const paintRun = () => fill(runBox, backendFields(run, paintRun, { idp: 'pe' }));
     paintRun();
@@ -738,7 +809,15 @@ export function openSettings(tab = 'appearance', personaId = null) {
                   instructions: ins.value,
                   tools: [...tools],
                   backend: run.backend,
-                  ...(run.backend === 'mock' ? {} : { model: run.model, permissionMode: run.permissionMode, folder: run.folder }),
+                  ...(run.backend === 'mock'
+                    ? {}
+                    : {
+                        model: run.model,
+                        permissionMode: run.permissionMode,
+                        folder: run.folder,
+                        usesHostSetup: run.usesHostSetup,
+                        canPublish: run.canPublish,
+                      }),
                 },
                 'PATCH',
               )
@@ -746,7 +825,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
                   toast({
                     title: `Saved @${p.handle}`,
                     text:
-                      run.backend !== (p.backend ?? 'mock') || run.permissionMode !== (p.permissionMode ?? 'auto')
+                      run.backend !== (p.backend ?? 'mock') ||
+                      run.permissionMode !== (p.permissionMode ?? 'auto') ||
+                      run.usesHostSetup !== (p.usesHostSetup !== false) ||
+                      run.canPublish !== (p.canPublish === true)
                         ? 'Where it runs and its permissions apply to its conversations from their next turn; other changes apply to new sessions.'
                         : 'New sessions use this version.',
                   });

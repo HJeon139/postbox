@@ -166,8 +166,10 @@ export function driver(page) {
       if (!r) throw new Error(`Couldn’t find “${text}” in the app.`);
       const x = fresh.frameRect.x + r.x;
       const y = fresh.frameRect.y + r.y;
-      for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
-        await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+      // Rest the pointer on it first, as a hand does: an app frame takes clicks once Postbox sees you point at it (#38).
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await sleep(100);
+      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
       await sleep(400);
     },
 

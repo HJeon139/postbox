@@ -5,8 +5,10 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AgentSdkAdapter, sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
-import { contextPercent, createStreamMapper, describePermission, describeTool, resultError } from '../server/adapters/claude-stream.mjs';
+import { contextPercent, createStreamMapper, describePermission, describeTool, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
+import { PUBLISHING_TOOLS } from '../server/adapters/setup.mjs';
+import { TOOL_DEFS } from '../server/mcp.mjs';
 
 // Streams recorded from real Claude Code turns (claude 2.1.296, claude-opus-5-5), with local paths removed.
 const fixture = (name) =>
@@ -181,6 +183,8 @@ test('messages are written to the agent as plain text it can act on', () => {
 function fakeSpawn(lines, { code = 0, stderr = '' } = {}) {
   const runs = [];
   const spawnImpl = (bin, args, opts) => {
+    // A function plays a different run each time: (index) => { lines, code?, stderr? }.
+    const play = typeof lines === 'function' ? { code: 0, stderr: '', ...lines(runs.length) } : { lines, code, stderr };
     const child = new EventEmitter();
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
@@ -195,11 +199,11 @@ function fakeSpawn(lines, { code = 0, stderr = '' } = {}) {
     };
     runs.push({ bin, args, opts, child });
     setImmediate(() => {
-      if (lines === 'hang') return;
-      for (const l of lines) child.stdout.write(`${JSON.stringify(l)}\n`);
-      if (stderr) child.stderr.write(stderr);
+      if (play.lines === 'hang') return;
+      for (const l of play.lines) child.stdout.write(`${JSON.stringify(l)}\n`);
+      if (play.stderr) child.stderr.write(play.stderr);
       child.stdout.end();
-      setTimeout(() => child.emit('close', code), 10);
+      setTimeout(() => child.emit('close', play.code), 10);
     });
     return child;
   };
@@ -241,15 +245,20 @@ test('a CLI that fails without a result shows why', async () => {
 
 // ── Agent SDK ────────────────────────────────────────────────────────────────────────────
 
-/** A stand-in for the SDK’s query() that replays a recorded stream and keeps the options it got. */
+/**
+ * A stand-in for the SDK’s query() that replays a recorded stream and keeps the options it got. A function
+ * plays a different run each time: (index) => { lines, throws? }, where throws is an error raised at the end.
+ */
 function fakeSdk(lines) {
   const calls = [];
   return {
     calls,
     query({ prompt, options }) {
+      const play = typeof lines === 'function' ? lines(calls.length) : { lines };
       calls.push({ prompt, options });
       return (async function* () {
-        for (const l of lines) yield l;
+        for (const l of play.lines) yield l;
+        if (play.throws) throw play.throws;
       })();
     },
   };
@@ -541,4 +550,218 @@ test('a refusal only the result lists (a deny rule in settings) takes its reason
   assert.equal(ctx.calls.denied.length, 1);
   assert.equal(ctx.calls.denied[0].reason, error);
   assert.equal(ctx.calls.activity.at(-1).state, 'denied');
+});
+
+// ── A fork whose branch point is gone (#61) ──────────────────────────────────────────────
+// fork-point-missing.jsonl is the whole stdout of a real fork with a branch point that isn’t on the parent’s
+// chain: `claude -p --output-format stream-json --include-partial-messages --verbose --model claude-haiku-5-5
+// --resume <parent> --fork-session --resume-session-at 00000000-0000-4000-8000-000000000061` (claude 2.1.296).
+// It exits with code 1, prints the same reason on stderr, and sends no init: only the result.
+
+const MISSING_STDERR = 'No message found with message.uuid of: 00000000-0000-4000-8000-000000000061\n';
+
+test('a failed turn says why, in Claude Code’s own words, bounded', () => {
+  const [missing] = fixture('fork-point-missing');
+  assert.equal(
+    resultError(missing),
+    'Claude Code hit an error while running the turn: No message found with message.uuid of: 00000000-0000-4000-8000-000000000061',
+  );
+  assert.equal(resultError({ subtype: 'error_during_execution', is_error: true }), 'Claude Code hit an error while running the turn.');
+  const flood = resultError({ subtype: 'error_during_execution', is_error: true, errors: Array.from({ length: 50 }, () => 'x'.repeat(5000)) });
+  assert.ok(flood.length < 1000, `bounded, got ${flood.length} characters`);
+  assert.equal(resultError({ subtype: 'error_whatever', is_error: true, errors: ['Boom'] }), 'Claude Code reported a failure (error_whatever): Boom');
+  assert.equal(forkPointMissing(missing), true);
+  assert.equal(forkPointMissing({ subtype: 'error_during_execution', is_error: true, errors: ['Something else'] }), false);
+  assert.equal(forkPointMissing(null, `Claude Code process exited with code 1: ${MISSING_STDERR}`), true);
+  assert.equal(forkPointMissing(fixture('block').at(-1)), false);
+});
+
+test('a topic thread whose branch point is gone forks from the latest point once, and says so', async () => {
+  const { spawnImpl, runs } = fakeSpawn((i) =>
+    i === 0 ? { lines: fixture('fork-point-missing'), code: 1, stderr: MISSING_STDERR } : { lines: fixture('block') },
+  );
+  const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', spawnImpl });
+  const marks = [];
+  const ctx = fakeCtx({ state: { fork: { claudeSessionId: 'conv-1', uuid: 'msg-9' } }, checkpoint: (c) => marks.push(c) });
+  await adapter.deliver({}, { kind: 'user', text: 'Why?', context: ['[Postbox] This is a topic thread.'] }, ctx);
+  assert.equal(runs.length, 2);
+  assert.ok(runs[0].args.includes('--resume-session-at'));
+  const a = runs[1].args;
+  assert.deepEqual(a.slice(a.indexOf('--resume'), a.indexOf('--resume') + 3), ['--resume', 'conv-1', '--fork-session']);
+  assert.ok(!a.includes('--resume-session-at') && !a.includes('msg-9'), 'the second run starts at the latest point');
+  assert.match(
+    runs[1].child.stdin.read().toString(),
+    /^\[Postbox\] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message\.\n\n\[Postbox\] This is a topic thread\.\n\nWhy\?/,
+  );
+  const own = fixture('block')[0].session_id;
+  assert.equal(ctx.calls.saved.claudeSessionId, own, 'the fallback fork’s own id');
+  assert.equal(ctx.calls.saved.fork, null);
+  assert.deepEqual(
+    marks.map((m) => m.claudeSessionId),
+    [own],
+    'only the run that worked leaves a checkpoint',
+  );
+});
+
+test('a failed fallback leaves the fork without its uuid, so the next turn doesn’t go back to it', async () => {
+  // The failed fork also sends an init here (the recorded one doesn’t): its session id mustn’t stick.
+  const init = { type: 'system', subtype: 'init', session_id: 'failed-fork', model: 'claude-opus-5-5' };
+  const broken = { type: 'result', subtype: 'error_during_execution', is_error: true, errors: ['Overloaded'] };
+  const { spawnImpl, runs } = fakeSpawn((i) =>
+    i === 0 ? { lines: [init, ...fixture('fork-point-missing')], code: 1, stderr: MISSING_STDERR } : { lines: [broken], code: 1 },
+  );
+  const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', spawnImpl });
+  const marks = [];
+  const ctx = fakeCtx({ state: { fork: { claudeSessionId: 'conv-1', uuid: 'msg-9' } }, checkpoint: (c) => marks.push(c) });
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Why?' }, ctx), /hit an error while running the turn: Overloaded/);
+  assert.equal(runs.length, 2, 'the fallback runs at most once');
+  assert.equal(ctx.calls.saved.claudeSessionId, null);
+  assert.deepEqual(ctx.calls.saved.fork, { claudeSessionId: 'conv-1' });
+  assert.deepEqual(marks, []);
+  const next = fakeSpawn(fixture('block'));
+  await new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', spawnImpl: next.spawnImpl }).deliver(
+    {},
+    { kind: 'user', text: 'Again' },
+    fakeCtx({ state: { ...ctx.calls.saved } }),
+  );
+  assert.ok(!next.runs[0].args.includes('--resume-session-at'));
+});
+
+test('a fork that succeeded keeps its reply, even if stderr mentions a missing message', async () => {
+  const ok = fixture('block').at(-1);
+  assert.equal(forkPointMissing(ok, MISSING_STDERR), false, 'a successful result is never a missing branch point');
+  assert.equal(forkPointMissing(null, MISSING_STDERR), true, 'no result at all, and stderr says why');
+  const { spawnImpl, runs } = fakeSpawn(fixture('block'), { stderr: MISSING_STDERR });
+  const marks = [];
+  const ctx = fakeCtx({ state: { fork: { claudeSessionId: 'conv-1', uuid: 'msg-9' } }, checkpoint: (c) => marks.push(c) });
+  await new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', spawnImpl }).deliver({}, { kind: 'user', text: 'Why?' }, ctx);
+  assert.equal(runs.length, 1, 'the turn isn’t run again');
+  assert.equal(ctx.calls.text, 'Tea or coffee? Pick one above.');
+  assert.equal(ctx.calls.saved.fork, null);
+  assert.equal(marks.length, 1);
+  const sdk = fakeSdk(() => ({ lines: fixture('block'), throws: new Error(`Claude Code process exited with code 0: ${MISSING_STDERR}`) }));
+  await assert.rejects(
+    new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' }).deliver(
+      {},
+      { kind: 'user', text: 'Why?' },
+      fakeCtx({ state: { fork: { sdkSessionId: 'conv', uuid: 'm1' } } }),
+    ),
+    /The Agent SDK stopped/,
+  );
+  assert.equal(sdk.calls.length, 1, 'the SDK doesn’t run it again either');
+});
+
+test('the Agent SDK falls back the same way, and never resumes the failed fork', async () => {
+  for (const throws of [null, new Error(`Claude Code process exited with code 1: ${MISSING_STDERR}`)]) {
+    const init = { type: 'system', subtype: 'init', session_id: 'failed-fork', model: 'claude-opus-5-5' };
+    const sdk = fakeSdk((i) => (i === 0 ? { lines: [init, ...fixture('fork-point-missing')], throws } : { lines: fixture('block') }));
+    const marks = [];
+    const ctx = fakeCtx({ state: { fork: { sdkSessionId: 'conv', uuid: 'm1' } }, checkpoint: (c) => marks.push(c) });
+    await new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' }).deliver({}, { kind: 'user', text: 'Why?' }, ctx);
+    assert.equal(sdk.calls.length, 2);
+    assert.equal(sdk.calls[0].options.resumeSessionAt, 'm1');
+    const o = sdk.calls[1].options;
+    assert.deepEqual([o.resume, o.forkSession, o.resumeSessionAt], ['conv', true, undefined], 'not the failed fork, and not the bad uuid');
+    assert.match(
+      sdk.calls[1].prompt,
+      /^\[Postbox\] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message\.\n\nWhy\?$/,
+    );
+    const own = fixture('block')[0].session_id;
+    assert.equal(ctx.calls.saved.sdkSessionId, own);
+    assert.equal(ctx.calls.saved.fork, null);
+    assert.deepEqual(
+      marks.map((m) => m.sdkSessionId),
+      [own],
+    );
+  }
+});
+
+// ── Your Claude Code setup (#57) ─────────────────────────────────────────────────────────
+// host-setup-init.jsonl holds three real init events (claude 2.1.296, claude-haiku-5-5, outside the repo), cut
+// down to their output style and tools, with the person’s private plugins and connectors left out:
+//   1. claude -p with default setting sources;
+//   2. with a project-local outputStyle of Concise, plus --setting-sources user,project,local and the deny list;
+//   3. the same, plus --settings '{"outputStyle":"default"}'.
+
+const glob = (rule) => new RegExp(`^${rule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+const deniedBy = (rules) => (tool) => rules.some((r) => glob(r).test(tool));
+
+test('every combination of the setup choices reaches both backends', () => {
+  const base = { sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g' };
+  const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() };
+  const after = (args, flag) => args[args.indexOf(flag) + 1];
+  for (const usesHostSetup of [undefined, true, false]) {
+    for (const canPublish of [undefined, false, true]) {
+      const persona = { model: 'mock', usesHostSetup, canPublish };
+      const label = JSON.stringify({ usesHostSetup, canPublish });
+      const args = claudeArgs({ ...base, persona });
+      const sources = usesHostSetup === false ? 'project,local' : 'user,project,local';
+      assert.equal(after(args, '--setting-sources'), sources, label);
+      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' }, label);
+      const o = sdkOptions({ ...sdkBase, persona });
+      assert.deepEqual(o.settingSources, sources.split(','), label);
+      assert.deepEqual(o.settings, { outputStyle: 'default' }, label);
+      if (canPublish === true) {
+        assert.ok(!args.includes('--disallowedTools'), label);
+        assert.equal(o.disallowedTools, undefined, label);
+      } else {
+        const i = args.indexOf('--disallowedTools');
+        assert.deepEqual(args.slice(i + 1, i + 1 + PUBLISHING_TOOLS.length), PUBLISHING_TOOLS, label);
+        assert.match(args[i + 1 + PUBLISHING_TOOLS.length], /^--/, 'the list ends at the next flag');
+        assert.deepEqual(o.disallowedTools, PUBLISHING_TOOLS, label);
+      }
+    }
+  }
+});
+
+test('the deny list matches what a real init offered that publishes, and nothing of Postbox’s or read-only', () => {
+  const [own, concise, fixed] = fixture('host-setup-init');
+  const denied = deniedBy(PUBLISHING_TOOLS);
+  assert.deepEqual(own.tools.filter(denied), [
+    'Artifact',
+    'ArtifactComments',
+    'ArtifactData',
+    'PushNotification',
+    'mcp__claude_ai_Claude_Docs__batch',
+    'mcp__claude_ai_Claude_Docs__create',
+    'mcp__claude_ai_Claude_Docs__update',
+    'mcp__claude_ai_Google_Drive__copy_file',
+    'mcp__claude_ai_Google_Drive__create_file',
+    'mcp__claude_ai_Google_Drive__share_file',
+    'mcp__claude_ai_Google_Drive__update_file',
+  ]);
+  // Claude Code itself removed exactly those, so the globs work as deny rules.
+  assert.deepEqual(
+    fixed.tools,
+    own.tools.filter((t) => !denied(t)),
+  );
+  assert.ok(fixed.tools.includes('mcp__claude_ai_Google_Drive__search_files') && fixed.tools.includes('mcp__claude_ai_Claude_Docs__read'));
+  // The flag-settings overlay beats the person’s own output style.
+  assert.equal(concise.output_style, 'Concise');
+  assert.equal(fixed.output_style, 'default');
+  // Postbox’s own tools must never be denied: deny beats --allowedTools mcp__postbox.
+  for (const t of TOOL_DEFS) assert.ok(!denied(`mcp__postbox__${t.name}`), t.name);
+  // Connectors other people have, matched by the verb in their names: outward verbs on any server, and create
+  // or upload only on claude.ai connectors.
+  for (const t of [
+    'mcp__slack__slack_send_message',
+    'mcp__gmail__send_email',
+    'mcp__x__post_message',
+    'mcp__claude_ai_Linear__create_issue',
+    'mcp__claude_ai_Slack__slack_create_canvas',
+    'mcp__claude_ai_Box__upload_file',
+  ])
+    assert.ok(denied(t), t);
+  for (const t of ['mcp__slack__slack_read_channel', 'mcp__github__list_issues', 'mcp__gmail__search_threads', 'mcp__notion__get_page'])
+    assert.ok(!denied(t), t);
+  // Local servers that create things on this computer publish nothing: deny would beat any allow rule for them.
+  for (const t of [
+    'mcp__memory__create_entities',
+    'mcp__memory__create_relations',
+    'mcp__filesystem__create_directory',
+    'mcp__git__git_create_branch',
+    'mcp__plugin_tools_db__create_table',
+    'mcp__files__upload_to_tmp',
+  ])
+    assert.ok(!denied(t), t);
 });

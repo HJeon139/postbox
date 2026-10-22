@@ -118,6 +118,11 @@ const AFTER = [
   ['settings-connection', 'Corpus explorer', q('.dialog'), 'settings:connection'],
   ['folder-picker', 'Corpus explorer', q('.dialog'), 'folder-picker'],
   ['toast', 'Corpus explorer', q('.toast'), 'toast'],
+  ['app-fullscreen', 'Corpus explorer', q('.fullscreen'), 'app-fullscreen'],
+  // Near the end: it sends a message, which wakes the conversation’s agent.
+  ['image-attachment', 'Corpus explorer', `document.querySelector('.transcript .att-image')?.closest('.item')`, 'image-attachment'],
+  // Last: it leaves sends waiting on the explorer’s card.
+  ['app-send-card', 'Corpus explorer', `document.querySelector('.appsend')?.closest('.item')`, 'app-send-card'],
 ];
 
 const PREPARE = {
@@ -142,6 +147,34 @@ const PREPARE = {
   'settings:projects': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Projects').click(); })()`,
   'settings:connection': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Connect an agent').click(); })()`,
   'folder-picker': `(() => { document.querySelector('[aria-label="Add a file or a new agent"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From the project folder')).click(); })()`,
+  'app-fullscreen': `document.querySelector('.appframe [aria-label="Full screen"]')?.click()`,
+  // Three sends the browser asks the server to hold (as it does past its limit), so the card shows.
+  'app-send-card': `(async () => { for (const summary of ['Use 3 passages', 'Use 4 passages', 'Use 2 passages']) await fetch('/api/apps/corpus-explorer/event', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'use-passages', values: { passages: [], summary }, hold: true }) }); })()`,
+  // Sends a message with a drawn PNG and an SVG attached, through the app’s own upload, and waits for the thumbnail.
+  'image-attachment': `(async () => {
+    const c = document.createElement('canvas');
+    c.width = 640;
+    c.height = 400;
+    const g = c.getContext('2d');
+    const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+    g.fillStyle = css('--sunk');
+    g.fillRect(0, 0, 640, 400);
+    g.fillStyle = css('--accent');
+    g.fillRect(40, 40, 260, 28);
+    g.fillStyle = css('--line-strong');
+    for (let i = 0; i < 6; i++) g.fillRect(40, 100 + i * 44, 560 - i * 50, 18);
+    const png = new File([await new Promise((r) => c.toBlob(r, 'image/png'))], 'Screenshot of the shelf.png', { type: 'image/png' });
+    const svg = new File(['<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>'], 'shelf-diagram.svg', { type: 'image/svg+xml' });
+    const { uploadFile, api } = await import('/app/js/client.mjs');
+    const attachments = [];
+    for (const f of [png, svg]) {
+      const up = await uploadFile(f);
+      attachments.push({ kind: 'file', name: f.name, size: f.size, type: f.type, fileId: up.id });
+    }
+    const id = location.hash.match(/#\\/t\\/([^/]+)/)[1];
+    await api('/api/threads/' + id + '/messages', { text: 'Here’s what the shelf looks like now.', attachments, sendNow: true });
+    for (let i = 0; i < 50 && !document.querySelector('.transcript .att-image img')?.complete; i++) await new Promise((r) => setTimeout(r, 100));
+  })()`,
   toast: `import('/app/js/ui.mjs').then((m) => m.toast({ title: 'Archived @critic’s session', action: { label: 'Restore', run: () => {} } }))`,
 };
 

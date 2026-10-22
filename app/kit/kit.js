@@ -1,7 +1,11 @@
 // The app kit, preloaded in every agent-app sandbox. It gives agent code:
 //   postbox.ready                 → Promise<{ state, theme, appId }>, resolves once Postbox says hello
 //   postbox.query(tool, args)     → Promise<result>; only tools the app and its agent were granted
-//   postbox.send(action, values, summary)  sends one event to the agent; summary is the line you see
+//   postbox.send(action, values, summary)  sends one event to the agent; summary is the line you see. Only
+//                                 right after the person clicks or presses a key in the app (it rejects
+//                                 otherwise), up to 5 a minute; more resolve { held: true, waiting } and wait
+//                                 for the person to allow them on a card. Don’t focus anything on load: an
+//                                 app that takes the keyboard without a click gets it taken back
 //   postbox.saveState(obj) / postbox.restoreState()   survives unload, reload and new versions
 //   postbox.anchors({ name: element })   parts you can pin review comments to
 //   postbox.on('theme', fn)       called when light/dark changes (tokens update by themselves)
@@ -24,7 +28,10 @@
   let anchorMap = {};
   let reviewing = false;
 
-  const post = (msg) => parent.postMessage(Object.assign({ __pb: 1, appId: init.appId, version: init.version }, msg), '*');
+  // includeUserActivation: the browser attaches this frame’s own click or key press state to the message, which
+  // is how Postbox knows a send came from the person using the app (the app can’t set it itself).
+  const post = (msg) =>
+    parent.postMessage(Object.assign({ __pb: 1, appId: init.appId, version: init.version }, msg), { targetOrigin: '*', includeUserActivation: true });
   const call = (type, payload) =>
     new Promise((resolve, reject) => {
       const id = ++seq;
@@ -56,6 +63,17 @@
     } else if (m.type === 'review') {
       reviewing = !!m.on;
       paintAnchors();
+    } else if (m.type === 'measure') {
+      // Back from full screen. The last size sent was the window’s, so measure again, once the frame is back to
+      // its column height (it resizes a moment after this message).
+      let tries = 0;
+      const wait = () => {
+        if (Math.abs(innerHeight - m.height) < 2 || ++tries > 60) {
+          lastH = 0;
+          sizeNow();
+        } else requestAnimationFrame(wait);
+      };
+      requestAnimationFrame(wait);
     }
   });
 
@@ -65,6 +83,14 @@
     post({ type: 'error', message });
   }
   addEventListener('error', (e) => report(e.error || e.message));
+  // Escape inside the app leaves Postbox’s full screen, unless the app used it (to close its own menu, say). The
+  // app’s own listeners run after this one, so look once the key press has gone everywhere.
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape')
+      setTimeout(() => {
+        if (!e.defaultPrevented) post({ type: 'escape' });
+      }, 0);
+  });
   addEventListener('unhandledrejection', (e) => report(e.reason));
 
   // Size: Postbox sizes the frame to the content, up to its cap.

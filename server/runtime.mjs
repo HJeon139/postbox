@@ -70,7 +70,17 @@ export class Runtime {
    */
   personaFor(se) {
     const p = this.persona(se.personaId);
-    return p && { ...p, ...(se.personaSnapshot ?? {}), backend: p.backend, permissionMode: p.permissionMode ?? 'auto' };
+    return (
+      p && {
+        ...p,
+        ...(se.personaSnapshot ?? {}),
+        backend: p.backend,
+        permissionMode: p.permissionMode ?? 'auto',
+        // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57).
+        usesHostSetup: p.usesHostSetup !== false,
+        canPublish: p.canPublish === true,
+      }
+    );
   }
   personaByHandle(handle) {
     return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
@@ -742,6 +752,7 @@ export class Runtime {
     if (it.kind === 'proposal') return this.resolveProposal(threadId, itemId, action);
     if (it.kind === 'permission') return this.resolvePermission(threadId, itemId, action);
     if (it.kind === 'denial') return this.resolveDenial(threadId, itemId, action);
+    if (it.kind === 'appsend') return this.resolveAppSend(threadId, itemId, action);
     if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
     if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
     const r = buildEvent(it.block, action, values);
@@ -1333,6 +1344,8 @@ export class Runtime {
     backend = 'mock',
     model = backend === 'mock' ? 'mock' : DEFAULT_MODEL,
     permissionMode = 'auto',
+    usesHostSetup = true,
+    canPublish = false,
     folder = '',
     tools = [],
     examples = [],
@@ -1346,6 +1359,7 @@ export class Runtime {
     if (!this.adapters.names().includes(backend))
       throw httpError(422, `“${backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}. See README, “Run real agents”.`);
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    checkSetup({ usesHostSetup, canPublish });
     const p = {
       id: newId('pe'),
       handle,
@@ -1354,6 +1368,8 @@ export class Runtime {
       model: String(model || DEFAULT_MODEL),
       backend,
       permissionMode,
+      usesHostSetup,
+      canPublish,
       folder: String(folder ?? ''),
       tools: [...new Set(tools)],
       examples,
@@ -1371,13 +1387,26 @@ export class Runtime {
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
     if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode))
       throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    checkSetup(patch);
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend))
       throw httpError(422, `“${patch.backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}.`);
     // A persona moved from the mock to a real model gets the default model.
     if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: DEFAULT_MODEL };
     const next = {
       ...p,
-      ...pick(patch, ['description', 'instructions', 'backend', 'model', 'permissionMode', 'folder', 'tools', 'examples', 'retired']),
+      ...pick(patch, [
+        'description',
+        'instructions',
+        'backend',
+        'model',
+        'permissionMode',
+        'usesHostSetup',
+        'canPublish',
+        'folder',
+        'tools',
+        'examples',
+        'retired',
+      ]),
       version: (p.version ?? 1) + 1,
     };
     this.store.emit('persona', next);
@@ -1572,14 +1601,84 @@ export class Runtime {
     return { status: 'note' };
   }
 
-  appEvent(appId, action, values) {
+  // An app writes lines in your voice, and each one starts an agent turn, so its sends are limited (#38). The
+  // browser accepts a send only right after a click or key press in that app (app/js/apps.mjs); here, where a
+  // script calling the API lands too, an app gets APP_SEND_LIMIT sends per APP_SEND_WINDOW_MS. More wait on
+  // a card for you to allow or not, and nothing is dropped silently: the app is told its send is waiting.
+  // The browser keeps the same limit (SEND_LIMIT in app/js/apps.mjs), and the agent guide says so.
+  static APP_SEND_LIMIT = 5;
+  static APP_SEND_WINDOW_MS = 60_000;
+  /** Sends one card holds; past that, a send is refused with a reason. */
+  static APP_HOLD_MAX = 20;
+
+  /**
+   * An event an app sends in your voice. Within the limit, it goes to the agent; past it (or when the browser
+   * asks, with hold), it waits on the app’s card. The card and its events are items, so they survive a restart.
+   * @param {string} appId @param {string} action @param {object} values
+   * @param {{ hold?: boolean, now?: number }} [opts]
+   */
+  appEvent(appId, action, values, { hold = false, now = Date.now() } = {}) {
     const app = this.s.apps[appId];
     if (!app) throw httpError(404, 'That app doesn’t exist.');
     const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
     if (!r.ok) throw httpError(422, r.error);
-    this.addItem(app.threadId, { kind: 'voice', text: r.voice, appId });
+    const items = this.store.items(app.threadId);
+    const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
+    // Sends you allowed on a card don’t count against the next minute.
+    const recent = items.filter((x) => x.kind === 'voice' && x.appId === appId && !x.approved && now - (x.sentAt ?? x.at) < Runtime.APP_SEND_WINDOW_MS).length;
+    // Once some sends wait, later ones wait behind them, so the agent gets them in order.
+    if (card || hold || recent >= Runtime.APP_SEND_LIMIT) {
+      const held = { action: r.event.action, values: r.event.values, voice: r.voice };
+      const waiting = (card?.events.length ?? 0) + 1;
+      if (card) {
+        if (card.events.length >= Runtime.APP_HOLD_MAX)
+          throw httpError(429, `${card.events.length} messages from ${app.title} are already waiting for the person to allow them. Wait for their answer.`);
+        this.patchItem(app.threadId, card.id, { events: [...card.events, held] });
+      }
+      const cardId =
+        card?.id ?? this.addItem(app.threadId, { kind: 'appsend', appId, title: app.title, sessionId: app.sessionId, events: [held], status: 'open' }).id;
+      this.needAppSend(app, cardId, waiting);
+      return {
+        ok: true,
+        held: true,
+        waiting,
+        message: `Held for the person to allow: an app sends up to ${Runtime.APP_SEND_LIMIT} messages a minute. ${waiting === 1 ? '1 message is' : `${waiting} messages are`} waiting.`,
+      };
+    }
+    this.addItem(app.threadId, { kind: 'voice', text: r.voice, appId, sentAt: now });
     if (this.s.sessions[app.sessionId]) this.deliver(app.sessionId, { kind: 'event', event: r.event });
     return { ok: true, voice: r.voice };
+  }
+
+  /** An open app card makes its agent need you and tells you, like a permission card, unless it already needs you. */
+  needAppSend(app, itemId, waiting) {
+    const se = this.s.sessions[app.sessionId];
+    if (!se || (se.needs && se.needs.itemId !== itemId)) return;
+    const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
+    this.updateSession(se.id, { needs: { kind: 'appsend', itemId, text }, state: this.turns.has(se.id) ? se.state : 'needs' });
+    if (waiting === 1) this.notify('blocking', se, text, `Apps send up to ${Runtime.APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
+  }
+
+  /** Your answer on an app’s card: allow sends the waiting events as they were sent; don’t allow drops them. */
+  resolveAppSend(threadId, itemId, action, { now = Date.now() } = {}) {
+    const it = this.store.item(threadId, itemId);
+    if (it?.kind !== 'appsend' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
+    if (action !== 'allow' && action !== 'deny') throw httpError(400, 'An app’s request takes “allow” or “deny”.');
+    const allow = action === 'allow';
+    this.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
+    const owner = this.s.sessions[it.sessionId];
+    if (owner?.needs?.itemId === itemId) this.updateSession(owner.id, { needs: null, state: this.turns.has(owner.id) ? owner.state : 'idle' });
+    if (!allow) {
+      const n = it.events.length;
+      this.addItem(threadId, { kind: 'voice', text: `Didn’t allow ${it.title} to send ${n === 1 ? '1 message' : `${n} messages`}` });
+      return { ok: true };
+    }
+    const se = this.s.sessions[it.sessionId];
+    for (const ev of it.events) {
+      this.addItem(threadId, { kind: 'voice', text: ev.voice, appId: it.appId, sentAt: now, approved: true });
+      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event: { blockId: it.appId, action: ev.action, values: ev.values } });
+    }
+    return { ok: true };
   }
 
   appState(appId, state) {
@@ -1802,7 +1901,12 @@ export function hostTool(rt, tool, args = {}) {
 export function httpError(status, message) {
   return Object.assign(new Error(message), { status, userMessage: message });
 }
-const snapshotOf = (p) => pick(p, ['description', 'instructions', 'model', 'permissionMode', 'folder', 'tools', 'version']);
+const snapshotOf = (p) => pick(p, ['description', 'instructions', 'model', 'permissionMode', 'usesHostSetup', 'canPublish', 'folder', 'tools', 'version']);
+/** A persona’s setup choices (#57) are true or false; anything else is refused. Absent means the default. */
+function checkSetup({ usesHostSetup, canPublish }) {
+  if (usesHostSetup !== undefined && typeof usesHostSetup !== 'boolean') throw httpError(422, '“Uses your Claude Code setup” is true or false.');
+  if (canPublish !== undefined && typeof canPublish !== 'boolean') throw httpError(422, '“Can publish outside Postbox” is true or false.');
+}
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 export { formatDuration };

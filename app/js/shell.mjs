@@ -614,10 +614,10 @@ function agentMessages(se) {
   );
 }
 
-/** Answer a permission request, a refusal, or a simple choice or confirm right on the card. */
+/** Answer a permission request, a refusal, an app’s waiting sends, or a simple choice or confirm right on the card. */
 function quickAnswer(se) {
   const kind = se.needs?.kind;
-  if (kind === 'permission' || kind === 'denial') {
+  if (kind === 'permission' || kind === 'denial' || kind === 'appsend') {
     const it = (S().items[se.threadId] ?? []).find((x) => x.id === se.needs.itemId);
     if (it?.status !== 'open') return null;
     const act = (action) =>
@@ -625,7 +625,7 @@ function quickAnswer(se) {
         toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }),
       );
     const buttons =
-      kind === 'permission'
+      kind === 'permission' || kind === 'appsend'
         ? [
             h('button.btn.sm', { type: 'button', onclick: () => act('allow') }, 'Allow'),
             h('button.btn.sm', { type: 'button', onclick: () => act('deny') }, 'Don’t allow'),

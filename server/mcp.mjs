@@ -32,7 +32,7 @@ export const TOOL_DEFS = [
   {
     name: 'show_app',
     description:
-      'Show an app you wrote (HTML with inline script and style) in a sandbox with no network. It can call postbox.query(tool, args) for tools in permissions that you also hold.',
+      'Show an app you wrote (HTML with inline script and style) in a sandbox with no network. It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them).',
     inputSchema: {
       type: 'object',
       properties: {

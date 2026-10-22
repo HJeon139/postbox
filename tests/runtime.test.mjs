@@ -259,6 +259,110 @@ test('a failed pre-display check goes back to the agent once; a second failure s
   assert.equal(rt.appCheck('ap', { version: 2, problems: [{ code: 'overflow-375', message: 'Still too wide.' }] }).status, 'note');
 });
 
+/** An app in a fresh conversation, owned by its agent. */
+function withApp(store = undefined) {
+  const s = store ? setupWith(store) : setup();
+  const se = s.rt.sessionsIn(s.t.id)[0];
+  s.rt.toolsFor(se.id).show_app({ id: 'spam', title: 'Spam', code: '<p>x</p>', permissions: [] });
+  return { ...s, se };
+}
+function setupWith(store) {
+  const adapter = new ScriptedAdapter();
+  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
+  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
+  store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
+  const a = rt.createPersona({ handle: 'alpha' });
+  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
+  return { store, rt, adapter, t, a, b: a };
+}
+const LIMIT = Runtime.APP_SEND_LIMIT;
+
+test(`#38: an app sends up to ${LIMIT} events a minute in your voice; more wait on a card, and nothing is dropped`, async () => {
+  const { rt, store, t, adapter } = withApp();
+  const now = 1_000_000;
+  for (let i = 0; i < LIMIT; i++) assert.equal(rt.appEvent('spam', 'ok', { i, summary: `Sure #${i}` }, { now: now + i }).held, undefined);
+  const r = rt.appEvent('spam', 'ok', { i: LIMIT, summary: 'One too many' }, { now: now + LIMIT });
+  assert.equal(r.held, true);
+  assert.match(r.message, /waiting/);
+  const voices = () => store.items(t.id).filter((x) => x.kind === 'voice' && x.appId === 'spam');
+  assert.equal(voices().length, LIMIT, 'the one past the limit isn’t written in your voice');
+  // A later send joins the same card, in order, even after the minute is up.
+  assert.equal(rt.appEvent('spam', 'ok', { i: 99, summary: 'Later' }, { now: now + 120_000 }).waiting, 2);
+  const cards = store.items(t.id).filter((x) => x.kind === 'appsend');
+  assert.equal(cards.length, 1);
+  assert.deepEqual(
+    cards[0].events.map((e) => e.voice),
+    ['Sent from Spam: One too many', 'Sent from Spam: Later'],
+  );
+  assert.equal(cards[0].status, 'open');
+  await settle(rt);
+  const delivered = adapter.calls.filter((c) => c.message.kind === 'event').length;
+  // Allow sends them as they were sent, each a line in your voice and an event for the agent.
+  rt.act(t.id, cards[0].id, 'allow');
+  await settle(rt);
+  assert.equal(store.item(t.id, cards[0].id).status, 'allowed');
+  assert.deepEqual(
+    voices()
+      .slice(-2)
+      .map((x) => x.text),
+    ['Sent from Spam: One too many', 'Sent from Spam: Later'],
+  );
+  const events = adapter.calls.filter((c) => c.message.kind === 'event').length - delivered;
+  assert.ok(events >= 1, 'the allowed events reach the agent');
+  assert.throws(() => rt.act(t.id, cards[0].id, 'allow'), /already answered/);
+});
+
+test('#38: a waiting app card makes the agent need you and tells you, until you answer it', () => {
+  const { rt, store, t, se } = withApp();
+  const notes = [];
+  store.subscribe((ev) => ev.type === 'notify' && notes.push(ev.data));
+  rt.appEvent('spam', 'ok', { summary: 'Held' }, { hold: true, now: 1 });
+  rt.appEvent('spam', 'ok', { summary: 'Held too' }, { hold: true, now: 2 });
+  const card = store.items(t.id).find((x) => x.kind === 'appsend');
+  assert.deepEqual(store.state.sessions[se.id].needs, { kind: 'appsend', itemId: card.id, text: 'Spam wants to send 2 messages for you' });
+  assert.equal(store.state.sessions[se.id].state, 'needs');
+  assert.equal(notes.length, 1, 'one notice per card, not per send');
+  assert.equal(notes[0].level, 'blocking');
+  rt.act(t.id, card.id, 'deny');
+  assert.equal(store.state.sessions[se.id].needs, null);
+  assert.equal(store.state.sessions[se.id].state, 'idle');
+});
+
+test('#38: Don’t allow drops the waiting sends; the browser can ask for a hold; the card has a cap', () => {
+  const { rt, store, t } = withApp();
+  const r = rt.appEvent('spam', 'ok', { summary: 'Held by the browser' }, { hold: true, now: 1 });
+  assert.equal(r.held, true, 'the browser’s own limit can hold a send the server would have taken');
+  const card = store.items(t.id).find((x) => x.kind === 'appsend');
+  rt.act(t.id, card.id, 'deny');
+  assert.equal(store.item(t.id, card.id).status, 'declined');
+  assert.ok(!store.items(t.id).some((x) => x.kind === 'voice' && x.text === 'Sent from Spam: Held by the browser'));
+  assert.ok(store.items(t.id).some((x) => x.kind === 'voice' && x.text === 'Didn’t allow Spam to send 1 message'));
+  // A send after the answer is counted afresh.
+  assert.equal(rt.appEvent('spam', 'ok', {}, { now: 2 }).held, undefined);
+  for (let i = 0; i < Runtime.APP_HOLD_MAX; i++) rt.appEvent('spam', 'ok', {}, { hold: true, now: 3 });
+  assert.throws(() => rt.appEvent('spam', 'ok', {}, { hold: true, now: 3 }), /already waiting/);
+  assert.throws(() => rt.appEvent('spam', 'nope nope', {}), /short id/, 'values are still checked at the boundary');
+});
+
+test('#38: an app’s waiting sends survive a restart, and Allow still sends them', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pb-appsend-'));
+  const first = withApp(await new Store(dir).load());
+  for (let i = 0; i <= LIMIT; i++) first.rt.appEvent('spam', 'ok', { summary: `#${i}` }, { now: 10 + i });
+  await settle(first.rt);
+  await first.store.flush();
+  const store = await new Store(dir).load();
+  const adapter = new ScriptedAdapter();
+  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
+  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
+  const card = store.items(first.t.id).find((x) => x.kind === 'appsend');
+  assert.equal(card?.status, 'open');
+  assert.equal(card.events.length, 1);
+  rt.act(first.t.id, card.id, 'allow');
+  await settle(rt);
+  assert.ok(store.items(first.t.id).some((x) => x.kind === 'voice' && x.text === `Sent from Spam: #${LIMIT}` && x.approved));
+  assert.ok(adapter.calls.some((c) => c.message.kind === 'event' && c.message.event.blockId === 'spam'));
+});
+
 test('MCP: initialize, list tools, and a tool call that returns at once', async () => {
   const { rt, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
@@ -592,6 +696,58 @@ test('a persona’s permission mode reaches its running conversations from their
   rt.sendMessage(t.id, { text: 'two' });
   await settle(rt);
   assert.deepEqual(seen, ['auto', 'ask']);
+});
+
+test('#57: a persona uses your Claude Code setup and can’t publish outside Postbox, unless it’s set otherwise', () => {
+  const { rt, store } = setup();
+  const p = rt.createPersona({ handle: 'coder' });
+  assert.deepEqual([p.usesHostSetup, p.canPublish], [true, false], 'the defaults');
+  const q = rt.createPersona({ handle: 'loner', usesHostSetup: false, canPublish: true });
+  assert.deepEqual([q.usesHostSetup, q.canPublish], [false, true]);
+  for (const bad of ['yes', 1, null, 'false', {}]) {
+    assert.throws(
+      () => rt.createPersona({ handle: 'nope', usesHostSetup: bad }),
+      (e) => e.status === 422 && /Uses your Claude Code setup/.test(e.message),
+    );
+    assert.throws(
+      () => rt.createPersona({ handle: 'nope', canPublish: bad }),
+      (e) => e.status === 422 && /Can publish outside Postbox/.test(e.message),
+    );
+    assert.throws(
+      () => rt.updatePersona(p.id, { usesHostSetup: bad }),
+      (e) => e.status === 422,
+    );
+    assert.throws(
+      () => rt.updatePersona(p.id, { canPublish: bad }),
+      (e) => e.status === 422,
+    );
+  }
+  assert.ok(!rt.personaByHandle('nope'), 'nothing was created');
+  const r = rt.updatePersona(p.id, { usesHostSetup: false, canPublish: true });
+  assert.deepEqual([r.usesHostSetup, r.canPublish], [false, true]);
+  assert.deepEqual([rt.updatePersona(p.id, { description: 'x' }).usesHostSetup, store.state.personas[p.id].canPublish], [false, true], 'other edits keep them');
+});
+
+test('#57: setup choices are in a session’s snapshot, and like permissions they follow the persona from the next turn', async () => {
+  const { rt, t, a, adapter, store } = setup();
+  // A persona from before the fields existed gets the defaults.
+  assert.equal(store.state.personas[a.id].usesHostSetup, true);
+  store.emit('persona', { ...store.state.personas[a.id], usesHostSetup: undefined, canPublish: undefined });
+  const seen = [];
+  adapter.next.push(async (c) => seen.push([c.persona.usesHostSetup, c.persona.canPublish]));
+  adapter.next.push(async (c) => seen.push([c.persona.usesHostSetup, c.persona.canPublish]));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  rt.updatePersona(a.id, { usesHostSetup: false, canPublish: true });
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual(seen, [
+    [true, false],
+    [false, true],
+  ]);
+  const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
+  const snap = rt.sessionsIn(t2.id)[0].personaSnapshot;
+  assert.deepEqual([snap.usesHostSetup, snap.canPublish], [false, true], 'a new session records what it was created with');
 });
 
 // ── Shared memory in a conversation (issue #1) ─────────────────────────────────────────

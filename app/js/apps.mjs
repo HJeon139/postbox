@@ -1,10 +1,10 @@
 // Agent-written apps on the host side: sandboxed frames, the bridge, the pre-display check, versions,
-// review mode, Expand, and unloading far-off-screen frames (they reload from saved state as you approach).
+// review mode, full screen, and unloading far-off-screen frames (they reload from saved state as you approach).
 // Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
 import { api, client } from './client.mjs';
-import { $$, ago, h, icon } from './dom.mjs';
+import { $$, ago, h, icon, plural } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
@@ -12,7 +12,6 @@ const checks = new Map(); // `${appId}:${v}` → { results: Map(width → proble
 const crashes = new Map(); // `${appId}:${v}` → message (a script error after the app was shown)
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
-const expanded = new Set();
 const unloaded = new Set(); // appIds whose frames are unloaded while off screen
 const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 const cap = () => Math.min(innerHeight * 0.8, 760);
@@ -48,8 +47,14 @@ addEventListener('message', async (e) => {
       if (rec.review) e.source.postMessage({ __pb: 1, type: 'review', on: true }, '*');
       break;
     case 'size':
-      rec.height = m.height;
+      // Full screen, the frame is the window’s height, so the app measures at least that; keep the height it
+      // had in the column for when it comes back, and ask it to measure again then (see exitFull).
+      if (!isFull(rec)) rec.height = m.height;
       sizeFrame(rec);
+      break;
+    case 'escape':
+      // Escape pressed inside the app, where this page doesn’t hear it. All an app can do with this is leave full screen.
+      if (full?.appId === rec.appId && isFull(rec)) exitFull();
       break;
     case 'lib':
       try {
@@ -67,8 +72,19 @@ addEventListener('message', async (e) => {
       break;
     case 'event':
       if (!current) return reply(null, rec.check ? 'Events are off during the check.' : 'This is an older version, shown read-only.');
+      {
+        const refused = activated(e, rec);
+        if (refused) return reply(null, refused);
+      }
       try {
-        reply(await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, { action: m.action, values: m.values }));
+        // Without per-frame activation (see SNAPSHOTS), every send waits for you on a card.
+        const r = await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, {
+          action: m.action,
+          values: m.values,
+          hold: !SNAPSHOTS || overLimit(rec.appId),
+        });
+        if (!r.held) countSent(rec.appId);
+        reply(r);
       } catch (err) {
         reply(null, err.message);
         toast({ title: 'That didn’t reach the agent', text: err.message, level: 'blocking' });
@@ -99,6 +115,177 @@ addEventListener('message', async (e) => {
   }
 });
 
+// ── Sends in your voice (#38) ────────────────────────────────────────────────────────────
+// An app’s postbox.send writes a line in your voice and starts an agent turn, so it counts only right after you
+// click or press a key in that app. Two things have to hold, and the frame can vouch for neither:
+//
+// 1. The send carries a real gesture in that frame. The kit posts each send with includeUserActivation, and
+//    Chrome attaches the sending frame’s own transient activation (a click or key press in that frame in the
+//    last few seconds). It’s per frame: false for a frame that only focused itself, false after Tab into it,
+//    and false five seconds later. The page’s own navigator.userActivation is no use: activation propagates up
+//    to it (User Activation v2) from every frame and from the composer.
+//
+// 2. The frame got your keyboard rightfully. A frame can focus itself without a gesture (on load, while you type
+//    in the composer, right after you click another app), and then your key presses really happen in it, which
+//    passes 1. Measured in headless Chrome (tools/checks/app-send.mjs), the page sees no pointer events, and no
+//    :hover, when the pointer moves over a frame, so it can’t tell a click into a frame from a steal. So frames
+//    take no pointer events until the pointer is over them (CSS: iframe.app-iframe:not(.live)): over a frame,
+//    the pointer is over this page, which sees it and makes that frame live. A frame may hold focus only if
+//    it’s live (you pointed at it) or you tabbed into it. Any other frame that takes focus gives it straight
+//    back, and is refused sends until you click or tab into it. One that keeps doing it (an app that autofocuses
+//    a field does it once) is stopped, and shows a card to reload it: inert doesn’t stop a frame that runs in
+//    its own process from taking focus (measured), so only unloading it does.
+//
+// A browser without MessageEvent.userActivation can’t do 1, so it fails closed: every send waits on a card.
+const SNAPSHOTS = typeof MessageEvent !== 'undefined' && 'userActivation' in MessageEvent.prototype;
+const NOT_ACTIVATED = 'Postbox sends an app’s message only right after the person clicks or presses a key in the app.';
+const NOT_ENTERED = 'Postbox refused this app’s message: the app took the keyboard without the person clicking or tabbing into it.';
+
+/** @type {HTMLIFrameElement | null} the app frame under the pointer */
+let live = null;
+/** @type {{ frame: HTMLIFrameElement, at: number } | null} the app frame a Tab key press is moving focus into */
+let tabbing = null;
+/** @type {HTMLIFrameElement | null} the app frame that holds focus, rightfully */
+let owner = null;
+/** @type {Element | null} the last element of this page that had focus */
+let lastFocus = null;
+const stolen = new WeakSet(); // frames that took focus on their own, refused until you click or tab into them
+const steals = new WeakMap(); // frame → times it took focus on its own
+const STEALS_TO_STOP = 3; // within STEAL_WINDOW_MS
+const STEAL_WINDOW_MS = 10_000;
+const stopped = new Set(); // `${appId}:${v}` stopped for taking focus, until you reload it
+
+const appFrames = () => [...frames].filter((r) => r.iframe.isConnected).map((r) => r.iframe);
+const isAppFrame = (el) => el instanceof HTMLIFrameElement && appFrames().includes(el);
+
+function makeLive(f) {
+  if (f === live) return;
+  const was = live;
+  live = f;
+  f?.classList.add('live');
+  if (was && was !== f) was.classList.remove('live');
+}
+
+/**
+ * The app frame at a point of the window, if one is there and nothing of the page covers it. A frame that isn’t
+ * live takes no pointer events, so the page finds the element around it (its .app-body) instead.
+ * @param {number} x @param {number} y
+ */
+function frameAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const f = el instanceof HTMLIFrameElement ? el : el?.closest('.app-body')?.querySelector('iframe.app-iframe');
+  if (!(f instanceof HTMLIFrameElement) || !isAppFrame(f)) return null;
+  const r = f.getBoundingClientRect();
+  return x >= r.left && x < r.right && y >= r.top && y < r.bottom ? f : null;
+}
+
+// Where the pointer last was on this page. It stays put while the page moves under it (a reply streaming in,
+// the wheel, a message landing above), so an app that moves under a resting pointer becomes live, and one that
+// moves away stops being live, without the pointer moving (#38). Inside a live frame the page doesn’t see the
+// pointer move, so this is where it went in: close enough, and any move over the page corrects it.
+/** @type {{ x: number, y: number } | null} */
+let pointer = null;
+function onPointer(e) {
+  pointer = { x: e.clientX, y: e.clientY };
+  makeLive(frameAt(e.clientX, e.clientY));
+}
+for (const type of ['pointermove', 'pointerover', 'pointerdown']) addEventListener(type, onPointer, true);
+
+let relook = 0;
+function relookSoon() {
+  if (!pointer || relook) return;
+  relook = requestAnimationFrame(() => {
+    relook = 0;
+    if (pointer) makeLive(frameAt(pointer.x, pointer.y));
+  });
+}
+addEventListener('scroll', relookSoon, { capture: true, passive: true });
+addEventListener('resize', relookSoon);
+// The transcript renders, an item is added, or an app resizes: what’s under the pointer may have changed.
+new MutationObserver(relookSoon).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+
+/** A frame took focus on its own: refused sends, and stopped if it keeps doing it. */
+function steal(f) {
+  stolen.add(f);
+  const now = Date.now();
+  const times = [...(steals.get(f) ?? []), now].filter((t) => now - t < STEAL_WINDOW_MS);
+  steals.set(f, times);
+  const rec = [...frames].find((r) => r.iframe === f);
+  if (!rec || rec.check || times.length < STEALS_TO_STOP) return;
+  stopped.add(`${rec.appId}:${rec.version}`);
+  f.src = 'about:blank';
+  rec.onCrash?.();
+}
+
+/** Where Tab or Shift+Tab goes from the focused element, if that’s an app frame. */
+function tabTarget(back) {
+  const all = [
+    ...document.querySelectorAll('a[href], button, input, select, textarea, iframe.app-iframe, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'),
+  ].filter((el) => {
+    if (!(el instanceof HTMLElement) || el.tabIndex < 0 || /** @type {any} */ (el).disabled) return false;
+    if (!el.getClientRects().length || el.closest('[hidden]')) return false;
+    return !el.parentElement?.closest('[inert]');
+  });
+  const i = all.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+  const next = all[i < 0 ? (back ? all.length - 1 : 0) : i + (back ? -1 : 1)];
+  return isAppFrame(next) ? /** @type {HTMLIFrameElement} */ (next) : null;
+}
+
+addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key !== 'Tab') return;
+    const f = tabTarget(e.shiftKey);
+    if (f) tabbing = { frame: f, at: Date.now() };
+  },
+  true,
+);
+
+/** Settles who has the keyboard. A frame that took focus on its own gives it back, and is paused. */
+function checkFocus() {
+  const a = document.activeElement;
+  if (a && !(a instanceof HTMLIFrameElement) && a !== document.body) lastFocus = a;
+  const f = a instanceof HTMLIFrameElement && (isAppFrame(a) || a.classList.contains('check-frame')) ? a : null;
+  if (f === owner) return;
+  owner = null;
+  if (!f) return;
+  const tabbed = tabbing?.frame === f && Date.now() - tabbing.at < 1000;
+  if (f === live || tabbed) {
+    owner = f;
+    stolen.delete(f);
+    tabbing = null;
+    return;
+  }
+  if (lastFocus instanceof HTMLElement && lastFocus.isConnected) lastFocus.focus();
+  else f.blur();
+  steal(f);
+}
+addEventListener('blur', () => setTimeout(checkFocus, 0));
+addEventListener('focusin', checkFocus);
+// Focus moving from one frame to another tells this page nothing, so it also looks a few times a second.
+setInterval(checkFocus, 100);
+
+function activated(e, rec) {
+  checkFocus();
+  if (stolen.has(rec.iframe)) return NOT_ENTERED;
+  if (SNAPSHOTS ? e.userActivation?.isActive !== true : navigator.userActivation?.isActive !== true || document.activeElement !== rec.iframe)
+    return NOT_ACTIVATED;
+  return null;
+}
+
+// At most SEND_LIMIT sends a minute per app go straight to the agent; past that, the server holds them on a card
+// for you to allow. The server keeps the same limit (Runtime.APP_SEND_LIMIT) for anything calling its API.
+// Only sends the server took straight through count, so a refused or held send doesn’t use up the minute.
+const SEND_LIMIT = 5;
+const SEND_WINDOW_MS = 60_000;
+const sent = new Map(); // appId → times of sends that went straight through
+function overLimit(appId, now = Date.now()) {
+  const times = (sent.get(appId) ?? []).filter((t) => now - t < SEND_WINDOW_MS);
+  sent.set(appId, times);
+  return times.length >= SEND_LIMIT;
+}
+const countSent = (appId, now = Date.now()) => sent.set(appId, [...(sent.get(appId) ?? []), now]);
+
 const pendingState = new Map();
 function saveState(appId, state) {
   clearTimeout(pendingState.get(appId));
@@ -111,7 +298,8 @@ function saveState(appId, state) {
 function sizeFrame(rec) {
   if (!rec.iframe?.isConnected || rec.check) return;
   const h0 = Math.max(120, rec.height ?? 200);
-  rec.iframe.style.height = `${expanded.has(rec.appId) || rec.review ? h0 : Math.min(h0, cap())}px`;
+  // Full screen, CSS sizes the frame to the overlay.
+  rec.iframe.style.height = isFull(rec) ? '100%' : `${rec.review ? h0 : Math.min(h0, cap())}px`;
   rec.iframe.dataset.sized = '1';
   const body = rec.iframe.closest('.app-body');
   if (body) requestAnimationFrame(() => keyboardScroll(body));
@@ -291,12 +479,37 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
   const body = h('div.app-body', { dataset: { appId } });
-  if (expanded.has(appId) || review) body.style.maxHeight = 'none';
+  if (review) body.style.maxHeight = 'none';
   new ResizeObserver(() => keyboardScroll(body)).observe(body);
   const placeholder = (lines, height = 180, extra = null) => h('div.app-placeholder', { style: { height: `${height}px` } }, h('div.inner', lines, extra));
   const crashed = crashes.get(key);
 
-  if (crashed || status === 'crashed') {
+  if (stopped.has(key)) {
+    body.append(
+      placeholder(
+        [
+          h('span.row-flex', { style: { color: 'var(--text)' } }, h('span.g.g-failed', { 'aria-hidden': 'true' }), h('b', `Postbox stopped ${app.title}`)),
+          h('span', 'It kept taking the keyboard while you were using something else, so your typing could have gone to it. Its saved state is kept.'),
+          h(
+            'span.row-flex',
+            h(
+              'button.btn.sm',
+              {
+                type: 'button',
+                onclick: () => {
+                  stopped.delete(key);
+                  mountApp(container, appId, { review, onPin });
+                },
+              },
+              icon('retry', 'i-sm'),
+              'Reload app',
+            ),
+          ),
+        ],
+        200,
+      ),
+    );
+  } else if (crashed || status === 'crashed') {
     const msg = crashed ?? app.check.problems.find((p) => p.code === 'script-error')?.message ?? 'a script error';
     body.append(
       placeholder(
@@ -415,7 +628,7 @@ function askToFix(app, msg) {
 export function renderAppItem(item, ctx) {
   const app = client.state.apps[item.block.id];
   if (!app) return h('div.block', h('div.block-body', h('p.dim', 'This app was removed.')));
-  const holder = h('div');
+  const holder = h('div.app-holder');
   const v = viewing.get(app.id) ?? app.current;
   const last = app.versions[app.current - 1];
   const versionBtn = h(
@@ -445,29 +658,167 @@ export function renderAppItem(item, ctx) {
     `v${app.current} · updated ${ago(last.at)}`,
     icon('down', 'i-sm'),
   );
-  const expandBtn = h(
-    'button.btn.icon.sm',
-    {
-      type: 'button',
-      'aria-label': expanded.has(app.id) ? 'Collapse' : 'Expand',
-      'aria-pressed': String(expanded.has(app.id)),
-      onclick: () => {
-        if (expanded.has(app.id)) expanded.delete(app.id);
-        else expanded.add(app.id);
-        ctx.rerender();
-      },
-    },
-    icon('expand'),
-  );
   const titleId = `app-${app.id}`;
+  const fullBtn = h('button.btn.icon.sm', { type: 'button', 'aria-label': 'Full screen' }, icon('expand'));
   const node = h(
     'section.wide.appframe',
     { 'aria-labelledby': titleId },
-    h('div.app-bar', h('span.title', { id: titleId }, app.title), h('span.authored', 'Agent-written app'), h('span.grow'), versionBtn, expandBtn),
+    h('div.app-bar', h('span.title', { id: titleId }, app.title), h('span.authored', 'Agent-written app'), h('span.grow'), versionBtn, fullBtn),
     holder,
   );
+  // The overlay is this same box, fixed over the window: the frame never moves in the DOM, so it doesn’t reload.
+  const overlay = h('div.app-full', node);
+  const slot = h('div.app-slot', overlay);
+  const rec = { appId: app.id, slot, overlay, btn: fullBtn, titleId };
+  fullBtn.onclick = () => (full?.overlay === overlay ? exitFull() : enterFull(rec));
   mountApp(holder, app.id);
-  return node;
+  // Re-rendered while full screen (another version, say): the new box takes the old one’s place.
+  // (Only a re-render: the old box is still on the page. Coming back to the conversation later starts in the column.)
+  if (full && !full.overlay.isConnected) exitFull({ focus: false });
+  if (full?.appId === app.id)
+    queueMicrotask(() => {
+      if (!slot.isConnected) return;
+      const refocus = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected;
+      if (full) full.slot.style.minHeight = '';
+      full = null;
+      enterFull(rec, { focus: refocus });
+    });
+  return slot;
+}
+
+// ── Full screen ──────────────────────────────────────────────────────────────────────────
+// One app at a time fills the window. Its box is fixed over the page (class “fullscreen”), its slot keeps the
+// column’s height so nothing jumps, and the frame fills the box. It closes with Escape (pressed here, or inside
+// the app, which the kit passes on) or with the same button, now “Exit full screen”, and focus goes back to it.
+
+/** @type {{ appId: string, slot: HTMLElement, overlay: HTMLElement, btn: HTMLElement, titleId: string } | null} */
+let full = null;
+const isFull = (rec) => !!rec.iframe?.closest('.fullscreen');
+
+function framesOf(appId) {
+  return [...frames].filter((r) => r.appId === appId && !r.check && r.iframe.isConnected);
+}
+
+function enterFull(rec, { focus = true } = {}) {
+  if (full) exitFull({ focus: false });
+  full = rec;
+  rec.slot.style.minHeight = `${rec.slot.offsetHeight}px`;
+  rec.overlay.classList.add('fullscreen');
+  rec.overlay.setAttribute('role', 'dialog');
+  rec.overlay.setAttribute('aria-modal', 'true');
+  rec.overlay.setAttribute('aria-labelledby', rec.titleId);
+  rec.btn.setAttribute('aria-label', 'Exit full screen');
+  for (const f of framesOf(rec.appId)) sizeFrame(f);
+  if (focus) rec.btn.focus();
+}
+
+function exitFull({ focus = true } = {}) {
+  const rec = full;
+  if (!rec) return;
+  full = null;
+  rec.overlay.classList.remove('fullscreen');
+  for (const a of ['role', 'aria-modal', 'aria-labelledby']) rec.overlay.removeAttribute(a);
+  rec.btn.setAttribute('aria-label', 'Full screen');
+  rec.slot.style.minHeight = '';
+  for (const f of framesOf(rec.appId)) {
+    sizeFrame(f);
+    // Its size messages were the window’s while full screen; it measures again at its column height.
+    f.iframe.contentWindow?.postMessage({ __pb: 1, type: 'measure', height: parseFloat(f.iframe.style.height) }, '*');
+  }
+  if (focus && rec.btn.isConnected) rec.btn.focus();
+}
+
+addEventListener(
+  'keydown',
+  (e) => {
+    if (!full || e.key !== 'Escape') return;
+    // The view it was in is gone (you went to another page): it isn’t full screen any more.
+    if (!full.overlay.isConnected) return exitFull({ focus: false });
+    // A menu or a sheet open over the app closes first.
+    if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('.menu, .backdrop'))) return;
+    e.preventDefault();
+    exitFull();
+  },
+  true,
+);
+
+// Keep focus inside while full screen: Tab past the end comes back to the start, and Shift+Tab before the
+// start goes to the app. Menus, sheets and toasts opened from it are outside the box, and keep focus.
+addEventListener('focusin', (e) => {
+  if (!full || !(e.target instanceof Element)) return;
+  if (!full.overlay.isConnected) return exitFull({ focus: false });
+  if (full.overlay.contains(e.target) || e.target.closest('.menu, .backdrop, .toasts')) return;
+  const before = full.overlay.compareDocumentPosition(e.target) & Node.DOCUMENT_POSITION_PRECEDING;
+  const inside = [...full.overlay.querySelectorAll('button, iframe, [tabindex="0"]')];
+  const to = /** @type {HTMLElement | undefined} */ (before ? inside.at(-1) : inside[0]);
+  // A keyboard move into the app, like Tab: it may take focus (see checkFocus).
+  if (to instanceof HTMLIFrameElement) tabbing = { frame: to, at: Date.now() };
+  to?.focus();
+});
+
+// ── An app’s sends waiting for you ───────────────────────────────────────────────────────
+// Past the limit, an app’s sends wait on this card (the server’s appsend item). Postbox draws it, like the
+// permission and refusal cards: Allow sends them to the agent as they were sent, Don’t allow drops them.
+export function renderAppSendCard(it, ctx) {
+  const open = it.status === 'open';
+  const n = it.events.length;
+  // One answer: the buttons turn off at the first press (a double click would answer twice), and back on if it
+  // didn’t go through. Then focus goes to the composer of the thread the card is in, a panel’s or the main one.
+  /** @param {string} action @param {MouseEvent} e */
+  const act = (action, e) => {
+    const card = /** @type {HTMLElement} */ (e.currentTarget).closest('.appsend');
+    const buttons = [...(card?.querySelectorAll('button') ?? [])];
+    for (const b of buttons) b.disabled = true;
+    const composer = card?.closest('.sidepanel') ? document.getElementById('side-input') : document.getElementById('composer-input');
+    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
+      .then(() => composer?.focus())
+      .catch((err) => {
+        for (const b of buttons) b.disabled = false;
+        toast({ title: 'That didn’t go through', text: err.message, level: 'blocking' });
+      });
+  };
+  const titleId = `as-${it.id}`;
+  return h(
+    'div.col.block.appsend',
+    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
+    h(
+      'div.block-head',
+      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
+      h(
+        'span.title.grow',
+        { id: titleId },
+        open ? `${it.title} wants to send ${plural(n, 'message')} for you` : `${it.title} asked to send ${plural(n, 'message')} for you`,
+      ),
+      h('span.kind', 'Approve · from Postbox'),
+    ),
+    h(
+      'div.block-body',
+      open
+        ? h(
+            'p.small',
+            `An app can send up to ${SEND_LIMIT} messages a minute in your voice. These came after that, so they wait for you. Each one starts a turn for the agent.`,
+          )
+        : null,
+      h(
+        'ul.appsend-list',
+        it.events.map((ev) => h('li', ev.voice)),
+      ),
+      !open
+        ? h(
+            'span.answered-note',
+            icon(it.status === 'allowed' ? 'check' : 'x', 'i-sm'),
+            it.status === 'allowed' ? `Allowed. ${n === 1 ? 'It was' : 'They were'} sent.` : `Not allowed. ${n === 1 ? 'It wasn’t' : 'They weren’t'} sent.`,
+          )
+        : null,
+    ),
+    open
+      ? h(
+          'div.block-foot',
+          h('button.btn', { type: 'button', onclick: (e) => act('allow', e) }, 'Allow'),
+          h('button.btn', { type: 'button', onclick: (e) => act('deny', e) }, 'Don’t allow'),
+        )
+      : null,
+  );
 }
 
 // ── Diagrams and math in messages ────────────────────────────────────────────────────────
