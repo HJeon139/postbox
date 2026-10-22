@@ -25,6 +25,7 @@ import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
+import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -56,10 +57,13 @@ const STATIC = {
 };
 
 /**
- * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean }} [opts]
+ * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
+ *           host?: string, spawnShell?: typeof import('node:child_process').spawn }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
+ *   host: the address it listens on, 127.0.0.1; `!` commands refuse to run on any other (tests check that)
+ *   spawnShell: how `!` commands start (tests pass a fake)
  */
 export async function start({
   port = 4173,
@@ -69,6 +73,8 @@ export async function start({
   quiet = false,
   claudeHome = homedir(),
   listen = true,
+  host = '127.0.0.1',
+  spawnShell = undefined,
 } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
@@ -94,7 +100,7 @@ export async function start({
   };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
-  const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator });
+  const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell });
   const firstReal = ['claude-code', 'agent-sdk'].find((b) => adapters.names().includes(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
@@ -105,6 +111,7 @@ export async function start({
   rt.rearmSchedules();
   rt.rearmDeletions();
   rt.expireStalePermissions();
+  rt.expireStaleCommands();
   rt.rearmMirrors();
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
@@ -128,6 +135,14 @@ export async function start({
   // process that forges these headers on purpose still can; see designs/architecture.md §13.
   const fromBrowser = (req) =>
     req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
+
+  // `!` runs commands as the person (#67), so it’s off unless Postbox listens on this computer alone and the request
+  // came from it, on top of the page’s token. Postbox listens on 127.0.0.1 today; a later change to that can’t open
+  // this silently.
+  const shellAllowed = (req) => {
+    if (!isLoopback(host)) throw httpError(403, `! commands run only while Postbox listens on this computer alone (127.0.0.1), and it’s listening on ${host}.`);
+    if (!isLoopback(req.socket?.remoteAddress)) throw httpError(403, '! commands run only from this computer.');
+  };
 
   const streams = new Set();
   let offlineUntil = 0;
@@ -308,6 +323,14 @@ export async function start({
       return send(res, 200, { ok: true, result: action() ?? null });
     }
     if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteSession(m[1]));
+    // The composer’s commands (#67): /model and /effort for this conversation, an agent’s skill as its turn, and !.
+    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/run$/)) && req.method === 'POST') return send(res, 200, await rt.setSessionRun(m[1], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell$/)) && req.method === 'POST') {
+      shellAllowed(req);
+      return send(res, 201, await rt.runShellCommand(m[1], body.command));
+    }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell\/([^/]+)\/stop$/)) && req.method === 'POST') return send(res, 200, rt.stopShellCommand(m[1], m[2]));
     if (path === '/api/claude-sessions' && req.method === 'GET') return send(res, 200, { sessions: await rt.claudeSessions() });
     if (path === '/api/claude-sessions/attach' && req.method === 'POST') return send(res, 201, await rt.attachClaudeSession(body));
     if (path === '/api/personas' && req.method === 'POST') {
@@ -454,7 +477,7 @@ export async function start({
   if (listen)
     await new Promise((ok, fail) => {
       server.once('error', fail);
-      server.listen(port, '127.0.0.1', () => ok(undefined));
+      server.listen(port, host, () => ok(undefined));
     });
   if (!quiet)
     console.log(
@@ -472,6 +495,8 @@ export async function start({
       for (const r of streams) r.destroy();
       for (const t of rt.timers.values()) clearTimeout(t);
       rt.stopMirrors();
+      // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67).
+      await rt.stopShellCommands();
       narrator?.stop();
       if (listen) await new Promise((ok) => server.close(ok));
       await store.flush();

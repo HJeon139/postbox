@@ -23,9 +23,9 @@ const BACKENDS = [
   ['agent-sdk', 'Agent SDK', 'Runs the Claude Agent SDK in Postbox’s server.'],
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
-const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
+export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
 // The levels come from the server (server/adapters/setup.mjs, EFFORT_LEVELS); these are their names.
-const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+export const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 const PERMISSIONS = [
   ['auto', 'Auto', 'A safety check approves routine actions; it asks you only when it can’t decide.'],
   ['ask', 'Ask me', 'It asks before running commands or changing files.'],

@@ -310,7 +310,12 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           ...(e.model ? { model: e.model } : {}),
           ...(effort ? { effort } : {}),
         });
+        // Its skills and commands, for the composer’s / menu (#67).
+        if (Array.isArray(e.slash_commands)) ctx.commands?.(commandsOf(e));
         status({ state: 'think', currentStep: 'Thinking' });
+      } else if (e.subtype === 'commands_changed' && Array.isArray(e.commands)) {
+        // The list changed mid-session (skills found as it works): it replaces the one init gave (sdk.d.ts).
+        ctx.commands?.(e.commands);
       } else if (e.subtype === 'status' && e.status === 'compacting') {
         status({ currentStep: 'Summarizing the conversation' });
       } else if (e.subtype === 'permission_denied') {
@@ -461,6 +466,21 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       return st.lastUuid ?? null;
     },
   };
+}
+
+/**
+ * An init’s skills and commands (#67): `slash_commands` lists both, by name, `skills` says which are skills, and
+ * `terminal_slash_commands` are bound to a terminal (recorded: doctor, color, focus, reload-plugins), so they’re left
+ * out of other surfaces. Recorded in tests/fixtures/claude-code/permission-subagent.jsonl.
+ * @param {any} init @returns {{ name: string, skill?: true }[]}
+ */
+export function commandsOf(init) {
+  const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+  const terminal = new Set(strings(init?.terminal_slash_commands));
+  const skills = new Set(strings(init?.skills));
+  return strings(init?.slash_commands)
+    .filter((n) => !terminal.has(n))
+    .map((name) => (skills.has(name) ? { name, skill: true } : { name }));
 }
 
 /** Why a finished stream failed, in words for the person, or null if it didn’t. */

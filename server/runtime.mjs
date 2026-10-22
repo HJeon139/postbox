@@ -16,6 +16,7 @@ import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupO
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
+import { runShell } from './shell.mjs';
 import { newId } from './store.mjs';
 
 export const HOP_LIMIT = 3;
@@ -47,9 +48,11 @@ export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
    *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string },
-   *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null }} deps
+   *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
+   *           spawnShell?: typeof import('node:child_process').spawn }} deps
+   *   spawnShell: how `!command` starts a process (#67); tests pass a fake
    */
-  constructor({ store, adapters, corpus, config, blobs, narrator }) {
+  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell }) {
     this.store = store;
     this.adapters = adapters;
     this.corpus = corpus;
@@ -68,6 +71,8 @@ export class Runtime {
     this.timers = new Map(); // scheduleId or deletion → timeout
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
+    this.spawnShell = spawnShell ?? undefined;
+    this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
   }
 
   get s() {
@@ -319,16 +324,19 @@ export class Runtime {
       t.pending.push({ message, replyTo, summarizeTo });
       return;
     }
+    // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
+    // the context below waits for the agent’s next turn instead.
+    const slash = message.slash === true;
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
-    if (se.context?.length) {
+    if (se.context?.length && !slash) {
       message = { ...message, context: se.context };
       this.updateSession(sessionId, { context: [] });
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
-    if (message.kind !== 'lint') message = this.foldLint(sessionId, message);
+    if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
     // And before that, what happened in the conversation since this agent last took part: a room is shared
     // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
-    const catchUp = this.catchUp(this.s.sessions[sessionId], message.itemId);
+    const catchUp = slash ? null : this.catchUp(this.s.sessions[sessionId], message.itemId);
     if (catchUp) message = { ...message, context: [catchUp, ...(message.context ?? [])] };
     const persona = this.persona(se.personaId);
     const adapter = this.adapters.get(persona?.backend ?? 'mock');
@@ -440,6 +448,13 @@ export class Runtime {
        */
       control(c) {
         turn.control = c;
+      },
+      /**
+       * The agent’s skills and commands (#67), from init (names) or the SDK’s supportedCommands() (with descriptions
+       * and argument hints): [{ name, description?, argumentHint?, skill? }]. Kept on the session for the / menu.
+       */
+      commands(list) {
+        if (live()) rt.recordCommands(turn.sessionId, list);
       },
       /** The backend refused a tool call without asking: { toolUseId, tool, input, label, reason, reasonType, who }. */
       denied(d) {
@@ -1035,6 +1050,20 @@ export class Runtime {
         return null;
       case 'sidelink':
         return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages)`;
+      case 'command': {
+        // A `!command` the person ran (#67), with its output, as Claude Code’s bash mode passes it on.
+        const how =
+          i.status === 'running'
+            ? 'it’s still running'
+            : i.status === 'stopped'
+              ? 'they stopped it'
+              : i.error
+                ? `it couldn’t start: ${i.error}`
+                : `it exited with ${i.exitCode ?? i.signal}`;
+        const out = String(i.text ?? '');
+        const tail = out.length > COMMAND_CONTEXT ? `…${out.slice(-COMMAND_CONTEXT)}` : out;
+        return `You ran \`${clipText(String(i.command), 500)}\` in ${i.cwd} (${how}).${tail.trim() ? ` Output${i.cut || tail !== out ? ', the end of it' : ''}:\n\`\`\`\n${tail}\n\`\`\`` : ' No output.'}`;
+      }
       case 'proposal':
         return `@${i.handle} proposed a new teammate, @${i.proposal?.handle}`;
       default:
@@ -1648,6 +1677,248 @@ export class Runtime {
       if (turn?.control?.setPermissionMode && (await turn.control.setPermissionMode(mode))) now.push(se.handle);
     }
     return { ok: true, now };
+  }
+
+  // ── Commands in the composer (#67) ─────────────────────────────────────────────────
+  // `/` runs Postbox’s own commands without a turn, or an agent’s skill or command as its turn; `!` runs a command line
+  // as the person, in the conversation’s folder, and the agents read it on their next turn, without being woken.
+
+  /**
+   * Keeps an agent’s skills and commands on its session, bounded, for the / menu: from init (names; terminal-only
+   * ones are already left out) or the SDK’s supportedCommands() (with descriptions and argument hints).
+   * @param {string} sessionId @param {unknown} list
+   */
+  recordCommands(sessionId, list) {
+    if (!this.s.sessions[sessionId] || !Array.isArray(list)) return;
+    const seen = new Set();
+    const commands = [];
+    for (const c of list) {
+      const name = typeof c?.name === 'string' ? c.name.replace(/^\//, '').trim() : '';
+      if (!name || name.length > 100 || seen.has(name) || !/^[\w:.@/-]+$/.test(name)) continue;
+      seen.add(name);
+      commands.push({
+        name,
+        ...(typeof c.description === 'string' && c.description.trim() ? { description: clipText(c.description.trim(), 200) } : {}),
+        ...(typeof c.argumentHint === 'string' && c.argumentHint.trim() ? { argumentHint: clipText(c.argumentHint.trim(), 100) } : {}),
+        ...(c.skill === true ? { skill: true } : {}),
+      });
+      if (commands.length >= MAX_COMMANDS) break;
+    }
+    this.updateSession(sessionId, { commands: { at: Date.now(), list: commands } });
+  }
+
+  /**
+   * Runs an agent’s skill or command as its turn: `/name args` is the whole prompt (deliver skips the catch-up, which
+   * waits for the next turn), posted in the conversation as you wrote it. In a room, it addresses that agent.
+   * @param {string} threadId @param {{ sessionId: string, text: string }} req
+   */
+  runAgentCommand(threadId, { sessionId, text }) {
+    const t = this.thread(threadId);
+    if (t.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
+    const line = String(text ?? '')
+      .trim()
+      .slice(0, 50000);
+    if (!/^\/[\w:.@/-]+/.test(line)) throw httpError(422, 'A skill or command starts with / and its name, such as /review.');
+    const se = this.sessionsIn(threadId).find((x) => x.id === sessionId);
+    if (!se) throw httpError(404, 'That agent isn’t in this conversation.');
+    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+    if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
+    const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
+    this.putThread({ ...this.s.threads[threadId], hops: 0 });
+    if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
+    this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
+    return { item };
+  }
+
+  /**
+   * Changes the model or the effort a conversation runs with (/model, /effort). Both are fixed in the session’s
+   * snapshot, so this changes the snapshot: from the next turn, and now too where the backend can change a running
+   * turn (the Agent SDK’s setModel and its effort setting, tried and reported).
+   * @param {string} sessionId @param {{ model?: string, effort?: string }} change
+   * @returns {Promise<{ ok: true, now: boolean }>}
+   */
+  async setSessionRun(sessionId, { model, effort }) {
+    const se = this.session(sessionId);
+    if (this.persona(se.personaId)?.backend === 'mock') throw httpError(409, 'A mock agent has no model or effort to change.');
+    /** @type {Record<string, string>} */
+    const patch = {};
+    if (model !== undefined) {
+      const m = String(model).trim();
+      if (!m || m.length > 100 || !/^[\w.:[\]-]+$/.test(m)) throw httpError(422, 'A model is a name such as claude-opus-5-5.');
+      patch.model = m;
+    }
+    if (effort !== undefined) {
+      checkEffort(effort);
+      patch.effort = String(effort);
+    }
+    if (!Object.keys(patch).length) throw httpError(422, 'Say which model or effort to use.');
+    this.updateSession(se.id, { personaSnapshot: { ...(se.personaSnapshot ?? {}), ...patch } });
+    const control = this.turns.get(se.id)?.control;
+    let now = false;
+    if (control) {
+      const results = await Promise.all([
+        patch.model && control.setModel ? control.setModel(patch.model) : null,
+        patch.effort && control.setEffort ? control.setEffort(patch.effort) : null,
+      ]);
+      now = results.filter((r) => r !== null).length > 0 && results.every((r) => r !== false);
+    }
+    return { ok: true, now };
+  }
+
+  /**
+   * The folder a conversation’s `!` commands run in: where the agent that replies there works, as its adapter decides
+   * (its own folder, the project’s, or a workspace of its own), else the project’s.
+   */
+  async commandFolder(threadId) {
+    const t = this.thread(threadId);
+    const members = this.sessionsIn(threadId).filter((x) => !x.archived);
+    const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
+    const persona = se ? this.personaFor(se) : null;
+    const project = this.s.projects[t.projectId] ?? null;
+    const adapter = persona ? this.adapters.get(persona.backend) : null;
+    if (adapter?.folderFor) return adapter.folderFor(persona, project);
+    return persona?.folder || project?.folder || null;
+  }
+
+  /**
+   * Runs `!command` (#67) as the person, in the conversation’s folder. Output streams into a command item; the item
+   * ends with the exit code and the duration. The agents read it with what they missed, at the start of their next
+   * turn. What the store keeps is bounded: the item holds the last MAX_COMMAND_OUTPUT characters (it says when
+   * earlier output was cut), and once output passes that, the item is refreshed with its end at most every
+   * COMMAND_REFRESH_MS, and at most MAX_COMMAND_REFRESHES times, then once more when the command ends.
+   * @param {string} threadId @param {string} command
+   */
+  async runShellCommand(threadId, command) {
+    const t = this.thread(threadId);
+    if (t.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
+    const line = String(command ?? '').trim();
+    if (!line) throw httpError(422, 'Write a command after the !.');
+    if (line.length > 10000) throw httpError(422, 'A command is limited to 10,000 characters.');
+    const cwd = await this.commandFolder(threadId);
+    if (!cwd) throw httpError(409, 'This conversation has no folder to run commands in. Give the project or the agent a folder first.');
+    const startedAt = Date.now();
+    const it = this.addItem(threadId, {
+      kind: 'command',
+      command: line,
+      cwd,
+      status: 'running',
+      text: '',
+      cut: false,
+      exitCode: null,
+      signal: null,
+      startedAt,
+    });
+    let out = ''; // the end of the output so far, at most twice the bound between flushes
+    let sent = 0; // characters already sent as item.text, before the output was cut
+    let cut = false;
+    let refreshed = 0; // refreshes of the item’s text since it was cut
+    let refreshedAt = 0;
+    /** @type {NodeJS.Timeout|null} */
+    let timer = null;
+    const flush = ({ final = false } = {}) => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (!this.store.item(threadId, it.id)) return;
+      if (!cut && out.length <= MAX_COMMAND_OUTPUT) {
+        // Only the new text, as the reply of an agent streams.
+        if (out.length > sent) this.store.emit('item.text', { threadId, id: it.id, text: out.slice(sent) });
+        sent = out.length;
+        return;
+      }
+      cut = true;
+      out = out.slice(-MAX_COMMAND_OUTPUT);
+      // Past the bound, each refresh replaces the whole text, so they’re rare and few; the end always arrives.
+      const now = Date.now();
+      if (!final && (refreshed >= MAX_COMMAND_REFRESHES || now - refreshedAt < COMMAND_REFRESH_MS)) return;
+      refreshed++;
+      refreshedAt = now;
+      this.patchItem(threadId, it.id, { text: out, cut: true, ...(refreshed >= MAX_COMMAND_REFRESHES && !final ? { paused: true } : {}) });
+    };
+    const run = { stopped: false, stop: () => false, kill: () => false, done: Promise.resolve(), flush };
+    this.shellRuns.set(it.id, run);
+    const handle = runShell({
+      command: line,
+      cwd,
+      ...(this.spawnShell ? { spawnImpl: this.spawnShell } : {}),
+      onOutput: (text) => {
+        out += text;
+        if (out.length > 2 * MAX_COMMAND_OUTPUT) {
+          out = out.slice(-MAX_COMMAND_OUTPUT);
+          cut = true;
+        }
+        if (!timer) {
+          timer = setTimeout(flush, COMMAND_FLUSH_MS);
+          timer.unref?.();
+        }
+      },
+      onExit: ({ code = null, signal = null, error }) => {
+        flush({ final: true });
+        this.shellRuns.delete(it.id);
+        if (!this.store.item(threadId, it.id)) return;
+        this.patchItem(threadId, it.id, {
+          status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
+          exitCode: typeof code === 'number' ? code : null,
+          signal: signal ?? null,
+          ms: Date.now() - startedAt,
+          ...(cut ? { paused: false } : {}),
+          ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
+        });
+      },
+    });
+    Object.assign(run, { stop: handle.stop, kill: handle.kill, done: handle.done });
+    return { item: it };
+  }
+
+  /** Sends the output of running commands that’s waiting for its next flush now (tests await this, not a timer). */
+  flushShellOutput() {
+    for (const run of this.shellRuns.values()) run.flush();
+  }
+
+  /** Stop on a running `!command`: SIGINT, then SIGKILL. */
+  stopShellCommand(threadId, itemId) {
+    const it = this.store.item(threadId, itemId);
+    const run = this.shellRuns.get(itemId);
+    if (it?.kind !== 'command' || !run) throw httpError(409, 'That command already finished.');
+    run.stopped = true;
+    run.stop();
+    return { ok: true };
+  }
+
+  /**
+   * When Postbox shuts down: every running command, in its own process group, would outlive it. Each gets SIGINT,
+   * and SIGKILL if it hasn’t ended within graceMs.
+   * @param {{ graceMs?: number }} [opts]
+   */
+  async stopShellCommands({ graceMs = 2000 } = {}) {
+    const runs = [...this.shellRuns.values()];
+    if (!runs.length) return;
+    for (const run of runs) {
+      run.stopped = true;
+      run.closing = true;
+      run.stop();
+    }
+    /** @type {NodeJS.Timeout|undefined} */
+    let timer;
+    const late = new Promise((r) => {
+      timer = setTimeout(r, graceMs);
+    });
+    await Promise.race([Promise.all(runs.map((r) => r.done)), late]);
+    clearTimeout(timer);
+    for (const run of runs) run.kill();
+  }
+
+  /**
+   * After a restart, nothing Postbox started is running any more, unless Postbox stopped without shutting down (a crash),
+   * which can leave a command running on its own. Either way its output here ends.
+   */
+  expireStaleCommands() {
+    for (const [threadId, items] of Object.entries(this.s.items))
+      for (const it of items)
+        if (it.kind === 'command' && it.status === 'running')
+          this.patchItem(threadId, it.id, {
+            status: 'stopped',
+            error: 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.',
+          });
   }
 
   /** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
@@ -2550,6 +2821,14 @@ function whoAsked(turn, agentId, toolUseId) {
   const name = turn.subagentName?.(ids) ?? (ids.agentId ? 'a subagent' : null);
   return name ? String(name).slice(0, 40) : null;
 }
+// Commands in the composer (#67), bounded: an agent’s list for the / menu, a `!command`’s output (its last
+// characters), how often that output reaches the browser, and how much of it the agents read.
+const MAX_COMMANDS = 200;
+const MAX_COMMAND_OUTPUT = 64 * 1024;
+const COMMAND_FLUSH_MS = 100;
+const COMMAND_REFRESH_MS = 5000;
+const MAX_COMMAND_REFRESHES = 60;
+const COMMAND_CONTEXT = 4000;
 // What a conversation keeps for the permissions panel (#66), bounded.
 const MAX_CONVERSATION_RULES = 200;
 const MAX_ADD_DIRS = 20;

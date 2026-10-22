@@ -872,3 +872,15 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 .perm-form:empty { display: none; }
 .perm-form { display: flex; flex-direction: column; gap: 6px; }
 @media (max-width: 560px) { .perm-add .form-grid { grid-template-columns: 1fr; } }
+
+/* Commands in the composer: the / menu, and a !command’s item (#67) */
+.cmd-button .cmd-glyph { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; font-size: 15px; line-height: 1; }
+.slash-menu { max-height: min(50vh, 420px); overflow: auto; }
+.slash-menu .mi .mono { font-size: 12.5px; }
+.seg-wrap { flex-wrap: wrap; }
+.cmd-line { overflow-wrap: anywhere; white-space: pre-wrap; }
+.cmd-block .block-head .kind { text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
+.cmd-out { max-height: 320px; overflow: auto; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmd-out:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cmd-failed .cmd-exit, .cmd-failed .cmd-exit .i { color: var(--alert-ink); }
+.cmd-note { text-align: right; }

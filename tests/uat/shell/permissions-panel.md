@@ -1,6 +1,6 @@
 # Permissions panel
 
-**Where:** The conversation’s ⋯ › Permissions…; Settings › Personas › an agent › Permissions….
+**Where:** The conversation’s ⋯ › Permissions…; Settings › Personas › an agent › Permissions…; `/permissions` (and `/mcp`) in the composer.
 
 ## Why it exists
 

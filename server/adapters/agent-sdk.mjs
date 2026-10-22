@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { withAskRules } from '../permission-rules.mjs';
-import { createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
+import { commandsOf, createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
@@ -88,10 +88,10 @@ export function sdkOptions({
 }
 
 /**
- * What the person can change while a turn runs (#66): the permission mode, with the running query’s
- * setPermissionMode. The SDK documents it for streaming input only, and Postbox sends a turn’s prompt as one string,
- * so each change is tried, and resolves to whether it took effect now; if not, it applies from the next turn, since
- * the mode is passed with every turn.
+ * What the person can change while a turn runs: the permission mode (#66), the model and the effort (#67), with the
+ * running query’s setPermissionMode, setModel and applyFlagSettings({ effortLevel }). The SDK documents them for
+ * streaming input only, and Postbox sends a turn’s prompt as one string, so each change is tried, and resolves to
+ * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn.
  * @param {any} q  the running query
  */
 export function liveControl(q) {
@@ -106,7 +106,49 @@ export function liveControl(q) {
         return false;
       }
     },
+    /** @param {string} model */
+    async setModel(model) {
+      if (typeof q?.setModel !== 'function') return false;
+      try {
+        await q.setModel(model);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    /** @param {string} effort  one of EFFORT_LEVELS */
+    async setEffort(effort) {
+      if (typeof q?.applyFlagSettings !== 'function') return false;
+      try {
+        await q.applyFlagSettings({ effortLevel: effort });
+        return true;
+      } catch {
+        return false;
+      }
+    },
   };
+}
+
+/**
+ * The SDK’s supportedCommands() (name, description, argumentHint), marked as skills where init says so, and without
+ * the ones bound to a terminal. It’s a control request, which the SDK documents for streaming input only: if it
+ * fails, init’s list stands.
+ * @param {any} q @param {any} init @param {any} ctx
+ */
+export function listCommands(q, init, ctx) {
+  if (typeof q?.supportedCommands !== 'function' || !ctx.commands) return;
+  const skills = new Set(
+    commandsOf(init)
+      .filter((c) => c.skill)
+      .map((c) => c.name),
+  );
+  const terminal = new Set(Array.isArray(init?.terminal_slash_commands) ? init.terminal_slash_commands : []);
+  Promise.resolve()
+    .then(() => q.supportedCommands())
+    .then(
+      (list) => Array.isArray(list) && ctx.commands(list.filter((c) => !terminal.has(c?.name)).map((c) => (skills.has(c?.name) ? { ...c, skill: true } : c))),
+      () => {},
+    );
 }
 
 /** Where a forked session starts: the branch point’s checkpoint, or the latest point of the session it forks. */
@@ -203,6 +245,9 @@ export class AgentSdkAdapter {
       ctx.control?.(liveControl(q));
       for await (const m of q) {
         mapper.push(m);
+        // The skills and commands with their descriptions and argument hints (#67), once the session is up; init’s
+        // list (names only, from the stream mapper) stands if the SDK can’t say.
+        if (m.type === 'system' && m.subtype === 'init') listCommands(q, m, ctx);
         if (m.type === 'system' && m.subtype === 'init' && m.session_id && m.session_id !== ctx.state.sdkSessionId) {
           ctx.saveState({ sdkSessionId: m.session_id, fork: null });
           ctx.state.sdkSessionId = m.session_id;
