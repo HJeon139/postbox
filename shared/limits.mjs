@@ -38,3 +38,37 @@ export function limitText(name, limits = LIMITS) {
   const n = limits[name];
   return name.endsWith('Bytes') ? `${Math.round(n / 1024).toLocaleString('en-US')} KB` : n.toLocaleString('en-US');
 }
+
+const range = (prefix, n) => Array.from({ length: n }, (_, i) => `--${prefix}${i + 1}`);
+
+/**
+ * The chart palettes and status colors in app/workbench.css, and when to use each (#52). Agents read them in the
+ * guide and show_app’s description; tests/limits.test.mjs fails when a token here isn’t defined in the stylesheet.
+ * @type {readonly { name: string, tokens: string[], for: string, when: string }[]}
+ */
+export const PALETTES = Object.freeze([
+  {
+    name: '--s1…--s8',
+    tokens: range('s', 8),
+    for: 'categories',
+    when: 'series, groups or labels with no order between them, one color each, in this order from --s1',
+  },
+  {
+    name: '--seq-1…--seq-6',
+    tokens: range('seq-', 6),
+    for: 'magnitude',
+    when: 'counts, scores, density and heatmaps, with --seq-1 the least',
+  },
+  {
+    name: '--div-neg, --div-mid, --div-pos',
+    tokens: ['--div-neg', '--div-mid', '--div-pos'],
+    for: 'polarity',
+    when: 'values below, at or above a midpoint, such as refutes or supports, or loss or gain',
+  },
+  {
+    name: '--good and --alert',
+    tokens: ['--good', '--alert'],
+    for: 'status only',
+    when: 'passed or failed, done or broken; never for a category, where they read as a verdict',
+  },
+]);

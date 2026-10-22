@@ -8,7 +8,7 @@
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
 // a risky tool call in “ask” mode, and it waits for your answer on a card in the thread.
 
-import { limitText as n } from '../shared/limits.mjs';
+import { limitText as n, PALETTES } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
 
 const PROTOCOL = '2025-06-18';
@@ -33,7 +33,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'show_app',
-    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items.`,
+    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}.`,
     inputSchema: {
       type: 'object',
       properties: {

@@ -12,7 +12,10 @@
 //   postbox.anchors({ name: element })   parts you can pin review comments to
 //   postbox.on('theme', fn)       called when light/dark changes (tokens update by themselves)
 //   postbox.load('d3' | 'katex' | 'mermaid')   loads a bundled library
-//   postbox.charts.line / scatter / stacked / heatmap / table   charts that follow Workbench’s rules
+//   postbox.charts.line / scatter / stacked / heatmap / table   charts that follow Workbench’s rules. Colors:
+//                                 the chart palettes and the status-only colors, with when to use each, are
+//                                 PALETTES in shared/limits.mjs, which the guide gives agents; these charts use
+//                                 --s1…--s8 for series and --seq-* for heatmaps
 //   postbox.narrate(text, { voice, speed })   → Promise<{ url, ms }>, a clip read aloud by Postbox’s local voice
 //   postbox.narration(el, passages, { voice, speed, onPassage })   a player with a transcript that follows along
 // It also reports size changes and script errors to Postbox, and runs the pre-display check.

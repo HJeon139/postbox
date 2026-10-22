@@ -10,7 +10,7 @@ import { TOOL_DEFS } from '../server/mcp.mjs';
 import { sandboxPage } from '../server/sandbox.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { LIMITS, limitText } from '../shared/limits.mjs';
+import { LIMITS, limitText, PALETTES } from '../shared/limits.mjs';
 
 const names = /** @type {(keyof typeof LIMITS)[]} */ (Object.keys(LIMITS));
 
@@ -97,4 +97,24 @@ test('postbox.send over the limit rejects inside the app, names the limit, and p
   // The same hand-off by id fits.
   postbox.send('pairs', { ids: pairs.map((p) => p.id) }, 'Send 1,258 pairs');
   assert.equal(events().length, 1);
+});
+
+test('every palette token is defined in the stylesheet, in both themes (#52)', () => {
+  const css = readFileSync(new URL('../app/workbench.css', import.meta.url), 'utf8');
+  for (const p of PALETTES)
+    for (const token of p.tokens) {
+      const defined = css.match(new RegExp(`(?:^|[\\s;{])${token}:`, 'gm')) ?? [];
+      assert.ok(defined.length >= 2, `${token} (${p.for}) isn’t defined for both themes in app/workbench.css`);
+    }
+});
+
+test('the guide and show_app say which palette is for what, from the module (#52)', () => {
+  const guide = guideText();
+  const showApp = TOOL_DEFS.find((t) => t.name === 'show_app')?.description ?? '';
+  for (const p of PALETTES) {
+    assert.ok(guide.includes(`${p.name} for ${p.for}: ${p.when}`), `The guide doesn’t say when to use ${p.name}`);
+    assert.ok(showApp.includes(`${p.name} for ${p.for}`), `show_app doesn’t name ${p.name}`);
+  }
+  // Status colors are for status only.
+  assert.match(guide, /--good and --alert for status only: .*never for a category/);
 });

@@ -2,7 +2,7 @@
 // Shared by the Claude Code and Agent SDK adapters, so both backends behave the same way.
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
-import { LIMITS, limitText } from '../../shared/limits.mjs';
+import { LIMITS, limitText, PALETTES } from '../../shared/limits.mjs';
 import { formatLint } from '../checks.mjs';
 
 /**
@@ -68,7 +68,8 @@ A choice, form, confirm or review turns read-only once answered. To ask again, s
 
 ## Apps
 
-show_app takes { id, title, code, permissions?, fallback? }. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters. It runs in a sandbox with no network: no fetch, no external scripts, fonts or images. Postbox’s stylesheet is already loaded, so use its classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so the app works in light and dark.
+show_app takes { id, title, code, permissions?, fallback? }. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters. It runs in a sandbox with no network: no fetch, no external scripts, fonts or images. Postbox’s stylesheet is already loaded, so use its classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so the app works in light and dark. In charts:
+${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 Inside the app, the global postbox object gives you:
 - await postbox.ready → { state, theme, appId }
