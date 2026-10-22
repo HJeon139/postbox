@@ -301,6 +301,8 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       if (e.subtype === 'init') {
         st.sessionId = e.session_id ?? st.sessionId;
         st.model = e.model ?? st.model;
+        // The MCP servers that loaded, with their status, for the persona sheet (#59).
+        if (Array.isArray(e.mcp_servers)) ctx.reported?.({ mcpServers: e.mcp_servers });
         status({ state: 'think', currentStep: 'Thinking' });
       } else if (e.subtype === 'status' && e.status === 'compacting') {
         status({ currentStep: 'Summarizing the conversation' });

@@ -1339,3 +1339,74 @@ test('a call you answered on a permission card never gets a refusal card too', a
   await settle(rt);
   assert.equal(store.items(t.id).filter((i) => i.kind === 'denial').length, 0);
 });
+
+// ── #59: your MCP servers ─────────────────────────────────────────────────────────────────
+
+test('#59: a persona keeps the MCP servers it turned off, checked, and they follow it from the next turn', async () => {
+  const { rt, t, a, adapter } = setup();
+  assert.deepEqual(rt.createPersona({ handle: 'coder' }).mcpOff, [], 'all on by default');
+  assert.deepEqual(rt.updatePersona(a.id, { mcpOff: [' search ', 'search', 'postbox', 'claude.ai Gmail'] }).mcpOff, ['search', 'claude.ai Gmail']);
+  for (const bad of ['search', [1], [''], ['x'.repeat(201)], Array.from({ length: 101 }, (_, i) => `s${i}`), null]) {
+    assert.throws(
+      () => rt.updatePersona(a.id, { mcpOff: bad }),
+      (e) => e.status === 422 && /MCP servers turned off/.test(e.message),
+    );
+    assert.throws(
+      () => rt.createPersona({ handle: 'nope', mcpOff: bad }),
+      (e) => e.status === 422,
+    );
+  }
+  const seen = [];
+  adapter.next.push(async (c) => seen.push(c.persona.mcpOff));
+  adapter.next.push(async (c) => seen.push(c.persona.mcpOff));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  rt.updatePersona(a.id, { mcpOff: [] });
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual(seen, [['search', 'claude.ai Gmail'], []]);
+});
+
+test('#59: the MCP servers a turn reports are kept on its session, bounded, for the sheet’s status', async () => {
+  const { rt, t, a, adapter, store } = setup();
+  const many = Array.from({ length: 120 }, (_, i) => ({ name: `s${i}`, status: 'connected', source: 'user', config: { secret: 'x' } }));
+  adapter.next.push(async (c) => c.reported({ mcpServers: [{ name: 'search', status: 'needs-auth', source: 'claudeai' }, { status: 'x' }, ...many] }));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  const se = rt.sessionsIn(t.id)[0];
+  const kept = store.state.sessions[se.id].mcpServers;
+  assert.equal(typeof kept.at, 'number');
+  assert.equal(kept.servers.length, 100);
+  assert.deepEqual(kept.servers[0], { name: 'search', status: 'needs-auth', source: 'claudeai' });
+  assert.ok(!JSON.stringify(kept).includes('secret'), 'never a server’s config');
+  // The sheet reads the latest, from this persona’s sessions, in the folder of its latest conversation.
+  const ctx = rt.mcpContext(a.id, null);
+  assert.equal(ctx.folder, '/tmp');
+  assert.equal(ctx.seen[0].name, 'search');
+  assert.equal(rt.mcpContext(null, 'p1').folder, '/tmp');
+  assert.deepEqual(rt.mcpContext(null, null), { persona: null, folder: null, seen: [] }, 'mock sessions don’t lend their servers to a new agent');
+});
+
+test('#59: a sheet that reads an init from another folder shows only the servers that load everywhere', async () => {
+  const { rt, t, a, adapter, store } = setup();
+  const servers = [
+    { name: 'docs', status: 'connected', source: 'project' },
+    { name: 'notes', status: 'connected', source: 'local' },
+    { name: 'search', status: 'connected', source: 'user' },
+    { name: 'Gmail', status: 'needs-auth', source: 'claudeai' },
+  ];
+  adapter.next.push(async (c) => c.reported({ mcpServers: servers }));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  // The same folder: everything that init saw.
+  assert.deepEqual(
+    rt.mcpContext(a.id, 'p1').seen.map((s) => s.name),
+    ['docs', 'notes', 'search', 'Gmail'],
+  );
+  // Another folder: its project and local servers aren’t known there.
+  store.emit('project', { id: 'p2', name: 'Q', folder: '/elsewhere' });
+  assert.deepEqual(
+    rt.mcpContext(a.id, 'p2').seen.map((s) => s.name),
+    ['search', 'Gmail'],
+  );
+});

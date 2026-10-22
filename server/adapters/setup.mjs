@@ -1,14 +1,15 @@
 // What a real agent loads from the person’s own Claude Code setup (#57), shared by both adapters.
 //
 // By default a persona loads the person’s setup, as in their terminal: user, project and local settings, so the
-// same skills, slash commands, plugins and permission rules. Not their MCP servers or claude.ai connectors yet:
-// both adapters pass --strict-mcp-config / strictMcpConfig, which loads only Postbox’s own server (#59).
-// Postbox overrides two things:
+// same skills, slash commands, plugins, permission rules and MCP servers, claude.ai connectors included (#59).
+// Postbox’s own server is added to them under the name `postbox`. Postbox overrides these:
 // - The output style is forced to the default, because a style such as Concise is repeated on every turn and
 //   fights the agent guide (#63).
 // - Tools that publish outside Postbox are denied, unless the persona allows them. In a UAT run, an agent
 //   published its result as a claude.ai artifact instead of a Postbox app, so the work left the conversation.
-// A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own.
+// - MCP servers the persona turned off (mcpOff) don’t load: see settingsFor.
+// A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own, and
+// only Postbox’s MCP server: both adapters pass --strict-mcp-config / strictMcpConfig for it.
 
 /** Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. */
 export const HOST_SOURCES = ['user', 'project', 'local'];
@@ -22,6 +23,25 @@ export const ISOLATED_SOURCES = ['project', 'local'];
  * standard style, which adds no style instructions.
  */
 export const SETTINGS_OVERLAY = { outputStyle: 'default' };
+
+/** Postbox’s own MCP server’s name. It always loads, and a persona can’t turn it off. */
+export const POSTBOX_SERVER = 'postbox';
+/** Postbox’s own server, as `--mcp-config` and the SDK’s `mcpServers` take it. */
+export const postboxServer = (mcpUrl) => ({ [POSTBOX_SERVER]: { type: 'http', url: mcpUrl, alwaysLoad: true } });
+// alwaysLoad: Postbox’s tools are in the first prompt, so the agent doesn’t have to search for them.
+
+/**
+ * The overlay for one persona. MCP servers it turned off go in `deniedMcpServers` ([{ serverName }]), the one
+ * denylist Claude Code merges from every settings source (sdk.d.ts: “users can deny servers for themselves”).
+ * How it was checked: a real turn (claude 2.1.296, the person’s setup, outside the repo) with a project server,
+ * a claude.ai connector and a plugin server denied by name. Its init no longer listed any of the three in
+ * `mcp_servers`, and none of their tools (tests/fixtures/claude-code/host-mcp-init.jsonl). Isolated personas
+ * load no other server, so they need no denylist.
+ */
+export function settingsFor(persona) {
+  const { usesHostSetup, mcpOff } = setupOf(persona);
+  return { ...SETTINGS_OVERLAY, ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}) };
+}
 
 /**
  * Deny rules for tools that publish outside Postbox, passed as `--disallowedTools` / `disallowedTools`.
@@ -65,5 +85,9 @@ export const isPublishingTool = (name) => RULES.some((r) => r.test(String(name))
 
 /** The setup choices for a persona, with the defaults for personas from before they existed. */
 export function setupOf(persona) {
-  return { usesHostSetup: persona?.usesHostSetup !== false, canPublish: persona?.canPublish === true };
+  return {
+    usesHostSetup: persona?.usesHostSetup !== false,
+    canPublish: persona?.canPublish === true,
+    mcpOff: Array.isArray(persona?.mcpOff) ? persona.mcpOff.filter((n) => typeof n === 'string' && n && n !== POSTBOX_SERVER) : [],
+  };
 }

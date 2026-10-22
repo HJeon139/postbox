@@ -87,11 +87,102 @@ function checkField({ id, label, help, on, onToggle }) {
   );
 }
 
+// What an MCP server’s status and scope say, from GET /api/mcp-servers (server/adapters/mcp-config.mjs).
+const MCP_STATUS = {
+  connected: 'Connected',
+  failed: 'Couldn’t connect',
+  'needs-auth': 'Needs sign-in',
+  pending: 'Starting',
+  disabled: 'Turned off in your Claude Code settings',
+  'not-started': 'Not started yet',
+};
+const MCP_SCOPE = {
+  user: 'your settings',
+  project: 'this project',
+  local: 'your settings for this folder',
+  plugin: 'plugin',
+  'claude.ai': 'claude.ai connector',
+};
+
 /**
- * Fields for st.backend, st.model, st.permissionMode, st.folder, st.usesHostSetup and st.canPublish.
- * idp prefixes element ids.
+ * Your MCP servers (#59): each one found, with its status from the agent’s latest turn and a checkbox that’s on by
+ * default. Unticked, it goes in st.mcpOff and doesn’t load for this agent. st.mcpServers holds the list once it
+ * arrives (null while it loads).
+ * @param {any} st @param {() => void} paint @param {{ idp: string, personaId?: string|null, projectId?: string|null }} opts
  */
-function backendFields(st, paint, { idp, fixedBackend = false }) {
+function mcpField(st, paint, { idp, personaId = null, projectId = null }) {
+  if (st.mcpServers === undefined) {
+    st.mcpServers = null;
+    const q = new URLSearchParams({ ...(personaId ? { personaId } : {}), ...(projectId ? { projectId } : {}) });
+    api(`/api/mcp-servers?${q}`, undefined, 'GET').then(
+      (r) => {
+        st.mcpServers = r.servers ?? [];
+        paint();
+      },
+      (e) => {
+        st.mcpServers = { error: e.message };
+        paint();
+      },
+    );
+  }
+  const list = st.mcpServers;
+  const off = new Set(st.mcpOff);
+  const body =
+    st.usesHostSetup === false
+      ? h('span.help', 'It’s isolated, so only Postbox’s own server loads, not yours.')
+      : list === null
+        ? h('span.help', 'Looking for your MCP servers…')
+        : !Array.isArray(list)
+          ? h('span.err', icon('warn'), `Couldn’t list your MCP servers: ${list.error}`)
+          : !list.length
+            ? h('span.help', 'None found in your Claude Code setup. Postbox’s own server always loads.')
+            : h(
+                'div',
+                { style: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' } },
+                list.map((m, i) =>
+                  h(
+                    'span.check',
+                    {
+                      id: `${idp}-mcp-${i}`,
+                      role: 'checkbox',
+                      tabindex: '0',
+                      'aria-checked': String(!off.has(m.name)),
+                      'data-server': m.name,
+                      onclick: (e) => {
+                        if (off.has(m.name)) off.delete(m.name);
+                        else off.add(m.name);
+                        st.mcpOff = [...off];
+                        e.currentTarget.setAttribute('aria-checked', String(!off.has(m.name)));
+                      },
+                      onkeydown: (e) => {
+                        if (e.key === ' ' || e.key === 'Enter') {
+                          e.preventDefault();
+                          e.currentTarget.click();
+                        }
+                      },
+                    },
+                    h('span.box'),
+                    h('span.mono', m.name),
+                    h('span.small.dim', [MCP_STATUS[m.status] ?? m.status, MCP_SCOPE[m.scope]].filter(Boolean).join(' · ')),
+                  ),
+                ),
+              );
+  return h(
+    'fieldset.field.span',
+    { style: { border: 0, padding: 0, margin: 0 } },
+    h('legend.label', 'MCP servers'),
+    body,
+    st.usesHostSetup !== false && Array.isArray(list) && list.length
+      ? h('span.help', 'Yours load as in your terminal. Untick one to keep it from loading for this agent. The status is from its latest turn.')
+      : null,
+  );
+}
+
+/**
+ * Fields for st.backend, st.model, st.permissionMode, st.folder, st.usesHostSetup, st.mcpOff and st.canPublish.
+ * idp prefixes element ids; personaId and projectId say whose MCP servers to list.
+ */
+function backendFields(st, paint, { idp, fixedBackend = false, personaId = null, projectId = null }) {
   const available = new Set(client.config.adapters ?? ['mock']);
   const real = st.backend !== 'mock';
   const perm = PERMISSIONS.find(([id]) => id === st.permissionMode) ?? PERMISSIONS[0];
@@ -174,6 +265,7 @@ function backendFields(st, paint, { idp, fixedBackend = false }) {
           on: st.usesHostSetup !== false,
           onToggle: (on) => {
             st.usesHostSetup = on;
+            paint();
           },
         })
       : null,
@@ -188,6 +280,7 @@ function backendFields(st, paint, { idp, fixedBackend = false }) {
           },
         })
       : null,
+    real ? mcpField(st, paint, { idp, personaId, projectId }) : null,
   ];
 }
 
@@ -209,6 +302,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     permissionMode: 'auto',
     usesHostSetup: true,
     canPublish: false,
+    mcpOff: [],
     folder: '',
     saveBp: false,
     error: null,
@@ -270,7 +364,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
           ),
           h('span.help', { id: 'na-h-help' }, '2–24 letters, digits, - or _'),
         ),
-        ...backendFields(st, paint, { idp: 'na' }),
+        ...backendFields(st, paint, { idp: 'na', projectId }),
         h(
           'div.field.span',
           h('label.label', { for: 'na-d' }, 'What it does'),
@@ -382,7 +476,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         backend: st.backend,
         model: st.backend === 'mock' ? 'mock' : st.model,
         permissionMode: st.permissionMode,
-        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish }),
+        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish, mcpOff: st.mcpOff }),
         folder: st.folder,
         saveAsBoilerplate: st.saveBp,
         join: st.where === 'join' ? { threadId } : { projectId, title: `With @${st.handle}` },
@@ -775,9 +869,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
       folder: p.folder ?? '',
       usesHostSetup: p.usesHostSetup !== false,
       canPublish: p.canPublish === true,
+      mcpOff: [...(p.mcpOff ?? [])],
     };
     const runBox = h('div.form-grid');
-    const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe' })));
+    const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe', personaId: p.id })));
     paintRun();
     const desc = h('input.input', { id: 'pe-d', value: p.description });
     const ins = h('textarea.textarea', { id: 'pe-i', style: { minHeight: '100px' } }, p.instructions);
@@ -833,6 +928,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                         folder: run.folder,
                         usesHostSetup: run.usesHostSetup,
                         canPublish: run.canPublish,
+                        mcpOff: run.mcpOff,
                       }),
                 },
                 'PATCH',
@@ -844,7 +940,8 @@ export function openSettings(tab = 'appearance', personaId = null) {
                       run.backend !== (p.backend ?? 'mock') ||
                       run.permissionMode !== (p.permissionMode ?? 'auto') ||
                       run.usesHostSetup !== (p.usesHostSetup !== false) ||
-                      run.canPublish !== (p.canPublish === true)
+                      run.canPublish !== (p.canPublish === true) ||
+                      String(run.mcpOff) !== String(p.mcpOff ?? [])
                         ? 'Where it runs and its permissions apply to its conversations from their next turn; other changes apply to new sessions.'
                         : 'New sessions use this version.',
                   });

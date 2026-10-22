@@ -10,6 +10,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
+import { POSTBOX_SERVER } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addAllowRule, rulesFor } from './permission-rules.mjs';
@@ -84,9 +85,11 @@ export class Runtime {
         ...(se.personaSnapshot ?? {}),
         backend: p.backend,
         permissionMode: p.permissionMode ?? 'auto',
-        // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57).
+        // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57), and
+        // so are the MCP servers it turned off (#59).
         usesHostSetup: p.usesHostSetup !== false,
         canPublish: p.canPublish === true,
+        mcpOff: p.mcpOff ?? [],
       }
     );
   }
@@ -494,6 +497,28 @@ export class Runtime {
           summary: String(summary ?? '').slice(0, 20000),
         });
         rt.updateSession(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
+      },
+      /**
+       * What the backend reported about the run: mcpServers, the MCP servers its init listed with their status
+       * ([{ name, status, source? }]). Kept on the session as se.mcpServers = { at, servers }, bounded, for the
+       * persona sheet’s list (GET /api/mcp-servers).
+       */
+      reported(r) {
+        if (!live() || !r) return;
+        if (Array.isArray(r.mcpServers))
+          rt.updateSession(turn.sessionId, {
+            mcpServers: {
+              at: Date.now(),
+              servers: r.mcpServers
+                .filter((x) => x && typeof x.name === 'string' && x.name)
+                .slice(0, 100)
+                .map((x) => ({
+                  name: x.name.slice(0, 200),
+                  status: String(x.status ?? '').slice(0, 20),
+                  ...(typeof x.source === 'string' ? { source: x.source.slice(0, 20) } : {}),
+                })),
+            },
+          });
       },
       sources(list) {
         if (!live()) return;
@@ -1529,6 +1554,7 @@ export class Runtime {
     permissionMode = 'auto',
     usesHostSetup = true,
     canPublish = false,
+    mcpOff = [],
     folder = '',
     tools = [],
     examples = [],
@@ -1542,7 +1568,7 @@ export class Runtime {
     if (!this.adapters.names().includes(backend))
       throw httpError(422, `“${backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}. See README, “Run real agents”.`);
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
-    checkSetup({ usesHostSetup, canPublish });
+    checkSetup({ usesHostSetup, canPublish, mcpOff });
     const p = {
       id: newId('pe'),
       handle,
@@ -1553,6 +1579,7 @@ export class Runtime {
       permissionMode,
       usesHostSetup,
       canPublish,
+      mcpOff: serverNames(mcpOff),
       folder: String(folder ?? ''),
       tools: [...new Set(tools)],
       examples,
@@ -1571,6 +1598,7 @@ export class Runtime {
     if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode))
       throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkSetup(patch);
+    if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend))
       throw httpError(422, `“${patch.backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}.`);
     // A persona moved from the mock to a real model gets the default model.
@@ -1585,6 +1613,7 @@ export class Runtime {
         'permissionMode',
         'usesHostSetup',
         'canPublish',
+        'mcpOff',
         'folder',
         'tools',
         'examples',
@@ -1594,6 +1623,33 @@ export class Runtime {
     };
     this.store.emit('persona', next);
     return next;
+  }
+
+  /**
+   * What the persona sheet’s MCP list needs (#59), given a persona (or none, for a new agent) and a project: the
+   * folder it works in (its own, else the project’s, else that of its latest conversation), and the MCP servers the
+   * latest init reported. That init comes from one of its sessions, else from any session of a persona that loads
+   * your setup, since claude.ai connectors and plugin servers are the same for all of them.
+   * @param {string|null} personaId @param {string|null} projectId
+   */
+  mcpContext(personaId, projectId) {
+    const persona = (personaId && this.persona(personaId)) || null;
+    const latest = (list) => list.filter((se) => se.mcpServers?.at).sort((x, y) => y.mcpServers.at - x.mcpServers.at)[0] ?? null;
+    const own = persona ? Object.values(this.s.sessions).filter((se) => se.personaId === persona.id) : [];
+    const recent = own.sort((x, y) => (y.startedAt ?? 0) - (x.startedAt ?? 0))[0];
+    const project = (projectId && this.s.projects[projectId]) || this.s.projects[this.s.threads[recent?.threadId]?.projectId] || null;
+    const seen =
+      latest(own) ?? latest(Object.values(this.s.sessions).filter((se) => this.persona(se.personaId)?.usesHostSetup !== false && se.backend !== 'mock'));
+    const folder = persona?.folder || project?.folder || null;
+    // An init from another folder says nothing about that folder’s project and local servers here: keep only the
+    // ones that load everywhere (user, claude.ai, plugins).
+    const seenFolder = seen && (this.persona(seen.personaId)?.folder || this.s.projects[this.s.threads[seen.threadId]?.projectId]?.folder || null);
+    const servers = seen?.mcpServers.servers ?? [];
+    return {
+      persona,
+      folder,
+      seen: seenFolder === folder ? servers : servers.filter((s) => s.source !== 'project' && s.source !== 'local'),
+    };
   }
 
   // ── Session lifecycle: archive, restore, delete with undo ─────────────────────────
@@ -2139,12 +2195,24 @@ function stampSteps(item, block, now) {
 export function httpError(status, message) {
   return Object.assign(new Error(message), { status, userMessage: message });
 }
-const snapshotOf = (p) => pick(p, ['description', 'instructions', 'model', 'permissionMode', 'usesHostSetup', 'canPublish', 'folder', 'tools', 'version']);
-/** A persona’s setup choices (#57) are true or false; anything else is refused. Absent means the default. */
-function checkSetup({ usesHostSetup, canPublish }) {
+const snapshotOf = (p) =>
+  pick(p, ['description', 'instructions', 'model', 'permissionMode', 'usesHostSetup', 'canPublish', 'mcpOff', 'folder', 'tools', 'version']);
+const MAX_MCP_OFF = 100;
+/**
+ * A persona’s setup choices (#57) are true or false, and the MCP servers it turned off (#59) a list of names;
+ * anything else is refused. Absent means the default.
+ */
+function checkSetup({ usesHostSetup, canPublish, mcpOff }) {
   if (usesHostSetup !== undefined && typeof usesHostSetup !== 'boolean') throw httpError(422, '“Uses your Claude Code setup” is true or false.');
   if (canPublish !== undefined && typeof canPublish !== 'boolean') throw httpError(422, '“Can publish outside Postbox” is true or false.');
+  if (
+    mcpOff !== undefined &&
+    (!Array.isArray(mcpOff) || mcpOff.length > MAX_MCP_OFF || mcpOff.some((n) => typeof n !== 'string' || !n.trim() || n.length > 200))
+  )
+    throw httpError(422, `The MCP servers turned off are a list of up to ${MAX_MCP_OFF} server names.`);
 }
+/** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
+const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 export { formatDuration };

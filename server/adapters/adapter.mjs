@@ -20,6 +20,8 @@
 //                                           subagents: [{ name, state, ctx }]
 //   ctx.compaction({ kept, total, summary })  the agent's context was summarized
 //   ctx.sources([{ title, authors, year, url, note }])  citations for the current reply
+//   ctx.reported({ mcpServers? })           what the backend reported about the run: the MCP servers that
+//                                           loaded, [{ name, status, source? }]
 //   ctx.tools.*                             the same tools MCP exposes (see server/tools.mjs)
 //   ctx.signal                              aborted when you press Stop; stop work promptly
 //   ctx.mcpUrl                              where a real agent connects for the UI tools

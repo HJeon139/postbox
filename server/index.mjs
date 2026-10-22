@@ -8,12 +8,14 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { homedir } from 'node:os';
 import { extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
+import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { Corpus } from './corpus.mjs';
@@ -52,7 +54,12 @@ const STATIC = {
   '/mockups/': join(ROOT, 'mockups'),
 };
 
-export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh = false, demo = false, quiet = false } = {}) {
+/**
+ * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string }} [opts]
+ *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
+ *   checks pass a temp folder, so they never read the real one)
+ */
+export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh = false, demo = false, quiet = false, claudeHome = homedir() } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
   if (fresh)
@@ -182,6 +189,12 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
           corpus: corpus.stats(),
         },
       });
+    }
+    // The MCP servers a persona would load, with their status (#59): names, scopes and statuses only, never config.
+    if (path === '/api/mcp-servers' && req.method === 'GET') {
+      const { persona, folder, seen } = rt.mcpContext(url.searchParams.get('personaId'), url.searchParams.get('projectId'));
+      const found = await yourMcpServers(folder, { home: claudeHome });
+      return send(res, 200, { folder, servers: mcpServerList({ found, seen, off: persona?.mcpOff ?? [] }) });
     }
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {

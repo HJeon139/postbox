@@ -11,7 +11,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
-import { HOST_SOURCES, ISOLATED_SOURCES, PUBLISHING_TOOLS, SETTINGS_OVERLAY, setupOf } from './setup.mjs';
+import { HOST_SOURCES, ISOLATED_SOURCES, PUBLISHING_TOOLS, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
@@ -46,15 +46,17 @@ export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpU
         ? { resume: sessionId }
         : { sessionId }),
     includePartialMessages: true,
-    mcpServers: { postbox: { type: 'http', url: mcpUrl, alwaysLoad: true } },
-    strictMcpConfig: true,
+    // Postbox’s server, next to your own; an Isolated persona loads Postbox’s only.
+    mcpServers: postboxServer(mcpUrl),
+    ...(setup.usesHostSetup ? {} : { strictMcpConfig: true }),
     // No allowedTools rule for Postbox’s tools: one would shadow canUseTool, which allows them itself. Only
     // rules the person allowed once, after a refusal, go here.
     ...(allowOnce.length ? { allowedTools: allowOnce } : {}),
-    // As for the CLI: the person’s setup (or the project’s only, when Isolated), the default output style, and
-    // no tools that publish outside Postbox unless the persona may (server/adapters/setup.mjs).
+    // As for the CLI: the person’s setup (or the project’s only, when Isolated), the default output style, no MCP
+    // servers the persona turned off, and no tools that publish outside Postbox unless the persona may
+    // (server/adapters/setup.mjs).
     settingSources: [...(setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES)],
-    settings: { ...SETTINGS_OVERLAY },
+    settings: settingsFor(persona),
     ...(setup.canPublish ? {} : { disallowedTools: [...PUBLISHING_TOOLS] }),
     // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
     thinking: { type: 'adaptive', display: 'summarized' },

@@ -12,6 +12,7 @@ Agents are edited in the app; edits apply to new sessions, and where an agent ru
 
 - Lists personas with Edit; the editor ([screenshot](../../screenshots/settings-persona-editor.png)) changes description, instructions, runs on, model, permissions, folder and tools; Retire and Bring back.
 - For Claude Code and the Agent SDK, the editor also has “Uses your Claude Code setup” (on by default) and “Can publish outside Postbox” (off by default). Like permissions, they apply to the persona’s conversations from their next turn. `node tools/checks/persona-setup.mjs` checks both in headless Chrome.
+- Under them, “MCP servers” lists your servers with their status from the persona’s latest turn, each with a checkbox, on by default. A server turned off doesn’t load for the persona, from its conversations’ next turn (#59). `node tools/check-runtime.mjs` checks the list, the keyboard and saving in headless Chrome.
 
 ## Steps to reproduce
 
