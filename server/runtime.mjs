@@ -157,7 +157,7 @@ export class Runtime {
     const t = this.putThread({
       id: newId('th'),
       projectId,
-      title: title || 'New thread',
+      title: title || 'New conversation',
       kind,
       parentId,
       members: [],
@@ -2123,7 +2123,7 @@ export class Runtime {
           .lineage(threadId())
           .slice(1)
           .some((id) => rt.s.glossary[id]?.[k]);
-        return { ok: true, message: inherited ? `Defined “${term}” in this thread, over the conversation’s definition.` : `Defined “${term}”.` };
+        return { ok: true, message: inherited ? `Defined “${term}” here, over the conversation’s definition.` : `Defined “${term}”.` };
       },
       propose_agent({ handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
         const mine = new Set(rt.persona(se().personaId)?.tools ?? []);

@@ -1,8 +1,10 @@
 // The agent guide (#63): what a reply contains decides its form, before anything else, and it stays short.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { agentGuide, guideText } from '../server/adapters/guide.mjs';
+import { TOOL_DEFS } from '../server/mcp.mjs';
 
 test('the guide starts from what a reply contains, not from what the person asked for', () => {
   const g = guideText();
@@ -24,6 +26,17 @@ test('the guide tells agents to report results, and to update an answered block 
   const g = guideText();
   assert.match(g, /Report what you did in your reply, or with update_block on the answered choice, form or confirm with outcome set/);
   assert.match(g, /Update an answered block without outcome only to ask again/);
+});
+
+test('what agents read about the app check says narrow and wide windows, not phones (#75)', () => {
+  const read = [
+    agentGuide({ persona: { handle: 'a' }, handles: ['a'], project: { name: 'P' }, brief: 'You were asked in.' }),
+    ...TOOL_DEFS.map((t) => t.description),
+    readFileSync(new URL('../app/js/apps.mjs', import.meta.url), 'utf8'),
+  ].join('\n');
+  assert.doesNotMatch(read, /\bphones?\b/i);
+  assert.match(read, /checks it in a narrow and a wide window \(375 and 1280 px\)/);
+  assert.match(read, /This conversation belongs to the project “P”\./);
 });
 
 test('the guide stays short: agents follow defaults more than prose', () => {

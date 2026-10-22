@@ -16,8 +16,8 @@ export function agentGuide({ persona, handles, project, brief }) {
     persona.description ? `Your role: ${persona.description}` : '',
     persona.instructions ? `The person’s instructions for you:\n${persona.instructions}` : '',
     others.length ? `Other agents in Postbox: ${others.map((h) => `@${h}`).join(', ')}. Mention one with @handle, or use wake_agent, to bring it in.` : '',
-    project?.name ? `This thread belongs to the project “${project.name}”.` : '',
-    brief ? `How you joined this thread: ${brief}` : '',
+    project?.name ? `This conversation belongs to the project “${project.name}”.` : '',
+    brief ? `How you joined: ${brief}` : '',
     guideText(),
   ]
     .filter(Boolean)
@@ -78,7 +78,7 @@ The global postbox object gives you:
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG when the theme changes
 
-Don’t move focus into the app (no autofocus): Postbox takes the keyboard back, and stops an app that keeps taking it. Before the person sees an app, Postbox checks it at 375 and 1280 px wide for sideways overflow, unlabeled fields and buttons, images without alt text, positive tabindex, low contrast and script errors. If it fails, fix it with update_app.
+Don’t move focus into the app (no autofocus): Postbox takes the keyboard back, and stops an app that keeps taking it. Before the person sees an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for sideways overflow, unlabeled fields and buttons, images without alt text, positive tabindex, low contrast and script errors. If it fails, fix it with update_app.
 
 ## Working with others
 

@@ -6,7 +6,7 @@
 // the agent later as a new message carrying { blockId, action, values }.
 //
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
-// a risky tool call in “ask” mode, and it waits for your answer on a card in the thread.
+// a risky tool call in “ask” mode, and it waits for your answer on a card in the conversation.
 
 import { limitText as n, PALETTES } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
@@ -22,7 +22,7 @@ const blockSchema = {
 export const TOOL_DEFS = [
   {
     name: 'show_block',
-    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the thread. Returns at once; the person’s answer arrives later as a message. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')}, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters.`,
+    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the conversation. Returns at once; the person’s answer arrives later as a message. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')}, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {
@@ -56,7 +56,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'define_term',
-    description: 'Add a term to this thread’s glossary. Every later mention links to its definition.',
+    description: 'Add a term to the glossary of this conversation, or of the topic thread you’re in. Every later mention links to its definition.',
     inputSchema: {
       type: 'object',
       properties: { term: { type: 'string' }, definition: { type: 'string' }, key: { type: 'string' }, source: { type: 'string' } },

@@ -1106,6 +1106,20 @@ test('#69: an asking block asked again with update_block belongs to the turn tha
   assert.equal(it.turnId, second);
 });
 
+test('#75: a conversation started without a title is a “New conversation”, and agents are told what they define where', () => {
+  const { rt, store, t } = setup();
+  assert.equal(rt.createThread({ projectId: 'p1' }).title, 'New conversation');
+  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  assert.equal(tools.define_term({ term: 'BM25', definition: 'A ranking function.' }).message, 'Defined “BM25”.');
+  // A topic thread’s definition over its conversation’s says “here”, not “this thread”.
+  rt.putThread({ ...store.state.threads[t.id], id: 'th-topic', kind: 'topic', parentId: t.id, members: [] });
+  const se = rt.ensureSession('th-topic', rt.sessionsIn(t.id)[0].personaId);
+  assert.equal(
+    rt.toolsFor(se.id).define_term({ term: 'BM25', definition: 'Here, the baseline.' }).message,
+    'Defined “BM25” here, over the conversation’s definition.',
+  );
+});
+
 test('#94: an outcome on an answered confirm reports the result: it stays answered and nobody is asked again', async () => {
   const { rt, store, t, adapter } = setup();
   const confirm = {
