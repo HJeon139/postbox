@@ -15,6 +15,7 @@ Dispatch mode: several agents work in the background, and you need to see which 
 - New agent opens the new-agent sheet.
 - Archived sessions are listed in a collapsed section at the bottom.
 - Topic-thread forks get a column only while working or waiting.
+- With no live sessions, it says to open a project or create an agent. On a fresh install, with no projects yet, it says “Create a project to start, or create an agent.” and offers New project, which opens Settings › Projects.
 
 ## Steps to reproduce
 

@@ -450,7 +450,17 @@ export function mountOverview({ archived = false } = {}) {
       archive.replaceChildren(archivedList());
       return;
     }
-    if (!live.length) grid.replaceChildren(h('div.ov-empty', 'No live sessions. Open a project above, or create an agent.'));
+    // A fresh install has no projects yet, so the empty overview leads to making one.
+    if (!live.length)
+      grid.replaceChildren(
+        Object.keys(S().projects).length
+          ? h('div.ov-empty', 'No live sessions. Open a project above, or create an agent.')
+          : h(
+              'div.ov-empty',
+              h('p', 'Create a project to start, or create an agent.'),
+              h('button.btn', { type: 'button', style: { marginTop: '12px' }, onclick: () => openSettings('projects') }, icon('plus'), 'New project'),
+            ),
+      );
     else
       syncList(
         grid,

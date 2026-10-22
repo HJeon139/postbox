@@ -5,8 +5,9 @@
 //
 //   node tools/check-shell.mjs
 //
-// It starts its own server with the mock backend on a fresh data folder in the temp directory. PB_PORT
-// and PB_CHROME_PORT move it, so sessions working in parallel don’t collide.
+// It starts its own server with the demo seed (mock agents) on a fresh data folder in the temp directory,
+// and a second one as a fresh install for the first-run overview. PB_PORT (and the port after it) and
+// PB_CHROME_PORT move them, so sessions working in parallel don’t collide.
 
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -20,7 +21,7 @@ const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9995);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-shell-'));
-const app = await start({ port: PORT, dataDir, fresh: true, quiet: true });
+const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 const page = await launch({ port: CHROME_PORT });
 const { rt, store } = app;
 const failures = [];
@@ -256,6 +257,32 @@ await check('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the to
   });
   await settle();
   assert.equal(await focused(), 'button: Actions for Index the shelf (2)');
+});
+
+// ── A fresh install’s overview leads to a first project ─────────────────────────────────
+
+await check('a fresh install’s empty overview offers New project, which opens Settings › Projects', async () => {
+  const freshDir = await mkdtemp(join(tmpdir(), 'pb-check-shell-fresh-'));
+  const fresh = await start({ port: PORT + 1, dataDir: freshDir, fresh: true, quiet: true });
+  try {
+    // A fresh install has no projects or conversations. Older seeds made some, so clear them to match.
+    Object.assign(fresh.store.state, { projects: {}, threads: {}, sessions: {}, items: {} });
+    // Not page.goto(): it waits for an animation frame, which headless Chrome can hold back by now.
+    await page.send('Page.navigate', { url: `${fresh.origin}/#/` });
+    await page.waitFor(`document.querySelector('.ov-empty')`, { label: 'the empty overview' });
+    assert.match(await page.evaluate(`document.querySelector('.ov-empty').textContent`), /Create a project to start, or create an agent\./);
+    await focus(byText('.ov-empty button', 'New project'));
+    await press('Enter');
+    await page.waitFor(dialogOpen);
+    assert.equal(await page.evaluate(`document.querySelector('[role=tab][aria-selected=true]').textContent`), 'Projects');
+    await press('Escape');
+    assert.equal(await focused(), 'button: New project');
+  } finally {
+    // Leave the page first, so closing the server doesn’t cut its event stream mid-message.
+    await page.send('Page.navigate', { url: 'about:blank' });
+    await fresh.close();
+    await rm(freshDir, { recursive: true, force: true });
+  }
 });
 
 await page.close();
