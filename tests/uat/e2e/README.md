@@ -35,32 +35,32 @@ sequenceDiagram
 
 ## The checks, and what they reproduce
 
-| Check                        | Issue | Looks for                                                                                                              |
-| ---------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------- |
-| fresh-install-agents         | #43   | A fresh install seeding use-case agents, or more than one agent or a sample project (from `server/seed.mjs`)           |
-| hidden-turn-error            | #61   | A failed turn whose error gives no reason                                                                              |
-| refusal-without-card         | #65   | Calls Claude Code refused (the result’s `permission_denials`) with no card in the conversation                         |
-| settings-leak                | #57   | The person’s output style, or a line of their global CLAUDE.md, in agent turns                                         |
-| tool-not-allowed             | #5    | A real agent’s tools include one its persona doesn’t tick, or one that acts outside Postbox (SendMessage, CronCreate…) |
-| mcp-servers-missing          | #59   | The person’s MCP servers absent from the agents’ `init`                                                                |
-| mcp-side-channel             | #54   | A Bash command posting to `/mcp?session=`                                                                              |
-| prose-instead-of-block       | #63   | A turn ending in questions or numbered options, or a long draft, with no choice, form, review or confirm block         |
-| lint-on-person-term          | #55   | A lint turn defining a term the person wrote                                                                           |
-| topic-relints-parent-term    | #56   | A topic thread re-defining its conversation’s terms                                                                    |
-| diagram-error-not-fed-back   | #46   | A diagram that failed to draw                                                                                          |
-| app-shows-missing-data       | #47   | An app whose only content is a missing-data message                                                                    |
-| unreadable-app-marks         | #53   | Most SVG marks under 4 px, or labels under 9 px, inside an app                                                         |
-| status-colors-for-categories | #52   | App code coloring with `--good`/`--alert` and none of `--s1`…`--s8`                                                    |
-| updated-app-far-up           | #49   | A new app version still far above the latest message                                                                   |
-| version-menu-overflow        | #36   | An app with 15 or more versions                                                                                        |
-| check-starved                | #37   | An app check that timed out                                                                                            |
-| full-screen-noop             | #45   | Expand leaving the app frame the same size                                                                             |
-| image-not-shown              | #48   | An attached image shown as a file chip                                                                                 |
-| review-table-raw             | #62   | A Markdown review block with a table                                                                                   |
-| stale-progress               | #58   | A progress step still running after its agent stopped                                                                  |
-| silent-while-working         | #68   | Agents thinking or calling tools with no working row on screen                                                         |
-| model-not-shown              | #60   | No model name in the top bar                                                                                           |
-| failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                              |
+| Check                        | Issue | Looks for                                                                                                                                                                                     |
+| ---------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| fresh-install-agents         | #43   | A fresh install seeding use-case agents, or more than one agent or a sample project (from `server/seed.mjs`)                                                                                  |
+| hidden-turn-error            | #61   | A failed turn whose error gives no reason                                                                                                                                                     |
+| refusal-without-card         | #65   | Calls Claude Code refused (the result’s `permission_denials`) with no card in the conversation                                                                                                |
+| settings-leak                | #57   | The person’s output style, or a line of their global CLAUDE.md, in agent turns                                                                                                                |
+| tool-not-allowed             | #5    | A real agent’s tools include one its persona doesn’t tick, or one that acts outside Postbox (SendMessage, CronCreate…)                                                                        |
+| mcp-servers-missing          | #59   | The person’s MCP servers absent from the agents’ `init`                                                                                                                                       |
+| mcp-side-channel             | #54   | A Bash command posting to `/mcp?session=`                                                                                                                                                     |
+| prose-instead-of-block       | #63   | A turn ending in questions or numbered options, or a long draft, with no choice, form, review or confirm block. It also counts the replies that used the right block (M1’s exit check, below) |
+| lint-on-person-term          | #55   | A lint turn defining a term the person wrote                                                                                                                                                  |
+| topic-relints-parent-term    | #56   | A topic thread re-defining its conversation’s terms                                                                                                                                           |
+| diagram-error-not-fed-back   | #46   | A diagram that failed to draw                                                                                                                                                                 |
+| app-shows-missing-data       | #47   | An app whose only content is a missing-data message                                                                                                                                           |
+| unreadable-app-marks         | #53   | Most SVG marks under 4 px, or labels under 9 px, inside an app                                                                                                                                |
+| status-colors-for-categories | #52   | App code coloring with `--good`/`--alert` and none of `--s1`…`--s8`                                                                                                                           |
+| updated-app-far-up           | #49   | A new app version still far above the latest message                                                                                                                                          |
+| version-menu-overflow        | #36   | An app with 15 or more versions                                                                                                                                                               |
+| check-starved                | #37   | An app check that timed out                                                                                                                                                                   |
+| full-screen-noop             | #45   | Expand leaving the app frame the same size                                                                                                                                                    |
+| image-not-shown              | #48   | An attached image shown as a file chip                                                                                                                                                        |
+| review-table-raw             | #62   | A Markdown review block with a table                                                                                                                                                          |
+| stale-progress               | #58   | A progress step still running after its agent stopped                                                                                                                                         |
+| silent-while-working         | #68   | Agents thinking or calling tools with no working row on screen                                                                                                                                |
+| model-not-shown              | #60   | No model name in the top bar                                                                                                                                                                  |
+| failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                                                                                                     |
 
 When a defect is filed from a run, add a check for it here if it can be caught deterministically, so later runs keep watching for it.
 
@@ -68,14 +68,41 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 
 - [SciFact: claims, abstracts and retrieval](scenarios/scifact.md)
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
+- M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
+  - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
+  - [Launch announcement: a draft to approve](scenarios/announcement.md)
+  - [Paper survey: a job that takes minutes](scenarios/papersurvey.md)
 
 A scenario is Markdown:
 - a title
-- settings: the persona the tester plays, the agents, the project and the conversation’s name. A fresh install has only @assistant, so the runner seeds the scenario’s agents from [`personas.json`](personas.json), through `agents.json` in the run’s data folder.
+- settings: the persona the tester plays, the agents, the project and the conversation’s name. A fresh install has only @assistant, so the runner seeds the scenario’s agents from [`personas.json`](personas.json), through `agents.json` in the run’s data folder. Since #5, a real agent can use only the tools its persona ticks, so both personas tick `shell` and `web.fetch`: they keep the commands and web access they had before, and a run on this branch differs from `main` only in what agents are told.
 - a summary
 - one `## Phase` section per phase, in the person’s words
 
 Each phase tells the tester what to ask for, what to expect, and which parts of the UI to exercise.
+
+### M1’s exit check: agents pick blocks without being asked
+
+The three exit scenarios are short: two phases each, with @researcher. In each, the person’s reply calls for a block (options to pick from, a draft to approve, a long job), and the person never asks for one or names one. A test (`tests/uat-checks.test.mjs`) keeps block names out of them.
+
+The `prose-instead-of-block` check counts, over a run, the replies that called for a block and the ones that used the right one. What a turn contains decides the block it calls for:
+
+| A turn with | Calls for          | Counted from                                                                                                                                                                                                                                                                                  |
+| ----------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Options     | a choice           | one question over a list of two or more items, in the reply’s last lines                                                                                                                                                                                                                      |
+| Questions   | a form or a choice | three or more question marks in the reply’s last lines                                                                                                                                                                                                                                        |
+| A draft     | a review block     | a reply over 40 lines                                                                                                                                                                                                                                                                         |
+| A long job  | a progress block   | 2 minutes or more, from its items’ times or its tool steps’ times, or 10 or more tool calls. The guide asks for a progress update at least every minute, so 2 minutes is past that, and 10 tool calls is a job of several steps however fast it ran. A reply to a lint message doesn’t count. |
+| A decision  | a confirm          | the confirm itself                                                                                                                                                                                                                                                                            |
+
+A block the agent used also says what its reply held, so a review block alone is a draft that used the right block. A turn is **right** only if everything it called for has one of its blocks: a choice doesn’t cover a draft, and a long job without a progress block isn’t right, whatever else the turn showed. The #63 findings stay as they were: one per reply that put options, questions or a draft in prose with no asking block.
+
+The counts are information, not a defect. They’re one finding with no issue, titled “M1 exit check: 3 of 4 replies that called for a block used the right one”, with the split in its evidence (“3 right (choice 2, review 1); 1 without the block they called for (a long job 1).”) and in `counts` in `findings.json`. It carries the verdict “measurement”, so the runner neither verifies nor files it. The report lists it under **New findings**, with “measurement: Not a defect: the block counts for M1’s exit check (#64).” in the verdict column, and the report’s last line counts it among the new findings. It isn’t listed under “Known issues caught again”. Its key carries the counts, so a live run logs each new total in `run.log` and adds a row to the table, and the last one is the run’s. `--recheck` gives one total. To compare `main` with a branch, run each scenario on both (on `main`, which doesn’t have these scenarios, pass `--scenario` the path to the branch’s file), then recheck both runs with the branch’s checks:
+
+```bash
+node tools/uat-run.mjs --scenario wikisearch
+node tools/uat-run.mjs --recheck uat-runs/<run>
+```
 
 ## Running it
 
