@@ -32,10 +32,10 @@ flowchart LR
 
 | Wave | Session | Issues |
 |---|---|---|
-| 2 | M1 core | #57's follow-ons #59, #5, #66 (with #10), #67; #63, #50, #52, #94; #60, #12, #72; #75 where it touches the same files |
+| 2 | M1 core | #57’s follow-ons #59, #5, #66 (with #10), #67, #74; #63, #50, #52, #94; #60, #12, #72; #75 where it touches the same files |
 | 2 | Transcript and threads | #88, #91, #83, #93, #81, #82 |
 | 3 | M2: apps follow the conversation | #49 with #92, #36, #7 with #86 |
-| 3 | M2: files and real data | #90, then #85 (agent attachments), #54, #47, #74, #51, #44, #37 |
+| 3 | M2: files and real data | #90, then #85 (agent attachments), #54, #47, #51, #44, #37 |
 | 3 | M3: checks | #89, the block check for #63, #95 once decided |
 | 3 | #73 | subagent narration, thinking and tree |
 | 3 | #87 | measure, then calibrate, the explainer guide |
@@ -43,7 +43,16 @@ flowchart LR
 | 4 | #9 | worktree per conversation |
 | — | Backlog | #84 (needs a decision), #15, #21, #28, #41, #76 |
 
-## Wave 1
+## Wave 2
+
+| Session | Prompt | Issues | Ports (server, Chrome) |
+|---|---|---|---|
+| M1 core | [m1-core.md](m1-core.md) | #59 #5 #66 #10 #67 #74 #63 #50 #52 #94 #75 #60 #12 #72 | 4400–4499, 9600–9699 |
+| Transcript and threads | [transcript-threads.md](transcript-threads.md) | #88 #91 #83 #93 #81 #82 | 4500–4599, 9700–9799 |
+
+Merge order: M1 core, then transcript and threads.
+
+## Wave 1 (merged)
 
 | Session | Prompt | Issues | Ports (server, Chrome) |
 |---|---|---|---|
