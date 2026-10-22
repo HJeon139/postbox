@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatLint, introducedTerms, lintMessage, rawHtmlProblems, termProblems } from '../server/checks.mjs';
+import { formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from '../server/checks.mjs';
 
 const app = (code, message) => ({ code, message, scope: { kind: 'app', id: 'pairs', title: 'Pair explorer' } });
 
@@ -46,4 +46,18 @@ test('raw HTML in a reply is flagged, except <details> and <summary> without att
   assert.deepEqual(p.scope, { kind: 'reply' });
   assert.match(p.message, /^It has raw HTML \(<br>, <b>, <details …>\)\. Postbox shows HTML as text/);
   assert.match(formatLint(lintMessage([p])), /In your reply:\n- It has raw HTML/);
+});
+
+test('#55: any term the person used, in any case, needs no definition; one the agent coined still does', () => {
+  const said = personSaid([
+    { kind: 'user', text: 'Build an eval (say 20 questions, Distractor   setting) and show supporting facts.' },
+    { kind: 'agent', text: 'I’ll use the [gold set](term:gold-set).' },
+  ]);
+  const reply =
+    'Using the [distractor setting](term:distractor-setting), [supporting facts](term:supporting-facts), the [gold set](term:gold-set) and [support](term:support).';
+  assert.deepEqual(
+    termProblems(reply, {}, new Set(), said).map((p) => p.scope.term),
+    ['gold set', 'support'],
+    'what the agent said doesn’t count, and “support” isn’t “supporting”',
+  );
 });

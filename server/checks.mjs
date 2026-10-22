@@ -99,16 +99,40 @@ export function formatLint(message, { folded = false } = {}) {
 }
 
 /**
- * The coined terms a reply used without defining them (server/lint.mjs).
+ * The coined terms a reply used without defining them (server/lint.mjs). A term the person used themselves, such as
+ * “distractor setting”, is theirs and needs no definition.
  * @param {string} text  @param {Record<string, { term: string }>} glossary  @param {Set<string>} [introduced]  see introducedTerms
+ * @param {string} [said]  what the person wrote in the conversation (personSaid)
  * @returns {Problem[]}
  */
-export function termProblems(text, glossary, introduced) {
-  return lintTerms(text, glossary, introduced).map(({ term, key }) => ({
-    code: 'undefined-term',
-    message: `“${term}” isn’t defined.`,
-    scope: { kind: 'term', term, key },
-  }));
+export function termProblems(text, glossary, introduced, said = '') {
+  const theirs = (term) => {
+    const words = term
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return words[0] !== '' && new RegExp(`(^|[^\\p{L}\\p{N}])${words.join('\\s+')}(?![\\p{L}\\p{N}])`, 'u').test(said);
+  };
+  return lintTerms(text, glossary, introduced)
+    .filter(({ term }) => !theirs(term))
+    .map(({ term, key }) => ({
+      code: 'undefined-term',
+      message: `“${term}” isn’t defined.`,
+      scope: { kind: 'term', term, key },
+    }));
+}
+
+/**
+ * Everything the person wrote in the conversation, in lower case, to match terms against.
+ * @param {any[]} items
+ */
+export function personSaid(items) {
+  return items
+    .filter((it) => it.kind === 'user')
+    .map((it) => String(it.text ?? ''))
+    .join('\n')
+    .toLowerCase();
 }
 
 const headings = (md) => [...String(md).matchAll(/^ {0,3}#{1,6}\s+(.+)$/gm)].map((m) => m[1]);

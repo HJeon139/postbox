@@ -682,6 +682,24 @@ test('#55: a numbered term the person introduced isn’t linted, and one the age
   );
 });
 
+test('#55: a term the person used in the conversation or its parent isn’t linted', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('Noted.'));
+  rt.sendMessage(t.id, { text: 'Build an eval: say 20 questions, distractor setting, with supporting facts.' });
+  await settle(rt);
+  const root = store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId: topic } = rt.startTopic(t.id, root.id);
+  adapter.next.push(async (c) =>
+    c.text('The [distractor setting](term:distractor-setting) keeps [supporting facts](term:supporting-facts) next to a [bridge entity](term:bridge-entity).'),
+  );
+  rt.sendMessage(topic, { text: 'go on' });
+  await settle(rt);
+  assert.deepEqual(
+    lints(adapter)[0].message.undefinedTerms.map((u) => u.term),
+    ['bridge entity'],
+  );
+});
+
 test('#56: a topic thread uses its conversation’s terms, and its own definition wins there', async () => {
   const { rt, store, t, adapter } = setup();
   adapter.next.push(async (c) => {
