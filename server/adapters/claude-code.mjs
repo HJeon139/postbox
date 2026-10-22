@@ -9,7 +9,8 @@
 //          --append-system-prompt <guide>  --allowedTools mcp__postbox [rules allowed once after a refusal]
 //          --setting-sources user,project,local | project,local (Isolated)
 //          --settings '{"outputStyle":"default", "deniedMcpServers": [servers the persona turned off]}'
-//          --disallowedTools <tools that publish outside Postbox>   (unless the persona can publish)
+//          --disallowedTools <tools that publish outside Postbox (unless the persona can publish), the tools of
+//                            unticked Tools, and tools that act outside Postbox (unless it allows them)>
 //          --permission-mode auto | manual | acceptEdits | bypassPermissions
 //          --permission-prompt-tool mcp__postbox__permission_prompt   (all but bypass: what auto can’t decide comes here)
 //
@@ -29,7 +30,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
-import { HOST_SOURCES, ISOLATED_SOURCES, PUBLISHING_TOOLS, postboxServer, settingsFor, setupOf } from './setup.mjs';
+import { deniedTools, HOST_SOURCES, ISOLATED_SOURCES, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
@@ -73,6 +74,7 @@ export function claudeVersion(bin = findClaude()) {
 export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs = [], fork = null, allowOnce = [] }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
+  const denied = deniedTools(persona);
   return [
     '-p',
     '--output-format',
@@ -103,13 +105,13 @@ export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs 
     // Rules the person allowed once, after a refusal, for this turn only.
     ...allowOnce,
     // The person’s Claude Code setup (or the project’s only, when Isolated), with the default output style,
-    // without the MCP servers the persona turned off, and without tools that publish outside Postbox unless the
-    // persona may (server/adapters/setup.mjs).
+    // without the MCP servers the persona turned off, and without the tools it may not use: those that publish
+    // or act outside Postbox, and its unticked Tools (server/adapters/setup.mjs).
     '--setting-sources',
     (setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES).join(','),
     '--settings',
     JSON.stringify(settingsFor(persona)),
-    ...(setup.canPublish ? [] : ['--disallowedTools', ...PUBLISHING_TOOLS]),
+    ...(denied.length ? ['--disallowedTools', ...denied] : []),
     ...MODES[mode],
     ...addDirs.flatMap((d) => ['--add-dir', d]),
     ...(mode === 'bypass' ? [] : ['--permission-prompt-tool', 'mcp__postbox__permission_prompt']),

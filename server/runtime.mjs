@@ -86,10 +86,11 @@ export class Runtime {
         backend: p.backend,
         permissionMode: p.permissionMode ?? 'auto',
         // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57), and
-        // so are the MCP servers it turned off (#59).
+        // so are the MCP servers it turned off (#59) and its tools, which real backends deny when unticked (#5).
         usesHostSetup: p.usesHostSetup !== false,
         canPublish: p.canPublish === true,
         mcpOff: p.mcpOff ?? [],
+        tools: p.tools ?? [],
       }
     );
   }

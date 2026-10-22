@@ -11,7 +11,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
-import { HOST_SOURCES, ISOLATED_SOURCES, PUBLISHING_TOOLS, postboxServer, settingsFor, setupOf } from './setup.mjs';
+import { deniedTools, HOST_SOURCES, ISOLATED_SOURCES, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
@@ -35,6 +35,7 @@ export async function loadAgentSdk() {
 export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpUrl, guide, abortController, canUseTool, fork = null, allowOnce = [] }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
+  const denied = deniedTools(persona);
   return {
     cwd,
     additionalDirectories: addDirs,
@@ -53,11 +54,11 @@ export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpU
     // rules the person allowed once, after a refusal, go here.
     ...(allowOnce.length ? { allowedTools: allowOnce } : {}),
     // As for the CLI: the person’s setup (or the project’s only, when Isolated), the default output style, no MCP
-    // servers the persona turned off, and no tools that publish outside Postbox unless the persona may
-    // (server/adapters/setup.mjs).
+    // servers the persona turned off, and none of the tools it may not use (server/adapters/setup.mjs).
+    // A ticked tool is never an allow rule: the permission mode still decides.
     settingSources: [...(setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES)],
     settings: settingsFor(persona),
-    ...(setup.canPublish ? {} : { disallowedTools: [...PUBLISHING_TOOLS] }),
+    ...(denied.length ? { disallowedTools: denied } : {}),
     // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
     thinking: { type: 'adaptive', display: 'summarized' },
     forwardSubagentText: true,

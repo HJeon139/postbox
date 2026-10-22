@@ -1,5 +1,6 @@
 // A headless Chrome check of what the persona sheet says an agent runs with: your MCP servers, each with its
-// status and a checkbox that’s on by default (#59), and that saving stores the ones turned off.
+// status and a checkbox that’s on by default (#59), and that saving stores the ones turned off; the Tools
+// checklist’s real-backend id and what ticking means there (#5).
 //
 //   node tools/check-runtime.mjs
 //
@@ -158,6 +159,18 @@ try {
     'the new-agent sheet lists your servers, all on',
     JSON.stringify(list),
   );
+  // #5: the checklist offers agents.outside, off by default, and says what a tick means on a real backend.
+  const outside = await page.evaluate(`(() => {
+    const el = [...document.querySelectorAll('.dialog fieldset .check')].find((c) => c.querySelector('.mono')?.textContent === 'agents.outside');
+    const help = [...document.querySelectorAll('.dialog fieldset .help')].map((x) => x.textContent).find((x) => x.includes('unticked tool'));
+    return el ? { checked: el.getAttribute('aria-checked'), label: el.querySelector('.small')?.textContent, help } : null;
+  })()`);
+  check(
+    outside?.checked === 'false' && outside.label === 'Message, schedule or start agents outside Postbox',
+    'the Tools checklist offers agents.outside, off by default',
+    JSON.stringify(outside),
+  );
+  check(/unticked tool is turned off\. A ticked one still follows its permissions/.test(outside?.help ?? ''), 'it says what ticking means', outside?.help);
   await close();
 } catch (e) {
   check(false, 'the check ran to the end', e.message);

@@ -284,6 +284,9 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
   ];
 }
 
+// What the Tools checklist means on Claude Code and the Agent SDK (#5): server/adapters/setup.mjs, TOOL_RULES.
+const TOOLS_HELP = 'On Claude Code and the Agent SDK, an unticked tool is turned off. A ticked one still follows its permissions.';
+
 // ── New agent ───────────────────────────────────────────────────────────────────────────
 
 export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
@@ -430,6 +433,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
             );
           }),
         ),
+        st.backend === 'mock' ? null : h('span.help', TOOLS_HELP),
       ),
       h(
         'div.field',
@@ -905,6 +909,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
             ),
           ),
         ),
+        run.backend === 'mock' ? null : h('span.help', TOOLS_HELP),
       ),
       h(
         'div.row-flex',
@@ -941,8 +946,9 @@ export function openSettings(tab = 'appearance', personaId = null) {
                       run.permissionMode !== (p.permissionMode ?? 'auto') ||
                       run.usesHostSetup !== (p.usesHostSetup !== false) ||
                       run.canPublish !== (p.canPublish === true) ||
-                      String(run.mcpOff) !== String(p.mcpOff ?? [])
-                        ? 'Where it runs and its permissions apply to its conversations from their next turn; other changes apply to new sessions.'
+                      String(run.mcpOff) !== String(p.mcpOff ?? []) ||
+                      String([...tools].sort()) !== String([...(p.tools ?? [])].sort())
+                        ? 'Where it runs, its permissions and its tools apply to its conversations from their next turn; other changes apply to new sessions.'
                         : 'New sessions use this version.',
                   });
                   back();

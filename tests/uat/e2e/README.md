@@ -35,31 +35,32 @@ sequenceDiagram
 
 ## The checks, and what they reproduce
 
-| Check                        | Issue | Looks for                                                                                                      |
-| ---------------------------- | ----- | -------------------------------------------------------------------------------------------------------------- |
-| fresh-install-agents         | #43   | A fresh install seeding use-case agents, or more than one agent or a sample project (from `server/seed.mjs`)   |
-| hidden-turn-error            | #61   | A failed turn whose error gives no reason                                                                      |
-| refusal-without-card         | #65   | Calls Claude Code refused (the result’s `permission_denials`) with no card in the conversation                 |
-| settings-leak                | #57   | The person’s output style, or a line of their global CLAUDE.md, in agent turns                                 |
-| mcp-servers-missing          | #59   | The person’s MCP servers absent from the agents’ `init`                                                        |
-| mcp-side-channel             | #54   | A Bash command posting to `/mcp?session=`                                                                      |
-| prose-instead-of-block       | #63   | A turn ending in questions or numbered options, or a long draft, with no choice, form, review or confirm block |
-| lint-on-person-term          | #55   | A lint turn defining a term the person wrote                                                                   |
-| topic-relints-parent-term    | #56   | A topic thread re-defining its conversation’s terms                                                            |
-| diagram-error-not-fed-back   | #46   | A diagram that failed to draw                                                                                  |
-| app-shows-missing-data       | #47   | An app whose only content is a missing-data message                                                            |
-| unreadable-app-marks         | #53   | Most SVG marks under 4 px, or labels under 9 px, inside an app                                                 |
-| status-colors-for-categories | #52   | App code coloring with `--good`/`--alert` and none of `--s1`…`--s8`                                            |
-| updated-app-far-up           | #49   | A new app version still far above the latest message                                                           |
-| version-menu-overflow        | #36   | An app with 15 or more versions                                                                                |
-| check-starved                | #37   | An app check that timed out                                                                                    |
-| full-screen-noop             | #45   | Expand leaving the app frame the same size                                                                     |
-| image-not-shown              | #48   | An attached image shown as a file chip                                                                         |
-| review-table-raw             | #62   | A Markdown review block with a table                                                                           |
-| stale-progress               | #58   | A progress step still running after its agent stopped                                                          |
-| silent-while-working         | #68   | Agents thinking or calling tools with no working row on screen                                                 |
-| model-not-shown              | #60   | No model name in the top bar                                                                                   |
-| failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                      |
+| Check                        | Issue | Looks for                                                                                                              |
+| ---------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------- |
+| fresh-install-agents         | #43   | A fresh install seeding use-case agents, or more than one agent or a sample project (from `server/seed.mjs`)           |
+| hidden-turn-error            | #61   | A failed turn whose error gives no reason                                                                              |
+| refusal-without-card         | #65   | Calls Claude Code refused (the result’s `permission_denials`) with no card in the conversation                         |
+| settings-leak                | #57   | The person’s output style, or a line of their global CLAUDE.md, in agent turns                                         |
+| tool-not-allowed             | #5    | A real agent’s tools include one its persona doesn’t tick, or one that acts outside Postbox (SendMessage, CronCreate…) |
+| mcp-servers-missing          | #59   | The person’s MCP servers absent from the agents’ `init`                                                                |
+| mcp-side-channel             | #54   | A Bash command posting to `/mcp?session=`                                                                              |
+| prose-instead-of-block       | #63   | A turn ending in questions or numbered options, or a long draft, with no choice, form, review or confirm block         |
+| lint-on-person-term          | #55   | A lint turn defining a term the person wrote                                                                           |
+| topic-relints-parent-term    | #56   | A topic thread re-defining its conversation’s terms                                                                    |
+| diagram-error-not-fed-back   | #46   | A diagram that failed to draw                                                                                          |
+| app-shows-missing-data       | #47   | An app whose only content is a missing-data message                                                                    |
+| unreadable-app-marks         | #53   | Most SVG marks under 4 px, or labels under 9 px, inside an app                                                         |
+| status-colors-for-categories | #52   | App code coloring with `--good`/`--alert` and none of `--s1`…`--s8`                                                    |
+| updated-app-far-up           | #49   | A new app version still far above the latest message                                                                   |
+| version-menu-overflow        | #36   | An app with 15 or more versions                                                                                        |
+| check-starved                | #37   | An app check that timed out                                                                                            |
+| full-screen-noop             | #45   | Expand leaving the app frame the same size                                                                             |
+| image-not-shown              | #48   | An attached image shown as a file chip                                                                                 |
+| review-table-raw             | #62   | A Markdown review block with a table                                                                                   |
+| stale-progress               | #58   | A progress step still running after its agent stopped                                                                  |
+| silent-while-working         | #68   | Agents thinking or calling tools with no working row on screen                                                         |
+| model-not-shown              | #60   | No model name in the top bar                                                                                           |
+| failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                              |
 
 When a defect is filed from a run, add a check for it here if it can be caught deterministically, so later runs keep watching for it.
 

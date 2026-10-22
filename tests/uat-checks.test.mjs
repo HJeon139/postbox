@@ -112,8 +112,32 @@ test('#57: publishing tools in a real init are a finding, unless the persona may
   assert.match(leak[0].evidence, /@researcher had Artifact, ArtifactComments, ArtifactData, PushNotification, mcp__claude_ai_Claude_Docs__batch/);
   assert.deepEqual(runChecks(base({ streams: [{ handle: 'researcher', events: [fixed] }] })), []);
   const allowed = base({ streams: [{ handle: 'researcher', events: [own] }] });
-  allowed.state.personas = { pe1: { id: 'pe1', handle: 'researcher', canPublish: true } };
+  allowed.state.personas = { pe1: { id: 'pe1', handle: 'researcher', canPublish: true, tools: ['shell', 'web.fetch', 'agents.outside'] } };
   assert.deepEqual(runChecks(allowed), []);
+});
+
+test('#5: a tool the persona doesn’t allow in a real init is a finding; the init with its rules passed isn’t', () => {
+  // Real inits: the person’s own setup, then a turn with every rule for a persona that ticks nothing passed.
+  const [own, denied] = stream('host-mcp-init');
+  const run = (events, persona) => {
+    const f = base({ streams: [{ handle: 'researcher', events }] });
+    if (persona) f.state.personas = { pe1: { id: 'pe1', handle: 'researcher', canPublish: true, ...persona } };
+    return runChecks(f);
+  };
+  const leak = run([own], { tools: [] });
+  assert.deepEqual(
+    leak.map((x) => x.issue),
+    [5],
+  );
+  assert.match(leak[0].evidence, /@researcher had .*CronCreate/);
+  assert.match(leak[0].evidence, /Bash/);
+  assert.deepEqual(run([denied], { tools: [] }), [], 'Claude Code removed every rule');
+  // Ticked tools are allowed, and a persona the run doesn’t know is skipped.
+  assert.deepEqual(run([own], { tools: ['shell', 'web.fetch', 'agents.outside'] }), []);
+  assert.deepEqual(
+    run([own], null).filter((x) => x.issue === 5),
+    [],
+  );
 });
 
 test('UI probes: an Expand that changes nothing is #45; an image shown as a chip is #48', () => {

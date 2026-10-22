@@ -1410,3 +1410,16 @@ test('#59: a sheet that reads an init from another folder shows only the servers
     ['search', 'Gmail'],
   );
 });
+
+test('#5: a persona’s tools, which real backends deny when unticked, follow it from the next turn', async () => {
+  const { rt, t, a, adapter } = setup();
+  const seen = [];
+  adapter.next.push(async (c) => seen.push(c.persona.tools));
+  adapter.next.push(async (c) => seen.push(c.persona.tools));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  rt.updatePersona(a.id, { tools: ['corpus.search', 'shell'] });
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual(seen, [['corpus.search'], ['corpus.search', 'shell']]);
+});

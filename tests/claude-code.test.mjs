@@ -7,7 +7,7 @@ import { AgentSdkAdapter, sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
 import { contextPercent, createStreamMapper, describePermission, describeTool, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
-import { PUBLISHING_TOOLS } from '../server/adapters/setup.mjs';
+import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
 
 // Streams recorded from real Claude Code turns (claude 2.1.296, claude-opus-5-5), with local paths removed.
@@ -683,6 +683,7 @@ test('the Agent SDK falls back the same way, and never resumes the failed fork',
 //   2. with a project-local outputStyle of Concise, plus --setting-sources user,project,local and the deny list;
 //   3. the same, plus --settings '{"outputStyle":"default"}'.
 
+const base5 = { sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g' };
 const glob = (rule) => new RegExp(`^${rule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
 const deniedBy = (rules) => (tool) => rules.some((r) => glob(r).test(tool));
 
@@ -692,7 +693,8 @@ test('every combination of the setup choices reaches both backends', () => {
   const after = (args, flag) => args[args.indexOf(flag) + 1];
   for (const usesHostSetup of [undefined, true, false]) {
     for (const canPublish of [undefined, false, true]) {
-      const persona = { model: 'mock', usesHostSetup, canPublish };
+      // Every tool ticked, so only the publishing list is left to deny (#5 adds the unticked tools).
+      const persona = { model: 'mock', usesHostSetup, canPublish, tools: Object.keys(TOOL_RULES) };
       const label = JSON.stringify({ usesHostSetup, canPublish });
       const args = claudeArgs({ ...base, persona });
       const sources = usesHostSetup === false ? 'project,local' : 'user,project,local';
@@ -764,4 +766,71 @@ test('the deny list matches what a real init offered that publishes, and nothing
     'mcp__files__upload_to_tmp',
   ])
     assert.ok(!denied(t), t);
+});
+
+// ── #5: the Tools checklist reaches real backends ─────────────────────────────────────────
+
+const allowedAfter = (args) => {
+  const i = args.indexOf('--allowedTools');
+  const end = args.findIndex((a, j) => j > i && a.startsWith('--'));
+  return args.slice(i + 1, end);
+};
+const disallowed = (args) => {
+  const i = args.indexOf('--disallowedTools');
+  if (i < 0) return [];
+  const end = args.findIndex((a, j) => j > i && a.startsWith('--'));
+  return args.slice(i + 1, end < 0 ? undefined : end);
+};
+
+test('#5: an unticked tool is denied in both backends; a ticked one is never an allow rule', () => {
+  const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() };
+  const all = Object.keys(TOOL_RULES);
+  for (const id of all) {
+    const ticked = { model: 'mock', canPublish: true, tools: all };
+    const unticked = { model: 'mock', canPublish: true, tools: all.filter((t) => t !== id) };
+    assert.deepEqual(disallowed(claudeArgs({ ...base5, persona: ticked })), [], `${id} ticked: nothing denied`);
+    assert.equal(sdkOptions({ ...sdkBase, persona: ticked }).disallowedTools, undefined, id);
+    assert.deepEqual(disallowed(claudeArgs({ ...base5, persona: unticked })), TOOL_RULES[id], `${id} unticked`);
+    assert.deepEqual(sdkOptions({ ...sdkBase, persona: unticked }).disallowedTools, TOOL_RULES[id], id);
+    // Ticked means “not denied”: the permission mode still asks, so no tool of the checklist is ever allowed.
+    for (const persona of [ticked, unticked]) {
+      assert.deepEqual(allowedAfter(claudeArgs({ ...base5, persona })), ['mcp__postbox'], id);
+      assert.equal(sdkOptions({ ...sdkBase, persona }).allowedTools, undefined, id);
+    }
+  }
+  assert.deepEqual(TOOL_RULES.shell, ['Bash', 'Monitor']);
+  assert.deepEqual(TOOL_RULES['web.fetch'], ['WebFetch', 'WebSearch', 'Monitor']);
+  assert.deepEqual(
+    disallowed(claudeArgs({ ...base5, persona: { model: 'mock', canPublish: true, tools: ['agents.outside'] } })),
+    ['Bash', 'Monitor', 'WebFetch', 'WebSearch'],
+    'each rule once',
+  );
+});
+
+test('#5: tools that act outside Postbox are denied by default, unless the persona allows them', () => {
+  // A persona from before the id existed (no agents.outside), and the fresh install’s agent (no tools at all).
+  for (const persona of [{ tools: ['shell', 'web.fetch'] }, { tools: [] }, {}]) {
+    const denied = deniedTools(persona);
+    for (const t of OUTSIDE_TOOLS) assert.ok(denied.includes(t), `${t} for ${JSON.stringify(persona)}`);
+    assert.deepEqual(denied.slice(0, PUBLISHING_TOOLS.length), PUBLISHING_TOOLS, 'with the publishing list');
+  }
+  assert.deepEqual(OUTSIDE_TOOLS, ['SendMessage', 'ListAgents', 'RemoteTrigger', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'Workflow']);
+  const allows = deniedTools({ tools: ['agents.outside', 'shell', 'web.fetch'] });
+  assert.ok(!OUTSIDE_TOOLS.some((t) => allows.includes(t)));
+  // The checklist offers the id, with a label, to real backends.
+  assert.deepEqual(
+    REAL_BACKEND_TOOLS.map(([id]) => id),
+    ['agents.outside'],
+  );
+  for (const [id] of REAL_BACKEND_TOOLS) assert.ok(Object.hasOwn(TOOL_RULES, id), id);
+});
+
+test('#5: no deny rule matches a Postbox tool, and every rule names a tool a real init offered', () => {
+  const every = deniedTools({ tools: [] });
+  for (const t of TOOL_DEFS) assert.ok(!deniedBy(every)(`mcp__postbox__${t.name}`), t.name);
+  const [mine, denied] = fixture('host-mcp-init');
+  for (const t of Object.values(TOOL_RULES).flat()) assert.ok(mine.tools.includes(t), `${t} is a real tool name`);
+  // The second recorded turn passed every rule: Claude Code removed them all, and only them.
+  for (const t of Object.values(TOOL_RULES).flat()) assert.ok(!denied.tools.includes(t), `${t} is gone`);
+  for (const t of ['Read', 'Edit', 'Write', 'Task', 'Skill', 'TaskStop', 'EnterWorktree']) assert.ok(denied.tools.includes(t), `${t} stays`);
 });

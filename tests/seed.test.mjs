@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { deniedTools, OUTSIDE_TOOLS } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { DEMO_PERSONAS, freshInstall, seed } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
@@ -38,6 +39,13 @@ test('a fresh install seeds one generic agent, and no projects or conversations'
   assert.deepEqual(fresh.projects, []);
   assert.doesNotMatch(JSON.stringify(fresh), /corpus|book|gutenberg|index/i);
   assert.deepEqual(await seeded(), { agents: ['@assistant on claude-code'], projects: [], threads: 0 });
+});
+
+test('#5: the fresh-install agent can run commands and read the web, but not reach agents outside Postbox', () => {
+  const [assistant] = freshInstall().personas;
+  const denied = deniedTools({ backend: 'claude-code', ...assistant });
+  for (const tool of ['Bash', 'Monitor', 'WebFetch', 'WebSearch']) assert.ok(!denied.includes(tool), `${tool} is denied`);
+  for (const tool of OUTSIDE_TOOLS) assert.ok(denied.includes(tool), `${tool} isn’t denied`);
 });
 
 test('--demo seeds the book-corpus agents, their projects and conversations', async () => {

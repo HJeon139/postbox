@@ -18,7 +18,7 @@
 //                    purpose, so it reaching them isn’t a finding; no check uses it now.
 // }
 
-import { isPublishingTool } from '../../server/adapters/setup.mjs';
+import { deniedTools, isPublishingTool, PUBLISHING_TOOLS } from '../../server/adapters/setup.mjs';
 import { freshInstall } from '../../server/seed.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
@@ -46,6 +46,31 @@ export const CHECKS = [
           evidence: `Seeded: ${seeded.join(' and ')}.${specific.length ? ` Use-case: ${specific.map((p) => `@${p.handle}`).join(', ')}.` : ''}`,
         },
       ];
+    },
+  },
+  {
+    // A real agent’s init holding a tool its persona doesn’t allow: an unticked tool, or one that acts outside
+    // Postbox’s record (SendMessage, CronCreate…), which wave 1’s UAT saw on every agent. The publishing tools are
+    // settings-leak’s. A stream whose persona isn’t in the run’s state is skipped: its ticks aren’t known.
+    id: 'tool-not-allowed',
+    issue: 5,
+    run: (f) => {
+      const personas = Object.values(f.state.personas ?? {});
+      const hits = f.streams.flatMap(({ handle, events }) => {
+        const persona = personas.find((p) => p.handle === handle);
+        if (!persona) return [];
+        const denied = new Set(deniedTools(persona).filter((r) => !PUBLISHING_TOOLS.includes(r)));
+        const tools = events.filter((e) => e.subtype === 'init').flatMap((e) => (Array.isArray(e.tools) ? e.tools : []));
+        return [...new Set(tools.filter((x) => denied.has(x)))].map((tool) => ({ handle, tool }));
+      });
+      return hits.length
+        ? [
+            {
+              title: 'Agents carry tools their persona doesn’t allow',
+              evidence: `${[...new Set(hits.map(({ handle }) => `@${handle}`))].join(', ')} had ${[...new Set(hits.map(({ tool }) => tool))].slice(0, 8).join(', ')}.`,
+            },
+          ]
+        : [];
     },
   },
   {
