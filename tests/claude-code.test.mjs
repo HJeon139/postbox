@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { AgentSdkAdapter, sdkOptions } from '../server/adapters/agent-sdk.mjs';
+import { AgentSdkAdapter, liveControl, sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
 import { contextPercent, createStreamMapper, describePermission, describeTool, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
@@ -311,7 +311,40 @@ test('the Agent SDK’s canUseTool allows Postbox’s tools and asks you about t
   const can = sdk.calls[0].options.canUseTool;
   assert.deepEqual(await can('mcp__postbox__show_block', { block: {} }), { behavior: 'allow', updatedInput: { block: {} } });
   assert.deepEqual(await can('Bash', { command: 'rm -rf /', description: 'Wipe' }), { behavior: 'deny', message: 'No.' });
-  assert.deepEqual(asked, [{ tool: 'Bash', summary: 'run a command: Wipe', detail: 'rm -rf /' }]);
+  assert.deepEqual(asked, [
+    {
+      tool: 'Bash',
+      summary: 'run a command: Wipe',
+      detail: 'rm -rf /',
+      input: { command: 'rm -rf /', description: 'Wipe' },
+      suggestions: [],
+      suppressAlways: false,
+      agentId: null,
+    },
+  ]);
+});
+
+test('#66: canUseTool passes the prompt’s suggestions and subagent, and returns your edit and Always allow', async () => {
+  const sdk = fakeSdk(fixture('block'));
+  const asked = [];
+  const rules = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' }];
+  const ctx = fakeCtx({
+    askPermission: async (req) => {
+      asked.push(req);
+      return { allow: true, updatedInput: { command: 'npm test -- --ci' }, updatedPermissions: rules };
+    },
+  });
+  await new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' }).deliver({}, { kind: 'user', text: 'x' }, ctx);
+  const can = sdk.calls[0].options.canUseTool;
+  const answer = await can(
+    'Bash',
+    { command: 'npm test' },
+    { suggestions: rules, agentID: 'task-1', toolUseID: 'toolu_1', signal: new AbortController().signal },
+  );
+  assert.deepEqual(answer, { behavior: 'allow', updatedInput: { command: 'npm test -- --ci' }, updatedPermissions: rules });
+  assert.deepEqual(asked[0].suggestions, rules);
+  assert.equal(asked[0].agentId, 'task-1');
+  assert.equal(asked[0].toolUseId, 'toolu_1');
 });
 
 // ── Attached Claude Code sessions ─────────────────────────────────────────────────────────
@@ -529,6 +562,57 @@ test('real agents get readable thinking, subagent messages, and rules allowed on
   assert.deepEqual(opts.allowedTools, ['WebFetch(domain:example.com)']);
   assert.deepEqual(opts.thinking, { type: 'adaptive', display: 'summarized' });
   assert.equal(opts.forwardSubagentText, true);
+});
+
+test('#66: a recorded subagent’s permission prompt is named by its call, and the agent’s own isn’t', () => {
+  // The CLI’s prompt tool sends only the call’s id (permission-prompts.json); the stream saw who made the call.
+  const prompts = JSON.parse(readFileSync(new URL('fixtures/claude-code/permission-prompts.json', import.meta.url), 'utf8')).prompts;
+  assert.ok(prompts.every((p) => !('permission_suggestions' in p) && !('agent_id' in p)));
+  const { m } = replay('permission-subagent');
+  assert.equal(m.who({ toolUseId: prompts[0].tool_use_id }), null);
+  assert.equal(m.who({ toolUseId: prompts[1].tool_use_id }), 'general-purpose');
+  // The SDK’s agent id is the task’s id, as for a refusal.
+  assert.equal(m.who({ agentId: 'af66d9ea59ce3aaa6' }), 'general-purpose');
+});
+
+test('#66: a conversation’s rules and added folders reach both backends', () => {
+  const rules = { allow: ['Bash(npm test:*)'], ask: ['Bash(git push:*)'], deny: ['WebFetch'] };
+  const persona = { model: 'mock', tools: ['shell', 'web.fetch', 'agents.outside'], canPublish: true };
+  const args = claudeArgs({ persona, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', allowOnce: ['Bash(rm a)'], rules, addDirs: ['/data'] });
+  const allowed = args.indexOf('--allowedTools');
+  assert.deepEqual(args.slice(allowed, allowed + 4), ['--allowedTools', 'mcp__postbox', 'Bash(rm a)', 'Bash(npm test:*)']);
+  assert.deepEqual(args.slice(args.indexOf('--disallowedTools'), args.indexOf('--disallowedTools') + 2), ['--disallowedTools', 'WebFetch']);
+  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).permissions, { ask: ['Bash(git push:*)'] });
+  assert.deepEqual(args.slice(args.indexOf('--add-dir'), args.indexOf('--add-dir') + 2), ['--add-dir', '/data']);
+  const opts = sdkOptions({
+    persona,
+    cwd: '/w',
+    addDirs: ['/data'],
+    sessionId: 's',
+    resume: false,
+    mcpUrl: 'u',
+    guide: 'g',
+    abortController: new AbortController(),
+    rules,
+  });
+  assert.deepEqual(opts.allowedTools, ['Bash(npm test:*)']);
+  assert.deepEqual(opts.disallowedTools, ['WebFetch']);
+  assert.deepEqual(opts.settings.permissions, { ask: ['Bash(git push:*)'] });
+  assert.deepEqual(opts.additionalDirectories, ['/data']);
+  // No conversation rules: the overlay is as before.
+  const plain = claudeArgs({ persona, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g' });
+  assert.equal(JSON.parse(plain[plain.indexOf('--settings') + 1]).permissions, undefined);
+});
+
+test('#66: the SDK adapter’s live control changes a running query’s mode, and says when it couldn’t', async () => {
+  const modes = [];
+  const ok = liveControl({ setPermissionMode: async (m) => modes.push(m) });
+  assert.equal(await ok.setPermissionMode('ask'), true);
+  assert.deepEqual(modes, ['default']);
+  // The SDK documents setPermissionMode for streaming input only; a string prompt may refuse it.
+  const refused = liveControl({ setPermissionMode: async () => Promise.reject(new Error('Only available in streaming input mode')) });
+  assert.equal(await refused.setPermissionMode('ask'), false);
+  assert.equal(await liveControl({}).setPermissionMode('ask'), false);
 });
 
 test('a refusal only the result lists (a deny rule in settings) takes its reason from the tool’s error', () => {

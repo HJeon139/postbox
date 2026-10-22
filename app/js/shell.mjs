@@ -5,6 +5,7 @@ import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
+import { openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import { navigate, openMenu, route, toast, undoToast } from './ui.mjs';
@@ -809,6 +810,12 @@ function conversationMenu(anchor, t) {
         icon: 'agent',
         desc: room ? 'It joins the room' : 'This conversation becomes a room',
         run: () => openNewAgent({ threadId: t.id }),
+      },
+      {
+        label: 'Permissions…',
+        icon: 'gear',
+        desc: room ? 'An agent’s mode, rules and folders here' : 'Its mode, rules and folders here',
+        run: () => openPermissions({ threadId: t.id }),
       },
       'hr',
       {

@@ -435,6 +435,16 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
 
   return {
     push,
+    /**
+     * The subagent behind a permission prompt (#66), by the SDK’s agent id (a task id, as a refusal’s agent_id) or by
+     * the call’s tool_use id. The CLI’s prompt tool sends only the call’s id (recorded:
+     * tests/fixtures/claude-code/permission-subagent.jsonl), and the subagent’s tool_use streams before the prompt,
+     * so the call is known by then, with the subagent that made it. Null for the agent’s own calls.
+     * @param {{ agentId?: string|null, toolUseId?: string|null }} ids
+     */
+    who({ agentId = null, toolUseId = null }) {
+      return (agentId && st.subNames.get(st.tasks.get(agentId))) || (toolUseId && st.tools.get(toolUseId)?.who) || null;
+    },
     get sessionId() {
       return st.sessionId;
     },

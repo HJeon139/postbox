@@ -3,17 +3,19 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash } from 'node:crypto';
-import { basename, resolve, sep } from 'node:path';
+import { stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { basename, isAbsolute, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
-import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
+import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
-import { addAllowRule, rulesFor } from './permission-rules.mjs';
+import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { newId } from './store.mjs';
 
 export const HOP_LIMIT = 3;
@@ -44,7 +46,7 @@ const clip = (s, n = 200) => {
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null }} deps
    */
   constructor({ store, adapters, corpus, config, blobs, narrator }) {
@@ -52,6 +54,11 @@ export class Runtime {
     this.adapters = adapters;
     this.corpus = corpus;
     this.config = config;
+    // Where the person’s Claude Code user settings are read and written (#66); tests and checks pass a temp folder.
+    this.home = config.home ?? homedir();
+    // CLAUDE_CONFIG_DIR moves the user settings (permission-rules.mjs, settingsFiles); an injected home never reads it.
+    const { claudeConfigDir } = /** @type {{ claudeConfigDir?: string|null }} */ (config);
+    this.configDir = claudeConfigDir !== undefined ? claudeConfigDir : this.home === homedir() ? process.env.CLAUDE_CONFIG_DIR || null : null;
     this.blobs = blobs ?? null;
     this.narrator = narrator ?? null;
     this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId }
@@ -415,10 +422,25 @@ export class Runtime {
       },
       /** Where an attachment can be read on disk, or null. */
       pathOf: (a) => rt.attachmentPath(turn.threadId, a),
-      /** Asks the person in the thread; resolves to { allow, message? }. */
+      /** Asks the person in the thread; resolves to { allow, message?, updatedInput?, updatedPermissions? }. */
       askPermission: (req) => rt.requestPermission(turn.sessionId, req),
       /** Permission rules the person allowed for this turn only, after a refusal (Claude Code rule syntax). */
       allowOnce: [...turn.allowOnce],
+      /** Rules the person made for this conversation only (#66): { allow, ask, deny }, passed every turn. */
+      rules: { allow: [...(se0.rules?.allow ?? [])], ask: [...(se0.rules?.ask ?? [])], deny: [...(se0.rules?.deny ?? [])] },
+      /** Folders the person added for this conversation (#66), passed as --add-dir / additionalDirectories. */
+      addDirs: [...(se0.addDirs ?? [])],
+      /** The adapter says how to name a subagent from its id (a prompt’s agent id), so its prompt names it. */
+      subagentNames(fn) {
+        turn.subagentName = fn;
+      },
+      /**
+       * The adapter hands over what it can change while the turn runs, such as { setPermissionMode(mode) }. Each
+       * resolves to true when the change took effect now.
+       */
+      control(c) {
+        turn.control = c;
+      },
       /** The backend refused a tool call without asking: { toolUseId, tool, input, label, reason, reasonType, who }. */
       denied(d) {
         if (!live()) return;
@@ -795,7 +817,7 @@ export class Runtime {
     if (!it) throw httpError(404, 'That block doesn’t exist any more.');
     if (it.kind === 'hop') return this.resolveHop(threadId, itemId, action === 'confirm');
     if (it.kind === 'proposal') return this.resolveProposal(threadId, itemId, action);
-    if (it.kind === 'permission') return this.resolvePermission(threadId, itemId, action);
+    if (it.kind === 'permission') return this.resolvePermission(threadId, itemId, action, values);
     if (it.kind === 'denial') return this.resolveDenial(threadId, itemId, action);
     if (it.kind === 'appsend') return this.resolveAppSend(threadId, itemId, action);
     if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
@@ -1252,24 +1274,34 @@ export class Runtime {
   // turns any open card into “expired” and answers no.
 
   /**
+   * input is the call’s input, which Edit changes; suggestions are Claude Code’s own (`permission_suggestions`, the
+   * SDK’s `suggestions`), which Always allow returns; agentId names the subagent that asks, when one does.
    * @param {string} sessionId
-   * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null }} req
-   * @returns {Promise<{ allow: boolean, message?: string }>}
+   * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
+   * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
+   *           agentId?: string|null, suppressAlways?: boolean }} req
+   * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
    */
-  requestPermission(sessionId, { tool, summary, detail = '', toolUseId = null }) {
+  requestPermission(sessionId, { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false }) {
     const se = this.s.sessions[sessionId];
     const turn = this.turns.get(sessionId);
     if (!se || !turn) return Promise.resolve({ allow: false, message: 'The turn has ended.' });
+    const json = input && typeof input === 'object' && !Array.isArray(input) ? JSON.stringify(input) : null;
     const it = this.addItem(se.threadId, {
       kind: 'permission',
       sessionId,
       handle: se.handle,
       turnId: turn.id,
-      tool: String(tool).slice(0, 120),
+      tool: String(tool ?? '').slice(0, 120),
       summary: String(summary).slice(0, 200),
       detail: String(detail).slice(0, 4000),
       // The tool call it’s about, so a refusal of a call you answered here doesn’t get a second card.
       toolUseId: toolUseId ? String(toolUseId) : null,
+      // What Edit starts from; an input too large to edit here can still be allowed as it is.
+      input: json && json.length <= MAX_EDIT_INPUT ? JSON.parse(json) : null,
+      always: this.alwaysFor(se, { tool, input, suggestions, suppressAlways }),
+      // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
+      who: whoAsked(turn, agentId, toolUseId),
       status: 'open',
     });
     // The text so far is finished; the reply continues below the card.
@@ -1282,25 +1314,102 @@ export class Runtime {
     });
   }
 
-  settlePermission(itemId, status, message) {
+  /**
+   * What Always allow offers on a card, or null for none:
+   * - none when Claude Code says a saved rule would grant more than this call (the SDK’s suppressAlwaysAllowRule);
+   * - Claude Code’s own suggestions when it sends a list (the SDK does, and an empty list means none);
+   * - otherwise, for the CLI’s prompt tool, which sends no list at all (recorded), the rule Postbox makes for a refusal,
+   *   which it saves where the CLI saves “don’t ask again”; but only for a backend that reads rules from a folder.
+   * @param {any} se @param {{ tool: unknown, input: any, suggestions: unknown, suppressAlways: boolean }} req
+   */
+  alwaysFor(se, { tool, input, suggestions, suppressAlways }) {
+    if (suppressAlways) return null;
+    if (Array.isArray(suggestions)) return alwaysAllow(suggestions);
+    if (suggestions !== null && suggestions !== undefined) return null;
+    const readsRules = this.adapters.get(this.persona(se.personaId)?.backend ?? '')?.folderFor;
+    return readsRules ? postboxAlways(String(tool ?? '').slice(0, 121), input) : null;
+  }
+
+  /**
+   * Answers a waiting tool call. Any status that starts with “allowed” lets it run, with `answer`’s updatedInput or
+   * updatedPermissions; anything else refuses it with `message`.
+   * @param {string} itemId @param {string} status @param {string} [message]
+   * @param {{ updatedInput?: Record<string, any>, updatedPermissions?: any[] }} [answer] @param {Record<string, any>} [patch]
+   */
+  settlePermission(itemId, status, message, answer = {}, patch = {}) {
     const w = this.permissionWaits.get(itemId);
     if (!w) return false;
     this.permissionWaits.delete(itemId);
-    this.patchItem(w.threadId, itemId, { status, answeredAt: Date.now() });
+    this.patchItem(w.threadId, itemId, { status, answeredAt: Date.now(), ...patch });
     const se = this.s.sessions[w.sessionId];
     if (se?.needs?.itemId === itemId) this.updateSession(se.id, { needs: null, state: this.turns.has(se.id) ? 'tool' : 'idle' });
-    w.resolve(status === 'allowed' ? { allow: true } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
+    w.resolve(status.startsWith('allowed') ? { allow: true, ...answer } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
     return true;
   }
 
-  resolvePermission(threadId, itemId, action) {
+  /**
+   * Your answer on a permission card (#66, #10):
+   * - allow: this once, as asked;
+   * - always: this once, and Claude Code’s own suggestions as updatedPermissions (the card shows them in words);
+   * - edit: with your change to the input (values.command for a command, else values.input, an object or JSON);
+   * - deny: no, with values.reason, which goes to the agent.
+   * @param {string} threadId @param {string} itemId @param {string} action @param {Record<string, any>} [values]
+   */
+  resolvePermission(threadId, itemId, action, values = {}) {
     const it = this.store.item(threadId, itemId);
     if (it?.kind !== 'permission' || it.status !== 'open' || !this.permissionWaits.has(itemId))
       throw httpError(409, 'That request was already answered, or the turn that asked has ended.');
-    if (action !== 'allow' && action !== 'deny') throw httpError(400, 'A permission request takes “allow” or “deny”.');
-    const allow = action === 'allow';
-    this.addItem(threadId, { kind: 'voice', text: `${allow ? 'Allowed' : 'Didn’t allow'}: @${it.handle} to ${it.summary}` });
-    this.settlePermission(itemId, allow ? 'allowed' : 'denied', 'The person didn’t allow this. Ask them what to do instead, or find another way.');
+    if (!['allow', 'always', 'edit', 'deny'].includes(action)) throw httpError(400, 'A permission request takes “allow”, “always”, “edit” or “deny”.');
+    const asked = `${it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`} to ${it.summary}`;
+    if (action === 'allow') {
+      this.addItem(threadId, { kind: 'voice', text: `Allowed: ${asked}` });
+      this.settlePermission(itemId, 'allowed');
+    } else if (action === 'always') {
+      if (!it.always) throw httpError(409, 'There’s no rule to save for this one, so it can only be allowed once.');
+      return this.allowAlways(threadId, it, asked);
+    } else if (action === 'edit') {
+      const input = editedInput(it, values);
+      this.addItem(threadId, { kind: 'voice', text: `Allowed with your edit: ${asked}` });
+      this.settlePermission(
+        itemId,
+        'allowed-edited',
+        undefined,
+        { updatedInput: input },
+        { edited: it.tool === 'Bash' ? input.command : JSON.stringify(input, null, 2) },
+      );
+    } else {
+      const reason = String(values?.reason ?? '')
+        .trim()
+        .slice(0, MAX_REASON);
+      this.addItem(threadId, { kind: 'voice', text: `Didn’t allow: ${asked}${reason ? ` (“${reason}”)` : ''}` });
+      this.settlePermission(
+        itemId,
+        'denied',
+        reason ? `The person didn’t allow this. Their reason: ${reason}` : 'The person didn’t allow this. Ask them what to do instead, or find another way.',
+        {},
+        reason ? { reason } : {},
+      );
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Always allow on a permission card: Claude Code’s suggestions go back as updatedPermissions, and Claude Code saves
+   * them; a rule Postbox made (the CLI suggests none) Postbox saves itself, in the agent folder’s local settings.
+   * @param {string} threadId @param {any} it @param {string} asked
+   */
+  async allowAlways(threadId, it, asked) {
+    if (it.always.saves) {
+      const se = this.s.sessions[it.sessionId];
+      const persona = se && this.personaFor(se);
+      const adapter = persona && this.adapters.get(persona.backend);
+      if (!adapter?.folderFor) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+      await addAllowRule(await adapter.folderFor(persona, this.s.projects[this.s.threads[threadId]?.projectId]), it.always.saves);
+      // The card may have been answered, or its turn ended, while the file was written.
+      if (!this.permissionWaits.has(it.id)) throw httpError(409, 'The rule is saved, but the turn that asked has ended.');
+    }
+    this.addItem(threadId, { kind: 'voice', text: `Always allowed (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')}): ${asked}` });
+    this.settlePermission(it.id, 'allowed-always', undefined, it.always.updates ? { updatedPermissions: it.always.updates } : {});
     return { ok: true };
   }
 
@@ -1375,6 +1484,170 @@ export class Runtime {
   expireStalePermissions() {
     for (const [threadId, items] of Object.entries(this.s.items))
       for (const it of items) if (it.kind === 'permission' && it.status === 'open') this.patchItem(threadId, it.id, { status: 'expired' });
+  }
+
+  // ── The permissions panel (#66) ────────────────────────────────────────────────────
+  // For one agent in one conversation (or, from the persona editor, an agent on its own): its mode, its rules with
+  // where each comes from, the folders it may work in, and what Postbox may change. Rules live where Claude Code
+  // reads them, so a rule made here shows in the CLI’s /permissions, and the reverse; rules for this conversation
+  // only live on the session and are passed with every turn.
+
+  /**
+   * Who the panel is about: { se, persona, project, folder }. A session’s persona is the one it runs with now.
+   * @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
+   */
+  async panelTarget({ sessionId = null, personaId = null, projectId = null }) {
+    const se = sessionId ? this.session(sessionId) : null;
+    const persona = se ? this.personaFor(se) : personaId ? this.persona(personaId) : null;
+    if (!persona) throw httpError(404, 'That agent doesn’t exist.');
+    const project = this.s.projects[se ? this.s.threads[se.threadId]?.projectId : (projectId ?? '')] ?? this.latestProject(persona.id) ?? null;
+    const adapter = this.adapters.get(persona.backend);
+    const folder = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona.folder || project?.folder || null;
+    return { se, persona, project, folder };
+  }
+  /** The project of a persona’s latest conversation, for the panel opened from the persona editor. */
+  latestProject(personaId) {
+    const recent = Object.values(this.s.sessions)
+      .filter((x) => x.personaId === personaId)
+      .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0];
+    return recent ? this.s.projects[this.s.threads[recent.threadId]?.projectId] : null;
+  }
+
+  /**
+   * Everything the panel shows. Rule lists carry their source: user, project, local (the settings files), conversation
+   * (this session’s), tools (the persona’s unticked Tools, as deny rules), publishing (when it may not publish outside
+   * Postbox) and postbox (its own tools, always allowed).
+   * @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
+   */
+  async permissionsView(who) {
+    const { se, persona, project, folder } = await this.panelTarget(who);
+    const real = persona.backend !== 'mock';
+    const { usesHostSetup, canPublish } = setupOf(persona);
+    const files = real && folder ? await readRules({ folder, home: this.home, configDir: this.configDir, usesHostSetup }) : [];
+    const has = new Set(persona.tools ?? []);
+    const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));
+    const conversation = se ? { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] } : null;
+    const running = Object.values(this.s.sessions).filter((x) => x.personaId === persona.id && this.turns.has(x.id));
+    return {
+      persona: {
+        id: persona.id,
+        handle: persona.handle,
+        backend: persona.backend,
+        permissionMode: persona.permissionMode ?? 'auto',
+        usesHostSetup,
+        canPublish,
+      },
+      sessionId: se?.id ?? null,
+      projectId: project?.id ?? null,
+      real,
+      folder,
+      projectFolder: project?.folder ?? null,
+      home: this.home,
+      files,
+      conversation,
+      tools,
+      publishing: canPublish ? [] : [...PUBLISHING_TOOLS],
+      folders: [
+        ...(folder ? [{ path: folder, source: 'folder' }] : []),
+        ...(project?.folder && project.folder !== folder ? [{ path: project.folder, source: 'project' }] : []),
+        ...(se?.addDirs ?? []).map((path) => ({ path, source: 'conversation' })),
+        ...files.flatMap((f) => f.dirs.map((path) => ({ path, source: f.source }))),
+      ],
+      // Agents of this persona with a turn running now: a mode change reaches them now only where the backend allows.
+      running: running.map((x) => x.handle),
+    };
+  }
+
+  /**
+   * Adds or removes a rule. where: local (the default, as the CLI saves “don’t ask again”), user (the person’s own
+   * settings, only for a persona that loads them) or conversation (this session only). The project’s shared
+   * settings.json is never written.
+   * @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null, behavior: string, rule: string,
+   *           where?: string, remove?: boolean }} change
+   */
+  async changePermissionRule({ sessionId = null, personaId = null, projectId = null, behavior, rule, where = 'local', remove = false }) {
+    if (!BEHAVIORS.includes(/** @type {any} */ (behavior))) throw httpError(422, 'A rule allows, asks or denies.');
+    const clean = cleanRule(rule);
+    if (!clean)
+      throw httpError(
+        422,
+        'That isn’t a rule. Write a tool name, and what it covers in parentheses: Bash(npm test:*), WebFetch(domain:example.com), Read(./src/**).',
+      );
+    if (where === 'project')
+      throw httpError(
+        409,
+        'The project’s settings are shared with your team, so Postbox doesn’t change them. Save the rule in this folder’s local settings, or edit .claude/settings.json yourself.',
+      );
+    if (!['local', 'user', 'conversation'].includes(where))
+      throw httpError(422, 'A rule is saved in this folder’s local settings, your user settings or this conversation.');
+    const { se, persona, folder } = await this.panelTarget({ sessionId, personaId, projectId });
+    if (persona.backend === 'mock') throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+    const b = /** @type {'allow'|'ask'|'deny'} */ (behavior);
+    if (where === 'conversation') {
+      if (!se) throw httpError(409, 'Open the panel from a conversation to make a rule for it only.');
+      const rules = { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] };
+      if (remove) rules[b] = rules[b].filter((r) => r !== clean);
+      else if (!rules[b].includes(clean)) {
+        if (rules[b].length >= MAX_CONVERSATION_RULES) throw httpError(422, `A conversation keeps up to ${MAX_CONVERSATION_RULES} ${b} rules.`);
+        rules[b].push(clean);
+      }
+      this.updateSession(se.id, { rules });
+      return { ok: true, where, applies: 'next turn' };
+    }
+    if (where === 'user' && !setupOf(persona).usesHostSetup)
+      throw httpError(
+        409,
+        `@${persona.handle} is isolated, so it doesn’t read your user settings. Save the rule in this folder’s local settings, or this conversation.`,
+      );
+    if (!folder) throw httpError(409, `@${persona.handle} has no folder yet, so there’s no local settings file to save in.`);
+    const files = settingsFiles(folder, this.home, this.configDir);
+    const { file, changed } = await changeRule(files[/** @type {'local'|'user'} */ (where)], { behavior: b, rule: clean, remove });
+    return { ok: true, where, file, changed, applies: 'next turn' };
+  }
+
+  /**
+   * Adds a folder this conversation’s agent may work in, passed as --add-dir / additionalDirectories from its next
+   * turn, or removes one. path is absolute, or relative to the project’s folder (from the folder picker).
+   * @param {{ sessionId: string, path: string, remove?: boolean }} change
+   */
+  async changePermissionFolder({ sessionId, path, remove = false }) {
+    const se = this.session(sessionId);
+    const project = this.s.projects[this.s.threads[se.threadId]?.projectId];
+    const raw = String(path ?? '').trim();
+    if (!raw || raw.length > 1000) throw httpError(422, 'Pick a folder, or write its full path.');
+    const dir = isAbsolute(raw) ? resolve(raw) : project?.folder ? resolve(project.folder, raw) : null;
+    if (!dir) throw httpError(422, 'Write the folder’s full path.');
+    const dirs = [...(se.addDirs ?? [])];
+    if (remove) {
+      this.updateSession(se.id, { addDirs: dirs.filter((d) => d !== dir) });
+      return { ok: true, path: dir };
+    }
+    const st = await stat(dir).catch(() => null);
+    if (!st?.isDirectory()) throw httpError(422, `${dir} isn’t a folder on this computer.`);
+    if (!dirs.includes(dir)) {
+      if (dirs.length >= MAX_ADD_DIRS) throw httpError(422, `A conversation can add up to ${MAX_ADD_DIRS} folders.`);
+      this.updateSession(se.id, { addDirs: [...dirs, dir] });
+    }
+    return { ok: true, path: dir, applies: 'next turn' };
+  }
+
+  /**
+   * Sets a persona’s permission mode (intent.md: it reaches running conversations from their next turn). Where the
+   * backend can change a running turn (the Agent SDK’s setPermissionMode), its running turns change now too.
+   * @param {string} personaId @param {string} mode
+   * @returns {Promise<{ ok: true, now: string[] }>}  now: the handles whose running turn changed at once
+   */
+  async setPermissionMode(personaId, mode) {
+    const p = this.persona(personaId);
+    if (!p) throw httpError(404, 'That agent doesn’t exist.');
+    if (!PERMISSION_MODES.includes(mode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    if ((p.permissionMode ?? 'auto') !== mode) this.updatePersona(personaId, { permissionMode: mode });
+    const now = [];
+    for (const se of Object.values(this.s.sessions)) {
+      const turn = se.personaId === personaId ? this.turns.get(se.id) : null;
+      if (turn?.control?.setPermissionMode && (await turn.control.setPermissionMode(mode))) now.push(se.handle);
+    }
+    return { ok: true, now };
   }
 
   /** Where an attachment can be read on disk: a stored upload, or a file in the project’s folder. */
@@ -2252,6 +2525,65 @@ function checkSetup({ usesHostSetup, canPublish, mcpOff }) {
 /** A persona’s effort is one of the levels Claude Code and the SDK take (#60). */
 function checkEffort(effort) {
   if (!EFFORT_LEVELS.includes(effort)) throw httpError(422, `Effort is one of ${EFFORT_LEVELS.join(', ')}.`);
+}
+/**
+ * Always allow for a prompt without suggestions (the CLI’s prompt tool sends none): the broader rule a refusal card
+ * offers (permission-rules.mjs, rulesFor), which Postbox saves in the folder’s local settings itself.
+ * @param {string} tool @param {any} input
+ */
+function postboxAlways(tool, input) {
+  if (!tool || tool.length > 120) return null;
+  const r = rulesFor(tool, input && typeof input === 'object' ? input : {});
+  // A rule too long to keep (a command with a heredoc, say, which only ever gets its exact text) isn’t offered.
+  if (cleanRule(r.always) !== r.always) return null;
+  return {
+    updates: null,
+    saves: r.always,
+    lines: [{ text: `Always allow ${r.always} in this folder (.claude/settings.local.json)`, rule: r.always }],
+    moved: null,
+    words: r.alwaysWords,
+  };
+}
+/** The subagent behind a prompt, from the adapter’s stream (claude-stream.mjs, who), bounded; null for the agent itself. */
+function whoAsked(turn, agentId, toolUseId) {
+  const ids = { agentId: agentId ? String(agentId) : null, toolUseId: toolUseId ? String(toolUseId) : null };
+  const name = turn.subagentName?.(ids) ?? (ids.agentId ? 'a subagent' : null);
+  return name ? String(name).slice(0, 40) : null;
+}
+// What a conversation keeps for the permissions panel (#66), bounded.
+const MAX_CONVERSATION_RULES = 200;
+const MAX_ADD_DIRS = 20;
+// A permission card’s Edit (#10): the input it starts from, and what you can send back, are bounded.
+const MAX_EDIT_INPUT = 16000;
+const MAX_REASON = 1000;
+/**
+ * The input an edited permission answer allows: the command you changed, for Bash, else the input you rewrote (an
+ * object, or JSON that parses to one). Refused when it doesn’t parse, so a typo never reaches the agent’s tool.
+ * @param {any} it @param {Record<string, any>} values
+ */
+function editedInput(it, values) {
+  // Edit starts from the call’s whole input. One too large to keep on the card can only be allowed as it is, since an
+  // edit made from its shortened text would drop the rest (a command’s description, timeout or background flag).
+  if (!it.input) throw httpError(409, 'This call’s input is too large to edit here. Allow it as it is, or don’t allow it and say what to do instead.');
+  if (it.tool === 'Bash' && typeof values?.command === 'string') {
+    const command = values.command.trim();
+    if (!command) throw httpError(422, 'Write the command to run, or choose Don’t allow.');
+    if (command.length > MAX_EDIT_INPUT) throw httpError(422, `A command is limited to ${MAX_EDIT_INPUT.toLocaleString('en-US')} characters.`);
+    return { ...it.input, command };
+  }
+  let input = values?.input;
+  if (typeof input === 'string') {
+    try {
+      input = JSON.parse(input);
+    } catch (e) {
+      throw httpError(422, `The edited input isn’t valid JSON: ${e.message}`);
+    }
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw httpError(422, 'The edited input has to be a JSON object, like the one it started from.');
+  if (JSON.stringify(input).length > MAX_EDIT_INPUT)
+    throw httpError(422, `The edited input is limited to ${MAX_EDIT_INPUT.toLocaleString('en-US')} characters.`);
+  return input;
 }
 /** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
 const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);

@@ -28,6 +28,7 @@ import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { withAskRules } from '../permission-rules.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
@@ -68,12 +69,13 @@ export function claudeVersion(bin = findClaude()) {
 /** The CLI arguments for one turn. Pure, so the tests can check them. */
 /**
  * @param {{ persona: any, sessionId: string, resume: boolean, mcpUrl: string, guide: string, addDirs?: string[],
- *           fork?: { claudeSessionId: string, uuid?: string }|null, allowOnce?: string[] }} turn
+ *           fork?: { claudeSessionId: string, uuid?: string }|null, allowOnce?: string[], rules?: { allow?: string[], ask?: string[], deny?: string[] } }} turn
+ *   rules: the ones the person made for this conversation only (#66), passed every turn
  */
-export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs = [], fork = null, allowOnce = [] }) {
+export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs = [], fork = null, allowOnce = [], rules = {} }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
-  const denied = deniedTools(persona);
+  const denied = [...deniedTools(persona), ...(rules.deny ?? [])];
   return [
     '-p',
     '--output-format',
@@ -104,15 +106,16 @@ export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs 
     // Postbox’s own tools never need asking: they only show things in the thread.
     '--allowedTools',
     'mcp__postbox',
-    // Rules the person allowed once, after a refusal, for this turn only.
+    // Rules the person allowed once, after a refusal, for this turn only, and those for this conversation (#66).
     ...allowOnce,
+    ...(rules.allow ?? []),
     // The person’s Claude Code setup (or the project’s only, when Isolated), with the default output style,
     // without the MCP servers the persona turned off, and without the tools it may not use: those that publish
     // or act outside Postbox, and its unticked Tools (server/adapters/setup.mjs).
     '--setting-sources',
     (setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES).join(','),
     '--settings',
-    JSON.stringify(settingsFor(persona)),
+    JSON.stringify(withAskRules(settingsFor(persona), rules.ask)),
     ...(denied.length ? ['--disallowedTools', ...denied] : []),
     ...MODES[mode],
     ...addDirs.flatMap((d) => ['--add-dir', d]),
@@ -156,7 +159,8 @@ export class ClaudeCodeAdapter {
     const cwd = await this.folderFor(persona, ctx.project);
     const prompt = formatMessage(message, ctx.pathOf);
     const guide = agentGuide({ persona, handles: ctx.handles, project: ctx.project, brief: session?.brief });
-    const addDirs = [ctx.project?.folder].filter((d) => d && d !== cwd);
+    // The project’s folder, and the folders the person added for this conversation (#66).
+    const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
     const fork = !ctx.state.claudeSessionId ? forkPoint(ctx.state) : null;
     let first = await this.run({ ctx, cwd, addDirs, prompt, guide, resume: Boolean(ctx.state.claudeSessionId), sessionId: ctx.state.claudeSessionId, fork });
     // A branch point Claude Code can no longer find (#61): fork from the conversation’s latest point instead,
@@ -178,8 +182,20 @@ export class ClaudeCodeAdapter {
   /** @param {{ ctx: any, cwd: string, addDirs?: string[], prompt: string, guide: string, resume: boolean, sessionId: string|null, fork?: any }} turn */
   run({ ctx, cwd, addDirs = [], prompt, guide, resume, sessionId, fork = null }) {
     const id = sessionId ?? randomUUID();
-    const args = claudeArgs({ persona: ctx.persona, sessionId: id, resume, mcpUrl: ctx.mcpUrl, guide, addDirs, fork, allowOnce: ctx.allowOnce ?? [] });
+    const args = claudeArgs({
+      persona: ctx.persona,
+      sessionId: id,
+      resume,
+      mcpUrl: ctx.mcpUrl,
+      guide,
+      addDirs,
+      fork,
+      allowOnce: ctx.allowOnce ?? [],
+      rules: ctx.rules ?? {},
+    });
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
+    // A subagent’s permission prompt arrives at Postbox’s MCP tool with its id; the stream knows its name.
+    ctx.subagentNames?.((ids) => mapper.who(ids));
     // A fork gets its own id from Claude Code, saved when the init event arrives.
     if (!resume && !fork) ctx.saveState({ claudeSessionId: id });
     return new Promise((resolve, reject) => {

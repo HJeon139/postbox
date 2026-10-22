@@ -203,6 +203,8 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
     dialog,
   );
   const onKey = (e) => {
+    // Only the dialog on top takes keys: one can open over another (the folder picker over the permissions panel).
+    if ([...document.querySelectorAll('body > .backdrop')].at(-1) !== backdrop) return;
     if (e.key === 'Escape') {
       e.stopPropagation();
       close();

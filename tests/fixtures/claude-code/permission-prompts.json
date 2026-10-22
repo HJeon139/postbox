@@ -1,0 +1,15 @@
+{
+  "about": "The arguments Claude Code (2.1.296, claude-opus-5-5, -p, --permission-mode manual, --permission-prompt-tool mcp__postbox__permission_prompt) sent to Postbox’s permission_prompt tool in the turn recorded in permission-subagent.jsonl: the agent’s own Bash call, then a general-purpose subagent’s. Neither carries permission_suggestions or an agent id. The first was answered { behavior: allow, updatedInput: { command: \"echo edited > note.txt\" } } and the file then held “edited”; the second { behavior: allow, updatedInput } as asked.",
+  "prompts": [
+    {
+      "tool_name": "Bash",
+      "input": { "command": "echo hi > note.txt", "description": "Write hi to note.txt" },
+      "tool_use_id": "toolu_01C7a4d2PqxW4u1s1S8KxC1t"
+    },
+    {
+      "tool_name": "Bash",
+      "input": { "command": "echo bye > note2.txt", "description": "Write bye to note2.txt" },
+      "tool_use_id": "toolu_012L2wPEeVgMBWXbqU1gMAv5"
+    }
+  ]
+}

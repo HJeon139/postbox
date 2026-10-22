@@ -3,6 +3,7 @@
 
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
+import { openPermissions } from './permissions.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
@@ -90,7 +91,7 @@ function checkField({ id, label, help, on, onToggle }) {
 }
 
 // What an MCP server’s status and scope say, from GET /api/mcp-servers (server/adapters/mcp-config.mjs).
-const MCP_STATUS = {
+export const MCP_STATUS = {
   connected: 'Connected',
   failed: 'Couldn’t connect',
   'needs-auth': 'Needs sign-in',
@@ -98,7 +99,7 @@ const MCP_STATUS = {
   disabled: 'Turned off in your Claude Code settings',
   'not-started': 'Not started yet',
 };
-const MCP_SCOPE = {
+export const MCP_SCOPE = {
   user: 'your settings',
   project: 'this project',
   local: 'your settings for this folder',
@@ -942,6 +943,14 @@ export function openSettings(tab = 'appearance', personaId = null) {
         ),
         run.backend === 'mock' ? null : h('span.help', TOOLS_HELP),
       ),
+      // Its rules, folders and MCP servers, with where each comes from (#66), over this sheet.
+      p.backend && p.backend !== 'mock'
+        ? h(
+            'div.row-flex',
+            h('button.btn.sm', { type: 'button', id: 'pe-perms', onclick: () => openPermissions({ personaId: p.id }) }, icon('gear', 'i-sm'), 'Permissions…'),
+            h('span.help', 'Its rules, with where each comes from, and which rule decides a call.'),
+          )
+        : null,
       h(
         'div.row-flex',
         h(
@@ -1142,7 +1151,12 @@ export function openPalette() {
 
 // ── Folder picker ───────────────────────────────────────────────────────────────────────
 
-export function openFolderPicker(projectId, onPick) {
+/**
+ * The project folder’s files, to attach one; with folders: true, its folders, to add one an agent may work in (#66).
+ * onPick gets the path relative to the project’s folder ("" for the folder itself).
+ * @param {string} projectId @param {(path: string) => void} onPick @param {{ folders?: boolean }} [opts]
+ */
+export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
   const listEl = h('ul.list-rows');
   const where = h('p.small.dim.mono');
   const load = async (path) => {
@@ -1150,33 +1164,47 @@ export function openFolderPicker(projectId, onPick) {
       const r = await fetch(`/api/projects/${projectId}/files?path=${encodeURIComponent(path)}`).then((x) => x.json());
       if (r.error) throw new Error(r.error);
       where.textContent = `${r.root}${r.path ? '/' + r.path : ''}`;
+      const pick = (path) => {
+        dlg.close();
+        onPick(path);
+      };
       fill(
         listEl,
+        folders
+          ? h(
+              'li',
+              icon('folder', 'dim'),
+              h('span.grow', 'This folder'),
+              h('button.btn.sm', { type: 'button', onclick: () => pick(r.path) }, 'Add this folder'),
+            )
+          : null,
         r.path
           ? h('li', h('button.btn.sm.ghost', { type: 'button', onclick: () => load(r.path.split('/').slice(0, -1).join('/')) }, icon('back', 'i-sm'), 'Up'))
           : null,
-        ...r.entries.map((e) =>
-          h(
-            'li',
-            icon(e.dir ? 'folder' : 'file', 'dim'),
-            h('span.grow', e.name),
-            e.dir
-              ? h('button.btn.sm', { type: 'button', 'aria-label': `Open ${e.name}`, onclick: () => load(e.path) }, 'Open')
-              : h(
-                  'button.btn.sm',
-                  {
-                    type: 'button',
-                    'aria-label': `Attach ${e.name}`,
-                    onclick: () => {
-                      dlg.close();
-                      onPick(e.path);
+        ...r.entries
+          .filter((e) => !folders || e.dir)
+          .map((e) =>
+            h(
+              'li',
+              icon(e.dir ? 'folder' : 'file', 'dim'),
+              h('span.grow', e.name),
+              e.dir
+                ? [
+                    h('button.btn.sm', { type: 'button', 'aria-label': `Open ${e.name}`, onclick: () => load(e.path) }, 'Open'),
+                    folders ? h('button.btn.sm', { type: 'button', 'aria-label': `Add ${e.name}`, onclick: () => pick(e.path) }, 'Add') : null,
+                  ]
+                : h(
+                    'button.btn.sm',
+                    {
+                      type: 'button',
+                      'aria-label': `Attach ${e.name}`,
+                      onclick: () => pick(e.path),
                     },
-                  },
-                  'Attach',
-                ),
+                    'Attach',
+                  ),
+            ),
           ),
-        ),
-        r.entries.length ? null : h('li.empty-note', 'This folder is empty.'),
+        r.entries.some((e) => !folders || e.dir) ? null : h('li.empty-note', folders ? 'No folders in here.' : 'This folder is empty.'),
       );
       // Focus starts on the first entry, and moves to the first entry of each folder you open (#26).
       const buttons = listEl.querySelectorAll('button');
@@ -1187,8 +1215,8 @@ export function openFolderPicker(projectId, onPick) {
   };
   load('');
   const dlg = openDialog({
-    title: 'Attach from the project folder',
-    sub: 'Postbox attaches a reference; nothing is copied.',
+    title: folders ? 'Add a folder' : 'Attach from the project folder',
+    sub: folders ? 'The agent may work in it from its next turn.' : 'Postbox attaches a reference; nothing is copied.',
     body: [where, listEl],
     size: 'lg',
   });

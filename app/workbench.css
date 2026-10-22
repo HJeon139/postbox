@@ -853,3 +853,22 @@ button.toggle[disabled] { cursor: default; opacity: .8; }
 /* App frames, wherever they appear (transcript or review) */
 iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--stage-bg); }
 .callout b { font-weight: 600; }
+
+/* Permissions: the panel (app/js/permissions.mjs) and the permission card’s answers (#66, #10) */
+.perm-panel { display: flex; flex-direction: column; gap: 18px; }
+.perm-sec { display: flex; flex-direction: column; gap: 8px; }
+.perm-sec > h3.label, .perm-list > h4.label, .perm-add > h4.label { margin: 0; }
+.perm-list { display: flex; flex-direction: column; gap: 4px; }
+.perm-list .list-rows li { flex-wrap: wrap; row-gap: 4px; }
+.perm-rule { overflow-wrap: anywhere; }
+.perm-path { overflow-wrap: anywhere; min-width: 0; }
+.perm-add { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
+.perm-dir-add { flex-wrap: wrap; }
+.perm-dir-add .input { flex: 1 1 220px; width: auto; }
+.perm-verdict p { margin: 0; }
+.perm-status { margin: 0; padding: 6px 10px; border-left: 2px solid var(--accent); background: var(--sunk); }
+.perm-always p { margin: 0; }
+.perm-always code { overflow-wrap: anywhere; }
+.perm-form:empty { display: none; }
+.perm-form { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 560px) { .perm-add .form-grid { grid-template-columns: 1fr; } }

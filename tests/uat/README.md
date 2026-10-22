@@ -20,6 +20,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Top bar](shell/top-bar/top-bar.md)
     - [Postbox menu](shell/top-bar/postbox-menu.md)
     - [Conversation menu](shell/top-bar/conversation-menu.md)
+  - [Permissions panel](shell/permissions-panel.md)
   - [Command palette](shell/command-palette.md)
   - [Toast](shell/toast.md)
   - **rail/**

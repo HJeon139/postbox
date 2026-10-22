@@ -85,7 +85,13 @@ export async function start({
   if (claude) adapters.register(new ClaudeCodeAdapter({ workRoot: join(dataDir, 'workspaces') }));
   const sdk = real ? await loadAgentSdk() : null;
   if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot: join(dataDir, 'workspaces') }));
-  const config = { origin, imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'], versions: { claudeCode: claude } };
+  const config = {
+    origin,
+    imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'],
+    versions: { claudeCode: claude },
+    // The person’s Claude Code user settings live here: the permissions panel reads and writes their rules (#66).
+    home: claudeHome,
+  };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator });
@@ -246,6 +252,11 @@ export async function start({
       const found = await yourMcpServers(folder, { home: claudeHome });
       return send(res, 200, { folder, servers: mcpServerList({ found, seen, off: persona?.mcpOff ?? [] }) });
     }
+    // The permissions panel (#66): one agent’s mode, rules with their sources, folders and tools.
+    if (path === '/api/permissions' && req.method === 'GET') {
+      const q = (k) => url.searchParams.get(k) || null;
+      return send(res, 200, await rt.permissionsView({ sessionId: q('sessionId'), personaId: q('personaId'), projectId: q('projectId') }));
+    }
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
         res.writeHead(503, { 'retry-after': '1' });
@@ -308,6 +319,9 @@ export async function start({
       return send(res, 201, p);
     }
     if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updatePersona(m[1], body));
+    if (path === '/api/permissions/rules' && req.method === 'POST') return send(res, 200, await rt.changePermissionRule(body));
+    if (path === '/api/permissions/folders' && req.method === 'POST') return send(res, 200, await rt.changePermissionFolder(body));
+    if (path === '/api/permissions/mode' && req.method === 'POST') return send(res, 200, await rt.setPermissionMode(body.personaId, body.mode));
     if (path === '/api/projects' && req.method === 'POST') {
       const folder = resolve(String(body.folder ?? ''));
       const st = await stat(folder).catch(() => null);

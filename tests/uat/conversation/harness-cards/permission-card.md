@@ -2,21 +2,39 @@
 
 ![Permission card](../../screenshots/permission-card.png)
 
-**Where:** In the conversation, when an agent asks before a risky tool call.
+**Where:** In the conversation, when an agent, or one of its subagents, asks before a risky tool call.
 
 ## Why it exists
 
-In ask mode (and when auto mode can’t decide) you approve exactly what will run.
+In ask mode (and when auto mode can’t decide) you approve exactly what will run. “Yes, but change this” is the most common real answer, and a safe command shouldn’t ask again every time ([#10](https://github.com/HJeon139/postbox/issues/10), [#66](https://github.com/HJeon139/postbox/issues/66)). Answering here never sends you to a terminal.
 
 ## Expected functionality
 
-- Shows the exact command or file, wrapped so it’s fully visible, with Allow and Don’t allow.
+- Shows the exact command or file, wrapped so it’s fully visible. A subagent’s prompt names it: “Let @coder’s subagent (Explore) …”.
+- **Allow:** runs the call as asked.
+- **Always allow:** runs it, and keeps allowing calls like it. The card says the rule and where it’s saved before you click: “Always allow `Bash(npm test:*)` in this folder (.claude/settings.local.json)”. It isn’t offered when there’s nothing safe to save: the Agent SDK suggests nothing, or says the rule would grant more than this call, or the rule would be too long to keep (a command with a heredoc).
+  - With the Agent SDK, the rule is Claude Code’s own suggestion. One it suggested for the session only is saved in the folder’s local settings instead (each Postbox turn is a new session), and the card says so.
+  - Claude Code’s CLI suggests nothing to its prompt tool, so Postbox makes the rule, as the refusal card does, and saves it there itself.
+- **Edit…:** opens the command (or, for other tools, the input as JSON) to change, then **Allow with this edit** runs what you wrote, with the call’s other settings (its description, timeout, background flag) kept. It isn’t offered for an input too large to show in full. JSON that doesn’t parse says so, and nothing is sent. Escape cancels; Cmd+Enter or Ctrl+Enter allows.
+- **Don’t allow…:** asks why, optionally; Enter refuses. The agent reads your reason.
+- Once answered, the card says how (“Always allowed (Bash(npm test:*))”, “Allowed with your edit”, with what ran, or “Not allowed”, with your reason), and a line in your voice says the same.
 - The agent needs you until you answer; Stop answers no and marks the card expired.
+- Every control works by keyboard; after an answer, focus goes back to the composer.
 
 ## Steps to reproduce
 
-1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Scene 10 (“Clear the index cache”): answer Allow.
-3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. Set an agent to Ask me, ask it to run `ls`, and deny.
+1. Run `node tools/check-permissions.mjs`. It answers a card each way with real clicks and key presses, including a subagent’s prompt. Every line should say ok.
+2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open. Scene 10 (“Clear the index cache”): answer Allow.
+3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. In a project whose folder you can lose, set an agent to Ask me and send: “Run `echo hi > note.txt` yourself, then have a general-purpose subagent run `echo bye > note2.txt`.”
+4. On the first card, choose Edit…, change the command to `echo edited > note.txt`, and allow it. On the subagent’s card, choose Always allow.
+5. Ask again for `echo again > note2.txt`, and choose Don’t allow… with a reason.
 
-**Pass if:** Allow lets the command run; Don’t allow makes the agent carry on without it.
+**Pass if:**
+- `note.txt` holds “edited”, and the card shows what ran.
+- The subagent’s card names it, and its Always allow line showed the rule before you clicked. The rule is in the folder’s `.claude/settings.local.json`, and `claude` in a terminal there lists it under `/permissions`.
+- The agent’s reply mentions your reason.
+
+## Related
+
+- [Permissions panel](../../shell/permissions-panel.md)
+- [Refusal card](refusal-card.md)

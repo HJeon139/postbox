@@ -642,37 +642,161 @@ function hopBlock(it, ctx) {
 
 // An agent in “ask” mode waits here before a risky tool call. It isn’t a catalog block: Postbox draws it,
 // and your answer goes straight back to the waiting tool call rather than to the agent as a message.
-const PERMISSION_DONE = { allowed: 'Allowed', denied: 'Not allowed', expired: 'Expired: the turn ended before you answered' };
+const PERMISSION_DONE = {
+  allowed: 'Allowed',
+  'allowed-always': 'Always allowed',
+  'allowed-edited': 'Allowed with your edit',
+  denied: 'Not allowed',
+  expired: 'Expired: the turn ended before you answered',
+};
+/**
+ * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
+ * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.
+ */
 function permissionBlock(it, ctx) {
   const open = it.status === 'open';
-  const act = (action) =>
-    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
+  const act = (action, values = {}) =>
+    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action, values })
       .then(focusComposer)
-      .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
+      .catch((e) => {
+        toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' });
+        throw e;
+      });
   const titleId = `pm-${it.id}`;
+  const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
+  const bash = it.tool === 'Bash';
+  // Edit and Don’t allow open a small form in the card; only one at a time.
+  const form = h('div.perm-form');
+  const foot = h('div.block-foot');
+  const buttons = () => [
+    h('button.btn', { type: 'button', onclick: () => act('allow') }, 'Allow'),
+    it.always ? h('button.btn', { type: 'button', 'aria-describedby': `${titleId}-always`, onclick: () => act('always') }, 'Always allow') : null,
+    // Edit needs the call’s whole input: one too large to keep here can only be allowed as it is.
+    it.input ? h('button.btn', { type: 'button', 'aria-expanded': 'false', onclick: (e) => showEdit(e.currentTarget) }, 'Edit…') : null,
+    h('button.btn', { type: 'button', 'aria-expanded': 'false', onclick: (e) => showDeny(e.currentTarget) }, 'Don’t allow…'),
+    h('span.small.dim', `${by} is waiting for you.`),
+  ];
+  const close = (back) => {
+    form.replaceChildren();
+    for (const b of foot.querySelectorAll('[aria-expanded]')) b.setAttribute('aria-expanded', 'false');
+    back?.focus();
+  };
+  function showEdit(button) {
+    close();
+    button.setAttribute('aria-expanded', 'true');
+    const start = bash ? String(it.input.command ?? '') : JSON.stringify(it.input, null, 2);
+    const id = `${titleId}-edit`;
+    const err = h('p.err', { id: `${id}-err`, hidden: true });
+    const box = h(
+      `textarea.textarea.mono`,
+      { id, rows: String(Math.min(12, start.split('\n').length + 1)), spellcheck: 'false', 'aria-describedby': `${id}-err` },
+      start,
+    );
+    const submit = () => {
+      let values;
+      if (bash) values = { command: box.value };
+      else {
+        // Checked here first, so a typo is caught before it reaches the agent; the server checks it again.
+        try {
+          const v = JSON.parse(box.value);
+          if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('It has to be a JSON object, like the one it started from.');
+        } catch (e) {
+          err.hidden = false;
+          err.textContent = `This doesn’t parse: ${e.message}`;
+          box.classList.add('invalid');
+          box.focus();
+          return;
+        }
+        values = { input: box.value };
+      }
+      act('edit', values).catch(() => box.focus());
+    };
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close(button);
+      }
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        submit();
+      }
+    });
+    form.replaceChildren(
+      h('label.label', { for: id }, bash ? 'The command to run instead' : 'The input to use instead (JSON)'),
+      box,
+      err,
+      h(
+        'div.row-flex',
+        h('button.btn.send', { type: 'button', onclick: submit }, 'Allow with this edit'),
+        h('button.btn.ghost', { type: 'button', onclick: () => close(button) }, 'Cancel'),
+      ),
+    );
+    box.focus();
+  }
+  function showDeny(button) {
+    close();
+    button.setAttribute('aria-expanded', 'true');
+    const id = `${titleId}-why`;
+    const why = h('input.input', { id, placeholder: 'Optional: what to do instead', maxlength: '1000' });
+    const submit = () => act('deny', { reason: why.value }).catch(() => why.focus());
+    why.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close(button);
+      }
+    });
+    form.replaceChildren(
+      h('label.label', { for: id }, `Why not? @${it.handle} reads this`),
+      why,
+      h(
+        'div.row-flex',
+        h('button.btn.send', { type: 'button', onclick: submit }, 'Don’t allow'),
+        h('button.btn.ghost', { type: 'button', onclick: () => close(button) }, 'Cancel'),
+      ),
+    );
+    why.focus();
+  }
+  if (open) foot.append(...buttons().filter(Boolean));
+  const done = it.status.startsWith('allowed');
   return h(
     'div.col.block',
     { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
     h(
       'div.block-head',
       open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h('span.title.grow', { id: titleId }, `Let @${it.handle} ${it.summary}?`),
+      h('span.title.grow', { id: titleId }, `Let ${by} ${it.summary}?`),
       h('span.kind', `Permission · ${it.tool}`),
     ),
     h(
       'div.block-body',
       // The whole command, wrapped: you decide on what you can see.
       it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
-      !open ? h('span.answered-note', icon(it.status === 'allowed' ? 'check' : 'x', 'i-sm'), PERMISSION_DONE[it.status] ?? it.status) : null,
+      // What Always allow saves, in words, before you click it.
+      open && it.always
+        ? h(
+            'div.small.perm-always',
+            { id: `${titleId}-always` },
+            it.always.lines.map((l) => h('p', l.rule ? ['Always allow ', h('code', l.rule), l.text.slice(`Always allow ${l.rule}`.length)] : l.text)),
+            it.always.moved ? h('p.dim', it.always.moved) : null,
+          )
+        : null,
+      open ? form : null,
+      !open
+        ? h(
+            'span.answered-note',
+            icon(done ? 'check' : 'x', 'i-sm'),
+            PERMISSION_DONE[it.status] ?? it.status,
+            it.status === 'allowed-always' && it.always ? ` (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')})` : '',
+          )
+        : null,
+      !open && it.edited ? h('pre.md-code.perm-detail', { 'aria-label': 'What ran instead' }, h('code', it.edited)) : null,
+      !open && it.reason ? h('p.small', h('b', 'Your reason: '), it.reason) : null,
     ),
-    open
-      ? h(
-          'div.block-foot',
-          h('button.btn', { type: 'button', onclick: () => act('allow') }, 'Allow'),
-          h('button.btn', { type: 'button', onclick: () => act('deny') }, 'Don’t allow'),
-          h('span.small.dim', `@${it.handle} is waiting for you.`),
-        )
-      : null,
+    open ? foot : null,
   );
 }
 

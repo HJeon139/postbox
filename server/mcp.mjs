@@ -104,7 +104,15 @@ export const TOOL_DEFS = [
     description: 'Postbox calls this for you before a tool needs the person’s permission. Don’t call it yourself.',
     inputSchema: {
       type: 'object',
-      properties: { tool_name: { type: 'string' }, input: { type: 'object' }, tool_use_id: { type: 'string' } },
+      // What Claude Code sends (tests/fixtures/claude-code/permission-prompts.json), and the suggestions and agent id
+      // its prompt types document (PermissionRequestHookInput’s permission_suggestions), should a version send them.
+      properties: {
+        tool_name: { type: 'string' },
+        input: { type: 'object' },
+        tool_use_id: { type: 'string' },
+        permission_suggestions: { type: 'array', items: { type: 'object' } },
+        agent_id: { type: 'string' },
+      },
       required: ['tool_name', 'input'],
     },
   },
@@ -177,9 +185,20 @@ async function one(rt, sessionId, msg) {
  * Asks the person whether a tool may run, and answers in the shape Claude Code expects from a
  * permission prompt tool: { behavior: "allow", updatedInput } or { behavior: "deny", message }.
  */
-async function permission(rt, sessionId, { tool_name, input = {}, tool_use_id }) {
+async function permission(rt, sessionId, args) {
+  const { tool_name, input = {}, tool_use_id, permission_suggestions, agent_id } = args ?? {};
   const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
-  const answer = await rt.requestPermission(sessionId, { tool: String(tool_name ?? ''), summary, detail, toolUseId: tool_use_id });
-  const decision = answer.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
+  const answer = await rt.requestPermission(sessionId, {
+    tool: String(tool_name ?? ''),
+    summary,
+    detail,
+    toolUseId: tool_use_id,
+    input,
+    suggestions: permission_suggestions,
+    agentId: typeof agent_id === 'string' ? agent_id : null,
+  });
+  const decision = answer.allow
+    ? { behavior: 'allow', updatedInput: answer.updatedInput ?? input, ...(answer.updatedPermissions ? { updatedPermissions: answer.updatedPermissions } : {}) }
+    : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
   return { content: [{ type: 'text', text: JSON.stringify(decision) }] };
 }
