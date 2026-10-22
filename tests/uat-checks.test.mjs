@@ -84,6 +84,7 @@ test('options asked in prose, without a block in the turn, are #63', () => {
 });
 
 describe('M1’s exit check: the replies that called for a block, and the ones that used the right one (#64)', () => {
+  const asked = (text) => ({ id: `u-${text.length}`, kind: 'user', text, at: 0 });
   const reply = (turn, text, extra = {}) => ({ id: `a-${turn}`, kind: 'agent', turnId: turn, handle: 'researcher', text, at: 0, ...extra });
   const block = (turn, type, at = 0) => ({ id: `b-${turn}-${type}`, kind: 'block', turnId: turn, handle: 'researcher', valid: true, block: { type }, at });
   const steps = (n, ms = 1000) => ({ activity: { steps: Array.from({ length: n }, (_, i) => ({ id: `s${i}`, label: `Read ${i}`, state: 'done', ms })) } });
@@ -108,26 +109,34 @@ describe('M1’s exit check: the replies that called for a block, and the ones t
   });
 
   test('a draft in a review block counts as right; in prose it doesn’t', () => {
-    const r = run([reply('u1', 'The draft is ready for your review.'), block('u1', 'review'), reply('u2', draft)]);
+    const r = run([
+      asked('Can you draft an announcement for the company email?'),
+      reply('u1', 'The draft is ready for your review.'),
+      block('u1', 'review'),
+      asked('Write another version for the newsletter.'),
+      reply('u2', draft),
+    ]);
     assert.equal(r.counts.title, 'M1 exit check: 1 of 2 replies that called for a block used the right one');
     assert.equal(r.counts.evidence, '1 right (review 1); 1 without the block they called for (a draft 1).');
     assert.equal(r.counts.key, 'block-use:1-of-2');
   });
 
   test('only the right block counts: a choice doesn’t cover a draft, a form doesn’t cover options, and questions take a form or a choice', () => {
-    assert.equal(run([reply('u1', draft), block('u1', 'choice')]).counts.counts.wrong, 1);
+    assert.equal(run([asked('Draft the launch email, please.'), reply('u1', draft), block('u1', 'choice')]).counts.counts.wrong, 1);
     assert.equal(run([reply('u1', options), block('u1', 'form')]).counts.counts.wrong, 1);
     assert.equal(run([reply('u1', questions), block('u1', 'form')]).counts.counts.right, 1);
     assert.equal(run([reply('u1', questions), block('u1', 'choice')]).counts.counts.right, 1);
     assert.equal(run([reply('u1', questions), block('u1', 'review')]).counts.counts.wrong, 1);
   });
 
-  test('a long job calls for a progress block: 2 minutes or more, or 10 or more tool calls', () => {
+  test('a long job calls for a progress block: 10 or more tool calls, or 2 minutes or more with 3 or more', () => {
     // The review’s case: minutes of work, then a reply in prose, with no progress block. It was “0 of 0” before.
     let r = run([reply('u1', 'Here is the survey of twelve papers.', steps(6, 30_000))]);
     assert.equal(r.counts.evidence, '0 right; 1 without the block they called for (a long job 1).');
-    // The same by the items’ own times: a block shown 3 minutes after the reply began.
-    assert.equal(run([reply('u1', 'Started.'), block('u1', 'card', 180_000)]).counts.counts.wrong, 1);
+    // The same by the items’ own times: a block shown 3 minutes after the reply began, with a few tool calls.
+    assert.equal(run([reply('u1', 'Started.', steps(3, 100)), block('u1', 'card', 180_000)]).counts.counts.wrong, 1);
+    // Writing alone isn’t a job: minutes spent writing, with no tool calls, calls for nothing.
+    assert.equal(run([reply('u1', 'Started.'), block('u1', 'card', 180_000)]).counts, undefined);
     // Many quick steps.
     assert.equal(run([reply('u1', 'Done.', steps(12, 100))]).counts.counts.wrong, 1);
     // With a progress block, it’s right.
@@ -141,6 +150,36 @@ describe('M1’s exit check: the replies that called for a block, and the ones t
       activity: { steps: Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, label: 'Thinking', state: 'done', kind: 'thought', ms: 10 })) },
     };
     assert.equal(run([reply('u1', 'Done.', thoughts)]).counts, undefined);
+  });
+
+  test('a report, an explanation or a result isn’t a draft, however long; a draft is something to approve', () => {
+    const report = Array.from({ length: 60 }, (_, i) => `${i + 1}. Paper ${i + 1}: method, benchmark and finding.`).join('\n');
+    assert.equal(run([asked('Can you survey twelve papers on agent memory?'), reply('u1', report)]).counts, undefined);
+    // The person saying “approved” is an answer, not a request for something to approve.
+    assert.equal(run([asked('Spec looks good, approved. What do I build first?'), reply('u1', report)]).counts, undefined);
+    // The agent asking for approval of prose it wrote makes it a draft.
+    const asking = `${draft}\n\nDoes this look good to you before it goes out?`;
+    assert.equal(run([asked('Tell me about the launch.'), reply('u1', asking)]).counts.evidence, '0 right; 1 without the block they called for (a draft 1).');
+    // A reply that points at the review block holds no draft of its own.
+    assert.equal(run([asked('Draft the email.'), reply('u1', `${draft}\nThe review block shows what changed.`)]).counts, undefined);
+  });
+
+  test('options are alternatives the person is asked to pick from, not practice questions', () => {
+    const practice = '## Practice\n1. Which query is slower?\n2. Which index helps?\n\n<details><summary>Answer</summary>Query 2.</details>';
+    assert.equal(run([reply('u1', practice)]).counts, undefined);
+    assert.equal(run([reply('u1', 'Here are three ways:\n1. Keyword\n2. Embeddings\n3. Both\n\nWhich would you like?')]).counts.counts.wrong, 1);
+  });
+
+  test('real turns from wave 2’s UAT runs read the way a person judges them', () => {
+    const turns = JSON.parse(readFileSync(new URL('fixtures/uat/m1-turns.json', import.meta.url), 'utf8'));
+    const of = (run) => turns.find((x) => x.run === run).items;
+    // papersurvey: a progress block over a long job, then a table. It read as a missed draft before.
+    assert.deepEqual(run(of('2026-10-22T19-07-51-papersurvey')).counts.counts, { right: 1, wrong: 0, byType: { progress: 1 }, missed: {} });
+    // wikisearch: “approved”, then a plan in prose, calls for nothing.
+    assert.equal(run(of('2026-10-22T18-59-03-wikisearch')).counts, undefined);
+    // wikisearch: a 69-line explanation calls for nothing, and two minutes spent writing a doc into a review block is
+    // a draft shown right, not a long job missed.
+    assert.deepEqual(run(of('2026-10-22T19-07-51-wikisearch')).counts.counts, { right: 1, wrong: 0, byType: { review: 1 }, missed: {} });
   });
 
   test('the counts are information, not a defect: no issue, and a verdict the runner neither verifies nor files', () => {
