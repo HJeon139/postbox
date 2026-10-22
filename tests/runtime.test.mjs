@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { DEFAULT_MODEL as ADAPTERS_DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { HOP_LIMIT, Runtime } from '../server/runtime.mjs';
+import { DEFAULT_MODEL, HOP_LIMIT, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1422,4 +1423,53 @@ test('#5: a persona’s tools, which real backends deny when unticked, follow it
   rt.sendMessage(t.id, { text: 'two' });
   await settle(rt);
   assert.deepEqual(seen, [['corpus.search'], ['corpus.search', 'shell']]);
+});
+
+// ── #60: model and effort ────────────────────────────────────────────────────────────────
+
+test('#60: a persona has an effort next to its model, checked, fixed in a session’s snapshot like the model', async () => {
+  const { rt, t, a, adapter, store } = setup();
+  assert.equal(rt.createPersona({ handle: 'coder' }).effort, 'medium', 'Claude Code’s own default for Opus 5.5');
+  assert.equal(DEFAULT_MODEL, ADAPTERS_DEFAULT_MODEL, 'the runtime and the adapters default to the same model');
+  assert.equal(rt.createPersona({ handle: 'deep', effort: 'xhigh' }).effort, 'xhigh');
+  for (const bad of ['ultra', '', null, 3]) {
+    assert.throws(
+      () => rt.updatePersona(a.id, { effort: bad }),
+      (e) => e.status === 422 && /Effort is one of low, medium, high, xhigh, max/.test(e.message),
+    );
+    assert.throws(
+      () => rt.createPersona({ handle: 'nope', effort: bad }),
+      (e) => e.status === 422,
+    );
+  }
+  assert.equal(rt.updatePersona(a.id, { effort: 'max' }).effort, 'max');
+  assert.equal(rt.updatePersona(a.id, { description: 'x' }).effort, 'max', 'other edits keep it');
+  const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
+  rt.updatePersona(a.id, { effort: 'low' });
+  const seen = [];
+  adapter.next.push(async (c) => seen.push(c.persona.effort));
+  rt.sendMessage(t2.id, { text: 'hi' });
+  await settle(rt);
+  assert.deepEqual(seen, ['max'], 'the session runs with the effort it started with, as with the model');
+  assert.equal(rt.sessionsIn(t2.id)[0].personaSnapshot.effort, 'max');
+  assert.ok(t && store);
+});
+
+test('#60: the model that answered and the effort a turn ran with are kept on the session', async () => {
+  const { rt, t, adapter, store } = setup();
+  adapter.next.push(async (c) => {
+    c.reported({ model: 'claude-sonnet-5-5', effort: 'high' });
+    c.reported({ model: 'claude-haiku-5-5' });
+    c.reported({ model: '', effort: 'ultra' });
+    c.reported({ model: 'x'.repeat(300) });
+  });
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  const se = store.state.sessions[rt.sessionsIn(t.id)[0].id];
+  assert.equal(se.lastModel, 'x'.repeat(100), 'bounded');
+  assert.equal(se.lastEffort, 'high', 'an unknown level is ignored');
+  adapter.next.push(async (c) => c.reported({ model: 'claude-haiku-5-5', effort: 'low' }));
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual([store.state.sessions[se.id].lastModel, store.state.sessions[se.id].lastEffort], ['claude-haiku-5-5', 'low']);
 });

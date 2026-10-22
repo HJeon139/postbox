@@ -131,13 +131,15 @@ export function contextPercent(usage, window) {
 /**
  * Feeds one stream to a turn context.
  * @param {any} ctx  the turn context (see server/adapters/adapter.mjs)
- * @param {{ contextWindow?: number, now?: () => number }} [opts]
+ * @param {{ contextWindow?: number, now?: () => number, effort?: string|null }} [opts]  effort: what the turn was
+ *   started with, reported with the model, since the stream doesn’t say
  */
-export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.now } = {}) {
+export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.now, effort = null } = {}) {
   /** @type {any} */
   const st = {
     sessionId: null,
     model: null,
+    answered: null, // the model the last assistant message came from
     contextWindow,
     result: null,
     wroteText: false, // reply text so far this turn, so separate text blocks get a paragraph break
@@ -301,8 +303,13 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       if (e.subtype === 'init') {
         st.sessionId = e.session_id ?? st.sessionId;
         st.model = e.model ?? st.model;
-        // The MCP servers that loaded, with their status, for the persona sheet (#59).
-        if (Array.isArray(e.mcp_servers)) ctx.reported?.({ mcpServers: e.mcp_servers });
+        // The MCP servers that loaded, with their status, for the persona sheet (#59), and the model and effort
+        // the turn runs with (#60).
+        ctx.reported?.({
+          ...(Array.isArray(e.mcp_servers) ? { mcpServers: e.mcp_servers } : {}),
+          ...(e.model ? { model: e.model } : {}),
+          ...(effort ? { effort } : {}),
+        });
         status({ state: 'think', currentStep: 'Thinking' });
       } else if (e.subtype === 'status' && e.status === 'compacting') {
         status({ currentStep: 'Summarizing the conversation' });
@@ -380,6 +387,12 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       // The last top-level assistant message is where this turn ends in the transcript: a fork point.
       if (e.uuid) st.lastUuid = e.uuid;
       const m = e.message ?? {};
+      // The model that actually answered (#60). Claude Code’s own messages, such as an interruption, say
+      // “<synthetic>”, which isn’t a model.
+      if (typeof m.model === 'string' && m.model && !m.model.startsWith('<') && m.model !== st.answered) {
+        st.answered = m.model;
+        ctx.reported?.({ model: m.model });
+      }
       for (const b of m.content ?? []) {
         if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') {
           startTool(b.id, b.name, b.input);

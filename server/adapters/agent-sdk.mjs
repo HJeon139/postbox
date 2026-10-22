@@ -11,9 +11,8 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
-import { deniedTools, HOST_SOURCES, ISOLATED_SOURCES, postboxServer, settingsFor, setupOf } from './setup.mjs';
+import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
-const DEFAULT_MODEL = 'claude-opus-5-5';
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
 const MODES = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
 
@@ -39,7 +38,9 @@ export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpU
   return {
     cwd,
     additionalDirectories: addDirs,
-    model: persona.model && persona.model !== 'mock' ? persona.model : DEFAULT_MODEL,
+    // Both always passed, as for the CLI: left out, your own settings would decide (#60).
+    model: modelOf(persona),
+    effort: effortOf(persona),
     // A topic thread’s first turn forks the conversation’s session at the message it branched from.
     ...(fork
       ? { resume: fork.sdkSessionId ?? fork.claudeSessionId, forkSession: true, ...(fork.uuid ? { resumeSessionAt: fork.uuid } : {}) }
@@ -116,7 +117,7 @@ export class AgentSdkAdapter {
       return answer.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
     };
 
-    const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model) });
+    const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model), effort: effortOf(persona) });
     let stderr = '';
     const options = {
       ...sdkOptions({ persona, cwd, addDirs, sessionId, resume, mcpUrl: ctx.mcpUrl, guide, abortController, canUseTool, fork, allowOnce: ctx.allowOnce ?? [] }),

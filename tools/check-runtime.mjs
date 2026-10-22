@@ -1,6 +1,7 @@
 // A headless Chrome check of what the persona sheet says an agent runs with: your MCP servers, each with its
 // status and a checkbox that’s on by default (#59), and that saving stores the ones turned off; the Tools
-// checklist’s real-backend id and what ticking means there (#5).
+// checklist’s real-backend id and what ticking means there (#5); and the effort field next to the model, which
+// saving stores (#60).
 //
 //   node tools/check-runtime.mjs
 //
@@ -95,6 +96,17 @@ try {
       status: el.querySelector('.small')?.textContent.trim() ?? '', visible: el.getBoundingClientRect().width > 0 }))`);
   const legend = () =>
     page.evaluate(`[...document.querySelectorAll('.dialog legend')].find((l) => l.textContent === 'MCP servers')?.parentElement.textContent ?? null`);
+  /** The effort field: its label, value, options, help, and the label of the field before it. */
+  const effortField = (idp) =>
+    page.evaluate(`(() => {
+      const el = document.getElementById('${idp}-e');
+      if (!el) return null;
+      const field = el.closest('.field');
+      const label = document.querySelector('label[for="${idp}-e"]')?.textContent;
+      return { label, value: el.value, options: [...el.options].map((o) => o.textContent),
+        help: document.getElementById(el.getAttribute('aria-describedby'))?.textContent ?? '',
+        after: field.previousElementSibling?.querySelector('.label')?.textContent ?? null, visible: el.getBoundingClientRect().width > 0 };
+    })()`);
   const close = async () => {
     await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await sleep(300);
@@ -121,7 +133,24 @@ try {
   const text = await page.evaluate(`document.body.textContent`);
   check(!/secret-token|search-server/.test(text), 'no server config reaches the page');
 
-  // Space turns one off; Save stores it on the persona.
+  // #60: Effort sits next to Model, with Claude Code’s default; pick High.
+  const effort = await effortField('pe');
+  check(
+    effort?.label === 'Effort' && effort.value === 'medium' && effort.after === 'Model' && effort.visible,
+    'the editor shows Effort right after Model, at Medium by default',
+    JSON.stringify(effort),
+  );
+  check(
+    JSON.stringify(effort?.options) === JSON.stringify(['Low', 'Medium', 'High', 'Extra high', 'Max']),
+    'it offers every level Claude Code takes',
+    JSON.stringify(effort?.options),
+  );
+  check(/How much it thinks before it answers/.test(effort?.help ?? ''), 'it has help text', effort?.help);
+  await page.evaluate(
+    `(() => { const s = document.getElementById('pe-e'); s.focus(); s.value = 'high'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+  );
+
+  // Space turns one off; Save stores it on the persona, with the effort.
   await page.evaluate(`document.querySelector('.dialog [data-server="claude.ai Google Drive"]').focus()`);
   await press(' ', 'Space', 32);
   list = await servers();
@@ -133,6 +162,7 @@ try {
     'Save stores the server turned off',
     JSON.stringify(app.store.state.personas[persona.id].mcpOff),
   );
+  check(app.store.state.personas[persona.id].effort === 'high', 'Save stores the effort', app.store.state.personas[persona.id].effort);
   await close();
 
   // Reopened, it’s still off; Isolated says only Postbox’s server loads.
@@ -159,6 +189,8 @@ try {
     'the new-agent sheet lists your servers, all on',
     JSON.stringify(list),
   );
+  const naEffort = await effortField('na');
+  check(naEffort?.value === 'medium' && naEffort.after === 'Model', 'the new-agent sheet has Effort after Model, at Medium', JSON.stringify(naEffort));
   // #5: the checklist offers agents.outside, off by default, and says what a tick means on a real backend.
   const outside = await page.evaluate(`(() => {
     const el = [...document.querySelectorAll('.dialog fieldset .check')].find((c) => c.querySelector('.mono')?.textContent === 'agents.outside');
@@ -171,6 +203,23 @@ try {
     JSON.stringify(outside),
   );
   check(/unticked tool is turned off\. A ticked one still follows its permissions/.test(outside?.help ?? ''), 'it says what ticking means', outside?.help);
+  await close();
+
+  // A narrow window: the editor, with a long server name, doesn’t scroll sideways.
+  app.rt.updateSession(se.id, {
+    mcpServers: { at: Date.now(), servers: [{ name: 'plugin:engineering:google calendar and a much longer name', status: 'failed', source: 'plugin' }] },
+  });
+  await page.size(375, 812);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(persona.id)}))`);
+  await page.waitFor(`!!document.querySelector('.dialog [data-server^="plugin:"]')`, { label: 'the MCP list at 375 px' });
+  // Anything that sticks out past the dialog’s right edge (a field’s own text scrolling inside it is fine).
+  const wide = await page.evaluate(`(() => {
+    const d = document.querySelector('.dialog').getBoundingClientRect();
+    return [...document.querySelectorAll('.dialog *')].filter((el) => el.getBoundingClientRect().right > d.right + 1)
+      .map((el) => (el.className || el.tagName) + ': ' + el.textContent.slice(0, 40)).slice(0, 5);
+  })()`);
+  const overflow = await page.evaluate(`document.documentElement.scrollWidth > window.innerWidth + 1`);
+  check(!overflow && !wide.length, 'at 375 px the editor doesn’t scroll sideways', JSON.stringify({ overflow, wide }));
   await close();
 } catch (e) {
   check(false, 'the check ran to the end', e.message);

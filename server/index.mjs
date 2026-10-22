@@ -17,7 +17,7 @@ import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
-import { REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { Corpus } from './corpus.mjs';
 import { handleMcp } from './mcp.mjs';
@@ -186,6 +186,8 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
           knownTools: [...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS],
           adapters: adapters.names(),
           defaultModel: DEFAULT_MODEL,
+          effortLevels: EFFORT_LEVELS,
+          defaultEffort: DEFAULT_EFFORT,
           permissionModes: PERMISSION_MODES,
           demo,
           corpus: corpus.stats(),

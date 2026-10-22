@@ -10,7 +10,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
-import { POSTBOX_SERVER } from './adapters/setup.mjs';
+import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addAllowRule, rulesFor } from './permission-rules.mjs';
@@ -500,12 +500,19 @@ export class Runtime {
         rt.updateSession(turn.sessionId, { compactions: n, ctx: Math.round((kept / total) * 100) });
       },
       /**
-       * What the backend reported about the run: mcpServers, the MCP servers its init listed with their status
-       * ([{ name, status, source? }]). Kept on the session as se.mcpServers = { at, servers }, bounded, for the
-       * persona sheet’s list (GET /api/mcp-servers).
+       * What the backend reported about the run, kept on the session, bounded:
+       * - mcpServers, the MCP servers its init listed with their status ([{ name, status, source? }]), as
+       *   se.mcpServers = { at, servers }, for the persona sheet’s list (GET /api/mcp-servers);
+       * - model, the model that answered, as se.lastModel, and effort, the effort the turn was started with, as
+       *   se.lastEffort (#60): the header shows them, marked when they differ from the persona’s setting.
        */
       reported(r) {
         if (!live() || !r) return;
+        /** @type {any} */
+        const patch = {};
+        if (typeof r.model === 'string' && r.model.trim()) patch.lastModel = r.model.trim().slice(0, 100);
+        if (EFFORT_LEVELS.includes(r.effort)) patch.lastEffort = r.effort;
+        if (Object.keys(patch).length) rt.updateSession(turn.sessionId, patch);
         if (Array.isArray(r.mcpServers))
           rt.updateSession(turn.sessionId, {
             mcpServers: {
@@ -1552,6 +1559,7 @@ export class Runtime {
     instructions = '',
     backend = 'mock',
     model = backend === 'mock' ? 'mock' : DEFAULT_MODEL,
+    effort = DEFAULT_EFFORT,
     permissionMode = 'auto',
     usesHostSetup = true,
     canPublish = false,
@@ -1569,6 +1577,7 @@ export class Runtime {
     if (!this.adapters.names().includes(backend))
       throw httpError(422, `“${backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}. See README, “Run real agents”.`);
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    checkEffort(effort);
     checkSetup({ usesHostSetup, canPublish, mcpOff });
     const p = {
       id: newId('pe'),
@@ -1576,6 +1585,7 @@ export class Runtime {
       description,
       instructions,
       model: String(model || DEFAULT_MODEL),
+      effort,
       backend,
       permissionMode,
       usesHostSetup,
@@ -1598,6 +1608,7 @@ export class Runtime {
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
     if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode))
       throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    if (patch.effort !== undefined) checkEffort(patch.effort);
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend))
@@ -1611,6 +1622,7 @@ export class Runtime {
         'instructions',
         'backend',
         'model',
+        'effort',
         'permissionMode',
         'usesHostSetup',
         'canPublish',
@@ -2197,7 +2209,7 @@ export function httpError(status, message) {
   return Object.assign(new Error(message), { status, userMessage: message });
 }
 const snapshotOf = (p) =>
-  pick(p, ['description', 'instructions', 'model', 'permissionMode', 'usesHostSetup', 'canPublish', 'mcpOff', 'folder', 'tools', 'version']);
+  pick(p, ['description', 'instructions', 'model', 'effort', 'permissionMode', 'usesHostSetup', 'canPublish', 'mcpOff', 'folder', 'tools', 'version']);
 const MAX_MCP_OFF = 100;
 /**
  * A persona’s setup choices (#57) are true or false, and the MCP servers it turned off (#59) a list of names;
@@ -2211,6 +2223,10 @@ function checkSetup({ usesHostSetup, canPublish, mcpOff }) {
     (!Array.isArray(mcpOff) || mcpOff.length > MAX_MCP_OFF || mcpOff.some((n) => typeof n !== 'string' || !n.trim() || n.length > 200))
   )
     throw httpError(422, `The MCP servers turned off are a list of up to ${MAX_MCP_OFF} server names.`);
+}
+/** A persona’s effort is one of the levels Claude Code and the SDK take (#60). */
+function checkEffort(effort) {
+  if (!EFFORT_LEVELS.includes(effort)) throw httpError(422, `Effort is one of ${EFFORT_LEVELS.join(', ')}.`);
 }
 /** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
 const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);

@@ -191,5 +191,5 @@ test('the stream reports the MCP servers an init lists, for the sheet’s status
   const m = createStreamMapper(ctx);
   const [mine] = fixture('host-mcp-init');
   m.push(mine);
-  assert.deepEqual(reported, [{ mcpServers: mine.mcp_servers }]);
+  assert.deepEqual(reported, [{ mcpServers: mine.mcp_servers, model: 'claude-haiku-5-5' }]);
 });

@@ -4,7 +4,7 @@
 //
 //   claude -p --output-format stream-json --include-partial-messages --verbose
 //          --thinking-display summarized --forward-subagent-text
-//          --model <persona model>  --session-id <uuid> | --resume <uuid>
+//          --model <persona model>  --effort <persona effort>  --session-id <uuid> | --resume <uuid>
 //          --mcp-config '{ postbox: { type: http, url: <ctx.mcpUrl>, alwaysLoad } }'  [--strict-mcp-config (Isolated)]
 //          --append-system-prompt <guide>  --allowedTools mcp__postbox [rules allowed once after a refusal]
 //          --setting-sources user,project,local | project,local (Isolated)
@@ -30,9 +30,8 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
-import { deniedTools, HOST_SOURCES, ISOLATED_SOURCES, postboxServer, settingsFor, setupOf } from './setup.mjs';
+import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
-const DEFAULT_MODEL = 'claude-opus-5-5';
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
 // settings, or auto, and an agent you set to ask could end up not asking. (manual is the CLI’s name for default.)
 const MODES = {
@@ -85,8 +84,11 @@ export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs 
     '--thinking-display',
     'summarized',
     '--forward-subagent-text',
+    // Both always passed, as the permission mode is: left out, your own settings would decide (#60).
     '--model',
-    persona.model && persona.model !== 'mock' ? persona.model : DEFAULT_MODEL,
+    modelOf(persona),
+    '--effort',
+    effortOf(persona),
     // A topic thread’s first turn forks the conversation’s session at the message it branched from.
     ...(fork
       ? ['--resume', fork.claudeSessionId, '--fork-session', ...(fork.uuid ? ['--resume-session-at', fork.uuid] : [])]
@@ -177,7 +179,7 @@ export class ClaudeCodeAdapter {
   run({ ctx, cwd, addDirs = [], prompt, guide, resume, sessionId, fork = null }) {
     const id = sessionId ?? randomUUID();
     const args = claudeArgs({ persona: ctx.persona, sessionId: id, resume, mcpUrl: ctx.mcpUrl, guide, addDirs, fork, allowOnce: ctx.allowOnce ?? [] });
-    const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model) });
+    const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
     // A fork gets its own id from Claude Code, saved when the init event arrives.
     if (!resume && !fork) ctx.saveState({ claudeSessionId: id });
     return new Promise((resolve, reject) => {

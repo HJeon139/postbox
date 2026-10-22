@@ -834,3 +834,45 @@ test('#5: no deny rule matches a Postbox tool, and every rule names a tool a rea
   for (const t of Object.values(TOOL_RULES).flat()) assert.ok(!denied.tools.includes(t), `${t} is gone`);
   for (const t of ['Read', 'Edit', 'Write', 'Task', 'Skill', 'TaskStop', 'EnterWorktree']) assert.ok(denied.tools.includes(t), `${t} stays`);
 });
+
+// ── #60: model and effort ────────────────────────────────────────────────────────────────
+
+test('#60: both backends always pass the model and the effort, with the defaults when a persona names none', () => {
+  const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() };
+  const after = (args, flag) => args[args.indexOf(flag) + 1];
+  for (const [persona, model, effort] of [
+    [{ model: 'claude-sonnet-5-5', effort: 'high' }, 'claude-sonnet-5-5', 'high'],
+    [{ model: 'claude-haiku-5-5', effort: 'max' }, 'claude-haiku-5-5', 'max'],
+    // A persona from before effort existed, an unknown level, and the mock’s model.
+    [{ model: 'claude-opus-5-5' }, 'claude-opus-5-5', 'medium'],
+    [{ model: 'claude-opus-5-5', effort: 'ultra' }, 'claude-opus-5-5', 'medium'],
+    [{ model: 'mock' }, 'claude-opus-5-5', 'medium'],
+  ]) {
+    const args = claudeArgs({ ...base5, persona });
+    assert.deepEqual([after(args, '--model'), after(args, '--effort')], [model, effort], JSON.stringify(persona));
+    const o = sdkOptions({ ...sdkBase, persona });
+    assert.deepEqual([o.model, o.effort], [model, effort], JSON.stringify(persona));
+  }
+});
+
+// model-effort.jsonl: a real turn (claude 2.1.296, outside the repo) with --model claude-sonnet-5-5 --effort high,
+// asked to run `printenv CLAUDE_EFFORT`, which Claude Code sets to the turn’s effort. Its init is cut down to a few
+// tools and Postbox’s server, with local paths removed. The stream reports the model, in init and in each
+// assistant message, but not the effort.
+test('#60: a recorded turn with --model and --effort reports the model that answered, and the effort it was started with', () => {
+  const lines = fixture('model-effort');
+  assert.equal(lines.find((e) => e.type === 'user').message.content[0].content, 'high', 'the flag set the effort');
+  assert.ok(!('effort' in lines[0]), 'init doesn’t say the effort');
+  const reported = [];
+  const m = createStreamMapper(fakeCtx({ reported: (r) => reported.push(r) }), { effort: 'high' });
+  for (const e of lines) m.push(e);
+  assert.deepEqual(reported, [{ mcpServers: lines[0].mcp_servers, model: 'claude-sonnet-5-5', effort: 'high' }, { model: 'claude-sonnet-5-5' }]);
+  // A different model answering (a fallback, say) is reported; Claude Code’s own “<synthetic>” messages aren’t.
+  const fell = [];
+  const m2 = createStreamMapper(fakeCtx({ reported: (r) => fell.push(r) }), { effort: 'high' });
+  for (const e of lines) {
+    m2.push(e.type === 'assistant' && e.message.content[0].type === 'text' ? { ...e, message: { ...e.message, model: 'claude-haiku-5-5' } } : e);
+  }
+  m2.push({ type: 'assistant', message: { model: '<synthetic>', content: [] } });
+  assert.deepEqual(fell.at(-1), { model: 'claude-haiku-5-5' });
+});

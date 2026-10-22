@@ -8,6 +8,7 @@
 // - Tools that publish outside Postbox are denied, unless the persona allows them. In a UAT run, an agent
 //   published its result as a claude.ai artifact instead of a Postbox app, so the work left the conversation.
 // - MCP servers the persona turned off (mcpOff) don’t load: see settingsFor.
+// - The model and the effort are always passed (modelOf, effortOf), so neither comes from the person’s settings.
 // - The persona’s Tools checklist reaches the backend as deny rules (#5), and tools that act outside Postbox’s
 //   record are denied unless the persona allows them: see TOOL_RULES and deniedTools.
 // A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own, and
@@ -25,6 +26,21 @@ export const ISOLATED_SOURCES = ['project', 'local'];
  * standard style, which adds no style instructions.
  */
 export const SETTINGS_OVERLAY = { outputStyle: 'default' };
+
+/** The model a real backend uses when a persona doesn’t name one (or names the mock). */
+export const DEFAULT_MODEL = 'claude-opus-5-5';
+export const modelOf = (persona) => (persona?.model && persona.model !== 'mock' ? String(persona.model) : DEFAULT_MODEL);
+
+/** Effort levels, as `claude --effort <level>` and the SDK’s EffortLevel (sdk.d.ts) spell them. */
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+/**
+ * The effort a persona runs with when it names none: what Claude Code itself uses for claude-opus-5-5 with no
+ * --effort and no effortLevel in the person’s settings. A real turn (claude 2.1.296) ran `printenv CLAUDE_EFFORT`,
+ * which Claude Code sets to the turn’s effort, and it printed “medium”; with --effort high it printed “high”. The
+ * stream itself doesn’t report effort: in print mode, init has no `effort` field.
+ */
+export const DEFAULT_EFFORT = 'medium';
+export const effortOf = (persona) => (EFFORT_LEVELS.includes(persona?.effort) ? persona.effort : DEFAULT_EFFORT);
 
 /** Postbox’s own MCP server’s name. It always loads, and a persona can’t turn it off. */
 export const POSTBOX_SERVER = 'postbox';

@@ -23,6 +23,8 @@ const BACKENDS = [
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
 const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
+// The levels come from the server (server/adapters/setup.mjs, EFFORT_LEVELS); these are their names.
+const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 const PERMISSIONS = [
   ['auto', 'Auto', 'A safety check approves routine actions; it asks you only when it can’t decide.'],
   ['ask', 'Ask me', 'It asks before running commands or changing files.'],
@@ -179,7 +181,8 @@ function mcpField(st, paint, { idp, personaId = null, projectId = null }) {
 }
 
 /**
- * Fields for st.backend, st.model, st.permissionMode, st.folder, st.usesHostSetup, st.mcpOff and st.canPublish.
+ * Fields for st.backend, st.model, st.effort, st.permissionMode, st.folder, st.usesHostSetup, st.mcpOff and
+ * st.canPublish.
  * idp prefixes element ids; personaId and projectId say whose MCP servers to list.
  */
 function backendFields(st, paint, { idp, fixedBackend = false, personaId = null, projectId = null }) {
@@ -226,6 +229,31 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
             { id: `${idp}-models` },
             MODELS.map((m) => h('option', { value: m })),
           ),
+        )
+      : null,
+    // Next to the model, and always passed with it, so your own settings don’t decide it (#60).
+    real
+      ? h(
+          'div.field',
+          h('label.label', { for: `${idp}-e` }, 'Effort'),
+          h(
+            'div.select-wrap',
+            h(
+              'select.select',
+              {
+                id: `${idp}-e`,
+                'aria-describedby': `${idp}-e-help`,
+                onchange: (e) => {
+                  st.effort = e.target.value;
+                },
+              },
+              (client.config.effortLevels ?? Object.keys(EFFORT_NAMES)).map((l) =>
+                h('option', { value: l, selected: (st.effort ?? client.config.defaultEffort) === l }, EFFORT_NAMES[l] ?? l),
+              ),
+            ),
+            icon('down'),
+          ),
+          h('span.help', { id: `${idp}-e-help` }, 'How much it thinks before it answers. Higher is slower and costs more.'),
         )
       : null,
     real
@@ -302,6 +330,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     where: threadId ? 'join' : 'new',
     backend: defaultBackend(),
     model: client.config.defaultModel ?? 'claude-opus-5-5',
+    effort: client.config.defaultEffort ?? 'medium',
     permissionMode: 'auto',
     usesHostSetup: true,
     canPublish: false,
@@ -479,6 +508,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         tools: [...st.tools],
         backend: st.backend,
         model: st.backend === 'mock' ? 'mock' : st.model,
+        ...(st.backend === 'mock' ? {} : { effort: st.effort }),
         permissionMode: st.permissionMode,
         ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish, mcpOff: st.mcpOff }),
         folder: st.folder,
@@ -869,6 +899,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
     const run = {
       backend: p.backend ?? 'mock',
       model: p.model,
+      effort: p.effort ?? client.config.defaultEffort ?? 'medium',
       permissionMode: p.permissionMode ?? 'auto',
       folder: p.folder ?? '',
       usesHostSetup: p.usesHostSetup !== false,
@@ -929,6 +960,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                     ? {}
                     : {
                         model: run.model,
+                        effort: run.effort,
                         permissionMode: run.permissionMode,
                         folder: run.folder,
                         usesHostSetup: run.usesHostSetup,
