@@ -1,0 +1,238 @@
+[
+  {
+    "run": "2026-10-22T19-07-51-papersurvey",
+    "about": "papersurvey: a progress block, then a table",
+    "items": [
+      {
+        "id": "it_aZdY06O2",
+        "kind": "user",
+        "at": 1792696087794,
+        "text": "@researcher can you survey twelve well-known papers on memory for LLM agents? Pick them yourself. For each, note the method, the benchmark it was tested on, and one limitation. It can take a few minutes, I'll wait."
+      },
+      {
+        "id": "it_krppyV5",
+        "kind": "agent",
+        "turnId": "turn_ZVCjnE",
+        "handle": "researcher",
+        "at": 1792696120951,
+        "text": "",
+        "activity": {
+          "steps": [
+            {
+              "kind": "thought",
+              "ms": null
+            },
+            {
+              "ms": 36
+            },
+            {
+              "kind": "thought",
+              "ms": null
+            },
+            {
+              "ms": 11874
+            },
+            {
+              "ms": 9046
+            },
+            {
+              "ms": 10890
+            },
+            {
+              "ms": 9701
+            },
+            {
+              "ms": 8658
+            },
+            {
+              "kind": "thought",
+              "ms": null
+            }
+          ]
+        }
+      },
+      {
+        "id": "it_PIQ1w2Wr",
+        "kind": "block",
+        "turnId": "turn_ZVCjnE",
+        "handle": "researcher",
+        "at": 1792696120979,
+        "valid": true,
+        "block": {
+          "type": "progress"
+        }
+      },
+      {
+        "id": "it_swNQ01w",
+        "kind": "block",
+        "turnId": "turn_ZVCjnE",
+        "handle": "researcher",
+        "at": 1792696192225,
+        "valid": true,
+        "block": {
+          "type": "table"
+        }
+      },
+      {
+        "id": "it_ylezf0N8",
+        "kind": "agent",
+        "turnId": "turn_ZVCjnE",
+        "handle": "researcher",
+        "at": 1792696202168,
+        "text": "The twelve papers are in the table above. You can sort it by year or by what each system stores. The project corpus holds only novels, so I took the papers from arXiv. I checked the details for MemoryBank, recursive summarization, A-MEM, Zep and Mem0 against the papers’ pages. The other seven summaries come from my own knowledge of the papers, and I didn’t check them in this session.\n\n## Step 1: Where the memory lives\n\nMost of these systems are an LLM wrapped in a loop that writes to and reads from a store. What they differ on is *what* they store.\n\n```mermaid\nflowchart TD\n  M[Agent memory] --> A[Episodes and summaries]\n  M --> B[Lessons]\n  M --> C[Skills as code]\n  M --> D[Graphs]\n  M --> E[Model KV cache]\n```\n\n- **Episodes and summaries:** Generative Agents, MemGPT, MemoryBank, recursive summarization\n- **Lessons:** Reflexion, ExpeL\n- **Skills as code:** Voyager\n- **Graphs:** HippoRAG, Zep, A-MEM, Mem0ᵍ (Mem0’s graph variant)\n- **Model KV cache:** LongMem, the only one that works inside the model and needs training\n\n## Step 2: The shared loop\n\n```mermaid\nflowchart TD\n  O[New observation] --> W[Write: extract, summarize or reflect]\n  W --> S[(Memory store)]\n  Q[Current task] --> R[Read: score and retrieve]\n  S --> R\n  R --> P[Prompt to the LLM]\n  P --> O\n```\n\nThe newer systems mostly change the **write** step. Mem0 chooses between ADD, UPDATE, DELETE and NOOP, Zep marks old facts as no longer valid, and A-MEM revises its notes. Older systems mostly change the **read** step.\n\n## Step 3: The math behind two key ideas\n\n**Retrieval score (Generative Agents).** Each memory $m$ gets a score for the query $q$:\n\n$$\\text{score}(m) = \\text{recency}(m) + \\text{importance}(m) + \\text{relevance}(m, q)$$\n\n- $\\text{recency} = 0.995^{h}$, where $h$ is the number of hours since the memory was last used.\n- Importance is a rating from 1 to 10 that the LLM gives the memory.\n- Relevance is the cosine similarity between the memory’s embedding and the query’s.\n\nThe paper normalizes each term to $[0,1]$ before adding them.\n\n**Forgetting curve (MemoryBank).** Retention after time $t$ is $R = e^{-t/S}$, where $S$ is how strong the memory is. Each time a memory is recalled, $S$ goes up and $t$ resets to zero.\n\n## The pattern across the twelve\n\n- Before 2024, papers tested on their own tasks (ALFWorld, Minecraft, Smallville).\n- Since 2025, papers have used the same few benchmarks: LoCoMo, LongMemEval and Deep Memory Retrieval (DMR).\n- Zep and Mem0 were written by the companies that sell them, and Mem0 is scored by an LLM acting as judge. Treat their head-to-head numbers with caution.\n\n## Exercise\n\nUse the simplified score with importance divided by 10 and no normalization.\n\n- **Memory A:** last used 2 hours ago, importance 3, relevance 0.9.\n- **Memory B:** last used 100 hours ago, importance 9, relevance 0.6.\n\n1. Which memory is retrieved first?\n2. If nobody touches either memory, after roughly how many more hours does B overtake A?\n\n<details><summary>Answer</summary>\n\n1. A scores $0.995^{2} + 0.3 + 0.9 \\approx 0.990 + 1.2 = 2.190$. B scores $0.995^{100} + 0.9 + 0.6 \\approx 0.606 + 1.5 = 2.106$. **A wins, narrowly.**\n2. Both memories age by the same number of hours, $x$. B overtakes A when $0.995^{2+x} + 1.2 < 0.995^{100+x} + 1.5$. That simplifies to $0.995^{x}(0.990 - 0.606) < 0.3$, so $0.995^{x} < 0.781$ and $x > \\ln 0.781 / \\ln 0.995 \\approx 49$. **After about 49 more hours.**\n\nWhy it matters: recency decay alone eventually lets an important but less relevant memory take over. That is why MemoryBank resets the clock whenever a memory is recalled.\n</details>\n\n## Sources\n\n1. Park et al., [Generative Agents](https://arxiv.org/abs/2304.03442), UIST 2023\n2. Shinn et al., [Reflexion](https://arxiv.org/abs/2303.11366), NeurIPS 2023\n3. Wang et al., [Voyager](https://arxiv.org/abs/2305.16291), 2023\n4. Zhong et al., [MemoryBank](https://arxiv.org/abs/2305.10250), AAAI 2024 ([AAAI page](https://ojs.aaai.org/index.php/AAAI/article/view/29946))\n5. Packer et al., [MemGPT](https://arxiv.org/abs/2310.08560), 2023\n6. Zhao et al., [ExpeL](https://arxiv.org/abs/2308.10144), AAAI 2024\n7. Q. Wang et al., [Recursively summarizing enables long-term dialogue memory](https://arxiv.org/abs/2308.15022), 2023\n8. W. Wang et al., [LongMem](https://arxiv.org/abs/2306.07174), NeurIPS 2023\n9. Gutiérrez et al., [HippoRAG](https://arxiv.org/abs/2405.14831), NeurIPS 2024\n10. Rasmussen et al., [Zep](https://arxiv.org/abs/2501.13956), 2025 ([Zep blog post](https://blog.getzep.com/zep-a-temporal-knowledge-graph-architecture-for-agent-memory))\n11. Xu et al., [A-MEM](https://arxiv.org/abs/2502.12110), NeurIPS 2025 ([proceedings](https://proceedings.neurips.cc/paper_files/paper/2025/hash/19909c36f51abc4856b4560aff3d36d6-Abstract-Conference.html))\n12. Chhikara et al., [Mem0](https://arxiv.org/abs/2504.19413), 2025\n\nBenchmarks: [LoCoMo](https://arxiv.org/abs/2402.17753) (Maharana et al., ACL 2024) and [LongMemEval](https://arxiv.org/abs/2410.10813) (Wu et al., ICLR 2025).\n\nYou could ask critic to check the limitations column, especially the claims about Zep and Mem0."
+      },
+      {
+        "id": "it_6r3WeUoQ",
+        "kind": "user",
+        "at": 1792696253026,
+        "text": "Thanks. Can you put all twelve side by side in one view, and tell me the three I should read first, with a reason for each?"
+      },
+      {
+        "id": "it_Pt1vIX85",
+        "kind": "agent",
+        "turnId": "turn_LuD5YGw",
+        "handle": "researcher",
+        "at": 1792696264562,
+        "text": "",
+        "activity": {
+          "steps": [
+            {
+              "kind": "thought",
+              "ms": null
+            },
+            {
+              "kind": "thought",
+              "ms": null
+            }
+          ]
+        }
+      },
+      {
+        "id": "it_9iUzGNJ",
+        "kind": "block",
+        "turnId": "turn_LuD5YGw",
+        "handle": "researcher",
+        "at": 1792696275222,
+        "valid": true,
+        "block": {
+          "type": "table"
+        }
+      },
+      {
+        "id": "it_3775rs1",
+        "kind": "agent",
+        "turnId": "turn_LuD5YGw",
+        "handle": "researcher",
+        "at": 1792696283482,
+        "text": "The matrix above puts all twelve on the same axes. Each one has its unit of memory, how it writes and reads, whether it revises old memories, whether it needs training, how it was evaluated, and whether the authors sell it. I filled in the cells from memory and didn’t check them against the papers, so check a cell before you rely on it.\n\n**Read these three first:**\n\n1. **Generative Agents (2023).** Most later papers use its two ideas as a starting point. One is the retrieval score (recency + importance + relevance). The other is reflection, where the agent writes memories *about* its memories. Read it and you have the baseline the others react to.\n2. **MemGPT (2023).** It recasts the problem: the prompt is a small fast memory and the stores are a large slow one, so the LLM manages its own memory with function calls. It also introduced Deep Memory Retrieval (DMR), which Zep and others later report on. Reading it explains where the newer systems’ assumptions come from.\n3. **Mem0 (2025).** It shows where the field is now: memory is something you *edit*, not just add to, with ADD, UPDATE and DELETE operations. It also compares against the widest set of rivals (full context, OpenAI memory, Zep, A-MEM, RAG) on LoCoMo. Read it critically. Its authors sell the system, it uses one benchmark, and an LLM does the scoring. That makes it good practice for judging the 2025 papers too.\n\nIf you want a fourth paper on how these systems get evaluated, read [LongMemEval](https://arxiv.org/abs/2410.10813). Its five abilities (information extraction, multi-session reasoning, temporal reasoning, knowledge updates and abstention) give you a checklist for judging any of the twelve.\n\nSources: [Park et al. 2023](https://arxiv.org/abs/2304.03442), [Packer et al. 2023](https://arxiv.org/abs/2310.08560), [Chhikara et al. 2025](https://arxiv.org/abs/2504.19413)."
+      }
+    ]
+  },
+  {
+    "run": "2026-10-22T18-59-03-wikisearch",
+    "about": "wikisearch: the person says “approved”, and the agent answers with a plan",
+    "items": [
+      {
+        "id": "it_uRzjxStG",
+        "kind": "user",
+        "at": 1792695864643,
+        "text": "Spec looks good, approved. So the first thing to build is the Markdown-to-text step plus the search column and GIN index, right?"
+      },
+      {
+        "id": "it_GMiz7hQd",
+        "kind": "agent",
+        "turnId": "turn_4fQcDivY",
+        "handle": "researcher",
+        "at": 1792695871656,
+        "text": "Almost. That’s the first *code* to write, but I’d start collecting the 40 test queries first or at the same time. There are two reasons.\n\n1. **The held-out set only works if you pick it before seeing results.** Choose the 10 held-out queries before you run anything. After you’ve seen what search returns, it’s hard to pick them without bias, and then the 0.8 bar no longer tells you much.\n2. **The queries shape the code.** The old search logs show what identifiers people actually type. Check the `codes` pattern against them before you lock it in, rather than finding gaps after the backfill.\n\nNeither task depends on the other, so with three people they can run side by side:\n\n```mermaid\nflowchart TD\n  A[Collect 40 queries, mark right pages] --> B[Set aside 10 held-out]\n  C[Markdown-to-text and codes extraction] --> D[Schema, GIN indexes, backfill]\n  A -.->|check codes pattern| C\n  B --> E[Query SQL and eval script]\n  D --> E\n  E --> F[Tune on 30, score held-out 10]\n  F --> G[Search logging and launch]\n```\n\nThe build order I’d use:\n\n1. **Test set:** collect the 40 queries, write down the correct pages for each, and freeze the held-out 10.\n2. **Extraction:** the Markdown-to-text step, with unit tests on a few real pages. Include one with code blocks and one with links and images.\n3. **Schema and backfill:** the new columns, the generated `search` column, both GIN indexes, then a one-time pass over all 20k pages.\n4. **Query and eval script:** this is where you get your first real recall@5, measured before any tuning.\n5. **Tuning, logging, launch.**\n\nWriting the extraction step first is fine, as long as the test set is underway before step 4.",
+        "activity": {
+          "steps": [
+            {
+              "kind": "thought",
+              "ms": null
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "run": "2026-10-22T19-07-51-wikisearch",
+    "about": "wikisearch: a long explanation, then a doc written into a review block for two minutes",
+    "items": [
+      {
+        "id": "it_lm6pU79V",
+        "kind": "user",
+        "at": 1792696086406,
+        "text": "Hey, we need to add search to our internal wiki. About 20k pages, they change daily, team of three to maintain it. Keyword search, embeddings, or some mix? What would you do?"
+      },
+      {
+        "id": "it_wopDboU",
+        "kind": "agent",
+        "turnId": "turn_4P2rtbvv",
+        "handle": "researcher",
+        "at": 1792696098723,
+        "text": "## My recommendation: start with keyword search, measure it, then add embeddings and merge the two\n\nFor 20k pages that change daily and a team of three, I’d ship BM25 keyword search first. Then I’d add embedding search next to it and merge the two result lists with reciprocal rank fusion (RRF). I wouldn’t use embeddings on their own.\n\n### Why, step by step\n\n1. **Keyword search is a strong baseline on text it was never tuned for.** The BEIR benchmark ran search models on 18 datasets they hadn’t been trained on. BM25 held up well, and many dense (embedding) retrievers did worse than it outside their training domain ([Thakur et al., 2021](https://arxiv.org/abs/2104.08663)). Your internal wiki is exactly that kind of unfamiliar text.\n2. **Wikis are full of exact strings.** Ticket IDs, service names, error codes and acronyms like `PAY-1432` or `ERR_CONN_RESET` are where keyword matching does well and embeddings tend to blur.\n3. **Embeddings cover what keywords miss.** They find pages that use different words for the same idea, such as “how do I get prod access” matching a page titled “Requesting elevated permissions.”\n4. **RRF merges the two lists without tuning.** It looks only at each page’s rank in each list, so you never have to make BM25 scores and cosine similarities comparable. In the original paper it beat the individual rankers and other ways of merging them ([Cormack et al., 2009](https://dl.acm.org/doi/10.1145/1571941.1572114)).\n5. **Daily changes are cheap at this size.** Re-index a page when it’s saved. Even if every page is split into about 5 chunks (around 100k vectors), re-embedding only the changed pages each day is a small batch job.\n\n```mermaid\nflowchart TD\n  Q[User query] --> K[BM25 keyword index]\n  Q --> V[Vector index]\n  K --> F[Reciprocal rank fusion]\n  V --> F\n  F --> R[Top results]\n  E[Page saved] --> K\n  E --> V\n```\n\n### The math\n\nBM25 score of document $d$ for query $q$:\n\n$$\\text{BM25}(d,q)=\\sum_{t\\in q}\\text{IDF}(t)\\cdot\\frac{f(t,d)\\,(k_1+1)}{f(t,d)+k_1\\left(1-b+b\\,\\frac{|d|}{\\text{avgdl}}\\right)}$$\n\n- $f(t,d)$ is how often term $t$ appears in $d$.\n- $k_1\\approx1.2$ limits how much repeating a term can add to the score.\n- $b\\approx0.75$ controls how much long pages are penalized.\n\nRRF score, summed over every ranked list $r$ that contains $d$:\n\n$$\\text{RRF}(d)=\\sum_{r}\\frac{1}{k+\\text{rank}_r(d)},\\qquad k=60$$\n\n### What I’d actually build\n\n- **Stage 1 (about a week):** BM25 in a tool you already run, such as Postgres full-text search, OpenSearch or Meilisearch. Give title matches more weight than body matches, and re-index pages when they’re saved.\n- **Stage 2:** Collect about 50 real queries from your team, each paired with the page that should come up. Measure how often that page lands in the top 5.\n- **Stage 3:** Add a vector column (for example pgvector, if you’re on Postgres), merge with RRF, and measure again. Keep the hybrid only if it beats BM25 on your 50 queries.\n\nUsing one database for both indexes keeps the system small enough for three people to maintain.\n\n### Exercise\n\nThe two searches return these rankings for the same query:\n\n| Rank | BM25 | Vector |\n|---|---|---|\n| 1 | A | C |\n| 2 | B | A |\n| 3 | C | D |\n\nWith $k=60$, what is the merged order?\n\n<details><summary>Answer</summary>\n\n- A: $\\tfrac{1}{61}+\\tfrac{1}{62}\\approx0.03252$\n- C: $\\tfrac{1}{63}+\\tfrac{1}{61}\\approx0.03227$\n- B: $\\tfrac{1}{62}\\approx0.01613$\n- D: $\\tfrac{1}{63}\\approx0.01587$\n\nThe merged order is **A, C, B, D**. Pages that rank well in both lists rise to the top, and a page that only one list found (B or D) still makes the results.\n\n</details>\n\nIf you tell me your stack (Postgres, Elasticsearch, something hosted), I can sketch the stage 1 schema and the stage 2 evaluation script.",
+        "activity": {
+          "steps": [
+            {
+              "kind": "thought",
+              "ms": null
+            },
+            {
+              "kind": "thought",
+              "ms": null
+            }
+          ]
+        }
+      },
+      {
+        "id": "it_ma6cdgir",
+        "kind": "user",
+        "at": 1792696146265,
+        "text": "Makes sense. What decisions do I actually need to make here? I'd like to pick the approach myself."
+      },
+      {
+        "id": "it_ccSJu8Qx",
+        "kind": "block",
+        "turnId": "turn_A96srCaf",
+        "handle": "researcher",
+        "at": 1792696275796,
+        "valid": true,
+        "block": {
+          "type": "review"
+        }
+      },
+      {
+        "id": "it_Ifl7LITN",
+        "kind": "user",
+        "at": 1792696305957,
+        "text": "Doc looks fine so far. Before I build stage 1, what do I still need to settle on reindexing, ranking, and how we'll know it works?"
+      },
+      {
+        "id": "it_d2rNwuFR",
+        "kind": "agent",
+        "turnId": "turn_A96srCaf",
+        "handle": "researcher",
+        "at": 1792696396606,
+        "text": "I added your answers to the design doc. Revision 2 is ready for your review, with a diff against the first version.\n\n- **Reindexing:** with webhooks and IDs that stay the same through renames, a rename is just another save. The handler fetches the page from the wiki before updating the index, so webhooks that arrive late or out of order can’t put a deleted page back in search.\n- **Ranking:** English stemming, relevance only, with no boost for recent pages.\n- **How you’ll know it works:** you collect the 50 test queries by Fri 2026-10-30, and stage 1 has to beat the current wiki search on them.\n\nYou left three questions blank, so I filled in a starting point for each and marked it **assumed** in the doc:\n- **Synonyms:** no synonym list yet.\n- **What stage 1 has to beat:** the current wiki search.\n- **Logging:** record searches, searches that return nothing, and which results people click.\n\nChange any of them in your review if they’re wrong.",
+        "activity": {
+          "steps": [
+            {
+              "kind": "thought",
+              "ms": null
+            },
+            {
+              "kind": "thought",
+              "ms": null
+            },
+            {
+              "kind": "thought",
+              "ms": null
+            }
+          ]
+        }
+      }
+    ]
+  }
+]
