@@ -11,12 +11,14 @@ import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
-import { lintTerms } from './lint.mjs';
+import { diagramProblems, lintMessage, termProblems } from './checks.mjs';
 import { addAllowRule, rulesFor } from './permission-rules.mjs';
 import { newId } from './store.mjs';
 
 export const HOP_LIMIT = 3;
 const DELETE_UNDO_MS = 10000;
+/** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
+const LINT_SETTLE_MS = 1500;
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
  * actions and asks you only when it can’t decide. ask: ask before anything risky. acceptEdits: edit files
@@ -37,7 +39,7 @@ const clip = (s, n = 200) => {
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null }} deps
    */
   constructor({ store, adapters, corpus, config, blobs, narrator }) {
@@ -52,6 +54,7 @@ export class Runtime {
     this.turns = new Map(); // sessionId → live turn
     this.viewing = new Map(); // threadId → last time a browser said it was open
     this.timers = new Map(); // scheduleId or deletion → timeout
+    this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
   }
 
   get s() {
@@ -359,7 +362,7 @@ export class Runtime {
           turnId: turn.id,
           text: '',
           status: 'streaming',
-          activity: turn.first ? null : { steps: [] },
+          activity: turn.first ? null : { steps: [...turn.steps] },
           // A reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check.
           ...(turn.kind === 'lint' ? { lintReply: true } : {}),
         });
@@ -417,7 +420,8 @@ export class Runtime {
       // who: the subagent that took the step; detail: why it failed, or the whole thought; kind: 'thought'.
       activity({ id, label, state = 'running', ms = null, who = null, detail = null, kind = null }) {
         if (!live()) return;
-        if (!turn.first) ensureSegment();
+        // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
+        if (!turn.first && turn.kind !== 'lint') ensureSegment();
         const i = turn.steps.findIndex((s) => s.id === id);
         const step = {
           id: id ?? newId('st'),
@@ -430,7 +434,7 @@ export class Runtime {
         };
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
-        rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+        if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
         const s = se();
         // A thought is in the list, but it isn’t a tool call.
         if (kind === 'thought') return;
@@ -569,18 +573,10 @@ export class Runtime {
     else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120));
     else if (turn.said && !viewing) this.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120));
 
-    // Lint for coined terms the reply never defined; the agent gets the list and fixes it.
-    const undefinedTerms = lintTerms(turn.said, this.s.glossary[turn.threadId] ?? {});
-    // And for diagrams too wide or too busy to read at the conversation’s width.
-    const diagrams = turn.kind === 'lint' ? [] : lintDiagrams(turn.said);
-    if (diagrams.length)
-      this.rememberDiagrams(
-        se.id,
-        diagrams.map((d) => d.src),
-      );
-    // A lint turn is never linted again, so this can’t loop.
-    if ((undefinedTerms.length || diagrams.length) && turn.kind !== 'lint')
-      this.deliver(se.id, { kind: 'lint', undefinedTerms, diagrams: diagrams.map(({ src: _src, ...d }) => d) });
+    // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
+    // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
+    if (turn.kind === 'lint') this.quietLint(turn, se);
+    else this.endLint(turn, this.checkTurn(turn, se));
 
     // An agent that @-mentions another agent wakes it.
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
@@ -977,9 +973,98 @@ export class Runtime {
     return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
   }
 
-  // ── Diagram legibility ─────────────────────────────────────────────────────────────
-  // The linter estimates from a diagram’s source; the browser measures the real text size after it renders and
-  // reports here what the estimate missed. Either way the agent hears about a diagram once.
+  // ── The lint pipeline ──────────────────────────────────────────────────────────────
+  // Every check returns problems, { code, message, scope } (server/checks.mjs). The problems an agent turn caused
+  // go back to the agent as one lint turn: the server’s checks run when the turn ends, and the browser reports what
+  // it measures (diagrams, the app check) as the reply renders, so the lint turn waits a moment for those. There’s
+  // at most one lint turn per agent turn, a lint turn is never linted, and problems from a turn that failed or was
+  // stopped are dropped.
+
+  /** The server’s checks over a finished turn. */
+  checkTurn(turn, se) {
+    const problems = termProblems(turn.said, this.s.glossary[turn.threadId] ?? {});
+    // Diagrams too wide or too busy to read at the conversation’s width.
+    const diagrams = lintDiagrams(turn.said);
+    if (diagrams.length)
+      this.rememberDiagrams(
+        se.id,
+        diagrams.map((d) => d.src),
+      );
+    problems.push(...diagramProblems(diagrams));
+    return problems;
+  }
+
+  lintEntry(sessionId, turnId) {
+    let e = this.lints.get(turnId);
+    if (!e) {
+      e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null };
+      this.lints.set(turnId, e);
+      // Only recent turns can still get a lint turn.
+      for (const [k, old] of this.lints) {
+        if (this.lints.size <= 200) break;
+        clearTimeout(old.timer);
+        this.lints.delete(k);
+      }
+    }
+    return e;
+  }
+
+  /** The turn ended: its lint turn goes once the browser has had a moment to report. */
+  endLint(turn, problems) {
+    const e = this.lintEntry(turn.sessionId, turn.id);
+    e.kind = turn.kind;
+    e.ended = true;
+    e.problems.push(...problems);
+    if (e.problems.length) this.sendLint(turn.id);
+  }
+
+  /**
+   * Adds problems to the lint turn of the agent turn they came from. Returns whether the agent will hear of them:
+   * not when they came from a lint turn, or when that turn’s lint turn has already gone.
+   * @param {string} sessionId  @param {string|null|undefined} turnId  @param {import('./checks.mjs').Problem[]} problems
+   */
+  lint(sessionId, turnId, problems) {
+    if (!problems.length || !turnId || !this.s.sessions[sessionId]) return false;
+    const live = [...this.turns.values()].some((t) => t.id === turnId);
+    const e = this.lintEntry(sessionId, turnId);
+    // A turn that isn’t running and didn’t end well failed or was stopped, or ran before a restart.
+    if (!live && e.kind === null) {
+      const threadId = this.s.sessions[sessionId].threadId;
+      e.ended = true;
+      e.sent = this.store.items(threadId).some((i) => i.turnId === turnId && (i.status === 'failed' || i.status === 'stopped'));
+    }
+    if (e.kind === 'lint' || e.sent) return false;
+    e.problems.push(...problems);
+    if (e.ended) this.sendLint(turnId);
+    return true;
+  }
+
+  sendLint(turnId) {
+    const e = this.lints.get(turnId);
+    if (!e || e.sent || e.timer) return;
+    const send = () => {
+      e.timer = null;
+      e.sent = true;
+      const se = this.s.sessions[e.sessionId];
+      if (se && !se.deleting && !se.archived) this.deliver(e.sessionId, lintMessage(e.problems));
+    };
+    const wait = this.config.lintSettleMs ?? LINT_SETTLE_MS;
+    if (wait <= 0) return send();
+    e.timer = setTimeout(send, wait);
+    e.timer.unref?.();
+  }
+
+  /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */
+  quietLint(turn, se) {
+    if (turn.said.trim() || turn.first) return;
+    const defined = [...new Set(turn.defined ?? [])].map((t) => `“${t}”`);
+    const list = defined.length > 1 ? `${defined.slice(0, -1).join(', ')} and ${defined.at(-1)}` : (defined[0] ?? '');
+    const text = defined.length ? `@${se.handle} defined ${list}` : turn.steps.length ? `@${se.handle} acted on Postbox’s check without a reply` : null;
+    if (text) this.addItem(turn.threadId, { kind: 'system', variant: 'lint', handle: se.handle, turnId: turn.id, text, lintReply: true });
+  }
+
+  // The diagram linter estimates from a diagram’s source; the browser measures the real text size after it renders
+  // and reports here what the estimate missed. Either way the agent hears about a diagram once.
 
   rememberDiagrams(sessionId, sources) {
     const se = this.s.sessions[sessionId];
@@ -997,26 +1082,16 @@ export class Runtime {
     if (!se || !(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)) return { ok: true, sent: false };
     const hash = createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
     if (se.diagramsLinted?.includes(hash)) return { ok: true, sent: false };
-    this.rememberDiagrams(se.id, [src]);
     const index = [...String(it.text).matchAll(/^ {0,3}```mermaid/gm)].length > 1 ? null : 0;
-    this.deliver(se.id, {
-      kind: 'lint',
-      undefinedTerms: [],
-      diagrams: [
-        {
-          index,
-          kind: 'diagram',
-          excerpt: src.split('\n').slice(0, 3).join('\n'),
-          problems: [
-            {
-              code: 'text-too-small',
-              message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
-            },
-          ],
-        },
-      ],
-    });
-    return { ok: true, sent: true };
+    const sent = this.lint(se.id, it.turnId, [
+      {
+        code: 'text-too-small',
+        message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
+        scope: { kind: 'diagram', index, excerpt: src.split('\n').slice(0, 3).join('\n') },
+      },
+    ]);
+    if (sent) this.rememberDiagrams(se.id, [src]);
+    return { ok: true, sent };
   }
 
   // ── Permission prompts ─────────────────────────────────────────────────────────────
@@ -1713,6 +1788,7 @@ export class Runtime {
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/^-|-$/g, '')
             .slice(0, 64) || 'term';
+        if (turn) (turn.defined ??= []).push(String(term).slice(0, 80));
         rt.store.emit('glossary', {
           threadId: threadId(),
           entry: {

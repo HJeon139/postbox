@@ -2,6 +2,8 @@
 // Shared by the Claude Code and Agent SDK adapters, so both backends behave the same way.
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
+import { formatLint } from '../checks.mjs';
+
 /**
  * The system prompt Postbox appends for an agent: who it is, who else is here, and how to use the room.
  * @param {{ persona: any, handles: string[], project?: any, brief?: string|null }} who
@@ -117,17 +119,8 @@ function formatBody(message, pathOf) {
       return `[Postbox] A wake-up you scheduled is due. Your note: ${message.note || '(none)'}`;
     case 'app-check':
       return `[Postbox] Your app “${message.appId}” failed the pre-display check. Fix it with update_app:\n${(message.problems ?? []).map((p) => `- ${p.code}: ${p.message}`).join('\n')}`;
-    case 'lint': {
-      const parts = [];
-      if (message.undefinedTerms?.length)
-        parts.push(`Your reply used terms you haven’t defined. Define each with define_term:\n${message.undefinedTerms.map((t) => `- ${t.term}`).join('\n')}`);
-      for (const d of message.diagrams ?? [])
-        parts.push(
-          `${d.index === null || d.index === undefined ? 'A diagram' : `Diagram ${d.index + 1}`} in your reply can’t be read (it starts “${d.excerpt.split('\n')[0]}”):\n${d.problems.map((p) => `- ${p.message}`).join('\n')}`,
-        );
-      if (message.diagrams?.length) parts.push('Reply with a corrected version of each diagram, briefly, so the person can read it.');
-      return `[Postbox] ${parts.join('\n\n')}`;
-    }
+    case 'lint':
+      return formatLint(message);
     case 'notice':
       return `[Postbox] ${message.text}`;
     default:
