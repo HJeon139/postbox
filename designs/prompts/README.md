@@ -12,7 +12,7 @@ flowchart LR
     c["M3: checks"]
     d["M4: shell"]
   end
-  subgraph w2["Wave 2"]
+  subgraph w2["Wave 2 (merged)"]
     e["M1 core"]
     k["Transcript and threads"]
   end
@@ -43,7 +43,7 @@ flowchart LR
 | 4 | #9 | worktree per conversation |
 | — | Backlog | #84 (needs a decision), #15, #21, #28, #41, #76 |
 
-## Wave 2
+## Wave 2 (merged)
 
 | Session | Prompt | Issues | Ports (server, Chrome) |
 |---|---|---|---|
