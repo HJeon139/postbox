@@ -581,8 +581,9 @@ export class Runtime {
 
     // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
     // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
+    const stalled = this.stallSteps(turn, se);
     if (turn.kind === 'lint') this.quietLint(turn, se);
-    else this.endLint(turn, this.checkTurn(turn, se));
+    else this.endLint(turn, [...this.checkTurn(turn, se), ...stalled]);
 
     // An agent that @-mentions another agent wakes it.
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
@@ -1020,6 +1021,26 @@ export class Runtime {
         diagrams.map((d) => d.src),
       );
     problems.push(...diagramProblems(diagrams));
+    return problems;
+  }
+
+  /** Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them. */
+  stallSteps(turn, se) {
+    const problems = [];
+    for (const it of this.store.items(turn.threadId)) {
+      if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
+      const running = it.block.steps.filter((s) => s.state === 'running');
+      if (!running.length) continue;
+      const steps = it.block.steps.map((s) => (s.state === 'running' ? { ...s, state: 'stalled' } : s));
+      this.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
+      const names = running.map((s) => `“${s.label}”`);
+      const one = running.length === 1;
+      problems.push({
+        code: 'steps-left-running',
+        message: `${one ? 'Step' : 'Steps'} ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} ${one ? 'was' : 'were'} still running when your turn ended, so the person sees ${one ? 'it' : 'them'} as stalled. Close each with update_block, as done or failed. If the work goes on in the background, set it back to running and update it as it moves.`,
+        scope: { kind: 'block', id: it.block.id, title: it.block.title },
+      });
+    }
     return problems;
   }
 
@@ -1832,7 +1853,13 @@ export class Runtime {
         if (!existing) return { ok: false, message: `There’s no block with id ${v.block.id} to update. Use show_block to add it.` };
         if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
         // An update can ask again, so it reopens a block you already answered.
-        rt.patchItem(threadId(), existing.id, { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1 });
+        const now = Date.now();
+        /** @type {Record<string, any>} */
+        const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
+        if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
+        // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
+        if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
+        rt.patchItem(threadId(), existing.id, patch);
         return { ok: true, message: `Updated block ${v.block.id}.` };
       },
       show_app({ id, title, code, permissions = [], fallback }) {
@@ -1966,6 +1993,32 @@ export function hostTool(rt, tool, args = {}) {
     default:
       throw httpError(404, `There’s no host tool called “${tool}”.`);
   }
+}
+
+/**
+ * A progress update’s step times, kept beside the block: startedAt when a step starts running, endedAt when it
+ * stops. A step that finishes without a duration gets one from them.
+ * @param {any} item  the block as it was  @param {any} block  the update  @param {number} now
+ */
+function stampSteps(item, block, now) {
+  const was = new Map((item.block.steps ?? []).map((s) => [s.id, s.state]));
+  /** @type {Record<string, { startedAt?: number, endedAt?: number }>} */
+  const times = {};
+  const steps = block.steps.map((s) => {
+    const before = was.get(s.id);
+    const t = { ...(item.stepTimes?.[s.id] ?? {}) };
+    const going = before === 'running' || before === 'stalled';
+    // A step that was running when the block was shown started then.
+    if (going) t.startedAt ??= item.at;
+    if (s.state === 'running') {
+      if (!going) t.startedAt = now;
+      delete t.endedAt;
+    } else if (going && s.state !== 'pending') t.endedAt = now;
+    times[s.id] = t;
+    const finished = s.state === 'done' || s.state === 'failed';
+    return finished && !s.duration && t.startedAt && t.endedAt ? { ...s, duration: formatDuration(t.endedAt - t.startedAt) } : s;
+  });
+  return { block: { ...block, steps }, stepTimes: times };
 }
 
 export function httpError(status, message) {

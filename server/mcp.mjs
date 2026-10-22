@@ -26,7 +26,8 @@ export const TOOL_DEFS = [
   },
   {
     name: 'update_block',
-    description: 'Replace a block you showed earlier, by its id, for example to move a progress list on. An update can ask again.',
+    description:
+      'Replace a block you showed earlier, by its id. An update can ask again. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.',
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {

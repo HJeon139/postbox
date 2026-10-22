@@ -3,6 +3,10 @@
 //     frame’s “couldn’t be drawn” text and Show source.
 //   • #53: the app check measures marks, labels and dashes at 375 and 1280 px. A chart too small to read, and an
 //     app that shows only an error, are shown with notes and reach the agent; a readable chart passes.
+//   • #58: a progress step shows “2 of 4 papers” with a bar, the block says when it last moved, a running step’s
+//     time goes up and its glyph turns (still with reduced motion), and a step left running looks stalled.
+//
+// SHOTS=dir also saves a screenshot of the progress block, running and stalled.
 //
 //   node tools/check-feedback.mjs
 //
@@ -57,7 +61,28 @@ const APPS = {
     code: '<!doctype html><html><body><p>SciFact isn’t loaded in this Postbox yet. Restart Postbox to load it.</p></body></html>',
   },
 };
+let release;
+const held = new Promise((ok) => {
+  release = ok;
+});
 const scripts = {
+  progress: async (ctx) => {
+    ctx.tools.show_block({
+      block: {
+        id: 'reading',
+        type: 'progress',
+        version: 1,
+        title: 'Reading the papers',
+        fallback: 'Reading four papers',
+        steps: [
+          { id: 'find', label: 'Find the papers', state: 'done', duration: '12 s' },
+          { id: 'read', label: 'Read and summarize', state: 'running', progress: { done: 2, total: 4, unit: 'papers' }, eta: '3 min' },
+          { id: 'write', label: 'Write the summary', state: 'pending' },
+        ],
+      },
+    });
+    await held;
+  },
   diagram: (ctx) => ctx.text(`Here’s the flow:\n\n\`\`\`mermaid\n${BROKEN}\n\`\`\``),
   apps: (ctx) => {
     for (const [id, a] of Object.entries(APPS)) ctx.tools.show_app({ id, title: a.title, code: a.code });
@@ -139,6 +164,46 @@ try {
   check(calls.filter((m) => m.kind === 'lint').length === 2, '#53: one lint turn for the turn that showed the apps');
   const note = await page.evaluate(`[...document.querySelectorAll('.app-note')].map((n) => n.textContent).find((t) => /marks are under 4 px/.test(t)) ?? ''`);
   check(/^Shown with notes for @drawer/.test(note), '#53: the person sees the app with notes, not as a failure');
+
+  // #58: a progress block that moves, then is left running.
+  rt.sendMessage(thread.id, { text: 'progress' });
+  const LI = `document.querySelector('[data-progress] li[data-s="running"]')`;
+  await page.waitFor(LI, { label: 'the running step' });
+  const shots = process.env.SHOTS;
+  const shoot = async (name) => {
+    if (!shots) return;
+    await page.evaluate(`document.querySelector('[data-progress]').scrollIntoView({ block: 'center' })`);
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(shots, `${name}.png`), Buffer.from(data, 'base64'));
+  };
+  const read = () =>
+    page.evaluate(`(() => { const li = ${LI}; const b = li?.closest('[data-progress]'); return li && {
+      count: li.querySelector('.p-count')?.textContent, bar: li.querySelector('.p-bar i')?.style.width,
+      time: li.lastElementChild.textContent, spin: getComputedStyle(li.querySelector('.g-running')).animationName,
+      updated: [...b.querySelectorAll('.block-head [data-since]')].map((e) => e.textContent).join('') }; })()`);
+  const first = await read();
+  check(first?.count === '2 of 4 papers · 3 min left' && first.bar === '50%', '#58: “2 of 4 papers” with a bar at half');
+  check(/^Updated (just now|\d+ s ago)$/.test(first?.updated ?? ''), '#58: the block says when it last moved');
+  check(first?.spin === 'pb-turn', '#58: the running glyph turns');
+  await sleep(2200);
+  const later = await read();
+  check(!!later && later.time !== first?.time && /^\d+ s$/.test(later.time), `#58: the running step’s time goes up (${first?.time} → ${later?.time})`);
+  await shoot('progress-running');
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  check((await read())?.spin === 'none', '#58: the glyph holds still with reduced motion');
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+  release();
+  const STALLED = `document.querySelector('[data-progress] li[data-s="stalled"]')`;
+  await page.waitFor(STALLED, { label: 'the stalled step' });
+  const stalled = await page.evaluate(
+    `(() => { const li = ${STALLED}; return { glyph: li.querySelector('.g').getAttribute('aria-label'), time: li.lastElementChild.textContent, color: getComputedStyle(li.querySelector('.t')).color, text: getComputedStyle(document.body).color }; })()`,
+  );
+  check(stalled.glyph === 'Stalled' && /^No update for /.test(stalled.time), '#58: a step left running looks stalled, and says for how long');
+  check(stalled.color !== stalled.text, '#58: a stalled step is dimmed');
+  const told = await until(() => calls.filter((m) => m.kind === 'lint').find((m) => m.problems.some((p) => p.code === 'steps-left-running')));
+  check(!!told, '#58: the agent is told to close the step');
+  await shoot('progress-stalled');
 } finally {
   await page.close?.();
   await app.close();

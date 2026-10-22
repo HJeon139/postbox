@@ -777,6 +777,99 @@ test('#53: warnings with a real failure go back with it in the app-check turn', 
   assert.equal(store.state.apps.pairs.check.notes, undefined);
 });
 
+// ── Progress blocks (#58) ─────────────────────────────────────────────────────────────
+
+const progress = (steps) => ({ id: 'job', type: 'progress', version: 1, title: 'Reading', fallback: 'Reading papers', steps });
+
+test('#58: update_block stamps when a progress block moved and when each step ran, and fills in durations', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'running' },
+        { id: 'b', label: 'Read B', state: 'pending' },
+      ]),
+    });
+    await sleep(15);
+    c.tools.update_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'done' },
+        { id: 'b', label: 'Read B', state: 'running', progress: { done: 2, total: 4, unit: 'papers' } },
+      ]),
+    });
+    c.tools.update_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'done' },
+        { id: 'b', label: 'Read B', state: 'done', duration: '2 min' },
+      ]),
+    });
+  });
+  rt.sendMessage(t.id, { text: 'read' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  assert.ok(it.updatedAt >= it.at);
+  assert.equal(it.stepTimes.a.startedAt, it.at, 'running since it was shown');
+  assert.ok(it.stepTimes.a.endedAt > it.at);
+  assert.ok(it.stepTimes.b.startedAt && it.stepTimes.b.endedAt);
+  assert.match(it.block.steps[0].duration, /^\d/, 'filled in from the times');
+  assert.equal(it.block.steps[1].duration, '2 min', 'the agent’s own duration stays');
+  assert.equal(lints(adapter).length, 0, 'nothing was left running');
+});
+
+test('#58: steps left running when the turn ends are marked stalled, and the agent is told once', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'running' },
+        { id: 'b', label: 'Read B', state: 'done' },
+      ]),
+    });
+  });
+  adapter.next.push(async (c) => {
+    // The lint turn sets it running again and ends: shown stalled again, without another lint turn.
+    c.tools.update_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'running' },
+        { id: 'b', label: 'Read B', state: 'done' },
+      ]),
+    });
+  });
+  rt.sendMessage(t.id, { text: 'read' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  assert.deepEqual(
+    it.block.steps.map((s) => s.state),
+    ['stalled', 'done'],
+  );
+  assert.ok(it.stalledAt);
+  assert.equal(lints(adapter).length, 1);
+  const [p] = lints(adapter)[0].message.problems;
+  assert.equal(p.code, 'steps-left-running');
+  assert.deepEqual(p.scope, { kind: 'block', id: 'job', title: 'Reading' });
+  assert.match(p.message, /^Step “Read A” was still running when your turn ended/);
+  assert.equal(it.stepTimes.a.startedAt, it.at, 'resuming a stalled step keeps its start');
+});
+
+test('#69: an asking block asked again with update_block belongs to the turn that asked', async () => {
+  const { rt, store, t, adapter } = setup();
+  const form = (label) => ({ id: 'q', type: 'form', version: 1, fallback: 'Questions', fields: [{ id: 'f', label, kind: 'text' }] });
+  adapter.next.push(async (c) => c.tools.show_block({ block: form('First?') }));
+  adapter.next.push(async (c) => {
+    c.tools.update_block({ block: form('Second?') });
+    c.text('Asked again.');
+  });
+  rt.sendMessage(t.id, { text: 'ask' });
+  await settle(rt);
+  const first = store.items(t.id).find((i) => i.kind === 'block').turnId;
+  rt.sendMessage(t.id, { text: 'ask again' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  const second = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'Asked again.').turnId;
+  assert.notEqual(second, first);
+  assert.equal(it.turnId, second);
+});
+
 test('a persona’s permission mode reaches its running conversations from their next turn', async () => {
   const { rt, t, a, adapter } = setup();
   const seen = [];

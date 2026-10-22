@@ -190,6 +190,9 @@ pre { max-width: 100%; }
 .g-done { color: var(--good); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6'/><path d='M5 8.3l2 2 4-4.3' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>"); }
 .g-pending { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='none' stroke='black' stroke-width='1.4' stroke-dasharray='2.4 2'/></svg>"); }
 .g-thought { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='4' cy='8' r='1.5'/><circle cx='8' cy='8' r='1.5'/><circle cx='12' cy='8' r='1.5'/></svg>"); }
+.g-stalled { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6'/><path d='M6.3 5.5v5M9.7 5.5v5' stroke='black' stroke-width='1.6' stroke-linecap='round'/></svg>"); }
+/* The running glyph turns, so a live step looks different from a stalled one; it holds still with reduced motion. */
+.g-running { animation: pb-turn 2.4s infinite; }
 .g-running { color: var(--accent); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6' opacity='.35'/><path d='M8 1.8a6.2 6.2 0 0 1 6.2 6.2' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'/></svg>"); }
 .st-think { color: var(--st-think); } .st-gen { color: var(--st-gen); } .st-tool { color: var(--st-tool); }
 .st-idle { color: var(--st-idle); } .st-needs { color: var(--accent); } .st-failed { color: var(--alert-ink); }
@@ -462,6 +465,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .progress li .g { margin-top: 2px; }
 .progress li[data-s="pending"] .t { color: var(--dim); }
 .progress li[data-s="failed"] .t { color: var(--text); }
+.progress li[data-s="stalled"] .t, .progress li.stale .t { color: var(--dim); }
+.progress li.stale .g-running { animation: none; color: var(--dim); }
+.progress li[data-s="stalled"] .p-bar i, .progress li.stale .p-bar i { background: var(--dim); }
+.progress .p-count { display: block; margin-top: 2px; }
+.progress .p-bar { display: block; margin-top: 6px; max-width: 320px; }
 .bar { height: 4px; border-radius: 999px; background: var(--chip); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
 
