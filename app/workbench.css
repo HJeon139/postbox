@@ -289,6 +289,9 @@ pb-ring .dot.still { animation: none; }
 .main { min-width: 0; display: flex; flex-direction: column; position: relative; }
 /* Messages sit at most one line apart. */
 .transcript { flex: 1; padding: 16px 24px 8px; display: flex; flex-direction: column; gap: 12px; }
+/* The transcript keeps its own place (mountTranscript): on the newest message, or on what you were reading. The
+   browser's own scroll anchoring is off, so every browser behaves the same and only your scrolling moves it. */
+:root:has(.transcript), .sp-body { overflow-anchor: none; }
 .col { width: 100%; max-width: 760px; margin: 0 auto; }
 .wide { width: 100%; }
 
@@ -351,6 +354,8 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .working { display: flex; flex-direction: column; gap: 6px; }
 .working:empty { display: none; }
 .work-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--dim); }
+/* A long tool step stays on one line, inside the column. */
+.work-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .work-row pb-ring { margin-top: 1px; }
 .work-row b { color: var(--text); font-weight: 600; font-size: 13px; }
 .work-text { min-width: 0; flex: 1; }
@@ -615,7 +620,8 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .att-image .att-cap .dim { flex: none; white-space: pre; }
 .queued { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; }
 .queued .q-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.jump { position: absolute; left: 50%; transform: translateX(-50%); top: -42px; }
+/* In the composer, above the box, so it never covers the last message or the working rows (#91). */
+.jump { align-self: center; }
 .jump .btn { background: var(--panel); border-color: var(--accent); border-radius: 999px; }
 
 /* ───────── Menus, popovers, toasts, dialogs, side panel ───────── */

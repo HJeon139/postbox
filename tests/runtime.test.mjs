@@ -625,6 +625,68 @@ test('summarize back posts the thread agent’s summary in the conversation', as
   assert.match(adapter.calls.at(-1).message.text, /Summarize this topic thread/);
 });
 
+test('#93: after summarize back, the summary’s reply in the thread is marked sent and can’t be sent again', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  adapter.next.push(async (c) => c.text('We chose offsets over pages.'));
+  rt.summarizeBack(threadId);
+  assert.ok(store.state.threads[threadId].summaryPending, 'pending while the turn runs');
+  await settle(rt);
+  const reply = store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'We chose offsets over pages.');
+  assert.ok(reply.sharedAt);
+  assert.equal(store.state.threads[threadId].summaryPending, null);
+  assert.throws(() => rt.shareToConversation(threadId, reply.id), { status: 409 });
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 1);
+});
+
+test('#93: a second summarize back while one is pending is refused, so one summary is posted', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  adapter.next.push(async (c) => c.text('One summary.'));
+  rt.summarizeBack(threadId);
+  assert.throws(() => rt.summarizeBack(threadId), { status: 409 });
+  await settle(rt);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 1);
+  assert.equal(store.items(threadId).filter((i) => i.kind === 'voice').length, 1);
+});
+
+test('#93: a stopped summary isn’t pending, and a reply in a summary still being written can’t be sent on its own', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  let release = () => {};
+  adapter.next.push(async (c) => {
+    c.text('Half of the summary');
+    await new Promise((r) => {
+      release = r;
+    });
+  });
+  rt.summarizeBack(threadId);
+  await new Promise((r) => setImmediate(r));
+  const part = store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'Half of the summary');
+  assert.throws(() => rt.shareToConversation(threadId, part.id), { status: 409 });
+  rt.stop(rt.sessionsIn(threadId)[0].id);
+  release();
+  await settle(rt);
+  assert.equal(store.state.threads[threadId].summaryPending, null);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 0);
+});
+
+test('#93: a summarize turn that fails posts nothing and lets you ask again', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  adapter.next.push(async () => {
+    throw new Error('The model is overloaded.');
+  });
+  rt.summarizeBack(threadId);
+  await settle(rt);
+  assert.equal(store.state.threads[threadId].summaryPending, null);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 0);
+  adapter.next.push(async (c) => c.text('Second try.'));
+  rt.summarizeBack(threadId);
+  await settle(rt);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 1);
+});
+
 test('@-mentioning a conversation’s other agent in a topic forks its session too', async () => {
   const { rt, store, t, b, adapter } = await conversation();
   rt.sendMessage(t.id, { text: '@beta hello' });
@@ -636,6 +698,98 @@ test('@-mentioning a conversation’s other agent in a topic forks its session t
   const betaFork = rt.sessionsIn(threadId).find((x) => x.personaId === b.id);
   assert.ok(betaFork.forkOf);
   assert.equal(adapter.forks.length, 2);
+});
+
+/** @-mentions a persona from outside the conversation into a topic on `rootId`; returns its two turns’ contexts. */
+async function freshJoinerTurns({ rt, adapter }, parentId, rootId) {
+  const critic = rt.createPersona({ handle: 'critic' });
+  const { threadId } = rt.startTopic(parentId, rootId);
+  rt.sendMessage(threadId, { text: '@critic check this row' });
+  await settle(rt);
+  const joiner = rt.sessionsIn(threadId).find((x) => x.personaId === critic.id);
+  assert.equal(joiner.forkOf, undefined, 'it joins fresh, not as a fork');
+  const first = adapter.calls.at(-1);
+  assert.equal(first.sessionId, joiner.id);
+  rt.sendMessage(threadId, { text: '@critic and the next one?' });
+  await settle(rt);
+  const second = adapter.calls.at(-1);
+  assert.equal(second.sessionId, joiner.id);
+  return { first: (first.message.context ?? []).join('\n'), second: (second.message.context ?? []).join('\n') };
+}
+
+test('#81 an agent @-mentioned fresh into a topic on an agent’s message sees that message, once', async () => {
+  const ctx = await conversation();
+  const root = ctx.store.items(ctx.t.id).find((i) => i.kind === 'agent' && i.text === 'First answer.');
+  const { first, second } = await freshJoinerTurns(ctx, ctx.t.id, root.id);
+  assert.match(first, /This thread started from @alpha’s message: First answer\./);
+  assert.doesNotMatch(second, /This thread started from/);
+});
+
+test('#81 a fresh joiner in a topic on a block sees its title and its fallback text', async () => {
+  const ctx = setup();
+  const { rt, store, t, adapter } = ctx;
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: {
+        id: 'res',
+        type: 'table',
+        version: 1,
+        title: 'Results',
+        fallback: 'Claim 12 | supported | 0.91',
+        columns: [{ id: 'claim', label: 'Claim' }],
+        rows: [{ id: 'r1', cells: { claim: '12' } }],
+      },
+    });
+  });
+  rt.sendMessage(t.id, { text: 'Compare them' });
+  await settle(rt);
+  const root = store.items(t.id).find((i) => i.kind === 'block');
+  assert.equal(root.valid, true);
+  const { first, second } = await freshJoinerTurns(ctx, t.id, root.id);
+  assert.match(first, /This thread started from @alpha’s table block “Results”: Claim 12 \| supported \| 0\.91/);
+  assert.doesNotMatch(second, /This thread started from/);
+});
+
+test('#81 a fresh joiner in a topic on your own message sees “your message”', async () => {
+  const ctx = await conversation();
+  const root = ctx.store.items(ctx.t.id).find((i) => i.kind === 'user' && i.text === 'Second question');
+  const { first, second } = await freshJoinerTurns(ctx, ctx.t.id, root.id);
+  assert.match(first, /This thread started from your message: Second question/);
+  assert.doesNotMatch(second, /This thread started from/);
+});
+
+test('#81 a fork with a checkpoint already holds the root, so its catch-up doesn’t repeat it', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const root = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'First answer.');
+  const { threadId } = rt.startTopic(t.id, root.id);
+  const [fork] = rt.sessionsIn(threadId);
+  assert.deepEqual(fork.backendState.fork, { turn: 1 });
+  rt.sendMessage(threadId, { text: 'Why?' });
+  await settle(rt);
+  const call = adapter.calls.at(-1);
+  assert.equal(call.sessionId, fork.id);
+  assert.doesNotMatch((call.message.context ?? []).join('\n'), /This thread started from/);
+});
+
+test('#81 a fork with no fork point starts fresh, so its first catch-up has the root, once', async () => {
+  const { rt, store, t, b, adapter } = await conversation();
+  const root = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'Second answer.');
+  // @beta joins the conversation after the root, so it has no checkpoint at or before it.
+  rt.sendMessage(t.id, { text: '@beta hello' });
+  await settle(rt);
+  const { threadId } = rt.startTopic(t.id, root.id);
+  rt.sendMessage(threadId, { text: '@beta what do you think?' });
+  await settle(rt);
+  const betaFork = rt.sessionsIn(threadId).find((x) => x.personaId === b.id);
+  assert.ok(betaFork.forkOf);
+  assert.equal(betaFork.backendState.fork, null);
+  assert.equal(betaFork.backendState.forkFrom, null);
+  assert.equal(adapter.calls.at(-1).sessionId, betaFork.id);
+  assert.match(adapter.calls.at(-1).message.context.join('\n'), /This thread started from @alpha’s message: Second answer\./);
+  rt.sendMessage(threadId, { text: '@beta and now?' });
+  await settle(rt);
+  assert.equal(adapter.calls.at(-1).sessionId, betaFork.id);
+  assert.doesNotMatch((adapter.calls.at(-1).message.context ?? []).join('\n'), /This thread started from/);
 });
 
 test('moving a persona from the mock to a real backend gives it the default model, and its conversations follow', async () => {

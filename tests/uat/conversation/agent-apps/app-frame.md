@@ -11,6 +11,7 @@ Agents write software when it explains better than prose; it must run safely and
 ## Expected functionality
 
 - Runs sandboxed (opaque origin, no network) on the cool app stage, labeled “Agent-written app”.
+- Named like any other message: when the speaker changes, the app has its own speaker line (ring, @name, time) in the message column. Only the agent that wrote an app can update it, so that’s also who made each version (#88).
 - Checked at 375 and 1280 px before you see it; a failed check goes back to the agent once, then shows with a note.
 - The check also measures legibility: SVG marks under 4 px, text under 9 px, dashes too fine to tell from solid lines, and an app that shows only an error or missing-data message. These are warnings: the app is shown “with notes for @agent”, and the agent is told in its lint turn.
 - Version menu ([screenshot](../../screenshots/app-version-menu.png)) shows older versions read-only.

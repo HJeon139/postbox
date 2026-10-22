@@ -597,9 +597,16 @@ export class Runtime {
     if (turn.checkpoint && !err)
       for (const it of items)
         if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) this.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
-    // “Summarize back”: the reply goes to the conversation the topic branched from.
-    if (turn.summarizeTo && !err && turn.said.trim())
+    // “Summarize back”: the reply goes to the conversation the topic branched from. The turn’s replies are what
+    // was sent, so they show “Sent to the conversation” and can’t be sent again (#93).
+    if (turn.summarizeTo && !err && turn.said.trim()) {
       this.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
+      for (const it of items)
+        if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
+    }
+    // Posted or not, the summary isn’t pending any more, so Summarize back works again. Any turn ending clears
+    // one a restart left behind, too.
+    this.clearSummaryPending(turn.threadId);
     if (err && err.name !== 'AbortError') {
       const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
       const target =
@@ -725,6 +732,8 @@ export class Runtime {
       });
     }
     this.updateSession(sessionId, { state: 'idle', subagents: [], currentStep: 'Stopped by you', finishedAt: Date.now() });
+    // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93).
+    this.clearSummaryPending(turn.threadId);
     if (!silent) this.drainQueue(turn.threadId);
     return true;
   }
@@ -956,6 +965,9 @@ export class Runtime {
     const it = this.store.item(topicId, itemId);
     if (!it?.text) throw httpError(404, 'That reply has no text to send.');
     if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
+    // Part of a summary still being written: the whole summary is posted when it’s done (#93).
+    if ([...this.turns.values()].some((x) => x.id === it.turnId && x.summarizeTo))
+      throw httpError(409, 'This reply is part of a summary that’s still being written. It’s posted in the conversation when it’s done.');
     this.patchItem(topicId, itemId, { sharedAt: Date.now() });
     return this.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text });
   }
@@ -966,6 +978,11 @@ export class Runtime {
     if (topic.kind !== 'topic') throw httpError(409, 'Only a topic thread can be summarized back.');
     const se = this.sessionsIn(topicId).find((x) => !x.archived);
     if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
+    // One at a time, so a second click or a second tab can’t post it twice (#93).
+    if (this.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
+    // Kept on the thread for the panel’s button, until the turn ends or is stopped. A restart can leave it
+    // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
+    this.putThread({ ...topic, summaryPending: { sessionId: se.id, at: Date.now() } });
     this.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
     this.deliver(
       se.id,
@@ -976,6 +993,16 @@ export class Runtime {
       { summarizeTo: topic.parentId },
     );
     return { ok: true };
+  }
+
+  /** Whether a summarize turn is running or queued in a topic thread. */
+  summarizing(topicId) {
+    return [...this.turns.values()].some((x) => x.threadId === topicId && (x.summarizeTo || x.pending.some((p) => p.summarizeTo)));
+  }
+
+  clearSummaryPending(topicId) {
+    const t = this.s.threads[topicId];
+    if (t?.summaryPending && !this.summarizing(topicId)) this.putThread({ ...t, summaryPending: null });
   }
 
   /**
@@ -1003,12 +1030,14 @@ export class Runtime {
     this.updateSession(se.id, { seenItem: items.at(-1)?.id ?? null });
     // A session from before markers were kept, alone in its conversation, already saw everything addressed to it.
     if (se.seenItem === undefined && (t?.members?.length ?? 0) <= 1 && se.startedAt < (items.at(-1)?.at ?? 0)) return null;
+    // Its first catch-up in a topic thread starts with the message the thread is about, unless it holds it already.
+    const root = se.seenItem === null ? this.topicRootLine(se, t) : null;
     const lines = items
       .slice(at + 1)
       .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
       .map((i) => this.describeItem(i, se))
       .filter(Boolean);
-    if (!lines.length) return null;
+    if (!lines.length) return root && `[Postbox] ${root}`;
     const kept = [];
     let size = 0;
     for (const line of lines.reverse()) {
@@ -1018,7 +1047,36 @@ export class Runtime {
     }
     const dropped = lines.length - kept.length;
     const where = t?.kind === 'room' ? 'this room' : t?.kind === 'topic' ? 'this thread' : 'this conversation';
-    return `[Postbox] What happened in ${where} since your last turn${dropped ? ` (the last ${kept.length}; ${dropped} earlier ${dropped === 1 ? 'item is' : 'items are'} left out, and read_conversation has them)` : ''}:\n\n${kept.join('\n\n')}`;
+    return `[Postbox] ${root ? `${root}\n\n` : ''}What happened in ${where} since your last turn${dropped ? ` (the last ${kept.length}; ${dropped} earlier ${dropped === 1 ? 'item is' : 'items are'} left out, and read_conversation has them)` : ''}:\n\n${kept.join('\n\n')}`;
+  }
+
+  /**
+   * The message a topic thread started from, for a session in it with no fork point to resume (it joined fresh,
+   * or its agent joined the conversation after that message); null for anything else. Issue #81.
+   */
+  topicRootLine(se, t) {
+    if (t?.kind !== 'topic' || (se.forkOf && (se.backendState?.fork || se.backendState?.forkFrom))) return null;
+    const root = this.store.item(t.parentId, t.rootItemId);
+    if (!root) return null;
+    // The thread is about this message, so it gets more room than an item in the catch-up.
+    const text = (s) => clipText(String(s ?? ''), 4000);
+    const from = 'This thread started from';
+    switch (root.kind) {
+      case 'user':
+        return `${from} your message: ${text(root.text)}${root.attachments?.length ? ` [attached: ${root.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
+      case 'agent':
+        return `${from} @${root.handle}’s message: ${text(root.text)}`;
+      case 'block': {
+        // The title names it; the fallback is the plain text an agent can quote (a table’s rows, say).
+        const b = root.block ?? {};
+        const what = b.type === 'app' ? 'app' : b.type ? `${b.type} block` : 'block';
+        return `${from} @${root.handle}’s ${what}${b.title ? ` “${clipText(String(b.title), 200)}”` : ''}: ${text(b.fallback ?? root.fallback)}`;
+      }
+      default: {
+        const line = this.describeItem(root, se);
+        return line ? `${from} this message: ${line}` : null;
+      }
+    }
   }
 
   /**

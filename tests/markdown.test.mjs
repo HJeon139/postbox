@@ -156,3 +156,42 @@ test('a fold right under a list item stays in that item, blank lines and all', (
 test('folds: false shows <details> as text, as a review does', () => {
   assert.equal(md('<details><summary>A</summary>x</details>', { folds: false }), '<p>&lt;details&gt;&lt;summary&gt;A&lt;/summary&gt;x&lt;/details&gt;</p>');
 });
+
+// ── Emphasis around `code` (#82) ──────────────────────────────────────────────────────────
+
+test('bold around a code span is bold, with no literal ** (#82)', () => {
+  assert.equal(
+    md('**Add three checks to `rename.py`:** every swapped answer'),
+    '<p><strong>Add three checks to <code>rename.py</code>:</strong> every swapped answer</p>',
+  );
+  assert.equal(md('Run **`eval.py`.** Then'), '<p>Run <strong><code>eval.py</code>.</strong> Then</p>');
+  assert.equal(md('**Add checks to rename.py:** text'), '<p><strong>Add checks to rename.py:</strong> text</p>');
+});
+
+test('italic around a code span, with * and _ (#82)', () => {
+  assert.equal(md('*see `x`*'), '<p><em>see <code>x</code></em></p>');
+  assert.equal(md('_see `x`_'), '<p><em>see <code>x</code></em></p>');
+});
+
+test('bold around a code span in ordered and unordered list items (#82)', () => {
+  assert.equal(
+    md('3. **Add three checks to `rename.py`:** every swapped answer'),
+    '<ol start="3"><li><strong>Add three checks to <code>rename.py</code>:</strong> every swapped answer</li></ol>',
+  );
+  assert.equal(md('- **Run `eval.py`** first'), '<ul><li><strong>Run <code>eval.py</code></strong> first</li></ul>');
+});
+
+test('asterisks inside a code span stay literal and don’t close emphasis (#82)', () => {
+  assert.equal(md('`a ** b`'), '<p><code>a ** b</code></p>');
+  assert.equal(md('**x `**` y**'), '<p><strong>x <code>**</code> y</strong></p>');
+  assert.equal(md('*a `*` b*'), '<p><em>a <code>*</code> b</em></p>');
+});
+
+test('code spans stay escaped, and a NUL in the text can’t stand in for one (#82)', () => {
+  assert.equal(md('**`<b>` & `"q"`**'), '<p><strong><code>&lt;b&gt;</code> &amp; <code>&quot;q&quot;</code></strong></p>');
+  assert.equal(md('a\0b `c`'), `<p>a${String.fromCodePoint(0xfffd)}b <code>c</code></p>`);
+  assert.equal(
+    md('`Step 7` and Step 7', { glossary: [{ key: 's', term: 'Step 7' }] }),
+    '<p><code>Step 7</code> and <span class="term" tabindex="0" data-term="s">Step 7</span></p>',
+  );
+});
