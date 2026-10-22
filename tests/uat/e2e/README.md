@@ -101,6 +101,20 @@ Each run writes to `uat-runs/<time>-<scenario>/`, which git ignores:
 
 File what a run finds with the bug template in the [UAT README](../README.md), after checking each finding against its screenshot.
 
+## Filing what a run finds
+
+New findings are filed as GitHub issues automatically, unless an open issue already covers them. After the report, the runner:
+1. **Skips** findings that match an open issue. These are tagged by the tester or a check, or carry the fingerprint of an issue an earlier run filed.
+2. **Verifies** the rest in a fresh model session against the screenshots and the run’s evidence. Each finding gets a verdict:
+   - **confirmed:** a defect in Postbox
+   - **harness:** caused by the runner
+   - **not reproduced**
+   - **duplicate:** an open issue covers it
+   - **agent-work:** a flaw in the agent’s own reasoning that Postbox didn’t cause
+3. **Files** each confirmed finding with the bug template: component, urgency, steps to reproduce, expected, and what failed instead. It gets the `uat` label, a priority from its severity, and a hidden fingerprint so later runs don’t file it again. The report shows each verdict and issue number.
+
+Filed issues have no milestone, so they get triaged into the plan ([#64](https://github.com/HJeon139/postbox/issues/64)) like any other. Pass `--file no` to skip filing, and `--recheck uat-runs/<run>` to file from a finished run.
+
 ## Validation: 21 October 2026
 
 The first two runs, on `main`, caught 14 of the issues already filed from real use. Each was confirmed against screenshots or the run’s saved data.

@@ -22,7 +22,7 @@ import { launch, sleep } from './cdp.mjs';
 import { runChecks } from './uat/checks.mjs';
 import { driver } from './uat/driver.mjs';
 import { parseScenario } from './uat/scenario.mjs';
-import { createTester, systemPrompt } from './uat/tester.mjs';
+import { askOnce, createTester, systemPrompt, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -35,6 +35,8 @@ const { values: opt } = parseArgs({
     budget: { type: 'string', default: '8' },
     'tester-model': { type: 'string', default: 'claude-sonnet-5-5' },
     recheck: { type: 'string' },
+    // After a run, verify new findings and file the confirmed ones that no open issue covers. --file no skips it.
+    file: { type: 'string', default: 'yes' },
   },
 });
 
@@ -342,7 +344,12 @@ async function main() {
     await settle();
     await refreshFacts();
     newFindings();
-    await writeReport({ dir, scenario, issues, findings: [...findings.values()], timeline, started, tester, facts, logLines });
+    const all = [...findings.values()];
+    await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
+    if (opt.file !== 'no') {
+      await fileFindings({ dir, scenario, findings: all, timeline, log });
+      await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
+    }
   } finally {
     await page.close().catch(() => {});
     server.kill();
@@ -399,7 +406,7 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
       .filter((f) => !f.issue && f.verdict !== 'harness')
       .map(
         (f) =>
-          `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(f.evidence).slice(0, 260)} | ${f.source} (step ${f.step}) | ${esc(f.verdict ?? 'not reviewed')}${f.note ? `: ${esc(f.note)}` : ''} |`,
+          `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(f.evidence).slice(0, 260)} | ${f.source} (step ${f.step}) | ${f.filed ? `filed #${f.filed}` : f.duplicateOf ? `duplicate of #${f.duplicateOf}` : esc(f.verdict ?? 'not reviewed')}${f.note ? `: ${esc(f.note)}` : ''} |`,
       ),
     '',
     ...(findings.some((f) => f.verdict === 'harness')
@@ -429,6 +436,85 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
   console.log(
     `\nReport: ${relative(ROOT, join(dir, 'report.md'))} · ${caught.size} known issues caught again · ${findings.filter((f) => !f.issue && f.verdict !== 'harness').length} new findings`,
   );
+}
+
+// ── Filing ─────────────────────────────────────────────────────────────────────────────────
+// New findings (no open issue matched) are verified in a fresh session, then the confirmed ones are filed
+// with the bug template. A hidden fingerprint in each issue keeps a later run from filing the same one.
+
+const PRIORITY = { critical: 'P0', high: 'P1', medium: 'P2', low: 'P3' };
+const fingerprint = (f) =>
+  `uat:${f.check ?? 'tester'}:${String(f.check ? f.key : f.title)
+    .toLowerCase()
+    .replace(/\W+/g, '-')
+    .slice(0, 60)}`;
+
+async function fileFindings({ dir, scenario, findings, timeline, log }) {
+  const gh = (args) => spawnSync('gh', args, { cwd: ROOT, encoding: 'utf8' });
+  const open = gh(['issue', 'list', '--state', 'open', '--limit', '300', '--json', 'number,title,body']);
+  if (open.status !== 0) return log('Filing skipped: the gh CLI isn’t available or signed in.');
+  const issues = JSON.parse(open.stdout);
+  const filedBefore = new Map(issues.flatMap((i) => [...(i.body ?? '').matchAll(/<!-- (uat:[^ ]+) -->/g)].map((m) => [m[1], i.number])));
+  const pending = findings.filter((f) => !f.issue && !f.filed && !f.verdict);
+  for (const f of findings.filter((x) => !x.issue && !x.filed && filedBefore.has(fingerprint(x)))) {
+    f.verdict = 'duplicate';
+    f.duplicateOf = filedBefore.get(fingerprint(f));
+    f.note = `Filed by an earlier run as #${f.duplicateOf}.`;
+  }
+  const toVerify = pending.filter((f) => !f.verdict);
+  if (toVerify.length) {
+    log(`Verifying ${toVerify.length} new findings before filing…`);
+    try {
+      const { value } = await askOnce({
+        cwd: dir,
+        model: opt['tester-model'],
+        prompt: verifyPrompt({ scenario, findings: toVerify, timeline, issues }),
+        schema: VERIFY_SCHEMA,
+      });
+      for (const r of value.results) {
+        const f = toVerify[r.index];
+        if (!f) continue;
+        Object.assign(f, { verdict: r.verdict, note: r.note, ...(r.duplicateOf ? { duplicateOf: r.duplicateOf } : {}) });
+        if (r.verdict === 'confirmed') f.filing = r;
+      }
+    } catch (e) {
+      log(`Verification failed, so nothing was filed: ${e.message}`);
+      return;
+    }
+  }
+  for (const f of findings.filter((x) => x.verdict === 'confirmed' && x.filing && !x.filed)) {
+    const r = f.filing;
+    const body = [
+      `**Component:** ${r.component}`,
+      `**Urgency:** ${r.urgency}`,
+      '',
+      '## Steps to reproduce',
+      '',
+      ...r.steps.map((s, i) => `${i + 1}. ${s}`),
+      '',
+      '## Expected',
+      '',
+      r.expected,
+      '',
+      '## What failed instead',
+      '',
+      r.actual,
+      ...(r.cause ? ['', '## Suspected cause', '', r.cause] : []),
+      '',
+      `Found by the end-to-end UAT ([tests/uat/e2e](https://github.com/HJeon139/postbox/tree/main/tests/uat/e2e)), ${scenario.title}, step ${f.step}. Verified before filing: ${f.note}`,
+      '',
+      `<!-- ${fingerprint(f)} -->`,
+    ].join('\n');
+    const labels = ['uat', f.category === 'ux' ? 'ux' : 'bug', PRIORITY[f.severity] ?? 'P2'].join(',');
+    const made = gh(['issue', 'create', '--title', r.title, '--body', body, '--label', labels]);
+    if (made.status !== 0) {
+      log(`Couldn’t file “${r.title}”: ${made.stderr.trim()}`);
+      continue;
+    }
+    f.filed = Number(made.stdout.trim().split('/').pop());
+    log(`Filed #${f.filed}: ${r.title}`);
+  }
+  await writeFile(join(dir, 'findings.json'), `${JSON.stringify({ ...JSON.parse(readFileSync(join(dir, 'findings.json'), 'utf8')), findings }, null, 2)}\n`);
 }
 
 // ── Recheck ──────────────────────────────────────────────────────────────────────────────────
@@ -496,19 +582,31 @@ async function recheck(dir) {
     const live = saved.findings.filter((f) => f.source === 'run' || (f.source === 'check' && LIVE_ONLY.has(f.check)));
     const gh = spawnSync('gh', ['issue', 'list', '--state', 'all', '--limit', '300', '--json', 'number,title'], { cwd: ROOT, encoding: 'utf8' });
     const issues = gh.status === 0 ? JSON.parse(gh.stdout) : [];
+    // Verdicts and filed issue numbers from earlier reviews carry over to the recomputed findings.
+    const before = new Map(saved.findings.filter((f) => f.source === 'check').map((f) => [`${f.check}:${f.key}`, f]));
+    for (const c of checks) {
+      const b = before.get(`${c.check}:${c.key}`);
+      if (b) for (const k of ['verdict', 'note', 'filed', 'duplicateOf']) if (b[k] !== undefined) c[k] = b[k];
+    }
     const findings = [...checks, ...live, ...kept];
-    await writeReport({
-      dir,
-      scenario,
-      issues,
-      findings,
-      timeline: saved.timeline,
-      started: saved.started ?? Date.now(),
-      tester: { spent: saved.testerSpent ?? 0 },
-      facts,
-      logLines: [`Rechecked ${new Date().toISOString()} with the current checks and driver.`],
-      rechecked: true,
-    });
+    const report = () =>
+      writeReport({
+        dir,
+        scenario,
+        issues,
+        findings,
+        timeline: saved.timeline,
+        started: saved.started ?? Date.now(),
+        tester: { spent: saved.testerSpent ?? 0 },
+        facts,
+        logLines: [`Rechecked ${new Date().toISOString()} with the current checks and driver.`],
+        rechecked: true,
+      });
+    await report();
+    if (opt.file !== 'no') {
+      await fileFindings({ dir, scenario, findings, timeline: saved.timeline, log: (l) => console.log(l) });
+      await report();
+    }
   } finally {
     await page.close().catch(() => {});
     server.kill();
