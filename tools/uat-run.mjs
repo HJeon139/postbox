@@ -127,9 +127,13 @@ async function main() {
   const origin = `http://127.0.0.1:${port}`;
   // The runner must talk to its own fresh Postbox, never to one that’s already running there.
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
-  // A fresh install has one generic agent, so the scenario's agents are seeded from agents.json.
+  // A fresh install has one generic agent, so the scenario's agents are seeded from agents.json: every
+  // persona in personas.json, since scenarios bring more agents (@critic) into topic threads than they start with.
   const personas = JSON.parse(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
-  const agents = scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h });
+  const agents = [
+    ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
+    ...personas.filter((p) => !scenario.agents.includes(p.handle)),
+  ];
   await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,

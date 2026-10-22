@@ -101,7 +101,14 @@ export function driver(page) {
       const room = handles.length > 1;
       await clickAt(`document.querySelector('[aria-label=${J(room ? 'New room' : 'New conversation')}]')`, 'the new conversation button');
       await typeInto(`document.getElementById('nt-title')`, title, 'the conversation title');
-      for (const handle of handles) await clickAt(byText('document.querySelector(".dialog")', 'button.chip', `@${handle}`), `@${handle} in the sheet`);
+      // The sheet preselects one agent for a direct message, so set each chip to what's wanted rather than toggling it.
+      const chips = await ev(
+        `[...document.querySelectorAll('.dialog button.chip')].map((b) => [b.textContent.trim(), b.getAttribute('aria-pressed') === 'true'])`,
+      );
+      for (const [label, on] of chips) {
+        const want = handles.some((handle) => label.split(/\s+/).includes(`@${handle}`));
+        if (want !== on) await clickAt(byText('document.querySelector(".dialog")', 'button.chip', label), `${label} in the sheet`);
+      }
       await clickAt(byText('document.querySelector(".dialog")', 'button.send', 'Start'), 'the Start button');
       await page.waitFor(`!!document.getElementById('composer-input')`, { label: 'the composer' });
       return ev('location.hash');
