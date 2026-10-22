@@ -34,11 +34,16 @@ class ScriptedAdapter {
   }
 }
 
-function setup() {
+function setup(config = {}) {
   const store = new Store(null);
   const adapter = new ScriptedAdapter();
   const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [] } });
+  const rt = new Runtime({
+    store,
+    adapters: new AdapterRegistry().register(adapter),
+    corpus,
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, ...config },
+  });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const a = rt.createPersona({ handle: 'alpha', tools: ['corpus.search'] });
   const b = rt.createPersona({ handle: 'beta' });
@@ -683,6 +688,376 @@ test('the browser’s measurement reaches the agent only for an unflagged diagra
   assert.equal(rt.diagramCheck(t.id, item.id, { src, textPx: 7, width: 728 }).sent, false, 'once per diagram');
   await settle(rt);
   assert.match(adapter.calls.at(-1).message.diagrams[0].problems[0].message, /drawn at 7 px/);
+});
+
+// ── The lint pipeline ─────────────────────────────────────────────────────────────────
+
+const lints = (adapter) => adapter.calls.filter((c) => c.message.kind === 'lint');
+
+test('the problems of one turn, from the server and the browser, reach the agent as one lint turn', async () => {
+  const { rt, store, t, adapter } = setup({ lintSettleMs: 40 });
+  adapter.next.push(async (c) => c.text('In Step 7 we index.\n\n```mermaid\ngraph LR\nA-->B\n```\n\n```mermaid\ngraph TD\nC-->D\n```'));
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  // The browser measures the diagram a moment after the turn ends, before the lint turn goes.
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', textPx: 7, width: 728 }).sent, true);
+  await sleep(60);
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+  const m = lints(adapter)[0].message;
+  assert.deepEqual(
+    m.problems.map((p) => [p.code, p.scope.kind]),
+    [
+      ['undefined-term', 'term'],
+      ['text-too-small', 'diagram'],
+    ],
+  );
+  // The mock backend reads the same problems as lists.
+  assert.deepEqual(m.undefinedTerms, [{ term: 'Step 7', key: 'step-7' }]);
+  assert.equal(m.diagrams[0].problems[0].code, 'text-too-small');
+  // Once the lint turn has gone, a later report for that turn doesn’t start another.
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph TD\nC-->D', textPx: 7, width: 728 }).sent, false);
+  await sleep(60);
+  assert.equal(lints(adapter).length, 1);
+});
+
+test('a lint turn isn’t linted, and one that only defines terms shows as a one-line note', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('Step 2 and Step 3 come next.'));
+  adapter.next.push(async (c, m) => {
+    for (const u of m.undefinedTerms) c.activity({ id: u.key, label: 'define_term', state: 'done' });
+    for (const u of m.undefinedTerms) c.tools.define_term({ term: u.term, definition: 'A step.' });
+  });
+  rt.sendMessage(t.id, { text: 'plan it' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+  const agents = store.items(t.id).filter((i) => i.kind === 'agent');
+  assert.equal(agents.length, 1, 'no empty reply for the lint turn');
+  const note = store.items(t.id).find((i) => i.kind === 'system' && i.variant === 'lint');
+  assert.equal(note.text, '@alpha defined “Step 2” and “Step 3”');
+  assert.equal(note.lintReply, true);
+});
+
+test('a lint turn that writes is a reply, marked so the browser’s checks skip it', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('See Step 4.'));
+  adapter.next.push(async (c) => {
+    c.activity({ id: 'd', label: 'define_term', state: 'done' });
+    c.text('Defined it, and Step 9 too.');
+  });
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  const reply = store.items(t.id).find((i) => i.kind === 'agent' && i.lintReply);
+  assert.equal(reply.activity.steps.length, 1, 'the tool calls before its text are kept');
+  assert.equal(lints(adapter).length, 1, 'its own undefined term isn’t linted');
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'system' && i.variant === 'lint').length, 0);
+});
+
+test('a message during the settle takes the lint’s problems with it, and no lint turn lands after it', async () => {
+  const { rt, store, t, adapter } = setup({ lintSettleMs: 40 });
+  adapter.next.push(async (c) => c.text('Step 6 is done.\n\n```mermaid\ngraph LR\nA-->B\n```'));
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  rt.sendMessage(t.id, { text: 'and next?' });
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  await settle(rt);
+  // The browser’s report for the earlier reply comes in after the person’s turn began.
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', textPx: 7, width: 728 }).sent, false);
+  await sleep(80);
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0);
+  const next = adapter.calls.find((c) => c.message.text === 'and next?');
+  assert.match(next.message.context[0], /^\[Postbox\] Postbox checked your last reply/);
+  assert.match(next.message.context[0], /- Step 6/);
+});
+
+test('#55: a numbered term the person introduced isn’t linted, and one the agent coined still is', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({ block: { id: 'plan', type: 'card', version: 1, title: 'Phase 4 checklist', fallback: 'Plan' } });
+    c.text('Agreed: Step 2 gets highlights, Phase 4 follows, and Step 8 is new.');
+  });
+  rt.sendMessage(t.id, { text: 'I think step 2 should show matched text as a highlight.' });
+  await settle(rt);
+  assert.deepEqual(
+    lints(adapter)[0].message.undefinedTerms.map((u) => u.term),
+    ['Step 8'],
+  );
+});
+
+test('#55: a term the person used in the conversation or its parent isn’t linted', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('Noted.'));
+  rt.sendMessage(t.id, { text: 'Build an eval: say 20 questions, distractor setting, with supporting facts.' });
+  await settle(rt);
+  const root = store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId: topic } = rt.startTopic(t.id, root.id);
+  adapter.next.push(async (c) =>
+    c.text('The [distractor setting](term:distractor-setting) keeps [supporting facts](term:supporting-facts) next to a [bridge entity](term:bridge-entity).'),
+  );
+  rt.sendMessage(topic, { text: 'go on' });
+  await settle(rt);
+  assert.deepEqual(
+    lints(adapter)[0].message.undefinedTerms.map((u) => u.term),
+    ['bridge entity'],
+  );
+});
+
+test('#56: a topic thread uses its conversation’s terms, and its own definition wins there', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.define_term({ term: 'Step 2', definition: 'Show matches as highlights.' });
+    c.text('Step 2 is next.');
+  });
+  rt.sendMessage(t.id, { text: 'plan it' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0);
+  const root = store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId: topic } = rt.startTopic(t.id, root.id);
+  adapter.next.push(async (c) => c.text('Step 2 looks right to me.'));
+  rt.sendMessage(topic, { text: 'check it' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0, 'the parent’s term isn’t linted in the topic');
+  assert.equal(rt.glossaryFor(topic)['step-2'].definition, 'Show matches as highlights.');
+  const r = rt.toolsFor(adapter.calls.at(-1).sessionId).define_term({ term: 'Step 2', definition: 'Quote the match instead.' });
+  assert.match(r.message, /over the conversation’s definition/);
+  assert.equal(rt.glossaryFor(topic)['step-2'].definition, 'Quote the match instead.');
+  assert.equal(rt.glossaryFor(t.id)['step-2'].definition, 'Show matches as highlights.', 'the conversation keeps its own');
+});
+
+test('raw HTML in a reply reaches the agent through the lint turn', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('Try it.<br><details><summary>Answer</summary>50%</details>'));
+  rt.sendMessage(t.id, { text: 'quiz me' });
+  await settle(rt);
+  assert.deepEqual(
+    lints(adapter)[0].message.problems.map((p) => p.message.match(/\(([^)]*)\)/)[1]),
+    ['<br>'],
+  );
+});
+
+test('a report the reply doesn’t match, or about a turn this runtime never saw end, starts nothing', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('```mermaid\ngraph LR\nA-->B\n```'));
+  rt.sendMessage(t.id, { text: 'draw' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nX-->Y', textPx: 7, width: 728 }).sent, false, 'not a diagram in the reply');
+  // After a restart, the old reply’s turn has no entry: a broken diagram in it doesn’t start a lint turn.
+  rt.lints.clear();
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', error: { message: 'Parse error', line: 1 } }).sent, false);
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0);
+});
+
+test('what a lint turn shows is never linted, so lint turns can’t chain', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('Step 3 next.'));
+  adapter.next.push(async (c) => c.tools.show_app({ id: 'fix', title: 'Fix', code: '<svg></svg>' }));
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+  rt.appCheck('fix', { version: 1, problems: [{ code: 'marks-too-small', message: 'Tiny.' }] });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+});
+
+test('#53: warnings for a version made in a later turn reach that turn’s lint turn', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => c.tools.show_app({ id: 'dots', title: 'Dots', code: '<svg></svg>' }));
+  adapter.next.push(async (c) => c.tools.update_app({ id: 'dots', code: '<svg><circle r="1"/></svg>', summary: 'bigger dots' }));
+  rt.sendMessage(t.id, { text: 'draw' });
+  await settle(rt);
+  rt.appCheck('dots', { version: 1, problems: [] });
+  rt.sendMessage(t.id, { text: 'make the dots bigger' });
+  await settle(rt);
+  rt.appCheck('dots', { version: 2, problems: [{ code: 'marks-too-small', message: 'Still tiny.' }] });
+  await settle(rt);
+  assert.deepEqual(
+    lints(adapter).map((c) => c.message.problems[0].message),
+    ['Still tiny.'],
+  );
+});
+
+test('#58: only Postbox marks a step stalled', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({ block: progress([{ id: 'a', label: 'Read A', state: 'pending' }]) });
+    c.tools.update_block({ block: progress([{ id: 'a', label: 'Read A', state: 'stalled' }]) });
+    c.tools.update_block({ block: progress([{ id: 'a', label: 'Read A', state: 'done' }]) });
+  });
+  rt.sendMessage(t.id, { text: 'read' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  assert.equal(it.block.steps[0].state, 'done');
+  assert.ok(it.stepTimes.a.startedAt && it.stepTimes.a.endedAt, 'the agent’s “stalled” counted as running');
+});
+
+test('problems from a turn that failed don’t reach the agent', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.text('Step 5 broke.');
+    throw new Error('boom');
+  });
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  assert.equal(item.status, 'failed');
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', textPx: 7, width: 728 }).sent, false);
+  assert.equal(lints(adapter).length, 0);
+});
+
+test('#46: a diagram the browser couldn’t draw comes back to the agent once, with Mermaid’s message and line', async () => {
+  const { rt, store, t, adapter } = setup();
+  const broken = 'graph LR\nA -->> B';
+  adapter.next.push(async (c) => c.text(`Two diagrams.\n\n\`\`\`mermaid\ngraph TD\nX-->Y\n\`\`\`\n\n\`\`\`mermaid\n${broken}\n\`\`\``));
+  rt.sendMessage(t.id, { text: 'draw' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  const error = { message: "Parse error on line 2:\nA -->> B\n----^\nExpecting 'SEMI', got 'ARROW'", line: 2 };
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: broken, error }).sent, true);
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: broken, error }).sent, false, 'once per diagram');
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+  const [p] = lints(adapter)[0].message.problems;
+  assert.equal(p.code, 'diagram-error');
+  assert.deepEqual(p.scope, { kind: 'diagram', index: 1, excerpt: broken });
+  assert.equal(
+    p.message,
+    "Mermaid couldn’t draw it, so the person sees an error and its source instead. Mermaid said (line 2): “Parse error on line 2: A -->> B Expecting 'SEMI', got 'ARROW'”. Fix the syntax.",
+  );
+});
+
+test('#53: an app check with only warnings shows the app with notes, and tells the agent in its lint turn', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_app({ id: 'pairs', title: 'Pair explorer', code: '<svg></svg>' });
+    c.text('Here’s the explorer.');
+  });
+  rt.sendMessage(t.id, { text: 'build it' });
+  await settle(rt);
+  const tiny = { code: 'marks-too-small', message: 'At 1280 px, 1,200 of 1,258 marks are under 4 px across.' };
+  assert.deepEqual(rt.appCheck('pairs', { version: 1, problems: [tiny] }), { status: 'note' });
+  await settle(rt);
+  assert.equal(store.state.apps.pairs.check.status, 'note');
+  assert.equal(store.state.apps.pairs.check.notes, true, 'the browser words it as notes, not a failure');
+  assert.equal(adapter.calls.filter((c) => c.message.kind === 'app-check').length, 0);
+  const [lint] = lints(adapter);
+  assert.deepEqual(lint.message.problems, [{ ...tiny, scope: { kind: 'app', id: 'pairs', title: 'Pair explorer' } }]);
+});
+
+test('#53: warnings with a real failure go back with it in the app-check turn', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.tools.show_app({ id: 'pairs', title: 'Pair explorer', code: '<svg></svg>' }));
+  rt.sendMessage(t.id, { text: 'build it' });
+  await settle(rt);
+  const problems = [
+    { code: 'only-error', message: 'It shows only “SciFact isn’t loaded”.' },
+    { code: 'unlabeled-field', message: 'A select has no label.' },
+  ];
+  assert.deepEqual(rt.appCheck('pairs', { version: 1, problems }), { status: 'fixing' });
+  await settle(rt);
+  assert.deepEqual(
+    adapter.calls.find((c) => c.message.kind === 'app-check').message.problems.map((p) => p.code),
+    ['only-error', 'unlabeled-field'],
+  );
+  assert.equal(lints(adapter).length, 0);
+  assert.equal(store.state.apps.pairs.check.status, 'note', 'the fix turn ended without a new version');
+  assert.equal(store.state.apps.pairs.check.notes, undefined);
+});
+
+// ── Progress blocks (#58) ─────────────────────────────────────────────────────────────
+
+const progress = (steps) => ({ id: 'job', type: 'progress', version: 1, title: 'Reading', fallback: 'Reading papers', steps });
+
+test('#58: update_block stamps when a progress block moved and when each step ran, and fills in durations', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'running' },
+        { id: 'b', label: 'Read B', state: 'pending' },
+      ]),
+    });
+    await sleep(15);
+    c.tools.update_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'done' },
+        { id: 'b', label: 'Read B', state: 'running', progress: { done: 2, total: 4, unit: 'papers' } },
+      ]),
+    });
+    c.tools.update_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'done' },
+        { id: 'b', label: 'Read B', state: 'done', duration: '2 min' },
+      ]),
+    });
+  });
+  rt.sendMessage(t.id, { text: 'read' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  assert.ok(it.updatedAt >= it.at);
+  assert.equal(it.stepTimes.a.startedAt, it.at, 'running since it was shown');
+  assert.ok(it.stepTimes.a.endedAt > it.at);
+  assert.ok(it.stepTimes.b.startedAt && it.stepTimes.b.endedAt);
+  assert.match(it.block.steps[0].duration, /^\d/, 'filled in from the times');
+  assert.equal(it.block.steps[1].duration, '2 min', 'the agent’s own duration stays');
+  assert.equal(lints(adapter).length, 0, 'nothing was left running');
+});
+
+test('#58: steps left running when the turn ends are marked stalled, and the agent is told once', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'running' },
+        { id: 'b', label: 'Read B', state: 'done' },
+      ]),
+    });
+  });
+  adapter.next.push(async (c) => {
+    // The lint turn sets it running again and ends: shown stalled again, without another lint turn.
+    c.tools.update_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'running' },
+        { id: 'b', label: 'Read B', state: 'done' },
+      ]),
+    });
+  });
+  rt.sendMessage(t.id, { text: 'read' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  assert.deepEqual(
+    it.block.steps.map((s) => s.state),
+    ['stalled', 'done'],
+  );
+  assert.ok(it.stalledAt);
+  assert.equal(lints(adapter).length, 1);
+  const [p] = lints(adapter)[0].message.problems;
+  assert.equal(p.code, 'steps-left-running');
+  assert.deepEqual(p.scope, { kind: 'block', id: 'job', title: 'Reading' });
+  assert.match(p.message, /^Step “Read A” was still running when your turn ended/);
+  assert.equal(it.stepTimes.a.startedAt, it.at, 'resuming a stalled step keeps its start');
+});
+
+test('#69: an asking block asked again with update_block belongs to the turn that asked', async () => {
+  const { rt, store, t, adapter } = setup();
+  const form = (label) => ({ id: 'q', type: 'form', version: 1, fallback: 'Questions', fields: [{ id: 'f', label, kind: 'text' }] });
+  adapter.next.push(async (c) => c.tools.show_block({ block: form('First?') }));
+  adapter.next.push(async (c) => {
+    c.tools.update_block({ block: form('Second?') });
+    c.text('Asked again.');
+  });
+  rt.sendMessage(t.id, { text: 'ask' });
+  await settle(rt);
+  const first = store.items(t.id).find((i) => i.kind === 'block').turnId;
+  rt.sendMessage(t.id, { text: 'ask again' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  const second = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'Asked again.').turnId;
+  assert.notEqual(second, first);
+  assert.equal(it.turnId, second);
 });
 
 test('a persona’s permission mode reaches its running conversations from their next turn', async () => {

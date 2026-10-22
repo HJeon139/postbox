@@ -12,6 +12,7 @@ Agents write software when it explains better than prose; it must run safely and
 
 - Runs sandboxed (opaque origin, no network) on the cool app stage, labeled “Agent-written app”.
 - Checked at 375 and 1280 px before you see it; a failed check goes back to the agent once, then shows with a note.
+- The check also measures legibility: SVG marks under 4 px, text under 9 px, dashes too fine to tell from solid lines, and an app that shows only an error or missing-data message. These are warnings: the app is shown “with notes for @agent”, and the agent is told in its lint turn.
 - Version menu ([screenshot](../../screenshots/app-version-menu.png)) shows older versions read-only.
 - **Full screen** ([screenshot](../../screenshots/app-fullscreen.png)) fills the window with the app, in place: the same frame, so it doesn’t reload and keeps what you were doing. Focus moves to the button, now “Exit full screen”, and Tab stays inside. Escape (on the page, or inside the app unless the app uses Escape itself) or the button brings it back to the column, with focus on the button, at the height its content now needs (up to the column’s cap). The version menu works while full screen. Leaving the conversation ends full screen: coming back shows the app in the column.
 - A crash shows a card with Reload and Ask to fix ([screenshot](../../screenshots/app-crashed.png)).
@@ -28,7 +29,9 @@ Agents write software when it explains better than prose; it must run safely and
 4. Run `node tools/checks/app-fullscreen.mjs`: the frame fills at least 90% of the window without reloading, Escape brings it back with focus on the button, an app that grew comes back taller, an app’s own Escape stays in the app, and full screen ends when you leave the conversation.
 5. Run `node tools/checks/app-send.mjs`: an app that sends on load is refused, a click or Enter in it sends, and a frame that grabs focus can’t send.
 
-**Pass if:** The app works, versions switch, state restores, the frame doesn’t reload on its own or when it goes full screen, and no line appears in your voice that you didn’t click or type for.
+6. For the legibility warnings, run `node tools/check-feedback.mjs`: it shows a chart too small to read, a readable one, and an app with only an error.
+
+**Pass if:** The app works, versions switch, state restores, the frame doesn’t reload on its own or when it goes full screen, no line appears in your voice that you didn’t click or type for, and only the unreadable apps get notes.
 
 ## Related
 

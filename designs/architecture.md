@@ -276,6 +276,7 @@ sequenceDiagram
 - **Fitted, not guessed.** The estimate’s layout constants (8.5 px per character, about 56 px of padding per box, the gaps between sequence participants) were fitted to diagrams rendered in Chrome. They agree to within about half a pixel, and the measured values are a test.
 - **Prevention first.** The agent guide asks for about five boxes side by side, top-to-bottom chains, short labels and lists as text, so most diagrams never trip either check.
 - **No loops.** A reply to a lint message isn’t linted again by either check.
+- **One pipeline for every check.** Each check returns problems, `{ code, message, scope }` ([`server/checks.mjs`](../server/checks.mjs)). The runtime gathers the problems one agent turn caused into one lint turn: the server’s checks run when the turn ends, and what the browser reports (a diagram measured or failing to draw, the app check’s warnings) joins them within a moment of rendering. A turn gets at most one lint turn, and a lint turn that only calls tools, such as `define_term`, shows as a one-line note rather than a reply.
 
 **Revisit when** another diagram type becomes common (class, state and ER diagrams only get the count check), or Postbox’s column width or diagram font size changes; then re-measure and refit.
 

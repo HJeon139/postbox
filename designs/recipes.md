@@ -14,7 +14,7 @@ Use one when:
 | Slidev export | a `slides.md` file in the agent’s folder, plus a code block | (needs a real agent) |
 | Line-by-line review | a review block, then `update_block` with `previous` to show the diff | Corpus schema spec |
 | Dashboard | an app with `postbox.charts.*`, each chart with a Table view | Corpus dashboard |
-| Long job | a progress block moved on with `update_block`, then a summary | Index the shelf |
+| Long job | a progress block with counts, moved on with `update_block`, every step closed, then a summary | Index the shelf |
 
 ## Narrated walkthrough
 
@@ -83,3 +83,13 @@ A good recipe:
 - passes the pre-display check without being fixed
 
 Add it to the table above and to the guide, and give the mock agent a way to show it, so the demo and the screenshots cover it.
+
+## Long job
+
+For work that takes more than a minute: indexing, reading several papers, a batch of edits. The person should be able to tell, at a glance, how far along it is and whether it’s still moving.
+
+1. Show a progress block with one step per stage, or one per subagent when they run in parallel.
+2. For a step with countable work, set `progress: { done, total, unit }` (“2 of 4 papers”), or `percent` when there’s nothing to count, and an optional short `eta` (“3 min”). Update the step as items finish, not only when it ends: at least every minute, or at each subtask.
+3. Postbox stamps when the block last changed and when each step started and ended, shows a running step’s time live, and fills in `duration` when you leave it out.
+4. Before the turn ends, close every step as `done` or `failed`, with a one-line `detail` for a failure. A step left `running` shows as stalled, and Postbox tells you to close it.
+5. End with a short summary of what was done.

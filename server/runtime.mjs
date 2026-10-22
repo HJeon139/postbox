@@ -5,18 +5,24 @@
 import { createHash } from 'node:crypto';
 import { basename, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
-import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX } from '../shared/diagram-lint.mjs';
+import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
-import { lintTerms } from './lint.mjs';
+import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addAllowRule, rulesFor } from './permission-rules.mjs';
 import { newId } from './store.mjs';
 
 export const HOP_LIMIT = 3;
 const DELETE_UNDO_MS = 10000;
+/** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
+const LINT_SETTLE_MS = 1500;
+/** …and at most, while an app of the agent’s is still being checked. */
+const LINT_WAIT_MAX_MS = 12000;
+/** App check problems that are warnings: the app is shown, with notes, and the agent is told. */
+const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error']);
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
  * actions and asks you only when it can’t decide. ask: ask before anything risky. acceptEdits: edit files
@@ -37,7 +43,7 @@ const clip = (s, n = 200) => {
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null }} deps
    */
   constructor({ store, adapters, corpus, config, blobs, narrator }) {
@@ -52,6 +58,8 @@ export class Runtime {
     this.turns = new Map(); // sessionId → live turn
     this.viewing = new Map(); // threadId → last time a browser said it was open
     this.timers = new Map(); // scheduleId or deletion → timeout
+    this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
+    this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
   }
 
   get s() {
@@ -305,6 +313,8 @@ export class Runtime {
       message = { ...message, context: se.context };
       this.updateSession(sessionId, { context: [] });
     }
+    // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
+    if (message.kind !== 'lint') message = this.foldLint(sessionId, message);
     // And before that, what happened in the conversation since this agent last took part: a room is shared
     // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
     const catchUp = this.catchUp(this.s.sessions[sessionId], message.itemId);
@@ -369,7 +379,7 @@ export class Runtime {
           turnId: turn.id,
           text: '',
           status: 'streaming',
-          activity: turn.first ? null : { steps: [] },
+          activity: turn.first ? null : { steps: [...turn.steps] },
           // A reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check.
           ...(turn.kind === 'lint' ? { lintReply: true } : {}),
         });
@@ -427,7 +437,8 @@ export class Runtime {
       // who: the subagent that took the step; detail: why it failed, or the whole thought; kind: 'thought'.
       activity({ id, label, state = 'running', ms = null, who = null, detail = null, kind = null }) {
         if (!live()) return;
-        if (!turn.first) ensureSegment();
+        // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
+        if (!turn.first && turn.kind !== 'lint') ensureSegment();
         const i = turn.steps.findIndex((s) => s.id === id);
         const step = {
           id: id ?? newId('st'),
@@ -440,7 +451,7 @@ export class Runtime {
         };
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
-        rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+        if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
         const s = se();
         // A thought is in the list, but it isn’t a tool call.
         if (kind === 'thought') return;
@@ -579,18 +590,12 @@ export class Runtime {
     else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120));
     else if (turn.said && !viewing) this.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120));
 
-    // Lint for coined terms the reply never defined; the agent gets the list and fixes it.
-    const undefinedTerms = lintTerms(turn.said, this.s.glossary[turn.threadId] ?? {});
-    // And for diagrams too wide or too busy to read at the conversation’s width.
-    const diagrams = turn.kind === 'lint' ? [] : lintDiagrams(turn.said);
-    if (diagrams.length)
-      this.rememberDiagrams(
-        se.id,
-        diagrams.map((d) => d.src),
-      );
-    // A lint turn is never linted again, so this can’t loop.
-    if ((undefinedTerms.length || diagrams.length) && turn.kind !== 'lint')
-      this.deliver(se.id, { kind: 'lint', undefinedTerms, diagrams: diagrams.map(({ src: _src, ...d }) => d) });
+    // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
+    // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
+    const stalled = this.stallSteps(turn, se);
+    if (turn.kind === 'lint') this.quietLint(turn, se);
+    else this.endLint(turn, [...this.checkTurn(turn, se), ...stalled]);
+    this.lastTurn.set(se.id, turn.id);
 
     // An agent that @-mentions another agent wakes it.
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
@@ -988,9 +993,164 @@ export class Runtime {
     return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
   }
 
-  // ── Diagram legibility ─────────────────────────────────────────────────────────────
-  // The linter estimates from a diagram’s source; the browser measures the real text size after it renders and
-  // reports here what the estimate missed. Either way the agent hears about a diagram once.
+  // ── The lint pipeline ──────────────────────────────────────────────────────────────
+  // Every check returns problems, { code, message, scope } (server/checks.mjs). The problems an agent turn caused
+  // go back to the agent as one lint turn: the server’s checks run when the turn ends, and the browser reports what
+  // it measures (diagrams, the app check) as the reply renders, so the lint turn waits a moment for those. There’s
+  // at most one lint turn per agent turn, a lint turn is never linted, and problems from a turn that failed or was
+  // stopped are dropped.
+
+  /** A thread, then the conversation it branched from, following parentId (a topic or side thread’s is one level). */
+  lineage(threadId) {
+    const out = [];
+    for (let id = threadId; id && this.s.threads[id] && !out.includes(id) && out.length < 8; id = this.s.threads[id].parentId) out.push(id);
+    return out;
+  }
+
+  /**
+   * The terms a thread knows: its own glossary over its parent’s, so a topic thread inherits its conversation’s
+   * terms and its own definition wins. The browser’s glossaryOf (app/js/thread.mjs) merges the same way.
+   */
+  glossaryFor(threadId) {
+    return Object.assign(
+      {},
+      ...this.lineage(threadId)
+        .map((id) => this.s.glossary[id] ?? {})
+        .reverse(),
+    );
+  }
+
+  /** The server’s checks over a finished turn. */
+  checkTurn(turn, se) {
+    const lineage = this.lineage(turn.threadId);
+    const items = lineage.flatMap((id) => this.store.items(id));
+    const apps = Object.values(this.s.apps).filter((a) => lineage.includes(a.threadId));
+    const problems = termProblems(turn.said, this.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
+    // Diagrams too wide or too busy to read at the conversation’s width.
+    const diagrams = lintDiagrams(turn.said);
+    if (diagrams.length)
+      this.rememberDiagrams(
+        se.id,
+        diagrams.map((d) => d.src),
+      );
+    problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
+    return problems;
+  }
+
+  /** Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them. */
+  stallSteps(turn, se) {
+    const problems = [];
+    for (const it of this.store.items(turn.threadId)) {
+      if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
+      const running = it.block.steps.filter((s) => s.state === 'running');
+      if (!running.length) continue;
+      const steps = it.block.steps.map((s) => (s.state === 'running' ? { ...s, state: 'stalled' } : s));
+      this.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
+      const names = running.map((s) => `“${s.label}”`);
+      const one = running.length === 1;
+      problems.push({
+        code: 'steps-left-running',
+        message: `${one ? 'Step' : 'Steps'} ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} ${one ? 'was' : 'were'} still running when your turn ended, so the person sees ${one ? 'it' : 'them'} as stalled. Close each with update_block, as done or failed.`,
+        scope: { kind: 'block', id: it.block.id, title: it.block.title },
+      });
+    }
+    return problems;
+  }
+
+  lintEntry(sessionId, turnId) {
+    let e = this.lints.get(turnId);
+    if (!e) {
+      e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null };
+      this.lints.set(turnId, e);
+      // Only recent turns can still get a lint turn.
+      for (const [k, old] of this.lints) {
+        if (this.lints.size <= 200) break;
+        clearTimeout(old.timer);
+        this.lints.delete(k);
+      }
+    }
+    return e;
+  }
+
+  /** The turn ended: its lint turn goes once the browser has had a moment to report. */
+  endLint(turn, problems) {
+    const e = this.lintEntry(turn.sessionId, turn.id);
+    e.kind = turn.kind;
+    e.ended = true;
+    e.problems.push(...problems);
+    if (e.problems.length) this.sendLint(turn.id);
+  }
+
+  /**
+   * Adds problems to the lint turn of the agent turn they came from. Returns whether the agent will hear of them:
+   * not when they came from a lint turn, or when that turn’s lint turn has already gone.
+   * @param {string} sessionId  @param {string|null|undefined} turnId  @param {import('./checks.mjs').Problem[]} problems
+   */
+  lint(sessionId, turnId, problems) {
+    if (!problems.length || !turnId || !this.s.sessions[sessionId]) return false;
+    const live = [...this.turns.values()].find((t) => t.id === turnId);
+    // A turn that isn’t running and has no entry failed, was stopped, ran before a restart or is long gone: its
+    // problems are dropped, so no lint turn lands about an old reply. A lint turn’s own problems are too.
+    if ((!live && !this.lints.has(turnId)) || live?.kind === 'lint') return false;
+    const e = this.lintEntry(sessionId, turnId);
+    if (e.kind === 'lint' || e.sent) return false;
+    e.problems.push(...problems);
+    if (e.ended) this.sendLint(turnId);
+    return true;
+  }
+
+  sendLint(turnId) {
+    const e = this.lints.get(turnId);
+    if (!e || e.sent || e.timer) return;
+    const wait = this.config.lintSettleMs ?? LINT_SETTLE_MS;
+    const until = Date.now() + LINT_WAIT_MAX_MS;
+    const send = () => {
+      e.timer = null;
+      // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
+      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending');
+      if (wait > 0 && checking && Date.now() < until) {
+        e.timer = setTimeout(send, wait);
+        e.timer.unref?.();
+        return;
+      }
+      e.sent = true;
+      const se = this.s.sessions[e.sessionId];
+      if (se && !se.deleting && !se.archived) this.deliver(e.sessionId, lintMessage(e.problems));
+    };
+    if (wait <= 0) return send();
+    e.timer = setTimeout(send, wait);
+    e.timer.unref?.();
+  }
+
+  /**
+   * Another turn starts before a lint turn went (the person wrote during the settle, say): the problems join that
+   * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped.
+   */
+  foldLint(sessionId, message) {
+    const problems = [];
+    for (const e of this.lints.values()) {
+      if (e.sessionId !== sessionId || !e.ended || e.sent) continue;
+      clearTimeout(e.timer);
+      e.timer = null;
+      e.sent = true;
+      problems.push(...e.problems);
+    }
+    return problems.length ? { ...message, context: [formatLint(lintMessage(problems), { folded: true }), ...(message.context ?? [])] } : message;
+  }
+
+  /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */
+  quietLint(turn, se) {
+    // What the browser reports later about this lint turn’s own work is never linted.
+    Object.assign(this.lintEntry(se.id, turn.id), { kind: 'lint', ended: true, sent: true });
+    if (turn.said.trim() || turn.first) return;
+    const defined = [...new Set(turn.defined ?? [])].map((t) => `“${t}”`);
+    const list = defined.length > 1 ? `${defined.slice(0, -1).join(', ')} and ${defined.at(-1)}` : (defined[0] ?? '');
+    const text = defined.length ? `@${se.handle} defined ${list}` : turn.steps.length ? `@${se.handle} acted on Postbox’s check without a reply` : null;
+    if (text) this.addItem(turn.threadId, { kind: 'system', variant: 'lint', handle: se.handle, turnId: turn.id, text, lintReply: true });
+  }
+
+  // The diagram linter estimates from a diagram’s source; the browser measures the real text size after it renders
+  // and reports here what the estimate missed. Either way the agent hears about a diagram once.
 
   rememberDiagrams(sessionId, sources) {
     const se = this.s.sessions[sessionId];
@@ -999,35 +1159,51 @@ export class Runtime {
     this.updateSession(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
   }
 
-  /** The browser measured a rendered diagram: { src, textPx, width }. */
-  diagramCheck(threadId, itemId, { src, textPx, width }) {
+  /**
+   * The browser drew a diagram: { src, textPx, width } when it measured it, or { src, error: { message, line } }
+   * when Mermaid couldn’t draw it.
+   */
+  diagramCheck(threadId, itemId, { src, textPx, width, error }) {
     const it = this.store.item(threadId, itemId);
     if (it?.kind !== 'agent' || it.lintReply || typeof src !== 'string') return { ok: true, sent: false };
     const se = this.s.sessions[it.sessionId];
+    const failed = error && typeof error === 'object' && typeof error.message === 'string';
     // Only a measurement at the conversation’s width counts; a narrow panel or phone shrinks every diagram.
-    if (!se || !(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)) return { ok: true, sent: false };
+    if (!se || (!failed && (!(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)))) return { ok: true, sent: false };
     const hash = createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
     if (se.diagramsLinted?.includes(hash)) return { ok: true, sent: false };
-    this.rememberDiagrams(se.id, [src]);
-    const index = [...String(it.text).matchAll(/^ {0,3}```mermaid/gm)].length > 1 ? null : 0;
-    this.deliver(se.id, {
-      kind: 'lint',
-      undefinedTerms: [],
-      diagrams: [
-        {
-          index,
-          kind: 'diagram',
-          excerpt: src.split('\n').slice(0, 3).join('\n'),
-          problems: [
-            {
-              code: 'text-too-small',
-              message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
-            },
-          ],
-        },
-      ],
-    });
-    return { ok: true, sent: true };
+    // Only a diagram the reply has: its position and first lines come from the reply, not from the browser.
+    const block = mermaidBlocks(String(it.text)).find((b) => b.src.trim() === src.trim());
+    if (!block) return { ok: true, sent: false };
+    const excerpt = block.src
+      .split('\n')
+      .slice(0, 3)
+      .map((l) => clipText(l, 120))
+      .join('\n');
+    const scope = { kind: 'diagram', index: block.index, excerpt };
+    let problem;
+    if (failed) {
+      // Mermaid’s message, without its caret line: “Parse error on line 2: … Expecting 'SEMI', got 'ARROW'”.
+      const said = error.message
+        .split('\n')
+        .filter((l) => l.trim() && !/^[-\s]*\^$/.test(l))
+        .join(' ')
+        .slice(0, 400);
+      const line = Number.isInteger(error.line) && error.line > 0 ? ` (line ${Math.min(error.line, 9999)})` : '';
+      problem = {
+        code: 'diagram-error',
+        message: `Mermaid couldn’t draw it, so the person sees an error and its source instead. Mermaid said${line}: “${said}”. Fix the syntax.`,
+        scope,
+      };
+    } else
+      problem = {
+        code: 'text-too-small',
+        message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
+        scope,
+      };
+    const sent = this.lint(se.id, it.turnId, [problem]);
+    if (sent) this.rememberDiagrams(se.id, [src]);
+    return { ok: true, sent };
   }
 
   // ── Permission prompts ─────────────────────────────────────────────────────────────
@@ -1581,7 +1757,9 @@ export class Runtime {
     const app = this.s.apps[appId];
     if (!app) throw httpError(404, 'That app doesn’t exist.');
     if (version !== app.current) return { ignored: true };
-    const clean = problems.slice(0, 20).map((p) => ({ code: String(p.code).slice(0, 40), message: String(p.message).slice(0, 300) }));
+    const clean = (Array.isArray(problems) ? problems : [])
+      .slice(0, 20)
+      .map((p) => ({ code: String(p?.code).slice(0, 40), message: String(p?.message).slice(0, 300) }));
     if (!clean.length) {
       this.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
       return { status: 'passed' };
@@ -1590,14 +1768,28 @@ export class Runtime {
       this.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
       return { status: 'crashed' };
     }
-    // Problems the agent can’t fix (the frame never answered) are shown as a note, not sent back.
+    // Problems the agent can’t fix (the frame never answered) are shown as a note, not sent back. Warnings (marks or
+    // text too small, an app showing only an error) don’t hold the app back: it’s shown with notes, and the agent
+    // hears of them through the lint pipeline, unless it’s already fixing the app.
     const fixable = clean.filter((p) => p.code !== 'no-answer');
-    if (app.check.attempt === 0 && fixable.length && this.s.sessions[app.sessionId]) {
+    const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
+    if (app.check.attempt === 0 && blocking.length && this.s.sessions[app.sessionId]) {
       this.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable } });
       this.deliver(app.sessionId, { kind: 'app-check', appId, problems: fixable });
       return { status: 'fixing' };
     }
-    this.store.emit('app', { ...app, check: { status: 'note', attempt: app.check.attempt, problems: clean } });
+    const notes = clean.every((p) => APP_WARNINGS.has(p.code));
+    this.store.emit('app', { ...app, check: { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}) } });
+    if (notes) {
+      // The version was made by the agent’s turn that’s running, or else the last one that ended.
+      const turnId = [...this.turns.values()].find((t) => t.sessionId === app.sessionId)?.id ?? this.lastTurn.get(app.sessionId);
+      const scope = { kind: 'app', id: appId, title: app.title };
+      this.lint(
+        app.sessionId,
+        turnId,
+        clean.map((p) => ({ ...p, scope })),
+      );
+    }
     return { status: 'note' };
   }
 
@@ -1767,7 +1959,13 @@ export class Runtime {
         if (!existing) return { ok: false, message: `There’s no block with id ${v.block.id} to update. Use show_block to add it.` };
         if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
         // An update can ask again, so it reopens a block you already answered.
-        rt.patchItem(threadId(), existing.id, { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1 });
+        const now = Date.now();
+        /** @type {Record<string, any>} */
+        const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
+        if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
+        // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
+        if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
+        rt.patchItem(threadId(), existing.id, patch);
         return { ok: true, message: `Updated block ${v.block.id}.` };
       },
       show_app({ id, title, code, permissions = [], fallback }) {
@@ -1812,6 +2010,7 @@ export class Runtime {
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/^-|-$/g, '')
             .slice(0, 64) || 'term';
+        if (turn) (turn.defined ??= []).push(String(term).slice(0, 80));
         rt.store.emit('glossary', {
           threadId: threadId(),
           entry: {
@@ -1823,7 +2022,11 @@ export class Runtime {
             at: Date.now(),
           },
         });
-        return { ok: true, message: `Defined “${term}”.` };
+        const inherited = rt
+          .lineage(threadId())
+          .slice(1)
+          .some((id) => rt.s.glossary[id]?.[k]);
+        return { ok: true, message: inherited ? `Defined “${term}” in this thread, over the conversation’s definition.` : `Defined “${term}”.` };
       },
       propose_agent({ handle, description, instructions, tools = [], model = 'mock', backend = 'mock' }) {
         const mine = new Set(rt.persona(se().personaId)?.tools ?? []);
@@ -1896,6 +2099,34 @@ export function hostTool(rt, tool, args = {}) {
     default:
       throw httpError(404, `There’s no host tool called “${tool}”.`);
   }
+}
+
+/**
+ * A progress update’s step times, kept beside the block: startedAt when a step starts running, endedAt when it
+ * stops. A step that finishes without a duration gets one from them.
+ * @param {any} item  the block as it was  @param {any} block  the update  @param {number} now
+ */
+function stampSteps(item, block, now) {
+  const was = new Map((item.block.steps ?? []).map((s) => [s.id, s.state]));
+  /** @type {Record<string, { startedAt?: number, endedAt?: number }>} */
+  const times = {};
+  const steps = block.steps.map((sent) => {
+    const before = was.get(sent.id);
+    // Only Postbox marks a step stalled; from the agent, it means still running.
+    const s = sent.state === 'stalled' && before !== 'stalled' ? { ...sent, state: 'running' } : sent;
+    const t = { ...(item.stepTimes?.[s.id] ?? {}) };
+    const going = before === 'running' || before === 'stalled';
+    // A step that was running when the block was shown started then.
+    if (going) t.startedAt ??= item.at;
+    if (s.state === 'running') {
+      if (!going) t.startedAt = now;
+      delete t.endedAt;
+    } else if (going && s.state !== 'pending') t.endedAt = now;
+    times[s.id] = t;
+    const finished = s.state === 'done' || s.state === 'failed';
+    return finished && !s.duration && t.startedAt && t.endedAt ? { ...s, duration: formatDuration(t.endedAt - t.startedAt) } : s;
+  });
+  return { block: { ...block, steps }, stepTimes: times };
 }
 
 export function httpError(status, message) {

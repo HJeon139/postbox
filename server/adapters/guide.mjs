@@ -2,6 +2,8 @@
 // Shared by the Claude Code and Agent SDK adapters, so both backends behave the same way.
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
+import { formatLint } from '../checks.mjs';
+
 /**
  * The system prompt Postbox appends for an agent: who it is, who else is here, and how to use the room.
  * @param {{ persona: any, handles: string[], project?: any, brief?: string|null }} who
@@ -32,7 +34,7 @@ Use the Postbox tools (the “postbox” MCP server) for anything interactive. T
 
 - To ask something with a fixed set of answers, show a choice block; to collect several values, a form; before anything destructive or costly, a confirm that says exactly what will happen.
 - To ask for a line-by-line review of a spec, code or an app, show a review block.
-- For long work, show a progress block and move it on with update_block.
+- For long work, show a progress block and move it on with update_block: give a step with countable work progress { done, total, unit }, and update it as items finish, at least every minute or at each subtask. Before you end your turn, close every step as done or failed; a step left running shows as stalled, and you’ll be told. For parallel subagents, give each its own step.
 - When a tool would explain better than prose (an explorer, a simulator, a chart someone can change, a practice exercise), write an app with show_app.
 - Define a term with define_term the first time you use it, so later mentions link to its meaning.
 - To bring in another agent, wake_agent. To be woken later, schedule_wake. To suggest a new teammate, propose_agent.
@@ -46,7 +48,7 @@ Every block has id (letters, digits, - _ . :), type, version: 1, an optional tit
 - choice: options [{ id, label }] (1–24), prompt?, multiple?, max?, other?: { label, placeholder? }, display?: "chips" | "buttons", submitLabel?. Answer: action "choose", values { selected: [ids], other? }.
 - form: fields [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? (select only), default? }], prompt?, submitLabel?. Answer: "submit", { [fieldId]: value }.
 - table: columns [{ id, label, kind?: "text" | "number", sortable? }], rows [{ id, cells: { [columnId]: value } }] (up to 5,000), rowAction?: { id, label }. Answer: the rowAction id, { rowId }.
-- progress: steps [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, duration? }].
+- progress: steps [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, duration?, progress?: { done, total, unit? }, percent?: 0–100, eta? }]. Postbox shows “2 of 4 papers” with a bar, when the block last changed, and how long each step ran, so leave duration out unless you know better. It marks a step left running “stalled”; don’t set that yourself.
 - card: body?, facts?: [{ label, value }], actions?: [{ id, label }] (up to 3). Answer: the action id.
 - confirm: statement, confirmLabel, cancelLabel?. Answer: "confirm" or "cancel".
 - image: src (https, from an allowed origin), alt, caption?.
@@ -83,7 +85,7 @@ Patterns that work well. Follow one when the person asks for something it covers
 - Slidev export: write slides.md in your folder (slides separated by ---, speaker notes in <!-- --> comments), show it as a code block with filename "slides.md", and say that \`npx @slidev/cli slides.md\` opens it and \`npx @slidev/cli export slides.md\` makes a PDF.
 - Review: a review block; after the person’s comments, update_block with previous set to the old text, so they see a diff.
 - Dashboard: an app with postbox.charts.line, scatter, stacked or heatmap; each chart has a Table view built in.
-- Long job: a progress block moved on with update_block, then a short summary.
+- Long job: a progress block with counts, moved on with update_block as each item finishes, every step closed before you end the turn, then a short summary.
 
 ## Writing
 
@@ -118,17 +120,8 @@ function formatBody(message, pathOf) {
       return `[Postbox] A wake-up you scheduled is due. Your note: ${message.note || '(none)'}`;
     case 'app-check':
       return `[Postbox] Your app “${message.appId}” failed the pre-display check. Fix it with update_app:\n${(message.problems ?? []).map((p) => `- ${p.code}: ${p.message}`).join('\n')}`;
-    case 'lint': {
-      const parts = [];
-      if (message.undefinedTerms?.length)
-        parts.push(`Your reply used terms you haven’t defined. Define each with define_term:\n${message.undefinedTerms.map((t) => `- ${t.term}`).join('\n')}`);
-      for (const d of message.diagrams ?? [])
-        parts.push(
-          `${d.index === null || d.index === undefined ? 'A diagram' : `Diagram ${d.index + 1}`} in your reply can’t be read (it starts “${d.excerpt.split('\n')[0]}”):\n${d.problems.map((p) => `- ${p.message}`).join('\n')}`,
-        );
-      if (message.diagrams?.length) parts.push('Reply with a corrected version of each diagram, briefly, so the person can read it.');
-      return `[Postbox] ${parts.join('\n\n')}`;
-    }
+    case 'lint':
+      return formatLint(message);
     case 'notice':
       return `[Postbox] ${message.text}`;
     default:

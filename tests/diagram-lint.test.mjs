@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
+import { diagramProblems, lintMessage } from '../server/checks.mjs';
 import { lintDiagram, lintDiagrams, mermaidBlocks, parseFlowchart, parseSequence } from '../shared/diagram-lint.mjs';
 
 // The diagram a real agent drew for “how a query flows through BM25”: seven steps side by side, long labels.
@@ -111,7 +112,7 @@ test('a reply’s illegible diagrams come back numbered, and the agent is told w
     found.map((d) => d.index),
     [1],
   );
-  const text = formatMessage({ kind: 'lint', undefinedTerms: [], diagrams: found });
+  const text = formatMessage(lintMessage(diagramProblems(found)));
   assert.match(text, /^\[Postbox\] Diagram 2 in your reply can’t be read \(it starts “flowchart LR”\):/);
   assert.match(text, /Reply with a corrected version/);
 });

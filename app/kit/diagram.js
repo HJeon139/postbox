@@ -48,6 +48,10 @@
       p.className = 'err';
       p.textContent = 'This diagram couldn’t be drawn: ' + (err?.message ? err.message.split('\n')[0] : 'unknown error') + '. Its source is still available.';
       out.appendChild(p);
+      // Mermaid’s own message and line go to Postbox, which tells the agent so it can fix the diagram.
+      const message = String(err?.message || err || 'unknown error').slice(0, 1000);
+      const line = err?.hash?.loc?.first_line ?? +(/line (\d+)/i.exec(message)?.[1] ?? 0);
+      post({ type: 'error', render: true, message, line: line || null });
     }
     requestAnimationFrame(() => {
       // The diagram is scaled to fit; its text ends up at fontSize × (shown width ÷ natural width).

@@ -197,9 +197,14 @@ const SCHEMAS = {
           {
             id: id(),
             label: str({ min: 1, max: 200 }),
-            state: oneOf('pending', 'running', 'done', 'failed'),
+            // stalled: Postbox marks a step left running when its agent’s turn ended.
+            state: oneOf('pending', 'running', 'done', 'failed', 'stalled'),
             detail: str({ max: 300 }),
             duration: str({ max: 20 }),
+            // How far along a running step is: a count (“2 of 4 papers”), or a percent when there’s nothing to count.
+            progress: obj({ done: int({ min: 0, max: 1e9 }), total: int({ min: 1, max: 1e9 }), unit: str({ min: 1, max: 24 }) }, ['done', 'total']),
+            percent: int({ min: 0, max: 100 }),
+            eta: str({ max: 20 }),
           },
           ['id', 'label', 'state'],
         ),
@@ -207,6 +212,10 @@ const SCHEMAS = {
       ),
     },
     required: ['steps'],
+    check(b, errs) {
+      for (const [i, s] of (b.steps ?? []).entries())
+        if (s?.progress && s.progress.done > s.progress.total) errs.push(`steps[${i}].progress.done can’t be more than its total.`);
+    },
   },
   card: {
     fields: {

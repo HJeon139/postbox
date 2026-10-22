@@ -11,6 +11,8 @@ A wide diagram shrinks until its text can’t be read; the agent should redraw i
 ## Expected functionality
 
 - Postbox estimates each diagram’s text size and tells the agent when it’s under 10 px; the browser also measures rendered diagrams.
+- Postbox also tells the agent when a diagram couldn’t be drawn at all, with Mermaid’s message and line.
+- Everything one reply caused (undefined terms, diagrams, app warnings) reaches the agent in one lint turn.
 - The agent replies with a corrected diagram; the redraw isn’t linted again.
 
 ## Steps to reproduce

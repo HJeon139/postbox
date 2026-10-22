@@ -4,6 +4,7 @@
 
 import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
+import { formatDuration } from '/shared/text.mjs';
 import { mountApp } from './apps.mjs';
 import { client } from './client.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
@@ -417,30 +418,55 @@ const RENDER = {
     return node;
   },
 
-  progress(b, _item) {
+  progress(b, item) {
     const done = b.steps.filter((s) => s.state === 'done').length;
-    const [hd, titleId] = head(b, [h('span.small.dim', `${done} of ${b.steps.length}`)]);
-    const glyph = { done: 'g-done', running: 'g-running', pending: 'g-pending', failed: 'g-failed' };
-    return h(
+    const updated = h('span.small.dim', { dataset: { since: String(item.updatedAt ?? item.at), sinceKind: 'updated' } });
+    const [hd, titleId] = head(b, [h('span.small.dim', `${done} of ${b.steps.length}`), updated]);
+    const glyph = { done: 'g-done', running: 'g-running', pending: 'g-pending', failed: 'g-failed', stalled: 'g-stalled' };
+    const node = h(
       'div',
-      { 'aria-labelledby': titleId },
+      { 'aria-labelledby': titleId, dataset: { progress: item.sessionId ?? '', updatedAt: String(item.updatedAt ?? item.at) } },
       hd,
       h(
         'div.block-body',
         h(
           'ol.progress',
-          b.steps.map((s) =>
-            h(
+          b.steps.map((s) => {
+            // How far along: “2 of 4 papers”, or a percent, with a thin bar.
+            const pct = s.progress ? (s.progress.done / s.progress.total) * 100 : s.percent;
+            const count = s.progress
+              ? `${s.progress.done.toLocaleString('en-US')} of ${s.progress.total.toLocaleString('en-US')}${s.progress.unit ? ` ${s.progress.unit}` : ''}`
+              : typeof s.percent === 'number'
+                ? `${s.percent}%`
+                : null;
+            const started = item.stepTimes?.[s.id]?.startedAt ?? item.at;
+            return h(
               'li',
               { dataset: { s: s.state } },
-              h(`span.g.${glyph[s.state]}`, { role: 'img', 'aria-label': s.state[0].toUpperCase() + s.state.slice(1) }),
-              h('span.t', s.label, s.detail ? (s.state === 'failed' ? h('span.err', s.detail) : h('span.dim.small', ` · ${s.detail}`)) : null),
-              h('span.small.dim', s.duration ?? ''),
-            ),
-          ),
+              h(`span.g.${glyph[s.state] ?? 'g-pending'}`, { role: 'img', 'aria-label': stateName(s.state) }),
+              h(
+                'span.t',
+                s.label,
+                s.detail ? (s.state === 'failed' ? h('span.err', s.detail) : h('span.dim.small', ` · ${s.detail}`)) : null,
+                count || s.eta
+                  ? h('span.p-count.small.dim', [count, s.eta && s.state === 'running' ? `${s.eta} left` : null].filter(Boolean).join(' · '))
+                  : null,
+                typeof pct === 'number'
+                  ? h('span.bar.p-bar', { 'aria-hidden': 'true' }, h('i', { style: { width: `${Math.max(0, Math.min(100, pct))}%` } }))
+                  : null,
+              ),
+              // A running step shows how long it’s been going, live; a finished one, how long it took.
+              s.state === 'running' || s.state === 'stalled'
+                ? h('span.small.dim', { dataset: { since: String(started), sinceKind: s.state } })
+                : h('span.small.dim', s.duration ?? ''),
+            );
+          }),
         ),
       ),
     );
+    tickProgress(node);
+    startProgressClock();
+    return node;
   },
 
   card(b, _item, ctx) {
@@ -945,6 +971,46 @@ function inlineMd(t) {
 }
 
 /** A line diff (longest common subsequence), good enough for documents up to a few thousand lines. */
+// ── Progress blocks: times that move ─────────────────────────────────────────────────────
+
+const stateName = (s) => s[0].toUpperCase() + s.slice(1);
+/** A step still marked running looks stalled when its agent has stopped working and the block hasn’t moved for a minute. */
+const STALE_MS = 60000;
+const WORKING = new Set(['think', 'gen', 'tool']);
+
+/** Brings a progress block’s times up to date: “Updated 40 s ago”, live elapsed times, and stalled steps. */
+function tickProgress(node) {
+  const now = Date.now();
+  const se = client.state.sessions[node.dataset.progress];
+  const idle = !se || !WORKING.has(se.state);
+  const stale = idle && now - Number(node.dataset.updatedAt) > STALE_MS;
+  for (const el of node.querySelectorAll('[data-since]')) {
+    const ms = Math.max(1000, now - Number(el.dataset.since));
+    const li = el.closest('li');
+    if (el.dataset.sinceKind === 'updated') el.textContent = ms < 5000 ? 'Updated just now' : `Updated ${formatDuration(ms)} ago`;
+    else if (el.dataset.sinceKind === 'stalled' || stale)
+      el.textContent = `No update for ${formatDuration(Math.max(1000, now - Number(node.dataset.updatedAt)))}`;
+    else el.textContent = formatDuration(ms);
+    if (li && el.dataset.sinceKind === 'running') {
+      li.classList.toggle('stale', stale);
+      li.querySelector('.g')?.setAttribute('aria-label', stale ? 'Stalled' : 'Running');
+    }
+  }
+}
+
+let progressClock = 0;
+function startProgressClock() {
+  if (progressClock) return;
+  progressClock = setInterval(() => {
+    const blocks = document.querySelectorAll('[data-progress]');
+    for (const node of blocks) tickProgress(/** @type {HTMLElement} */ (node));
+    if (!blocks.length) {
+      clearInterval(progressClock);
+      progressClock = 0;
+    }
+  }, 1000);
+}
+
 export function diffLines(a, b) {
   const n = a.length,
     m = b.length;
