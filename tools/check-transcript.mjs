@@ -357,12 +357,11 @@ await check('#93 Summarize back clicked twice posts one summary; the button wait
   const button = q('.sidepanel .sp-head .btn.sm:not(.icon)');
   assert.equal(await page.evaluate(`${button}.textContent`), 'Summary requested…');
   assert.ok(await page.evaluate(`${button}.disabled`), 'disabled while the summary is pending');
-  const second = await fetch(`${app.origin}/api/threads/${threadId}/summarize`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: '{}',
-  });
-  assert.equal(second.status, 409, 'the server refuses a second request, as from another tab');
+  // From the page, as another tab would send it: with the page's token (#74), which a request from here wouldn't have.
+  const second = await page.evaluate(
+    `fetch('/api/threads/${threadId}/summarize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((r) => r.status)`,
+  );
+  assert.equal(second, 409, 'the server refuses a second request, as from another tab');
   await page.waitFor(`${button}.textContent === 'Summarize back' && !${button}.disabled`, { label: 'the button to come back', timeout: 15000 });
   const shared = store.items(t.id).filter((i) => i.kind === 'shared');
   assert.equal(shared.length, 1, 'one summary in the conversation');
