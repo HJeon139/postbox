@@ -1,6 +1,8 @@
 // A headless Chrome check of the agent contract, in a real browser and a real sandboxed app frame:
 //   #50: postbox.send with values over the event limit rejects inside the app, naming the limit, and nothing
 //        reaches the conversation; the same hand-off by id goes through.
+//   #94: update_block with outcome on an answered confirm shows the result as a Markdown line under the answer,
+//        and the block stays answered, with no needs-you.
 //
 //   node tools/check-contract.mjs
 //
@@ -96,6 +98,47 @@ try {
     'only the hand-off by id reaches the conversation',
     JSON.stringify(sent.map((x) => x.text)),
   );
+
+  // ── #94: a result reported on an answered confirm ─────────────────────────────────────
+  const confirm = {
+    id: 'frames',
+    type: 'confirm',
+    version: 1,
+    fallback: 'Delete the frames?',
+    title: 'Delete the video frames?',
+    statement: 'Delete the **23** untracked frames?',
+    confirmLabel: 'Delete',
+  };
+  tools.show_block({ block: confirm });
+  const item = store.items(t.id).find((x) => x.kind === 'block' && x.block.id === 'frames');
+  const node = `document.querySelector('[data-block-item="${item.id}"]')`;
+  await until(() => page.evaluate(`!!${node}`), 'the confirm to show');
+  rt.act(t.id, item.id, 'confirm', {});
+  await until(() => page.evaluate(`!!${node}?.querySelector('.answered-note')`), 'the answer to show');
+  const said = tools.update_block({ block: { ...confirm, outcome: 'Done: **23 frames** deleted, `frames/` is empty' } });
+  await until(() => page.evaluate(`!!${node}?.querySelector('.outcome')`), 'the outcome to show').catch(() => {});
+  const shown = await page.evaluate(`(() => {
+    const n = ${node};
+    const note = n.querySelector('.answered-note');
+    const out = n.querySelector('.outcome');
+    return {
+      answered: n.classList.contains('answered'),
+      buttons: n.querySelectorAll('button').length,
+      after: !!out && !!note && !!(note.compareDocumentPosition(out) & Node.DOCUMENT_POSITION_FOLLOWING),
+      text: out?.innerText.replace(/\\s+/g, ' ').trim() ?? '',
+      bold: out?.querySelector('strong')?.textContent ?? '',
+      code: out?.querySelector('code')?.textContent ?? '',
+      icon: !!out?.querySelector('.i-check'),
+      title: n.querySelector('.title')?.textContent ?? '',
+    };
+  })()`);
+  check(said.ok && shown.after, 'the outcome shows as a line under the person’s answer', JSON.stringify({ said, shown }));
+  check(shown.bold === '23 frames' && shown.code === 'frames/' && shown.icon, 'the outcome renders as Markdown, with a check', JSON.stringify(shown));
+  check(shown.answered && shown.buttons === 0, 'the block stays answered, with no buttons to press again', JSON.stringify(shown));
+  check(shown.title === 'Delete the video frames?', 'the question the person answered stays as they saw it', shown.title);
+  check(!rt.s.sessions[se.id].needs, 'the agent doesn’t need the person', JSON.stringify(rt.s.sessions[se.id].needs));
+  const needsGlyph = await page.evaluate(`!!${node}.querySelector('.g-needs')`);
+  check(!needsGlyph, 'the block shows no needs-you mark');
 } catch (e) {
   failed++;
   console.log(`FAIL ${e.message}`);

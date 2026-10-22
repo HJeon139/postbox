@@ -49,6 +49,8 @@ function head(b, extra = [], kind = KIND[b.type]) {
 }
 const answeredNote = (item) =>
   h('span.answered-note', icon('check', 'i-sm'), `Answered at ${timeOf(item.answer.at)} · only a new block, or an update to it, can ask again`);
+// A result the agent reported on an answered choice, form or confirm (#94), under your answer.
+const outcomeLine = (item) => (item.answered && item.block.outcome ? h('div.outcome', icon('check', 'i-sm'), md(item.block.outcome)) : null);
 const errLine = (msg) => (msg ? h('span.err', { role: 'alert' }, icon('warn'), msg) : null);
 
 async function submit(item, ctx, action, values, setError) {
@@ -157,7 +159,7 @@ const RENDER = {
         ),
       );
     }
-    if (done) body.append(answeredNote(item));
+    if (done) body.append(answeredNote(item), outcomeLine(item) ?? '');
     node.append(hd, body);
     if (!done) {
       const n = d.selected.length + (d.otherOn && d.other.trim() ? 1 : d.otherOn ? 1 : 0);
@@ -310,7 +312,7 @@ const RENDER = {
       'div',
       { class: done ? 'answered' : '', 'aria-labelledby': titleId },
       hd,
-      h('div.block-body', b.prompt ? md(b.prompt) : null, grid, done ? answeredNote(item) : null),
+      h('div.block-body', b.prompt ? md(b.prompt) : null, grid, done ? answeredNote(item) : null, outcomeLine(item)),
     );
     // submit() clears the error (one re-render) before it sets the new one, so replace the copy on screen now.
     const rerender = () => {
@@ -522,6 +524,7 @@ const RENDER = {
               item.answer.action === 'confirm' ? `Confirmed at ${timeOf(item.answer.at)}` : `Not confirmed · ${timeOf(item.answer.at)}`,
             )
           : null,
+        outcomeLine(item),
       ),
     );
     hd.remove();

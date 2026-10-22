@@ -1106,6 +1106,96 @@ test('#69: an asking block asked again with update_block belongs to the turn tha
   assert.equal(it.turnId, second);
 });
 
+test('#94: an outcome on an answered confirm reports the result: it stays answered and nobody is asked again', async () => {
+  const { rt, store, t, adapter } = setup();
+  const confirm = {
+    id: 'frames',
+    type: 'confirm',
+    version: 1,
+    fallback: 'Delete?',
+    title: 'Delete the video frames?',
+    statement: 'Delete 23 frames?',
+    confirmLabel: 'Delete',
+  };
+  adapter.next.push(async (c) => c.tools.show_block({ block: confirm }));
+  rt.sendMessage(t.id, { text: 'clean up' });
+  await settle(rt);
+  const se = rt.sessionsIn(t.id)[0];
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  rt.act(t.id, item.id, 'confirm', {});
+  // As in the UAT that found it: the agent reports back on the same block, retitled, with an “OK” button.
+  let said;
+  adapter.next.push(async (c) => {
+    said = c.tools.update_block({
+      block: { ...confirm, title: 'Video frames deleted', confirmLabel: 'OK', outcome: 'Done: 23 frames deleted' },
+    });
+    c.text('Deleted them.');
+  });
+  await settle(rt);
+  const it = store.item(t.id, item.id);
+  assert.equal(it.answered, true);
+  assert.equal(it.answer.action, 'confirm');
+  assert.equal(it.block.outcome, 'Done: 23 frames deleted');
+  // The question the person answered stays as they saw it, and the agent is told its other changes didn’t apply.
+  assert.equal(it.block.title, 'Delete the video frames?');
+  assert.equal(it.block.confirmLabel, 'Delete');
+  assert.equal(it.turnId, item.turnId);
+  assert.equal(said.ok, true);
+  assert.match(said.message, /stays answered\. Your other changes weren’t applied/);
+  assert.equal(store.state.sessions[se.id].needs, null);
+  assert.equal(store.state.sessions[se.id].state, 'idle');
+  assert.throws(() => rt.act(t.id, item.id, 'confirm', {}), /already answered/);
+
+  // An update without outcome asks again, as before.
+  adapter.next.push(async (c) => c.tools.update_block({ block: { ...confirm, statement: 'Delete 4 more?' } }));
+  rt.sendMessage(t.id, { text: 'more?' });
+  await settle(rt);
+  assert.equal(store.item(t.id, item.id).answered, false);
+  assert.equal(store.item(t.id, item.id).block.outcome, undefined);
+  assert.equal(store.state.sessions[se.id].needs?.kind, 'block');
+});
+
+test('#94: an outcome on a block nobody answered yet is refused, and the block is left alone', () => {
+  const { rt, store, t } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  const tools = rt.toolsFor(se.id);
+  const choice = { id: 'c', type: 'choice', version: 1, fallback: 'Pick', options: [{ id: 'a', label: 'A' }] };
+  tools.show_block({ block: choice });
+  const r = tools.update_block({ block: { ...choice, outcome: 'Done.' } });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /hasn’t been answered yet/);
+  assert.equal(store.items(t.id).find((i) => i.kind === 'block').block.outcome, undefined);
+  // An outcome with nothing else changed gets no note about other changes.
+  rt.act(t.id, store.items(t.id).find((i) => i.kind === 'block').id, 'choose', { selected: ['a'] });
+  assert.equal(
+    tools.update_block({ block: { ...choice, outcome: 'Done.' } }).message,
+    'Recorded the outcome under the person’s answer to c; it stays answered.',
+  );
+  // Reopened by an update without outcome, it’s unanswered again, so an outcome is refused again.
+  tools.update_block({ block: { ...choice, prompt: 'Pick again?' } });
+  const again = tools.update_block({ block: { ...choice, prompt: 'Pick again?', outcome: 'Done.' } });
+  assert.equal(again.ok, false);
+  assert.match(again.message, /^The update wasn’t applied\. .*set outcome with update_block once they’ve answered/);
+  assert.equal(store.items(t.id).find((i) => i.kind === 'block').block.outcome, undefined);
+});
+
+test('#94: show_block refuses an outcome, so a result can’t show under an answer it didn’t come from', () => {
+  const { rt, store, t } = setup();
+  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  // The review’s scenario: an outcome sent with the question would show under Cancel too.
+  const confirm = { id: 'frames', type: 'confirm', version: 1, fallback: 'Delete?', statement: 'Delete 23 frames?', confirmLabel: 'Delete' };
+  const r = tools.show_block({ block: { ...confirm, outcome: 'Deleted 23 frames' } });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /^The block wasn’t shown\. outcome reports the result of the person’s answer, and frames hasn’t been answered yet\./);
+  assert.match(r.message, /set outcome with update_block once they’ve answered/);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'block').length, 0);
+  // Without it, the block shows, and a Cancel gets no outcome.
+  assert.equal(tools.show_block({ block: confirm }).ok, true);
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  rt.act(t.id, item.id, 'cancel', {});
+  assert.equal(store.item(t.id, item.id).block.outcome, undefined);
+});
+
 test('a persona’s permission mode reaches its running conversations from their next turn', async () => {
   const { rt, t, a, adapter } = setup();
   const seen = [];

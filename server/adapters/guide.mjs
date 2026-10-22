@@ -64,7 +64,7 @@ Every block has id (letters, digits, - _ . :), type, version: 1, an optional tit
 
 A prompt or statement is up to ${n('prompt')} characters; review content and previous, up to ${n('longText')}.
 
-A choice, form, confirm or review turns read-only once answered. To ask again, send a new block or update_block the same id.
+A choice, form, confirm or review turns read-only once answered. Report what you did with an answer in your reply, or with update_block on the answered choice, form or confirm with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the person’s answer, and the block stays answered. Update an answered block without outcome only to ask again, or send a new block.
 
 ## Apps
 

@@ -443,6 +443,11 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .block.answered .block-head { border-bottom-style: dashed; }
 .answered-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
 .answered-note .i-check { color: var(--good); }
+/* A result the agent reported on an answered block (#94): a line under your answer. */
+.outcome { display: flex; align-items: baseline; gap: 6px; font-size: 13px; }
+.outcome > .i { flex: none; color: var(--good); }
+.outcome > .md > :first-child { margin-top: 0; }
+.outcome > .md > :last-child { margin-bottom: 0; }
 .block.pending { background: transparent; border-style: dashed; }
 .block-placeholder { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
 

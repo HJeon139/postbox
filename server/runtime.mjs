@@ -1993,6 +1993,10 @@ export class Runtime {
     const threadId = () => se().threadId;
     return {
       show_block({ block }) {
+        // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
+        // answers, even Cancel, so it’s refused here and only taken by update_block once the block is answered.
+        if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
+          return { ok: false, message: OUTCOME_LATER(String(block.id ?? 'this block'), 'The block wasn’t shown.') };
         const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
         // App ids are global. Yours already: it’s a new version. Another agent’s: yours gets a fresh id, and
         // theirs (its versions and saved state) is left alone.
@@ -2034,8 +2038,25 @@ export class Runtime {
           .find((x) => x.kind === 'block' && x.valid && x.block.id === v.block.id && x.sessionId === sessionId);
         if (!existing) return { ok: false, message: `There’s no block with id ${v.block.id} to update. Use show_block to add it.` };
         if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
-        // An update can ask again, so it reopens a block you already answered.
         const now = Date.now();
+        // An update that sets outcome reports a result, not a question (#94): it goes under the person’s answer, the
+        // block stays answered, and nobody is asked again. The question they answered stays as they saw it.
+        if (typeof v.block.outcome === 'string') {
+          if (!existing.answered)
+            return {
+              ok: false,
+              message: OUTCOME_LATER(v.block.id, 'The update wasn’t applied.'),
+            };
+          const { outcome, ...asked } = v.block;
+          const keys = new Set([...Object.keys(asked), ...Object.keys(existing.block)].filter((k) => k !== 'outcome'));
+          const changed = [...keys].some((k) => JSON.stringify(asked[k]) !== JSON.stringify(existing.block[k]));
+          rt.patchItem(threadId(), existing.id, { block: { ...existing.block, outcome }, revision: (existing.revision ?? 1) + 1, updatedAt: now });
+          return {
+            ok: true,
+            message: `Recorded the outcome under the person’s answer to ${v.block.id}; it stays answered.${changed ? ' Your other changes weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.' : ''}`,
+          };
+        }
+        // Any other update asks again, so it reopens a block you already answered.
         /** @type {Record<string, any>} */
         const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
         if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
@@ -2156,6 +2177,10 @@ export class Runtime {
     });
   }
 }
+
+/** Why an outcome was refused on a block nobody has answered yet (#94). @param {string} id @param {string} what */
+const OUTCOME_LATER = (id, what) =>
+  `${what} outcome reports the result of the person’s answer, and ${id} hasn’t been answered yet. Send the block without outcome, and set outcome with update_block once they’ve answered.`;
 
 /** Host tools that apps (through the bridge) and agents can use, if granted. */
 export function hostTool(rt, tool, args = {}) {

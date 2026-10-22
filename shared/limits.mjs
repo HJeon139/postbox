@@ -15,6 +15,8 @@ export const LIMITS = Object.freeze({
   prompt: 2000,
   /** A card’s body. */
   cardBody: 4000,
+  /** A result reported on an answered choice, form or confirm (#94). */
+  outcome: 500,
   /** A code block’s code, and a review’s content and previous. */
   longText: 200_000,
   choiceOptions: 24,

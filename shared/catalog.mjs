@@ -105,6 +105,8 @@ const obj =
     }
   };
 const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }) }, ['id', 'label']);
+// A result reported on an answered block (#94), shown under the answer. Markdown.
+const outcome = () => str({ min: 1, max: LIMITS.outcome });
 
 // ── Component schemas ───────────────────────────────────────────────────────────────────
 
@@ -121,6 +123,7 @@ const SCHEMAS = {
       other: obj({ label: str({ min: 1, max: 80 }), placeholder: str({ max: 120 }) }, ['label']),
       display: oneOf('chips', 'buttons'),
       submitLabel: str({ min: 1, max: 40 }),
+      outcome: outcome(),
     },
     required: ['options'],
   },
@@ -148,6 +151,7 @@ const SCHEMAS = {
         { min: 1, max: LIMITS.formFields, unique: 'id' },
       ),
       submitLabel: str({ min: 1, max: 40 }),
+      outcome: outcome(),
     },
     required: ['fields'],
     check(b, errs) {
@@ -227,7 +231,12 @@ const SCHEMAS = {
     required: [],
   },
   confirm: {
-    fields: { statement: str({ min: 1, max: LIMITS.prompt }), confirmLabel: str({ min: 1, max: 48 }), cancelLabel: str({ min: 1, max: 48 }) },
+    fields: {
+      statement: str({ min: 1, max: LIMITS.prompt }),
+      confirmLabel: str({ min: 1, max: 48 }),
+      cancelLabel: str({ min: 1, max: 48 }),
+      outcome: outcome(),
+    },
     required: ['statement', 'confirmLabel'],
   },
   image: {

@@ -12,6 +12,7 @@ Fixed answers are faster and less ambiguous than typing.
 
 - Single or multiple choice (chips or buttons), optional “other” text, a max.
 - Answering sends one event to the agent, shows a line in your voice and turns the block read-only.
+- A result the agent reports on it shows as a line under your answer, and the block stays answered (as on a [confirm](confirm.md)).
 - Keyboard: arrows, Space/Enter; number keys pick options.
 
 ## Steps to reproduce
