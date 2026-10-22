@@ -739,6 +739,44 @@ test('#46: a diagram the browser couldn’t draw comes back to the agent once, w
   );
 });
 
+test('#53: an app check with only warnings shows the app with notes, and tells the agent in its lint turn', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_app({ id: 'pairs', title: 'Pair explorer', code: '<svg></svg>' });
+    c.text('Here’s the explorer.');
+  });
+  rt.sendMessage(t.id, { text: 'build it' });
+  await settle(rt);
+  const tiny = { code: 'marks-too-small', message: 'At 1280 px, 1,200 of 1,258 marks are under 4 px across.' };
+  assert.deepEqual(rt.appCheck('pairs', { version: 1, problems: [tiny] }), { status: 'note' });
+  await settle(rt);
+  assert.equal(store.state.apps.pairs.check.status, 'note');
+  assert.equal(store.state.apps.pairs.check.notes, true, 'the browser words it as notes, not a failure');
+  assert.equal(adapter.calls.filter((c) => c.message.kind === 'app-check').length, 0);
+  const [lint] = lints(adapter);
+  assert.deepEqual(lint.message.problems, [{ ...tiny, scope: { kind: 'app', id: 'pairs', title: 'Pair explorer' } }]);
+});
+
+test('#53: warnings with a real failure go back with it in the app-check turn', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.tools.show_app({ id: 'pairs', title: 'Pair explorer', code: '<svg></svg>' }));
+  rt.sendMessage(t.id, { text: 'build it' });
+  await settle(rt);
+  const problems = [
+    { code: 'only-error', message: 'It shows only “SciFact isn’t loaded”.' },
+    { code: 'unlabeled-field', message: 'A select has no label.' },
+  ];
+  assert.deepEqual(rt.appCheck('pairs', { version: 1, problems }), { status: 'fixing' });
+  await settle(rt);
+  assert.deepEqual(
+    adapter.calls.find((c) => c.message.kind === 'app-check').message.problems.map((p) => p.code),
+    ['only-error', 'unlabeled-field'],
+  );
+  assert.equal(lints(adapter).length, 0);
+  assert.equal(store.state.apps.pairs.check.status, 'note', 'the fix turn ended without a new version');
+  assert.equal(store.state.apps.pairs.check.notes, undefined);
+});
+
 test('a persona’s permission mode reaches its running conversations from their next turn', async () => {
   const { rt, t, a, adapter } = setup();
   const seen = [];

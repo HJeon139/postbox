@@ -19,6 +19,10 @@ export const HOP_LIMIT = 3;
 const DELETE_UNDO_MS = 10000;
 /** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
 const LINT_SETTLE_MS = 1500;
+/** …and at most, while an app of the agent’s is still being checked. */
+const LINT_WAIT_MAX_MS = 12000;
+/** App check problems that are warnings: the app is shown, with notes, and the agent is told. */
+const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error']);
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
  * actions and asks you only when it can’t decide. ask: ask before anything risky. acceptEdits: edit files
@@ -1067,13 +1071,21 @@ export class Runtime {
   sendLint(turnId) {
     const e = this.lints.get(turnId);
     if (!e || e.sent || e.timer) return;
+    const wait = this.config.lintSettleMs ?? LINT_SETTLE_MS;
+    const until = Date.now() + LINT_WAIT_MAX_MS;
     const send = () => {
       e.timer = null;
+      // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
+      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending');
+      if (wait > 0 && checking && Date.now() < until) {
+        e.timer = setTimeout(send, wait);
+        e.timer.unref?.();
+        return;
+      }
       e.sent = true;
       const se = this.s.sessions[e.sessionId];
       if (se && !se.deleting && !se.archived) this.deliver(e.sessionId, lintMessage(e.problems));
     };
-    const wait = this.config.lintSettleMs ?? LINT_SETTLE_MS;
     if (wait <= 0) return send();
     e.timer = setTimeout(send, wait);
     e.timer.unref?.();
@@ -1688,7 +1700,9 @@ export class Runtime {
     const app = this.s.apps[appId];
     if (!app) throw httpError(404, 'That app doesn’t exist.');
     if (version !== app.current) return { ignored: true };
-    const clean = problems.slice(0, 20).map((p) => ({ code: String(p.code).slice(0, 40), message: String(p.message).slice(0, 300) }));
+    const clean = (Array.isArray(problems) ? problems : [])
+      .slice(0, 20)
+      .map((p) => ({ code: String(p?.code).slice(0, 40), message: String(p?.message).slice(0, 300) }));
     if (!clean.length) {
       this.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
       return { status: 'passed' };
@@ -1697,14 +1711,28 @@ export class Runtime {
       this.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
       return { status: 'crashed' };
     }
-    // Problems the agent can’t fix (the frame never answered) are shown as a note, not sent back.
+    // Problems the agent can’t fix (the frame never answered) are shown as a note, not sent back. Warnings (marks or
+    // text too small, an app showing only an error) don’t hold the app back: it’s shown with notes, and the agent
+    // hears of them through the lint pipeline, unless it’s already fixing the app.
     const fixable = clean.filter((p) => p.code !== 'no-answer');
-    if (app.check.attempt === 0 && fixable.length && this.s.sessions[app.sessionId]) {
+    const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
+    if (app.check.attempt === 0 && blocking.length && this.s.sessions[app.sessionId]) {
       this.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable } });
       this.deliver(app.sessionId, { kind: 'app-check', appId, problems: fixable });
       return { status: 'fixing' };
     }
-    this.store.emit('app', { ...app, check: { status: 'note', attempt: app.check.attempt, problems: clean } });
+    const notes = clean.every((p) => APP_WARNINGS.has(p.code));
+    this.store.emit('app', { ...app, check: { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}) } });
+    if (notes) {
+      const turnId =
+        [...this.turns.values()].find((t) => t.sessionId === app.sessionId)?.id ?? this.store.items(app.threadId).find((i) => i.id === app.itemId)?.turnId;
+      const scope = { kind: 'app', id: appId, title: app.title };
+      this.lint(
+        app.sessionId,
+        turnId,
+        clean.map((p) => ({ ...p, scope })),
+      );
+    }
     return { status: 'note' };
   }
 

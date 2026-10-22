@@ -399,7 +399,17 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
       ),
     );
   if (!old && status === 'note')
-    notes.push(h('div.app-note', icon('warn'), h('span', `Shown with problems @${owner} couldn’t fix: ${app.check.problems.map((p) => p.message).join(' ')}`)));
+    notes.push(
+      h(
+        'div.app-note',
+        icon('warn'),
+        h(
+          'span',
+          // Warnings only (marks or text too small, say): the app passed and is shown, and @owner was told.
+          `${app.check.notes ? `Shown with notes for @${owner}` : `Shown with problems @${owner} couldn’t fix`}: ${app.check.problems.map((p) => p.message).join(' ')}`,
+        ),
+      ),
+    );
   container.replaceChildren(...notes, body);
 }
 
