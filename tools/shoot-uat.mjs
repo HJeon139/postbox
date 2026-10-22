@@ -17,7 +17,8 @@ import { play } from './demo.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, 'tests', 'uat', 'screenshots');
-const PORT = 4291;
+// PB_PORT and PB_CHROME_PORT move it, so sessions working in parallel don’t collide.
+const PORT = Number(process.env.PB_PORT ?? 4291);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 
 // Finders: JS expressions run in the page.
@@ -148,7 +149,7 @@ await mkdir(OUT, { recursive: true });
 const dataDir = join(tmpdir(), `pb-uat-${process.pid}`);
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 const origin = `http://127.0.0.1:${PORT}`;
-const page = await launch({ port: 9391 });
+const page = await launch({ port: Number(process.env.PB_CHROME_PORT ?? 9391) });
 await page.size(1280, 1000, { theme: 'light' });
 let loads = 0;
 const goto = async (hash) => {

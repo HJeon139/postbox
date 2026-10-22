@@ -1,6 +1,6 @@
 # Prompt: implement the five “Now” hotfixes
 
-Give this prompt to a new Claude Code session in `/Users/hohyunjeon/postbox`, in its own worktree. It implements the hotfix milestone of the plan ([#64](https://github.com/HJeon139/postbox/issues/64)) as one pull request, then hands it to the reviewing session, which runs the end-to-end UAT.
+A wave 1 session; [README.md](README.md) has the rules every wave session shares. Give this prompt to a new Claude Code session in `/Users/hohyunjeon/postbox`, in its own worktree. It implements the hotfix milestone of the plan ([#64](https://github.com/HJeon139/postbox/issues/64)) as one pull request, then hands it to the reviewing session, which runs the end-to-end UAT.
 
 ---
 
@@ -81,7 +81,7 @@ A persona can also switch to **Isolated**, which loads project settings only.
 
 Keep one control. Lifting the height cap in the column can stay as part of it, or go, but there aren’t two buttons. Saved state and the version menu keep working, and no second copy of the app runs.
 
-**Tests:** a headless check that the frame fills at least 90% of the window, and that Escape restores it. Update `tests/uat/conversation/agent-apps/app-frame.md` and its screenshot.
+**Tests:** a headless check that the frame fills at least 90% of the window, and that Escape restores it. Update the text of `tests/uat/conversation/agent-apps/app-frame.md`.
 
 ### 5. #48: image attachments show as file chips, and drag and drop misses the thread panels (P1)
 
@@ -109,11 +109,7 @@ Keep one control. Lifting the height cap in the column can stay as part of it, o
    Each returns one commit per fix.
 3. **Integrate.** Cherry-pick the commits onto `fix/now-hotfixes` in the order above. Run `npm run check` after each, and resolve any conflict yourself.
 4. **Review adversarially.** Start a review subagent with the full diff (`git diff main...fix/now-hotfixes`) and `designs/engineering-practices.md`. Ask it to find violations of every section, and bugs: edge cases, races, security, accessibility. Every finding needs a file, a line and a concrete failing scenario. Fix what it confirms, in the commit it belongs to (`git commit --fixup`, then `git rebase --autosquash`), and say in the pull request what you declined and why.
-5. **Validate. All of these must pass:**
-   - `npm run check`
-   - `node tools/shoot-app.mjs`, ending with “Accessibility (axe-core): no violations.”
-   - `node tools/shoot-uat.mjs` for the screenshots of the docs you changed. It plays the mock demo, so it isn’t the end-to-end UAT.
-   - Each fix’s headless checks.
+5. **Validate.** `npm run check` and each fix’s headless checks must pass. Update the text of the UAT docs your fixes affect, but don’t refresh their screenshots. **Don’t run** `tools/shoot-app.mjs` or `tools/shoot-uat.mjs`: the reviewing session runs them, with axe, on the merged wave (see `designs/prompts/README.md`).
 
    Go through the practices doc section by section, and note in the pull request how the change meets each one, or why one doesn’t apply.
 6. **Push and open the pull request.** Push `fix/now-hotfixes` and open a pull request against `main` with `gh pr create`. **Don’t merge it.**
@@ -131,7 +127,7 @@ Keep one control. Lifting the height cap in the column can stay as part of it, o
    End each commit message with:
 
    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-7. **Hand off for review.** When the pull request is open and every check above passes, message the reviewing session, `local_48b46372-79f5-4077-82d6-946342d2f22e`, with `SendMessage`. Include:
+7. **Hand off for review.** When the pull request is open and every check above passes, message the reviewing session with `SendMessage`: it’s listed by `ListAgents` as “Agentic chat room web app” (session id `local_48b46372-79f5-4077-82d6-946342d2f22e`). Include:
    - the pull request’s URL and head commit
    - one line per fix on how it was verified
    - anything you want the UAT to look at in particular

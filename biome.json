@@ -11,6 +11,7 @@
       "tools/**",
       "tests/**",
       "!server/corpus/books",
+      "!.claude",
       "!app/kit/vendor"
     ]
   },

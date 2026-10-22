@@ -17,9 +17,12 @@ It runs, in order:
 4. `check:contrast`: every color pair in both themes.
 5. `test`: `node:test`, with the network and process spawning blocked.
 
-For anything that changes the UI, also run `node tools/shoot-app.mjs`. It plays the demo, takes screenshots and runs axe on every scene. It must end with “Accessibility (axe-core): no violations.”
+**At review,** the reviewing session runs these over the merged UI of each wave:
+- `node tools/shoot-app.mjs`: it plays the demo, takes screenshots and runs axe on every scene. It must end with “Accessibility (axe-core): no violations.”
+- `node tools/shoot-uat.mjs`: it refreshes the UAT doc screenshots.
+- The end-to-end UAT ([tests/uat/e2e](../tests/uat/e2e/README.md)), which runs real agents and costs real usage.
 
-The end-to-end UAT ([tests/uat/e2e](../tests/uat/e2e/README.md)) runs real agents and costs real usage, so it runs at review, not on every change.
+A change that’s visible in the UI also gets a headless Chrome check (`tools/cdp.mjs`) from whoever writes it.
 
 ## Node
 
