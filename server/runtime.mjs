@@ -11,7 +11,7 @@ import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
-import { diagramProblems, introducedTerms, lintMessage, termProblems } from './checks.mjs';
+import { diagramProblems, formatLint, introducedTerms, lintMessage, termProblems } from './checks.mjs';
 import { addAllowRule, rulesFor } from './permission-rules.mjs';
 import { newId } from './store.mjs';
 
@@ -293,6 +293,8 @@ export class Runtime {
       t.pending.push({ message, replyTo, summarizeTo });
       return;
     }
+    // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
+    if (message.kind !== 'lint') message = this.foldLint(sessionId, message);
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length) {
       message = { ...message, context: se.context };
@@ -1075,6 +1077,22 @@ export class Runtime {
     if (wait <= 0) return send();
     e.timer = setTimeout(send, wait);
     e.timer.unref?.();
+  }
+
+  /**
+   * Another turn starts before a lint turn went (the person wrote during the settle, say): the problems join that
+   * turn, so a lint turn never lands after it, and later reports for the earlier turns are dropped.
+   */
+  foldLint(sessionId, message) {
+    const problems = [];
+    for (const e of this.lints.values()) {
+      if (e.sessionId !== sessionId || !e.ended || e.sent) continue;
+      clearTimeout(e.timer);
+      e.timer = null;
+      e.sent = true;
+      problems.push(...e.problems);
+    }
+    return problems.length ? { ...message, context: [formatLint(lintMessage(problems), { folded: true }), ...(message.context ?? [])] } : message;
   }
 
   /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */

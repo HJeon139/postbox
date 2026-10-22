@@ -650,6 +650,24 @@ test('a lint turn that writes is a reply, marked so the browser’s checks skip 
   assert.equal(store.items(t.id).filter((i) => i.kind === 'system' && i.variant === 'lint').length, 0);
 });
 
+test('a message during the settle takes the lint’s problems with it, and no lint turn lands after it', async () => {
+  const { rt, store, t, adapter } = setup({ lintSettleMs: 40 });
+  adapter.next.push(async (c) => c.text('Step 6 is done.\n\n```mermaid\ngraph LR\nA-->B\n```'));
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  rt.sendMessage(t.id, { text: 'and next?' });
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  await settle(rt);
+  // The browser’s report for the earlier reply comes in after the person’s turn began.
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', textPx: 7, width: 728 }).sent, false);
+  await sleep(80);
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0);
+  const next = adapter.calls.find((c) => c.message.text === 'and next?');
+  assert.match(next.message.context[0], /^\[Postbox\] Postbox checked your last reply/);
+  assert.match(next.message.context[0], /- Step 6/);
+});
+
 test('#55: a numbered term the person introduced isn’t linted, and one the agent coined still is', async () => {
   const { rt, t, adapter } = setup();
   adapter.next.push(async (c) => {

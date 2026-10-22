@@ -56,9 +56,10 @@ export function lintMessage(problems) {
 /**
  * Writes a lint message as the text of the agent’s turn: what was found, grouped by what it’s about, then what
  * to do. A lint turn that only needs tool calls needs no reply, so the agent is told it can end its turn.
- * @param {{ problems?: Problem[] }} message
+ * folded: the problems come with the agent’s next turn instead, before its message.
+ * @param {{ problems?: Problem[] }} message  @param {{ folded?: boolean }} [opts]
  */
-export function formatLint(message) {
+export function formatLint(message, { folded = false } = {}) {
   const problems = message.problems ?? [];
   const of = (kind) => problems.filter((p) => p.scope.kind === kind);
   const groups = (kind) => {
@@ -91,6 +92,7 @@ export function formatLint(message) {
   if (apps.length) todo.push('Fix each app with update_app.');
   const blocks = groups('block');
   for (const ps of blocks) parts.push(`Your block “${ps[0].scope.title ?? ps[0].scope.id}” (id ${ps[0].scope.id}):\n${lines(ps)}`);
+  if (folded) return `[Postbox] Postbox checked your last reply, and found what to fix along with the message below.\n\n${[...parts, ...todo].join('\n\n')}`;
   if (!diagrams.length && !reply.length) todo.push('No reply is needed: once you’ve made the changes, end your turn without writing anything.');
   return `[Postbox] ${[...parts, ...todo].join('\n\n')}`;
 }
