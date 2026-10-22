@@ -13,7 +13,8 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 - The sidebar toggle (left) hides and shows the rail; ⌘\ does the same, and the choice is remembered after a reload.
 - The Postbox mark opens the places menu (see [Postbox menu](postbox-menu.md)).
 - Breadcrumbs read Project › Conversation; the project crumb opens that project, and Overview is a link when you’re elsewhere.
-- Each agent in the conversation has a chip: its ring, @name and status word (“· idle”, “· thinking”, “· calling tools”, “· needs you”), updating live.
+- Each agent in the conversation has a chip: its ring, @name, what it runs with, and status word (“· idle”, “· thinking”, “· calling tools”, “· needs you”), updating live.
+- What it runs with (#60): the model that answered its last turn, short (“· Opus 5.5”), then the effort (“· medium effort”). Before its first turn, the model and effort it’s set to. A model that isn’t the one set says so in words: “· Sonnet 5.5, not Opus 5.5”. An effort changed since the last turn says both: “· low effort, set to high”. A mock agent shows neither.
 - An agent with blocks left open from earlier turns also shows a quiet “1 open review” button, which scrolls to the block and focuses it. Those blocks don’t make it need you (#69).
 - “⋯” opens the [conversation menu](conversation-menu.md).
 - “Jump to… ⌘K” opens the [command palette](../command-palette.md).

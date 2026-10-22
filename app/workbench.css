@@ -707,6 +707,11 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .mini-list li .mono { font-size: 12px; }
 .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
+/* ───────── Agent header and card: what each agent runs with (#60) ───────── */
+
+.present .who-facts { display: contents; }
+.ov-col .oc-head .oc-runs { overflow-wrap: anywhere; }
+
 /* ───────── Phone ───────── */
 
 @media (max-width: 767px) {

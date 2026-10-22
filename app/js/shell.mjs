@@ -1,8 +1,10 @@
 // The shell: top bar, rail (conversations and rooms with rings), the phone ring strip, and the overview —
 // one column per live session, with quick answers, tool calls, subagents, agent messages and stats.
 
+import { chipEffort, chipModel, factsText } from '/shared/agent-facts.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
+import { factsOf } from './agent-facts.mjs';
 import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
@@ -28,10 +30,12 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
           .map((se) => {
             const r = ringFor(se, 'xs');
             r.dataset.session = se.id;
+            // Ring, name, what it runs with, then its state. #73’s “subagents running” goes after the state.
             return h(
               'span.who-chip',
               r,
               h('b', `@${se.handle}`),
+              chipFacts(se),
               h('span.who-state.hide-sm', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
               openAsksEl(se, true),
             );
@@ -170,7 +174,31 @@ function paintOpenAsks(el) {
 }
 client.on((ch) => {
   if (['session', 'item.add', 'item.patch', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-open-asks]')) paintOpenAsks(el);
+  if (['session', 'persona', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-facts]')) paintFacts(el);
 });
+// ── What an agent runs with ─────────────────────────────────────────────────────────────
+// Its chip says the model that answered its last turn and the effort, short; its card and the menus say the
+// same with full model ids (#60). A model or effort that isn’t the one set says so in words.
+
+/** The model and effort in an agent’s chip, kept up to date in place. */
+function chipFacts(se) {
+  const el = h('span.who-facts', { dataset: { facts: se.id } }, h('span.who-model'), h('span.who-effort'));
+  paintFacts(el);
+  return el;
+}
+function paintFacts(el) {
+  const se = S().sessions[el.dataset.facts];
+  if (!se) return;
+  const f = factsOf(se);
+  const [model, effort] = el.children;
+  const text = (n, t) => {
+    if (n.textContent !== t) n.textContent = t;
+    n.hidden = !t;
+  };
+  text(model, f.mock ? '' : `· ${chipModel(f)}`);
+  text(effort, f.mock ? '' : `· ${chipEffort(f)}`);
+}
+
 function goToItem(itemId) {
   const node = document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
   if (!node) return;
@@ -475,7 +503,7 @@ export function mountOverview({ archived = false } = {}) {
   paint();
   let t = 0;
   const off = client.on((ch) => {
-    if (!['session', 'thread', 'load', 'remove', 'project', 'app'].includes(ch.type)) return;
+    if (!['session', 'thread', 'load', 'remove', 'project', 'app', 'persona'].includes(ch.type)) return;
     if (ch.type === 'session') {
       const node = grid.querySelector(`[data-key="${CSS.escape(ch.data.id)}"]`);
       if (node) {
@@ -549,7 +577,9 @@ function updateCard(node, se, fresh = false) {
   const t = S().threads[se.threadId];
   if (!t) return;
   const project = S().projects[t.projectId];
+  const runs = factsText(factsOf(se));
   const sig = JSON.stringify([
+    runs,
     se.state,
     se.needs,
     se.currentStep,
@@ -602,6 +632,8 @@ function updateCard(node, se, fresh = false) {
           h('b', `@${se.handle}`),
           h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'topic thread: ' : ''}${t.title}`),
         ),
+        // What it runs with, in full, so nothing the top bar drops at a narrow width is lost (#60, #72).
+        h('span.small.dim.oc-runs', runs),
         stateLine,
         openAsksEl(se),
       ),
@@ -774,7 +806,14 @@ export function sessionMenu(anchor, se) {
     anchor,
     [
       { label: 'Open conversation', icon: 'thread', run: () => navigate(`#/t/${se.threadId}`) },
-      { label: `Edit @${se.handle} persona`, icon: 'edit', kbd: 'Personas', run: () => openSettings('personas', se.personaId) },
+      {
+        label: `Edit @${se.handle} persona`,
+        icon: 'edit',
+        kbd: 'Personas',
+        // What it runs with, as text (#60).
+        desc: factsText(factsOf(se)),
+        run: () => openSettings('personas', se.personaId),
+      },
       ...(busy(se) ? [{ label: 'Stop', icon: 'x', run: () => api(`/api/sessions/${se.id}/stop`, {}) }] : []),
       'hr',
       {
@@ -818,6 +857,7 @@ function conversationMenu(anchor, t) {
         run: () => openPermissions({ threadId: t.id }),
       },
       'hr',
+      ...agentLines(t),
       {
         label: `Delete ${room ? 'room' : 'conversation'}…`,
         icon: 'trash',
@@ -828,6 +868,26 @@ function conversationMenu(anchor, t) {
     ],
     { label: `Actions for ${t.title}` },
   );
+}
+
+/**
+ * Each agent in the conversation, with its backend, model, effort and state as text: everything its chip in the
+ * top bar shows, and what a narrow window drops from it (#60, #72). Choosing one opens its persona.
+ */
+function agentLines(t) {
+  const ses = sessionsOf(t.id).filter((x) => !x.archived);
+  if (!ses.length) return [];
+  return [
+    { heading: ses.length > 1 ? 'Agents' : 'Agent' },
+    ...ses.map((se) => ({
+      label: `@${se.handle}`,
+      icon: 'agent',
+      desc: `${factsText(factsOf(se))} · ${stateWord(se.state).toLowerCase()}`,
+      kbd: 'Edit',
+      run: () => openSettings('personas', se.personaId),
+    })),
+    'hr',
+  ];
 }
 
 export function afterDelete(se, until) {
