@@ -1,10 +1,10 @@
 // The shell: top bar, rail (conversations and rooms with rings), the phone ring strip, and the overview —
 // one column per live session, with quick answers, tool calls, subagents, agent messages and stats.
 
-import { chipEffort, chipModel, factsText } from '/shared/agent-facts.mjs';
+import { chipEffort, chipModel, factsText, installNote } from '/shared/agent-facts.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
-import { factsOf } from './agent-facts.mjs';
+import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
@@ -119,6 +119,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       : null,
     h(
       'div.top-actions',
+      demoNote(),
       h('button.btn.sm.hide-sm', { type: 'button', onclick: openPalette }, icon('search', 'i-sm'), 'Jump to… ', h('kbd', '⌘K')),
       h(
         'button.btn.sm',
@@ -139,6 +140,15 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       h('button.btn.icon.sm.ghost', { type: 'button', 'aria-label': 'Settings', onclick: () => openSettings() }, icon('gear')),
     ),
   );
+}
+
+/**
+ * Under --demo, every view says the agents are scripted (#12). It isn’t a live region, and it can’t be closed:
+ * where room is short it folds to “Demo”, and the whole sentence is still read.
+ */
+function demoNote() {
+  if (!client.config?.demo) return null;
+  return h('span.demo-note', h('span.demo-long', 'Demo mode: scripted agents'), h('span.demo-short', { 'aria-hidden': 'true' }, 'Demo'));
 }
 
 // ── Open blocks ─────────────────────────────────────────────────────────────────────────
@@ -180,9 +190,9 @@ client.on((ch) => {
 // Its chip says the model that answered its last turn and the effort, short; its card and the menus say the
 // same with full model ids (#60). A model or effort that isn’t the one set says so in words.
 
-/** The model and effort in an agent’s chip, kept up to date in place. */
+/** The mock marker, or the model and effort, in an agent’s chip, kept up to date in place. */
 function chipFacts(se) {
-  const el = h('span.who-facts', { dataset: { facts: se.id } }, h('span.who-model'), h('span.who-effort'));
+  const el = h('span.who-facts', { dataset: { facts: se.id } }, h('span.who-mock'), h('span.who-model'), h('span.who-effort'));
   paintFacts(el);
   return el;
 }
@@ -190,7 +200,12 @@ function paintFacts(el) {
   const se = S().sessions[el.dataset.facts];
   if (!se) return;
   const f = factsOf(se);
-  const [model, effort] = el.children;
+  const [mock, model, effort] = el.children;
+  if (mock.dataset.on !== String(f.mock)) {
+    mock.dataset.on = String(f.mock);
+    fill(mock, mockMarker(se));
+    mock.hidden = !f.mock;
+  }
   const text = (n, t) => {
     if (n.textContent !== t) n.textContent = t;
     n.hidden = !t;
@@ -342,7 +357,7 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
   paint();
   // Rail rows reuse their rings, so status changes update in place and animations keep running.
   const off = client.on((ch) => {
-    if (['session', 'thread', 'project', 'load', 'remove'].includes(ch.type)) {
+    if (['session', 'thread', 'project', 'load', 'remove', 'persona'].includes(ch.type)) {
       if (ch.type === 'session') {
         // A topic thread’s agent changed: the Threads count may have.
         let structural = S().threads[ch.data.threadId]?.kind === 'topic';
@@ -410,8 +425,9 @@ function updateRow(n, t, active, fresh = false) {
   const unread = ses.reduce((a, x) => a + (x.unread ?? 0), 0);
   if (t.id === active) n.setAttribute('aria-current', 'page');
   else n.removeAttribute('aria-current');
-  const who = t.kind === 'room' ? ses.map((x) => `@${x.handle}`).join(', ') : `@${main?.handle ?? '—'}`;
-  const sig = JSON.stringify([t.title, who, main?.state, unread, ses.map((x) => x.id)]);
+  const named = t.kind === 'room' ? ses : main ? [main] : [];
+  const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', `@${x.handle}`, mockMarker(x)]) : '@—';
+  const sig = JSON.stringify([t.title, named.map((x) => [x.handle, isMock(x)]), main?.state, unread, ses.map((x) => x.id)]);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
   const oldRings = n.querySelector('.ring-slot');
@@ -446,7 +462,7 @@ export function mountOverview({ archived = false } = {}) {
   const grid = h('div.ov-grid', { style: { gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' } });
   const headEl = h('div.ov-head');
   const archive = h('div');
-  el.append(headEl, grid, archive);
+  el.append(...[headEl, archived ? null : installLine(), grid, archive].filter((x) => x !== null));
   const order = (se) => (se.needs ? 0 : busy(se) ? 1 : 2);
   const paint = () => {
     // A topic thread’s agent gets a column only while it’s working or waiting for you.
@@ -518,6 +534,32 @@ export function mountOverview({ archived = false } = {}) {
   return { el, destroy: off };
 }
 
+/**
+ * When Postbox looked for Claude Code at startup and didn’t find it, the overview says what agents run on until
+ * then, and how to install it (#12). It shows from the first run, on a fresh install’s empty overview, until
+ * Claude Code is installed and Postbox restarted.
+ */
+function installLine() {
+  const lead = installNote(client.config ?? {});
+  if (!lead) return null;
+  return h(
+    'div.callout.warn.install-note',
+    icon('warn'),
+    h(
+      'div',
+      h('p', lead),
+      h(
+        'p.small',
+        'To run real agents, install Claude Code so ',
+        h('code', 'claude --version'),
+        ' works, or set ',
+        h('code', 'POSTBOX_CLAUDE_BIN'),
+        ' to where it is, then restart Postbox. The README’s “Run real agents” says more.',
+      ),
+    ),
+  );
+}
+
 function archivedList(collapsed = false) {
   const list = Object.values(S().sessions).filter((se) => se.archived && !se.deleting);
   if (!list.length) return collapsed ? h('span') : h('p.empty-note', 'Nothing is archived.');
@@ -530,7 +572,7 @@ function archivedList(collapsed = false) {
         const ring = ringFor(se, 'xs');
         return h(
           'tr',
-          h('td', h('span.row-flex', ring, h('b', `@${se.handle}`))),
+          h('td', h('span.row-flex', ring, h('b', `@${se.handle}`), mockMarker(se))),
           h('td', `${S().projects[t?.projectId]?.name ?? ''} · ${t?.title ?? ''}`),
           h('td.dim.small', `Archived ${ago(se.archivedAt ?? se.updatedAt ?? Date.now())}`),
           h(
@@ -598,7 +640,7 @@ function updateCard(node, se, fresh = false) {
   if (!fresh && node.dataset.sig === sig) return;
   node.dataset.sig = sig;
   node.classList.toggle('needs', !!se.needs);
-  node.setAttribute('aria-label', `@${se.handle}, ${stateWord(se.state).toLowerCase()}`);
+  node.setAttribute('aria-label', `@${se.handle}${isMock(se) ? ', mock' : ''}, ${stateWord(se.state).toLowerCase()}`);
   const ring = node.querySelector('.oc-head pb-ring') ?? Object.assign(document.createElement('pb-ring'), {});
   ringFor(se, 'lg', ring);
   ring.dataset.session = se.id;
@@ -629,11 +671,9 @@ function updateCard(node, se, fresh = false) {
         h(
           'a.oc-link',
           { href: hrefOf(t.id) },
-          h('b', `@${se.handle}`),
+          h('span.oc-name', h('b', `@${se.handle}`), mockMarker(se)),
           h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'topic thread: ' : ''}${t.title}`),
         ),
-        // What it runs with, in full, so nothing the top bar drops at a narrow width is lost (#60, #72).
-        h('span.small.dim.oc-runs', runs),
         stateLine,
         openAsksEl(se),
       ),
@@ -642,6 +682,8 @@ function updateCard(node, se, fresh = false) {
         { type: 'button', 'aria-label': `Session actions for @${se.handle}`, 'aria-haspopup': 'menu', onclick: (e) => sessionMenu(e.currentTarget, se) },
         icon('more'),
       ),
+      // What it runs with, in full, on a line of its own: nothing the top bar drops at a narrow width is lost (#60).
+      h('span.small.dim.oc-runs', runs),
     ),
     se.needs
       ? sec(
@@ -807,7 +849,7 @@ export function sessionMenu(anchor, se) {
     [
       { label: 'Open conversation', icon: 'thread', run: () => navigate(`#/t/${se.threadId}`) },
       {
-        label: `Edit @${se.handle} persona`,
+        label: [`Edit @${se.handle} persona`, mockMarker(se)],
         icon: 'edit',
         kbd: 'Personas',
         // What it runs with, as text (#60).
@@ -880,7 +922,7 @@ function agentLines(t) {
   return [
     { heading: ses.length > 1 ? 'Agents' : 'Agent' },
     ...ses.map((se) => ({
-      label: `@${se.handle}`,
+      label: [`@${se.handle}`, mockMarker(se)],
       icon: 'agent',
       desc: `${factsText(factsOf(se))} · ${stateWord(se.state).toLowerCase()}`,
       kbd: 'Edit',

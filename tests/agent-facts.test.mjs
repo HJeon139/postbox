@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, effortOf, modelOf } from '../server/adapters/setup.mjs';
-import { chipEffort, chipModel, factsText, runsWith, sameModel, shortModel } from '../shared/agent-facts.mjs';
+import { chipEffort, chipModel, factsText, installNote, runsWith, sameModel, shortModel } from '../shared/agent-facts.mjs';
 
 const config = { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT };
 
@@ -80,4 +80,16 @@ test('a mock agent says it runs scripted replies, with no model or effort', () =
   assert.equal(runsWith({ backend: 'claude-code' }, { backend: 'mock' }, config).mock, true);
   // A deleted persona falls back to the session’s.
   assert.equal(runsWith({ backend: 'mock' }, undefined, config).mock, true);
+});
+
+test('the overview says how to install Claude Code only when Postbox looked for it and didn’t find it', () => {
+  const missing = { realBackends: true, versions: { claudeCode: null } };
+  // Nothing real to run on: the agents run on the mock.
+  assert.match(installNote({ ...missing, adapters: ['mock'] }) ?? '', /run on the mock until it is: scripted replies, not a model/);
+  // The Agent SDK loaded without it.
+  assert.match(installNote({ ...missing, adapters: ['mock', 'agent-sdk'] }) ?? '', /run on the Agent SDK or the mock until it is/);
+  // Installed, or not looked for (--demo, POSTBOX_BACKENDS=mock): no line.
+  assert.equal(installNote({ realBackends: true, versions: { claudeCode: '2.1.296' }, adapters: ['mock', 'claude-code'] }), null);
+  assert.equal(installNote({ realBackends: false, versions: { claudeCode: null }, adapters: ['mock'] }), null);
+  assert.equal(installNote({}), null);
 });

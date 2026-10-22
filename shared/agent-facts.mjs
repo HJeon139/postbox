@@ -90,3 +90,15 @@ export function factsText(f) {
   const effort = f.effortDiffers ? `${effortWord(f.effort)} effort on the last turn, set to ${effortWord(f.setEffort)}` : `${effortWord(f.effort)} effort`;
   return `${backend} · ${model} · ${effort}`;
 }
+
+/**
+ * The overview’s line when Postbox looked for Claude Code and didn’t find it (#12), or null: what agents run on
+ * until it’s installed. It doesn’t show under --demo or POSTBOX_BACKENDS=mock, where Postbox doesn’t look.
+ * @param {{ realBackends?: boolean, versions?: { claudeCode?: string|null }, adapters?: string[] }} config
+ */
+export function installNote({ realBackends, versions, adapters = [] }) {
+  if (!realBackends || versions?.claudeCode) return null;
+  return adapters.some((a) => a !== 'mock')
+    ? 'Claude Code isn’t installed here, so agents run on the Agent SDK or the mock until it is.'
+    : 'Claude Code isn’t installed here, so agents run on the mock until it is: scripted replies, not a model.';
+}

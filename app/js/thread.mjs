@@ -3,6 +3,7 @@
 
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { mockMarker } from './agent-facts.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, uploadFile } from './client.mjs';
@@ -242,7 +243,7 @@ const who = (it, { you = false } = {}) => {
   const ring = se ? ringFor(se, 'xs') : h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' });
   if (se) ring.dataset.session = se.id;
   const state = se ? h('span.who-state', { dataset: { session: se.id, item: it.id }, 'aria-live': 'off' }) : null;
-  return h('div.who', ring, h('b', `@${it.handle}`), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
+  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a reply in a
@@ -1526,6 +1527,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           h(
             'span.grow',
             `@${p.handle}`,
+            mockMarker(se ?? p),
             h('span.d', se?.archived ? 'Archived · restore it to wake it' : se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken'),
           ),
           i === mention.index ? h('span.k', 'Enter') : null,
@@ -1782,7 +1784,7 @@ export function mountComposer(threadId, { side = false } = {}) {
               : side
                 ? h('span', 'Anything you send here adds you to this side thread.')
                 : [
-                    members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), ' (last speaker)') : null,
+                    members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), mockMarker(last), ' (last speaker)') : null,
                     h('span', 'Enter to send · Shift+Enter for a new line'),
                     h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
                   ],

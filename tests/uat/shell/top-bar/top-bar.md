@@ -14,12 +14,13 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 - The Postbox mark opens the places menu (see [Postbox menu](postbox-menu.md)).
 - Breadcrumbs read Project › Conversation; the project crumb opens that project, and Overview is a link when you’re elsewhere.
 - Each agent in the conversation has a chip: its ring, @name, what it runs with, and status word (“· idle”, “· thinking”, “· calling tools”, “· needs you”), updating live.
-- What it runs with (#60): the model that answered its last turn, short (“· Opus 5.5”), then the effort (“· medium effort”). Before its first turn, the model and effort it’s set to. A model that isn’t the one set says so in words: “· Sonnet 5.5, not Opus 5.5”. An effort changed since the last turn says both: “· low effort, set to high”. A mock agent shows neither.
+- What it runs with (#60): the model that answered its last turn, short (“· Opus 5.5”), then the effort (“· medium effort”). Before its first turn, the model and effort it’s set to. A model that isn’t the one set says so in words: “· Sonnet 5.5, not Opus 5.5”. An effort changed since the last turn says both: “· low effort, set to high”. A mock agent shows neither, and says “mock” after its name instead (#12).
 - An agent with blocks left open from earlier turns also shows a quiet “1 open review” button, which scrolls to the block and focuses it. Those blocks don’t make it need you (#69).
 - “⋯” opens the [conversation menu](conversation-menu.md).
 - “Jump to… ⌘K” opens the [command palette](../command-palette.md).
 - The needs-you button counts agents waiting on you; it is disabled with “Nothing needs you” when none are, and ⌃J goes to the next one and focuses what it’s waiting on.
 - The gear opens Settings.
+- Under `--demo`, “Demo mode: scripted agents” sits beside “Jump to…” on every view: overview, project, Threads, conversation and Archived (#12). It can’t be closed; where room is short it folds to “Demo”, and a screen reader still reads the whole sentence. It isn’t a live region. Without `--demo` it isn’t there.
 
 ## Steps to reproduce
 
@@ -30,7 +31,7 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 5. Press ⌘\ twice; reload in between and check the rail state persists.
 6. Press ⌃J while something needs you.
 
-**Pass if:** Every item above behaves as described, and status words change within a second of the agent’s state.
+**Pass if:** Every item above behaves as described, and status words change within a second of the agent’s state. The demo’s agents all say “mock”, and the demo banner shows on every view.
 
 ## Related
 

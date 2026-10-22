@@ -11,7 +11,7 @@ Lets you stop, archive or delete a session without opening it.
 ## Expected functionality
 
 - Open conversation, Edit persona, Stop (while it works), Archive session, Delete session….
-- Edit persona says what the agent runs with, as its card does (#60).
+- Edit persona says what the agent runs with, as its card does (#60), and “mock” for a mock agent (#12).
 - Archive shows a toast with Restore; Delete opens the [delete confirm](../sheets/delete-session.md).
 
 ## Steps to reproduce

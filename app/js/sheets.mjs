@@ -1,6 +1,7 @@
 // Dialogs: new agent, new conversation, settings (appearance, personas, projects, connection), the command
 // palette, the delete confirm, and the project folder picker.
 
+import { mockMarker } from './agent-facts.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
@@ -858,6 +859,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
           h(
             'li',
             h('b', `@${p.handle}`),
+            mockMarker(p),
             h('span.small.dim.grow', p.retired ? 'Retired' : p.description),
             h('span.small.dim', `v${p.version ?? 1}`),
             h(

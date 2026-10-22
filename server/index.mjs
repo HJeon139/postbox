@@ -257,6 +257,10 @@ export async function start({
           defaultEffort: DEFAULT_EFFORT,
           permissionModes: PERMISSION_MODES,
           demo,
+          // Whether Postbox looked for real backends, and the Claude Code it found (null if none): without it, the
+          // overview says how to install it (#12).
+          realBackends: real,
+          versions: config.versions,
           corpus: corpus.stats(),
         },
       });
