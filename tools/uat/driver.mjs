@@ -169,9 +169,11 @@ export function driver(page) {
       const fresh = await appContext(key);
       const r = await inApp(
         fresh,
-        `(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=tab], label, summary, option, li, td, text, g')].find((e) => e.textContent.trim().toLowerCase().includes(${J(String(text).toLowerCase())})); if (!el) return null; const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
+        `(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=tab], label, summary, option, li, td, text, g')].find((e) => e.textContent.trim().toLowerCase().includes(${J(String(text).toLowerCase())})); if (!el) return null; if (el.tagName === 'OPTION') { const s = el.closest('select'); s.value = el.value; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); return { selected: true }; } const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
       );
       if (!r) throw new Error(`Couldn’t find “${text}” in the app.`);
+      // A native dropdown’s options can’t be clicked where they’re drawn, so the option is chosen the way a person’s pick ends.
+      if (r.selected) return sleep(400);
       const x = fresh.frameRect.x + r.x;
       const y = fresh.frameRect.y + r.y;
       // Rest the pointer on it first, as a hand does: an app frame takes clicks once Postbox sees you point at it (#38).

@@ -376,13 +376,17 @@ export const CHECKS = [
         .map((it) => it.text ?? '')
         .join('\n')
         .toLowerCase();
+      // A term counts only when its agent defined it during a lint turn: agents define terms on their own too.
+      const inLintTurn = (t, g) => {
+        const mine = items.filter((it) => it.threadId === t && it.kind === 'agent' && it.handle === g.by && it.at <= g.at);
+        return mine.at(-1)?.lintReply === true;
+      };
       const hits = f.threads.flatMap((t) =>
         Object.values(f.state.glossary?.[t] ?? {})
-          .filter((g) => said.includes(String(g.term).toLowerCase()))
+          .filter((g) => said.includes(String(g.term).toLowerCase()) && inLintTurn(t, g))
           .map((g) => g.term),
       );
-      const lintReplies = items.filter((it) => it.lintReply).length;
-      return hits.length && lintReplies
+      return hits.length
         ? [{ title: 'The term lint made an agent define a term the person introduced', evidence: `Defined after a lint turn: ${hits.join(', ')}.` }]
         : [];
     },

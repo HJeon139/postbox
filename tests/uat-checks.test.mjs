@@ -304,3 +304,19 @@ test('the M1 exit scenarios never name a block', () => {
     assert.doesNotMatch(md, /\b(?:blocks?|choices?|forms?|reviews?|progress|confirms?|checklists?|buttons?)\b/i, name);
   }
 });
+
+test('lint-on-person-term counts a term you used only when a lint turn made the agent define it (#55)', () => {
+  const facts = (lintReply) => {
+    const f = base();
+    f.state.items.t1 = [
+      { id: 'u1', kind: 'user', at: 1, text: 'Show me the supporting facts.' },
+      { id: 'a1', kind: 'agent', at: 2, handle: 'researcher', text: 'Here they are.', ...(lintReply ? { lintReply: true } : {}) },
+    ];
+    f.state.glossary.t1 = { 'supporting-facts': { key: 'supporting-facts', term: 'supporting facts', by: 'researcher', at: 3 } };
+    return f;
+  };
+  // Defined on its own, in its own reply: not the lint's doing.
+  assert.ok(!issuesOf(facts(false)).includes(55));
+  // Defined in the turn that answered a lint: the lint flagged your words.
+  assert.ok(issuesOf(facts(true)).includes(55));
+});
