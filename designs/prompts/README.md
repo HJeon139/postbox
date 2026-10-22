@@ -1,6 +1,6 @@
 # Work prompts
 
-Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139/postbox/issues/64), in waves of sessions that run in parallel, each in its own worktree. Every session follows [engineering-practices.md](../engineering-practices.md) and the rules on this page. Prompts for issues that are still blocked get written when the wave before them merges.
+Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139/postbox/issues/64), in waves of sessions that run in parallel, each in its own worktree. Every session follows [engineering-practices.md](../engineering-practices.md) and the rules on this page. Prompts for issues that are still blocked get written when the wave before them merges. #73 (subagents as a hierarchy) is in wave 2: it changes the stream mapper and the activity list, which wave 1 is editing.
 
 ```mermaid
 flowchart LR
@@ -13,6 +13,7 @@ flowchart LR
   subgraph w2["Wave 2 (prompts later)"]
     e["M1 core"]
     f["M2: apps"]
+    i["#73: subagent tree"]
   end
   subgraph w3["Wave 3 (prompts later)"]
     g["M4: supervision"]
