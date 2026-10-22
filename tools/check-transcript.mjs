@@ -240,6 +240,37 @@ await check('#88 scrolled up: streaming, patches, new items, an app growing abov
   assert.ok((await gap()) > 200, 'still scrolled up with the panel open');
 });
 
+// ── #91: Jump to latest ─────────────────────────────────────────────────────────────────
+
+await check('#91 the pill counts what arrives while you’re scrolled up, and goes once you scroll to the bottom yourself', async () => {
+  const { t } = room('Jump to latest');
+  await open(`#/t/${t.id}`);
+  const pill = `(() => { const j = ${q('.jump')}; return j && !j.hidden ? j.textContent : ''; })()`;
+  assert.equal(await page.evaluate(pill), '', 'no pill at the bottom');
+  await wheel(-600);
+  for (let i = 0; i < 3; i++) rt.addItem(t.id, { kind: 'user', text: `Arrived while you read ${i}` });
+  await settle();
+  assert.match(await page.evaluate(pill), /Jump to latest · 3 new/);
+  // Down by hand, with the wheel, never touching the pill. (Keys scroll the same way, but Chrome animates a
+  // key’s scroll, and headless Chrome holds that animation back.)
+  for (let i = 0; i < 6; i++) await wheel(400);
+  assert.ok((await gap()) <= 2, `at the bottom (gap ${await gap()})`);
+  assert.equal(await page.evaluate(pill), '', 'the pill goes, and its count with it');
+  rt.addItem(t.id, { kind: 'user', text: 'Arrived at the bottom' });
+  await settle();
+  assert.equal(await page.evaluate(pill), '', 'nothing is unread below');
+  assert.ok((await gap()) <= 2, 'and the view followed it');
+  await wheel(-600);
+  rt.addItem(t.id, { kind: 'user', text: 'One more while you read' });
+  await settle();
+  assert.match(await page.evaluate(pill), /1 new/);
+  // The pill is part of the composer, above its box, so it covers nothing the composer doesn’t.
+  const inComposer = await page.evaluate(
+    `(() => { const j = ${q('.jump')}.getBoundingClientRect(), c = ${q('.composer')}.getBoundingClientRect(), b = ${q('.composer-box')}.getBoundingClientRect(); return j.top >= c.top && j.bottom <= b.top; })()`,
+  );
+  assert.ok(inComposer, 'the pill sits inside the composer, above its box');
+});
+
 await page.send('Page.navigate', { url: 'about:blank' });
 await page.close();
 await app.close();

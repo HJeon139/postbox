@@ -155,8 +155,11 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const onScroll = () => {
     const s = box();
     if (!s) return;
-    if (atEnd(s)) stuck = true;
-    else if (s.scrollTop < lastTop) stuck = false;
+    if (atEnd(s)) {
+      stuck = true;
+      // However you got here, there’s nothing unread below any more (#91).
+      seen();
+    } else if (s.scrollTop < lastTop) stuck = false;
     lastTop = s.scrollTop;
     if (!stuck) anchor = findAnchor();
   };
