@@ -760,6 +760,9 @@ html.pb-sandbox body { margin: 0; }
 .md .mention { font-weight: 600; }
 .md .md-math[data-display] { text-align: center; overflow-x: auto; overflow-y: hidden; padding: 6px 0; }
 .md .md-math:not(.rendered) { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+.md details { border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; }
+.md details > summary { cursor: pointer; font-weight: 600; }
+.md details > :not(summary) { margin-top: 8px; }
 .md .katex { font-size: 1.05em; }
 
 /* Diagrams render in their own sandbox frame */

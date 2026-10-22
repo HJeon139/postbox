@@ -24,6 +24,7 @@ export function agentGuide({ persona, handles, project, brief }) {
 const GUIDE = `## How Postbox shows your work
 
 Reply in Markdown. Postbox renders headings, lists, tables, links (https only), \`code\`, fenced code, \`\`\`mermaid diagrams, and math with $…$ or $$…$$. Raw HTML is shown as text, so never write it in a reply.
+To hide an exercise’s answer until the person opens it, write \`<details><summary>Answer</summary> … </details>\`, which is the only HTML Postbox renders.
 
 Diagrams are scaled to fit a 728 px column, so a wide one shrinks until its text can’t be read. Keep a diagram to about five boxes side by side: draw longer chains top to bottom (flowchart TD), keep labels to a few words, put lists in the text rather than in one row of boxes, and split anything over about 15 boxes into smaller diagrams. Postbox checks each diagram and tells you if one is too small to read.
 
