@@ -742,6 +742,15 @@ html.pb-sandbox body { margin: 0; }
 
 /* App frames */
 .appframe iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--bg); }
+/* Full screen: the app's own box, fixed over the window. The frame isn't moved, so it doesn't reload. */
+.app-full.fullscreen { position: fixed; inset: 0; z-index: 35; display: flex; padding: 8px; background: var(--overlay); overscroll-behavior: contain;
+  animation: pb-full-in .14s ease-out; }
+.app-full.fullscreen .appframe { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-full.fullscreen .app-holder { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.app-full.fullscreen .app-body { flex: 1; min-height: 0; max-height: none; overscroll-behavior: contain; }
+.app-full.fullscreen iframe.app-iframe { height: 100%; }
+@keyframes pb-full-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .app-full.fullscreen { animation: none; } }
 .app-note { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--dim); background: var(--panel); }
 .app-note .i { color: var(--accent); margin-top: 1px; }
 .check-frame { position: fixed; left: -20000px; top: 0; height: 900px; border: 0; visibility: hidden; }

@@ -1,5 +1,5 @@
 // Agent-written apps on the host side: sandboxed frames, the bridge, the pre-display check, versions,
-// review mode, Expand, and unloading far-off-screen frames (they reload from saved state as you approach).
+// review mode, full screen, and unloading far-off-screen frames (they reload from saved state as you approach).
 // Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
@@ -12,7 +12,6 @@ const checks = new Map(); // `${appId}:${v}` → { results: Map(width → proble
 const crashes = new Map(); // `${appId}:${v}` → message (a script error after the app was shown)
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
-const expanded = new Set();
 const unloaded = new Set(); // appIds whose frames are unloaded while off screen
 const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 const cap = () => Math.min(innerHeight * 0.8, 760);
@@ -48,8 +47,14 @@ addEventListener('message', async (e) => {
       if (rec.review) e.source.postMessage({ __pb: 1, type: 'review', on: true }, '*');
       break;
     case 'size':
-      rec.height = m.height;
+      // Full screen, the frame is the window’s height, so the app measures at least that; keep the height it
+      // had in the column for when it comes back, and ask it to measure again then (see exitFull).
+      if (!isFull(rec)) rec.height = m.height;
       sizeFrame(rec);
+      break;
+    case 'escape':
+      // Escape pressed inside the app, where this page doesn’t hear it. All an app can do with this is leave full screen.
+      if (full?.appId === rec.appId && isFull(rec)) exitFull();
       break;
     case 'lib':
       try {
@@ -293,7 +298,8 @@ function saveState(appId, state) {
 function sizeFrame(rec) {
   if (!rec.iframe?.isConnected || rec.check) return;
   const h0 = Math.max(120, rec.height ?? 200);
-  rec.iframe.style.height = `${expanded.has(rec.appId) || rec.review ? h0 : Math.min(h0, cap())}px`;
+  // Full screen, CSS sizes the frame to the overlay.
+  rec.iframe.style.height = isFull(rec) ? '100%' : `${rec.review ? h0 : Math.min(h0, cap())}px`;
   rec.iframe.dataset.sized = '1';
   const body = rec.iframe.closest('.app-body');
   if (body) requestAnimationFrame(() => keyboardScroll(body));
@@ -473,7 +479,7 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
   const body = h('div.app-body', { dataset: { appId } });
-  if (expanded.has(appId) || review) body.style.maxHeight = 'none';
+  if (review) body.style.maxHeight = 'none';
   new ResizeObserver(() => keyboardScroll(body)).observe(body);
   const placeholder = (lines, height = 180, extra = null) => h('div.app-placeholder', { style: { height: `${height}px` } }, h('div.inner', lines, extra));
   const crashed = crashes.get(key);
@@ -622,7 +628,7 @@ function askToFix(app, msg) {
 export function renderAppItem(item, ctx) {
   const app = client.state.apps[item.block.id];
   if (!app) return h('div.block', h('div.block-body', h('p.dim', 'This app was removed.')));
-  const holder = h('div');
+  const holder = h('div.app-holder');
   const v = viewing.get(app.id) ?? app.current;
   const last = app.versions[app.current - 1];
   const versionBtn = h(
@@ -652,30 +658,103 @@ export function renderAppItem(item, ctx) {
     `v${app.current} · updated ${ago(last.at)}`,
     icon('down', 'i-sm'),
   );
-  const expandBtn = h(
-    'button.btn.icon.sm',
-    {
-      type: 'button',
-      'aria-label': expanded.has(app.id) ? 'Collapse' : 'Expand',
-      'aria-pressed': String(expanded.has(app.id)),
-      onclick: () => {
-        if (expanded.has(app.id)) expanded.delete(app.id);
-        else expanded.add(app.id);
-        ctx.rerender();
-      },
-    },
-    icon('expand'),
-  );
   const titleId = `app-${app.id}`;
+  const fullBtn = h('button.btn.icon.sm', { type: 'button', 'aria-label': 'Full screen' }, icon('expand'));
   const node = h(
     'section.wide.appframe',
     { 'aria-labelledby': titleId },
-    h('div.app-bar', h('span.title', { id: titleId }, app.title), h('span.authored', 'Agent-written app'), h('span.grow'), versionBtn, expandBtn),
+    h('div.app-bar', h('span.title', { id: titleId }, app.title), h('span.authored', 'Agent-written app'), h('span.grow'), versionBtn, fullBtn),
     holder,
   );
+  // The overlay is this same box, fixed over the window: the frame never moves in the DOM, so it doesn’t reload.
+  const overlay = h('div.app-full', node);
+  const slot = h('div.app-slot', overlay);
+  const rec = { appId: app.id, slot, overlay, btn: fullBtn, titleId };
+  fullBtn.onclick = () => (full?.overlay === overlay ? exitFull() : enterFull(rec));
   mountApp(holder, app.id);
-  return node;
+  // Re-rendered while full screen (another version, say): the new box takes the old one’s place.
+  // (Only a re-render: the old box is still on the page. Coming back to the conversation later starts in the column.)
+  if (full && !full.overlay.isConnected) exitFull({ focus: false });
+  if (full?.appId === app.id)
+    queueMicrotask(() => {
+      if (!slot.isConnected) return;
+      const refocus = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected;
+      if (full) full.slot.style.minHeight = '';
+      full = null;
+      enterFull(rec, { focus: refocus });
+    });
+  return slot;
 }
+
+// ── Full screen ──────────────────────────────────────────────────────────────────────────
+// One app at a time fills the window. Its box is fixed over the page (class “fullscreen”), its slot keeps the
+// column’s height so nothing jumps, and the frame fills the box. It closes with Escape (pressed here, or inside
+// the app, which the kit passes on) or with the same button, now “Exit full screen”, and focus goes back to it.
+
+/** @type {{ appId: string, slot: HTMLElement, overlay: HTMLElement, btn: HTMLElement, titleId: string } | null} */
+let full = null;
+const isFull = (rec) => !!rec.iframe?.closest('.fullscreen');
+
+function framesOf(appId) {
+  return [...frames].filter((r) => r.appId === appId && !r.check && r.iframe.isConnected);
+}
+
+function enterFull(rec, { focus = true } = {}) {
+  if (full) exitFull({ focus: false });
+  full = rec;
+  rec.slot.style.minHeight = `${rec.slot.offsetHeight}px`;
+  rec.overlay.classList.add('fullscreen');
+  rec.overlay.setAttribute('role', 'dialog');
+  rec.overlay.setAttribute('aria-modal', 'true');
+  rec.overlay.setAttribute('aria-labelledby', rec.titleId);
+  rec.btn.setAttribute('aria-label', 'Exit full screen');
+  for (const f of framesOf(rec.appId)) sizeFrame(f);
+  if (focus) rec.btn.focus();
+}
+
+function exitFull({ focus = true } = {}) {
+  const rec = full;
+  if (!rec) return;
+  full = null;
+  rec.overlay.classList.remove('fullscreen');
+  for (const a of ['role', 'aria-modal', 'aria-labelledby']) rec.overlay.removeAttribute(a);
+  rec.btn.setAttribute('aria-label', 'Full screen');
+  rec.slot.style.minHeight = '';
+  for (const f of framesOf(rec.appId)) {
+    sizeFrame(f);
+    // Its size messages were the window’s while full screen; it measures again at its column height.
+    f.iframe.contentWindow?.postMessage({ __pb: 1, type: 'measure', height: parseFloat(f.iframe.style.height) }, '*');
+  }
+  if (focus && rec.btn.isConnected) rec.btn.focus();
+}
+
+addEventListener(
+  'keydown',
+  (e) => {
+    if (!full || e.key !== 'Escape') return;
+    // The view it was in is gone (you went to another page): it isn’t full screen any more.
+    if (!full.overlay.isConnected) return exitFull({ focus: false });
+    // A menu or a sheet open over the app closes first.
+    if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('.menu, .backdrop'))) return;
+    e.preventDefault();
+    exitFull();
+  },
+  true,
+);
+
+// Keep focus inside while full screen: Tab past the end comes back to the start, and Shift+Tab before the
+// start goes to the app. Menus, sheets and toasts opened from it are outside the box, and keep focus.
+addEventListener('focusin', (e) => {
+  if (!full || !(e.target instanceof Element)) return;
+  if (!full.overlay.isConnected) return exitFull({ focus: false });
+  if (full.overlay.contains(e.target) || e.target.closest('.menu, .backdrop, .toasts')) return;
+  const before = full.overlay.compareDocumentPosition(e.target) & Node.DOCUMENT_POSITION_PRECEDING;
+  const inside = [...full.overlay.querySelectorAll('button, iframe, [tabindex="0"]')];
+  const to = /** @type {HTMLElement | undefined} */ (before ? inside.at(-1) : inside[0]);
+  // A keyboard move into the app, like Tab: it may take focus (see checkFocus).
+  if (to instanceof HTMLIFrameElement) tabbing = { frame: to, at: Date.now() };
+  to?.focus();
+});
 
 // ── An app’s sends waiting for you ───────────────────────────────────────────────────────
 // Past the limit, an app’s sends wait on this card (the server’s appsend item). Postbox draws it, like the
