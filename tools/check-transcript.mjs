@@ -224,6 +224,47 @@ await check('#88 at the bottom: a window resize leaves the view at the bottom', 
   assert.ok((await gap()) <= 2, `back to 1280 (gap ${await gap()})`);
 });
 
+await check('#88 at the bottom: a card that needs you stays still while what follows it shrinks (the working row going, the pill hiding)', async () => {
+  const { t, researcher, critic } = room('A card at the bottom');
+  await open(`#/t/${t.id}`);
+  rt.updateSession(critic.id, { state: 'tool', currentStep: 'Searched the web', glimpse: 'Reading the first result.' });
+  rt.toolsFor(researcher.id).show_block({
+    block: {
+      id: 'go',
+      type: 'confirm',
+      version: 1,
+      title: 'Run the eval',
+      statement: 'Run the eval on all 300 claims?',
+      confirmLabel: 'Run it',
+      fallback: 'Run the eval on all 300 claims?',
+    },
+  });
+  const card = store.items(t.id).at(-1).id;
+  await shown(card, ' .btn');
+  await page.waitFor(`document.querySelector('.working .work-row')`, { label: 'the working row' });
+  await settle();
+  const button = `[...document.querySelectorAll('[data-key="${card}"] .btn')].find((b) => b.textContent === 'Run it')`;
+  const y = () => page.evaluate(`Math.round(${button}.getBoundingClientRect().top)`);
+  assert.ok((await gap()) <= 2, 'at the bottom');
+  const before = await y();
+  // The working row goes: the page would get shorter and pull the card down.
+  rt.updateSession(critic.id, { state: 'idle', currentStep: '', glimpse: '' });
+  await page.waitFor(`!document.querySelector('.working .work-row')`, { label: 'the working row to go' });
+  await settle(400);
+  assert.equal(await y(), before, 'the card’s button stayed where it was');
+  // Scrolled up while messages arrive, the pill shows; scrolling back down hides it, and nothing moves after that.
+  await wheel(-600);
+  const late = [0, 1].map((i) => rt.addItem(t.id, { kind: 'user', text: `While you were up ${i}` }));
+  await shown(late[1].id);
+  await settle();
+  for (let i = 0; i < 6 && (await gap()) > 2; i++) await wheel(400);
+  assert.ok((await gap()) <= 2, 'back at the bottom');
+  const last = `document.querySelector('[data-key="${late[1].id}"]')`;
+  const at = await page.evaluate(`Math.round(${last}.getBoundingClientRect().top)`);
+  await settle(400);
+  assert.equal(await page.evaluate(`Math.round(${last}.getBoundingClientRect().top)`), at, 'the pill going didn’t move anything');
+});
+
 // ── #88: scrolled up, nothing moves you ─────────────────────────────────────────────────
 
 await check('#88 scrolled up: streaming, patches, new items, an app growing above, the panel and a resize don’t move what you’re reading', async () => {
@@ -304,11 +345,20 @@ await check('#91 the pill counts what arrives while you’re scrolled up, and go
   await shown(rt.addItem(t.id, { kind: 'user', text: 'One more while you read' }).id);
   await settle();
   assert.match(await page.evaluate(pill), /1 new/);
-  // The pill is part of the composer, above its box, so it covers nothing the composer doesn’t.
-  const inComposer = await page.evaluate(
-    `(() => { const j = ${q('.jump')}.getBoundingClientRect(), c = ${q('.composer')}.getBoundingClientRect(), b = ${q('.composer-box')}.getBoundingClientRect(); return j.top >= c.top && j.bottom <= b.top; })()`,
+  // With an agent working, the pill shows only while the working row is further down than the pill, and it
+  // goes once you’re within that distance of the end, so it never sits over the row.
+  const critic = rt.sessionsIn(t.id).find((x) => x.handle === 'critic');
+  rt.updateSession(critic.id, { state: 'tool', currentStep: 'Searched the web', glimpse: 'Reading the first result.' });
+  await page.waitFor(`document.querySelector('.working .work-row')`, { label: 'the working row' });
+  await settle();
+  const clear = await page.evaluate(
+    `(() => { const p = ${q('.jump button')}.getBoundingClientRect(), w = ${q('.working')}.getBoundingClientRect(); return w.top >= p.bottom; })()`,
   );
-  assert.ok(inComposer, 'the pill sits inside the composer, above its box');
+  assert.ok(clear, 'the working row is below the pill, out of its way');
+  for (let i = 0; i < 6 && (await gap()) > 48; i++) await wheel(Math.min(120, (await gap()) - 20));
+  assert.ok((await gap()) > 2 && (await gap()) <= 48, `near the end but not at it (gap ${await gap()})`);
+  assert.equal(await page.evaluate(pill), '', 'near the end, the pill is gone');
+  rt.updateSession(critic.id, { state: 'idle', currentStep: '', glimpse: '' });
 });
 
 // ── #83: the working rows sit in the message column ─────────────────────────────────────
@@ -357,12 +407,11 @@ await check('#93 Summarize back clicked twice posts one summary; the button wait
   const button = q('.sidepanel .sp-head .btn.sm:not(.icon)');
   assert.equal(await page.evaluate(`${button}.textContent`), 'Summary requested…');
   assert.ok(await page.evaluate(`${button}.disabled`), 'disabled while the summary is pending');
-  const second = await fetch(`${app.origin}/api/threads/${threadId}/summarize`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: '{}',
-  });
-  assert.equal(second.status, 409, 'the server refuses a second request, as from another tab');
+  // From the page, as another tab would send it: with the page's token (#74), which a request from here wouldn't have.
+  const second = await page.evaluate(
+    `fetch('/api/threads/${threadId}/summarize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((r) => r.status)`,
+  );
+  assert.equal(second, 409, 'the server refuses a second request, as from another tab');
   await page.waitFor(`${button}.textContent === 'Summarize back' && !${button}.disabled`, { label: 'the button to come back', timeout: 15000 });
   const shared = store.items(t.id).filter((i) => i.kind === 'shared');
   assert.equal(shared.length, 1, 'one summary in the conversation');
