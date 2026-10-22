@@ -13,8 +13,11 @@
 //   probes,          { fullScreen: [{ key, before, after, viewport }], attachments: [{ key, images, attachments }] }
 //   samples,         [{ busy: [handles thinking or calling tools], rows: number }]: the working row while agents worked
 //   userMcpServers,  names of MCP servers in the person’s own Claude Code config
-//   userRulesMarker, a line from the person’s global CLAUDE.md, to spot it leaking into agents
+//   userRulesMarker, a line from the person’s global CLAUDE.md. Since #57, agents load the person’s setup on
+//                    purpose, so it reaching them isn’t a finding; no check uses it now.
 // }
+
+import { isPublishingTool } from '../../server/adapters/setup.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
 const clip = (s, n = 240) => {
@@ -84,15 +87,15 @@ export const CHECKS = [
     },
   },
   {
+    // Agents load the person’s Claude Code setup by default (#57), so their global CLAUDE.md reaching agents is
+    // intended. What must not leak: their output style, and tools that publish outside Postbox for a persona that
+    // doesn’t allow them.
     id: 'settings-leak',
     issue: 57,
     run: (f) => {
       const out = [];
-      const styles = new Set(
-        f.streams.flatMap(({ events }) =>
-          events.filter((e) => e.subtype === 'init' && e.output_style && e.output_style !== 'default').map((e) => e.output_style),
-        ),
-      );
+      const inits = f.streams.flatMap(({ handle, events }) => events.filter((e) => e.subtype === 'init').map((e) => ({ handle, e })));
+      const styles = new Set(inits.filter(({ e }) => e.output_style && String(e.output_style).toLowerCase() !== 'default').map(({ e }) => e.output_style));
       if (styles.size) out.push({ title: 'Agents run with the person’s own output style', evidence: `init output_style: ${[...styles].join(', ')}.` });
       const reminder = f.transcripts.find(({ lines }) => lines.some((l) => /output style is active/i.test(l)));
       if (reminder)
@@ -100,11 +103,15 @@ export const CHECKS = [
           title: 'The person’s output style is injected into agent turns',
           evidence: `“output style is active” in @${reminder.handle}’s transcript.`,
         });
-      if (f.userRulesMarker) {
-        const leak = f.transcripts.find(({ lines }) => lines.some((l) => l.includes(f.userRulesMarker)));
-        if (leak)
-          out.push({ title: 'The person’s global CLAUDE.md reaches agents', evidence: `“${clip(f.userRulesMarker, 60)}” in @${leak.handle}’s transcript.` });
-      }
+      const allows = (handle) => Object.values(f.state.personas ?? {}).some((p) => p.handle === handle && p.canPublish === true);
+      const publishing = inits.flatMap(({ handle, e }) => (allows(handle) ? [] : (e.tools ?? []).filter(isPublishingTool).map((t) => ({ handle, t }))));
+      if (publishing.length)
+        out.push({
+          title: 'Agents can publish outside Postbox without being allowed to',
+          evidence: `${[...new Set(publishing.map(({ handle }) => `@${handle}`))].join(', ')} had ${[...new Set(publishing.map(({ t }) => t))]
+            .slice(0, 6)
+            .join(', ')}.`,
+        });
       return out.length ? [{ title: out.map((o) => o.title).join('; '), evidence: out.map((o) => o.evidence).join(' ') }] : [];
     },
   },

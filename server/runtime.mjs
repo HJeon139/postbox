@@ -70,7 +70,17 @@ export class Runtime {
    */
   personaFor(se) {
     const p = this.persona(se.personaId);
-    return p && { ...p, ...(se.personaSnapshot ?? {}), backend: p.backend, permissionMode: p.permissionMode ?? 'auto' };
+    return (
+      p && {
+        ...p,
+        ...(se.personaSnapshot ?? {}),
+        backend: p.backend,
+        permissionMode: p.permissionMode ?? 'auto',
+        // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57).
+        usesHostSetup: p.usesHostSetup !== false,
+        canPublish: p.canPublish === true,
+      }
+    );
   }
   personaByHandle(handle) {
     return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
@@ -1333,6 +1343,8 @@ export class Runtime {
     backend = 'mock',
     model = backend === 'mock' ? 'mock' : DEFAULT_MODEL,
     permissionMode = 'auto',
+    usesHostSetup = true,
+    canPublish = false,
     folder = '',
     tools = [],
     examples = [],
@@ -1346,6 +1358,7 @@ export class Runtime {
     if (!this.adapters.names().includes(backend))
       throw httpError(422, `“${backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}. See README, “Run real agents”.`);
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    checkSetup({ usesHostSetup, canPublish });
     const p = {
       id: newId('pe'),
       handle,
@@ -1354,6 +1367,8 @@ export class Runtime {
       model: String(model || DEFAULT_MODEL),
       backend,
       permissionMode,
+      usesHostSetup,
+      canPublish,
       folder: String(folder ?? ''),
       tools: [...new Set(tools)],
       examples,
@@ -1371,13 +1386,26 @@ export class Runtime {
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
     if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode))
       throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
+    checkSetup(patch);
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend))
       throw httpError(422, `“${patch.backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}.`);
     // A persona moved from the mock to a real model gets the default model.
     if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: DEFAULT_MODEL };
     const next = {
       ...p,
-      ...pick(patch, ['description', 'instructions', 'backend', 'model', 'permissionMode', 'folder', 'tools', 'examples', 'retired']),
+      ...pick(patch, [
+        'description',
+        'instructions',
+        'backend',
+        'model',
+        'permissionMode',
+        'usesHostSetup',
+        'canPublish',
+        'folder',
+        'tools',
+        'examples',
+        'retired',
+      ]),
       version: (p.version ?? 1) + 1,
     };
     this.store.emit('persona', next);
@@ -1802,7 +1830,12 @@ export function hostTool(rt, tool, args = {}) {
 export function httpError(status, message) {
   return Object.assign(new Error(message), { status, userMessage: message });
 }
-const snapshotOf = (p) => pick(p, ['description', 'instructions', 'model', 'permissionMode', 'folder', 'tools', 'version']);
+const snapshotOf = (p) => pick(p, ['description', 'instructions', 'model', 'permissionMode', 'usesHostSetup', 'canPublish', 'folder', 'tools', 'version']);
+/** A persona’s setup choices (#57) are true or false; anything else is refused. Absent means the default. */
+function checkSetup({ usesHostSetup, canPublish }) {
+  if (usesHostSetup !== undefined && typeof usesHostSetup !== 'boolean') throw httpError(422, '“Uses your Claude Code setup” is true or false.');
+  if (canPublish !== undefined && typeof canPublish !== 'boolean') throw httpError(422, '“Can publish outside Postbox” is true or false.');
+}
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 export { formatDuration };

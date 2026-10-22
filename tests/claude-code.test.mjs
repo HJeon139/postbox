@@ -7,6 +7,8 @@ import { AgentSdkAdapter, sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
 import { contextPercent, createStreamMapper, describePermission, describeTool, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
+import { PUBLISHING_TOOLS } from '../server/adapters/setup.mjs';
+import { TOOL_DEFS } from '../server/mcp.mjs';
 
 // Streams recorded from real Claude Code turns (claude 2.1.296, claude-opus-5-5), with local paths removed.
 const fixture = (name) =>
@@ -672,4 +674,94 @@ test('the Agent SDK falls back the same way, and never resumes the failed fork',
       [own],
     );
   }
+});
+
+// ── Your Claude Code setup (#57) ─────────────────────────────────────────────────────────
+// host-setup-init.jsonl holds three real init events (claude 2.1.296, claude-haiku-5-5, outside the repo), cut
+// down to their output style and tools, with the person’s private plugins and connectors left out:
+//   1. claude -p with default setting sources;
+//   2. with a project-local outputStyle of Concise, plus --setting-sources user,project,local and the deny list;
+//   3. the same, plus --settings '{"outputStyle":"default"}'.
+
+const glob = (rule) => new RegExp(`^${rule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+const deniedBy = (rules) => (tool) => rules.some((r) => glob(r).test(tool));
+
+test('every combination of the setup choices reaches both backends', () => {
+  const base = { sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g' };
+  const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', abortController: new AbortController() };
+  const after = (args, flag) => args[args.indexOf(flag) + 1];
+  for (const usesHostSetup of [undefined, true, false]) {
+    for (const canPublish of [undefined, false, true]) {
+      const persona = { model: 'mock', usesHostSetup, canPublish };
+      const label = JSON.stringify({ usesHostSetup, canPublish });
+      const args = claudeArgs({ ...base, persona });
+      const sources = usesHostSetup === false ? 'project,local' : 'user,project,local';
+      assert.equal(after(args, '--setting-sources'), sources, label);
+      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' }, label);
+      const o = sdkOptions({ ...sdkBase, persona });
+      assert.deepEqual(o.settingSources, sources.split(','), label);
+      assert.deepEqual(o.settings, { outputStyle: 'default' }, label);
+      if (canPublish === true) {
+        assert.ok(!args.includes('--disallowedTools'), label);
+        assert.equal(o.disallowedTools, undefined, label);
+      } else {
+        const i = args.indexOf('--disallowedTools');
+        assert.deepEqual(args.slice(i + 1, i + 1 + PUBLISHING_TOOLS.length), PUBLISHING_TOOLS, label);
+        assert.match(args[i + 1 + PUBLISHING_TOOLS.length], /^--/, 'the list ends at the next flag');
+        assert.deepEqual(o.disallowedTools, PUBLISHING_TOOLS, label);
+      }
+    }
+  }
+});
+
+test('the deny list matches what a real init offered that publishes, and nothing of Postbox’s or read-only', () => {
+  const [own, concise, fixed] = fixture('host-setup-init');
+  const denied = deniedBy(PUBLISHING_TOOLS);
+  assert.deepEqual(own.tools.filter(denied), [
+    'Artifact',
+    'ArtifactComments',
+    'ArtifactData',
+    'PushNotification',
+    'mcp__claude_ai_Claude_Docs__batch',
+    'mcp__claude_ai_Claude_Docs__create',
+    'mcp__claude_ai_Claude_Docs__update',
+    'mcp__claude_ai_Google_Drive__copy_file',
+    'mcp__claude_ai_Google_Drive__create_file',
+    'mcp__claude_ai_Google_Drive__share_file',
+    'mcp__claude_ai_Google_Drive__update_file',
+  ]);
+  // Claude Code itself removed exactly those, so the globs work as deny rules.
+  assert.deepEqual(
+    fixed.tools,
+    own.tools.filter((t) => !denied(t)),
+  );
+  assert.ok(fixed.tools.includes('mcp__claude_ai_Google_Drive__search_files') && fixed.tools.includes('mcp__claude_ai_Claude_Docs__read'));
+  // The flag-settings overlay beats the person’s own output style.
+  assert.equal(concise.output_style, 'Concise');
+  assert.equal(fixed.output_style, 'default');
+  // Postbox’s own tools must never be denied: deny beats --allowedTools mcp__postbox.
+  for (const t of TOOL_DEFS) assert.ok(!denied(`mcp__postbox__${t.name}`), t.name);
+  // Connectors other people have, matched by the verb in their names: outward verbs on any server, and create
+  // or upload only on claude.ai connectors.
+  for (const t of [
+    'mcp__slack__slack_send_message',
+    'mcp__gmail__send_email',
+    'mcp__x__post_message',
+    'mcp__claude_ai_Linear__create_issue',
+    'mcp__claude_ai_Slack__slack_create_canvas',
+    'mcp__claude_ai_Box__upload_file',
+  ])
+    assert.ok(denied(t), t);
+  for (const t of ['mcp__slack__slack_read_channel', 'mcp__github__list_issues', 'mcp__gmail__search_threads', 'mcp__notion__get_page'])
+    assert.ok(!denied(t), t);
+  // Local servers that create things on this computer publish nothing: deny would beat any allow rule for them.
+  for (const t of [
+    'mcp__memory__create_entities',
+    'mcp__memory__create_relations',
+    'mcp__filesystem__create_directory',
+    'mcp__git__git_create_branch',
+    'mcp__plugin_tools_db__create_table',
+    'mcp__files__upload_to_tmp',
+  ])
+    assert.ok(!denied(t), t);
 });

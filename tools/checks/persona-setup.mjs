@@ -1,0 +1,136 @@
+// Checks the persona sheet’s setup controls (#57) in headless Chrome: “Uses your Claude Code setup” (on by
+// default) and “Can publish outside Postbox” (off by default) appear for a real backend, with help text, work
+// from the keyboard, and save to the persona. Also checks the new-agent sheet’s defaults.
+//
+//   node tools/checks/persona-setup.mjs
+//
+// It starts its own fresh Postbox on port 4400 (demo mode, with a stand-in Claude Code backend so the real
+// backend’s fields show) and Chrome on 9600, prints one PASS or FAIL line per assertion, and exits non-zero on
+// any failure.
+
+import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { start } from '../../server/index.mjs';
+import { launch, sleep } from '../cdp.mjs';
+
+const PORT = 4400;
+const CHROME_PORT = 9600;
+
+/** Fails fast when something else already listens on a port this check needs. */
+const free = (port) =>
+  new Promise((ok, fail) => {
+    const s = createServer()
+      .once('error', () => fail(new Error(`Port ${port} is in use. Stop whatever runs there, then try again.`)))
+      .once('listening', () => s.close(() => ok(true)))
+      .listen(port, '127.0.0.1');
+  });
+
+let failures = 0;
+const check = (ok, what, detail = '') => {
+  if (!ok) failures++;
+  console.log(`${ok ? 'PASS' : 'FAIL'} ${what}${!ok && detail ? ` (${detail})` : ''}`);
+};
+
+await free(PORT);
+await free(CHROME_PORT);
+const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-setup-'));
+const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
+/** @type {any} */
+let page = null;
+try {
+  // A stand-in for the Claude Code backend: it never runs a turn here, it only makes the real fields show.
+  app.rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
+  const persona = app.rt.createPersona({ handle: 'checker', backend: 'claude-code' });
+  check(persona.usesHostSetup === true && persona.canPublish === false, 'a new persona uses your setup and can’t publish');
+
+  page = await launch({ port: CHROME_PORT });
+  await page.size(1280, 900);
+  await page.goto(`${app.origin}/`);
+  await page.waitFor(`!!document.querySelector('.app')`, { label: 'the app' });
+
+  const press = async (key, code, vk) => {
+    for (const type of ['keyDown', 'keyUp'])
+      await page.send('Input.dispatchKeyEvent', {
+        type,
+        key,
+        code,
+        windowsVirtualKeyCode: vk,
+        ...(type === 'keyDown' && key === 'Enter' ? { text: '\r' } : {}),
+      });
+    await sleep(150);
+  };
+  /** What the page shows for a setup checkbox: its state, name, help, and whether it’s visible and focusable. */
+  const read = (id) =>
+    page.evaluate(`(() => {
+      const el = document.getElementById(${JSON.stringify(id)});
+      if (!el) return null;
+      const help = document.getElementById(el.getAttribute('aria-describedby'));
+      const r = el.getBoundingClientRect();
+      return { checked: el.getAttribute('aria-checked'), role: el.getAttribute('role'), name: el.textContent.trim(), tab: el.tabIndex,
+        help: help?.textContent.trim() ?? '', visible: r.width > 0 && r.height > 0 && help?.offsetParent !== null };
+    })()`);
+
+  // The persona editor.
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(persona.id)}))`);
+  await page.waitFor(`!!document.getElementById('pe-setup')`, { label: 'the persona editor' });
+  const setup = await read('pe-setup');
+  const publish = await read('pe-publish');
+  check(
+    setup?.visible && setup.role === 'checkbox' && setup.name === 'Uses your Claude Code setup',
+    'the editor shows “Uses your Claude Code setup”',
+    JSON.stringify(setup),
+  );
+  check(setup?.checked === 'true', '“Uses your Claude Code setup” is on by default', setup?.checked);
+  check(/skills, commands, plugins and permission rules/.test(setup?.help ?? ''), 'it has help text', setup?.help);
+  check(/folder’s local file, where Always allow saves/.test(setup?.help ?? ''), 'its help says Isolated keeps the folder’s local file', setup?.help);
+  check(
+    publish?.visible && publish.role === 'checkbox' && publish.name === 'Can publish outside Postbox',
+    'the editor shows “Can publish outside Postbox”',
+    JSON.stringify(publish),
+  );
+  check(publish?.checked === 'false', '“Can publish outside Postbox” is off by default', publish?.checked);
+  check(/artifacts, and connectors that post or send/.test(publish?.help ?? ''), 'it has help text', publish?.help);
+
+  // Keyboard: Tab moves from one to the other; Space and Enter toggle.
+  await page.evaluate(`document.getElementById('pe-setup').focus()`);
+  await press(' ', 'Space', 32);
+  check((await read('pe-setup'))?.checked === 'false', 'Space turns “Uses your Claude Code setup” off');
+  await press('Tab', 'Tab', 9);
+  check((await page.evaluate('document.activeElement?.id')) === 'pe-publish', 'Tab reaches “Can publish outside Postbox”');
+  await press('Enter', 'Enter', 13);
+  check((await read('pe-publish'))?.checked === 'true', 'Enter turns “Can publish outside Postbox” on');
+
+  // Save, and the persona has them.
+  await page.evaluate(`[...document.querySelectorAll('.dialog button')].find((b) => b.textContent.trim() === 'Save').click()`);
+  for (let i = 0; i < 40 && app.store.state.personas[persona.id].canPublish !== true; i++) await sleep(100);
+  const saved = app.store.state.personas[persona.id];
+  check(
+    saved.usesHostSetup === false && saved.canPublish === true,
+    'Save stores both on the persona',
+    JSON.stringify({ usesHostSetup: saved.usesHostSetup, canPublish: saved.canPublish }),
+  );
+
+  // The new-agent sheet, on the real backend it picks by default.
+  await page.evaluate(
+    `document.querySelector('.dialog [aria-label="Close"]')?.click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`,
+  );
+  await sleep(300);
+  const projectId = Object.keys(app.store.state.projects)[0];
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openNewAgent({ projectId: ${JSON.stringify(projectId)} }))`);
+  await page.waitFor(`!!document.getElementById('na-setup')`, { label: 'the new-agent sheet' });
+  const na = [await read('na-setup'), await read('na-publish')];
+  check(
+    na[0]?.visible && na[0].checked === 'true' && na[1]?.visible && na[1].checked === 'false',
+    'the new-agent sheet shows both, with the defaults',
+    JSON.stringify(na),
+  );
+} catch (e) {
+  check(false, 'the check ran to the end', e.message);
+} finally {
+  await page?.close();
+  await app.close();
+  await rm(dataDir, { recursive: true, force: true });
+}
+process.exit(failures ? 1 : 0);

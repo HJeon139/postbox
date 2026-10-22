@@ -594,6 +594,58 @@ test('a persona’s permission mode reaches its running conversations from their
   assert.deepEqual(seen, ['auto', 'ask']);
 });
 
+test('#57: a persona uses your Claude Code setup and can’t publish outside Postbox, unless it’s set otherwise', () => {
+  const { rt, store } = setup();
+  const p = rt.createPersona({ handle: 'coder' });
+  assert.deepEqual([p.usesHostSetup, p.canPublish], [true, false], 'the defaults');
+  const q = rt.createPersona({ handle: 'loner', usesHostSetup: false, canPublish: true });
+  assert.deepEqual([q.usesHostSetup, q.canPublish], [false, true]);
+  for (const bad of ['yes', 1, null, 'false', {}]) {
+    assert.throws(
+      () => rt.createPersona({ handle: 'nope', usesHostSetup: bad }),
+      (e) => e.status === 422 && /Uses your Claude Code setup/.test(e.message),
+    );
+    assert.throws(
+      () => rt.createPersona({ handle: 'nope', canPublish: bad }),
+      (e) => e.status === 422 && /Can publish outside Postbox/.test(e.message),
+    );
+    assert.throws(
+      () => rt.updatePersona(p.id, { usesHostSetup: bad }),
+      (e) => e.status === 422,
+    );
+    assert.throws(
+      () => rt.updatePersona(p.id, { canPublish: bad }),
+      (e) => e.status === 422,
+    );
+  }
+  assert.ok(!rt.personaByHandle('nope'), 'nothing was created');
+  const r = rt.updatePersona(p.id, { usesHostSetup: false, canPublish: true });
+  assert.deepEqual([r.usesHostSetup, r.canPublish], [false, true]);
+  assert.deepEqual([rt.updatePersona(p.id, { description: 'x' }).usesHostSetup, store.state.personas[p.id].canPublish], [false, true], 'other edits keep them');
+});
+
+test('#57: setup choices are in a session’s snapshot, and like permissions they follow the persona from the next turn', async () => {
+  const { rt, t, a, adapter, store } = setup();
+  // A persona from before the fields existed gets the defaults.
+  assert.equal(store.state.personas[a.id].usesHostSetup, true);
+  store.emit('persona', { ...store.state.personas[a.id], usesHostSetup: undefined, canPublish: undefined });
+  const seen = [];
+  adapter.next.push(async (c) => seen.push([c.persona.usesHostSetup, c.persona.canPublish]));
+  adapter.next.push(async (c) => seen.push([c.persona.usesHostSetup, c.persona.canPublish]));
+  rt.sendMessage(t.id, { text: 'one' });
+  await settle(rt);
+  rt.updatePersona(a.id, { usesHostSetup: false, canPublish: true });
+  rt.sendMessage(t.id, { text: 'two' });
+  await settle(rt);
+  assert.deepEqual(seen, [
+    [true, false],
+    [false, true],
+  ]);
+  const t2 = rt.createThread({ projectId: 'p1', title: 'T2', personaIds: [a.id] });
+  const snap = rt.sessionsIn(t2.id)[0].personaSnapshot;
+  assert.deepEqual([snap.usesHostSetup, snap.canPublish], [false, true], 'a new session records what it was created with');
+});
+
 // ── Shared memory in a conversation (issue #1) ─────────────────────────────────────────
 
 test('issue #1: an agent mentioned into a room gets the exchange it wasn’t woken for', async () => {

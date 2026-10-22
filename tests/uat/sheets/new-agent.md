@@ -11,6 +11,7 @@ Creating agents happens in the app, with clear control over where they run and w
 ## Expected functionality
 
 - Start from a boilerplate; name; runs on (Claude Code, Agent SDK, Mock); model; permissions (Auto default, Ask me, Accept edits, Run everything); folder; description; instructions; tools.
+- On Claude Code or the Agent SDK, two checkboxes with help text: “Uses your Claude Code setup” (on by default; off is Isolated: the project’s settings, plus the folder’s local settings file, where Always allow saves its rules) and “Can publish outside Postbox” (off by default; on allows artifacts and connectors that post or send). Each works with Space or Enter. The mock agent doesn’t show them.
 - Joins this conversation or starts a new one; errors show inline.
 
 ## Steps to reproduce
