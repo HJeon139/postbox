@@ -297,3 +297,35 @@ sequenceDiagram
 **What it rests on.** Issue #1: in a room, an agent woken by an @-mention saw only that message, and answered confidently about a discussion it had never seen. The catch-up costs nothing when nothing was missed, as in a direct message where the agent is woken by every message; it replaces the separate path shares from topic threads used to take.
 
 **Revisit when** rooms get long enough that 40 items is too little. Then summarize older stretches instead of dropping them.
+
+## 13. Writes need the page’s token
+
+**Decision** ([#74](https://github.com/HJeon139/postbox/issues/74)). Every write to Postbox’s API (any method but GET and HEAD) needs a secret that the page you opened holds. Writes without it get 403, with a message saying why.
+- **The secret:** 32 random bytes, made each time the server starts.
+- **How the page gets it:** in a cookie set when a browser loads `/`, named for the port (`pb_token_<port>`), with `HttpOnly`, `SameSite=Strict` and `Path=/`. The browser sends it with the page’s own requests, so the page’s code never handles it.
+- **Only a browser gets it:** the cookie comes only with a request that carries a browser’s Fetch Metadata: a navigation (`Sec-Fetch-Mode: navigate`), or `Sec-Fetch-Site` of `same-origin` (the page’s own fetch of `/`, its refresh after a restart) or `none`. A request without them, such as a plain `curl /`, gets the page and no cookie.
+- **The check:** a constant-time comparison, before any route runs.
+- **Agents keep their own way in:** `/mcp`, which carries the agent’s session and is checked as before.
+
+```mermaid
+sequenceDiagram
+  participant P as The page
+  participant S as Postbox
+  participant A as An agent’s curl
+  P->>S: GET /
+  S-->>P: the app, and Set-Cookie pb_token_port (HttpOnly, SameSite=Strict)
+  P->>S: POST /api/threads/…/messages, with the cookie
+  S-->>P: 201, posted as you
+  A->>S: GET /, no Fetch Metadata headers
+  S-->>A: the app, no cookie
+  A->>S: POST /api/threads/…/messages, no cookie
+  S-->>A: 403, the request came from outside the Postbox page
+```
+
+**What it protects against.** An agent that uses Postbox’s own API casually, or on generic instructions, to speak as you: one `curl` used to post a message as you, with no click, no card and no “Sent from” line, and the other agents in a room acted on it as your instruction. Now that `curl` gets 403, and so does one that loads `/` first. Another website can’t do it either: the browser doesn’t send a `SameSite=Strict` cookie with another site’s requests. A page on another port of this computer is the same site, so the browser does send the cookie with its requests; the `Origin` check is what refuses those. Apps can’t reach it: their frames have an opaque origin and no network.
+
+**What it doesn’t.** A process running as you that sets out to get in still can: it can forge a browser’s headers when it loads `/` and keep the cookie, or read the data folder. That includes an agent whose instructions, from you or from a page it read, tell it exactly how. Postbox runs on your computer as you, so anything else running as you is out of its reach. The token makes the casual path fail; it isn’t a boundary against a determined process.
+
+**What it costs.** A restart makes a new token, so an open page’s next write is refused once; the page then loads `/` again, gets the new cookie, and retries. Tools that write from Node (`tools/demo.mjs`, the checks) load `/` first, as the page does.
+
+**Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token.

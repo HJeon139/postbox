@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
 import { launch, sleep } from '../cdp.mjs';
+import { pageCookie } from '../demo.mjs';
 
 const PORT = 4430;
 const CHROME_PORT = 9630;
@@ -78,8 +79,10 @@ try {
   await page.size(1280, 900, { theme: 'light' });
 
   // A conversation with a message to start a topic thread from.
+  // Writes need the page’s token (#74), which loading the page gives.
+  const cookie = await pageCookie(origin);
   const post = (path, body) =>
-    fetch(origin + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
+    fetch(origin + path, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body) }).then((r) => r.json());
   const st = await (await fetch(`${origin}/api/state`)).json();
   const conv = Object.values(st.state.threads).find((t) => t.title === 'Corpus explorer');
   const msg = await post(`/api/threads/${conv.id}/messages`, { text: 'Start a thread from here.' });

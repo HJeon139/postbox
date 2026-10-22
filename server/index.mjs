@@ -5,7 +5,7 @@
 //
 // --fresh starts from an empty store; --demo also enables the demo controls (reset, drop connections).
 
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
@@ -56,11 +56,20 @@ const STATIC = {
 };
 
 /**
- * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string }} [opts]
+ * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
+ *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
  */
-export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh = false, demo = false, quiet = false, claudeHome = homedir() } = {}) {
+export async function start({
+  port = 4173,
+  dataDir = join(ROOT, 'data'),
+  fresh = false,
+  demo = false,
+  quiet = false,
+  claudeHome = homedir(),
+  listen = true,
+} = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
   if (fresh)
@@ -95,6 +104,25 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
 
+  // The page’s token (#74): a secret made at each launch, which a browser gets in a cookie when it loads `/`. Every
+  // write needs it, so an agent that uses Postbox’s API with curl, casually or because something told it to, can’t
+  // post as the person. The cookie is HttpOnly (neither the page’s script nor an app can read it) and SameSite=Strict
+  // (another site can’t make the browser send it). A page on another port of this computer is the same site, so the
+  // browser does send it there: the Origin check refuses those. Cookies don’t keep ports apart, so its name has the
+  // port, and two Postboxes on one computer don’t overwrite each other’s.
+  const token = Buffer.from(randomBytes(32).toString('base64url'));
+  const cookieName = `pb_token_${port}`;
+  const cookieRe = new RegExp(`(?:^|;\\s*)${cookieName}=([^;]*)`);
+  const hasToken = (req) => {
+    const sent = Buffer.from(String(req.headers.cookie ?? '').match(cookieRe)?.[1] ?? '');
+    return sent.length === token.length && timingSafeEqual(sent, token);
+  };
+  // Only a browser gets it: a navigation, or the page’s own fetch of `/` (its token refresh after a restart), which
+  // browsers mark with Fetch Metadata headers. A plain `curl /` sends none, so it gets the page and no cookie. A
+  // process that forges these headers on purpose still can; see designs/architecture.md §13.
+  const fromBrowser = (req) =>
+    req.headers['sec-fetch-mode'] === 'navigate' || req.headers['sec-fetch-site'] === 'same-origin' || req.headers['sec-fetch-site'] === 'none';
+
   const streams = new Set();
   let offlineUntil = 0;
   store.subscribe((ev) => {
@@ -104,7 +132,8 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     for (const res of streams) res.write(': keep-alive\n\n');
   }, 15000);
 
-  const server = createServer(async (req, res) => {
+  /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
+  const handle = async (req, res) => {
     try {
       await route(req, res);
     } catch (e) {
@@ -114,10 +143,12 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
         send(res, status, {
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
           fieldErrors: e.fieldErrors,
+          code: e.code,
         });
       else res.end();
     }
-  });
+  };
+  const server = createServer(handle);
 
   async function route(req, res) {
     const url = new URL(req.url, origin);
@@ -128,8 +159,23 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       throw httpError(421, 'Postbox only answers requests addressed to 127.0.0.1 or localhost.');
     if (req.method !== 'GET' && req.headers.origin && !['http://127.0.0.1:' + port, 'http://localhost:' + port].includes(req.headers.origin))
       throw httpError(403, 'Requests from other sites aren’t allowed.');
+    // Every write needs the page’s token (#74), except /mcp, where agents call Postbox’s tools with their session.
+    if (req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && !hasToken(req))
+      throw Object.assign(
+        httpError(
+          403,
+          'This request came from outside the Postbox page, so Postbox refused it. Changes need the token that only the page you opened has; if this is that page, reload it.',
+        ),
+        { code: 'token' },
+      );
 
-    if (path === '/' || path === '/index.html') return file(res, join(ROOT, 'app', 'index.html'), appHeaders(config), req);
+    if (path === '/' || path === '/index.html')
+      return file(
+        res,
+        join(ROOT, 'app', 'index.html'),
+        { ...appHeaders(config), ...(fromBrowser(req) ? { 'set-cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/` } : {}) },
+        req,
+      );
     if (path === '/favicon.svg') return file(res, join(ROOT, 'app', 'media', 'favicon.svg'), {}, req);
     if (path === '/kit/workbench.css' || path === '/app/workbench.css')
       return file(res, join(ROOT, 'app', 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
@@ -222,15 +268,13 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
       rt.view(m[1]);
       return send(res, 200, { ok: true });
     }
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/))) {
-      if (req.method === 'PATCH') {
-        rt.editQueued(m[1], m[2], body.text);
-        return send(res, 200, { ok: true });
-      }
-      if (req.method === 'DELETE') {
-        rt.cancelQueued(m[1], m[2]);
-        return send(res, 200, { ok: true });
-      }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/)) && req.method === 'PATCH') {
+      rt.editQueued(m[1], m[2], body.text);
+      return send(res, 200, { ok: true });
+    }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/)) && req.method === 'DELETE') {
+      rt.cancelQueued(m[1], m[2]);
+      return send(res, 200, { ok: true });
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)\/send$/)) && req.method === 'POST') return send(res, 200, rt.sendQueuedNow(m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/act$/)) && req.method === 'POST')
@@ -393,10 +437,11 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     return { root: project.folder, path: relative(root, target), entries: list };
   }
 
-  await new Promise((ok, fail) => {
-    server.once('error', fail);
-    server.listen(port, '127.0.0.1', () => ok(undefined));
-  });
+  if (listen)
+    await new Promise((ok, fail) => {
+      server.once('error', fail);
+      server.listen(port, '127.0.0.1', () => ok(undefined));
+    });
   if (!quiet)
     console.log(
       `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${adapters.names().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${demo ? '\nDemo controls are on.' : ''}`,
@@ -406,13 +451,15 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     rt,
     store,
     origin,
+    /** The request handler, for tests that call routes without a network (start({ listen: false })). */
+    handle,
     async close() {
       clearInterval(keepAlive);
       for (const r of streams) r.destroy();
       for (const t of rt.timers.values()) clearTimeout(t);
       rt.stopMirrors();
       narrator?.stop();
-      await new Promise((ok) => server.close(ok));
+      if (listen) await new Promise((ok) => server.close(ok));
       await store.flush();
     },
   };

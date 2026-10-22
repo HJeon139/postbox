@@ -12,11 +12,26 @@ import { fileURLToPath } from 'node:url';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * The page’s token, as the cookie header a write needs (#74). The server gives it to a browser that opens `/`, so
+ * this tool, which is the person’s own, opens `/` the way a browser does, with a navigation’s Fetch Metadata headers.
+ * @param {string} origin
+ */
+export async function pageCookie(origin) {
+  const r = await fetch(`${origin}/`, { headers: { 'sec-fetch-mode': 'navigate', 'sec-fetch-site': 'none', 'sec-fetch-dest': 'document' } });
+  await r.arrayBuffer();
+  const set = r.headers.get('set-cookie') ?? '';
+  if (!/^pb_token_\d+=/.test(set)) throw new Error(`${origin}/ didn’t set the page’s token. Is it a Postbox server?`);
+  return set.split(';')[0];
+}
+
 export function client(origin) {
+  let cookie = null;
   const call = async (path, body, method = body === undefined ? 'GET' : 'POST') => {
+    if (method !== 'GET') cookie ??= await pageCookie(origin);
     const r = await fetch(origin + path, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(method !== 'GET' && cookie ? { cookie } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await r.json().catch(() => ({}));
