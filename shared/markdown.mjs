@@ -43,8 +43,10 @@ export const closesFence = (marker, line) => new RegExp(`^ {0,3}${marker[0]}{${m
 export function renderMarkdown(src, opts = {}) {
   const ctx = { ...opts, glossaryRe: glossaryRegex(opts.glossary), mentionRe: mentionRegex(opts.mentions) };
   return blocks(
+    // U+0000 stands in for a code span inside a run of text (see inline), so the text can't contain it.
     String(src ?? '')
       .replace(/\r\n?/g, '\n')
+      .replace(/\0/g, '\uFFFD')
       .split('\n'),
     ctx,
   );
@@ -273,8 +275,11 @@ function inline(s, ctx) {
   let out = '',
     buf = '',
     i = 0;
+  // Code spans bind tighter than emphasis, so **`x`** is bold: each span waits in the text run as a
+  // U+0000 and goes back in, in order, once the run's emphasis is applied.
+  const codes = [];
   const flush = () => {
-    out += textRun(buf, ctx);
+    out += textRun(buf, ctx).replace(/\0/g, () => codes.shift());
     buf = '';
   };
   while (i < s.length) {
@@ -289,8 +294,8 @@ function inline(s, ctx) {
       const run = s.slice(i).match(/^`+/)[0];
       const end = s.indexOf(run, i + run.length);
       if (end > -1) {
-        flush();
-        out += `<code>${escapeHtml(s.slice(i + run.length, end).replace(/^ (.*) $/, '$1'))}</code>`;
+        codes.push(`<code>${escapeHtml(s.slice(i + run.length, end).replace(/^ (.*) $/, '$1'))}</code>`);
+        buf += '\0';
         i = end + run.length;
         continue;
       }
