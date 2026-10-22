@@ -375,10 +375,17 @@ function messageActions(node, it, ctx) {
             'button.btn.sm.ghost.reveal',
             {
               type: 'button',
-              onclick: () =>
+              // Once: the button waits for its answer, and the reply then shows it was sent (#93).
+              onclick: (e) => {
+                const b = e.currentTarget;
+                b.disabled = true;
                 api(`/api/threads/${ctx.threadId}/items/${it.id}/share`, {})
                   .then(() => toast({ title: 'Sent to the conversation', text: 'Its agents read it at the start of their next turn.' }))
-                  .catch((e) => toast({ title: 'Couldn’t send it', text: e.message, level: 'blocking' })),
+                  .catch((err) => {
+                    b.disabled = false;
+                    toast({ title: 'Couldn’t send it', text: err.message, level: 'blocking' });
+                  });
+              },
             },
             icon('right', 'i-sm'),
             'Send to conversation',
@@ -1484,21 +1491,49 @@ export function mountSidePanel(parentId, sideId) {
   const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
   const agents = sessionsOf(sideId).filter((x) => !x.archived);
   const body = h('div.sp-body', topic ? threadRoot(root, agents) : null, tr.el);
+  // One summary at a time (#93): from the request until it’s posted or the turn ends, the button waits. The
+  // server keeps the request on the thread, so a reload or a second tab waits too, and it refuses a second one.
+  // From the click until the server’s own state shows the request: its agent at work on it.
+  let asking = false;
+  const pendingSummary = () => {
+    const ask = S().threads[sideId]?.summaryPending;
+    const se = ask && S().sessions[ask.sessionId];
+    const working = !!(se && !se.archived && ['think', 'gen', 'tool', 'needs'].includes(se.state));
+    if (working) asking = false;
+    return asking || working;
+  };
   const summarize = topic
     ? h(
         'button.btn.sm',
         {
           type: 'button',
-          disabled: !agents.length,
           title: 'Ask the thread’s agent for a short summary, and post it in the conversation',
-          onclick: () =>
+          onclick: () => {
+            asking = true;
+            paintSummarize();
             api(`/api/threads/${sideId}/summarize`, {})
               .then(() => toast({ title: 'Summary requested', text: `It will appear in ${parent?.title ?? 'the conversation'} when it’s written.` }))
-              .catch((e) => toast({ title: 'Couldn’t ask for a summary', text: e.message, level: 'blocking' })),
+              .catch((e) => {
+                asking = false;
+                toast({ title: 'Couldn’t ask for a summary', text: e.message, level: 'blocking' });
+              })
+              .finally(paintSummarize);
+          },
         },
         'Summarize back',
       )
     : null;
+  const paintSummarize = () => {
+    if (!summarize) return;
+    const waiting = pendingSummary();
+    summarize.disabled = waiting || !sessionsOf(sideId).some((x) => !x.archived);
+    const label = waiting ? 'Summary requested…' : 'Summarize back';
+    if (summarize.textContent !== label) summarize.textContent = label;
+  };
+  paintSummarize();
+  const off = client.on((ch) => {
+    if ((ch.type === 'thread' && ch.data.id === sideId) || (ch.type === 'session' && ch.data.threadId === sideId) || ch.type === 'load') paintSummarize();
+  });
   const el = h(
     'aside.sidepanel',
     { 'aria-labelledby': 'sp-title' },
@@ -1526,6 +1561,7 @@ export function mountSidePanel(parentId, sideId) {
   return {
     el,
     destroy() {
+      off();
       tr.destroy();
       comp.destroy();
     },

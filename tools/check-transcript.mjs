@@ -34,7 +34,19 @@ async function wheel(deltaY, { x = 760, y = 400 } = {}) {
   await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY });
   await settle();
 }
+/** Clicks the middle of the element an expression finds, with the mouse, once or twice in a row. */
+async function click(expr, { times = 1 } = {}) {
+  const r = await page.evaluate(
+    `(() => { const el = ${expr}; if (!el) return null; const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`,
+  );
+  assert.ok(r, `Nothing to click: ${expr}`);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y, button: 'none' });
+  for (let i = 0; i < times; i++)
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: 'left', clickCount: 1 });
+  await settle();
+}
 const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+const byText = (sel, text) => `[...document.querySelectorAll(${JSON.stringify(sel)})].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
 // How far the view is from the end of the conversation, and of the panel.
 const gap = () => page.evaluate('Math.round(document.scrollingElement.scrollHeight - scrollY - innerHeight)');
 const panelGap = () => page.evaluate(`(() => { const b = ${q('.sp-body')}; return b ? Math.round(b.scrollHeight - b.scrollTop - b.clientHeight) : null; })()`);
@@ -303,6 +315,65 @@ await check('#83 the working row lines up with the message column, with and with
   assert.ok(panel.workRight <= panel.colRight && panel.truncated, 'and still inside the column, truncated');
   rt.updateSession(researcher.id, { state: 'idle', currentStep: '', glimpse: '' });
   rt.updateSession(critic.id, { state: 'idle', glimpse: '' });
+});
+
+// ── #93: what goes back to the conversation goes once ───────────────────────────────────
+
+await check('#93 Summarize back clicked twice posts one summary; the button waits, and the summary’s reply shows it was sent', async () => {
+  const { t, researcher } = room('Summarize once', 6);
+  const root = store.items(t.id).find((i) => i.kind === 'agent' && i.sessionId === researcher.id);
+  const { threadId } = rt.startTopic(t.id, root.id);
+  await open(`#/t/${t.id}/side/${threadId}`);
+  await page.waitFor(byText('.sidepanel .btn', 'Summarize back'), { label: 'Summarize back' });
+  await click(byText('.sidepanel .btn', 'Summarize back'), { times: 2 });
+  const button = q('.sidepanel .sp-head .btn.sm:not(.icon)');
+  assert.equal(await page.evaluate(`${button}.textContent`), 'Summary requested…');
+  assert.ok(await page.evaluate(`${button}.disabled`), 'disabled while the summary is pending');
+  const second = await fetch(`${app.origin}/api/threads/${threadId}/summarize`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  assert.equal(second.status, 409, 'the server refuses a second request, as from another tab');
+  await page.waitFor(`${button}.textContent === 'Summarize back' && !${button}.disabled`, { label: 'the button to come back', timeout: 15000 });
+  const shared = store.items(t.id).filter((i) => i.kind === 'shared');
+  assert.equal(shared.length, 1, 'one summary in the conversation');
+  assert.equal(shared[0].summary, true);
+  assert.equal(store.items(threadId).filter((i) => i.kind === 'voice').length, 1, 'one request');
+  const reply = store.items(threadId).find((i) => i.kind === 'agent' && i.text);
+  await page.waitFor(`document.querySelector('.sp-body [data-key="${reply.id}"] .msg-actions')?.textContent.includes('Sent to the conversation')`, {
+    label: 'the reply to show it was sent',
+  });
+  assert.ok(!(await page.evaluate(`!!${byText(`.sp-body [data-key="${reply.id}"] .msg-actions button`, 'Send to conversation')}`)), 'no Send button on it');
+});
+
+await check('#93 Send to conversation clicked twice posts once', async () => {
+  const { t, researcher } = room('Send once', 6);
+  const root = store.items(t.id).find((i) => i.kind === 'agent' && i.sessionId === researcher.id);
+  const { threadId } = rt.startTopic(t.id, root.id);
+  const fork = rt.sessionsIn(threadId)[0];
+  const reply = rt.addItem(threadId, {
+    kind: 'agent',
+    sessionId: fork.id,
+    personaId: fork.personaId,
+    handle: fork.handle,
+    text: 'Offsets, not pages.',
+    status: 'done',
+  });
+  await open(`#/t/${t.id}/side/${threadId}`);
+  const send = byText(`.sp-body [data-key="${reply.id}"] .msg-actions button`, 'Send to conversation');
+  await page.waitFor(send, { label: 'Send to conversation' });
+  await click(send, { times: 2 });
+  await page.waitFor(`document.querySelector('.sp-body [data-key="${reply.id}"] .msg-actions')?.textContent.includes('Sent to the conversation')`, {
+    label: 'the reply to show it was sent',
+  });
+  await settle(400);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 1, 'posted once');
+  // Without the wait, the second click reached the server, which refused it with an error toast.
+  assert.ok(
+    !(await page.evaluate(`[...document.querySelectorAll('.toast[role=alert]')].some((n) => n.textContent.includes('Couldn’t send it'))`)),
+    'no “Couldn’t send it” error',
+  );
 });
 
 await page.send('Page.navigate', { url: 'about:blank' });

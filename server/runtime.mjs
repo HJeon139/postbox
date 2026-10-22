@@ -527,9 +527,16 @@ export class Runtime {
     if (turn.checkpoint && !err)
       for (const it of items)
         if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) this.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
-    // “Summarize back”: the reply goes to the conversation the topic branched from.
-    if (turn.summarizeTo && !err && turn.said.trim())
+    // “Summarize back”: the reply goes to the conversation the topic branched from. The turn’s replies are what
+    // was sent, so they show “Sent to the conversation” and can’t be sent again (#93).
+    if (turn.summarizeTo && !err && turn.said.trim()) {
       this.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
+      for (const it of items)
+        if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
+    }
+    // Posted or not, the summary isn’t pending any more, so Summarize back works again. Any turn ending clears
+    // one a restart left behind, too.
+    this.clearSummaryPending(turn.threadId);
     if (err && err.name !== 'AbortError') {
       const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
       const target =
@@ -655,6 +662,8 @@ export class Runtime {
       });
     }
     this.updateSession(sessionId, { state: 'idle', subagents: [], currentStep: 'Stopped by you', finishedAt: Date.now() });
+    // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93).
+    this.clearSummaryPending(turn.threadId);
     if (!silent) this.drainQueue(turn.threadId);
     return true;
   }
@@ -886,6 +895,9 @@ export class Runtime {
     const it = this.store.item(topicId, itemId);
     if (!it?.text) throw httpError(404, 'That reply has no text to send.');
     if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
+    // Part of a summary still being written: the whole summary is posted when it’s done (#93).
+    if ([...this.turns.values()].some((x) => x.id === it.turnId && x.summarizeTo))
+      throw httpError(409, 'This reply is part of a summary that’s still being written. It’s posted in the conversation when it’s done.');
     this.patchItem(topicId, itemId, { sharedAt: Date.now() });
     return this.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text });
   }
@@ -896,6 +908,11 @@ export class Runtime {
     if (topic.kind !== 'topic') throw httpError(409, 'Only a topic thread can be summarized back.');
     const se = this.sessionsIn(topicId).find((x) => !x.archived);
     if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
+    // One at a time, so a second click or a second tab can’t post it twice (#93).
+    if (this.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
+    // Kept on the thread for the panel’s button, until the turn ends or is stopped. A restart can leave it
+    // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
+    this.putThread({ ...topic, summaryPending: { sessionId: se.id, at: Date.now() } });
     this.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
     this.deliver(
       se.id,
@@ -906,6 +923,16 @@ export class Runtime {
       { summarizeTo: topic.parentId },
     );
     return { ok: true };
+  }
+
+  /** Whether a summarize turn is running or queued in a topic thread. */
+  summarizing(topicId) {
+    return [...this.turns.values()].some((x) => x.threadId === topicId && (x.summarizeTo || x.pending.some((p) => p.summarizeTo)));
+  }
+
+  clearSummaryPending(topicId) {
+    const t = this.s.threads[topicId];
+    if (t?.summaryPending && !this.summarizing(topicId)) this.putThread({ ...t, summaryPending: null });
   }
 
   /**

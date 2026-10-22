@@ -624,6 +624,68 @@ test('summarize back posts the thread agent’s summary in the conversation', as
   assert.match(adapter.calls.at(-1).message.text, /Summarize this topic thread/);
 });
 
+test('#93: after summarize back, the summary’s reply in the thread is marked sent and can’t be sent again', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  adapter.next.push(async (c) => c.text('We chose offsets over pages.'));
+  rt.summarizeBack(threadId);
+  assert.ok(store.state.threads[threadId].summaryPending, 'pending while the turn runs');
+  await settle(rt);
+  const reply = store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'We chose offsets over pages.');
+  assert.ok(reply.sharedAt);
+  assert.equal(store.state.threads[threadId].summaryPending, null);
+  assert.throws(() => rt.shareToConversation(threadId, reply.id), { status: 409 });
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 1);
+});
+
+test('#93: a second summarize back while one is pending is refused, so one summary is posted', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  adapter.next.push(async (c) => c.text('One summary.'));
+  rt.summarizeBack(threadId);
+  assert.throws(() => rt.summarizeBack(threadId), { status: 409 });
+  await settle(rt);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 1);
+  assert.equal(store.items(threadId).filter((i) => i.kind === 'voice').length, 1);
+});
+
+test('#93: a stopped summary isn’t pending, and a reply in a summary still being written can’t be sent on its own', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  let release = () => {};
+  adapter.next.push(async (c) => {
+    c.text('Half of the summary');
+    await new Promise((r) => {
+      release = r;
+    });
+  });
+  rt.summarizeBack(threadId);
+  await new Promise((r) => setImmediate(r));
+  const part = store.items(threadId).find((i) => i.kind === 'agent' && i.text === 'Half of the summary');
+  assert.throws(() => rt.shareToConversation(threadId, part.id), { status: 409 });
+  rt.stop(rt.sessionsIn(threadId)[0].id);
+  release();
+  await settle(rt);
+  assert.equal(store.state.threads[threadId].summaryPending, null);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 0);
+});
+
+test('#93: a summarize turn that fails posts nothing and lets you ask again', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  const { threadId } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'agent').id);
+  adapter.next.push(async () => {
+    throw new Error('The model is overloaded.');
+  });
+  rt.summarizeBack(threadId);
+  await settle(rt);
+  assert.equal(store.state.threads[threadId].summaryPending, null);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 0);
+  adapter.next.push(async (c) => c.text('Second try.'));
+  rt.summarizeBack(threadId);
+  await settle(rt);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'shared').length, 1);
+});
+
 test('@-mentioning a conversation’s other agent in a topic forks its session too', async () => {
   const { rt, store, t, b, adapter } = await conversation();
   rt.sendMessage(t.id, { text: '@beta hello' });
