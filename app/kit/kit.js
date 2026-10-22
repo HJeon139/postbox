@@ -5,7 +5,9 @@
 //                                 right after the person clicks or presses a key in the app (it rejects
 //                                 otherwise), up to 5 a minute; more resolve { held: true, waiting } and wait
 //                                 for the person to allow them on a card. Don’t focus anything on load: an
-//                                 app that takes the keyboard without a click gets it taken back
+//                                 app that takes the keyboard without a click gets it taken back. Values larger
+//                                 than one event carries (eventBytes in shared/limits.mjs, which the server
+//                                 passes in data-init) reject here, with the limit named, and nothing is sent
 //   postbox.saveState(obj) / postbox.restoreState()   survives unload, reload and new versions
 //   postbox.anchors({ name: element })   parts you can pin review comments to
 //   postbox.on('theme', fn)       called when light/dark changes (tokens update by themselves)
@@ -161,6 +163,22 @@
       if (init.check) return Promise.resolve({ ok: true, skipped: true });
       const v = Object.assign({}, values || {});
       if (summary) v.summary = summary;
+      // Too large for one event: say so inside the app, before anything is posted, rather than lose it (#50).
+      const max = init.limits?.eventBytes;
+      let size = 0;
+      try {
+        size = JSON.stringify(v).length;
+      } catch {
+        // Not plain JSON: Postbox refuses it, and says so.
+      }
+      if (max && size > max) {
+        const kb = (n) => `${Math.ceil(n / 1024).toLocaleString('en-US')} KB`;
+        return Promise.reject(
+          new Error(
+            `postbox.send: these values are ${kb(size)} as JSON, larger than the ${kb(max)} one event can carry, so nothing was sent. Send ids instead, and look the items up from them.`,
+          ),
+        );
+      }
       return call('event', { action, values: v });
     },
     saveState(state) {

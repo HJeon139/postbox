@@ -8,6 +8,7 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { LIMITS } from '../shared/limits.mjs';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -54,7 +55,8 @@ const css = () => `<style>${inline('workbench.css', '</style')}</style>`;
 
 /** The page for one version of an agent-written app. */
 export function sandboxPage({ origin, app, version, theme, check }) {
-  const init = { appId: app.id, version: version.v, title: app.title, check: !!check };
+  // The kit can’t import /shared/ (the page loads no files), so the limits it enforces come with the page.
+  const init = { appId: app.id, version: version.v, title: app.title, check: !!check, limits: { eventBytes: LIMITS.eventBytes } };
   const html = `<!doctype html>
 <html lang="en" data-theme="${theme}" class="stage pb-sandbox">
 <head>

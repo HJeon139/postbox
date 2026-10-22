@@ -2,6 +2,7 @@
 // Shared by the Claude Code and Agent SDK adapters, so both backends behave the same way.
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
+import { LIMITS, limitText } from '../../shared/limits.mjs';
 import { formatLint } from '../checks.mjs';
 
 /**
@@ -17,13 +18,19 @@ export function agentGuide({ persona, handles, project, brief }) {
     others.length ? `Other agents in Postbox: ${others.map((h) => `@${h}`).join(', ')}. Mention one with @handle, or use wake_agent, to bring it in.` : '',
     project?.name ? `This thread belongs to the project “${project.name}”.` : '',
     brief ? `How you joined this thread: ${brief}` : '',
-    GUIDE,
+    guideText(),
   ]
     .filter(Boolean)
     .join('\n\n');
 }
 
-const GUIDE = `## How Postbox shows your work
+/**
+ * How to use Postbox, the same for every agent. Every limit in it comes from shared/limits.mjs (#50).
+ * @param {Record<string, number>} [limits]  the limits to write in, for tests
+ */
+export function guideText(limits = LIMITS) {
+  const n = (/** @type {import('../../shared/limits.mjs').LimitName} */ name) => limitText(name, limits);
+  return `## How Postbox shows your work
 
 Reply in Markdown. Postbox renders headings, lists, tables, links (https only), \`code\`, fenced code, \`\`\`mermaid diagrams, and math with $…$ or $$…$$. Raw HTML is shown as text, so never write it in a reply.
 To hide an exercise’s answer until the person opens it, write \`<details><summary>Answer</summary> … </details>\`, which is the only HTML Postbox renders.
@@ -43,23 +50,25 @@ Use the Postbox tools (the “postbox” MCP server) for anything interactive. T
 
 ## Blocks
 
-Every block has id (letters, digits, - _ . :), type, version: 1, an optional title, and fallback: plain text the person can answer in chat if the block can’t be shown. Objects are strict: an unknown field is an error, and you’ll be told what to fix. Long text fields are Markdown; labels are plain text.
+Every block has id (letters, digits, - _ . :), type, version: 1, an optional title, and fallback: plain text (up to ${n('fallback')} characters) the person can answer in chat if the block can’t be shown. Objects are strict: an unknown field is an error, and you’ll be told what to fix. Long text fields are Markdown; labels are plain text.
 
-- choice: options [{ id, label }] (1–24), prompt?, multiple?, max?, other?: { label, placeholder? }, display?: "chips" | "buttons", submitLabel?. Answer: action "choose", values { selected: [ids], other? }.
-- form: fields [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? (select only), default? }], prompt?, submitLabel?. Answer: "submit", { [fieldId]: value }.
-- table: columns [{ id, label, kind?: "text" | "number", sortable? }], rows [{ id, cells: { [columnId]: value } }] (up to 5,000), rowAction?: { id, label }. Answer: the rowAction id, { rowId }.
-- progress: steps [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, duration?, progress?: { done, total, unit? }, percent?: 0–100, eta? }]. Postbox shows “2 of 4 papers” with a bar, when the block last changed, and how long each step ran, so leave duration out unless you know better. It marks a step left running “stalled”; don’t set that yourself.
-- card: body?, facts?: [{ label, value }], actions?: [{ id, label }] (up to 3). Answer: the action id.
+- choice: options [{ id, label }] (1–${n('choiceOptions')}), prompt?, multiple?, max?, other?: { label, placeholder? }, display?: "chips" | "buttons", submitLabel?. Answer: action "choose", values { selected: [ids], other? }.
+- form: fields (up to ${n('formFields')}) [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?. Answer: "submit", { [fieldId]: value }.
+- table: columns [{ id, label, kind?: "text" | "number", sortable? }] (up to ${n('tableColumns')}), rows [{ id, cells: { [columnId]: value } }] (up to ${n('tableRows')}), rowAction?: { id, label }. Answer: the rowAction id, { rowId }.
+- progress: steps (up to ${n('progressSteps')}) [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, duration?, progress?: { done, total, unit? }, percent?: 0–100, eta? }]. Postbox shows “2 of 4 papers” with a bar, when the block last changed, and how long each step ran, so leave duration out unless you know better. It marks a step left running “stalled”; don’t set that yourself.
+- card: body? (up to ${n('cardBody')} characters), facts?: [{ label, value }] (up to ${n('cardFacts')}), actions?: [{ id, label }] (up to ${n('cardActions')}). Answer: the action id.
 - confirm: statement, confirmLabel, cancelLabel?. Answer: "confirm" or "cancel".
 - image: src (https, from an allowed origin), alt, caption?.
-- code: code, language?, filename?.
+- code: code (up to ${n('longText')} characters), language?, filename?.
 - review: format "markdown" | "code" | "app", content (markdown, code) or appId (app), previous? (shows a diff), revision?, threads?, language?, filename?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
+
+A prompt or statement is up to ${n('prompt')} characters; review content and previous, up to ${n('longText')}.
 
 A choice, form, confirm or review turns read-only once answered. To ask again, send a new block or update_block the same id.
 
 ## Apps
 
-show_app takes { id, title, code, permissions?, fallback? }. code is one HTML document with inline <script> and <style>. It runs in a sandbox with no network: no fetch, no external scripts, fonts or images. Postbox’s stylesheet is already loaded, so use its classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so the app works in light and dark.
+show_app takes { id, title, code, permissions?, fallback? }. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters. It runs in a sandbox with no network: no fetch, no external scripts, fonts or images. Postbox’s stylesheet is already loaded, so use its classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so the app works in light and dark.
 
 Inside the app, the global postbox object gives you:
 - await postbox.ready → { state, theme, appId }
@@ -68,7 +77,7 @@ Inside the app, the global postbox object gives you:
   - "corpus.read" with { id } returns { id, book, title, author, year, chapter, text }
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
   You don’t need to inspect Postbox’s source to use them.
-- postbox.send(action, values, summary) sends one event to you; summary is the line the person sees in their voice. Call it only from the person’s click or key press in the app: a send on load or on a timer is refused. Don’t move focus into the app yourself (no autofocus): Postbox gives the keyboard back, and stops an app that keeps taking it. Up to 5 a minute go straight to you; more wait for the person to allow them.
+- postbox.send(action, values, summary) sends one event to you; summary is the line the person sees in their voice. One event carries up to ${n('eventBytes')} of JSON: a larger send rejects inside the app and nothing is sent, so hand over many items by their ids, not their contents. Call it only from the person’s click or key press in the app: a send on load or on a timer is refused. Don’t move focus into the app yourself (no autofocus): Postbox gives the keyboard back, and stops an app that keeps taking it. Up to 5 a minute go straight to you; more wait for the person to allow them.
 - postbox.saveState(obj) and postbox.restoreState() keep state across reloads and new versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Chart and Table view
@@ -90,6 +99,7 @@ Patterns that work well. Follow one when the person asks for something it covers
 ## Writing
 
 Plain English, sentence case, American spelling, curly quotes and apostrophes (“ ” ’). Say what happened and what the person can do next. Keep replies short; put detail in blocks and apps.`;
+}
 
 /**
  * Writes one Postbox message as the text of a turn for the agent.

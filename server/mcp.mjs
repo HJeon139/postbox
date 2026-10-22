@@ -8,6 +8,7 @@
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
 // a risky tool call in “ask” mode, and it waits for your answer on a card in the thread.
 
+import { limitText as n } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
 
 const PROTOCOL = '2025-06-18';
@@ -17,11 +18,11 @@ const blockSchema = {
   description: 'A block from the catalog: { id, type, version, title?, fallback, …fields }. See README, “The block catalog”.',
 };
 
+// The tools, as agents read them. Their limits come from shared/limits.mjs, as the guide’s do (#50).
 export const TOOL_DEFS = [
   {
     name: 'show_block',
-    description:
-      'Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the thread. Returns at once; the person’s answer arrives later as a message.',
+    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the thread. Returns at once; the person’s answer arrives later as a message. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')}, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {
@@ -32,8 +33,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'show_app',
-    description:
-      'Show an app you wrote (HTML with inline script and style) in a sandbox with no network. It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them).',
+    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -48,7 +48,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'update_app',
-    description: 'Replace an app you showed with a new version, in place. Older versions stay in its version menu.',
+    description: `Replace an app you showed with a new version, in place, up to ${n('appCode')} characters. Older versions stay in its version menu.`,
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' }, code: { type: 'string' }, permissions: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } },

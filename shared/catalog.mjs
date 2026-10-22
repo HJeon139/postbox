@@ -5,6 +5,7 @@
 // plain-text fallback. A block that fails validation is never rendered: the app shows its fallback
 // and a collapsed "Show the raw block" instead.
 
+import { LIMITS } from './limits.mjs';
 import { isSafeUrl } from './urls.mjs';
 
 /** The newest version of each component this app can render. */
@@ -107,16 +108,16 @@ const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }) }, ['id', 
 
 // ── Component schemas ───────────────────────────────────────────────────────────────────
 
-const COMMON = { id: id(), type: str(), version: int({ min: 1, max: 999 }), title: str({ max: 200 }), fallback: str({ min: 1, max: 4000 }) };
+const COMMON = { id: id(), type: str(), version: int({ min: 1, max: 999 }), title: str({ max: 200 }), fallback: str({ min: 1, max: LIMITS.fallback }) };
 const COMMON_REQUIRED = ['id', 'type', 'version', 'fallback'];
 
 const SCHEMAS = {
   choice: {
     fields: {
-      prompt: str({ max: 2000 }),
-      options: list(option(), { min: 1, max: 24, unique: 'id' }),
+      prompt: str({ max: LIMITS.prompt }),
+      options: list(option(), { min: 1, max: LIMITS.choiceOptions, unique: 'id' }),
       multiple: bool(),
-      max: int({ min: 1, max: 24 }),
+      max: int({ min: 1, max: LIMITS.choiceOptions }),
       other: obj({ label: str({ min: 1, max: 80 }), placeholder: str({ max: 120 }) }, ['label']),
       display: oneOf('chips', 'buttons'),
       submitLabel: str({ min: 1, max: 40 }),
@@ -125,7 +126,7 @@ const SCHEMAS = {
   },
   form: {
     fields: {
-      prompt: str({ max: 2000 }),
+      prompt: str({ max: LIMITS.prompt }),
       fields: list(
         obj(
           {
@@ -139,12 +140,12 @@ const SCHEMAS = {
             max: num(),
             step: num(),
             maxLength: int({ min: 1, max: 20000 }),
-            options: list(option(), { min: 1, max: 50, unique: 'id' }),
+            options: list(option(), { min: 1, max: LIMITS.selectOptions, unique: 'id' }),
             default: scalar(),
           },
           ['id', 'label', 'kind'],
         ),
-        { min: 1, max: 24, unique: 'id' },
+        { min: 1, max: LIMITS.formFields, unique: 'id' },
       ),
       submitLabel: str({ min: 1, max: 40 }),
     },
@@ -160,7 +161,7 @@ const SCHEMAS = {
     fields: {
       columns: list(obj({ id: id(), label: str({ min: 1, max: 80 }), kind: oneOf('text', 'number'), sortable: bool() }, ['id', 'label']), {
         min: 1,
-        max: 16,
+        max: LIMITS.tableColumns,
         unique: 'id',
       }),
       rows: list(
@@ -174,7 +175,7 @@ const SCHEMAS = {
           },
           ['id', 'cells'],
         ),
-        { max: 5000, unique: 'id' },
+        { max: LIMITS.tableRows, unique: 'id' },
       ),
       rowAction: obj({ id: id(), label: str({ min: 1, max: 40 }) }, ['id', 'label']),
     },
@@ -208,7 +209,7 @@ const SCHEMAS = {
           },
           ['id', 'label', 'state'],
         ),
-        { min: 1, max: 60, unique: 'id' },
+        { min: 1, max: LIMITS.progressSteps, unique: 'id' },
       ),
     },
     required: ['steps'],
@@ -219,14 +220,14 @@ const SCHEMAS = {
   },
   card: {
     fields: {
-      body: str({ max: 4000 }),
-      facts: list(obj({ label: str({ min: 1, max: 80 }), value: scalar() }, ['label', 'value']), { max: 16 }),
-      actions: list(option(), { max: 3, unique: 'id' }),
+      body: str({ max: LIMITS.cardBody }),
+      facts: list(obj({ label: str({ min: 1, max: 80 }), value: scalar() }, ['label', 'value']), { max: LIMITS.cardFacts }),
+      actions: list(option(), { max: LIMITS.cardActions, unique: 'id' }),
     },
     required: [],
   },
   confirm: {
-    fields: { statement: str({ min: 1, max: 2000 }), confirmLabel: str({ min: 1, max: 48 }), cancelLabel: str({ min: 1, max: 48 }) },
+    fields: { statement: str({ min: 1, max: LIMITS.prompt }), confirmLabel: str({ min: 1, max: 48 }), cancelLabel: str({ min: 1, max: 48 }) },
     required: ['statement', 'confirmLabel'],
   },
   image: {
@@ -248,14 +249,14 @@ const SCHEMAS = {
     },
   },
   code: {
-    fields: { code: str({ max: 200000 }), language: str({ pattern: LANG, label: 'language name' }), filename: str({ max: 200 }) },
+    fields: { code: str({ max: LIMITS.longText }), language: str({ pattern: LANG, label: 'language name' }), filename: str({ max: 200 }) },
     required: ['code'],
   },
   review: {
     fields: {
       format: oneOf('markdown', 'code', 'app'),
-      content: str({ max: 200000 }),
-      previous: str({ max: 200000 }),
+      content: str({ max: LIMITS.longText }),
+      previous: str({ max: LIMITS.longText }),
       appId: id(),
       language: str({ pattern: LANG, label: 'language name' }),
       filename: str({ max: 200 }),
@@ -281,7 +282,10 @@ const SCHEMAS = {
     },
   },
   app: {
-    fields: { code: str({ min: 1, max: 600000 }), permissions: list(str({ min: 1, max: 64, pattern: /^[a-z][a-z0-9_.]*$/, label: 'tool name' }), { max: 12 }) },
+    fields: {
+      code: str({ min: 1, max: LIMITS.appCode }),
+      permissions: list(str({ min: 1, max: 64, pattern: /^[a-z][a-z0-9_.]*$/, label: 'tool name' }), { max: 12 }),
+    },
     required: ['code'],
   },
 };
