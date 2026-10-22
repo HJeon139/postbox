@@ -101,6 +101,14 @@ async function stream(t, se, text) {
     await sleep(15);
   }
   rt.patchItem(t.id, it.id, { status: 'done' });
+  const end = JSON.stringify(text.trim().slice(-24));
+  await page.waitFor(
+    `(() => { const n = document.querySelector('[data-key="${it.id}"]'); return n && !n.querySelector('.caret') && n.querySelector('.md')?.textContent.includes(${end}); })()`,
+    {
+      label: 'the streamed reply to finish on the page',
+    },
+  );
+  await settle();
   return it;
 }
 // An app that starts short and grows to 700 px a moment after it loads.
@@ -113,10 +121,21 @@ const growingApp = (id, title, after = 1500) => ({
 const frameHeight = (id) => page.evaluate(`Math.round(document.querySelector('[data-key="${id}"] iframe')?.getBoundingClientRect().height ?? 0)`);
 const appItem = (t, appId) => store.items(t.id).find((i) => i.kind === 'block' && i.block?.id === appId)?.id;
 
+// Every step waits for its change to reach the page (over the event stream), then for a frame, and only then
+// measures; nothing waits on the property it asserts, so a view that drifts fails rather than eventually passing.
+/** Waits for the item with this id to be on the page, and optionally for more about it. */
+const shown = (id, more = '') => page.waitFor(`document.querySelector('[data-key="${id}"]${more}')`, { label: `item ${id}${more}` });
+
+/** Opens a route, and waits for the view it builds (not the one it replaces) to settle. */
 async function open(hash) {
   if (await page.evaluate('location.origin === "null" || location.href === "about:blank"')) await page.goto(`${app.origin}/${hash}`);
-  else await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
-  await page.waitFor(`document.querySelector('.transcript .item')`, { label: 'the transcript' });
+  else {
+    await page.evaluate(`(() => { const a = document.querySelector('.app'); if (a) a.dataset.old = '1'; location.hash = ${JSON.stringify(hash)}; })()`);
+    await page.waitFor(`document.querySelector('.app') && !document.querySelector('.app').dataset.old`, { label: `the view for ${hash}` });
+  }
+  const [, thread, side] = hash.match(/#\/t\/([^/]+)(?:\/side\/(.+))?/) ?? [];
+  if (thread) await page.waitFor(`document.querySelector('.transcript[data-thread="${thread}"] .item')`, { label: 'the transcript' });
+  if (side) await page.waitFor(`document.querySelector('.sidepanel .transcript[data-thread="${side}"]')`, { label: 'the panel’s transcript' });
   await settle(400);
 }
 
@@ -130,14 +149,16 @@ await check('#88 at the bottom: streaming, a patch, a new item and the working r
   await open(`#/t/${t.id}`);
   assert.ok((await gap()) <= 2, `opens at the bottom (gap ${await gap()})`);
   await stream(t, researcher, `${LONG(90)} ${LONG(91)} ${LONG(92)}`);
-  await settle();
   assert.ok((await gap()) <= 2, `after streaming (gap ${await gap()})`);
   const last = store.items(t.id).at(-1);
   rt.patchItem(t.id, last.id, { activity: { steps: [{ id: 's1', label: 'grep observation', state: 'done', ms: 400 }] } });
   rt.patchItem(t.id, last.id, { sources: [{ title: 'ReAct', authors: 'Yao, Zhao', year: 2023, url: 'https://arxiv.org/abs/2210.03629' }] });
+  await shown(last.id, ' .activity');
+  await shown(last.id, ' .sources');
   await settle();
   assert.ok((await gap()) <= 2, `after an item patch grew the reply (gap ${await gap()})`);
   rt.updateSession(critic.id, { state: 'tool', currentStep: 'Searched the web for ReAct ablations', glimpse: 'Checking whether the ablation holds.' });
+  await page.waitFor(`document.querySelector('.working .work-row')`, { label: 'the working row' });
   await settle();
   assert.ok((await gap()) <= 2, `after the working row appeared (gap ${await gap()})`);
   rt.updateSession(critic.id, { state: 'idle', currentStep: '', glimpse: '' });
@@ -178,13 +199,14 @@ await check('#88 at the bottom: opening and closing the thread panel leaves the 
   for (let i = 0; i < 12; i++) rt.addItem(threadId, { kind: 'user', text: LONG(200 + i) });
   await open(`#/t/${t.id}/side/${threadId}`);
   await page.waitFor(q('.sidepanel'), { label: 'the panel' });
-  // The app frame is rebuilt and grows again after the column narrows.
-  await sleep(1500);
+  // The app frame is rebuilt, starts at 200 px and grows again in the narrower column.
+  const grown = `document.querySelector('[data-key="${appItem(t, 'explainer')}"] iframe')?.getBoundingClientRect().height >= 690`;
+  await page.waitFor(grown, { label: 'the rebuilt app to grow' });
   await settle();
   assert.ok((await gap()) <= 2, `conversation, with the panel open (gap ${await gap()})`);
   assert.ok((await panelGap()) <= 2, `the panel itself (gap ${await panelGap()})`);
   await open(`#/t/${t.id}`);
-  await sleep(1500);
+  await page.waitFor(grown, { label: 'the app to grow again' });
   await settle();
   assert.ok((await gap()) <= 2, `after closing the panel (gap ${await gap()})`);
 });
@@ -193,9 +215,11 @@ await check('#88 at the bottom: a window resize leaves the view at the bottom', 
   const { t } = room('Resize at the bottom');
   await open(`#/t/${t.id}`);
   await page.size(1000, 700, { theme: 'light' });
+  await page.waitFor('innerWidth === 1000 && innerHeight === 700', { label: 'the new size' });
   await settle(400);
   assert.ok((await gap()) <= 2, `narrower and shorter (gap ${await gap()})`);
   await page.size(1280, 900, { theme: 'light' });
+  await page.waitFor('innerWidth === 1280', { label: 'the size back' });
   await settle(400);
   assert.ok((await gap()) <= 2, `back to 1280 (gap ${await gap()})`);
 });
@@ -219,14 +243,14 @@ await check('#88 scrolled up: streaming, patches, new items, an app growing abov
   // Within a pixel: scroll positions round to whole pixels.
   const still = async (what) => assert.ok(Math.abs((await topOf(at.key)) - at.top) <= 1, `${what} moved the message you were reading`);
   await stream(t, researcher, `${LONG(400)} ${LONG(401)}`);
-  await settle();
   await still('streaming');
-  rt.addItem(t.id, { kind: 'user', text: 'A new question below.' });
+  await shown(rt.addItem(t.id, { kind: 'user', text: 'A new question below.' }).id);
   await settle();
   await still('a new item');
   // A message above the one you’re reading grows (a patch re-renders it).
   const above = store.items(t.id).filter((i) => i.kind === 'agent')[2];
   rt.patchItem(t.id, above.id, { text: `${above.text}\n\n${LONG(500)}\n\n${LONG(501)}` });
+  await page.waitFor(`document.querySelector('[data-key="${above.id}"]')?.textContent.includes('Message 501')`, { label: 'the patch above' });
   await settle();
   await still('a patch above');
   // The app above the view grows to 700 px. Chrome holds back rendering in a cross-origin frame that’s off
@@ -236,18 +260,21 @@ await check('#88 scrolled up: streaming, patches, new items, an app growing abov
   await settle();
   await still('the app above growing');
   await page.size(1100, 900, { theme: 'light' });
+  await page.waitFor('innerWidth === 1100', { label: 'the new size' });
   await settle(400);
   const moved = Math.abs((await topOf(at.key)) - at.top);
   await page.size(1280, 900, { theme: 'light' });
+  await page.waitFor('innerWidth === 1280', { label: 'the size back' });
   await settle(400);
   assert.ok(moved <= 1, `a resize moved it by ${moved} px`);
   // Opening the panel rebuilds the view around the conversation: you stay on the same message.
   const root = store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, root.id);
+  // The root message’s Reply in thread becomes its Thread link first; measure once that’s on the page.
+  await shown(root.id, ' .replies');
+  await settle();
   const before = await topOf(at.key);
   await open(`#/t/${t.id}/side/${threadId}`);
-  await page.waitFor(q('.sidepanel'), { label: 'the panel' });
-  await settle(400);
   assert.ok(Math.abs((await topOf(at.key)) - before) <= 1, `opening the panel moved it from ${before} to ${await topOf(at.key)}`);
   assert.ok((await gap()) > 200, 'still scrolled up with the panel open');
 });
@@ -260,7 +287,8 @@ await check('#91 the pill counts what arrives while you’re scrolled up, and go
   const pill = `(() => { const j = ${q('.jump')}; return j && !j.hidden ? j.textContent : ''; })()`;
   assert.equal(await page.evaluate(pill), '', 'no pill at the bottom');
   await wheel(-600);
-  for (let i = 0; i < 3; i++) rt.addItem(t.id, { kind: 'user', text: `Arrived while you read ${i}` });
+  const arrived = [0, 1, 2].map((i) => rt.addItem(t.id, { kind: 'user', text: `Arrived while you read ${i}` }));
+  await shown(arrived[2].id);
   await settle();
   assert.match(await page.evaluate(pill), /Jump to latest · 3 new/);
   // Down by hand, with the wheel, never touching the pill. (Keys scroll the same way, but Chrome animates a
@@ -268,12 +296,12 @@ await check('#91 the pill counts what arrives while you’re scrolled up, and go
   for (let i = 0; i < 6; i++) await wheel(400);
   assert.ok((await gap()) <= 2, `at the bottom (gap ${await gap()})`);
   assert.equal(await page.evaluate(pill), '', 'the pill goes, and its count with it');
-  rt.addItem(t.id, { kind: 'user', text: 'Arrived at the bottom' });
+  await shown(rt.addItem(t.id, { kind: 'user', text: 'Arrived at the bottom' }).id);
   await settle();
   assert.equal(await page.evaluate(pill), '', 'nothing is unread below');
   assert.ok((await gap()) <= 2, 'and the view followed it');
   await wheel(-600);
-  rt.addItem(t.id, { kind: 'user', text: 'One more while you read' });
+  await shown(rt.addItem(t.id, { kind: 'user', text: 'One more while you read' }).id);
   await settle();
   assert.match(await page.evaluate(pill), /1 new/);
   // The pill is part of the composer, above its box, so it covers nothing the composer doesn’t.
