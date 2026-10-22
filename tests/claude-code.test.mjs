@@ -17,7 +17,7 @@ const fixture = (name) =>
 
 /** A turn context that records what the adapter did. */
 function fakeCtx(over = {}) {
-  const calls = { text: '', activity: [], status: [], compaction: [], saved: {} };
+  const calls = { text: '', activity: [], status: [], compaction: [], denied: [], saved: {} };
   const abort = new AbortController();
   const ctx = {
     calls,
@@ -36,6 +36,7 @@ function fakeCtx(over = {}) {
     activity: (a) => calls.activity.push(a),
     status: (s) => calls.status.push(s),
     compaction: (c) => calls.compaction.push(c),
+    denied: (d) => calls.denied.push(d),
     ...over,
   };
   return ctx;
@@ -452,4 +453,92 @@ test('fork points: a checkpoint, else the latest point of the session it forks',
     fork: { sdkSessionId: 'conv', uuid: 'm1' },
   });
   assert.deepEqual([o.resume, o.forkSession, o.resumeSessionAt, o.sessionId], ['conv', true, 'm1', undefined]);
+});
+
+test('recorded refusals (a deny rule and the mode), for the agent and its subagent, each become one refusal', () => {
+  const { ctx } = replay('denials');
+  const d = ctx.calls.denied;
+  assert.deepEqual(
+    d.map((x) => [x.tool, x.who, x.reasonType]),
+    [
+      ['Bash', null, 'subcommandResults'],
+      ['WebFetch', null, 'mode'],
+      ['Bash', 'general-purpose', 'subcommandResults'],
+      ['WebFetch', 'general-purpose', 'mode'],
+    ],
+  );
+  assert.equal(d[0].input.command, 'rm copy.txt');
+  assert.equal(d[0].label, 'Delete copy.txt');
+  assert.match(d[1].reason, /don't ask mode\.$/, 'only the first sentence of the reason');
+  // Each refused step is marked refused in the list, and the subagent’s steps are there under its name.
+  const last = new Map(ctx.calls.activity.map((s) => [s.id, s]));
+  const refused = [...last.values()].filter((s) => s.state === 'denied');
+  assert.equal(refused.length, 4);
+  assert.ok(refused.some((s) => s.who === 'general-purpose' && /copy\.txt/.test(s.label)));
+});
+
+test('a call you declined on a permission card isn’t reported again as a refusal', () => {
+  const { ctx } = replay('permission-deny');
+  assert.equal(ctx.calls.denied.length, 0, 'the result lists it, but the tool’s error is Postbox’s own answer');
+  assert.equal(ctx.calls.activity.at(-1).state, 'failed');
+});
+
+test('summarized thinking shows as a glimpse while it streams, and each thought is a step', () => {
+  let t = 0;
+  const ctx = fakeCtx();
+  const m = createStreamMapper(ctx, { now: () => (t += 1000) });
+  for (const e of fixture('thinking-subagent')) m.push(e);
+  const glimpses = ctx.calls.status.map((s) => s.glimpse).filter(Boolean);
+  assert.ok(
+    glimpses.some((g) => /9\.9 is greater than 9\.11/.test(g)),
+    JSON.stringify(glimpses),
+  );
+  const thoughts = ctx.calls.activity.filter((s) => s.kind === 'thought');
+  assert.equal(thoughts.length, 1);
+  assert.match(thoughts[0].label, /^9\.9 is greater than 9\.11/);
+  // The subagent’s thinking moves its ring’s “doing” line, and its text never joins the reply.
+  assert.ok(ctx.calls.status.some((s) => s.subagents?.some((x) => /straightforward/.test(x.doing))));
+  assert.doesNotMatch(ctx.calls.text, /straightforward question/);
+});
+
+test('real agents get readable thinking, subagent messages, and rules allowed once', () => {
+  const args = claudeArgs({ persona: { model: 'mock' }, sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g', allowOnce: ['Bash(rm copy.txt)'] });
+  assert.deepEqual(args.slice(args.indexOf('--thinking-display'), args.indexOf('--thinking-display') + 2), ['--thinking-display', 'summarized']);
+  assert.ok(args.includes('--forward-subagent-text'));
+  const allowed = args.indexOf('--allowedTools');
+  assert.deepEqual(args.slice(allowed, allowed + 3), ['--allowedTools', 'mcp__postbox', 'Bash(rm copy.txt)']);
+  const opts = sdkOptions({
+    persona: { model: 'mock' },
+    cwd: '/w',
+    sessionId: 's',
+    resume: false,
+    mcpUrl: 'u',
+    guide: 'g',
+    abortController: new AbortController(),
+    allowOnce: ['WebFetch(domain:example.com)'],
+  });
+  assert.deepEqual(opts.allowedTools, ['WebFetch(domain:example.com)']);
+  assert.deepEqual(opts.thinking, { type: 'adaptive', display: 'summarized' });
+  assert.equal(opts.forwardSubagentText, true);
+});
+
+test('a refusal only the result lists (a deny rule in settings) takes its reason from the tool’s error', () => {
+  const ctx = fakeCtx();
+  const m = createStreamMapper(ctx, { now: () => 1000 });
+  m.push({
+    type: 'assistant',
+    parent_tool_use_id: null,
+    message: { id: 'm1', content: [{ type: 'tool_use', id: 'tu', name: 'Bash', input: { command: 'rm a.txt', description: 'Delete a.txt' } }] },
+  });
+  const error = 'Permission to use Bash with command rm a.txt has been denied.';
+  m.push({ type: 'user', parent_tool_use_id: null, message: { content: [{ type: 'tool_result', tool_use_id: 'tu', is_error: true, content: error }] } });
+  m.push({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    permission_denials: [{ tool_name: 'Bash', tool_use_id: 'tu', tool_input: { command: 'rm a.txt' } }],
+  });
+  assert.equal(ctx.calls.denied.length, 1);
+  assert.equal(ctx.calls.denied[0].reason, error);
+  assert.equal(ctx.calls.activity.at(-1).state, 'denied');
 });

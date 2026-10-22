@@ -38,6 +38,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Your message](conversation/transcript/user-message.md)
     - [Agent reply](conversation/transcript/agent-reply.md)
     - [Activity line](conversation/transcript/activity-line.md)
+    - [Working row](conversation/transcript/working-row.md)
     - [Citations and sources](conversation/transcript/citations.md)
     - [Glossary terms](conversation/transcript/glossary-terms.md)
     - [Mermaid diagram](conversation/transcript/mermaid-diagram.md)
@@ -59,6 +60,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Invalid block fallback](conversation/blocks/invalid-block.md)
   - **harness-cards/**
     - [Permission card](conversation/harness-cards/permission-card.md)
+    - [Refusal card](conversation/harness-cards/refusal-card.md)
     - [Wake-limit confirm](conversation/harness-cards/hop-confirm.md)
     - [New teammate proposal](conversation/harness-cards/proposal-card.md)
   - **agent-apps/**

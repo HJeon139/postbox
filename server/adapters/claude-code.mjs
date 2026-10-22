@@ -3,9 +3,10 @@
 // token: the CLI uses your own sign-in.
 //
 //   claude -p --output-format stream-json --include-partial-messages --verbose
+//          --thinking-display summarized --forward-subagent-text
 //          --model <persona model>  --session-id <uuid> | --resume <uuid>
 //          --mcp-config '{ postbox: { type: http, url: <ctx.mcpUrl>, alwaysLoad } }' --strict-mcp-config
-//          --append-system-prompt <guide>  --allowedTools mcp__postbox
+//          --append-system-prompt <guide>  --allowedTools mcp__postbox [rules allowed once after a refusal]
 //          --permission-mode auto | manual | acceptEdits | bypassPermissions
 //          --permission-prompt-tool mcp__postbox__permission_prompt   (all but bypass: what auto can’t decide comes here)
 //
@@ -59,9 +60,9 @@ export function claudeVersion(bin = findClaude()) {
 /** The CLI arguments for one turn. Pure, so the tests can check them. */
 /**
  * @param {{ persona: any, sessionId: string, resume: boolean, mcpUrl: string, guide: string, addDirs?: string[],
- *           fork?: { claudeSessionId: string, uuid?: string }|null }} turn
+ *           fork?: { claudeSessionId: string, uuid?: string }|null, allowOnce?: string[] }} turn
  */
-export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs = [], fork = null }) {
+export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs = [], fork = null, allowOnce = [] }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   return [
     '-p',
@@ -69,6 +70,10 @@ export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs 
     'stream-json',
     '--include-partial-messages',
     '--verbose',
+    // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
+    '--thinking-display',
+    'summarized',
+    '--forward-subagent-text',
     '--model',
     persona.model && persona.model !== 'mock' ? persona.model : DEFAULT_MODEL,
     // A topic thread’s first turn forks the conversation’s session at the message it branched from.
@@ -86,6 +91,8 @@ export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs 
     // Postbox’s own tools never need asking: they only show things in the thread.
     '--allowedTools',
     'mcp__postbox',
+    // Rules the person allowed once, after a refusal, for this turn only.
+    ...allowOnce,
     ...MODES[mode],
     ...addDirs.flatMap((d) => ['--add-dir', d]),
     ...(mode === 'bypass' ? [] : ['--permission-prompt-tool', 'mcp__postbox__permission_prompt']),
@@ -142,7 +149,7 @@ export class ClaudeCodeAdapter {
   /** @param {{ ctx: any, cwd: string, addDirs?: string[], prompt: string, guide: string, resume: boolean, sessionId: string|null, fork?: any }} turn */
   run({ ctx, cwd, addDirs = [], prompt, guide, resume, sessionId, fork = null }) {
     const id = sessionId ?? randomUUID();
-    const args = claudeArgs({ persona: ctx.persona, sessionId: id, resume, mcpUrl: ctx.mcpUrl, guide, addDirs, fork });
+    const args = claudeArgs({ persona: ctx.persona, sessionId: id, resume, mcpUrl: ctx.mcpUrl, guide, addDirs, fork, allowOnce: ctx.allowOnce ?? [] });
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model) });
     // A fork gets its own id from Claude Code, saved when the init event arrives.
     if (!resume && !fork) ctx.saveState({ claudeSessionId: id });

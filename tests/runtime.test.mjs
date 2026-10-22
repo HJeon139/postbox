@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { handleMcp } from '../server/mcp.mjs';
@@ -10,6 +13,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** An adapter whose replies the test scripts per call. */
 class ScriptedAdapter {
   name = 'mock';
+  folder = null; // set by a test that saves permission rules
+  async folderFor() {
+    return this.folder;
+  }
   constructor() {
     this.calls = [];
     this.next = [];
@@ -680,4 +687,79 @@ test('a proposal’s fields are stored as text, whatever JSON the agent sends', 
   const p = store.items(t.id).find((i) => i.kind === 'proposal').proposal;
   assert.equal(typeof p.description, 'string');
   assert.deepEqual(p.tools, ['shell']);
+});
+
+test('a refusal becomes a card; the agent needs you until you answer it', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.denied({
+      toolUseId: 'tu1',
+      tool: 'Bash',
+      input: { command: 'rm copy.txt' },
+      label: 'Delete copy.txt',
+      reason: 'Denied by a rule.',
+      reasonType: 'rule',
+      who: null,
+    });
+    c.denied({ toolUseId: 'tu1', tool: 'Bash', input: { command: 'rm copy.txt' }, label: 'Delete copy.txt' });
+    c.text('I couldn’t delete it.');
+  });
+  rt.sendMessage(t.id, { text: 'clean up' });
+  await settle(rt);
+  const cards = store.items(t.id).filter((i) => i.kind === 'denial');
+  assert.equal(cards.length, 1, 'once per tool call');
+  assert.equal(cards[0].rules.once, 'Bash(rm copy.txt)');
+  const se = rt.sessionsIn(t.id)[0];
+  assert.equal(store.state.sessions[se.id].state, 'needs');
+  assert.equal(store.state.sessions[se.id].needs.kind, 'denial');
+});
+
+test('Allow once lets the next turn run the exact call, tells the agent, and clears needs-you', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.denied({ toolUseId: 'tu1', tool: 'Bash', input: { command: 'rm copy.txt' }, label: 'Delete copy.txt' }));
+  rt.sendMessage(t.id, { text: 'clean up' });
+  await settle(rt);
+  const card = store.items(t.id).find((i) => i.kind === 'denial');
+  let seen = null;
+  adapter.next.push(async (c, msg) => {
+    seen = { allowOnce: c.allowOnce, text: msg.text };
+  });
+  await rt.act(t.id, card.id, 'once');
+  await settle(rt);
+  assert.deepEqual(seen.allowOnce, ['Bash(rm copy.txt)']);
+  assert.match(seen.text, /next turn only/);
+  assert.equal(store.item(t.id, card.id).status, 'allowed-once');
+  const se = rt.sessionsIn(t.id)[0];
+  assert.deepEqual(store.state.sessions[se.id].allowOnce, [], 'only that one turn');
+  await assert.rejects(rt.act(t.id, card.id, 'once'), /already answered/);
+});
+
+test('Always allow saves the rule in the agent’s folder, where Claude Code reads it', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.folder = await mkdtemp(join(tmpdir(), 'pb-always-'));
+  adapter.next.push(async (c) =>
+    c.denied({ toolUseId: 'tu2', tool: 'WebFetch', input: { url: 'https://example.com' }, label: 'Fetched example.com', who: 'general-purpose' }),
+  );
+  rt.sendMessage(t.id, { text: 'look it up' });
+  await settle(rt);
+  const card = store.items(t.id).find((i) => i.kind === 'denial');
+  await rt.act(t.id, card.id, 'always');
+  await settle(rt);
+  const saved = JSON.parse(await readFile(join(adapter.folder, '.claude', 'settings.local.json'), 'utf8'));
+  assert.deepEqual(saved.permissions.allow, ['WebFetch(domain:example.com)']);
+  assert.match(store.items(t.id).find((i) => i.kind === 'voice').text, /Always allowed fetching pages from example\.com/);
+});
+
+test('a call you answered on a permission card never gets a refusal card too', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    const asked = c.askPermission({ tool: 'Bash', summary: 'run rm', detail: 'rm x', toolUseId: 'tu3' });
+    const card = store.items(t.id).find((i) => i.kind === 'permission');
+    await rt.act(t.id, card.id, 'deny');
+    await asked;
+    c.denied({ toolUseId: 'tu3', tool: 'Bash', input: { command: 'rm x' }, label: 'rm x' });
+  });
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'denial').length, 0);
 });

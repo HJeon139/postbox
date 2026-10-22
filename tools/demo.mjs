@@ -253,6 +253,18 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await call(`/api/threads/${cache.id}/items/${ask.id}/act`, { action: 'allow' });
   await settled(cache);
 
+  // 10b · A refusal: Claude Code turns down a subagent’s command without asking; you allow it once
+  const tidy = await call('/api/threads', { projectId: index.projectId, title: 'Tidy the workspace', personaIds: [ix.personaId] });
+  log('A subagent’s command is refused by a permission rule; you allow it once from the card, and the agent retries.');
+  await view(`#/t/${tidy.id}`);
+  await send(tidy, 'Tidy up the scratch folder');
+  const refusal = await until((st) => c.idle(st, st.threads[tidy.id]) && find(st, tidy, (i) => i.kind === 'denial' && i.status === 'open'), {
+    label: 'the refusal card',
+  });
+  await shot('15b-refusal');
+  await call(`/api/threads/${tidy.id}/items/${refusal.id}/act`, { action: 'once' });
+  await settled(tidy);
+
   // 11 · A dashboard that fails its check at phone width, gets fixed, then shows
   const dash = await call('/api/threads', { projectId: index.projectId, title: 'Corpus dashboard', personaIds: [ix.personaId] });
   log('@indexer writes a dashboard; the check finds it too wide for a phone; @indexer fixes it.');

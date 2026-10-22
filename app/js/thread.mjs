@@ -31,6 +31,24 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const pending = new Set();
   let raf = 0;
   let unseen = 0;
+  // At the end of the transcript, one row per agent that’s thinking or calling tools: what it’s on right now,
+  // and a glimpse of its thinking. It goes while the agent writes, since the reply itself shows then.
+  const working = h('div.working', { 'aria-hidden': 'true' });
+  const paintWorking = () => {
+    const busy = sessionsOf(threadId).filter((se) => !se.archived && (se.state === 'think' || se.state === 'tool'));
+    syncList(
+      working,
+      busy,
+      (se) => se.id,
+      (se) => {
+        const row = h('div.work-row', ringFor(se, 'xs'), h('div.work-text'));
+        fillWorkRow(row, se);
+        return row;
+      },
+      (row, se) => fillWorkRow(row, se),
+    );
+    el.append(working); // keep it last
+  };
 
   const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0]);
   const render = (it, prev) => {
@@ -68,6 +86,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       nodes.set(it.id, n);
       el.append(n);
     });
+    paintWorking();
   };
   all();
 
@@ -109,6 +128,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const n = render(d.item, list[list.length - 2]);
       nodes.set(d.item.id, n);
       el.append(n);
+      paintWorking();
       grew(near);
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
       rerender(d.id);
@@ -128,6 +148,12 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       el.querySelectorAll(`pb-ring[data-session="${CSS.escape(d.id)}"]`).forEach((r) => {
         ringFor(d, r.getAttribute('size'), r);
       });
+      if (d.threadId === threadId) {
+        const near = nearBottom();
+        const had = working.childElementCount;
+        paintWorking();
+        if (near && working.childElementCount !== had) requestAnimationFrame(() => scrollToEnd());
+      }
     } else if (ch.type === 'app') {
       for (const it of itemsOf(threadId))
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
@@ -174,6 +200,16 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     },
     destroy: off,
   };
+}
+
+function fillWorkRow(row, se) {
+  ringFor(se, 'xs', row.querySelector('pb-ring'));
+  const step = se.state === 'tool' && se.currentStep ? `: ${se.currentStep}` : '';
+  fill(
+    row.querySelector('.work-text'),
+    h('div', h('b', `@${se.handle}`), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
+    se.glimpse ? h('div.glimpse', se.glimpse) : null,
+  );
 }
 
 function agentMarkdown(it, threadId) {
@@ -297,17 +333,7 @@ function renderItem(it, prev, ctx) {
                 total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s` : '',
                 running ? ' · running' : '',
               ),
-              h(
-                'ul.steps',
-                steps.map((s) =>
-                  h(
-                    'li',
-                    h(`span.g.g-${s.state === 'running' ? 'running' : s.state === 'failed' ? 'failed' : 'done'}`, { role: 'img', 'aria-label': s.state }),
-                    h('span.mono', s.label),
-                    h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : ''),
-                  ),
-                ),
-              ),
+              h('ul.steps', steps.map(stepRow)),
             )
           : null,
         it.text || it.status === 'streaming' ? h('div.md') : null,
@@ -414,6 +440,8 @@ function renderItem(it, prev, ctx) {
       return hopBlock(it, ctx);
     case 'permission':
       return permissionBlock(it, ctx);
+    case 'denial':
+      return denialBlock(it, ctx);
     case 'proposal':
       return proposalBlock(it, ctx, showWho);
     default:
@@ -426,12 +454,40 @@ function failureText(msg = 'This reply didn’t finish.') {
   return m ? [h('b', m[1]), ' ', m[2]] : [h('b', msg)];
 }
 
-function activityLabel(steps) {
+function activityLabel(all) {
+  const steps = all.filter((s) => s.kind !== 'thought');
+  const thoughts = all.length - steps.length;
+  const refused = steps.filter((s) => s.state === 'denied').length;
   const reads = steps.filter((s) => /^(read|grep|arxiv\.fetch|corpus\.read)/.test(s.label)).length;
-  const verb = reads === steps.length ? (steps.some((s) => s.label.startsWith('grep')) ? 'Searched' : 'Read') : 'Used';
-  return reads === steps.length
-    ? `${verb} ${plural(steps.length, steps.some((s) => s.label.startsWith('arxiv')) ? 'paper' : 'file')}`
-    : `Used ${plural(steps.length, 'tool')}`;
+  const verb = steps.some((s) => s.label.startsWith('grep')) ? 'Searched' : 'Read';
+  const used = !steps.length
+    ? null
+    : reads === steps.length
+      ? `${verb} ${plural(steps.length, steps.some((s) => s.label.startsWith('arxiv')) ? 'paper' : 'file')}`
+      : `Used ${plural(steps.length, 'tool')}`;
+  return [used, thoughts ? plural(thoughts, 'thought') : null, refused ? `${refused} refused` : null].filter(Boolean).join(' · ');
+}
+
+// One step in an agent’s activity list: a tool call (the agent’s or a subagent’s), or a thought, which opens
+// to its whole text. A failed step says why; a refused one points to its card.
+const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done' };
+function stepRow(s) {
+  const dur = h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : '');
+  if (s.kind === 'thought')
+    return h(
+      'li.thought',
+      h('span.g.g-thought', { role: 'img', 'aria-label': 'thought' }),
+      h('details.step-text', h('summary', s.label), s.detail && s.detail !== s.label ? h('p', s.detail) : null),
+      dur,
+    );
+  const note = s.state === 'denied' ? 'Refused: see the card below.' : s.state === 'failed' ? s.detail : null;
+  return h(
+    'li',
+    { class: s.state === 'denied' ? 'denied' : '' },
+    h(`span.g.g-${GLYPH[s.state] ?? 'done'}`, { role: 'img', 'aria-label': s.state === 'denied' ? 'refused' : s.state }),
+    h('span.step-text', s.who ? h('span.step-who', `${s.who} ·`) : null, h('span.mono', s.label), note ? h('span.step-note', note) : null),
+    dur,
+  );
 }
 
 function attChip(a) {
@@ -596,6 +652,63 @@ function permissionBlock(it, ctx) {
           h('button.btn', { type: 'button', onclick: () => act('allow') }, 'Allow'),
           h('button.btn', { type: 'button', onclick: () => act('deny') }, 'Don’t allow'),
           h('span.small.dim', `@${it.handle} is waiting for you.`),
+        )
+      : null,
+  );
+}
+
+// Claude Code refused a call without asking you (auto mode’s check, a rule, or the mode). Unlike a permission
+// card nothing is waiting: Allow once or Always allow tells the agent to try again.
+const DENIAL_DONE = {
+  'allowed-once': 'Allowed once. The agent is trying again.',
+  'allowed-always': 'Always allowed. The agent is trying again.',
+  left: 'Left refused.',
+};
+const DENIAL_WHY = {
+  classifier: 'auto mode’s safety check',
+  rule: 'a permission rule',
+  subcommandResults: 'a permission rule',
+  mode: 'the permission mode',
+  asyncAgent: 'a background subagent can’t ask you',
+};
+function denialBlock(it, ctx) {
+  const open = it.status === 'open';
+  const act = (action) =>
+    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
+      .then(focusComposer)
+      .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
+  const titleId = `dn-${it.id}`;
+  const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
+  return h(
+    'div.col.block',
+    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
+    h(
+      'div.block-head',
+      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
+      h('span.title.grow', { id: titleId }, `Refused: ${by} tried to ${it.summary.charAt(0).toLowerCase()}${it.summary.slice(1)}`),
+      h('span.kind', `Refused · ${it.tool}`),
+    ),
+    h(
+      'div.block-body',
+      it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
+      it.reason || DENIAL_WHY[it.reasonType]
+        ? h('p.small', h('b', 'Why: '), it.reason || '', DENIAL_WHY[it.reasonType] ? ` (${DENIAL_WHY[it.reasonType]})` : '')
+        : null,
+      open
+        ? h(
+            'p.small.dim',
+            'Always allow adds ',
+            h('code', it.rules.always),
+            ' to .claude/settings.local.json in the agent’s folder, so your terminal sessions follow it too. A deny rule in your Claude Code settings still wins.',
+          )
+        : h('span.answered-note', icon(it.status === 'left' ? 'x' : 'check', 'i-sm'), DENIAL_DONE[it.status] ?? it.status),
+    ),
+    open
+      ? h(
+          'div.block-foot',
+          h('button.btn', { type: 'button', onclick: () => act('once') }, 'Allow once and retry'),
+          h('button.btn', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`),
+          h('button.btn.ghost', { type: 'button', onclick: () => act('leave') }, 'Leave it'),
         )
       : null,
   );

@@ -28,6 +28,8 @@ const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
 /** Captures taken during the demo, at the moment a scene is on screen: [scene, name, finder, prepare?]. */
 const DURING = [
   ['15-permission', 'permission-card', item('Let @indexer run a command')],
+  ['15b-refusal', 'refusal-card', item('Refused: @indexer’s subagent')],
+  ['15b-refusal', 'activity-steps', `[...document.querySelectorAll('.transcript details.activity')].at(-1)?.closest('.item')`, 'open-activity-last'],
   ['10-plus-menu', 'plus-menu', q('.menu'), 'plus'],
   ['10-plus-menu', 'proposal-card', item('New teammate')],
   ['09-errors', 'failed-reply', `[...document.querySelectorAll('.transcript > .item')].find((n) => n.querySelector('.callout[role=alert]'))`],
@@ -124,6 +126,7 @@ const PREPARE = {
   'session-menu': `[...document.querySelectorAll('.ov-col')][0].querySelector('[aria-haspopup="menu"]').click()`,
   mention: `(() => { const t = document.getElementById('composer-input'); t.focus(); t.value = '@'; t.setSelectionRange(1, 1); t.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   'open-activity': `document.querySelector('.transcript details.activity')?.setAttribute('open', '')`,
+  'open-activity-last': `(() => { const d = [...document.querySelectorAll('.transcript details.activity')].at(-1); d?.setAttribute('open', ''); d?.querySelector('li.thought details')?.setAttribute('open', ''); })()`,
   cite: `(() => { const c = document.querySelector('.cite'); c.scrollIntoView({ block: 'center' }); c.focus(); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`,
   'app-versions': `document.querySelector('.appframe [aria-haspopup="menu"]')?.click()`,
   'new-agent': `(() => { document.querySelector('[aria-label="Add a file or a new agent"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From a boilerplate')).click(); })()`,

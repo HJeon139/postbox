@@ -177,9 +177,9 @@ async function one(rt, sessionId, msg) {
  * Asks the person whether a tool may run, and answers in the shape Claude Code expects from a
  * permission prompt tool: { behavior: "allow", updatedInput } or { behavior: "deny", message }.
  */
-async function permission(rt, sessionId, { tool_name, input = {} }) {
+async function permission(rt, sessionId, { tool_name, input = {}, tool_use_id }) {
   const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
-  const answer = await rt.requestPermission(sessionId, { tool: String(tool_name ?? ''), summary, detail });
+  const answer = await rt.requestPermission(sessionId, { tool: String(tool_name ?? ''), summary, detail, toolUseId: tool_use_id });
   const decision = answer.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
   return { content: [{ type: 'text', text: JSON.stringify(decision) }] };
 }

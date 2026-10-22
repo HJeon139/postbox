@@ -189,6 +189,7 @@ pre { max-width: 100%; }
 .g-failed { color: var(--alert); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6'/><path d='M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8' stroke='black' stroke-width='1.6' stroke-linecap='round'/></svg>"); }
 .g-done { color: var(--good); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6'/><path d='M5 8.3l2 2 4-4.3' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>"); }
 .g-pending { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='none' stroke='black' stroke-width='1.4' stroke-dasharray='2.4 2'/></svg>"); }
+.g-thought { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='4' cy='8' r='1.5'/><circle cx='8' cy='8' r='1.5'/><circle cx='12' cy='8' r='1.5'/></svg>"); }
 .g-running { color: var(--accent); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6' opacity='.35'/><path d='M8 1.8a6.2 6.2 0 0 1 6.2 6.2' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'/></svg>"); }
 .st-think { color: var(--st-think); } .st-gen { color: var(--st-gen); } .st-tool { color: var(--st-tool); }
 .st-idle { color: var(--st-idle); } .st-needs { color: var(--accent); } .st-failed { color: var(--alert-ink); }
@@ -333,6 +334,23 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .steps li { display: flex; align-items: center; gap: 8px; }
 .steps li .mono { color: var(--text); font-size: 12px; }
 .steps li .dur { margin-left: auto; padding-left: 12px; }
+.steps li { align-items: flex-start; }
+.steps li > .g { margin-top: 2px; flex: none; }
+.steps .step-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; min-width: 0; }
+.steps .step-who { color: var(--dim); }
+.steps .step-note { flex-basis: 100%; color: var(--dim); }
+.steps li.denied .step-note { color: var(--alert); }
+.steps li.thought details > summary { cursor: pointer; color: var(--dim); font-style: italic; }
+.steps li.thought details > p { margin: 4px 0 0; color: var(--dim); white-space: pre-wrap; }
+/* While an agent works: one line of what it’s thinking or writing (the working row, the overview card). */
+.glimpse { font-size: 12px; color: var(--dim); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.glimpse:empty { display: none; }
+.working { display: flex; flex-direction: column; gap: 6px; }
+.working:empty { display: none; }
+.work-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--dim); }
+.work-row pb-ring { margin-top: 1px; }
+.work-row b { color: var(--text); font-weight: 600; font-size: 13px; }
+.work-text { min-width: 0; flex: 1; }
 
 /* Citations and terms */
 .cite { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; margin: 0 1px; vertical-align: 1px; font-size: 10.5px; font-weight: 600;
