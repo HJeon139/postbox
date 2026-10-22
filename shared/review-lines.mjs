@@ -134,9 +134,11 @@ function tableGroup(rows, sep, depth) {
   return { type: 'table', depth, source, units: shown.map(rowUnit), hidden, rows };
 }
 
-// One unit per item line, in the order the items render; blank and continuation lines belong to the
-// item above them. In a diff, an item whose continuation lines changed shows its new text, marked as
-// changed, and the old lines are hidden.
+// One unit per item, in the order the items render (li in document order); blank and continuation lines
+// belong to the item above them. An item is a list-item line, or one inside a quote in an item, but
+// nothing inside a fence in an item. In a diff, an item whose continuation lines changed shows its new
+// text, marked as changed, with the old lines hidden; a current line that follows a removed item moves
+// to the item above that, so it stays commentable. The source is the units' rows in order.
 /**
  * @param {Row[]} rows
  * @param {number} depth
@@ -147,13 +149,24 @@ function listGroup(rows, depth) {
   const units = [];
   /** @type {Row[]} */
   const hidden = [];
+  /** @type {string | null} */
+  let fence = null;
   for (const r of rows) {
-    const item = LIST_ITEM.test(r.t);
-    const unit = units.at(-1);
-    if (item || !unit) {
+    const t = r.t.trimStart();
+    let item = !units.length;
+    if (fence) {
+      if (closesFence(fence, t)) fence = null;
+    } else {
+      const opens = t.match(FENCE);
+      if (opens && units.length) fence = opens[1];
+      else item ||= LIST_ITEM.test(r.t.replace(/^(\s*>)+/, ''));
+    }
+    if (item) {
       units.push(rowUnit(r));
       continue;
     }
+    const last = /** @type {Unit} */ (units.at(-1));
+    const unit = r.kind !== 'del' && last.kind === 'del' ? (units.findLast((u) => u.kind !== 'del') ?? last) : last;
     if (r.kind === 'del' && unit.kind !== 'del') {
       hidden.push(r);
       if (unit.kind === 'same') unit.kind = 'mod';
@@ -161,10 +174,10 @@ function listGroup(rows, depth) {
     }
     unit.rows.push(r);
     if (r.kind !== 'del' && r.n !== undefined) unit.lines.push(r.n);
-    if (r.kind === 'add' && unit.kind === 'same') unit.kind = 'mod';
+    if (unit.kind === 'same' && (r.kind === 'add' || unit !== last)) unit.kind = 'mod';
   }
-  const source = rows
-    .filter((r) => !hidden.includes(r))
+  const source = units
+    .flatMap((u) => u.rows)
     .map((r) => r.t)
     .join('\n');
   return { type: 'list', depth, source, units, hidden, rows };

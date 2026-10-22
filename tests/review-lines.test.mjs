@@ -141,3 +141,46 @@ test('in a diff, a removed fence line is a removed code line', () => {
   const [g] = diff(' ```', ' a', '-b', ' ```');
   assert.equal(kinds(g), 'same:2 del:x');
 });
+
+test('inside a list, a fence’s lines and a quote’s text aren’t items, but an item in a quote is', () => {
+  // The rendered <li> are a, q, b and c: one target each, in that order.
+  const [g] = group('- a\n  > - q\n- b\n  ```\n  - x\n  ```\n- c');
+  if (g.type !== 'list') return assert.fail('expected a list group');
+  assert.deepEqual(
+    g.units.map((u) => u.key),
+    [1, 2, 3, 7],
+  );
+  assert.deepEqual(
+    g.units.map((u) => u.lines),
+    [[1], [2], [3, 4, 5, 6], [7]],
+  );
+  assert.equal(renderMarkdown(g.source).match(/<li>/g)?.length, 4);
+  const [h] = group('- a\n  ```yaml\n  - x\n  ```\n- b');
+  if (h.type === 'list') assert.deepEqual(shape([h]), ['list 1,5']);
+});
+
+test('in a diff, a current line that follows a removed item moves to the item above, so it can take a comment', () => {
+  const [g] = diff(' - a', '-- b', '+  b');
+  if (g.type !== 'list') return assert.fail('expected a list group');
+  assert.equal(kinds(g), 'mod:1 del:x');
+  assert.deepEqual(
+    g.units.map((u) => u.lines),
+    [[1, 2], []],
+  );
+  assert.equal(g.source, '- a\n  b\n- b');
+});
+
+test('in a diff, a changed delimiter or fence marker is kept, so the block can show it', () => {
+  const [t] = diff(' | a | b |', '-|---|---|', ' | 1 | 2 |');
+  if (t.type === 'line') return assert.fail('expected a block');
+  assert.deepEqual(
+    t.hidden.map((r) => r.kind),
+    ['del'],
+  );
+  const [c] = diff('-```', ' - x', '-```');
+  if (c.type !== 'code') return assert.fail('expected a code group');
+  assert.deepEqual(
+    c.hidden.map((r) => r.kind),
+    ['del', 'del'],
+  );
+});

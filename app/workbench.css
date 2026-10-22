@@ -532,7 +532,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rv-line.add > .g-ln::before { content: "+"; position: absolute; left: 6px; color: var(--good); font-weight: 700; }
 .rv-line.del > .g-ln::before { content: "−"; position: absolute; left: 6px; color: var(--alert-ink); font-weight: 700; }
 /* A table or list renders whole; each row or item puts its gutter in the gutter column, level with it. */
-.rv-block > .tx { padding: 8px 12px; white-space: normal; }
+.rv-doc .rv-block > .tx { padding: 8px 12px; white-space: normal; }
 .rv-doc .g-ln.g-abs { position: absolute; left: 0; width: 44px; padding: 0 10px 0 0; }
 .rv-u.marked { background: var(--mark); }
 .rv-u.add, .rv-u.mod { background: var(--diff-add); }
@@ -541,6 +541,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rv-u.mod > .g-abs::before, .rv-u.mod > :first-child > .g-abs::before { content: "±"; position: absolute; left: 6px; color: var(--good); font-weight: 700; }
 .rv-u.del > .g-abs::before, .rv-u.del > :first-child > .g-abs::before { content: "−"; position: absolute; left: 6px; color: var(--alert-ink); font-weight: 700; }
 .rv-thread-row > td { padding: 0; border: 0; }
+.md .md-table td.rv-gut { width: 0; padding: 5px 0; border: 0; vertical-align: top; }
 /* A fence's lines are code rows; a quote's lines carry one bar per level. */
 .rv-line.code > .g-ln { padding-top: 1px; padding-bottom: 1px; }
 .rv-line.code > .tx { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; background-color: var(--sunk);
