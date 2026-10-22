@@ -126,7 +126,8 @@ const AFTER = [
 ];
 
 const PREPARE = {
-  plus: `document.querySelector('[aria-label="Add a file or a new agent"]').click()`,
+  // The scene may already have the menu open, and a second click on + closes it (#29).
+  plus: `document.querySelector('.menu') || document.querySelector('[aria-label="Add a file or a new agent"]').click()`,
   'postbox-menu': `document.querySelector('button.brand').click()`,
   'conversation-menu': `document.querySelector('header.topbar [aria-label^="Actions for"]').click()`,
   'session-menu': `[...document.querySelectorAll('.ov-col')][0].querySelector('[aria-haspopup="menu"]').click()`,
