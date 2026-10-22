@@ -73,11 +73,30 @@ function kit(ctx, session, mem) {
         await sleep((chunk.length / cps) * 1000);
       }
     },
-    async tool(label, ms = 500, { fail = false } = {}) {
+    async tool(label, ms = 500, { fail = false, who = null } = {}) {
       const id = `t${++n}`;
-      ctx.activity({ id, label, state: 'running' });
+      ctx.activity({ id, label, state: 'running', who });
       await sleep(ms);
-      ctx.activity({ id, label, state: fail ? 'failed' : 'done', ms });
+      ctx.activity({ id, label, state: fail ? 'failed' : 'done', ms, who });
+    },
+    /** Thinks out loud, as summarized thinking streams: a glimpse while it runs, then a step in the list. */
+    async thinkAloud(text, ms = 900) {
+      ctx.status({ state: 'think', currentStep: 'Thinking' });
+      const words = text.split(' ');
+      for (let i = 4; i <= words.length; i += 4) {
+        ctx.status({ glimpse: words.slice(0, i).join(' ') });
+        await sleep(ms / Math.ceil(words.length / 4));
+      }
+      ctx.status({ glimpse: text });
+      ctx.activity({ id: `th${++n}`, label: text.replace(/([.!?]).*$/, '$1'), state: 'done', kind: 'thought', detail: text });
+    },
+    /** A call Claude Code refuses without asking: the step shows refused, and Postbox draws a card. */
+    async refused({ label, tool, input, reason, reasonType, who = null }, ms = 400) {
+      const id = `t${++n}`;
+      ctx.activity({ id, label, state: 'running', who });
+      await sleep(ms);
+      ctx.denied({ toolUseId: id, tool, input, label, reason, reasonType, who });
+      ctx.activity({ id, label, state: 'denied', ms, who });
     },
     status: (p) => ctx.status(p),
     /** Asks you, as a real agent in “ask” mode does before a risky tool call. */
@@ -174,6 +193,7 @@ const HANDLERS = {
       return a.say(`I’m back, as planned (“${m.note}”). The embedding run finished cleanly, and every sample query returned results.`);
     }
     if (m.kind === 'agent') return indexerReply(m, a, mem);
+    if (m.kind === 'notice' && /refused before: try it again/.test(m.text ?? '')) return tidyRetry(a);
     if (m.kind === 'notice') {
       await a.think(300);
       return a.say('Understood. I’ll carry on without that.');
@@ -186,6 +206,7 @@ const HANDLERS = {
       );
     }
     if (has(text, /fail|preface|rebuild/)) return failingReply(a);
+    if (has(text, /tidy/)) return tidyWorkspace(a);
     if (has(text, /cache|clean/)) return cleanCache(a);
     if (has(text, /pipeline/)) return pipelineDiagram(a);
     if (has(text, /timeline|broken|invalid/)) return brokenBlocks(a);
@@ -862,6 +883,33 @@ async function cleanCache(a) {
   if (!answer.allow) return a.say('Left the cache as it is. Nothing was deleted.');
   await a.tool('Clear the index cache', 700);
   await a.say('Cleared 1.6 GB. The cache is 210 MB now, and the live indexes are untouched.');
+}
+
+// A subagent’s command that Claude Code refuses without asking (a deny rule here): the refusal card, then a
+// retry once you allow it.
+async function tidyWorkspace(a) {
+  await a.thinkAloud('The scratch folder has three stale exports from last week. A subagent can list them and delete the old ones while I check the index.');
+  a.status({ subagents: [{ name: 'tidier', state: 'tool', ctx: 9, doing: 'listing old exports' }] });
+  await a.tool('Ran ls -la exports/', 400, { who: 'tidier' });
+  await a.refused({
+    label: 'Delete the old exports',
+    tool: 'Bash',
+    input: { command: 'rm exports/2026-10-14-*.jsonl' },
+    reason: 'Permission to use Bash with command rm exports/2026-10-14-*.jsonl has been denied.',
+    reasonType: 'rule',
+    who: 'tidier',
+  });
+  a.status({ subagents: [] });
+  await a.tool('index.status', 300);
+  await a.say(
+    'The index is healthy. My subagent couldn’t delete the three old exports: a permission rule refused `rm`. Allow it above and I’ll finish the tidy-up.',
+  );
+}
+
+async function tidyRetry(a) {
+  await a.thinkAloud('The person allowed the delete, so I can run it again now.', 500);
+  await a.tool('Delete the old exports', 500);
+  await a.say('Deleted the three old exports. The scratch folder is down to this week’s files.');
 }
 
 // The narrated walkthrough recipe: slides that follow a local voice, with the transcript always visible.

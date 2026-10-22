@@ -127,7 +127,12 @@ flowchart LR
 - **Claude Code backend:** one `claude -p` process per turn, with stream-json in and out, resuming the thread’s Claude Code session.
 - **Agent SDK backend:** `query()` in Postbox’s process.
 
-The SDK streams the same messages as the CLI, so one mapper ([`server/adapters/claude-stream.mjs`](../server/adapters/claude-stream.mjs)) turns either into the turn context: text, activity, ring state, context use, subagents and compactions. One guide ([`server/adapters/guide.mjs`](../server/adapters/guide.mjs)) is the system prompt both append, and it teaches the catalog, the kit and the [recipes](recipes.md).
+The SDK streams the same messages as the CLI, so one mapper ([`server/adapters/claude-stream.mjs`](../server/adapters/claude-stream.mjs)) turns either into the turn context: text, activity, ring state, context use, subagents, compactions and refusals.
+
+Both backends ask for summarized thinking (`--thinking-display summarized`) and subagents’ own messages (`--forward-subagent-text`). Without them, thinking arrives empty and subagents are a single line. With them:
+- While an agent thinks or calls tools, a working row at the end of the conversation shows a glimpse of its thinking.
+- Each thought is a step in the activity list.
+- Every subagent tool call is a step, under the subagent’s name. One guide ([`server/adapters/guide.mjs`](../server/adapters/guide.mjs)) is the system prompt both append, and it teaches the catalog, the kit and the [recipes](recipes.md).
 
 **What it rests on**
 - **No credentials in Postbox.** Both backends use Claude Code’s own sign-in. Postbox never sees a key, so there’s nothing to store, rotate or leak.
@@ -164,7 +169,27 @@ sequenceDiagram
 - **Agents start in their project’s root folder**, as [intent.md](intent.md) decides, unless the persona names another. Permission mode is what protects that folder. The first live test showed why it matters: the sample project’s folder is the bundled books, and a command the test allowed wrote a file there (since removed).
 - **The card is Postbox’s, not a catalog block.** Your answer goes to the waiting tool call, not to the agent as a message.
 
-**Revisit when** you want “always allow this command”: the SDK’s `updatedPermissions` can carry a rule back, and the card would need a third button.
+**Refusals.** Claude Code also refuses calls without asking anyone: auto mode’s classifier, a deny rule, the mode, or a background subagent that can’t ask. It reports each refusal as a `permission_denied` event (with `agent_id` when a subagent was refused), and lists them all in the result’s `permission_denials`. Postbox turns each into a refusal card ([#65](https://github.com/HJeon139/postbox/issues/65)):
+- **Allow once and retry:** the exact call (`Bash(rm copy.txt)`) is passed with `--allowedTools`, or the SDK’s `allowedTools`, for the next turn only. The agent is told to try again.
+- **Always allow:** a broader rule (`Bash(rm:*)`, `WebFetch(domain:example.com)`, built in [`server/permission-rules.mjs`](../server/permission-rules.mjs)) goes into `.claude/settings.local.json` in the agent’s folder. That’s where the CLI saves “don’t ask again”, so the terminal and Postbox share it.
+- **Leave it:** keeps the refusal.
+
+```mermaid
+sequenceDiagram
+  participant A as Agent (Claude Code)
+  participant S as Stream mapper
+  participant R as Runtime
+  participant Y as You
+  A->>S: system permission_denied (tool, reason, agent_id)
+  S->>R: ctx.denied
+  R->>Y: refusal card, agent needs you
+  Y->>R: Allow once, Always allow, or Leave it
+  R->>A: next turn with the rule allowed, and a note to try again
+```
+
+- **A call you declined isn’t a refusal.** The result’s list includes calls you said no to on a permission card. The prompt tool passes the call’s `tool_use_id`, the card keeps it, and the runtime skips those.
+- **A deny rule still wins.** Claude Code checks deny before allow, so Always allow can’t override your own deny rules, and the card says so.
+- **Revisit when** the permissions panel lands ([#66](https://github.com/HJeon139/postbox/issues/66)): the prompt’s own `permission_suggestions` can replace the rules Postbox builds, and cards gain Edit.
 
 ## 7. Attached sessions: resume and mirror
 

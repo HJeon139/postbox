@@ -2,20 +2,37 @@
 
 ![Activity line](../../screenshots/activity-line.png)
 
-**Where:** Above an agent reply that used tools.
+![Steps with a thought, a subagent and a refusal](../../screenshots/activity-steps.png)
+
+**Where:** Above an agent reply that used tools or thought before answering.
 
 ## Why it exists
 
-Shows the work without flooding the transcript.
+Shows every step of the work without flooding the transcript, including what subagents did and what was refused.
 
 ## Expected functionality
 
-- Collapsed: “Used N tools · time”, or a single step’s label.
-- Expanded: each step with its state (running, done, failed) and duration.
+- **Collapsed:** “Used N tools”, with a count of thoughts and refused steps when there are any, and the total time.
+- **Expanded:** each step with its state (running, done, failed, refused) and duration.
+- **Subagent steps:** listed under the subagent’s name (“tidier · Ran ls -la exports/”).
+- **Failed steps:** say why, in the first sentence of the tool’s error.
+- **Refused steps:** point to their refusal card.
+- **Thoughts:** listed by their first sentence, and open to the whole summary.
 
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Open “Index the shelf” and expand the activity line.
+3. Open “Tidy the workspace” (scene 10b), expand the activity line, and open the thought.
+4. With real agents, ask an agent to use a subagent for a small task, and expand its activity line afterwards.
 
-**Pass if:** Steps, states and durations are listed.
+**Pass if:**
+- Steps, states and durations are listed.
+- Subagent steps carry the subagent’s name.
+- The refused step reads as refused.
+- The thought opens to its text.
+
+## Related
+
+- [Working row](working-row.md)
+- [Refusal card](../harness-cards/refusal-card.md)

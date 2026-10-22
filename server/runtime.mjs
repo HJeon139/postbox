@@ -12,6 +12,7 @@ import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { lintTerms } from './lint.mjs';
+import { addAllowRule, rulesFor } from './permission-rules.mjs';
 import { newId } from './store.mjs';
 
 export const HOP_LIMIT = 3;
@@ -22,6 +23,7 @@ const DELETE_UNDO_MS = 10000;
  * freely, ask before commands. bypass: never ask.
  */
 export const PERMISSION_MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
+const STEP_STATES = new Set(['running', 'done', 'failed', 'denied']);
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
@@ -324,7 +326,11 @@ export class Runtime {
       startedAt: Date.now(),
     };
     this.turns.set(sessionId, turn);
+    // Rules the person allowed once (from a refusal card) apply to this turn only.
+    turn.allowOnce = se.allowOnce ?? [];
     this.updateSession(sessionId, {
+      allowOnce: [],
+      glimpse: '',
       state: 'think',
       needs: message.kind === 'event' || message.kind === 'user' ? null : se.needs,
       currentStep: 'Thinking',
@@ -387,6 +393,13 @@ export class Runtime {
       pathOf: (a) => rt.attachmentPath(turn.threadId, a),
       /** Asks the person in the thread; resolves to { allow, message? }. */
       askPermission: (req) => rt.requestPermission(turn.sessionId, req),
+      /** Permission rules the person allowed for this turn only, after a refusal (Claude Code rule syntax). */
+      allowOnce: [...turn.allowOnce],
+      /** The backend refused a tool call without asking: { toolUseId, tool, input, label, reason, reasonType, who }. */
+      denied(d) {
+        if (!live()) return;
+        rt.recordDenial(turn, d);
+      },
       /**
        * Where this turn ends in the backend’s own transcript, such as { claudeSessionId, uuid }. A topic
        * thread that branches from this turn’s messages forks the agent’s session there.
@@ -401,15 +414,26 @@ export class Runtime {
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
-      activity({ id, label, state = 'running', ms = null }) {
+      // who: the subagent that took the step; detail: why it failed, or the whole thought; kind: 'thought'.
+      activity({ id, label, state = 'running', ms = null, who = null, detail = null, kind = null }) {
         if (!live()) return;
         if (!turn.first) ensureSegment();
         const i = turn.steps.findIndex((s) => s.id === id);
-        const step = { id: id ?? newId('st'), label: String(label).slice(0, 200), state, ms };
+        const step = {
+          id: id ?? newId('st'),
+          label: String(label).slice(0, 200),
+          state: STEP_STATES.has(state) ? state : 'done',
+          ms,
+          ...(who ? { who: String(who).slice(0, 40) } : {}),
+          ...(detail ? { detail: String(detail).slice(0, 1200) } : {}),
+          ...(kind === 'thought' ? { kind } : {}),
+        };
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
         rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
         const s = se();
+        // A thought is in the list, but it isn’t a tool call.
+        if (kind === 'thought') return;
         const calls = [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5);
         rt.updateSession(turn.sessionId, {
           state: state === 'running' ? 'tool' : s.state,
@@ -431,6 +455,8 @@ export class Runtime {
             doing: x.doing ? String(x.doing).slice(0, 120) : '',
           }));
         if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
+        // A line of what it’s thinking or writing right now; cleared when the turn ends.
+        if (typeof patch.glimpse === 'string') allowed.glimpse = patch.glimpse.slice(0, 200);
         rt.updateSession(turn.sessionId, allowed);
       },
       compaction({ kept, total, summary }) {
@@ -516,22 +542,30 @@ export class Runtime {
     const open = items.filter((it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
+    const refused = items.filter((it) => it.kind === 'denial' && it.turnId === turn.id && it.status === 'open');
     const needs = open.length
       ? { kind: 'block', itemId: open.at(-1).id, text: open.at(-1).block.title ?? clip(open.at(-1).block.prompt ?? open.at(-1).block.fallback, 120) }
-      : se.needs?.kind === 'hop'
-        ? se.needs
-        : null;
+      : refused.length
+        ? {
+            kind: 'denial',
+            itemId: refused.at(-1).id,
+            text: `${refused.length === 1 ? 'A step was' : `${refused.length} steps were`} refused: ${refused.at(-1).summary}`,
+          }
+        : se.needs?.kind === 'hop'
+          ? se.needs
+          : null;
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
     this.updateSession(se.id, {
       state: needs ? 'needs' : 'idle',
       needs,
+      glimpse: '',
       subagents: [],
       currentStep: needs ? 'Waiting for you' : `Idle since ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
       lastMessage: last ? clip(last.text) : se.lastMessage,
       finishedAt: Date.now(),
       unread: viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
     });
-    if (needs && needs.kind === 'block') this.notify('blocking', se, `@${se.handle} needs you`, needs.text);
+    if (needs && (needs.kind === 'block' || needs.kind === 'denial')) this.notify('blocking', se, `@${se.handle} needs you`, needs.text);
     else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120));
     else if (turn.said && !viewing) this.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120));
 
@@ -707,6 +741,7 @@ export class Runtime {
     if (it.kind === 'hop') return this.resolveHop(threadId, itemId, action === 'confirm');
     if (it.kind === 'proposal') return this.resolveProposal(threadId, itemId, action);
     if (it.kind === 'permission') return this.resolvePermission(threadId, itemId, action);
+    if (it.kind === 'denial') return this.resolveDenial(threadId, itemId, action);
     if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
     if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
     const r = buildEvent(it.block, action, values);
@@ -991,10 +1026,10 @@ export class Runtime {
 
   /**
    * @param {string} sessionId
-   * @param {{ tool: string, summary: string, detail?: string }} req
+   * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null }} req
    * @returns {Promise<{ allow: boolean, message?: string }>}
    */
-  requestPermission(sessionId, { tool, summary, detail = '' }) {
+  requestPermission(sessionId, { tool, summary, detail = '', toolUseId = null }) {
     const se = this.s.sessions[sessionId];
     const turn = this.turns.get(sessionId);
     if (!se || !turn) return Promise.resolve({ allow: false, message: 'The turn has ended.' });
@@ -1006,6 +1041,8 @@ export class Runtime {
       tool: String(tool).slice(0, 120),
       summary: String(summary).slice(0, 200),
       detail: String(detail).slice(0, 4000),
+      // The tool call it’s about, so a refusal of a call you answered here doesn’t get a second card.
+      toolUseId: toolUseId ? String(toolUseId) : null,
       status: 'open',
     });
     // The text so far is finished; the reply continues below the card.
@@ -1037,6 +1074,73 @@ export class Runtime {
     const allow = action === 'allow';
     this.addItem(threadId, { kind: 'voice', text: `${allow ? 'Allowed' : 'Didn’t allow'}: @${it.handle} to ${it.summary}` });
     this.settlePermission(itemId, allow ? 'allowed' : 'denied', 'The person didn’t allow this. Ask them what to do instead, or find another way.');
+    return { ok: true };
+  }
+
+  // ── Refusals ───────────────────────────────────────────────────────────────────────
+  // Claude Code refuses some calls without asking anyone: auto mode’s classifier, a deny rule, or the mode.
+  // Each refusal becomes a card, so the person can allow it once (the agent tries again), always (a rule in
+  // the agent folder’s .claude/settings.local.json, shared with the CLI), or leave it.
+
+  recordDenial(turn, d) {
+    const se = this.s.sessions[turn.sessionId];
+    if (!se) return;
+    const key = String(d.toolUseId ?? '');
+    // Once per call, and never for a call the person answered on a permission card.
+    if (key && this.store.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission') && it.toolUseId === key)) return;
+    const rules = rulesFor(String(d.tool ?? ''), d.input ?? {});
+    const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);
+    this.addItem(turn.threadId, {
+      kind: 'denial',
+      sessionId: se.id,
+      handle: se.handle,
+      turnId: turn.id,
+      toolUseId: key,
+      tool: String(d.tool ?? '').slice(0, 120),
+      summary: String(d.label ?? d.tool ?? '').slice(0, 200),
+      detail: detail.slice(0, 4000),
+      reason: String(d.reason ?? '').slice(0, 400),
+      reasonType: d.reasonType ? String(d.reasonType).slice(0, 40) : null,
+      who: d.who ? String(d.who).slice(0, 40) : null,
+      rules,
+      status: 'open',
+    });
+    // The text so far is finished; the reply continues below the card.
+    if (turn.segment) this.patchItem(se.threadId, turn.segment, { status: 'done' });
+    turn.segment = null;
+  }
+
+  async resolveDenial(threadId, itemId, action) {
+    const it = this.store.item(threadId, itemId);
+    if (it?.kind !== 'denial' || it.status !== 'open') throw httpError(409, 'That refusal was already answered.');
+    if (!['once', 'always', 'leave'].includes(action)) throw httpError(400, 'A refusal takes “once”, “always” or “leave”.');
+    const se = this.s.sessions[it.sessionId];
+    const asked = it.who ? `${it.who} (your subagent)` : 'you';
+    /** @type {string | null} */
+    let note = null;
+    if (action === 'always') {
+      const persona = se && this.personaFor(se);
+      const adapter = persona && this.adapters.get(persona.backend);
+      if (!adapter?.folderFor) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+      const folder = await adapter.folderFor(persona, this.s.projects[this.s.threads[threadId]?.projectId]);
+      const { file } = await addAllowRule(folder, it.rules.always);
+      note = `[Postbox] The person now always allows \`${it.rules.always}\` (saved in ${file}). The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
+    } else if (action === 'once') {
+      if (se) this.updateSession(se.id, { allowOnce: [...(se.allowOnce ?? []), it.rules.once] });
+      note = `[Postbox] The person allowed \`${it.rules.once}\` for your next turn only. The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
+    }
+    const status = { once: 'allowed-once', always: 'allowed-always', leave: 'left' }[action];
+    this.patchItem(threadId, itemId, { status, answeredAt: Date.now() });
+    const words = { once: 'Allowed once', always: `Always allowed ${it.rules.alwaysWords}`, leave: 'Left refused' }[action];
+    this.addItem(threadId, { kind: 'voice', text: `${words}: @${it.handle} to ${it.summary}` });
+    if (se?.needs?.itemId === itemId) {
+      const next = this.store.items(threadId).find((x) => x.kind === 'denial' && x.sessionId === se.id && x.status === 'open');
+      this.updateSession(se.id, {
+        needs: next ? { kind: 'denial', itemId: next.id, text: `A step was refused: ${next.summary}` } : null,
+        state: this.turns.has(se.id) ? se.state : next ? 'needs' : 'idle',
+      });
+    }
+    if (note && se && !se.archived) this.deliver(se.id, { kind: 'notice', text: note });
     return { ok: true };
   }
 

@@ -5,7 +5,10 @@
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
 const QUIET =
-  /^(?:mcp__postbox__(?:show_block|update_block|show_app|update_app|define_term|propose_agent|schedule_wake|wake_agent|permission_prompt|read_conversation)|ToolSearch)$/;
+  /^(?:mcp__postbox__(?:show_block|update_block|show_app|update_app|define_term|propose_agent|schedule_wake|wake_agent|permission_prompt|read_conversation)|ToolSearch|SubagentHandback)$/;
+// How Postbox answers a call the person declined on a permission card (server/runtime.mjs): that’s their
+// answer, not a refusal to show again.
+const DECLINED = /^The person didn’t allow/;
 // Default context windows until a turn’s result reports the real one.
 const WINDOWS = /** @type {[RegExp, number][]} */ ([[/^claude-(?:opus|sonnet|fable)-5/, 1_000_000]]);
 export const windowFor = (model, fallback = 200_000) => WINDOWS.find(([re]) => re.test(String(model ?? '')))?.[1] ?? fallback;
@@ -18,6 +21,27 @@ const clip = (s, n) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 const base = (p) => String(p ?? '').replace(/^.*\//, '');
+/** The first sentence of a message, such as a refusal’s reason. */
+const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
+/** The latest stretch of streaming text, for a one-line glimpse of what the agent is on. */
+const tailOf = (s, n = 160) => {
+  const t = String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (t.length <= n) return t;
+  const cut = t.slice(-n);
+  return `…${cut.slice(cut.indexOf(' ') + 1)}`;
+};
+/** The text of a tool result, for the reason a step failed. */
+const resultText = (content) =>
+  typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content
+          .filter((c) => c?.type === 'text')
+          .map((c) => c.text)
+          .join(' ')
+      : '';
 
 const GENERIC = {
   Bash: 'Running a command',
@@ -119,8 +143,16 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     wroteText: false, // reply text so far this turn, so separate text blocks get a paragraph break
     streamed: new Set(), // message ids whose text arrived as deltas
     blocks: new Map(), // content block index → { type, id, name, json }
-    tools: new Map(), // tool_use id → { name, label, started, quiet }
+    tools: new Map(), // tool_use id → { name, label, input, who, started, quiet }
     subagents: new Map(), // Task tool_use id → { name, state, ctx, doing }
+    subNames: new Map(), // Task tool_use id → its name, kept after it finishes (refusals can arrive later)
+    tasks: new Map(), // subagent task id (a refusal’s agent_id) → its Task tool_use id
+    denied: new Set(), // tool_use ids Claude Code refused
+    thoughts: 0,
+    thoughtMessages: new Set(), // message ids whose thinking arrived as deltas
+    said: '', // reply text so far this turn, for the glimpse
+    glimpse: '',
+    glimpseAt: 0,
     state: null,
   };
   const status = (patch) => {
@@ -129,54 +161,110 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     ctx.status(patch);
   };
   const pushSubagents = () => status({ subagents: [...st.subagents.values()] });
+  // A short, temporary line of what the agent is thinking or writing, at most a few times a second.
+  const glimpse = (text, { force = false } = {}) => {
+    const t = tailOf(text);
+    if (!t || t === st.glimpse) return;
+    st.pending = t;
+    if (!force && now() - st.glimpseAt < 400) return;
+    st.glimpseAt = now();
+    st.glimpse = t;
+    st.pending = null;
+    ctx.status({ glimpse: t });
+  };
+  const flushGlimpse = () => {
+    if (st.pending) glimpse(st.pending, { force: true });
+  };
+  const thought = (text) => {
+    const t = String(text ?? '').trim();
+    if (!t) return;
+    st.thoughts += 1;
+    ctx.activity({ id: `thought-${st.thoughts}`, label: firstSentence(t, 120), state: 'done', kind: 'thought', detail: clip(t, 1200) });
+  };
 
-  const startTool = (id, name, input) => {
+  // who: the subagent that made the call, for calls made inside one.
+  const startTool = (id, name, input, who = null) => {
     if (st.tools.has(id)) return;
     const quiet = QUIET.test(name);
     const label = describeTool(name, input);
-    st.tools.set(id, { name, label, started: now(), quiet });
-    if (!quiet) ctx.activity({ id, label, state: 'running' });
-    else status({ state: 'tool', currentStep: label });
+    st.tools.set(id, { name, label, input, who, started: now(), quiet });
+    if (!quiet) ctx.activity({ id, label, state: 'running', ...(who ? { who } : {}) });
+    else if (!who) status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) {
-      st.subagents.set(id, {
-        name: clip(input?.subagent_type ?? input?.description ?? 'subagent', 40),
-        state: 'think',
-        ctx: 0,
-        doing: clip(input?.description, 120),
-      });
+      const sub = clip(input?.subagent_type ?? input?.description ?? 'subagent', 40);
+      st.subagents.set(id, { name: sub, state: 'think', ctx: 0, doing: clip(input?.description, 120) });
+      st.subNames.set(id, sub);
       pushSubagents();
     }
-    status({ state: 'tool' });
+    if (!who) status({ state: 'tool' });
   };
   const labelTool = (id, input) => {
     const t = st.tools.get(id);
     if (!t) return;
+    if (input && Object.keys(input).length) t.input = input;
     const label = describeTool(t.name, input);
     if (label !== t.label) {
       t.label = label;
-      if (!t.quiet) ctx.activity({ id, label, state: 'running' });
-      else status({ currentStep: label });
+      if (!t.quiet) ctx.activity({ id, label, state: 'running', ...(t.who ? { who: t.who } : {}) });
+      else if (!t.who) status({ currentStep: label });
     }
     const sub = st.subagents.get(id);
     if (sub && input) {
       sub.name = clip(input.subagent_type ?? input.description ?? sub.name, 40);
       sub.doing = clip(input.description ?? sub.doing, 120);
+      st.subNames.set(id, sub.name);
       pushSubagents();
     }
   };
-  const endTool = (id, failed) => {
+  const stepOf = (id, t, state, extra = {}) => ({ id, label: t.label, state, ms: now() - t.started, ...(t.who ? { who: t.who } : {}), ...extra });
+  const endTool = (id, failed, detail = '') => {
     const t = st.tools.get(id);
     if (!t || t.done) return;
     t.done = true;
-    if (!t.quiet) ctx.activity({ id, label: t.label, state: failed ? 'failed' : 'done', ms: now() - t.started });
+    if (failed && detail) t.error = detail;
+    const state = st.denied.has(id) ? 'denied' : failed ? 'failed' : 'done';
+    if (!t.quiet) ctx.activity(stepOf(id, t, state, failed && detail && state !== 'denied' ? { detail: firstSentence(detail, 300) } : {}));
     if (st.subagents.has(id)) {
       st.subagents.delete(id);
       pushSubagents();
     }
   };
 
+  // Claude Code refused a call without asking: the auto-mode classifier, a deny rule, or the mode. Reported
+  // as it happens, and again (authoritatively) in the result, so each is passed on once.
+  // Deny rules in settings refuse without the event, so the result’s list is the only record of those, and
+  // the tool’s error is their reason. The list also holds calls the person declined on a permission card:
+  // those are skipped here (and the runtime matches them to their card too).
+  const denial = ({ tool_use_id: id, tool_name: tool, tool_input, agent_id, message, decision_reason, decision_reason_type }, { fromResult = false } = {}) => {
+    if (!id || st.denied.has(id)) return;
+    const t = st.tools.get(id);
+    if (fromResult && DECLINED.test(t?.error ?? '')) return;
+    st.denied.add(id);
+    const input = tool_input ?? t?.input ?? {};
+    const who = agent_id ? (st.subNames.get(st.tasks.get(agent_id)) ?? 'a subagent') : (t?.who ?? null);
+    ctx.denied?.({
+      toolUseId: id,
+      tool,
+      input,
+      label: describeTool(tool, input),
+      reason: firstSentence(message ?? decision_reason ?? t?.error ?? ''),
+      reasonType: decision_reason_type ?? null,
+      who,
+    });
+    if (t?.done && !t.quiet) ctx.activity(stepOf(id, t, 'denied'));
+  };
+
   // Events from inside a subagent carry the Task call’s id; they move that subagent’s ring, not the agent’s.
+  // Its tool calls are steps in the list too, under its name.
   const subagentEvent = (parent, e) => {
+    if (e.type === 'assistant') {
+      const who = st.subNames.get(parent) ?? 'subagent';
+      for (const b of e.message?.content ?? [])
+        if (b.type === 'tool_use') {
+          startTool(b.id, b.name, b.input, who);
+          labelTool(b.id, b.input);
+        }
+    }
     const sub = st.subagents.get(parent);
     if (!sub) return;
     const ev = e.event;
@@ -194,7 +282,10 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       sub.state = next;
     }
     if (e.type === 'assistant') {
-      for (const b of e.message?.content ?? []) if (b.type === 'tool_use') sub.doing = describeTool(b.name, b.input);
+      for (const b of e.message?.content ?? []) {
+        if (b.type === 'tool_use') sub.doing = describeTool(b.name, b.input);
+        else if (b.type === 'thinking' && b.thinking) sub.doing = firstSentence(b.thinking, 120);
+      }
       changed = true;
     }
     if (changed) pushSubagents();
@@ -213,6 +304,19 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         status({ state: 'think', currentStep: 'Thinking' });
       } else if (e.subtype === 'status' && e.status === 'compacting') {
         status({ currentStep: 'Summarizing the conversation' });
+      } else if (e.subtype === 'permission_denied') {
+        denial(e);
+      } else if (e.subtype === 'task_started' && e.task_id && e.tool_use_id) {
+        st.tasks.set(e.task_id, e.tool_use_id);
+      } else if (e.subtype === 'task_progress' && e.tool_use_id) {
+        const sub = st.subagents.get(e.tool_use_id);
+        if (sub && e.description) {
+          sub.doing = clip(e.description, 120);
+          pushSubagents();
+          glimpse(`${sub.name}: ${e.description}`);
+        }
+      } else if (e.subtype === 'task_summary' && e.detail) {
+        glimpse(e.detail);
       } else if (e.subtype === 'compact_boundary') {
         const total = e.compact_metadata?.pre_tokens ?? 0;
         // How much survives isn’t reported; the next request’s usage shows it, so start from a summary’s worth.
@@ -233,7 +337,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         if (ev.message?.id) st.current = ev.message.id;
       } else if (ev.type === 'content_block_start') {
         const b = ev.content_block ?? {};
-        st.blocks.set(ev.index, { type: b.type, id: b.id, name: b.name, json: '' });
+        st.blocks.set(ev.index, { type: b.type, id: b.id, name: b.name, json: '', thinking: '' });
         if (b.type === 'thinking' || b.type === 'redacted_thinking') status({ state: 'think', currentStep: 'Thinking' });
         else if (b.type === 'text') {
           if (st.wroteText) ctx.text('\n\n');
@@ -246,9 +350,19 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           if (st.current) st.streamed.add(st.current);
           ctx.text(d.text);
           st.wroteText = true;
+          st.said = (st.said + d.text).slice(-400);
+          glimpse(st.said);
+        } else if (d.type === 'thinking_delta' && d.thinking && blk) {
+          if (st.current) st.thoughtMessages.add(st.current);
+          blk.thinking += d.thinking;
+          glimpse(blk.thinking);
         } else if (d.type === 'input_json_delta' && blk) blk.json += d.partial_json ?? '';
       } else if (ev.type === 'content_block_stop') {
         const blk = st.blocks.get(ev.index);
+        if (blk?.type === 'thinking') {
+          flushGlimpse();
+          thought(blk.thinking);
+        }
         if (blk?.id && blk.json) {
           try {
             labelTool(blk.id, JSON.parse(blk.json));
@@ -268,6 +382,9 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') {
           startTool(b.id, b.name, b.input);
           labelTool(b.id, b.input);
+        } else if (b.type === 'thinking' && b.thinking && !st.thoughtMessages.has(m.id)) {
+          // Without partial messages, thinking arrives whole.
+          thought(b.thinking);
         } else if (b.type === 'text' && b.text && !st.streamed.has(m.id)) {
           // Without partial messages, text arrives whole.
           if (st.wroteText) ctx.text('\n\n');
@@ -280,7 +397,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
 
     if (e.type === 'user') {
       for (const b of e.message?.content ?? []) {
-        if (b.type === 'tool_result') endTool(b.tool_use_id, b.is_error === true);
+        if (b.type === 'tool_result') endTool(b.tool_use_id, b.is_error === true, b.is_error ? resultText(b.content) : '');
       }
       if (!parent) status({ state: 'think', currentStep: 'Thinking' });
       return;
@@ -294,7 +411,10 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         const pct = contextPercent(st.lastUsage, st.contextWindow);
         if (pct !== null) status({ ctx: pct });
       }
+      // Refusals the stream didn’t report as they happened.
+      for (const d of e.permission_denials ?? []) denial(d, { fromResult: true });
       for (const [id] of st.tools) endTool(id, e.is_error === true);
+      flushGlimpse();
     }
   }
 

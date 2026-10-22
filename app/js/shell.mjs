@@ -487,6 +487,7 @@ function updateCard(node, se, fresh = false) {
     se.state,
     se.needs,
     se.currentStep,
+    se.glimpse,
     se.lastMessage,
     se.toolCount,
     se.toolCalls,
@@ -549,7 +550,7 @@ function updateCard(node, se, fresh = false) {
           quick ?? h('a.btn.sm', { href: `#/t/${se.threadId}`, style: { alignSelf: 'flex-start' } }, 'Open thread'),
         )
       : null,
-    sec('Current step', h('p', { class: busy(se) ? '' : 'dim' }, se.currentStep || '—')),
+    sec('Current step', h('p', { class: busy(se) ? '' : 'dim' }, se.currentStep || '—'), busy(se) && se.glimpse ? h('p.glimpse', se.glimpse) : null),
     se.lastMessage ? sec('Last message', h('p.clamp2', se.lastMessage)) : null,
     sec(
       h('span', 'Tool calls ', h('span.dim', String(se.toolCount ?? 0))),
@@ -613,9 +614,33 @@ function agentMessages(se) {
   );
 }
 
-/** Answer a simple choice or confirm right on the card. */
+/** Answer a permission request, a refusal, or a simple choice or confirm right on the card. */
 function quickAnswer(se) {
-  if (se.needs?.kind !== 'block') return null;
+  const kind = se.needs?.kind;
+  if (kind === 'permission' || kind === 'denial') {
+    const it = (S().items[se.threadId] ?? []).find((x) => x.id === se.needs.itemId);
+    if (it?.status !== 'open') return null;
+    const act = (action) =>
+      api(`/api/threads/${se.threadId}/items/${it.id}/act`, { action }).catch((e) =>
+        toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }),
+      );
+    const buttons =
+      kind === 'permission'
+        ? [
+            h('button.btn.sm', { type: 'button', onclick: () => act('allow') }, 'Allow'),
+            h('button.btn.sm', { type: 'button', onclick: () => act('deny') }, 'Don’t allow'),
+          ]
+        : [
+            h('button.btn.sm', { type: 'button', onclick: () => act('once') }, 'Allow once and retry'),
+            h('button.btn.sm', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`),
+          ];
+    return h(
+      'div.col',
+      it.detail ? h('pre.md-code.perm-detail', h('code', it.detail.slice(0, 400))) : null,
+      h('div.row-flex.wrap', ...buttons, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open thread')),
+    );
+  }
+  if (kind !== 'block') return null;
   const it = (S().items[se.threadId] ?? []).find((x) => x.id === se.needs.itemId);
   if (!it?.valid) return null;
   const b = it.block;

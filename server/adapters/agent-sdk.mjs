@@ -29,9 +29,9 @@ export async function loadAgentSdk() {
 /** The query() options for one turn. Pure apart from the callbacks, so the tests can check them. */
 /**
  * @param {{ persona: any, cwd: string, addDirs?: string[], sessionId: string, resume: boolean, mcpUrl: string, guide: string,
- *           abortController: AbortController, canUseTool?: Function, fork?: any }} turn
+ *           abortController: AbortController, canUseTool?: Function, fork?: any, allowOnce?: string[] }} turn
  */
-export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpUrl, guide, abortController, canUseTool, fork = null }) {
+export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpUrl, guide, abortController, canUseTool, fork = null, allowOnce = [] }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   return {
     cwd,
@@ -46,7 +46,12 @@ export function sdkOptions({ persona, cwd, addDirs = [], sessionId, resume, mcpU
     includePartialMessages: true,
     mcpServers: { postbox: { type: 'http', url: mcpUrl, alwaysLoad: true } },
     strictMcpConfig: true,
-    // No allowedTools rule for Postbox’s tools: one would shadow canUseTool, which allows them itself.
+    // No allowedTools rule for Postbox’s tools: one would shadow canUseTool, which allows them itself. Only
+    // rules the person allowed once, after a refusal, go here.
+    ...(allowOnce.length ? { allowedTools: allowOnce } : {}),
+    // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
+    thinking: { type: 'adaptive', display: 'summarized' },
+    forwardSubagentText: true,
     systemPrompt: { type: 'preset', preset: 'claude_code', append: guide },
     permissionMode: MODES[mode],
     ...(mode === 'bypass' ? { allowDangerouslySkipPermissions: true } : { canUseTool }),
@@ -70,11 +75,16 @@ export class AgentSdkAdapter {
     this.workRoot = workRoot;
   }
 
+  /** Same folder rule as the Claude Code backend: the persona’s, the project’s, or a workspace of its own. */
+  async folderFor(persona, project) {
+    const dir = persona.folder || project?.folder || join(this.workRoot, persona.handle);
+    await mkdir(dir, { recursive: true }).catch(() => {});
+    return dir;
+  }
+
   async deliver(session, message, ctx) {
     const persona = ctx.persona;
-    // Same folder rule as the Claude Code backend: the persona’s, the project’s, or a workspace of its own.
-    const cwd = persona.folder || ctx.project?.folder || join(this.workRoot, persona.handle);
-    await mkdir(cwd, { recursive: true }).catch(() => {});
+    const cwd = await this.folderFor(persona, ctx.project);
     const addDirs = [ctx.project?.folder].filter((d) => d && d !== cwd);
     const guide = agentGuide({ persona, handles: ctx.handles, project: ctx.project, brief: session?.brief });
     const prompt = formatMessage(message, ctx.pathOf);
@@ -88,18 +98,18 @@ export class AgentSdkAdapter {
     if (ctx.signal.aborted) onAbort();
     else ctx.signal.addEventListener('abort', onAbort, { once: true });
 
-    const canUseTool = async (toolName, input) => {
+    const canUseTool = async (toolName, input, opts = {}) => {
       // Postbox’s own tools only show things in the thread.
       if (toolName.startsWith('mcp__postbox__')) return { behavior: 'allow', updatedInput: input };
       const { summary, detail } = describePermission(toolName, input);
-      const answer = await ctx.askPermission({ tool: toolName, summary, detail });
+      const answer = await ctx.askPermission({ tool: toolName, summary, detail, ...(opts.toolUseID ? { toolUseId: opts.toolUseID } : {}) });
       return answer.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
     };
 
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model) });
     let stderr = '';
     const options = {
-      ...sdkOptions({ persona, cwd, addDirs, sessionId, resume, mcpUrl: ctx.mcpUrl, guide, abortController, canUseTool, fork }),
+      ...sdkOptions({ persona, cwd, addDirs, sessionId, resume, mcpUrl: ctx.mcpUrl, guide, abortController, canUseTool, fork, allowOnce: ctx.allowOnce ?? [] }),
       stderr: (d) => {
         stderr = (stderr + d).slice(-4000);
       },
