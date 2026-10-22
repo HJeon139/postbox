@@ -65,7 +65,7 @@ Inside the app, the global postbox object gives you:
   - "corpus.read" with { id } returns { id, book, title, author, year, chapter, text }
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
   You don’t need to inspect Postbox’s source to use them.
-- postbox.send(action, values, summary) sends one event to you; summary is the line the person sees in their voice
+- postbox.send(action, values, summary) sends one event to you; summary is the line the person sees in their voice. Call it only from the person’s click or key press in the app: a send on load or on a timer is refused. Don’t move focus into the app yourself (no autofocus): Postbox gives the keyboard back, and stops an app that keeps taking it. Up to 5 a minute go straight to you; more wait for the person to allow them.
 - postbox.saveState(obj) and postbox.restoreState() keep state across reloads and new versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Chart and Table view

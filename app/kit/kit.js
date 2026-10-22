@@ -1,7 +1,11 @@
 // The app kit, preloaded in every agent-app sandbox. It gives agent code:
 //   postbox.ready                 → Promise<{ state, theme, appId }>, resolves once Postbox says hello
 //   postbox.query(tool, args)     → Promise<result>; only tools the app and its agent were granted
-//   postbox.send(action, values, summary)  sends one event to the agent; summary is the line you see
+//   postbox.send(action, values, summary)  sends one event to the agent; summary is the line you see. Only
+//                                 right after the person clicks or presses a key in the app (it rejects
+//                                 otherwise), up to 5 a minute; more resolve { held: true, waiting } and wait
+//                                 for the person to allow them on a card. Don’t focus anything on load: an
+//                                 app that takes the keyboard without a click gets it taken back
 //   postbox.saveState(obj) / postbox.restoreState()   survives unload, reload and new versions
 //   postbox.anchors({ name: element })   parts you can pin review comments to
 //   postbox.on('theme', fn)       called when light/dark changes (tokens update by themselves)
@@ -24,7 +28,10 @@
   let anchorMap = {};
   let reviewing = false;
 
-  const post = (msg) => parent.postMessage(Object.assign({ __pb: 1, appId: init.appId, version: init.version }, msg), '*');
+  // includeUserActivation: the browser attaches this frame’s own click or key press state to the message, which
+  // is how Postbox knows a send came from the person using the app (the app can’t set it itself).
+  const post = (msg) =>
+    parent.postMessage(Object.assign({ __pb: 1, appId: init.appId, version: init.version }, msg), { targetOrigin: '*', includeUserActivation: true });
   const call = (type, payload) =>
     new Promise((resolve, reject) => {
       const id = ++seq;

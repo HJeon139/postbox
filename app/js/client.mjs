@@ -136,7 +136,7 @@ export const liveSessions = () =>
   Object.values(S().sessions).filter(
     (se) => !se.archived && !se.deleting && S().threads[se.threadId] && S().threads[se.threadId].kind !== 'side' && !S().threads[se.threadId].deleting,
   );
-export const needsYou = () => liveSessions().filter((se) => se.needs && ['block', 'failed', 'hop', 'permission'].includes(se.needs.kind));
+export const needsYou = () => liveSessions().filter((se) => se.needs && ['block', 'failed', 'hop', 'permission', 'appsend'].includes(se.needs.kind));
 
 /** The thread’s main state for its rail row: the most urgent of its agents. */
 export function threadState(t) {

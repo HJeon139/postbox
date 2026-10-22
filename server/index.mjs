@@ -283,7 +283,11 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|state|query)$/)) && req.method === 'POST') {
       const id = decodeURIComponent(m[1]);
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
-      if (m[2] === 'event') return send(res, 200, rt.appEvent(id, body.action, body.values ?? {}));
+      if (m[2] === 'event') {
+        // Rate-limited in the runtime, so a script calling this directly is held to the same limit (#38).
+        const r = rt.appEvent(id, body.action, body.values ?? {}, { hold: body.hold === true });
+        return send(res, r.held ? 202 : 200, r);
+      }
       if (m[2] === 'state') {
         rt.appState(id, body.state);
         return send(res, 200, { ok: true });

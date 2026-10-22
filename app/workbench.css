@@ -499,6 +499,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>") center/contain no-repeat;
   mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>") center/contain no-repeat; }
 .app-body { max-height: min(80vh, 760px); overflow: auto; background: var(--bg); }
+/* An app frame takes pointer events only once the pointer is over it, so Postbox sees you point at it (#38, app/js/apps.mjs). */
+iframe.app-iframe:not(.live) { pointer-events: none; }
+.appsend-list { margin: 8px 0 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
 .app-placeholder { display: grid; place-items: center; text-align: center; gap: 6px; color: var(--dim); font-size: 12px; background: var(--sunk); border: 1px dashed var(--line); border-radius: 8px; }
 .app-placeholder .inner { background: var(--sunk); padding: 10px 14px; border-radius: 6px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; align-items: center; }
 

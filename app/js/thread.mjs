@@ -2,7 +2,7 @@
 // message) and side threads (between agents).
 
 import { renderMarkdown } from '/shared/markdown.mjs';
-import { enhanceMarkdown, renderAppItem } from './apps.mjs';
+import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, uploadFile } from './client.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
@@ -442,6 +442,8 @@ function renderItem(it, prev, ctx) {
       return permissionBlock(it, ctx);
     case 'denial':
       return denialBlock(it, ctx);
+    case 'appsend':
+      return renderAppSendCard(it, ctx);
     case 'proposal':
       return proposalBlock(it, ctx, showWho);
     default:

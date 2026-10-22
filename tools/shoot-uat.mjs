@@ -118,6 +118,8 @@ const AFTER = [
   ['settings-connection', 'Corpus explorer', q('.dialog'), 'settings:connection'],
   ['folder-picker', 'Corpus explorer', q('.dialog'), 'folder-picker'],
   ['toast', 'Corpus explorer', q('.toast'), 'toast'],
+  // Last: it leaves sends waiting on the explorer’s card.
+  ['app-send-card', 'Corpus explorer', `document.querySelector('.appsend')?.closest('.item')`, 'app-send-card'],
 ];
 
 const PREPARE = {
@@ -142,6 +144,8 @@ const PREPARE = {
   'settings:projects': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Projects').click(); })()`,
   'settings:connection': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Connect an agent').click(); })()`,
   'folder-picker': `(() => { document.querySelector('[aria-label="Add a file or a new agent"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From the project folder')).click(); })()`,
+  // Three sends the browser asks the server to hold (as it does past its limit), so the card shows.
+  'app-send-card': `(async () => { for (const summary of ['Use 3 passages', 'Use 4 passages', 'Use 2 passages']) await fetch('/api/apps/corpus-explorer/event', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'use-passages', values: { passages: [], summary }, hold: true }) }); })()`,
   toast: `import('/app/js/ui.mjs').then((m) => m.toast({ title: 'Archived @critic’s session', action: { label: 'Restore', run: () => {} } }))`,
 };
 

@@ -4,7 +4,7 @@
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
 import { api, client } from './client.mjs';
-import { $$, ago, h, icon } from './dom.mjs';
+import { $$, ago, h, icon, plural } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
@@ -67,8 +67,19 @@ addEventListener('message', async (e) => {
       break;
     case 'event':
       if (!current) return reply(null, rec.check ? 'Events are off during the check.' : 'This is an older version, shown read-only.');
+      {
+        const refused = activated(e, rec);
+        if (refused) return reply(null, refused);
+      }
       try {
-        reply(await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, { action: m.action, values: m.values }));
+        // Without per-frame activation (see SNAPSHOTS), every send waits for you on a card.
+        const r = await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, {
+          action: m.action,
+          values: m.values,
+          hold: !SNAPSHOTS || overLimit(rec.appId),
+        });
+        if (!r.held) countSent(rec.appId);
+        reply(r);
       } catch (err) {
         reply(null, err.message);
         toast({ title: 'That didn’t reach the agent', text: err.message, level: 'blocking' });
@@ -98,6 +109,177 @@ addEventListener('message', async (e) => {
     }
   }
 });
+
+// ── Sends in your voice (#38) ────────────────────────────────────────────────────────────
+// An app’s postbox.send writes a line in your voice and starts an agent turn, so it counts only right after you
+// click or press a key in that app. Two things have to hold, and the frame can vouch for neither:
+//
+// 1. The send carries a real gesture in that frame. The kit posts each send with includeUserActivation, and
+//    Chrome attaches the sending frame’s own transient activation (a click or key press in that frame in the
+//    last few seconds). It’s per frame: false for a frame that only focused itself, false after Tab into it,
+//    and false five seconds later. The page’s own navigator.userActivation is no use: activation propagates up
+//    to it (User Activation v2) from every frame and from the composer.
+//
+// 2. The frame got your keyboard rightfully. A frame can focus itself without a gesture (on load, while you type
+//    in the composer, right after you click another app), and then your key presses really happen in it, which
+//    passes 1. Measured in headless Chrome (tools/checks/app-send.mjs), the page sees no pointer events, and no
+//    :hover, when the pointer moves over a frame, so it can’t tell a click into a frame from a steal. So frames
+//    take no pointer events until the pointer is over them (CSS: iframe.app-iframe:not(.live)): over a frame,
+//    the pointer is over this page, which sees it and makes that frame live. A frame may hold focus only if
+//    it’s live (you pointed at it) or you tabbed into it. Any other frame that takes focus gives it straight
+//    back, and is refused sends until you click or tab into it. One that keeps doing it (an app that autofocuses
+//    a field does it once) is stopped, and shows a card to reload it: inert doesn’t stop a frame that runs in
+//    its own process from taking focus (measured), so only unloading it does.
+//
+// A browser without MessageEvent.userActivation can’t do 1, so it fails closed: every send waits on a card.
+const SNAPSHOTS = typeof MessageEvent !== 'undefined' && 'userActivation' in MessageEvent.prototype;
+const NOT_ACTIVATED = 'Postbox sends an app’s message only right after the person clicks or presses a key in the app.';
+const NOT_ENTERED = 'Postbox refused this app’s message: the app took the keyboard without the person clicking or tabbing into it.';
+
+/** @type {HTMLIFrameElement | null} the app frame under the pointer */
+let live = null;
+/** @type {{ frame: HTMLIFrameElement, at: number } | null} the app frame a Tab key press is moving focus into */
+let tabbing = null;
+/** @type {HTMLIFrameElement | null} the app frame that holds focus, rightfully */
+let owner = null;
+/** @type {Element | null} the last element of this page that had focus */
+let lastFocus = null;
+const stolen = new WeakSet(); // frames that took focus on their own, refused until you click or tab into them
+const steals = new WeakMap(); // frame → times it took focus on its own
+const STEALS_TO_STOP = 3; // within STEAL_WINDOW_MS
+const STEAL_WINDOW_MS = 10_000;
+const stopped = new Set(); // `${appId}:${v}` stopped for taking focus, until you reload it
+
+const appFrames = () => [...frames].filter((r) => r.iframe.isConnected).map((r) => r.iframe);
+const isAppFrame = (el) => el instanceof HTMLIFrameElement && appFrames().includes(el);
+
+function makeLive(f) {
+  if (f === live) return;
+  const was = live;
+  live = f;
+  f?.classList.add('live');
+  if (was && was !== f) was.classList.remove('live');
+}
+
+/**
+ * The app frame at a point of the window, if one is there and nothing of the page covers it. A frame that isn’t
+ * live takes no pointer events, so the page finds the element around it (its .app-body) instead.
+ * @param {number} x @param {number} y
+ */
+function frameAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const f = el instanceof HTMLIFrameElement ? el : el?.closest('.app-body')?.querySelector('iframe.app-iframe');
+  if (!(f instanceof HTMLIFrameElement) || !isAppFrame(f)) return null;
+  const r = f.getBoundingClientRect();
+  return x >= r.left && x < r.right && y >= r.top && y < r.bottom ? f : null;
+}
+
+// Where the pointer last was on this page. It stays put while the page moves under it (a reply streaming in,
+// the wheel, a message landing above), so an app that moves under a resting pointer becomes live, and one that
+// moves away stops being live, without the pointer moving (#38). Inside a live frame the page doesn’t see the
+// pointer move, so this is where it went in: close enough, and any move over the page corrects it.
+/** @type {{ x: number, y: number } | null} */
+let pointer = null;
+function onPointer(e) {
+  pointer = { x: e.clientX, y: e.clientY };
+  makeLive(frameAt(e.clientX, e.clientY));
+}
+for (const type of ['pointermove', 'pointerover', 'pointerdown']) addEventListener(type, onPointer, true);
+
+let relook = 0;
+function relookSoon() {
+  if (!pointer || relook) return;
+  relook = requestAnimationFrame(() => {
+    relook = 0;
+    if (pointer) makeLive(frameAt(pointer.x, pointer.y));
+  });
+}
+addEventListener('scroll', relookSoon, { capture: true, passive: true });
+addEventListener('resize', relookSoon);
+// The transcript renders, an item is added, or an app resizes: what’s under the pointer may have changed.
+new MutationObserver(relookSoon).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+
+/** A frame took focus on its own: refused sends, and stopped if it keeps doing it. */
+function steal(f) {
+  stolen.add(f);
+  const now = Date.now();
+  const times = [...(steals.get(f) ?? []), now].filter((t) => now - t < STEAL_WINDOW_MS);
+  steals.set(f, times);
+  const rec = [...frames].find((r) => r.iframe === f);
+  if (!rec || rec.check || times.length < STEALS_TO_STOP) return;
+  stopped.add(`${rec.appId}:${rec.version}`);
+  f.src = 'about:blank';
+  rec.onCrash?.();
+}
+
+/** Where Tab or Shift+Tab goes from the focused element, if that’s an app frame. */
+function tabTarget(back) {
+  const all = [
+    ...document.querySelectorAll('a[href], button, input, select, textarea, iframe.app-iframe, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'),
+  ].filter((el) => {
+    if (!(el instanceof HTMLElement) || el.tabIndex < 0 || /** @type {any} */ (el).disabled) return false;
+    if (!el.getClientRects().length || el.closest('[hidden]')) return false;
+    return !el.parentElement?.closest('[inert]');
+  });
+  const i = all.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+  const next = all[i < 0 ? (back ? all.length - 1 : 0) : i + (back ? -1 : 1)];
+  return isAppFrame(next) ? /** @type {HTMLIFrameElement} */ (next) : null;
+}
+
+addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key !== 'Tab') return;
+    const f = tabTarget(e.shiftKey);
+    if (f) tabbing = { frame: f, at: Date.now() };
+  },
+  true,
+);
+
+/** Settles who has the keyboard. A frame that took focus on its own gives it back, and is paused. */
+function checkFocus() {
+  const a = document.activeElement;
+  if (a && !(a instanceof HTMLIFrameElement) && a !== document.body) lastFocus = a;
+  const f = a instanceof HTMLIFrameElement && (isAppFrame(a) || a.classList.contains('check-frame')) ? a : null;
+  if (f === owner) return;
+  owner = null;
+  if (!f) return;
+  const tabbed = tabbing?.frame === f && Date.now() - tabbing.at < 1000;
+  if (f === live || tabbed) {
+    owner = f;
+    stolen.delete(f);
+    tabbing = null;
+    return;
+  }
+  if (lastFocus instanceof HTMLElement && lastFocus.isConnected) lastFocus.focus();
+  else f.blur();
+  steal(f);
+}
+addEventListener('blur', () => setTimeout(checkFocus, 0));
+addEventListener('focusin', checkFocus);
+// Focus moving from one frame to another tells this page nothing, so it also looks a few times a second.
+setInterval(checkFocus, 100);
+
+function activated(e, rec) {
+  checkFocus();
+  if (stolen.has(rec.iframe)) return NOT_ENTERED;
+  if (SNAPSHOTS ? e.userActivation?.isActive !== true : navigator.userActivation?.isActive !== true || document.activeElement !== rec.iframe)
+    return NOT_ACTIVATED;
+  return null;
+}
+
+// At most SEND_LIMIT sends a minute per app go straight to the agent; past that, the server holds them on a card
+// for you to allow. The server keeps the same limit (Runtime.APP_SEND_LIMIT) for anything calling its API.
+// Only sends the server took straight through count, so a refused or held send doesn’t use up the minute.
+const SEND_LIMIT = 5;
+const SEND_WINDOW_MS = 60_000;
+const sent = new Map(); // appId → times of sends that went straight through
+function overLimit(appId, now = Date.now()) {
+  const times = (sent.get(appId) ?? []).filter((t) => now - t < SEND_WINDOW_MS);
+  sent.set(appId, times);
+  return times.length >= SEND_LIMIT;
+}
+const countSent = (appId, now = Date.now()) => sent.set(appId, [...(sent.get(appId) ?? []), now]);
 
 const pendingState = new Map();
 function saveState(appId, state) {
@@ -296,7 +478,32 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
   const placeholder = (lines, height = 180, extra = null) => h('div.app-placeholder', { style: { height: `${height}px` } }, h('div.inner', lines, extra));
   const crashed = crashes.get(key);
 
-  if (crashed || status === 'crashed') {
+  if (stopped.has(key)) {
+    body.append(
+      placeholder(
+        [
+          h('span.row-flex', { style: { color: 'var(--text)' } }, h('span.g.g-failed', { 'aria-hidden': 'true' }), h('b', `Postbox stopped ${app.title}`)),
+          h('span', 'It kept taking the keyboard while you were using something else, so your typing could have gone to it. Its saved state is kept.'),
+          h(
+            'span.row-flex',
+            h(
+              'button.btn.sm',
+              {
+                type: 'button',
+                onclick: () => {
+                  stopped.delete(key);
+                  mountApp(container, appId, { review, onPin });
+                },
+              },
+              icon('retry', 'i-sm'),
+              'Reload app',
+            ),
+          ),
+        ],
+        200,
+      ),
+    );
+  } else if (crashed || status === 'crashed') {
     const msg = crashed ?? app.check.problems.find((p) => p.code === 'script-error')?.message ?? 'a script error';
     body.append(
       placeholder(
@@ -468,6 +675,71 @@ export function renderAppItem(item, ctx) {
   );
   mountApp(holder, app.id);
   return node;
+}
+
+// ── An app’s sends waiting for you ───────────────────────────────────────────────────────
+// Past the limit, an app’s sends wait on this card (the server’s appsend item). Postbox draws it, like the
+// permission and refusal cards: Allow sends them to the agent as they were sent, Don’t allow drops them.
+export function renderAppSendCard(it, ctx) {
+  const open = it.status === 'open';
+  const n = it.events.length;
+  // One answer: the buttons turn off at the first press (a double click would answer twice), and back on if it
+  // didn’t go through. Then focus goes to the composer of the thread the card is in, a panel’s or the main one.
+  /** @param {string} action @param {MouseEvent} e */
+  const act = (action, e) => {
+    const card = /** @type {HTMLElement} */ (e.currentTarget).closest('.appsend');
+    const buttons = [...(card?.querySelectorAll('button') ?? [])];
+    for (const b of buttons) b.disabled = true;
+    const composer = card?.closest('.sidepanel') ? document.getElementById('side-input') : document.getElementById('composer-input');
+    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
+      .then(() => composer?.focus())
+      .catch((err) => {
+        for (const b of buttons) b.disabled = false;
+        toast({ title: 'That didn’t go through', text: err.message, level: 'blocking' });
+      });
+  };
+  const titleId = `as-${it.id}`;
+  return h(
+    'div.col.block.appsend',
+    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
+    h(
+      'div.block-head',
+      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
+      h(
+        'span.title.grow',
+        { id: titleId },
+        open ? `${it.title} wants to send ${plural(n, 'message')} for you` : `${it.title} asked to send ${plural(n, 'message')} for you`,
+      ),
+      h('span.kind', 'Approve · from Postbox'),
+    ),
+    h(
+      'div.block-body',
+      open
+        ? h(
+            'p.small',
+            `An app can send up to ${SEND_LIMIT} messages a minute in your voice. These came after that, so they wait for you. Each one starts a turn for the agent.`,
+          )
+        : null,
+      h(
+        'ul.appsend-list',
+        it.events.map((ev) => h('li', ev.voice)),
+      ),
+      !open
+        ? h(
+            'span.answered-note',
+            icon(it.status === 'allowed' ? 'check' : 'x', 'i-sm'),
+            it.status === 'allowed' ? `Allowed. ${n === 1 ? 'It was' : 'They were'} sent.` : `Not allowed. ${n === 1 ? 'It wasn’t' : 'They weren’t'} sent.`,
+          )
+        : null,
+    ),
+    open
+      ? h(
+          'div.block-foot',
+          h('button.btn', { type: 'button', onclick: (e) => act('allow', e) }, 'Allow'),
+          h('button.btn', { type: 'button', onclick: (e) => act('deny', e) }, 'Don’t allow'),
+        )
+      : null,
+  );
 }
 
 // ── Diagrams and math in messages ────────────────────────────────────────────────────────
