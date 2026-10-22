@@ -1,4 +1,4 @@
-// The shell: top bar, rail (threads and rooms with rings), the phone ring strip, and the overview —
+// The shell: top bar, rail (conversations and rooms with rings), the phone ring strip, and the overview —
 // one column per live session, with quick answers, tool calls, subagents, agent messages and stats.
 
 import { ASKING } from '/shared/catalog.mjs';
@@ -577,7 +577,7 @@ function updateCard(node, se, fresh = false) {
           'a.oc-link',
           { href: hrefOf(t.id) },
           h('b', `@${se.handle}`),
-          h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'thread: ' : ''}${t.title}`),
+          h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'topic thread: ' : ''}${t.title}`),
         ),
         stateLine,
         openAsksEl(se),
@@ -592,7 +592,7 @@ function updateCard(node, se, fresh = false) {
       ? sec(
           se.needs.kind === 'failed' ? 'Failed' : 'Needs you',
           h('p', se.needs.text),
-          quick ?? h('a.btn.sm', { href: `#/t/${se.threadId}`, style: { alignSelf: 'flex-start' } }, 'Open thread'),
+          quick ?? h('a.btn.sm', { href: `#/t/${se.threadId}`, style: { alignSelf: 'flex-start' } }, 'Open conversation'),
         )
       : null,
     sec('Current step', h('p', { class: busy(se) ? '' : 'dim' }, se.currentStep || '—'), busy(se) && se.glimpse ? h('p.glimpse', se.glimpse) : null),
@@ -682,7 +682,7 @@ function quickAnswer(se) {
     return h(
       'div.col',
       it.detail ? h('pre.md-code.perm-detail', h('code', it.detail.slice(0, 400))) : null,
-      h('div.row-flex.wrap', ...buttons, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open thread')),
+      h('div.row-flex.wrap', ...buttons, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation')),
     );
   }
   if (kind !== 'block') return null;
@@ -698,7 +698,7 @@ function quickAnswer(se) {
       'div.row-flex.wrap',
       h('button.btn.sm', { type: 'button', onclick: () => act('confirm', {}) }, b.confirmLabel),
       h('button.btn.sm', { type: 'button', onclick: () => act('cancel', {}) }, b.cancelLabel ?? 'Cancel'),
-      h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open thread'),
+      h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation'),
     );
   if (b.type === 'choice' && !b.other) {
     const picked = new Set();
@@ -741,7 +741,7 @@ function quickAnswer(se) {
         return c;
       }),
     );
-    return [chips, h('div.row-flex', send, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open thread'))];
+    return [chips, h('div.row-flex', send, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation'))];
   }
   return null;
 }
@@ -750,20 +750,26 @@ export function sessionMenu(anchor, se) {
   openMenu(
     anchor,
     [
-      { label: 'Open thread', icon: 'thread', run: () => navigate(`#/t/${se.threadId}`) },
+      { label: 'Open conversation', icon: 'thread', run: () => navigate(`#/t/${se.threadId}`) },
       { label: `Edit @${se.handle} persona`, icon: 'edit', kbd: 'Personas', run: () => openSettings('personas', se.personaId) },
       ...(busy(se) ? [{ label: 'Stop', icon: 'x', run: () => api(`/api/sessions/${se.id}/stop`, {}) }] : []),
       'hr',
       {
         label: 'Archive session',
         icon: 'archive',
-        desc: 'Stops it; keeps the thread read-only. Restore any time.',
+        desc: 'Stops it; keeps the conversation read-only. Restore any time.',
         run: () =>
           api(`/api/sessions/${se.id}/archive`, {}).then(() =>
             toast({ title: `Archived @${se.handle}’s session`, action: { label: 'Restore', run: () => api(`/api/sessions/${se.id}/restore`, {}) } }),
           ),
       },
-      { label: 'Delete session…', icon: 'trash', danger: true, desc: 'Erases the thread and its apps. The persona stays.', run: () => confirmDelete(se) },
+      {
+        label: 'Delete session…',
+        icon: 'trash',
+        danger: true,
+        desc: `${sessionsOf(se.threadId).length > 1 ? 'Takes it out of the room and erases its apps' : 'Erases the conversation and its apps'}. The persona stays.`,
+        run: () => confirmDelete(se),
+      },
     ],
     { label: `Session actions for @${se.handle}` },
   );

@@ -754,7 +754,7 @@ function proposalBlock(it, ctx, showWho) {
               : null,
           ),
           h('dt', 'Joins'),
-          h('dd', 'This thread, with the recent messages as context'),
+          h('dd', `This ${ctx.kind === 'topic' ? 'topic thread' : ctx.kind === 'side' ? 'side thread' : 'conversation'}, with the recent messages as context`),
         ),
         !open ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'created' ? `Created @${p.handle}` : 'Dismissed') : null,
       ),

@@ -10,7 +10,7 @@ Lets you stop, archive or delete a session without opening it.
 
 ## Expected functionality
 
-- Open thread, Edit persona, Stop (while it works), Archive session, Delete session….
+- Open conversation, Edit persona, Stop (while it works), Archive session, Delete session….
 - Archive shows a toast with Restore; Delete opens the [delete confirm](../sheets/delete-session.md).
 
 ## Steps to reproduce
