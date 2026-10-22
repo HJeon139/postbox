@@ -8,7 +8,7 @@ A chat room for directing several AI agents at once. You message them, wake them
 
 - **Stage 1, mockups: done.** The approved design is in [`mockups/`](mockups/) and [`screenshots/`](screenshots/), and the reasoning is in [designs/intent.md](designs/intent.md).
 - **Stage 2, the app: done.** It runs offline with a mock agent that can show every block type and every error state.
-- **Stage 3, real agents: done.** Agents run on Claude Code or the Claude Agent SDK, ask before risky tool calls, and can be attached from a terminal session. Agent apps can read aloud with a local voice. Linting, type checks and accessibility checks run in CI. The engineering decisions are in [designs/architecture.md](designs/architecture.md).
+- **Stage 3, real agents: done.** Agents run on Claude Code or the Claude Agent SDK, ask before risky tool calls, and can be attached from a terminal session. Agent apps can read aloud with a local voice. Linting, type checks and accessibility checks run in CI. The engineering decisions are in [designs/architecture.md](designs/architecture.md). The practices every change is held to, and the gate, are in [designs/engineering-practices.md](designs/engineering-practices.md).
 
 ## Run it
 
@@ -288,7 +288,7 @@ server/       Node server, runtime, store, blobs, MCP, sandbox pages, corpus
 shared/       pure modules used by both sides: catalog, Markdown, events, state, BM25, text helpers
 tests/        node:test suites, and fixtures recorded from real Claude Code turns
 tools/        demo, screenshot tools, contrast checker, project lint rules, static server
-designs/      product intent, architecture decisions and recipes
+designs/      product intent, architecture decisions, engineering practices, recipes and work prompts
 mockups/      the approved Stage 1 mockups
 screenshots/  approved screenshots of the mockups and the app
 ```
