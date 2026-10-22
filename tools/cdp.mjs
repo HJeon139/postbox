@@ -57,11 +57,12 @@ export async function launch({ port = 9333 } = {}) {
       });
     }
   });
-  const send = (method, params = {}) =>
+  // sessionId: a frame in another process (a sandboxed app), attached with frameSession() below.
+  const send = (method, params = {}, sessionId = undefined) =>
     new Promise((ok, fail) => {
       const id = ++seq;
       waiting.set(id, (m) => (m.error ? fail(new Error(`${method}: ${m.error.message}`)) : ok(m.result)));
-      ws.send(JSON.stringify({ id, method, params }));
+      ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   const once = (method) =>
     new Promise((ok) => {
@@ -78,6 +79,13 @@ export async function launch({ port = 9333 } = {}) {
     if (r.exceptionDetails) throw new Error(`In the page: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
     return r.result.value;
   };
+  // Sandboxed frames run in their own process: attach to each, so the UAT can read and click inside apps.
+  const frames = new Map(); // frame id → CDP session id
+  listeners.push((m) => {
+    if (m.method === 'Target.attachedToTarget' && m.params.targetInfo.type === 'iframe') frames.set(m.params.targetInfo.targetId, m.params.sessionId);
+    if (m.method === 'Target.detachedFromTarget') for (const [f, sid] of frames) if (sid === m.params.sessionId) frames.delete(f);
+  });
+  await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
   await send('Page.enable');
   await send('Runtime.enable');
   await send('Log.enable');
@@ -93,6 +101,10 @@ export async function launch({ port = 9333 } = {}) {
     send,
     evaluate,
     logs,
+    /** The CDP session of a frame in another process, or null when it shares the page’s. */
+    frameSession: (frameId) => frames.get(frameId) ?? null,
+    /** Calls fn with the params of every CDP event named method. */
+    on: (method, fn) => listeners.push((m) => m.method === method && fn(m.params)),
     pending: () => [...inflight.values()].map((r) => `${r.url.replace(/^https?:\/\/[^/]+/, '')} (${Math.round((Date.now() - r.at) / 1000)} s)`),
     async size(width, height, { mobile = width < 768, scale = mobile ? 2 : 1, theme } = {}) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile });
