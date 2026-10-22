@@ -36,7 +36,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
               r,
               h('b', `@${se.handle}`),
               chipFacts(se),
-              h('span.who-state.hide-sm', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
+              h('span.who-state', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
               openAsksEl(se, true),
             );
           }),
@@ -80,7 +80,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
           icon('sidebar'),
         )
       : null;
-  return h(
+  const up = title ? '.up' : '';
+  const bar = h(
     'header.topbar',
     railToggle,
     h(
@@ -98,9 +99,10 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
     ),
     h(
       'span.crumbs',
+      // The crumb above the title (.up) is the first thing the top bar drops for room after the chips’ words (#72).
       project
-        ? [icon('right', 'i-sm'), h('a.crumb', { href: `#/p/${project.id}` }, project.name)]
-        : [icon('right', 'i-sm'), h(t || title ? 'a.crumb' : 'span.title', t || title ? { href: '#/' } : {}, 'Overview')],
+        ? [icon('right', `i-sm${up}`), h(`a.crumb${up}`, { href: `#/p/${project.id}` }, project.name)]
+        : [icon('right', `i-sm${up}`), h(t || title ? `a.crumb${up}` : 'span.title', t || title ? { href: '#/' } : {}, 'Overview')],
       title ? [icon('right', 'i-sm'), h('span.title', title)] : null,
     ),
     present,
@@ -140,7 +142,50 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       h('button.btn.icon.sm.ghost', { type: 'button', 'aria-label': 'Settings', onclick: () => openSettings() }, icon('gear')),
     ),
   );
+  fitter?.observe(bar);
+  if (present) refitter?.observe(present, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
+  return bar;
 }
+
+// ── Fitting the top bar (#72) ───────────────────────────────────────────────────────────
+// When the top bar doesn’t fit, it drops, in this order: the chips’ status words, their models, the project
+// above the conversation’s title, the demo banner’s sentence (it folds to “Demo”), the chips’ efforts, their
+// open-blocks buttons, and last their names. The rings always show. It’s measured, not a fixed breakpoint,
+// because what fits depends on how many agents there are and what their chips say. What a chip drops is still in
+// the overview card and the conversation’s ⋯ menu, as text, and each ring’s label reads the name and state.
+
+const DROPS = ['state', 'model', 'crumb', 'demo', 'effort', 'asks', 'names'];
+/** The room the open conversation’s title keeps, in pixels, before a chip drops anything for it. */
+const TITLE_ROOM = 96;
+
+/** Drops the fewest parts that let the top bar fit. */
+function fitTopbar(bar) {
+  if (!bar.isConnected) return;
+  const title = bar.querySelector('.crumbs > :last-child');
+  const fits = () => bar.scrollWidth <= bar.clientWidth && (!title || title.clientWidth >= Math.min(title.scrollWidth, TITLE_ROOM));
+  let n = 0;
+  bar.dataset.drop = '';
+  while (n < DROPS.length && !fits()) bar.dataset.drop = DROPS.slice(0, ++n).join(' ');
+}
+
+// It refits when the top bar’s width changes, and when a chip’s words change, even words it had dropped: a status
+// word that went from “calling tools” back to “idle” may fit again.
+const fitter =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        for (const { target } of entries) {
+          if (target.isConnected) fitTopbar(target);
+          else fitter?.unobserve(target);
+        }
+      })
+    : null;
+const refitter =
+  typeof MutationObserver === 'function'
+    ? new MutationObserver((records) => {
+        const bars = new Set(records.map((r) => (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest('header.topbar')));
+        for (const bar of bars) if (bar) fitTopbar(bar);
+      })
+    : null;
 
 /**
  * Under --demo, every view says the agents are scripted (#12). It isn’t a live region, and it can’t be closed:

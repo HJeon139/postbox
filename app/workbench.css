@@ -723,13 +723,29 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .demo-note { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border: 1px solid var(--accent); border-radius: 999px;
   font-size: 12px; color: var(--text); background: var(--sunk); white-space: nowrap; }
 .demo-note .demo-short { display: none; }
-/* Where room is short it folds to “Demo”, and the whole sentence is still read. */
-@media (max-width: 767px) {
-  .demo-note .demo-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .demo-note .demo-short { display: inline; }
-}
 .install-note p { margin: 0; }
 .install-note p + p { margin-top: 4px; }
+
+/* ───────── Agent header at any width (#72) ───────── */
+/* The chips keep their size, and the conversation’s title gives way first. When they still don’t fit, the
+   top bar’s data-drop (fitTopbar in shell.mjs, measured) drops their parts in order; the rings always show. */
+
+.present { flex: none; }
+.present .who-chip { white-space: nowrap; }
+.topbar[data-drop~="names"] .present { gap: 6px; }
+/* The crumbs shorten with an ellipsis rather than run under the chips. */
+.crumbs > * { flex: none; }
+.crumbs > .crumb, .crumbs > .title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.topbar[data-drop~="crumb"] .crumbs .up { display: none; }
+.topbar[data-drop~="state"] .present .who-state,
+.topbar[data-drop~="model"] .present .who-model,
+.topbar[data-drop~="effort"] .present .who-effort,
+.topbar[data-drop~="asks"] .present [data-open-asks],
+.topbar[data-drop~="names"] .present .who-chip > b,
+.topbar[data-drop~="names"] .present .who-mock { display: none; }
+/* Folded to “Demo”, the whole sentence is still read. */
+.topbar[data-drop~="demo"] .demo-note .demo-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.topbar[data-drop~="demo"] .demo-note .demo-short { display: inline; }
 
 /* ───────── Phone ───────── */
 
@@ -737,7 +753,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   .app, .app.no-rail { grid-template-columns: minmax(0, 1fr); }
   .rail { display: none; }
   .topbar { padding: 0 8px; gap: 8px; }
-  .present, .hide-sm { display: none !important; }
+  .hide-sm { display: none !important; }
   .only-sm { display: inline-flex !important; }
   .sr-sm { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .ringstrip { display: flex; gap: 4px; overflow-x: auto; padding: 8px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 48px; z-index: 18; background: var(--bg); }
