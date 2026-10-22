@@ -557,6 +557,13 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .attachments { display: flex; flex-wrap: wrap; gap: 6px; }
 .att { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 9px; border-radius: 6px; background: var(--chip); border: 1px solid var(--line); font-size: 12px; }
 .att .thumb { width: 18px; height: 18px; border-radius: 3px; background: var(--line); display: grid; place-items: center; color: var(--dim); }
+/* An image attachment: a fixed 4:3 box, so nothing moves while it loads. The whole card opens the full image. */
+.att-image { display: inline-flex; flex-direction: column; gap: 4px; width: 172px; padding: 5px; border-radius: 6px; background: var(--chip); border: 1px solid var(--line); color: var(--text); text-decoration: none; font-size: 12px; }
+.att-image:hover { border-color: var(--accent); }
+.att-image img { display: block; width: 160px; height: 120px; object-fit: contain; border-radius: 3px; background: var(--sunk); }
+.att-image .att-cap { display: flex; min-width: 0; padding: 0 2px; }
+.att-image .att-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-image .att-cap .dim { flex: none; white-space: pre; }
 .queued { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; }
 .queued .q-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .jump { position: absolute; left: 50%; transform: translateX(-50%); top: -42px; }

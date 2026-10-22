@@ -14,6 +14,8 @@ Where you write to agents; it must say who will answer.
 - The hint says who replies (the last speaker in a room); Stop replaces Send while an agent works.
 - Messages sent while an agent is busy are queued with Send now, Edit and remove ([screenshot](../../screenshots/queued-message.png)).
 - Messages typed offline are sent when the connection returns.
+- Files attach from + (Upload from computer), by pasting, or by dropping them. A file dropped anywhere in the conversation attaches to its composer; a file dropped on an open topic or side thread panel attaches to the panel’s composer, and only there.
+- A sent image the server shows inline (PNG, JPEG, GIF or WebP) appears as a thumbnail with its name and size ([screenshot](../../screenshots/image-attachment.png)). The thumbnail is a link: click it, or Tab to it and press Enter, and the full image opens in a new tab. Every other file, an SVG included, is a file chip that downloads.
 
 ## Steps to reproduce
 
@@ -21,6 +23,14 @@ Where you write to agents; it must say who will answer.
 2. In “Corpus planning”, send while @indexer works; use Send now on the queued message.
 
 **Pass if:** The queued message is delivered when @indexer finishes, or at once with Send now.
+3. In “Corpus explorer”, drag a PNG screenshot and an SVG from your desktop onto the transcript, and send.
+
+**Pass if:** Both attach to the composer before you send. The PNG shows as a thumbnail with its name and size, and the image doesn’t jump while it loads; Tab to it and press Enter, and the full image opens in a new tab. The SVG shows as a file chip.
+4. Choose Reply in thread under a message, so the topic thread panel opens. Drag a file onto the panel’s replies, then another onto the conversation beside it. Open the panel’s + menu.
+
+**Pass if:** The first file attaches only to the panel’s composer, and the second only to the conversation’s. The panel’s + menu says “Or drop files on this thread”.
+
+The headless check `node tools/checks/attachments.mjs` covers steps 3 and 4 with a drawn PNG and SVG.
 
 ## Related
 

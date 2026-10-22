@@ -11,6 +11,7 @@ Agent-to-agent exchanges stay out of your conversation but remain visible and jo
 ## Expected functionality
 
 - Shows the exchange between two agents; typing there adds you to it.
+- A file dropped on the panel attaches to the panel’s composer, not the conversation’s ([composer](../composer/composer.md), step 4).
 
 ## Steps to reproduce
 

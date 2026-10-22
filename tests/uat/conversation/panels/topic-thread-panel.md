@@ -13,6 +13,7 @@ Follow a side question without filling the main agent’s memory: the thread’s
 - Shows the root message (clamped, Show all), what the forked agent remembers, the replies, and a composer.
 - Summarize back posts a summary to the conversation; Send to conversation posts one reply.
 - Close returns to the conversation; on a phone it’s full screen.
+- A file dropped on the panel attaches to the panel’s composer, not the conversation’s ([composer](../composer/composer.md), step 4).
 
 ## Steps to reproduce
 

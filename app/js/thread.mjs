@@ -1,6 +1,7 @@
 // The conversation view: transcript, composer, and the panel beside it for topic threads (yours, forked from a
 // message) and side threads (between agents).
 
+import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
@@ -492,13 +493,29 @@ function stepRow(s) {
   );
 }
 
+const fileSize = (size) => (size > 1e6 ? `${(size / 1e6).toFixed(1)} MB` : `${Math.ceil(size / 1000)} KB`);
+
+/**
+ * An attachment on a sent message. Images the server shows inline (INLINE_TYPES) get a thumbnail that opens
+ * the full image in a new tab; everything else, an SVG included, is a file chip that downloads.
+ */
 function attChip(a) {
   const label = a.kind === 'project-file' ? a.path : a.name;
+  const href = a.fileId ? `/api/files/${encodeURIComponent(a.fileId)}` : null;
+  if (href && INLINE_TYPES.has(a.type)) {
+    // One link: the image’s alt text and the size are its name, so it reads as “photo.png · 318 KB”.
+    return h(
+      'a.att-image',
+      { href, target: '_blank', rel: 'noopener' },
+      h('img', { src: href, alt: a.name, width: '160', height: '120', loading: 'lazy', decoding: 'async' }),
+      h('span.att-cap', h('span.att-name', { 'aria-hidden': 'true' }, a.name), a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null),
+    );
+  }
   return h(
     'span.att',
     h('span.thumb', icon(a.kind === 'project-file' ? 'folder' : /^image\//.test(a.type ?? '') ? 'image' : 'file', 'i-sm')),
-    a.fileId ? h('a', { href: `/api/files/${a.fileId}`, style: { color: 'inherit' } }, label) : label,
-    a.size ? h('span.dim', ` · ${a.size > 1e6 ? (a.size / 1e6).toFixed(1) + ' MB' : Math.ceil(a.size / 1000) + ' KB'}`) : null,
+    href ? h('a', { href, style: { color: 'inherit' } }, label) : label,
+    a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null,
   );
 }
 
@@ -953,16 +970,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           'span.att',
           h('span.thumb', icon(a.kind === 'project-file' ? 'folder' : /^image\//.test(a.type ?? '') ? 'image' : 'file', 'i-sm')),
           a.kind === 'project-file' ? a.path : a.name,
-          h(
-            'span.dim',
-            a.uploading
-              ? ' · uploading…'
-              : a.kind === 'project-file'
-                ? ' · from the project folder'
-                : a.size
-                  ? ` · ${a.size > 1e6 ? (a.size / 1e6).toFixed(1) + ' MB' : Math.ceil(a.size / 1000) + ' KB'}`
-                  : '',
-          ),
+          h('span.dim', a.uploading ? ' · uploading…' : a.kind === 'project-file' ? ' · from the project folder' : a.size ? ` · ${fileSize(a.size)}` : ''),
           h(
             'button.btn.icon.sm.ghost',
             {
@@ -987,7 +995,12 @@ export function mountComposer(threadId, { side = false } = {}) {
       anchor,
       [
         { heading: 'Add a file' },
-        { label: 'Upload from computer', desc: 'Or drop files anywhere in the conversation', icon: 'upload', run: () => file.click() },
+        {
+          label: 'Upload from computer',
+          desc: side ? 'Or drop files on this thread' : 'Or drop files anywhere in the conversation',
+          icon: 'upload',
+          run: () => file.click(),
+        },
         {
           label: 'From the project folder',
           desc: S().projects[t?.projectId]?.folder ?? '',
@@ -1177,19 +1190,30 @@ export function mountComposer(threadId, { side = false } = {}) {
 
   const el = h('div.composer', h('div.col', status, queue, menuBox, att, h('div.composer-box', plus, ta, action), hint, file, corpusFile));
 
-  // Drop files anywhere on the thread
+  // Drop files: the main composer takes drops anywhere in the window. A side or topic composer takes drops on
+  // its own panel (see dropZone below), and stops them there so the main composer doesn’t take them too.
   const onDrop = (e) => {
     if (!e.dataTransfer?.files?.length) return;
     e.preventDefault();
+    if (side) e.stopPropagation();
     addFiles([...e.dataTransfer.files]);
   };
   const onDragOver = (e) => {
-    if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+    if (!e.dataTransfer?.types?.includes('Files')) return;
+    e.preventDefault();
+    if (side) e.stopPropagation();
   };
-  if (!side) {
-    addEventListener('drop', onDrop);
-    addEventListener('dragover', onDragOver);
-  }
+  /** @type {EventTarget} */
+  let zone = side ? el : window;
+  const listen = () => {
+    zone.addEventListener('drop', onDrop);
+    zone.addEventListener('dragover', onDragOver);
+  };
+  const unlisten = () => {
+    zone.removeEventListener('drop', onDrop);
+    zone.removeEventListener('dragover', onDragOver);
+  };
+  listen();
 
   function paint() {
     const t = thread();
@@ -1346,10 +1370,16 @@ export function mountComposer(threadId, { side = false } = {}) {
   return {
     el,
     focus: () => ta.focus(),
+    /** A side or topic composer: take drops on this element (its whole panel) instead of on the composer alone. */
+    dropZone(target) {
+      if (!side) return;
+      unlisten();
+      zone = target;
+      listen();
+    },
     destroy() {
       off();
-      removeEventListener('drop', onDrop);
-      removeEventListener('dragover', onDragOver);
+      unlisten();
     },
   };
 }
@@ -1404,6 +1434,8 @@ export function mountSidePanel(parentId, sideId) {
     body,
     h('div.sp-foot', comp.el),
   );
+  // A file dropped anywhere on the panel attaches to the panel’s composer, not the conversation’s.
+  comp.dropZone(el);
   requestAnimationFrame(() => {
     body.scrollTop = body.scrollHeight;
   });
