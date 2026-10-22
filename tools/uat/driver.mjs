@@ -28,8 +28,9 @@ export function driver(page) {
       await page.send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: 'left', clickCount: 1 });
     await sleep(250);
   }
+  // Matches a control by its visible text or its label, since icon buttons (Expand table) have only a label.
   const byText = (scope, sel, text) =>
-    `[...(${scope}?.querySelectorAll(${J(sel)}) ?? [])].find((e) => e.offsetParent !== null && e.textContent.replace(/\\s+/g, ' ').trim().toLowerCase().includes(${J(String(text).toLowerCase())}))`;
+    `[...(${scope}?.querySelectorAll(${J(sel)}) ?? [])].find((e) => e.offsetParent !== null && (e.textContent + ' ' + (e.getAttribute('aria-label') ?? '')).replace(/\\s+/g, ' ').trim().toLowerCase().includes(${J(String(text).toLowerCase())}))`;
   const press = async (key) => {
     const codes = { Enter: 13, Escape: 27, Tab: 9 };
     for (const type of ['keyDown', 'keyUp'])

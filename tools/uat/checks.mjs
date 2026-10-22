@@ -12,6 +12,7 @@
 //   apps,            { [itemId]: { text, marks, tinyMarks, svgText, tinyText, fonts } } read from inside each app
 //   probes,          { fullScreen: [{ key, before, after, viewport }], attachments: [{ key, images, attachments }] }
 //   samples,         [{ busy: [handles thinking or calling tools], rows: number }]: the working row while agents worked
+//   ui,              { headerText, reviewRawRows: { [itemId]: rows of a review block shown as raw “| … |” text } }
 //   userMcpServers,  names of MCP servers in the person’s own Claude Code config
 //   userRulesMarker, a line from the person’s global CLAUDE.md. Since #57, agents load the person’s setup on
 //                    purpose, so it reaching them isn’t a finding; no check uses it now.
@@ -360,12 +361,14 @@ export const CHECKS = [
             it.valid &&
             it.block.type === 'review' &&
             it.block.format === 'markdown' &&
-            /^\s*\|.*\|\s*\n\s*\|\s*:?-{3,}/m.test(it.block.content ?? ''),
+            /^\s*\|.*\|\s*\n\s*\|\s*:?-{3,}/m.test(it.block.content ?? '') &&
+            // What’s on screen decides: since #62, a table renders as a table. Without a reading, assume it did.
+            (f.ui?.reviewRawRows?.[it.id] ?? 0) > 0,
         )
         .map((it) => ({
           key: it.id,
           title: 'A review block’s Markdown table shows as raw pipes',
-          evidence: `“${it.block.title ?? 'review'}” has a table, and review blocks render line by line.`,
+          evidence: `“${it.block.title ?? 'review'}” has a table, and ${f.ui.reviewRawRows[it.id]} of its rows show as raw pipes on screen.`,
         })),
   },
   {

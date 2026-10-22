@@ -193,6 +193,7 @@ async function main() {
     let phase = 0;
     let lastAction = null;
     let actionError = null;
+    let actionResult = null; // what an action measured, when it worked
 
     const threadsUnderTest = (state) => [
       mainThread,
@@ -206,6 +207,9 @@ async function main() {
       facts.streams = readStreams(paths.streams);
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
+      facts.ui.reviewRawRows = await page.evaluate(
+        `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
+      );
     };
     const newFindings = () => {
       const fresh = [];
@@ -295,7 +299,7 @@ async function main() {
         `Step ${step} of at most ${opt.steps}. Phase ${phase + 1} of ${scenario.phases.length}: ${ph.title}`,
         ph.text,
         lastAction
-          ? `Your last action: ${JSON.stringify(lastAction)}${actionError ? `. It failed: ${actionError}` : ''}`
+          ? `Your last action: ${JSON.stringify(lastAction)}${actionError ? `. It failed: ${actionError}` : ''}${actionResult ? `. Result: ${actionResult}` : ''}`
           : 'Nothing has happened yet: start the phase.',
         timedOut ? `The run itself pressed Stop: ${timedOut} A “Stopped by you” line is from that, not a bug.` : '',
         obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
@@ -317,6 +321,7 @@ async function main() {
       const a = answer.action;
       lastAction = a;
       actionError = null;
+      actionResult = null;
       log(`action: ${JSON.stringify(a)}`);
       if (a.type === 'done') break;
       if (a.type === 'next_phase') {
@@ -330,11 +335,19 @@ async function main() {
         if (a.type === 'send') await d.send(a.text ?? '');
         else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'act') await d.act(key, a);
-        else if (a.type === 'app_click') await d.appClick(key, a.target ?? '');
-        else if (a.type === 'full_screen') {
+        else if (a.type === 'app_click') {
+          // The transcript doesn’t change when an app does, so say what the click did inside the app.
+          const before = (await d.appInside(key))?.text;
+          await d.appClick(key, a.target ?? '');
+          const after = (await d.appInside(key))?.text;
+          actionResult =
+            before === after ? 'The app’s text didn’t change.' : `The app changed. It now begins: “${(after ?? '').replace(/\s+/g, ' ').slice(0, 300)}”`;
+        } else if (a.type === 'full_screen') {
           const p = await d.probeFullScreen(key);
           if (p) facts.probes.fullScreen.push({ key, ...p });
-          actionError = p ? `(result) The app frame went from ${p.before.w}×${p.before.h} to ${p.after.w}×${p.after.h}.` : 'That item has no app.';
+          if (p)
+            actionResult = `The app frame went from ${p.before.w}×${p.before.h} to ${p.after.w}×${p.after.h}, in a ${p.viewport?.w ?? '?'}×${p.viewport?.h ?? '?'} window.`;
+          else actionError = 'That item has no app.';
         } else if (a.type === 'attach_screenshot') {
           const file = await d.shotItem(key, join(paths.shots, `attach-${step}.png`));
           await d.attach(file);
@@ -581,6 +594,9 @@ async function recheck(dir) {
     facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
     facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
+    facts.ui.reviewRawRows = await page.evaluate(
+      `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
+    );
     const kept = saved.findings.filter((f) => f.source === 'tester');
     const checks = runChecks(facts)
       .filter((f) => !LIVE_ONLY.has(f.check))
