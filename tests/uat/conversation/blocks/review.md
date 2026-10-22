@@ -11,6 +11,8 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 ## Expected functionality
 
 - Each line can take a comment; the add-comment button is always visible.
+- Markdown renders by block, the way it does in a reply: a table is a table, a list keeps its numbering and nesting, a code fence is code and a quote is quoted. Each table row, list item and code line takes its own comment; a table’s delimiter row and a fence’s markers don’t show.
+- In a diff, an added or removed table row, list item or code line stays in place inside its block, marked added or removed.
 - Comments are drafted, then submitted with a verdict (comment, approve, request changes).
 - A revision shows as a diff against the previous version; resolved threads collapse.
 

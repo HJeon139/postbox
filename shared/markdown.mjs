@@ -13,12 +13,16 @@ import { isSafeUrl } from './urls.mjs';
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
-const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
-const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
-const QUOTE = /^ {0,3}>\s?(.*)$/;
-const RULE = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
-const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+// The block rules, shared with the review renderer's line grouping (review-lines.mjs).
+export const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
+export const MATH = /^ {0,3}\$\$\s*$/;
+export const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+export const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
+export const QUOTE = /^ {0,3}>\s?(.*)$/;
+export const RULE = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
+export const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+/** Whether a line closes a fence opened with `marker` (such as ``` or ~~~~). */
+export const closesFence = (marker, line) => new RegExp(`^ {0,3}${marker[0]}{${marker.length},}\\s*$`).test(line);
 
 /**
  * @param {string} src
@@ -63,7 +67,7 @@ function blocks(lines, ctx) {
       const body = [];
       let closed = false;
       for (i++; i < lines.length; i++) {
-        if (new RegExp(`^ {0,3}${marker[0]}{${marker.length},}\\s*$`).test(lines[i])) {
+        if (closesFence(marker, lines[i])) {
           closed = true;
           break;
         }
@@ -75,10 +79,10 @@ function blocks(lines, ctx) {
       continue;
     }
 
-    if (/^ {0,3}\$\$\s*$/.test(line)) {
+    if (MATH.test(line)) {
       flush();
       const body = [];
-      for (i++; i < lines.length && !/^ {0,3}\$\$\s*$/.test(lines[i]); i++) body.push(lines[i]);
+      for (i++; i < lines.length && !MATH.test(lines[i]); i++) body.push(lines[i]);
       out.push(`<div class="md-math" data-display="true">${escapeHtml(body.join('\n'))}</div>`);
       continue;
     }

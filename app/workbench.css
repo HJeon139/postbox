@@ -509,12 +509,13 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 /* ───────── Review ───────── */
 
-.rv-doc { display: grid; grid-template-columns: 44px 1fr; font-size: 13.5px; }
+.rv-doc { display: grid; grid-template-columns: 44px 1fr; font-size: 13.5px; position: relative; }
 .rv-line { display: contents; }
-.rv-line > .g-ln { color: var(--dim); font-size: 11.5px; text-align: right; padding: 4px 10px 4px 0; border-right: 1px solid var(--line); user-select: none; position: relative; }
-.rv-line > .g-ln .add-c { position: absolute; left: 4px; top: 4px; width: 18px; height: 18px; border-radius: 4px; display: none; place-items: center; background: var(--on); color: var(--on-ink); }
-.rv-line > .g-ln .add-c { display: grid; opacity: .55; }
-.rv-line:hover > .g-ln .add-c, .rv-line.hover > .g-ln .add-c, .rv-line > .g-ln .add-c:focus-visible { opacity: 1; }
+.rv-doc .g-ln { color: var(--dim); font-size: 11.5px; text-align: right; padding: 4px 10px 4px 0; user-select: none; position: relative; }
+.rv-line > .g-ln { border-right: 1px solid var(--line); }
+.rv-doc .g-ln .add-c { position: absolute; left: 4px; top: 4px; width: 18px; height: 18px; border-radius: 4px; display: none; place-items: center; background: var(--on); color: var(--on-ink); }
+.rv-doc .g-ln .add-c { display: grid; opacity: .55; }
+.rv-line:hover > .g-ln .add-c, .rv-line.hover > .g-ln .add-c, .rv-u:hover > .g-ln .add-c, .rv-doc .g-ln .add-c:focus-visible { opacity: 1; }
 .rv-line > .tx { padding: 4px 12px; }
 .rv-line.marked > .tx, .rv-line.marked > .g-ln { background: var(--mark); }
 .rv-line.add > .tx, .rv-line.add > .g-ln { background: var(--diff-add); }
@@ -522,6 +523,29 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rv-line.del > .tx { text-decoration: line-through; text-decoration-color: var(--dim); }
 .rv-line.add > .g-ln::before { content: "+"; position: absolute; left: 6px; color: var(--good); font-weight: 700; }
 .rv-line.del > .g-ln::before { content: "−"; position: absolute; left: 6px; color: var(--alert-ink); font-weight: 700; }
+/* A table or list renders whole; each row or item puts its gutter in the gutter column, level with it. */
+.rv-block > .tx { padding: 8px 12px; white-space: normal; }
+.rv-doc .g-ln.g-abs { position: absolute; left: 0; width: 44px; padding: 0 10px 0 0; }
+.rv-doc .g-abs .add-c { top: 0; }
+.rv-u.marked { background: var(--mark); }
+.rv-u.add, .rv-u.mod { background: var(--diff-add); }
+.rv-u.del { background: var(--diff-del); text-decoration: line-through; text-decoration-color: var(--dim); }
+.rv-u.add > .g-abs::before, .rv-u.add > :first-child > .g-abs::before { content: "+"; position: absolute; left: 6px; color: var(--good); font-weight: 700; }
+.rv-u.mod > .g-abs::before, .rv-u.mod > :first-child > .g-abs::before { content: "±"; position: absolute; left: 6px; color: var(--good); font-weight: 700; }
+.rv-u.del > .g-abs::before, .rv-u.del > :first-child > .g-abs::before { content: "−"; position: absolute; left: 6px; color: var(--alert-ink); font-weight: 700; }
+.rv-thread-row > td { padding: 0; border: 0; }
+/* A fence's lines are code rows; a quote's lines carry one bar per level. */
+.rv-line.code > .g-ln { padding-top: 1px; padding-bottom: 1px; }
+.rv-line.code > .tx { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; background-color: var(--sunk);
+  margin: 0 12px; padding: 1px 12px; border: 1px solid var(--line); border-width: 0 1px; }
+.rv-line.code-first > .g-ln { padding-top: 13px; }
+.rv-line.code-first > .tx { margin-top: 4px; padding-top: 9px; border-top-width: 1px; border-radius: 6px 6px 0 0; }
+.rv-line.code-last > .tx { margin-bottom: 4px; padding-bottom: 9px; border-bottom-width: 1px; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+.rv-line.code > .tx .code-lang { float: right; margin-left: 12px; font-size: 11px; color: var(--dim); font-family: inherit; }
+.rv-line.quote > .tx, .rv-block > .tx.quote { --bar: linear-gradient(var(--line), var(--line)); color: var(--dim); background-repeat: no-repeat; background-size: 2px 100%; }
+.rv-line.q1 > .tx, .rv-block > .tx.q1 { padding-left: 26px; background-image: var(--bar); background-position: 12px 0; }
+.rv-line.q2 > .tx, .rv-block > .tx.q2 { padding-left: 40px; background-image: var(--bar), var(--bar); background-position: 12px 0, 26px 0; }
+.rv-line.q3 > .tx, .rv-block > .tx.q3 { padding-left: 54px; background-image: var(--bar), var(--bar), var(--bar); background-position: 12px 0, 26px 0, 40px 0; }
 .rv-line.h > .tx { font-weight: 650; font-size: 14px; padding-top: 10px; }
 .rv-thread { grid-column: 2; margin: 6px 12px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .rv-thread .c { padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
@@ -745,8 +769,8 @@ html.pb-sandbox body { margin: 0; }
 
 /* Review */
 .rv-doc .tx { white-space: pre-wrap; word-break: break-word; }
-.rv-line > .g-ln { cursor: pointer; }
-.rv-line > .g-ln .add-c { border: 0; cursor: pointer; }
+.rv-doc .g-ln { cursor: pointer; }
+.rv-doc .g-ln .add-c { border: 0; cursor: pointer; }
 .rv-line:focus-within > .g-ln .add-c { display: grid; }
 .rv-pins { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 

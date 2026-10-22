@@ -3,6 +3,7 @@
 // and show what you chose. Drafts (selections, typed text, review comments) survive re-renders.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { mountApp } from './apps.mjs';
 import { client } from './client.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
@@ -767,38 +768,92 @@ function renderReview(b, item, ctx) {
     const lines = (b.content ?? '').split('\n');
     const doc = h('div.rv-doc', { class: b.format === 'code' ? 'code-doc code' : '', role: 'list', 'aria-label': 'Lines' });
     const rows = isDiff ? diffLines(b.previous.split('\n'), lines) : lines.map((t, i) => ({ t, kind: 'same', n: i + 1 }));
-    for (const r of rows) {
-      const key = r.kind === 'del' ? null : r.n;
-      const marked = key !== null && (threadsAt(key).length || draftsAt(key).length);
-      const heading = b.format === 'markdown' && /^#{1,6}\s/.test(r.t);
-      const text = b.format === 'markdown' ? r.t.replace(/^#{1,6}\s+/, '') : r.t;
-      doc.append(
+    // Markdown renders by block (a table, list or fence as a whole), with a target per line inside it.
+    const groups = b.format === 'markdown' ? groupReviewLines(rows) : rows.map((r) => ({ type: 'line', depth: 0, unit: rowUnit(r) }));
+    const marked = (u) => u.lines.some((k) => threadsAt(k).length || draftsAt(k).length);
+    const unitClass = (u) => [u.kind === 'same' ? '' : u.kind, marked(u) ? 'marked' : ''].join(' ');
+    const gutter = (u, cls = '') => {
+      const r = u.rows[0];
+      return h(
+        `span.g-ln${cls}`,
+        { 'aria-label': u.key === null ? `Removed line ${r.o}` : `Line ${u.key}` },
+        !done && u.key !== null
+          ? h(
+              'button.add-c',
+              {
+                type: 'button',
+                'aria-label': `Comment on line ${u.key}`,
+                onclick: () => {
+                  d.composing = u.key;
+                  rerender();
+                },
+              },
+              icon('plus', 'i-sm'),
+            )
+          : null,
+        String(u.key ?? r.o),
+      );
+    };
+    const threadsOf = (u) => u.lines.flatMap((k) => threadBox(k));
+    const quoted = (depth) => (depth ? `quote q${Math.min(depth, 3)}` : '');
+    // code: a line of a fence, drawn as part of one code box ('first' carries the language label).
+    const lineRow = (u, depth, code = null) => {
+      const t = u.rows[0].t;
+      const heading = !code && b.format === 'markdown' && /^#{1,6}\s/.test(t);
+      const text = heading ? t.replace(/^#{1,6}\s+/, '') : t;
+      const plain = b.format !== 'markdown' || code;
+      return [
         h(
           'div.rv-line',
-          { class: [r.kind === 'add' ? 'add' : r.kind === 'del' ? 'del' : '', marked ? 'marked' : '', heading ? 'h' : ''].join(' '), role: 'listitem' },
+          {
+            class: [unitClass(u), heading ? 'h' : '', code ? `code ${code.first ? 'code-first' : ''} ${code.last ? 'code-last' : ''}` : '', quoted(depth)].join(
+              ' ',
+            ),
+            role: 'listitem',
+          },
+          gutter(u),
           h(
-            'span.g-ln',
-            { 'aria-label': r.kind === 'del' ? `Removed line ${r.o}` : `Line ${r.n}` },
-            !done && key !== null
-              ? h(
-                  'button.add-c',
-                  {
-                    type: 'button',
-                    'aria-label': `Comment on line ${key}`,
-                    onclick: () => {
-                      d.composing = key;
-                      rerender();
-                    },
-                  },
-                  icon('plus', 'i-sm'),
-                )
-              : null,
-            String(r.kind === 'del' ? r.o : r.n),
+            'span.tx',
+            plain ? null : { html: trusted(inlineMd(text)) },
+            code?.first && code.lang ? h('span.code-lang', code.lang) : null,
+            plain ? text || ' ' : null,
           ),
-          h('span.tx', b.format === 'markdown' ? { html: trusted(inlineMd(text)) } : null, b.format === 'markdown' ? null : text || ' '),
         ),
-      );
-      if (key !== null) for (const p of threadBox(key)) doc.append(p);
+        threadsOf(u),
+      ];
+    };
+    // A table or list renders whole. Each row or item gets its own gutter, positioned in the gutter
+    // column, and its threads right after it. If the rendered rows don't match the targets, the
+    // block is drawn line by line, as before.
+    const blockRows = (g) => {
+      const box = h('div.tx.md', { class: quoted(g.depth), html: trusted(renderMarkdown(g.source)) });
+      const els = [...box.querySelectorAll(g.type === 'table' ? 'tr' : 'li')];
+      if (els.length !== g.units.length) return g.rows.map((r) => lineRow(rowUnit(r), g.depth));
+      const cols = box.querySelector('tr')?.children.length ?? 1;
+      g.units.forEach((u, i) => {
+        const el = els[i];
+        el.className = ['rv-u', unitClass(u)].join(' ').trim();
+        (g.type === 'table' ? el.firstElementChild : el)?.prepend(gutter(u, '.g-abs'));
+        const threads = threadsOf(u);
+        if (!threads.length) return;
+        if (g.type === 'table') el.after(h('tr.rv-thread-row', h('td', { colspan: String(cols) }, threads)));
+        else el.append(...threads);
+      });
+      // Threads on a hidden line (a delimiter row, say) still show, after the block.
+      return [
+        h('div.rv-line.rv-block', { role: 'listitem' }, h('span.g-ln', { 'aria-hidden': 'true' }), box),
+        g.hidden.flatMap((r) => (r.kind === 'del' || r.n === undefined ? [] : threadBox(r.n))),
+      ];
+    };
+    for (const g of groups) {
+      if (g.type === 'line') doc.append(...lineRow(g.unit, g.depth).flat());
+      else if (g.type === 'code') {
+        g.units.forEach((u, i) => {
+          const code = { first: i === 0, last: i === g.units.length - 1, lang: g.lang === 'math' ? '' : g.lang };
+          doc.append(...lineRow(u, g.depth, code).flat());
+        });
+        for (const r of g.hidden) if (r.kind !== 'del' && r.n !== undefined) doc.append(...threadBox(r.n));
+      } else doc.append(...blockRows(g).flat());
     }
     node.append(doc);
   }
