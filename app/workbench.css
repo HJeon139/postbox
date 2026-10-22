@@ -289,6 +289,9 @@ pb-ring .dot.still { animation: none; }
 .main { min-width: 0; display: flex; flex-direction: column; position: relative; }
 /* Messages sit at most one line apart. */
 .transcript { flex: 1; padding: 16px 24px 8px; display: flex; flex-direction: column; gap: 12px; }
+/* The transcript keeps its own place (mountTranscript): on the newest message, or on what you were reading. The
+   browser's own scroll anchoring is off, so every browser behaves the same and only your scrolling moves it. */
+:root:has(.transcript), .sp-body { overflow-anchor: none; }
 .col { width: 100%; max-width: 760px; margin: 0 auto; }
 .wide { width: 100%; }
 

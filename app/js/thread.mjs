@@ -25,13 +25,24 @@ const speaker = (it) => (it.kind === 'user' ? 'you' : it.kind === 'agent' || it.
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
 
-/** A live transcript for one thread. Returns { el, destroy }. */
+// Where a transcript was scrolled, kept while the view is rebuilt around it (opening or closing the panel), so a
+// rebuild doesn’t move you. Cleared once that rebuild has run.
+const kept = new Map();
+
+/** A live transcript for one thread. Returns { el, settle, scrollToEnd, setJump, destroy }. */
 export function mountTranscript(threadId, { inPanel = false } = {}) {
   const el = h('div.transcript', { id: inPanel ? null : 'main', tabindex: '-1', 'aria-label': 'Conversation', dataset: { thread: threadId } });
   const nodes = new Map();
   const pending = new Set();
   let raf = 0;
-  let unseen = 0;
+  const was = kept.get(`${inPanel}:${threadId}`);
+  let unseen = was?.unseen ?? 0;
+  // Stuck: the view is on the newest message, and stays there through anything that changes the transcript’s
+  // size (streaming, patches, apps growing, the panel, the window) until you scroll up yourself (#88). Otherwise
+  // it stays on what you were reading: the anchor, a message and how far down the view it starts.
+  let stuck = !was;
+  let anchor = was?.anchor ?? null;
+  let dead = false;
   // At the end of the transcript, one row per agent that’s thinking or calling tools: what it’s on right now,
   // and a glimpse of its thinking. It goes while the agent writes, since the reply itself shows then.
   const working = h('div.working', { 'aria-hidden': 'true' });
@@ -91,25 +102,91 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   };
   all();
 
-  const nearBottom = () =>
-    (inPanel ? el.parentElement : document.scrollingElement) &&
-    (inPanel
-      ? el.parentElement.scrollHeight - el.parentElement.scrollTop - el.parentElement.clientHeight < 160
-      : innerHeight + scrollY >= document.documentElement.scrollHeight - 160);
-  const scrollToEnd = (smooth = false) => {
-    const target = inPanel ? el.parentElement : null;
-    if (target) target.scrollTop = target.scrollHeight;
-    else
-      window.scrollTo({
-        top: document.documentElement.scrollHeight,
-        behavior: smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto',
-      });
+  const box = () => (inPanel ? el.parentElement : document.scrollingElement);
+  const viewTop = (s) => (inPanel ? s.getBoundingClientRect().top : 0);
+  // At the bottom, give or take a pixel of rounding.
+  const atEnd = (s) => s.scrollHeight - s.scrollTop - s.clientHeight <= 2;
+  const findAnchor = () => {
+    const s = box();
+    if (!s) return null;
+    const top = viewTop(s);
+    for (const n of el.children) {
+      const r = n.getBoundingClientRect();
+      if (r.bottom > top && n instanceof HTMLElement && n.dataset.key) return { key: n.dataset.key, at: r.top - top };
+    }
+    return null;
+  };
+  const holdAnchor = () => {
+    const s = box();
+    const n = anchor && nodes.get(anchor.key);
+    if (!s || !n?.isConnected) return;
+    const d = n.getBoundingClientRect().top - viewTop(s) - anchor.at;
+    if (Math.abs(d) >= 1) s.scrollTop += d;
+  };
+  const seen = () => {
+    if (!unseen) return;
     unseen = 0;
     jump?.(0);
   };
+  const scrollToEnd = (smooth = false) => {
+    stuck = true;
+    const s = box();
+    if (s && smooth && !inPanel && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+    else if (s) s.scrollTop = s.scrollHeight;
+    seen();
+  };
+  // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
+  const follow = () => {
+    const s = box();
+    if (!s || dead) return;
+    // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back.
+    if (stuck && s.scrollTop < lastTop - 1 && !atEnd(s)) {
+      stuck = false;
+      anchor = findAnchor();
+    }
+    if (stuck) {
+      if (!atEnd(s)) s.scrollTop = s.scrollHeight;
+    } else holdAnchor();
+  };
+  // Only your own scrolling unsticks the view: content growing never scrolls, and the browser doesn’t anchor
+  // (overflow-anchor is off), so the view moving up means you moved it, by wheel, keys or a drag, even over an app.
+  let lastTop = 0;
+  const onScroll = () => {
+    const s = box();
+    if (!s) return;
+    if (atEnd(s)) stuck = true;
+    else if (s.scrollTop < lastTop) stuck = false;
+    lastTop = s.scrollTop;
+    if (!stuck) anchor = findAnchor();
+  };
+  const sizes = new ResizeObserver(follow);
+  let bound = null;
+  const bind = () => {
+    const s = box();
+    if (bound || !s || !el.isConnected) return;
+    bound = inPanel ? s : window;
+    bound.addEventListener('scroll', onScroll, { passive: true });
+    addEventListener('resize', follow);
+    sizes.observe(el);
+    // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above.
+    if (el.parentElement) for (const n of [el.parentElement, ...el.parentElement.children]) if (n !== el) sizes.observe(n);
+  };
+  /** Once the transcript is on the page: to the newest message, or back where you were before a rebuild. */
+  const settle = () => {
+    // A rebuild can replace this transcript before the frame it was to settle in.
+    if (dead) return;
+    bind();
+    if (stuck) scrollToEnd();
+    else {
+      holdAnchor();
+      jump?.(unseen);
+    }
+    lastTop = box()?.scrollTop ?? 0;
+  };
   let jump = null;
-  const grew = (wasNear) => {
-    if (wasNear) requestAnimationFrame(() => scrollToEnd());
+  const grew = () => {
+    if (stuck) follow();
     else {
       unseen++;
       jump?.(unseen);
@@ -123,14 +200,13 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     }
     const d = ch.data;
     if (ch.type === 'item.add' && d.threadId === threadId) {
-      const near = nearBottom();
       if (nodes.size === 0) el.replaceChildren();
       const list = itemsOf(threadId);
       const n = render(d.item, list[list.length - 2]);
       nodes.set(d.item.id, n);
       el.append(n);
       paintWorking();
-      grew(near);
+      grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
       rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
@@ -138,10 +214,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       if (!raf)
         raf = requestAnimationFrame(() => {
           raf = 0;
-          const near = nearBottom();
           for (const id of pending) updateText(id);
           pending.clear();
-          if (near) scrollToEnd();
         });
     } else if (ch.type === 'glossary' && d.threadId === threadId) {
       for (const it of itemsOf(threadId)) if (it.kind === 'agent') updateText(it.id, true);
@@ -149,12 +223,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       el.querySelectorAll(`pb-ring[data-session="${CSS.escape(d.id)}"]`).forEach((r) => {
         ringFor(d, r.getAttribute('size'), r);
       });
-      if (d.threadId === threadId) {
-        const near = nearBottom();
-        const had = working.childElementCount;
-        paintWorking();
-        if (near && working.childElementCount !== had) requestAnimationFrame(() => scrollToEnd());
-      }
+      if (d.threadId === threadId) paintWorking();
     } else if (ch.type === 'app') {
       for (const it of itemsOf(threadId))
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
@@ -195,11 +264,23 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
 
   return {
     el,
+    settle,
     scrollToEnd,
     setJump(fn) {
       jump = fn;
     },
-    destroy: off,
+    destroy() {
+      off();
+      dead = true;
+      if (!stuck && el.isConnected) {
+        const key = `${inPanel}:${threadId}`;
+        kept.set(key, { anchor: findAnchor() ?? anchor, unseen });
+        queueMicrotask(() => kept.delete(key));
+      }
+      sizes.disconnect();
+      bound?.removeEventListener('scroll', onScroll);
+      removeEventListener('resize', follow);
+    },
   };
 }
 
@@ -393,8 +474,9 @@ function renderItem(it, prev, ctx) {
     }
     case 'block': {
       if (it.valid && it.block.type === 'app') {
-        const n = h('div.wide', renderAppItem(it, ctx));
-        return n;
+        // Named like any other block (#88). Only the agent that wrote an app can update it, so this is also who
+        // made each version.
+        return h('div.wide', showWho ? h('div.col', who(it)) : null, renderAppItem(it, ctx));
       }
       const act = async (action, values) => {
         const r = await api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action, values });
@@ -1436,9 +1518,7 @@ export function mountSidePanel(parentId, sideId) {
   );
   // A file dropped anywhere on the panel attaches to the panel’s composer, not the conversation’s.
   comp.dropZone(el);
-  requestAnimationFrame(() => {
-    body.scrollTop = body.scrollHeight;
-  });
+  requestAnimationFrame(() => tr.settle());
   return {
     el,
     destroy() {

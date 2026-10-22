@@ -39,6 +39,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Agent reply](conversation/transcript/agent-reply.md)
     - [Activity line](conversation/transcript/activity-line.md)
     - [Working row](conversation/transcript/working-row.md)
+    - [Following the newest message](conversation/transcript/following.md)
     - [Citations and sources](conversation/transcript/citations.md)
     - [Glossary terms](conversation/transcript/glossary-terms.md)
     - [Mermaid diagram](conversation/transcript/mermaid-diagram.md)

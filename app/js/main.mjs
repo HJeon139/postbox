@@ -91,7 +91,7 @@ function render() {
   );
   root.replaceChildren(shell);
   paintWords();
-  requestAnimationFrame(() => tr.scrollToEnd());
+  requestAnimationFrame(() => tr.settle());
   view(t.id);
   setAttention(needsYou().length, t.title);
 }
