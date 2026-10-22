@@ -539,7 +539,14 @@ export class Runtime {
       for (const app of Object.values(this.s.apps))
         if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: 'note' } });
     }
-    const open = items.filter((it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered);
+    // Only this turn’s asking blocks make the agent need you. Older ones you left open stay open, and the
+    // client shows them quietly (“1 open review”), so moving on clears needs-you (#69). A turn you didn’t start
+    // (a lint or app-check pass, another agent’s wake) isn’t moving on: the block it was waiting on still counts.
+    const open = items.filter(
+      (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
+    );
+    const waiting = se.needs?.kind === 'block' && turn.kind !== 'user' && turn.kind !== 'event' ? items.find((it) => it.id === se.needs?.itemId) : null;
+    if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
     const refused = items.filter((it) => it.kind === 'denial' && it.turnId === turn.id && it.status === 'open');

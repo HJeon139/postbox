@@ -1,8 +1,9 @@
 // The shell: top bar, rail (threads and rooms with rings), the phone ring strip, and the overview —
 // one column per live session, with quick answers, tool calls, subagents, agent messages and stats.
 
+import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
-import { api, busy, client, hrefOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
@@ -31,6 +32,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
               r,
               h('b', `@${se.handle}`),
               h('span.who-state.hide-sm', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
+              openAsksEl(se, true),
             );
           }),
       )
@@ -120,6 +122,47 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       h('button.btn.icon.sm.ghost', { type: 'button', 'aria-label': 'Settings', onclick: () => openSettings() }, icon('gear')),
     ),
   );
+}
+
+// ── Open blocks ─────────────────────────────────────────────────────────────────────────
+// Asking blocks you left open from an earlier turn don’t make their agent need you. They show quietly
+// beside it instead, as “1 open review”, and stay open so you can still answer them (#69).
+
+const ASK_NOUNS = { choice: ['choice', 'choices'], form: ['form', 'forms'], confirm: ['confirmation', 'confirmations'], review: ['review', 'reviews'] };
+/** @returns {{ text: string, itemId: string } | null} */
+export function openAsks(se) {
+  const open = itemsOf(se.threadId).filter(
+    (it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered && it.id !== se.needs?.itemId,
+  );
+  if (!open.length) return null;
+  const types = new Set(open.map((it) => it.block.type));
+  const [one, many] = types.size === 1 ? ASK_NOUNS[open[0].block.type] : ['request', 'requests'];
+  return { text: plural(open.length, `open ${one}`, `open ${many}`), itemId: open[0].id };
+}
+/** “1 open review” for an agent: quiet text on its overview card, or a button in the top bar that goes to the block. */
+function openAsksEl(se, button = false) {
+  const el = button
+    ? h('button.btn.sm.ghost', { type: 'button', dataset: { openAsks: se.id }, onclick: () => goToItem(el.dataset.item) })
+    : h('span.small.dim', { dataset: { openAsks: se.id } });
+  paintOpenAsks(el);
+  return el;
+}
+function paintOpenAsks(el) {
+  const se = S().sessions[el.dataset.openAsks];
+  const ask = se ? openAsks(se) : null;
+  el.hidden = !ask;
+  if (el.textContent !== (ask?.text ?? '')) el.textContent = ask?.text ?? '';
+  if (ask) el.dataset.item = ask.itemId;
+  if (ask && el.tagName === 'BUTTON') el.setAttribute('aria-label', `${ask.text} from @${se.handle}: go to it`);
+}
+client.on((ch) => {
+  if (['session', 'item.add', 'item.patch', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-open-asks]')) paintOpenAsks(el);
+});
+function goToItem(itemId) {
+  const node = document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
+  if (!node) return;
+  node.scrollIntoView({ block: 'center' });
+  (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus();
 }
 
 // ── The sidebar ─────────────────────────────────────────────────────────────────────────
@@ -497,6 +540,7 @@ function updateCard(node, se, fresh = false) {
     se.ctx,
     se.unread,
     t.title,
+    openAsks(se)?.text,
   ]);
   if (!fresh && node.dataset.sig === sig) return;
   node.dataset.sig = sig;
@@ -536,6 +580,7 @@ function updateCard(node, se, fresh = false) {
           h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'thread: ' : ''}${t.title}`),
         ),
         stateLine,
+        openAsksEl(se),
       ),
       h(
         'button.btn.icon.sm.ghost',
