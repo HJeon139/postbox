@@ -19,7 +19,7 @@ The agent’s answer, streamed as it’s written, in Markdown.
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Watch a reply stream in “Corpus explorer”.
-3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. Ask an agent to reply with `<b>hi</b>` and a link, then ask @researcher to explain something step by step and end with an exercise.
+3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. Ask an agent to reply with `<b>hi</b>` and a link, then ask @assistant to explain something step by step and end with an exercise whose answer is hidden.
 
 **Pass if:** Text streams smoothly, HTML stays text, links open in a new tab, and the exercise’s answer is folded under “Answer”, with no tags showing.
 

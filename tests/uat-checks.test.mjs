@@ -32,6 +32,23 @@ const base = (over = {}) => ({
 });
 const issuesOf = (facts) => runChecks(facts).map((f) => f.issue);
 
+test('fresh-install-agents reads what a fresh install seeds, not the run’s agents', () => {
+  // The run seeds its scenario's agents through agents.json; those aren't a fresh install's.
+  assert.ok(!issuesOf(base({ startPersonas: [{ handle: 'librarian', description: 'Explores your books.' }] })).includes(43));
+  const found = runChecks(
+    base({
+      freshInstall: {
+        personas: [
+          { handle: 'librarian', description: 'Explores your books.', instructions: '' },
+          { handle: 'assistant', description: 'General.', instructions: '' },
+        ],
+        projects: [{ name: 'Book corpus' }],
+      },
+    }),
+  ).find((f) => f.issue === 43);
+  assert.equal(found?.evidence, 'Seeded: 2 agents (@librarian, @assistant) and a sample project. Use-case: @librarian.');
+});
+
 test('a clean run has no findings', () => {
   assert.deepEqual(runChecks(base()), []);
 });
