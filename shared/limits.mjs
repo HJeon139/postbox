@@ -53,7 +53,7 @@ export const PALETTES = Object.freeze([
     name: '--s1…--s8',
     tokens: range('s', 8),
     for: 'categories',
-    when: 'series, groups or labels with no order between them, one color each, in this order from --s1',
+    when: 'groups or series with no order between them, one color each, from --s1 on',
   },
   {
     name: '--seq-1…--seq-6',
@@ -65,12 +65,12 @@ export const PALETTES = Object.freeze([
     name: '--div-neg, --div-mid, --div-pos',
     tokens: ['--div-neg', '--div-mid', '--div-pos'],
     for: 'polarity',
-    when: 'values below, at or above a midpoint, such as refutes or supports, or loss or gain',
+    when: 'values either side of a midpoint, such as refutes or supports',
   },
   {
     name: '--good and --alert',
     tokens: ['--good', '--alert'],
     for: 'status only',
-    when: 'passed or failed, done or broken; never for a category, where they read as a verdict',
+    when: 'passed or failed; never for a category, where they read as a verdict',
   },
 ]);
