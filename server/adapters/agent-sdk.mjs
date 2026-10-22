@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createStreamMapper, describePermission, resultError, windowFor } from './claude-stream.mjs';
+import { createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
@@ -114,6 +114,8 @@ export class AgentSdkAdapter {
         stderr = (stderr + d).slice(-4000);
       },
     };
+    /** @type {any} */
+    let thrown = null;
     try {
       for await (const m of this.sdk.query({ prompt, options })) {
         mapper.push(m);
@@ -124,8 +126,31 @@ export class AgentSdkAdapter {
       }
     } catch (e) {
       if (ctx.signal.aborted) return;
+      thrown = e;
+    } finally {
+      ctx.signal.removeEventListener('abort', onAbort);
+      ctx.saveState({ contextWindow: mapper.contextWindow, model: mapper.model ?? undefined });
+    }
+    // A branch point the SDK can no longer find (#61): fork from the conversation’s latest point instead, once.
+    // The failed fork’s session is never resumed, and the fork is saved without its uuid, so a later turn never
+    // goes back to the bad one.
+    if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, thrown ? `${thrown.message} ${stderr}` : '')) {
+      const latest = { sdkSessionId: fork.sdkSessionId };
+      ctx.saveState({ sdkSessionId: null, fork: latest });
+      ctx.state.sdkSessionId = null;
+      ctx.state.fork = latest;
+      return this.deliver(
+        session,
+        {
+          kind: 'notice',
+          text: `This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message.\n\n${prompt}`,
+        },
+        ctx,
+      );
+    }
+    if (thrown) {
       // A session the SDK no longer has starts over, once, and says so.
-      if (resume && /No conversation found|session .* not found/i.test(`${e.message} ${stderr}`)) {
+      if (resume && /No conversation found|session .* not found/i.test(`${thrown.message} ${stderr}`)) {
         ctx.saveState({ sdkSessionId: null });
         ctx.state.sdkSessionId = null;
         return this.deliver(
@@ -134,10 +159,8 @@ export class AgentSdkAdapter {
           ctx,
         );
       }
-      throw new Error(`The Agent SDK stopped: ${e.message}`);
-    } finally {
-      ctx.signal.removeEventListener('abort', onAbort);
-      ctx.saveState({ contextWindow: mapper.contextWindow, model: mapper.model ?? undefined });
+      // The result says why, when there was one; the SDK’s own error (“process exited with code 1”) doesn’t.
+      throw new Error(mapper.result?.is_error ? (resultError(mapper.result) ?? '') : `The Agent SDK stopped: ${thrown.message}`);
     }
     const current = mapper.sessionId ?? ctx.state.sdkSessionId;
     if (mapper.lastUuid && current) ctx.checkpoint?.({ sdkSessionId: current, uuid: mapper.lastUuid });
