@@ -11,7 +11,7 @@ import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
-import { diagramProblems, lintMessage, termProblems } from './checks.mjs';
+import { diagramProblems, introducedTerms, lintMessage, termProblems } from './checks.mjs';
 import { addAllowRule, rulesFor } from './permission-rules.mjs';
 import { newId } from './store.mjs';
 
@@ -982,7 +982,9 @@ export class Runtime {
 
   /** The server’s checks over a finished turn. */
   checkTurn(turn, se) {
-    const problems = termProblems(turn.said, this.s.glossary[turn.threadId] ?? {});
+    const items = this.store.items(turn.threadId);
+    const apps = Object.values(this.s.apps).filter((a) => a.threadId === turn.threadId);
+    const problems = termProblems(turn.said, this.s.glossary[turn.threadId] ?? {}, introducedTerms(items, apps));
     // Diagrams too wide or too busy to read at the conversation’s width.
     const diagrams = lintDiagrams(turn.said);
     if (diagrams.length)

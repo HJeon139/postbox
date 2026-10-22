@@ -9,7 +9,7 @@
 //   { kind: 'app', id, title }           an app the agent showed
 //   { kind: 'block', id, title }         a block the agent showed
 
-import { lintTerms } from './lint.mjs';
+import { lintTerms, numberedTerms } from './lint.mjs';
 
 /** @typedef {{ kind: string, [k: string]: any }} Scope */
 /** @typedef {{ code: string, message: string, scope: Scope }} Problem */
@@ -97,13 +97,39 @@ export function formatLint(message) {
 
 /**
  * The coined terms a reply used without defining them (server/lint.mjs).
- * @param {string} text  @param {Record<string, { term: string }>} glossary
+ * @param {string} text  @param {Record<string, { term: string }>} glossary  @param {Set<string>} [introduced]  see introducedTerms
  * @returns {Problem[]}
  */
-export function termProblems(text, glossary) {
-  return lintTerms(text, glossary).map(({ term, key }) => ({
+export function termProblems(text, glossary, introduced) {
+  return lintTerms(text, glossary, introduced).map(({ term, key }) => ({
     code: 'undefined-term',
     message: `“${term}” isn’t defined.`,
     scope: { kind: 'term', term, key },
   }));
+}
+
+const headings = (md) => [...String(md).matchAll(/^ {0,3}#{1,6}\s+(.+)$/gm)].map((m) => m[1]);
+const tagText = (html, tags) => [...String(html).matchAll(new RegExp(`<(${tags})\\b[^>]*>([\\s\\S]*?)</\\1>`, 'gi'))].map((m) => m[2].replace(/<[^>]*>/g, ' '));
+
+/**
+ * Numbered references that need no definition: the person brought them up (“I think step 2 should show a
+ * highlight”), or they label something on screen, as the title or a heading of a block or app in the conversation.
+ * @param {any[]} items  the conversation’s items
+ * @param {any[]} apps   its apps
+ */
+export function introducedTerms(items, apps) {
+  const texts = [];
+  for (const it of items) {
+    if (it.kind === 'user') texts.push(it.text ?? '');
+    if (it.kind !== 'block' || !it.valid || it.block.type === 'app') continue;
+    const b = it.block;
+    texts.push(b.title ?? '');
+    for (const v of Object.values(b)) if (typeof v === 'string') texts.push(...headings(v));
+    if (b.type === 'progress') texts.push(...b.steps.map((s) => s.label));
+  }
+  for (const app of apps) {
+    texts.push(app.title ?? '');
+    texts.push(...tagText(app.versions?.[app.current - 1]?.code ?? '', 'h[1-6]|title'));
+  }
+  return numberedTerms(texts.join('\n'));
 }

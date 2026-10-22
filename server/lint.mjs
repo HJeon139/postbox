@@ -3,16 +3,27 @@
 //
 // It flags two things the reply never defined in the thread’s glossary:
 //   • term links, [label](term:key), whose key has no entry
-//   • numbered coined references such as “Step 7” or “Requirement F3”
+//   • numbered coined references such as “Step 7” or “Requirement F3”, unless the person introduced them
 
 const NUMBERED = /\b(?:Step|Requirement|Phase|Stage|Rule|Option|Milestone|Scenario)\s+[A-Z]?\d{1,3}[a-z]?\b/g;
+const keyOf = (term) => term.toLowerCase().replace(/\s+/g, '-');
+
+/**
+ * The numbered references in some text, by key, in any case: “step 2” in the person’s message is “Step 2”.
+ * @param {string} text
+ * @returns {Set<string>}
+ */
+export function numberedTerms(text) {
+  return new Set([...String(text ?? '').matchAll(new RegExp(NUMBERED.source, 'gi'))].map((m) => keyOf(m[0])));
+}
 
 /**
  * @param {string} text           the reply, as Markdown
  * @param {Record<string, { term: string }>} glossary  the thread’s glossary, by key
+ * @param {Set<string>} [introduced]  numbered references the person introduced (numberedTerms), which need no definition
  * @returns {{ term: string, key: string }[]}
  */
-export function lintTerms(text, glossary) {
+export function lintTerms(text, glossary, introduced = new Set()) {
   const known = new Set(Object.values(glossary).map((g) => g.term.toLowerCase()));
   const keys = new Set(Object.keys(glossary));
   const out = new Map();
@@ -25,8 +36,8 @@ export function lintTerms(text, glossary) {
     if (!keys.has(m[2])) out.set(m[2], { term: m[1], key: m[2] });
   }
   for (const m of plain.matchAll(NUMBERED)) {
-    const key = m[0].toLowerCase().replace(/\s+/g, '-');
-    if (!known.has(m[0].toLowerCase()) && !keys.has(key)) out.set(key, { term: m[0], key });
+    const key = keyOf(m[0]);
+    if (!known.has(m[0].toLowerCase()) && !keys.has(key) && !introduced.has(key)) out.set(key, { term: m[0], key });
   }
   return [...out.values()];
 }

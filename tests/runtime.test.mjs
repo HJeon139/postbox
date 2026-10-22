@@ -650,6 +650,20 @@ test('a lint turn that writes is a reply, marked so the browser’s checks skip 
   assert.equal(store.items(t.id).filter((i) => i.kind === 'system' && i.variant === 'lint').length, 0);
 });
 
+test('#55: a numbered term the person introduced isn’t linted, and one the agent coined still is', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({ block: { id: 'plan', type: 'card', version: 1, title: 'Phase 4 checklist', fallback: 'Plan' } });
+    c.text('Agreed: Step 2 gets highlights, Phase 4 follows, and Step 8 is new.');
+  });
+  rt.sendMessage(t.id, { text: 'I think step 2 should show matched text as a highlight.' });
+  await settle(rt);
+  assert.deepEqual(
+    lints(adapter)[0].message.undefinedTerms.map((u) => u.term),
+    ['Step 8'],
+  );
+});
+
 test('problems from a turn that failed don’t reach the agent', async () => {
   const { rt, store, t, adapter } = setup();
   adapter.next.push(async (c) => {
