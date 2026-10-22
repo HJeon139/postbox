@@ -2,7 +2,8 @@
 // nothing an agent sends becomes markup, a style or an attribute name. Answered blocks turn read-only
 // and show what you chose. Drafts (selections, typed text, review comments) survive re-renders.
 
-import { renderMarkdown } from '/shared/markdown.mjs';
+import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
+import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { mountApp } from './apps.mjs';
 import { client } from './client.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
@@ -596,6 +597,17 @@ function renderReview(b, item, ctx) {
     node.replaceWith(n);
     return n;
   };
+  const compose = (key) => {
+    d.composing = key;
+    rerender();
+  };
+  // Closing a comment box puts focus back on the line it was for, so the keyboard keeps its place.
+  const closeComposer = (key) => {
+    d.composing = null;
+    rerender()
+      .querySelector(`.g-mark[data-line="${CSS.escape(String(key))}"]`)
+      ?.focus();
+  };
   const done = item.answered;
   const isDiff = !!b.previous && d.view === 'diff';
   const viewSeg = b.previous
@@ -701,18 +713,14 @@ function renderReview(b, item, ctx) {
             e.preventDefault();
             add();
           }
-          if (e.key === 'Escape') {
-            d.composing = null;
-            rerender();
-          }
+          if (e.key === 'Escape') closeComposer(key);
         },
       });
       const add = () => {
         const text = ta.value.trim();
         if (!text) return;
         d.comments.push(b.format === 'app' ? { anchor: key, text } : { line: key, text });
-        d.composing = null;
-        rerender();
+        closeComposer(key);
       };
       parts.push(
         h(
@@ -728,10 +736,7 @@ function renderReview(b, item, ctx) {
                 'button.btn.sm.ghost',
                 {
                   type: 'button',
-                  onclick: () => {
-                    d.composing = null;
-                    rerender();
-                  },
+                  onclick: () => closeComposer(key),
                 },
                 'Cancel',
               ),
@@ -764,41 +769,114 @@ function renderReview(b, item, ctx) {
     });
     node.append(h('div.app-review-wrap', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, appEl, pins));
   } else {
-    const lines = (b.content ?? '').split('\n');
+    const split = (src) => String(src ?? '').split(/\r\n?|\n/);
+    const lines = split(b.content);
     const doc = h('div.rv-doc', { class: b.format === 'code' ? 'code-doc code' : '', role: 'list', 'aria-label': 'Lines' });
-    const rows = isDiff ? diffLines(b.previous.split('\n'), lines) : lines.map((t, i) => ({ t, kind: 'same', n: i + 1 }));
-    for (const r of rows) {
-      const key = r.kind === 'del' ? null : r.n;
-      const marked = key !== null && (threadsAt(key).length || draftsAt(key).length);
-      const heading = b.format === 'markdown' && /^#{1,6}\s/.test(r.t);
-      const text = b.format === 'markdown' ? r.t.replace(/^#{1,6}\s+/, '') : r.t;
-      doc.append(
+    const rows = isDiff ? diffLines(split(b.previous), lines) : lines.map((t, i) => ({ t, kind: 'same', n: i + 1 }));
+    // Markdown renders by block (a table, list or fence as a whole), with a target per line inside it.
+    const groups = b.format === 'markdown' ? groupReviewLines(rows) : rows.map((r) => ({ type: 'line', depth: 0, unit: rowUnit(r) }));
+    const marked = (u) => u.lines.some((k) => threadsAt(k).length || draftsAt(k).length);
+    const unitClass = (u) => [u.kind === 'same' ? '' : u.kind, marked(u) ? 'marked' : ''].join(' ');
+    // The line is the comment target: clicking it, or its gutter mark (the button keyboards and screen
+    // readers reach), opens its comment box. A click on a link or a thread inside it does its own thing.
+    const gutter = (u, cls = '') => {
+      const n = String(u.key ?? u.rows[0].o);
+      if (done || u.key === null) return h(`span.g-ln${cls}`, h('span.sr-only', u.key === null ? 'Removed line ' : 'Line '), n);
+      return h(
+        `span.g-ln${cls}`,
         h(
-          'div.rv-line',
-          { class: [r.kind === 'add' ? 'add' : r.kind === 'del' ? 'del' : '', marked ? 'marked' : '', heading ? 'h' : ''].join(' '), role: 'listitem' },
-          h(
-            'span.g-ln',
-            { 'aria-label': r.kind === 'del' ? `Removed line ${r.o}` : `Line ${r.n}` },
-            !done && key !== null
-              ? h(
-                  'button.add-c',
-                  {
-                    type: 'button',
-                    'aria-label': `Comment on line ${key}`,
-                    onclick: () => {
-                      d.composing = key;
-                      rerender();
-                    },
-                  },
-                  icon('plus', 'i-sm'),
-                )
-              : null,
-            String(r.kind === 'del' ? r.o : r.n),
-          ),
-          h('span.tx', b.format === 'markdown' ? { html: trusted(inlineMd(text)) } : null, b.format === 'markdown' ? null : text || ' '),
+          'button.g-mark',
+          { type: 'button', 'aria-label': `Comment on line ${u.key}`, dataset: { line: n }, onclick: () => compose(u.key) },
+          n,
+          h('span.dot', { 'aria-hidden': 'true' }),
         ),
       );
-      if (key !== null) for (const p of threadBox(key)) doc.append(p);
+    };
+    const onLine = (u, el = null) =>
+      done || u.key === null
+        ? null
+        : (e) => {
+            if (el && e.target.closest('.rv-u') !== el) return;
+            if (e.target.closest('a, button, textarea, input, summary, .term, .rv-thread') || getSelection()?.toString()) return;
+            compose(u.key);
+          };
+    const threadsOf = (u) => u.lines.flatMap((k) => threadBox(k));
+    const quoted = (depth) => (depth ? `quote q${Math.min(depth, 3)}` : '');
+    // code: a line of a fence, drawn as part of one code box ('first' carries the language label).
+    // raw: a line shown as its source, such as a changed fence marker or delimiter row in a diff.
+    const lineRow = (u, depth, { code = null, raw = false } = {}) => {
+      const t = u.rows[0].t;
+      const heading = !code && !raw && b.format === 'markdown' && /^#{1,6}\s/.test(t);
+      const text = heading ? t.replace(/^#{1,6}\s+/, '') : t;
+      const plain = b.format !== 'markdown' || code || raw;
+      return [
+        h(
+          'div.rv-line',
+          {
+            class: [
+              unitClass(u),
+              heading ? 'h' : '',
+              code ? `code ${code.first ? 'code-first' : ''} ${code.last ? 'code-last' : ''}` : '',
+              quoted(depth),
+              onLine(u) ? 'can-c' : '',
+            ].join(' '),
+            role: 'listitem',
+            onclick: onLine(u),
+          },
+          gutter(u),
+          h(
+            'span.tx',
+            plain ? null : { html: trusted(inlineMd(text)) },
+            code?.first && code.lang ? h('span.code-lang', code.lang) : null,
+            plain ? text || ' ' : null,
+          ),
+        ),
+        threadsOf(u),
+      ];
+    };
+    // A hidden line (a delimiter row, a fence marker) that a diff changed shows as its source, so the
+    // change is visible; an unchanged one shows only its threads.
+    const hiddenRows = (rs, depth) =>
+      rs.map((r) => (r.kind === 'same' ? (r.n === undefined ? [] : threadBox(r.n)) : lineRow(rowUnit(r), depth, { raw: true })));
+    // Text to tell one list item from another: what renders, without Markdown or punctuation.
+    const words = (s) => s.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+    const itemWords = (u) => words(toPlainText(u.rows[0].t.replace(/^(\s*>)+/, '').match(LIST_ITEM)?.[3] ?? '')).slice(0, 12);
+    // A table or list renders whole. Each row or item gets its own gutter, positioned in the gutter
+    // column, and its threads right after it. If the rendered rows or items don't match the targets,
+    // the block is drawn line by line, as before.
+    const blockRows = (g) => {
+      const box = h('div.tx.md', { class: quoted(g.depth), html: trusted(renderMarkdown(g.source, { folds: false })) });
+      const els = [...box.querySelectorAll(g.type === 'table' ? 'tr' : 'li')];
+      const matches =
+        els.length === g.units.length && (g.type === 'table' || g.units.every((u, i) => words(els[i].textContent ?? '').startsWith(itemWords(u))));
+      if (!matches) return g.rows.map((r) => lineRow(rowUnit(r), g.depth));
+      const cols = box.querySelector('tr')?.children.length ?? 1;
+      g.units.forEach((u, i) => {
+        const el = els[i];
+        el.className = ['rv-u', unitClass(u), onLine(u) ? 'can-c' : ''].join(' ').trim();
+        const click = onLine(u, el);
+        if (click) el.addEventListener('click', click);
+        // A table row's gutter goes in a cell of its own, so it isn't part of a column header's name.
+        if (g.type === 'table') el.prepend(h('td.rv-gut', gutter(u, '.g-abs')));
+        else el.prepend(gutter(u, '.g-abs'));
+        const threads = threadsOf(u);
+        if (!threads.length) return;
+        if (g.type === 'table') el.after(h('tr.rv-thread-row', h('td.rv-gut'), h('td', { colspan: String(cols) }, threads)));
+        else el.append(...threads);
+      });
+      return [h('div.rv-line.rv-block', { role: 'listitem' }, h('span.g-ln', { 'aria-hidden': 'true' }), box), hiddenRows(g.hidden, g.depth).flat()];
+    };
+    for (const g of groups) {
+      if (g.type === 'line') doc.append(...lineRow(g.unit, g.depth).flat());
+      else if (g.type === 'code') {
+        const [open, ...close] = g.hidden;
+        doc.append(...hiddenRows([open], g.depth).flat(2));
+        g.units.forEach((u, i) => {
+          const code = { first: i === 0, last: i === g.units.length - 1, lang: g.lang === 'math' ? '' : g.lang };
+          doc.append(...lineRow(u, g.depth, { code }).flat());
+        });
+        doc.append(...hiddenRows(close, g.depth).flat(2));
+      } else doc.append(...blockRows(g).flat(2));
     }
     node.append(doc);
   }
@@ -859,9 +937,9 @@ function renderReview(b, item, ctx) {
   return node;
 }
 
-/** Bold, italic and code inside a review line, without block structure. */
+/** Bold, italic and code inside a review line, without block structure. A fold shows as its source. */
 function inlineMd(t) {
-  return renderMarkdown(t || ' ')
+  return renderMarkdown(t || ' ', { folds: false })
     .replace(/^<p>|<\/p>$/g, '')
     .replace(/^<h\d>|<\/h\d>$/g, '');
 }

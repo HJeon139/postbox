@@ -89,3 +89,70 @@ test('a URL cut off mid-stream, right after “https://”, renders as text', ()
   assert.match(md('See https://'), /See https:\/\//);
   assert.match(md('- item https://'), /<li>item https:\/\/<\/li>/);
 });
+
+// ── <details>: the one HTML Postbox renders (#71) ─────────────────────────────────────────
+
+test('<details> with a <summary> folds its Markdown away, on one line or several', () => {
+  assert.equal(
+    md('<details><summary>Answer</summary> It can score at most **50%**.</details>'),
+    '<details><summary>Answer</summary><p>It can score at most <strong>50%</strong>.</p></details>',
+  );
+  assert.equal(
+    md('Try it.\n\n<details>\n<summary>Answer</summary>\n\n- one\n- two\n</details>\nAfter'),
+    '<p>Try it.</p><details><summary>Answer</summary><ul><li>one</li><li>two</li></ul></details><p>After</p>',
+  );
+  assert.equal(md('<details>\nNo summary.\n</details>'), '<details><p>No summary.</p></details>');
+  assert.equal(md('<details><summary>A</summary>x</details> and after'), '<details><summary>A</summary><p>x</p></details><p>and after</p>');
+});
+
+test('<details> nests, and a closing tag in code doesn’t close it', () => {
+  assert.equal(
+    md('<details><summary>Answer</summary>\nOuter\n<details><summary>Hint</summary>inner</details>\n</details>'),
+    '<details><summary>Answer</summary><p>Outer</p><details><summary>Hint</summary><p>inner</p></details></details>',
+  );
+  assert.equal(
+    md('<details><summary>Code</summary>\n```\n</details>\n```\nuse `</details>` here\n</details>'),
+    '<details><summary>Code</summary><pre class="md-code"><code>&lt;/details&gt;</code></pre><p>use <code>&lt;/details&gt;</code> here</p></details>',
+  );
+});
+
+test('<details> or <summary> with attributes, an unclosed tag, or a tag mid-line stays text', () => {
+  assert.equal(md('<details open><summary>x</summary>y</details>'), '<p>&lt;details open&gt;&lt;summary&gt;x&lt;/summary&gt;y&lt;/details&gt;</p>');
+  assert.equal(
+    md('<details><summary class="a">x</summary>y</details>'),
+    '<p>&lt;details&gt;&lt;summary class=&quot;a&quot;&gt;x&lt;/summary&gt;y&lt;/details&gt;</p>',
+  );
+  assert.equal(md('<details><summary>x</summary>never closed'), '<p>&lt;details&gt;&lt;summary&gt;x&lt;/summary&gt;never closed</p>');
+  assert.equal(md('<details><summary>x never closed</details>'), '<p>&lt;details&gt;&lt;summary&gt;x never closed&lt;/details&gt;</p>');
+  assert.equal(md('See <details>x</details>'), '<p>See &lt;details&gt;x&lt;/details&gt;</p>');
+  assert.equal(md('<DETAILS>x</DETAILS>'), '<p>&lt;DETAILS&gt;x&lt;/DETAILS&gt;</p>');
+});
+
+test('nothing else inside <details> becomes HTML: scripts and event handlers stay text', () => {
+  const out = md(
+    '<details><summary><img src=x onerror=alert(1)></summary>\n<script>alert(1)</script>\n<details ontoggle=alert(1)>x\n\n[x](javascript:alert(1))\n</details>',
+  );
+  assert.ok(out.startsWith('<details><summary>&lt;img src=x onerror=alert(1)&gt;</summary>'));
+  assert.ok(!/<(script|img)\b/.test(out));
+  assert.ok(!/ on\w+=/.test(out.replace(/&lt;[^&]*&gt;/g, '')));
+  assert.ok(out.includes('&lt;script&gt;alert(1)&lt;/script&gt;') && out.includes('&lt;details ontoggle=alert(1)&gt;'));
+  assert.ok(!out.includes('javascript:'));
+  // Only <details>, <summary> and the Markdown renderer's own tags appear.
+  const tags = new Set([...out.matchAll(/<\/?([a-z0-9]+)/g)].map((m) => m[1]));
+  assert.deepEqual([...tags].sort(), ['br', 'details', 'p', 'summary']);
+});
+
+test('plain text drops the <details> and <summary> tags', () => {
+  assert.equal(toPlainText('<details><summary>Answer</summary>42</details>'), 'Answer 42');
+});
+
+test('a fold right under a list item stays in that item, blank lines and all', () => {
+  assert.equal(
+    md('1. What is X?\n<details><summary>Answer</summary>\n\nY\n\n</details>\n2. Next'),
+    '<ol><li>What is X?<details><summary>Answer</summary><p>Y</p></details></li><li>Next</li></ol>',
+  );
+});
+
+test('folds: false shows <details> as text, as a review does', () => {
+  assert.equal(md('<details><summary>A</summary>x</details>', { folds: false }), '<p>&lt;details&gt;&lt;summary&gt;A&lt;/summary&gt;x&lt;/details&gt;</p>');
+});

@@ -73,7 +73,7 @@ export async function start({ port = 4173, dataDir = join(ROOT, 'data'), fresh =
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator });
   const firstReal = ['claude-code', 'agent-sdk'].find((b) => adapters.names().includes(b)) ?? 'mock';
-  await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal });
+  await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
   for (const se of Object.values(store.state.sessions))
     if (['think', 'gen', 'tool'].includes(se.state)) rt.updateSession(se.id, { state: 'idle', subagents: [], currentStep: 'Interrupted by a restart' });

@@ -1,11 +1,34 @@
-// First-run content: two projects, four agents, the new-agent boilerplates and a few empty threads.
-// agents.json in the data folder, if present, seeds personas instead (see README).
+// First-run content. A fresh install gets one generic agent and nothing else; --demo gets the book-corpus
+// agents, two projects and a few empty conversations, which the demo, the screenshots and the tests play.
+// Both get the new-agent boilerplates. agents.json in the data folder, if present, seeds the agents
+// instead, in either mode (see README).
 
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { newId } from './store.mjs';
 
-export const DEFAULT_PERSONAS = [
+/**
+ * What a fresh install (no --demo) starts with: one generic agent, and no projects or conversations.
+ * Read by the UAT's fresh-install-agents check.
+ */
+export function freshInstall() {
+  return {
+    personas: [
+      {
+        handle: 'assistant',
+        description: 'A general-purpose agent. Ask it anything, or give it work to do in your project.',
+        tools: [],
+        instructions: 'Help the person with what they ask. Ask when something is unclear, and say what you did and what is left.',
+        examples: [['What can you help me with?', 'What it can do here, and how to ask']],
+      },
+    ],
+    /** @type {{ name: string, folder: string }[]} */
+    projects: [],
+  };
+}
+
+/** The demo's agents, which use the book corpus in server/corpus. */
+export const DEMO_PERSONAS = [
   {
     handle: 'librarian',
     description: 'Explores your books and builds tools to search them.',
@@ -84,20 +107,30 @@ export const KNOWN_TOOLS = [
   ['narrate.speak', 'Read text aloud with a local voice'],
 ];
 
-/** @param {any} rt @param {{ dataDir: string, booksDir: string, backend?: string }} opts  backend: what new agents run on */
-export async function seed(rt, { dataDir, booksDir, backend = 'mock' }) {
+/**
+ * @param {any} rt
+ * @param {{ dataDir: string, booksDir: string, backend?: string, demo?: boolean }} opts  backend: what the seeded agents run on
+ */
+export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = false }) {
   const s = rt.store.state;
   if (Object.keys(s.personas).length) return false;
-  let personas = DEFAULT_PERSONAS;
+  const fresh = freshInstall();
+  let personas = demo ? DEMO_PERSONAS : fresh.personas;
   try {
     const custom = JSON.parse(await readFile(join(dataDir, 'agents.json'), 'utf8'));
     if (Array.isArray(custom) && custom.length) personas = custom;
   } catch {
     /* no agents.json: use the defaults */
   }
-  // The sample agents run on a real model when one is available here, and on the mock otherwise.
+  // The seeded agents run on a real model when one is available here, and on the mock otherwise.
   for (const p of personas) rt.createPersona({ backend, ...p });
   for (const b of BOILERPLATES) rt.store.emit('boilerplate', b);
+  if (!demo) {
+    for (const pr of fresh.projects) rt.store.emit('project', { id: newId('pr'), ...pr });
+    return true;
+  }
+  // The demo's conversations need the demo's agents; agents.json replaces them, and the conversations too.
+  if (personas !== DEMO_PERSONAS) return true;
 
   const researchDir = join(dataDir, 'research');
   await mkdir(researchDir, { recursive: true });

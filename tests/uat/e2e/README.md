@@ -12,7 +12,7 @@ sequenceDiagram
   participant P as Postbox (fresh, real agents)
   participant B as Chrome (the UI)
   participant T as Tester (claude -p)
-  R->>P: start with --fresh, recording every agent turn
+  R->>P: write the scenario’s agents to agents.json, then start with --fresh, recording every agent turn
   R->>B: create a project and a conversation, through the UI
   loop each step
     R->>P: wait until no agent is working
@@ -37,7 +37,7 @@ sequenceDiagram
 
 | Check                        | Issue | Looks for                                                                                                      |
 | ---------------------------- | ----- | -------------------------------------------------------------------------------------------------------------- |
-| fresh-install-agents         | #43   | A fresh install seeding use-case agents                                                                        |
+| fresh-install-agents         | #43   | A fresh install seeding use-case agents, or more than one agent or a sample project (from `server/seed.mjs`)   |
 | hidden-turn-error            | #61   | A failed turn whose error gives no reason                                                                      |
 | refusal-without-card         | #65   | Calls Claude Code refused (the result’s `permission_denials`) with no card in the conversation                 |
 | settings-leak                | #57   | The person’s output style, or a line of their global CLAUDE.md, in agent turns                                 |
@@ -70,7 +70,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 
 A scenario is Markdown:
 - a title
-- settings: the persona the tester plays, the agents, the project and the conversation’s name
+- settings: the persona the tester plays, the agents, the project and the conversation’s name. A fresh install has only @assistant, so the runner seeds the scenario’s agents from [`personas.json`](personas.json), through `agents.json` in the run’s data folder.
 - a summary
 - one `## Phase` section per phase, in the person’s words
 

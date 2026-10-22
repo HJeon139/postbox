@@ -7,18 +7,26 @@
 // ---, `code`, **bold**, *italic*, ~~strikethrough~~, [links](https://…), bare https:// links,
 // citation markers [1], term links [label](term:key), glossary auto-links and @mentions.
 // While a reply is streaming, an unclosed fence is drawn as if it were closed.
+//
+// The one exception to "raw HTML is text": <details> starting a line, with an optional <summary>…</summary>
+// right after it, closed by its </details>, folds its Markdown away (agents use it to hide an exercise's
+// answer). The tags must be exactly these, with no attributes; anything else, or an unclosed tag, is text.
 
 import { isSafeUrl } from './urls.mjs';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
-const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
-const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
-const QUOTE = /^ {0,3}>\s?(.*)$/;
-const RULE = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
-const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+// The block rules, shared with the review renderer's line grouping (review-lines.mjs).
+export const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
+export const MATH = /^ {0,3}\$\$\s*$/;
+export const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+export const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
+export const QUOTE = /^ {0,3}>\s?(.*)$/;
+export const RULE = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
+export const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+/** Whether a line closes a fence opened with `marker` (such as ``` or ~~~~). */
+export const closesFence = (marker, line) => new RegExp(`^ {0,3}${marker[0]}{${marker.length},}\\s*$`).test(line);
 
 /**
  * @param {string} src
@@ -28,6 +36,7 @@ const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
  *   citeId?: string,             // prefix for source anchors: #<citeId>-<n>
  *   glossary?: { key: string, term: string }[],
  *   mentions?: string[],         // handles without the @
+ *   folds?: boolean,             // false shows <details> as text, as a review does
  * }} [opts]
  * @returns {string} HTML
  */
@@ -63,7 +72,7 @@ function blocks(lines, ctx) {
       const body = [];
       let closed = false;
       for (i++; i < lines.length; i++) {
-        if (new RegExp(`^ {0,3}${marker[0]}{${marker.length},}\\s*$`).test(lines[i])) {
+        if (closesFence(marker, lines[i])) {
           closed = true;
           break;
         }
@@ -75,10 +84,10 @@ function blocks(lines, ctx) {
       continue;
     }
 
-    if (/^ {0,3}\$\$\s*$/.test(line)) {
+    if (MATH.test(line)) {
       flush();
       const body = [];
-      for (i++; i < lines.length && !/^ {0,3}\$\$\s*$/.test(lines[i]); i++) body.push(lines[i]);
+      for (i++; i < lines.length && !MATH.test(lines[i]); i++) body.push(lines[i]);
       out.push(`<div class="md-math" data-display="true">${escapeHtml(body.join('\n'))}</div>`);
       continue;
     }
@@ -88,6 +97,20 @@ function blocks(lines, ctx) {
       flush();
       const level = Math.min(5, Math.max(3, h[1].length + 1));
       out.push(`<h${level}>${inline(h[2], ctx)}</h${level}>`);
+      continue;
+    }
+
+    const fold = ctx.folds !== false && line.trimStart().startsWith('<details>') ? details(lines, i) : null;
+    if (fold) {
+      flush();
+      const summary = fold.summary === null ? '' : `<summary>${inline(fold.summary.trim(), ctx)}</summary>`;
+      out.push(`<details>${summary}${blocks(fold.body, ctx)}</details>`);
+      // Text after </details> on its line is read as a line of its own.
+      if (fold.after.trim()) {
+        out.push(blocks([fold.after, ...lines.slice(fold.end + 1)], ctx));
+        break;
+      }
+      i = fold.end;
       continue;
     }
 
@@ -121,6 +144,13 @@ function blocks(lines, ctx) {
           }
           break;
         }
+        // A fold (an exercise's answer under its question, say) belongs to the item, blank lines and all.
+        const fold = ctx.folds !== false && body.length && l.trimStart().startsWith('<details>') ? details(lines, i) : null;
+        if (fold) {
+          for (; i <= fold.end; i++) body.push(!lines[i].trim() ? '' : /^\s{2,}/.test(lines[i]) ? lines[i] : `  ${lines[i].trimStart()}`);
+          i--;
+          continue;
+        }
         if (LIST_ITEM.test(l) || /^\s{2,}\S/.test(l) || body.length === 0) {
           body.push(l);
           continue;
@@ -146,6 +176,61 @@ function blocks(lines, ctx) {
   }
   flush();
   return out.join('');
+}
+
+/**
+ * Finds the <details> that starts lines[i] and its matching </details>, counting nested ones and skipping
+ * fences. Returns null when it isn't exactly that shape, so the caller shows it as text.
+ * @param {string[]} lines
+ * @param {number} i
+ * @returns {{ summary: string | null, body: string[], after: string, end: number } | null}
+ */
+function details(lines, i) {
+  let first = lines[i].trimStart().slice('<details>'.length);
+  /** @type {string | null} */
+  let summary = null;
+  // The summary may follow on the same line or start the next one.
+  let from = i;
+  if (!first.trim() && lines[i + 1]?.trimStart().startsWith('<summary')) {
+    from = i + 1;
+    first = lines[i + 1];
+  }
+  if (first.trimStart().startsWith('<summary')) {
+    // A summary with attributes (or a stray "<summaryx") leaves the whole block as text.
+    if (!first.trimStart().startsWith('<summary>')) return null;
+    const rest = first.trimStart().slice('<summary>'.length);
+    const close = rest.indexOf('</summary>');
+    if (close < 0) return null;
+    summary = rest.slice(0, close);
+    first = rest.slice(close + '</summary>'.length);
+  }
+  const body = [first];
+  let depth = 1;
+  /** @type {string | null} */
+  let fence = null;
+  for (let j = from; j < lines.length; j++) {
+    const line = j === from ? first : lines[j];
+    if (j > from) body.push(line);
+    if (fence) {
+      if (closesFence(fence, line)) fence = null;
+      continue;
+    }
+    const opens = line.match(FENCE);
+    if (opens && j > from) {
+      fence = opens[1];
+      continue;
+    }
+    // A tag inside `code` is text, so it neither opens nor closes.
+    const masked = line.replace(/`[^`]*`/g, (m) => ' '.repeat(m.length));
+    for (const tag of masked.matchAll(/<(\/?)details>/g)) {
+      depth += tag[1] ? -1 : 1;
+      if (depth === 0) {
+        body[body.length - 1] = line.slice(0, tag.index);
+        return { summary, body, after: line.slice((tag.index ?? 0) + tag[0].length), end: j };
+      }
+    }
+  }
+  return null;
 }
 
 function list(lines, ctx) {
@@ -354,6 +439,7 @@ function mentionRegex(handles) {
 export function toPlainText(src) {
   return String(src ?? '')
     .replace(/```[\s\S]*?(```|$)/g, ' ')
+    .replace(/<\/?(details|summary)>/g, ' ')
     .replace(/`([^`]*)`/g, '$1')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^ {0,3}#{1,6}\s+/gm, '')

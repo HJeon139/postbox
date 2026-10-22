@@ -18,6 +18,7 @@
 // }
 
 import { isPublishingTool } from '../../server/adapters/setup.mjs';
+import { freshInstall } from '../../server/seed.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
 const clip = (s, n = 240) => {
@@ -30,11 +31,20 @@ export const CHECKS = [
   {
     id: 'fresh-install-agents',
     issue: 43,
+    // What server/seed.mjs gives a fresh install, not the run's agents, which the scenario seeds through
+    // agents.json. f.freshInstall replaces it in tests.
     run: (f) => {
-      const specific = (f.startPersonas ?? []).filter((p) => /corpus|book|gutenberg|index/i.test(`${p.description} ${p.instructions}`));
-      return specific.length
-        ? [{ title: 'A fresh install comes with use-case agents', evidence: `Seeded: ${specific.map((p) => `@${p.handle}`).join(', ')}.` }]
-        : [];
+      const { personas, projects } = f.freshInstall ?? freshInstall();
+      const specific = personas.filter((p) => /corpus|book|gutenberg|index/i.test(`${p.description} ${p.instructions}`));
+      if (!specific.length && personas.length <= 1 && !projects.length) return [];
+      const seeded = [`${personas.length === 1 ? 'one agent' : `${personas.length} agents`} (${personas.map((p) => `@${p.handle}`).join(', ')})`];
+      if (projects.length) seeded.push(`${projects.length === 1 ? 'a sample project' : `${projects.length} sample projects`}`);
+      return [
+        {
+          title: 'A fresh install comes with use-case agents',
+          evidence: `Seeded: ${seeded.join(' and ')}.${specific.length ? ` Use-case: ${specific.map((p) => `@${p.handle}`).join(', ')}.` : ''}`,
+        },
+      ];
     },
   },
   {
