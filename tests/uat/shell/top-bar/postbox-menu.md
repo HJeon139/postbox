@@ -14,6 +14,7 @@ Projects are switched rarely, so they live in one menu that works from anywhere,
 - The current place has a check mark.
 - Choosing a project opens the conversation you were last in there, or its latest one; a project without conversations shows an empty page with New conversation and New agent.
 - The menu is keyboard operable (arrow keys, Enter, Escape) and returns focus to the mark when closed.
+- Clicking the mark again closes the menu and sets `aria-expanded` to “false”. Every menu (⋯, +, a session card’s ⋯) works the same way (#29).
 
 ## Steps to reproduce
 

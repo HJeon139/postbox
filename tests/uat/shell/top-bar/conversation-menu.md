@@ -13,6 +13,7 @@ Conversations need to be renamed, grown into rooms and deleted without leaving t
 - Rename… opens the [rename sheet](../../sheets/rename.md).
 - Add an agent… opens the [new-agent sheet](../../sheets/new-agent.md) joined to this conversation; a direct message becomes a room.
 - Delete conversation… (or Delete room…) opens the [delete confirm](../../sheets/delete-conversation.md).
+- A sheet opened from the menu returns focus to ⋯ when it closes, including by Escape (#26).
 
 ## Steps to reproduce
 

@@ -11,6 +11,7 @@ Rooms with several agents are created on purpose, not only by @-mentioning.
 ## Expected functionality
 
 - Pick one agent for a direct message or two or more for a room; New room requires two.
+- Enter or Space on an agent chip toggles it and keeps focus on the chip (#26).
 
 ## Steps to reproduce
 

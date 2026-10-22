@@ -151,6 +151,51 @@ test('an open choice makes the agent need you; answering it sends one event and 
   assert.throws(() => rt.act(t.id, block.id, 'choose', { selected: ['a'] }), /already answered/);
 });
 
+test('a block you leave open stops the agent needing you once the conversation moves on (#69)', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: { id: 'r', type: 'confirm', version: 1, fallback: 'x', title: 'Rename 5 records?', statement: 'Rename them?', confirmLabel: 'Rename' },
+    });
+  });
+  rt.sendMessage(t.id, { text: 'show me the records' });
+  await settle(rt);
+  const se = rt.sessionsIn(t.id)[0];
+  assert.equal(store.state.sessions[se.id].needs.kind, 'block');
+  // You move on without answering: a new message clears needs-you, and the turn it starts doesn’t bring it back.
+  rt.sendMessage(t.id, { text: 'something else' });
+  await settle(rt);
+  assert.equal(store.state.sessions[se.id].needs, null);
+  assert.equal(store.state.sessions[se.id].state, 'idle');
+  // The block itself stays open, so you can still answer it.
+  assert.equal(store.items(t.id).find((i) => i.kind === 'block').answered, false);
+  // A new asking block in a later turn makes it need you again, for that block.
+  adapter.next.push(async (c) => {
+    c.tools.show_block({ block: { id: 'q', type: 'confirm', version: 1, fallback: 'x', statement: 'Do it?', confirmLabel: 'Do it' } });
+  });
+  rt.sendMessage(t.id, { text: '@alpha ask me' });
+  await settle(rt);
+  const needs = store.state.sessions[se.id].needs;
+  assert.equal(needs.kind, 'block');
+  assert.equal(store.item(t.id, needs.itemId).block.id, 'q');
+});
+
+test('a turn you didn’t start keeps the agent needing you for the block it just asked (#69)', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({ block: { id: 'r', type: 'confirm', version: 1, fallback: 'x', statement: 'Rename them?', confirmLabel: 'Rename' } });
+  });
+  rt.sendMessage(t.id, { text: 'show me the records' });
+  await settle(rt);
+  const se = rt.sessionsIn(t.id)[0];
+  // A lint pass runs before you answer: that turn isn’t you moving on.
+  rt.deliver(se.id, { kind: 'lint', undefinedTerms: [{ term: 'Step 7' }], diagrams: [] });
+  await settle(rt);
+  assert.equal(adapter.calls.at(-1).message.kind, 'lint');
+  assert.equal(store.state.sessions[se.id].needs?.kind, 'block');
+  assert.equal(store.state.sessions[se.id].state, 'needs');
+});
+
 test('an invalid block is stored with its fallback, never rendered as given', async () => {
   const { rt, store, t, adapter } = setup();
   let result;

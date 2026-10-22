@@ -12,7 +12,8 @@ Creating agents happens in the app, with clear control over where they run and w
 
 - Start from a boilerplate; name; runs on (Claude Code, Agent SDK, Mock); model; permissions (Auto default, Ask me, Accept edits, Run everything); folder; description; instructions; tools.
 - On Claude Code or the Agent SDK, two checkboxes with help text: “Uses your Claude Code setup” (on by default; off is Isolated: the project’s settings, plus the folder’s local settings file, where Always allow saves its rules) and “Can publish outside Postbox” (off by default; on allows artifacts and connectors that post or send). Each works with Space or Enter. The mock agent doesn’t show them.
-- Joins this conversation or starts a new one; errors show inline.
+- Where it works: “Join this conversation” (a direct message becomes a room; a room gains an agent; from a topic thread’s +, “Join this topic thread”) or “New conversation in <project>”. The sheet says “conversation”, never “thread” (#4). Errors show inline.
+- Space or Enter on a Tools checkbox, a setup checkbox, a boilerplate or a backend option keeps focus on that control as the sheet updates (#26).
 
 ## Steps to reproduce
 

@@ -1,8 +1,9 @@
-// The shell: top bar, rail (threads and rooms with rings), the phone ring strip, and the overview —
+// The shell: top bar, rail (conversations and rooms with rings), the phone ring strip, and the overview —
 // one column per live session, with quick answers, tool calls, subagents, agent messages and stats.
 
+import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
-import { api, busy, client, hrefOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
@@ -31,6 +32,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
               r,
               h('b', `@${se.handle}`),
               h('span.who-state.hide-sm', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
+              openAsksEl(se, true),
             );
           }),
       )
@@ -78,7 +80,13 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
     railToggle,
     h(
       'button.brand',
-      { type: 'button', 'aria-haspopup': 'menu', 'aria-label': `Postbox: go to the overview or a project${n ? ` (${n} need you)` : ''}`, onclick: places },
+      {
+        type: 'button',
+        id: 'places-button',
+        'aria-haspopup': 'menu',
+        'aria-label': `Postbox: go to the overview or a project${n ? ` (${n} need you)` : ''}`,
+        onclick: places,
+      },
       h('span.mark', { 'aria-hidden': 'true' }),
       h('span.hide-sm', 'Postbox'),
       icon('down', 'i-sm'),
@@ -94,7 +102,13 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
     t
       ? h(
           'button.btn.icon.sm.ghost',
-          { type: 'button', 'aria-haspopup': 'menu', 'aria-label': `Actions for ${t.title}`, onclick: (e) => conversationMenu(e.currentTarget, t) },
+          {
+            type: 'button',
+            id: 'conversation-actions',
+            'aria-haspopup': 'menu',
+            'aria-label': `Actions for ${t.title}`,
+            onclick: (e) => conversationMenu(e.currentTarget, t),
+          },
           icon('more'),
         )
       : null,
@@ -120,6 +134,47 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       h('button.btn.icon.sm.ghost', { type: 'button', 'aria-label': 'Settings', onclick: () => openSettings() }, icon('gear')),
     ),
   );
+}
+
+// ── Open blocks ─────────────────────────────────────────────────────────────────────────
+// Asking blocks you left open from an earlier turn don’t make their agent need you. They show quietly
+// beside it instead, as “1 open review”, and stay open so you can still answer them (#69).
+
+const ASK_NOUNS = { choice: ['choice', 'choices'], form: ['form', 'forms'], confirm: ['confirmation', 'confirmations'], review: ['review', 'reviews'] };
+/** @returns {{ text: string, itemId: string } | null} */
+export function openAsks(se) {
+  const open = itemsOf(se.threadId).filter(
+    (it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered && it.id !== se.needs?.itemId,
+  );
+  if (!open.length) return null;
+  const types = new Set(open.map((it) => it.block.type));
+  const [one, many] = types.size === 1 ? ASK_NOUNS[open[0].block.type] : ['request', 'requests'];
+  return { text: plural(open.length, `open ${one}`, `open ${many}`), itemId: open[0].id };
+}
+/** “1 open review” for an agent: quiet text on its overview card, or a button in the top bar that goes to the block. */
+function openAsksEl(se, button = false) {
+  const el = button
+    ? h('button.btn.sm.ghost', { type: 'button', dataset: { openAsks: se.id }, onclick: () => goToItem(el.dataset.item) })
+    : h('span.small.dim', { dataset: { openAsks: se.id } });
+  paintOpenAsks(el);
+  return el;
+}
+function paintOpenAsks(el) {
+  const se = S().sessions[el.dataset.openAsks];
+  const ask = se ? openAsks(se) : null;
+  el.hidden = !ask;
+  if (el.textContent !== (ask?.text ?? '')) el.textContent = ask?.text ?? '';
+  if (ask) el.dataset.item = ask.itemId;
+  if (ask && el.tagName === 'BUTTON') el.setAttribute('aria-label', `${ask.text} from @${se.handle}: go to it`);
+}
+client.on((ch) => {
+  if (['session', 'item.add', 'item.patch', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-open-asks]')) paintOpenAsks(el);
+});
+function goToItem(itemId) {
+  const node = document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
+  if (!node) return;
+  node.scrollIntoView({ block: 'center' });
+  (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus();
 }
 
 // ── The sidebar ─────────────────────────────────────────────────────────────────────────
@@ -395,7 +450,17 @@ export function mountOverview({ archived = false } = {}) {
       archive.replaceChildren(archivedList());
       return;
     }
-    if (!live.length) grid.replaceChildren(h('div.ov-empty', 'No live sessions. Open a project above, or create an agent.'));
+    // A fresh install has no projects yet, so the empty overview leads to making one.
+    if (!live.length)
+      grid.replaceChildren(
+        Object.keys(S().projects).length
+          ? h('div.ov-empty', 'No live sessions. Open a project above, or create an agent.')
+          : h(
+              'div.ov-empty',
+              h('p', 'Create a project to start, or create an agent.'),
+              h('button.btn', { type: 'button', style: { marginTop: '12px' }, onclick: () => openSettings('projects') }, icon('plus'), 'New project'),
+            ),
+      );
     else
       syncList(
         grid,
@@ -497,6 +562,7 @@ function updateCard(node, se, fresh = false) {
     se.ctx,
     se.unread,
     t.title,
+    openAsks(se)?.text,
   ]);
   if (!fresh && node.dataset.sig === sig) return;
   node.dataset.sig = sig;
@@ -533,9 +599,10 @@ function updateCard(node, se, fresh = false) {
           'a.oc-link',
           { href: hrefOf(t.id) },
           h('b', `@${se.handle}`),
-          h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'thread: ' : ''}${t.title}`),
+          h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'topic thread: ' : ''}${t.title}`),
         ),
         stateLine,
+        openAsksEl(se),
       ),
       h(
         'button.btn.icon.sm.ghost',
@@ -547,7 +614,7 @@ function updateCard(node, se, fresh = false) {
       ? sec(
           se.needs.kind === 'failed' ? 'Failed' : 'Needs you',
           h('p', se.needs.text),
-          quick ?? h('a.btn.sm', { href: `#/t/${se.threadId}`, style: { alignSelf: 'flex-start' } }, 'Open thread'),
+          quick ?? h('a.btn.sm', { href: `#/t/${se.threadId}`, style: { alignSelf: 'flex-start' } }, 'Open conversation'),
         )
       : null,
     sec('Current step', h('p', { class: busy(se) ? '' : 'dim' }, se.currentStep || '—'), busy(se) && se.glimpse ? h('p.glimpse', se.glimpse) : null),
@@ -637,7 +704,7 @@ function quickAnswer(se) {
     return h(
       'div.col',
       it.detail ? h('pre.md-code.perm-detail', h('code', it.detail.slice(0, 400))) : null,
-      h('div.row-flex.wrap', ...buttons, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open thread')),
+      h('div.row-flex.wrap', ...buttons, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation')),
     );
   }
   if (kind !== 'block') return null;
@@ -653,7 +720,7 @@ function quickAnswer(se) {
       'div.row-flex.wrap',
       h('button.btn.sm', { type: 'button', onclick: () => act('confirm', {}) }, b.confirmLabel),
       h('button.btn.sm', { type: 'button', onclick: () => act('cancel', {}) }, b.cancelLabel ?? 'Cancel'),
-      h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open thread'),
+      h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation'),
     );
   if (b.type === 'choice' && !b.other) {
     const picked = new Set();
@@ -696,7 +763,7 @@ function quickAnswer(se) {
         return c;
       }),
     );
-    return [chips, h('div.row-flex', send, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open thread'))];
+    return [chips, h('div.row-flex', send, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation'))];
   }
   return null;
 }
@@ -705,20 +772,26 @@ export function sessionMenu(anchor, se) {
   openMenu(
     anchor,
     [
-      { label: 'Open thread', icon: 'thread', run: () => navigate(`#/t/${se.threadId}`) },
+      { label: 'Open conversation', icon: 'thread', run: () => navigate(`#/t/${se.threadId}`) },
       { label: `Edit @${se.handle} persona`, icon: 'edit', kbd: 'Personas', run: () => openSettings('personas', se.personaId) },
       ...(busy(se) ? [{ label: 'Stop', icon: 'x', run: () => api(`/api/sessions/${se.id}/stop`, {}) }] : []),
       'hr',
       {
         label: 'Archive session',
         icon: 'archive',
-        desc: 'Stops it; keeps the thread read-only. Restore any time.',
+        desc: 'Stops it; keeps the conversation read-only. Restore any time.',
         run: () =>
           api(`/api/sessions/${se.id}/archive`, {}).then(() =>
             toast({ title: `Archived @${se.handle}’s session`, action: { label: 'Restore', run: () => api(`/api/sessions/${se.id}/restore`, {}) } }),
           ),
       },
-      { label: 'Delete session…', icon: 'trash', danger: true, desc: 'Erases the thread and its apps. The persona stays.', run: () => confirmDelete(se) },
+      {
+        label: 'Delete session…',
+        icon: 'trash',
+        danger: true,
+        desc: `${sessionsOf(se.threadId).length > 1 ? 'Takes it out of the room and erases its apps' : 'Erases the conversation and its apps'}. The persona stays.`,
+        run: () => confirmDelete(se),
+      },
     ],
     { label: `Session actions for @${se.handle}` },
   );

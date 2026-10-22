@@ -1,9 +1,9 @@
-// Dialogs: new agent, new thread, settings (appearance, personas, projects, connection), the command
+// Dialogs: new agent, new conversation, settings (appearance, personas, projects, connection), the command
 // palette, the delete confirm, and the project folder picker.
 
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
-import { navigate, openDialog, toast, undoToast } from './ui.mjs';
+import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
 const toolsInProject = (projectId) =>
@@ -215,7 +215,9 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   };
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
-  const paint = () => {
+  // Each change repaints the sheet; focus stays on the control you used (#26).
+  const paint = () => keepFocus(body, repaint);
+  const repaint = () => {
     fill(
       body,
       preset
@@ -341,8 +343,14 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         h(
           'div',
           { role: 'radiogroup', 'aria-label': 'Where it works', style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-          threadId ? whereOpt('join', 'Join this thread', `${t.title} becomes a room. It gets the recent messages and a short brief.`) : null,
-          whereOpt('new', `New thread in ${S().projects[projectId]?.name}`, 'Starts fresh. @ it from anywhere to bring it in.'),
+          threadId
+            ? whereOpt(
+                'join',
+                `Join this ${t.kind === 'topic' ? 'topic thread' : t.kind === 'side' ? 'side thread' : 'conversation'}`,
+                `${t.kind === 'thread' ? `“${t.title}” becomes a room` : `It joins ${t.kind === 'room' ? 'the room ' : ''}“${t.title}”`}. It gets the recent messages and a short brief.`,
+              )
+            : null,
+          whereOpt('new', `New conversation in ${S().projects[projectId]?.name}`, 'Starts fresh. @ it from anywhere to bring it in.'),
         ),
       ),
       st.error ? h('span.err', { role: 'alert' }, icon('warn'), st.error) : null,
@@ -428,7 +436,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   });
 }
 
-// ── New thread ──────────────────────────────────────────────────────────────────────────
+// ── New conversation ────────────────────────────────────────────────────────────────────
 
 /**
  * A new conversation: a direct message with one agent, or a room with several. Picking a second agent makes
@@ -441,7 +449,8 @@ export function openNewThread(projectId, { room = false } = {}) {
   const list = h('div.chips', { role: 'group', 'aria-label': 'Agents' });
   const err = h('div');
   const startBtn = h('button.btn.send', { type: 'button', onclick: () => create() });
-  const paint = () => {
+  const paint = () => keepFocus(list, repaint);
+  const repaint = () => {
     list.replaceChildren(
       ...personas.map((p) =>
         h(
@@ -509,7 +518,7 @@ export function confirmDeleteThread(threadId) {
         h('span.label', 'This erases'),
         h(
           'ul.what-goes',
-          li(false, `${plural(items.length, 'message')}, ${plural(apps, 'app')} and ${plural(topics, 'thread')} off it`),
+          li(false, `${plural(items.length, 'message')}, ${plural(apps, 'app')} and ${plural(topics, 'topic thread')} off it`),
           li(false, `The ${plural(ses.length, 'session')} in it, and their context: ${ses.map((x) => `@${x.handle}`).join(', ') || 'no agents'}`),
         ),
       ),
@@ -590,7 +599,7 @@ export function confirmDelete(se) {
                 li(false, `${plural(apps, 'app')} it wrote`),
               ]
             : [
-                li(false, `The thread: ${plural(items.length, 'item')}, including ${plural(blocks, 'block')} and ${plural(apps, 'app')}`),
+                li(false, `The conversation: ${plural(items.length, 'item')}, including ${plural(blocks, 'block')} and ${plural(apps, 'app')}`),
                 li(false, `@${se.handle}’s context for this session`),
               ],
         ),
@@ -605,7 +614,7 @@ export function confirmDelete(se) {
           li(true, `Files in ${S().projects[t?.projectId]?.folder ?? 'the project folder'}`),
         ),
       ),
-      h('p.small.dim', 'You’ll have 10 seconds to undo. To keep the thread but stop the session, archive it instead.'),
+      h('p.small.dim', 'You’ll have 10 seconds to undo. To keep the conversation but stop the session, archive it instead.'),
     ],
     foot: [
       h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'),
@@ -651,7 +660,9 @@ export function openSettings(tab = 'appearance', personaId = null) {
   let cur = tab;
   const tabs = h('div.tabs', { role: 'tablist' });
   const panel = h('div', { role: 'tabpanel', style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
-  const paint = () => {
+  // The tabs and the panel repaint together; focus stays on the tab or control you used (#26).
+  const paint = () => keepFocus(tabs.parentElement, repaint);
+  const repaint = () => {
     tabs.replaceChildren(
       ...[
         ['appearance', 'Appearance'],
@@ -704,10 +715,12 @@ export function openSettings(tab = 'appearance', personaId = null) {
   const personas = () => {
     const list = Object.values(S().personas);
     const editing = personaId && S().personas[personaId];
+    // Between the list and a persona’s form, focus goes to the form’s first field, and back to its Edit button.
     if (editing)
       return personaForm(editing, () => {
         personaId = null;
         paint();
+        document.getElementById(`pe-edit-${editing.id}`)?.focus();
       });
     return [
       h(
@@ -722,9 +735,12 @@ export function openSettings(tab = 'appearance', personaId = null) {
               'button.btn.sm',
               {
                 type: 'button',
+                id: `pe-edit-${p.id}`,
+                'aria-label': `Edit @${p.handle}`,
                 onclick: () => {
                   personaId = p.id;
                   paint();
+                  document.getElementById('pe-d')?.focus();
                 },
               },
               'Edit',
@@ -761,7 +777,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
       canPublish: p.canPublish === true,
     };
     const runBox = h('div.form-grid');
-    const paintRun = () => fill(runBox, backendFields(run, paintRun, { idp: 'pe' }));
+    const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe' })));
     paintRun();
     const desc = h('input.input', { id: 'pe-d', value: p.description });
     const ins = h('textarea.textarea', { id: 'pe-i', style: { minHeight: '100px' } }, p.instructions);
@@ -906,8 +922,8 @@ export function openPalette() {
   const open = document.querySelector('.dialog.palette input');
   if (open) return open.focus();
   const input = h('input.input', {
-    'aria-label': 'Jump to a thread, project, agent or action',
-    placeholder: 'Jump to a thread, an agent, or an action…',
+    'aria-label': 'Jump to a conversation, project, agent or action',
+    placeholder: 'Jump to a conversation, an agent, or an action…',
     role: 'combobox',
     'aria-controls': 'p-list',
     'aria-expanded': 'true',
@@ -1010,11 +1026,12 @@ export function openFolderPicker(projectId, onPick) {
             icon(e.dir ? 'folder' : 'file', 'dim'),
             h('span.grow', e.name),
             e.dir
-              ? h('button.btn.sm', { type: 'button', onclick: () => load(e.path) }, 'Open')
+              ? h('button.btn.sm', { type: 'button', 'aria-label': `Open ${e.name}`, onclick: () => load(e.path) }, 'Open')
               : h(
                   'button.btn.sm',
                   {
                     type: 'button',
+                    'aria-label': `Attach ${e.name}`,
                     onclick: () => {
                       dlg.close();
                       onPick(e.path);
@@ -1026,6 +1043,9 @@ export function openFolderPicker(projectId, onPick) {
         ),
         r.entries.length ? null : h('li.empty-note', 'This folder is empty.'),
       );
+      // Focus starts on the first entry, and moves to the first entry of each folder you open (#26).
+      const buttons = listEl.querySelectorAll('button');
+      if (dlg?.dialog.isConnected) /** @type {HTMLElement | undefined} */ (buttons[r.path && buttons.length > 1 ? 1 : 0])?.focus();
     } catch (e) {
       listEl.replaceChildren(h('li.err', e.message));
     }
@@ -1041,7 +1061,7 @@ export function openFolderPicker(projectId, onPick) {
 
 // ── Attach a Claude Code session ────────────────────────────────────────────────────────
 // Lists the sessions Claude Code keeps on this computer, newest first. Attaching one makes it an agent in
-// a new thread: Postbox resumes that session when you write to it, and mirrors what you type in a terminal.
+// a new conversation: Postbox resumes that session when you write to it, and mirrors what you type in a terminal.
 
 export function openAttachSession(projectId) {
   const listEl = h('ul.list-rows', h('li.empty-note', 'Looking for sessions…'));
@@ -1049,7 +1069,7 @@ export function openAttachSession(projectId) {
     try {
       const r = await api('/api/claude-sessions/attach', { claudeSessionId: s.id, projectId });
       dlg.close();
-      toast({ title: 'Attached', text: `${s.title} is a thread now.` });
+      toast({ title: 'Attached', text: `${s.title} is a conversation now.` });
       setTimeout(() => navigate(`#/t/${r.threadId}`), 200);
     } catch (e) {
       toast({ title: 'Couldn’t attach it', text: e.message, level: 'blocking' });

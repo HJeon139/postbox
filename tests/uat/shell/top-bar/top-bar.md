@@ -14,6 +14,7 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 - The Postbox mark opens the places menu (see [Postbox menu](postbox-menu.md)).
 - Breadcrumbs read Project › Conversation; the project crumb opens that project, and Overview is a link when you’re elsewhere.
 - Each agent in the conversation has a chip: its ring, @name and status word (“· idle”, “· thinking”, “· calling tools”, “· needs you”), updating live.
+- An agent with blocks left open from earlier turns also shows a quiet “1 open review” button, which scrolls to the block and focuses it. Those blocks don’t make it need you (#69).
 - “⋯” opens the [conversation menu](conversation-menu.md).
 - “Jump to… ⌘K” opens the [command palette](../command-palette.md).
 - The needs-you button counts agents waiting on you; it is disabled with “Nothing needs you” when none are, and ⌃J goes to the next one and focuses what it’s waiting on.

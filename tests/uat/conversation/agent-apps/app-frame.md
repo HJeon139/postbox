@@ -28,7 +28,6 @@ Agents write software when it explains better than prose; it must run safely and
 3. Reload the page and check the app restores its state.
 4. Run `node tools/checks/app-fullscreen.mjs`: the frame fills at least 90% of the window without reloading, Escape brings it back with focus on the button, an app that grew comes back taller, an app’s own Escape stays in the app, and full screen ends when you leave the conversation.
 5. Run `node tools/checks/app-send.mjs`: an app that sends on load is refused, a click or Enter in it sends, and a frame that grabs focus can’t send.
-
 6. For the legibility warnings, run `node tools/check-feedback.mjs`: it shows a chart too small to read, a readable one, and an app with only an error.
 
 **Pass if:** The app works, versions switch, state restores, the frame doesn’t reload on its own or when it goes full screen, no line appears in your voice that you didn’t click or type for, and only the unreadable apps get notes.

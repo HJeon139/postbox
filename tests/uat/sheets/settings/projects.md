@@ -11,6 +11,7 @@ Each project has one root folder, where agents start and the picker is bounded.
 ## Expected functionality
 
 - Lists projects and folders; adds a project with a name and folder.
+- Enter on a tab switches to it and keeps focus on the tab (#26).
 
 ## Steps to reproduce
 

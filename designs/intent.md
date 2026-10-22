@@ -105,7 +105,7 @@ sequenceDiagram
 | Personas live in Postbox’s own store; `agents.json` only seeds it | You create and edit agents in the UI, never in a terminal. |
 | The `+` menu adds files and agents | Files: upload, pick from the project folder, paste, or add to the corpus. Agents: from a boilerplate, or recommended by an agent. |
 | Any agent may propose a teammate, but only your click creates one | This prevents privilege escalation: the proposal highlights any tools beyond what the proposing agent has. |
-| When you create an agent, you choose where it works: join this thread (the default, which makes it a room) or start a new thread | Joining gives it the recent messages and a short brief; a new thread starts clean. |
+| When you create an agent, you choose where it works: join this conversation (the default, which makes a direct message a room) or start a new conversation | Joining gives it the recent messages and a short brief; a new conversation starts clean. |
 | Everything said in a conversation is shared memory for every agent in it. Each turn starts with what happened since the agent’s last one, from you and the other agents; an agent that joins later gets the recent history; read_conversation reads further back | Fixed after Stage 3 (issue #1): agents in a room saw only messages addressed to them, and answered from partial information. |
 | A Personas page in settings lets you edit, duplicate, retire and save boilerplates | Edits apply to new sessions only. Running sessions keep the version they started with, so behavior doesn’t change underneath you. |
 | Subagents an agent creates inside its own session need no approval | They aren’t personas, and they run with their parent’s tools. |
@@ -203,7 +203,7 @@ All colors are defined as tokens on `:root` in [`mockups/workbench.css`](../mock
 
 ### Writing
 
-Plain English and sentence case, with curly quotes and American spelling everywhere: the UI, the docs and code comments. Buttons say what they do (“Send”, “Stop”, “Open thread”). Error messages say what happened and what to do next.
+Plain English and sentence case, with curly quotes and American spelling everywhere: the UI, the docs and code comments. Buttons say what they do (“Send”, “Stop”, “Open conversation”). Error messages say what happened and what to do next.
 
 ### Integration
 

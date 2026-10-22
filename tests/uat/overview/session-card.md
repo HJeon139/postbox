@@ -11,7 +11,8 @@ Everything about one agent at once, so you can decide without opening the conver
 ## Expected functionality
 
 - Header: ring, @name (a link to its conversation), project and conversation, state line.
-- Needs you: what it’s waiting on, with a quick answer for a simple choice or confirm, or Open thread.
+- Needs you: what it’s waiting on, with a quick answer for a simple choice or confirm, or Open conversation.
+- Only a block from the agent’s latest turn makes it need you. Blocks you left open from earlier turns show quietly under the state line, as “1 open review”, and the agent stops reading “needs you” once you send it a new message or it finishes another turn (#69).
 - Current step, last message, tool calls, agent messages (each opens its side thread), subagents, context %, compactions, started.
 - Clicking anywhere on the card, outside its buttons, opens the conversation.
 
@@ -21,8 +22,9 @@ Everything about one agent at once, so you can decide without opening the conver
 2. On the overview, answer @researcher’s paper choice from the card.
 3. Click an empty part of another card.
 4. Click an agent message line.
+5. Leave a block unanswered, and send its agent a new message.
 
-**Pass if:** The quick answer reaches the agent, the card click opens the conversation, and the agent-message line opens the side thread.
+**Pass if:** The quick answer reaches the agent, the card click opens the conversation, and the agent-message line opens the side thread. After step 5, the card says “Idle” with “1 open …” under it, not “Needs you”.
 
 ## Related
 

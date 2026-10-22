@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { britishWords, checkMarkdown, checkJs as copyJs, straightQuotes } from '../tools/lint-copy.mjs';
+import { britishWords, checkMarkdown, checkJs as copyJs, straightQuotes, threadWords } from '../tools/lint-copy.mjs';
 import { checkJs as domJs } from '../tools/lint-dom.mjs';
 import { codeOnly, scan } from '../tools/lint-lib.mjs';
 import { checkCss, checkJs as tokensJs } from '../tools/lint-tokens.mjs';
@@ -86,6 +86,21 @@ test('lint-copy: straight quotes in prose, but not in code-like strings', () => 
   assert.equal(copyJs("const s = `Isn't it`;", 'a.js').length, 1);
   assert.equal(copyJs('const sel = \'[data-id="x"]\';', 'a.js').length, 0);
   assert.equal(copyJs('const s = `Call <code>lookup("Emma")</code> first.`;', 'a.js').length, 0);
+});
+
+test('lint-copy: “thread” in the shell says it’s a topic or side thread, or it’s a conversation (#4)', () => {
+  assert.deepEqual(threadWords('Join this thread'), ['thread']);
+  assert.deepEqual(threadWords('Keeps the threads read-only'), ['threads']);
+  assert.deepEqual(threadWords('No topic threads yet. Side thread from Planning. Reply in thread.'), []);
+  assert.deepEqual(threadWords('Threads'), []);
+  assert.equal(copyJs("const a = h('a.btn', 'Open thread');", 'app/js/shell.mjs').length, 1);
+  assert.equal(copyJs("const a = h('a.btn', 'Open conversation');", 'app/js/shell.mjs').length, 0);
+  // Names and selectors aren’t text people read; other files aren’t checked.
+  assert.equal(copyJs("if (ch.type === 'thread') el.querySelector('a.row[data-thread]');", 'app/js/shell.mjs').length, 0);
+  assert.equal(copyJs("const a = h('b', 'Close thread');", 'app/js/thread.mjs').length, 0);
+  assert.equal(copyJs("const a = plural(n, 'thread');", 'app/js/sheets.mjs').length, 1);
+  assert.equal(copyJs("const a = plural(n, 'topic thread');", 'app/js/sheets.mjs').length, 0);
+  assert.deepEqual(threadWords('Threads off this conversation'), ['Threads']);
 });
 
 test('lint-copy: docs are checked for spelling outside code', () => {
