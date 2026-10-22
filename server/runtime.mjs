@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { basename, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
-import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX } from '../shared/diagram-lint.mjs';
+import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
@@ -1096,23 +1096,43 @@ export class Runtime {
     this.updateSession(sessionId, { diagramsLinted: [...new Set([...(se.diagramsLinted ?? []), ...hashes])].slice(-50) });
   }
 
-  /** The browser measured a rendered diagram: { src, textPx, width }. */
-  diagramCheck(threadId, itemId, { src, textPx, width }) {
+  /**
+   * The browser drew a diagram: { src, textPx, width } when it measured it, or { src, error: { message, line } }
+   * when Mermaid couldn’t draw it.
+   */
+  diagramCheck(threadId, itemId, { src, textPx, width, error }) {
     const it = this.store.item(threadId, itemId);
     if (it?.kind !== 'agent' || it.lintReply || typeof src !== 'string') return { ok: true, sent: false };
     const se = this.s.sessions[it.sessionId];
+    const failed = error && typeof error === 'object' && typeof error.message === 'string';
     // Only a measurement at the conversation’s width counts; a narrow panel or phone shrinks every diagram.
-    if (!se || !(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)) return { ok: true, sent: false };
+    if (!se || (!failed && (!(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)))) return { ok: true, sent: false };
     const hash = createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
     if (se.diagramsLinted?.includes(hash)) return { ok: true, sent: false };
-    const index = [...String(it.text).matchAll(/^ {0,3}```mermaid/gm)].length > 1 ? null : 0;
-    const sent = this.lint(se.id, it.turnId, [
-      {
+    const blocks = mermaidBlocks(String(it.text));
+    const index = blocks.find((b) => b.src.trim() === src.trim())?.index ?? (blocks.length > 1 ? null : 0);
+    const scope = { kind: 'diagram', index, excerpt: src.split('\n').slice(0, 3).join('\n') };
+    let problem;
+    if (failed) {
+      // Mermaid’s message, without its caret line: “Parse error on line 2: … Expecting 'SEMI', got 'ARROW'”.
+      const said = error.message
+        .split('\n')
+        .filter((l) => l.trim() && !/^[-\s]*\^$/.test(l))
+        .join(' ')
+        .slice(0, 400);
+      const line = Number.isInteger(error.line) && error.line > 0 ? ` (line ${Math.min(error.line, 9999)})` : '';
+      problem = {
+        code: 'diagram-error',
+        message: `Mermaid couldn’t draw it, so the person sees an error and its source instead. Mermaid said${line}: “${said}”. Fix the syntax.`,
+        scope,
+      };
+    } else
+      problem = {
         code: 'text-too-small',
         message: `In the person’s browser, its text is drawn at ${Math.round(textPx * 10) / 10} px at a width of ${Math.round(width)} px, too small to read. Draw it top to bottom, split it, or shorten its labels.`,
-        scope: { kind: 'diagram', index, excerpt: src.split('\n').slice(0, 3).join('\n') },
-      },
-    ]);
+        scope,
+      };
+    const sent = this.lint(se.id, it.turnId, [problem]);
     if (sent) this.rememberDiagrams(se.id, [src]);
     return { ok: true, sent };
   }

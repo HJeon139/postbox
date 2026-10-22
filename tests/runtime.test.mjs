@@ -700,6 +700,27 @@ test('problems from a turn that failed don’t reach the agent', async () => {
   assert.equal(lints(adapter).length, 0);
 });
 
+test('#46: a diagram the browser couldn’t draw comes back to the agent once, with Mermaid’s message and line', async () => {
+  const { rt, store, t, adapter } = setup();
+  const broken = 'graph LR\nA -->> B';
+  adapter.next.push(async (c) => c.text(`Two diagrams.\n\n\`\`\`mermaid\ngraph TD\nX-->Y\n\`\`\`\n\n\`\`\`mermaid\n${broken}\n\`\`\``));
+  rt.sendMessage(t.id, { text: 'draw' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  const error = { message: "Parse error on line 2:\nA -->> B\n----^\nExpecting 'SEMI', got 'ARROW'", line: 2 };
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: broken, error }).sent, true);
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: broken, error }).sent, false, 'once per diagram');
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+  const [p] = lints(adapter)[0].message.problems;
+  assert.equal(p.code, 'diagram-error');
+  assert.deepEqual(p.scope, { kind: 'diagram', index: 1, excerpt: broken });
+  assert.equal(
+    p.message,
+    "Mermaid couldn’t draw it, so the person sees an error and its source instead. Mermaid said (line 2): “Parse error on line 2: A -->> B Expecting 'SEMI', got 'ARROW'”. Fix the syntax.",
+  );
+});
+
 test('a persona’s permission mode reaches its running conversations from their next turn', async () => {
   const { rt, t, a, adapter } = setup();
   const seen = [];
