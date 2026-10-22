@@ -2,30 +2,46 @@
 
 Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139/postbox/issues/64), in waves of sessions that run in parallel, each in its own worktree. Every session follows [engineering-practices.md](../engineering-practices.md) and the rules on this page. Prompts for issues that are still blocked get written when the wave before them merges.
 
-M1 core runs alone, as one dedicated session, and M2 starts only after M1 core merges, as #64 decided. M1 core changes how every agent turn is built and what agents are told (the adapters, the guide, the MCP tool descriptions, `kit.js`), and M2 edits the same files. Measuring agent behavior also needs M1 settled first. #73 (subagents as a hierarchy) waits for wave 3, because it changes the stream mapper and the agent header, which M1 core is editing.
+M1 core runs as one dedicated session, and M2 starts only after M1 core merges, as #64 decided. M1 core changes how every agent turn is built and what agents are told (the adapters, the guide, the MCP tool descriptions, `kit.js`), and M2 edits the same files. Measuring agent behavior also needs M1 settled first. Beside it, wave 2 runs one small session for the transcript and threads defects from wave 1's manual UAT. It stays out of M1 core's files, apart from separate regions of `thread.mjs` and `runtime.mjs`. #73 (subagents as a hierarchy) waits for wave 3, because it changes the stream mapper and the agent header, which M1 core is editing.
 
 ```mermaid
 flowchart LR
-  subgraph w1["Wave 1"]
+  subgraph w1["Wave 1 (merged)"]
     a["Now: hotfixes"]
     b["M1: no #57 needed"]
     c["M3: checks"]
     d["M4: shell"]
   end
-  subgraph w2["Wave 2 (prompt later)"]
-    e["M1 core, one session"]
+  subgraph w2["Wave 2"]
+    e["M1 core"]
+    k["Transcript and threads"]
   end
-  subgraph w3["Wave 3 (prompts later)"]
-    f["M2: apps"]
-    j["M3: the block check (#63)"]
+  subgraph w3["Wave 3"]
+    f["M2: apps follow the conversation"]
+    l["M2: files and real data"]
+    j["M3: checks"]
     i["#73: subagent tree"]
+    m["#87: measure the explainer guide"]
   end
-  subgraph w4["Wave 4 (prompts later)"]
+  subgraph w4["Wave 4"]
     g["M4: supervision"]
     h["#9: worktrees"]
   end
   w1 --> w2 --> w3 --> w4
 ```
+
+| Wave | Session | Issues |
+|---|---|---|
+| 2 | M1 core | #57's follow-ons #59, #5, #66 (with #10), #67; #63, #50, #52, #94; #60, #12, #72; #75 where it touches the same files |
+| 2 | Transcript and threads | #88, #91, #83, #93, #81, #82 |
+| 3 | M2: apps follow the conversation | #49 with #92, #36, #7 with #86 |
+| 3 | M2: files and real data | #90, then #85 (agent attachments), #54, #47, #74, #51, #44, #37 |
+| 3 | M3: checks | #89, the block check for #63, #95 once decided |
+| 3 | #73 | subagent narration, thinking and tree |
+| 3 | #87 | measure, then calibrate, the explainer guide |
+| 4 | M4: supervision | #3, #6, #8, #11, #13, #14, #16, #85's Files view and room menu |
+| 4 | #9 | worktree per conversation |
+| — | Backlog | #84 (needs a decision), #15, #21, #28, #41, #76 |
 
 ## Wave 1
 
