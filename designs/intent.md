@@ -225,6 +225,7 @@ Plain English and sentence case, with curly quotes and American spelling everywh
 ## Not in scope, for now
 
 - Several people, sign-in or presence.
+- Using Postbox on a phone. It’s a local web app on your own computer, so effort on phone-only behavior (touch, phone sheets, phone screenshots) is declined. The phone layout row above stays as a note for later. Narrow-width checks at 375 px stay, because a narrow window or an open thread panel squeezes the column the same way. Decided 21 October 2026.
 - Search across threads.
 - OS notifications and sound.
 - Narrated slideshows as a built-in format. Narration arrives in Stage 3 instead, with the real adapters: a speech tool on the host (for example Kokoro) and two recipes, a narrated walkthrough app with a synced transcript and a Slidev export for sharing.
