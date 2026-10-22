@@ -592,7 +592,7 @@ const lints = (adapter) => adapter.calls.filter((c) => c.message.kind === 'lint'
 
 test('the problems of one turn, from the server and the browser, reach the agent as one lint turn', async () => {
   const { rt, store, t, adapter } = setup({ lintSettleMs: 40 });
-  adapter.next.push(async (c) => c.text('In Step 7 we index.\n\n```mermaid\ngraph LR\nA-->B\n```'));
+  adapter.next.push(async (c) => c.text('In Step 7 we index.\n\n```mermaid\ngraph LR\nA-->B\n```\n\n```mermaid\ngraph TD\nC-->D\n```'));
   rt.sendMessage(t.id, { text: 'go' });
   await settle(rt);
   const item = store.items(t.id).find((i) => i.kind === 'agent');
@@ -713,6 +713,63 @@ test('raw HTML in a reply reaches the agent through the lint turn', async () => 
     lints(adapter)[0].message.problems.map((p) => p.message.match(/\(([^)]*)\)/)[1]),
     ['<br>'],
   );
+});
+
+test('a report the reply doesn’t match, or about a turn this runtime never saw end, starts nothing', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('```mermaid\ngraph LR\nA-->B\n```'));
+  rt.sendMessage(t.id, { text: 'draw' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'agent');
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nX-->Y', textPx: 7, width: 728 }).sent, false, 'not a diagram in the reply');
+  // After a restart, the old reply’s turn has no entry: a broken diagram in it doesn’t start a lint turn.
+  rt.lints.clear();
+  assert.equal(rt.diagramCheck(t.id, item.id, { src: 'graph LR\nA-->B', error: { message: 'Parse error', line: 1 } }).sent, false);
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0);
+});
+
+test('what a lint turn shows is never linted, so lint turns can’t chain', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('Step 3 next.'));
+  adapter.next.push(async (c) => c.tools.show_app({ id: 'fix', title: 'Fix', code: '<svg></svg>' }));
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+  rt.appCheck('fix', { version: 1, problems: [{ code: 'marks-too-small', message: 'Tiny.' }] });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+});
+
+test('#53: warnings for a version made in a later turn reach that turn’s lint turn', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => c.tools.show_app({ id: 'dots', title: 'Dots', code: '<svg></svg>' }));
+  adapter.next.push(async (c) => c.tools.update_app({ id: 'dots', code: '<svg><circle r="1"/></svg>', summary: 'bigger dots' }));
+  rt.sendMessage(t.id, { text: 'draw' });
+  await settle(rt);
+  rt.appCheck('dots', { version: 1, problems: [] });
+  rt.sendMessage(t.id, { text: 'make the dots bigger' });
+  await settle(rt);
+  rt.appCheck('dots', { version: 2, problems: [{ code: 'marks-too-small', message: 'Still tiny.' }] });
+  await settle(rt);
+  assert.deepEqual(
+    lints(adapter).map((c) => c.message.problems[0].message),
+    ['Still tiny.'],
+  );
+});
+
+test('#58: only Postbox marks a step stalled', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({ block: progress([{ id: 'a', label: 'Read A', state: 'pending' }]) });
+    c.tools.update_block({ block: progress([{ id: 'a', label: 'Read A', state: 'stalled' }]) });
+    c.tools.update_block({ block: progress([{ id: 'a', label: 'Read A', state: 'done' }]) });
+  });
+  rt.sendMessage(t.id, { text: 'read' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  assert.equal(it.block.steps[0].state, 'done');
+  assert.ok(it.stepTimes.a.startedAt && it.stepTimes.a.endedAt, 'the agent’s “stalled” counted as running');
 });
 
 test('problems from a turn that failed don’t reach the agent', async () => {

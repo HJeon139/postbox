@@ -59,6 +59,7 @@ export class Runtime {
     this.viewing = new Map(); // threadId → last time a browser said it was open
     this.timers = new Map(); // scheduleId or deletion → timeout
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
+    this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
   }
 
   get s() {
@@ -297,13 +298,13 @@ export class Runtime {
       t.pending.push({ message, replyTo, summarizeTo });
       return;
     }
-    // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
-    if (message.kind !== 'lint') message = this.foldLint(sessionId, message);
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length) {
       message = { ...message, context: se.context };
       this.updateSession(sessionId, { context: [] });
     }
+    // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
+    if (message.kind !== 'lint') message = this.foldLint(sessionId, message);
     // And before that, what happened in the conversation since this agent last took part: a room is shared
     // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
     const catchUp = this.catchUp(this.s.sessions[sessionId], message.itemId);
@@ -584,6 +585,7 @@ export class Runtime {
     const stalled = this.stallSteps(turn, se);
     if (turn.kind === 'lint') this.quietLint(turn, se);
     else this.endLint(turn, [...this.checkTurn(turn, se), ...stalled]);
+    this.lastTurn.set(se.id, turn.id);
 
     // An agent that @-mentions another agent wakes it.
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
@@ -1037,7 +1039,7 @@ export class Runtime {
       const one = running.length === 1;
       problems.push({
         code: 'steps-left-running',
-        message: `${one ? 'Step' : 'Steps'} ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} ${one ? 'was' : 'were'} still running when your turn ended, so the person sees ${one ? 'it' : 'them'} as stalled. Close each with update_block, as done or failed. If the work goes on in the background, set it back to running and update it as it moves.`,
+        message: `${one ? 'Step' : 'Steps'} ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} ${one ? 'was' : 'were'} still running when your turn ended, so the person sees ${one ? 'it' : 'them'} as stalled. Close each with update_block, as done or failed.`,
         scope: { kind: 'block', id: it.block.id, title: it.block.title },
       });
     }
@@ -1075,14 +1077,11 @@ export class Runtime {
    */
   lint(sessionId, turnId, problems) {
     if (!problems.length || !turnId || !this.s.sessions[sessionId]) return false;
-    const live = [...this.turns.values()].some((t) => t.id === turnId);
+    const live = [...this.turns.values()].find((t) => t.id === turnId);
+    // A turn that isn’t running and has no entry failed, was stopped, ran before a restart or is long gone: its
+    // problems are dropped, so no lint turn lands about an old reply. A lint turn’s own problems are too.
+    if ((!live && !this.lints.has(turnId)) || live?.kind === 'lint') return false;
     const e = this.lintEntry(sessionId, turnId);
-    // A turn that isn’t running and didn’t end well failed or was stopped, or ran before a restart.
-    if (!live && e.kind === null) {
-      const threadId = this.s.sessions[sessionId].threadId;
-      e.ended = true;
-      e.sent = this.store.items(threadId).some((i) => i.turnId === turnId && (i.status === 'failed' || i.status === 'stopped'));
-    }
     if (e.kind === 'lint' || e.sent) return false;
     e.problems.push(...problems);
     if (e.ended) this.sendLint(turnId);
@@ -1130,6 +1129,8 @@ export class Runtime {
 
   /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */
   quietLint(turn, se) {
+    // What the browser reports later about this lint turn’s own work is never linted.
+    Object.assign(this.lintEntry(se.id, turn.id), { kind: 'lint', ended: true, sent: true });
     if (turn.said.trim() || turn.first) return;
     const defined = [...new Set(turn.defined ?? [])].map((t) => `“${t}”`);
     const list = defined.length > 1 ? `${defined.slice(0, -1).join(', ')} and ${defined.at(-1)}` : (defined[0] ?? '');
@@ -1160,9 +1161,15 @@ export class Runtime {
     if (!se || (!failed && (!(textPx < MIN_TEXT_PX) || !(width >= COLUMN_PX * 0.8)))) return { ok: true, sent: false };
     const hash = createHash('sha256').update(src.trim()).digest('hex').slice(0, 16);
     if (se.diagramsLinted?.includes(hash)) return { ok: true, sent: false };
-    const blocks = mermaidBlocks(String(it.text));
-    const index = blocks.find((b) => b.src.trim() === src.trim())?.index ?? (blocks.length > 1 ? null : 0);
-    const scope = { kind: 'diagram', index, excerpt: src.split('\n').slice(0, 3).join('\n') };
+    // Only a diagram the reply has: its position and first lines come from the reply, not from the browser.
+    const block = mermaidBlocks(String(it.text)).find((b) => b.src.trim() === src.trim());
+    if (!block) return { ok: true, sent: false };
+    const excerpt = block.src
+      .split('\n')
+      .slice(0, 3)
+      .map((l) => clipText(l, 120))
+      .join('\n');
+    const scope = { kind: 'diagram', index: block.index, excerpt };
     let problem;
     if (failed) {
       // Mermaid’s message, without its caret line: “Parse error on line 2: … Expecting 'SEMI', got 'ARROW'”.
@@ -1745,8 +1752,8 @@ export class Runtime {
     const notes = clean.every((p) => APP_WARNINGS.has(p.code));
     this.store.emit('app', { ...app, check: { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}) } });
     if (notes) {
-      const turnId =
-        [...this.turns.values()].find((t) => t.sessionId === app.sessionId)?.id ?? this.store.items(app.threadId).find((i) => i.id === app.itemId)?.turnId;
+      // The version was made by the agent’s turn that’s running, or else the last one that ended.
+      const turnId = [...this.turns.values()].find((t) => t.sessionId === app.sessionId)?.id ?? this.lastTurn.get(app.sessionId);
       const scope = { kind: 'app', id: appId, title: app.title };
       this.lint(
         app.sessionId,
@@ -2004,8 +2011,10 @@ function stampSteps(item, block, now) {
   const was = new Map((item.block.steps ?? []).map((s) => [s.id, s.state]));
   /** @type {Record<string, { startedAt?: number, endedAt?: number }>} */
   const times = {};
-  const steps = block.steps.map((s) => {
-    const before = was.get(s.id);
+  const steps = block.steps.map((sent) => {
+    const before = was.get(sent.id);
+    // Only Postbox marks a step stalled; from the agent, it means still running.
+    const s = sent.state === 'stalled' && before !== 'stalled' ? { ...sent, state: 'running' } : sent;
     const t = { ...(item.stepTimes?.[s.id] ?? {}) };
     const going = before === 'running' || before === 'stalled';
     // A step that was running when the block was shown started then.

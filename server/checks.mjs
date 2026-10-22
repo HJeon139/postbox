@@ -156,6 +156,7 @@ const HTML_TAGS = new Set(
 export function rawHtmlProblems(text) {
   const prose = String(text ?? '')
     .replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm, ' ')
+    .replace(/^(?: {4}|\t).*$/gm, ' ')
     .replace(/`+[^`]*`+/g, ' ')
     .replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, ' ');
   const found = new Set();

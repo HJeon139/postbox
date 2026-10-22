@@ -39,6 +39,7 @@ test('#55: numbered terms the person wrote, or that title a block or app on scre
 
 test('raw HTML in a reply is flagged, except <details> and <summary> without attributes', () => {
   assert.deepEqual(rawHtmlProblems('<details><summary>Answer</summary>\n50%\n</details>'), []);
+  assert.deepEqual(rawHtmlProblems('An example:\n\n    <div class="x">indented code</div>\n'), []);
   assert.deepEqual(rawHtmlProblems('A Promise<void>, a `<div>` in code, <https://example.com>, and $a<b>c$.\n\n```html\n<div>x</div>\n```'), []);
   const [p] = rawHtmlProblems('Line one<br>line two, <b>bold</b>, and <details open><summary>Hint</summary>x</details>.');
   assert.equal(p.code, 'raw-html');

@@ -91,5 +91,5 @@ For work that takes more than a minute: indexing, reading several papers, a batc
 1. Show a progress block with one step per stage, or one per subagent when they run in parallel.
 2. For a step with countable work, set `progress: { done, total, unit }` (“2 of 4 papers”), or `percent` when there’s nothing to count, and an optional short `eta` (“3 min”). Update the step as items finish, not only when it ends: at least every minute, or at each subtask.
 3. Postbox stamps when the block last changed and when each step started and ended, shows a running step’s time live, and fills in `duration` when you leave it out.
-4. Before the turn ends, close every step as `done` or `failed`, with a one-line `detail` for a failure. A step left `running` shows as stalled, and Postbox tells you to close it. If the work really goes on in the background, set it back to `running` and update it when you’re back.
+4. Before the turn ends, close every step as `done` or `failed`, with a one-line `detail` for a failure. A step left `running` shows as stalled, and Postbox tells you to close it.
 5. End with a short summary of what was done.
