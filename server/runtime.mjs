@@ -11,7 +11,7 @@ import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
-import { diagramProblems, formatLint, introducedTerms, lintMessage, termProblems } from './checks.mjs';
+import { diagramProblems, formatLint, introducedTerms, lintMessage, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addAllowRule, rulesFor } from './permission-rules.mjs';
 import { newId } from './store.mjs';
 
@@ -1020,7 +1020,7 @@ export class Runtime {
         se.id,
         diagrams.map((d) => d.src),
       );
-    problems.push(...diagramProblems(diagrams));
+    problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
     return problems;
   }
 

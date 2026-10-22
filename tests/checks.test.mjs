@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatLint, introducedTerms, lintMessage, termProblems } from '../server/checks.mjs';
+import { formatLint, introducedTerms, lintMessage, rawHtmlProblems, termProblems } from '../server/checks.mjs';
 
 const app = (code, message) => ({ code, message, scope: { kind: 'app', id: 'pairs', title: 'Pair explorer' } });
 
@@ -35,4 +35,14 @@ test('#55: numbered terms the person wrote, or that title a block or app on scre
     flagged.map((p) => p.scope.term),
     ['Rule 9', 'Step 7'],
   );
+});
+
+test('raw HTML in a reply is flagged, except <details> and <summary> without attributes', () => {
+  assert.deepEqual(rawHtmlProblems('<details><summary>Answer</summary>\n50%\n</details>'), []);
+  assert.deepEqual(rawHtmlProblems('A Promise<void>, a `<div>` in code, <https://example.com>, and $a<b>c$.\n\n```html\n<div>x</div>\n```'), []);
+  const [p] = rawHtmlProblems('Line one<br>line two, <b>bold</b>, and <details open><summary>Hint</summary>x</details>.');
+  assert.equal(p.code, 'raw-html');
+  assert.deepEqual(p.scope, { kind: 'reply' });
+  assert.match(p.message, /^It has raw HTML \(<br>, <b>, <details …>\)\. Postbox shows HTML as text/);
+  assert.match(formatLint(lintMessage([p])), /In your reply:\n- It has raw HTML/);
 });

@@ -87,6 +87,7 @@ export function formatLint(message, { folded = false } = {}) {
   if (diagrams.length) todo.push('Reply with a corrected version of each diagram, briefly, so the person can read it.');
   const reply = of('reply');
   if (reply.length) parts.push(`In your reply:\n${lines(reply)}`);
+  if (reply.length) todo.push('If the person needs the part it affected, reply with a corrected version, briefly.');
   const apps = groups('app');
   for (const ps of apps) parts.push(`Your app “${ps[0].scope.title ?? ps[0].scope.id}” (id ${ps[0].scope.id}) is shown, with these warnings:\n${lines(ps)}`);
   if (apps.length) todo.push('Fix each app with update_app.');
@@ -134,4 +135,43 @@ export function introducedTerms(items, apps) {
     texts.push(...tagText(app.versions?.[app.current - 1]?.code ?? '', 'h[1-6]|title'));
   }
   return numberedTerms(texts.join('\n'));
+}
+
+// HTML elements an agent might write. Anything else in angle brackets (Promise<void>, <you>) is just text.
+const HTML_TAGS = new Set(
+  (
+    'a abbr article aside audio b blockquote br button canvas caption center cite code col dd del details dfn div dl dt em ' +
+    'figcaption figure font footer form h1 h2 h3 h4 h5 h6 header hr i iframe img input ins kbd label legend li link mark ' +
+    'meta nav ol option p picture pre q s samp script section select small source span strong style sub summary sup svg ' +
+    'table tbody td textarea tfoot th thead time tr u ul var video'
+  ).split(' '),
+);
+
+/**
+ * Raw HTML tags in a reply. Postbox shows HTML as text, so the person sees the tags; only <details> and
+ * <summary>, without attributes, are rendered (as a disclosure that hides an answer).
+ * @param {string} text
+ * @returns {Problem[]}
+ */
+export function rawHtmlProblems(text) {
+  const prose = String(text ?? '')
+    .replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm, ' ')
+    .replace(/`+[^`]*`+/g, ' ')
+    .replace(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g, ' ');
+  const found = new Set();
+  for (const m of prose.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)(\s[^<>]*)?\/?>/g)) {
+    const name = m[1].toLowerCase();
+    if (!HTML_TAGS.has(name)) continue;
+    if ((name === 'details' || name === 'summary') && !m[2]?.trim()) continue;
+    found.add(`<${name}${m[2]?.trim() && (name === 'details' || name === 'summary') ? ' …' : ''}>`);
+  }
+  if (!found.size) return [];
+  const tags = [...found].slice(0, 6).join(', ');
+  return [
+    {
+      code: 'raw-html',
+      message: `It has raw HTML (${tags}). Postbox shows HTML as text, so the person sees the tags. Only <details> and <summary>, without attributes, are rendered, to hide an answer; use Markdown for everything else.`,
+      scope: { kind: 'reply' },
+    },
+  ];
 }

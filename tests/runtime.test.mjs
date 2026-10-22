@@ -704,6 +704,17 @@ test('#56: a topic thread uses its conversation’s terms, and its own definitio
   assert.equal(rt.glossaryFor(t.id)['step-2'].definition, 'Show matches as highlights.', 'the conversation keeps its own');
 });
 
+test('raw HTML in a reply reaches the agent through the lint turn', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => c.text('Try it.<br><details><summary>Answer</summary>50%</details>'));
+  rt.sendMessage(t.id, { text: 'quiz me' });
+  await settle(rt);
+  assert.deepEqual(
+    lints(adapter)[0].message.problems.map((p) => p.message.match(/\(([^)]*)\)/)[1]),
+    ['<br>'],
+  );
+});
+
 test('problems from a turn that failed don’t reach the agent', async () => {
   const { rt, store, t, adapter } = setup();
   adapter.next.push(async (c) => {
