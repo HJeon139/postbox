@@ -44,8 +44,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   let anchor = was?.anchor ?? null;
   let dead = false;
   // At the end of the transcript, one row per agent that’s thinking or calling tools: what it’s on right now,
-  // and a glimpse of its thinking. It goes while the agent writes, since the reply itself shows then.
-  const working = h('div.working', { 'aria-hidden': 'true' });
+  // and a glimpse of its thinking. It goes while the agent writes, since the reply itself shows then. It sits in
+  // the message column, like the messages (#83).
+  const working = h('div.working.col', { 'aria-hidden': 'true' });
   const paintWorking = () => {
     const busy = sessionsOf(threadId).filter((se) => !se.archived && (se.state === 'think' || se.state === 'tool'));
     syncList(
@@ -292,7 +293,7 @@ function fillWorkRow(row, se) {
   const step = se.state === 'tool' && se.currentStep ? `: ${se.currentStep}` : '';
   fill(
     row.querySelector('.work-text'),
-    h('div', h('b', `@${se.handle}`), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
+    h('div.work-line', h('b', `@${se.handle}`), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
     se.glimpse ? h('div.glimpse', se.glimpse) : null,
   );
 }

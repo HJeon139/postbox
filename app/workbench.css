@@ -354,6 +354,8 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .working { display: flex; flex-direction: column; gap: 6px; }
 .working:empty { display: none; }
 .work-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--dim); }
+/* A long tool step stays on one line, inside the column. */
+.work-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .work-row pb-ring { margin-top: 1px; }
 .work-row b { color: var(--text); font-weight: 600; font-size: 13px; }
 .work-text { min-width: 0; flex: 1; }

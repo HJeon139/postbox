@@ -271,6 +271,40 @@ await check('#91 the pill counts what arrives while you’re scrolled up, and go
   assert.ok(inComposer, 'the pill sits inside the composer, above its box');
 });
 
+// ── #83: the working rows sit in the message column ─────────────────────────────────────
+
+await check('#83 the working row lines up with the message column, with and without the panel, and a long step truncates', async () => {
+  const { t, researcher, critic } = room('Working rows');
+  await open(`#/t/${t.id}`);
+  const step = `Searched the web for ${'ReAct observation ablations and the follow-up papers that cite them, '.repeat(6)}`;
+  rt.updateSession(researcher.id, { state: 'tool', currentStep: step, glimpse: 'Reading the third result.' });
+  rt.updateSession(critic.id, { state: 'think', glimpse: 'Is the ablation fair?' });
+  await page.waitFor(`document.querySelectorAll('.working .work-row').length === 2`, { label: 'two working rows' });
+  const measure = () =>
+    page.evaluate(`(() => {
+      const ring = document.querySelector('.working .work-row pb-ring').getBoundingClientRect();
+      const who = [...document.querySelectorAll('.transcript .col.turn:not(.me) .who pb-ring')].at(-1).getBoundingClientRect();
+      const col = [...document.querySelectorAll('.transcript .col.turn')].at(-1).getBoundingClientRect();
+      const work = document.querySelector('.working').getBoundingClientRect();
+      const line = document.querySelector('.working .work-line');
+      return { ring: Math.round(ring.left), who: Math.round(who.left), colRight: Math.round(col.right), workRight: Math.round(work.right),
+        truncated: line.scrollWidth > line.clientWidth && getComputedStyle(line).textOverflow === 'ellipsis', lineRight: Math.round(line.getBoundingClientRect().right) };
+    })()`);
+  const plain = await measure();
+  assert.equal(plain.ring, plain.who, 'the ring and the @handle above share a left edge');
+  assert.ok(plain.workRight <= plain.colRight, 'the rows end inside the column');
+  assert.ok(plain.truncated && plain.lineRight <= plain.colRight, 'the long step truncates with an ellipsis, inside the column');
+  const root = store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId } = rt.startTopic(t.id, root.id);
+  await open(`#/t/${t.id}/side/${threadId}`);
+  await page.waitFor(`document.querySelectorAll('.main .working .work-row').length === 2`, { label: 'the rows with the panel open' });
+  const panel = await measure();
+  assert.equal(panel.ring, panel.who, 'with the panel open too');
+  assert.ok(panel.workRight <= panel.colRight && panel.truncated, 'and still inside the column, truncated');
+  rt.updateSession(researcher.id, { state: 'idle', currentStep: '', glimpse: '' });
+  rt.updateSession(critic.id, { state: 'idle', glimpse: '' });
+});
+
 await page.send('Page.navigate', { url: 'about:blank' });
 await page.close();
 await app.close();
