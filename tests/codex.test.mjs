@@ -181,7 +181,7 @@ test('the recorded app-server stream maps text and command activity to Postbox',
   assert.deepEqual(calls.checkpoint, { turnId: 'turn_postbox_1', threadId: 'thr_postbox_1' });
 });
 
-function fakeAppServer(seen, { hold = false } = {}) {
+function fakeAppServer(seen, { hold = false, error = null, then = 'complete' } = {}) {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
@@ -208,10 +208,19 @@ function fakeAppServer(seen, { hold = false } = {}) {
       if (req.method === 'turn/start') {
         child.stdout.write(`${JSON.stringify({ id: req.id, result: { turn: { id: 'turn_fake', status: 'inProgress' } } })}\n`);
         if (hold) continue;
-        setImmediate(() => {
-          child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
-          child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
-        });
+        // A turn that fails: Codex reports why in an error notification, then ends the turn as failed, or exits.
+        if (error)
+          setImmediate(() => {
+            child.stdout.write(`${JSON.stringify({ method: 'error', params: { error: { message: error } } })}\n`);
+            if (then === 'complete')
+              child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'failed' } } })}\n`);
+            else child.emit('close', 1);
+          });
+        else
+          setImmediate(() => {
+            child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
+            child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
+          });
       }
     }
   });
@@ -320,4 +329,28 @@ test('a stopped Codex turn ends only once its app-server has exited, so the next
   await turn;
   assert.equal(ended, true);
   assert.deepEqual(signals, ['SIGINT'], 'the app-server gets SIGINT, and SIGKILL only if it outlives the grace period');
+});
+
+test('a failed Codex turn says why, from the error Codex reported, whether the turn ends as failed or the app-server exits (#61)', async () => {
+  for (const then of ['complete', 'exit']) {
+    const adapter = new CodexAdapter({
+      workRoot: '/tmp/postbox-codex-test',
+      spawnImpl: () => fakeAppServer([], { error: 'The model gpt-nope does not exist.', then }),
+    });
+    const ctx = {
+      persona: { handle: 'critic', model: 'gpt-nope' },
+      project: { folder: '/tmp/postbox-codex-test/project' },
+      handles: ['critic'],
+      state: {},
+      signal: new AbortController().signal,
+      mcpUrl: 'http://127.0.0.1:1/mcp?session=s4&turn=t1',
+      text: () => {},
+      activity: () => {},
+      status: () => {},
+      saveState: () => {},
+      checkpoint: () => {},
+      pathOf: () => null,
+    };
+    await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi' }, ctx), /The model gpt-nope does not exist\./, then);
+  }
 });

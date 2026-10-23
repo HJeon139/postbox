@@ -96,13 +96,17 @@ export class Store {
 
   /** Applies a change and broadcasts it. The shared reducer is the only place state changes. */
   emit(type, data) {
+    const ev = { seq: this.state.seq + 1, type, data };
+    // The reducer keeps an event’s objects in the state, where later events change them in place, so the backlog
+    // keeps each event as JSON: a reconnecting browser gets it as it was emitted, not as the state is now.
+    const line = JSON.stringify(ev);
     apply(this.state, type, data);
-    const ev = { seq: ++this.state.seq, type, data };
-    this.events.push(ev);
+    this.state.seq = ev.seq;
+    this.events.push({ seq: ev.seq, line });
     if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
     for (const fn of this.listeners) fn(ev);
     if (this.dir) {
-      this.queue.push(JSON.stringify(ev) + '\n');
+      this.queue.push(line + '\n');
       this.sinceSnapshot++;
       this.pump();
     }
@@ -163,7 +167,7 @@ export class Store {
     if (seq >= this.state.seq) return [];
     const first = this.events[0]?.seq ?? this.state.seq + 1;
     if (seq + 1 < first) return null;
-    return this.events.filter((e) => e.seq > seq);
+    return this.events.filter((e) => e.seq > seq).map((e) => JSON.parse(e.line));
   }
 
   subscribe(fn) {

@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AgentSdkAdapter, liveControl, sdkOptions } from '../server/adapters/agent-sdk.mjs';
+import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
 import { contextPercent, createStreamMapper, describePermission, describeTool, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
+import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
+import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES, WRITE_TOOLS } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
 
@@ -246,6 +252,41 @@ test('a CLI that fails without a result shows why', async () => {
   const { spawnImpl } = fakeSpawn([], { code: 1, stderr: 'Error: Invalid model name\n' });
   const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', spawnImpl });
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'Hi' }, fakeCtx()), /exited with code 1: Error: Invalid model name/);
+});
+
+test('a folder the agent can’t work in fails its turn naming the folder, not as a missing CLI, on every backend', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pb-folder-'));
+  try {
+    // A folder inside a file can’t be made.
+    await writeFile(join(root, 'file'), '');
+    const folder = join(root, 'file', 'project');
+    const runs = [];
+    // Node’s spawn fails as ENOENT when its cwd is missing, the same code as a missing binary.
+    const spawnImpl = (cmd, _args, opts) => {
+      runs.push(opts.cwd);
+      const child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), pid: 1 });
+      setTimeout(() => child.emit('error', Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' })), 1);
+      return child;
+    };
+    const ctx = fakeCtx({ persona: { ...fakeCtx().persona, folder } });
+    const turn = new ClaudeCodeAdapter({ bin: 'claude', workRoot: root, spawnImpl }).deliver({}, { kind: 'user', text: 'Hi' }, ctx);
+    await assert.rejects(turn, (e) => {
+      assert.match(e.message, /couldn’t open the folder .*file\/project for @coder: ENOTDIR/);
+      assert.doesNotMatch(e.message, /isn’t installed/);
+      return true;
+    });
+    assert.deepEqual(runs, [], 'nothing was started in a folder that isn’t there');
+    const adapters = [
+      new ClaudeCodeAdapter({ bin: 'claude', workRoot: root, spawnImpl }),
+      new AgentSdkAdapter({ sdk: { query() {} }, workRoot: root }),
+      new KiroCliAdapter({ bin: 'kiro-cli', workRoot: root, isolatedHome: root, spawnImpl }),
+      new AntigravityCliAdapter({ bin: 'agy', workRoot: root, settingsFile: join(root, 'agy.json'), spawnImpl }),
+      new CodexAdapter({ bin: 'codex', workRoot: root, spawnImpl }),
+    ];
+    for (const a of adapters) await assert.rejects(a.folderFor({ handle: 'coder', folder }, null), /couldn’t open the folder/, a.name);
+  } finally {
+    await rm(root, { recursive: true });
+  }
 });
 
 // ── Agent SDK ────────────────────────────────────────────────────────────────────────────

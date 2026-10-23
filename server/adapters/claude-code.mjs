@@ -26,12 +26,12 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { withAskRules } from '../permission-rules.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
+import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
@@ -153,15 +153,9 @@ export class ClaudeCodeAdapter {
     this.list = list;
   }
 
-  /**
-   * The folder the agent works in: the one its persona names, else its project’s root folder (where Claude
-   * Code sessions start, per designs/intent.md), else a workspace of its own. Its permission mode decides
-   * what it may change there.
-   */
-  async folderFor(persona, project) {
-    const dir = persona.folder || project?.folder || join(this.workRoot, persona.handle);
-    await mkdir(dir, { recursive: true }).catch(() => {});
-    return dir;
+  /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
+  folderFor(persona, project) {
+    return agentFolder(persona, project, this.workRoot);
   }
 
   async deliver(session, message, ctx) {

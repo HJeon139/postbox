@@ -97,7 +97,7 @@ flowchart LR
 
 | Check | Tool | What it enforces |
 |---|---|---|
-| Lint and format | **Biome** (one dependency, no plugins) | Recommended correctness and suspicious-code rules, consistent formatting, no unused code |
+| Lint and format | **Biome** (one dependency, no plugins) | Recommended correctness and suspicious-code rules, consistent formatting, no unused code, and a length limit on every file and function (“Module and function size”, below) |
 | Types | **TypeScript in `checkJs` mode** with JSDoc types, `noEmit` | Shapes of events, blocks and store state checked without a build. It starts with `shared/` and `server/`, then the client. |
 | Tests | `node:test` with `--experimental-test-coverage` | Pure modules (catalog, Markdown, events, BM25, store) stay above 90% line coverage |
 | End to end | `tools/shoot-app.mjs` in headless Chrome, plus **axe-core** | Every demo scene renders with no browser errors and no serious or critical accessibility violations |
@@ -407,3 +407,19 @@ flowchart LR
 - Both forms read the same ledger through `summarize()` and ask git through the same endpoint; the compact form adds nothing to the store.
 
 **Revisit when** a command’s file changes matter as much as the file tools’ (then add folder snapshots for git repositories, alongside this), when the CLI reports files a command changed, or when the Agent SDK’s results stop carrying `tool_use_result`.
+
+## 15. Module and function size: a ceiling that only comes down
+
+**Decision** (23 October 2026). Biome fails any file or function longer than its default, with `noExcessiveLinesPerFile` and `noExcessiveLinesPerFunction` as errors, over everything it checks. Each file that was already longer that day has an override in `biome.json` at the size it had, as Biome counts it: a ceiling for the file, and one for its longest function. These files can shrink but not grow, and every new file and function starts under the default.
+
+**What it rests on**
+- **The rule was written down and never enforced.** “Small enough to read in one sitting” (“The front end”, above) and developing.md’s one concern per module had no check behind them. `server/runtime.mjs` grew from 3,372 to 4,361 lines between v0.2.0 and v0.13.0, in under a day, and `mountComposer` in `app/js/thread.mjs` became a single function of over 800 lines. The wave prompts split files between sessions by region (“Change only the block functions”), so each session grew its region in place.
+- **Biome’s defaults, not a number of our own.** Nothing in Postbox measured a better one, so the defaults stand until something does. That day, 47 of the 158 files Biome checks were over the file limit, and 120 functions in 41 files were over the function limit: 58 files have a ceiling.
+- **A ceiling, not an exemption.** A `biome-ignore` turns the check off for good; an override at today’s size keeps it on. With one line added to `server/runtime.mjs`, Biome fails: “This file has too many lines (3980). Maximum allowed is 3979.”
+- **The function ceiling is per file.** Biome sets options per file, not per function, so a file’s longest function sets the ceiling for all of its functions, and a shorter one could grow up to it. Review catches that, and splitting the file ends it.
+
+**How a ceiling moves**
+- **Down:** a change that shrinks an offender lowers its ceilings to the new sizes in the same change, and removes the override once the file is under the default. No check enforces this yet, so the reviewer does.
+- **Never up in the change that tripped it** (developing.md, “Lint and type-check exceptions”). A file that needs to grow is split first. A split that needs a design, as `server/runtime.mjs` does (which module owns which of its state), is decided in this document before its code moves.
+
+**Revisit when** the overrides are gone, or ceilings left loose after a file shrank become common: then a test that each ceiling equals its file’s size makes the lowering automatic.

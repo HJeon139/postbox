@@ -43,6 +43,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
+import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, setupOf } from './setup.mjs';
@@ -504,11 +505,9 @@ export class KiroCliAdapter {
     this.env = env;
   }
 
-  /** Same folder rule as the Claude backends: the persona’s, the project’s, or a workspace of its own. */
-  async folderFor(persona, project) {
-    const dir = persona.folder || project?.folder || join(this.workRoot, persona.handle);
-    await mkdir(dir, { recursive: true }).catch(() => {});
-    return dir;
+  /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
+  folderFor(persona, project) {
+    return agentFolder(persona, project, this.workRoot);
   }
 
   async deliver(session, message, ctx) {
