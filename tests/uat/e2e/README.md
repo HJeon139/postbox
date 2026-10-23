@@ -78,7 +78,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 - [SciFact: claims, abstracts and retrieval](scenarios/scifact.md)
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
 - [Mixed room: a Claude Code agent and a Kiro CLI agent](scenarios/mixedroom.md) ([#117](https://github.com/HJeon139/postbox/issues/117)): the researcher on Claude Code, the critic on the Kiro CLI with a GPT model; options, a second opinion, wakes both ways, and a topic thread where the Kiro agent is refused a command
-- [Gemini room: a Claude Code agent and an Antigravity CLI agent](scenarios/geminiroom.md) ([#143](https://github.com/HJeon139/postbox/issues/143)), **release runs only** (`--release`): the same shape as the mixed room, with the critic on Gemini; it also checks that the critic remembers across turns, and that its settings say it always uses your agy setup and that unticked tools are only a request
+- [Gemini room: a Claude Code agent and an Antigravity CLI agent](scenarios/geminiroom.md) ([#143](https://github.com/HJeon139/postbox/issues/143)), **release runs only** (`--release`), and kept short, since agy is on a free tier. Two phases: the critic on Gemini reviews a ten-line plan and remembers its concern across turns; then a topic thread where its command may be refused, and its settings and permissions panel
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)
