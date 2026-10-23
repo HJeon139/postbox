@@ -265,6 +265,15 @@ node tools/uat-verdict.mjs <run> <finding key or index> <verdict> [note] [--issu
 
 Filed issues have no milestone, so they get triaged into the plan ([#64](https://github.com/HJeon139/postbox/issues/64)) like any other. Pass `--recheck <run>` to verify and file from a finished run. A recheck verifies only when it files (a model call), so `--recheck <run> --file no` stays free; add `--verify yes` to verify without filing.
 
+## Recurring findings
+
+The person’s rule (23 October 2026): **recurring findings are prioritized.** A defect that a run catches again is one that people will meet again. Triage counts each issue once per run, whether the tester or a check caught it, across every finished run:
+- **An open issue caught in two or more runs goes up one priority** (P3 to P2, P2 to P1), with a comment that gives the runs. Recurrence alone never makes an issue P0. A recurring issue goes at the front of the next wave that can take it.
+- **A closed issue caught again after it closed is a possible regression.** It’s verified against the run’s commit before anything else (#213). If it’s confirmed, the issue is reopened at its old priority, and its fix goes first in the current wave. If the check was wrong, the check is fixed (`harness`).
+- **A finding without an issue that comes back in two runs is filed,** even if one run’s verifier passed on it.
+
+Until #213 adds the table to `tools/uat-stats.mjs`, count from each run’s `findings.json`: a finding’s `duplicateOf`, or else its `issue`, names the issue it matched.
+
 ## Refitting the scale
 
 ```bash
