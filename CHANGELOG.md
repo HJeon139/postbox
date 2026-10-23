@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.10.0 (2026-10-23)
+
+### Features
+
+- **agents:** the room tells each agent who else is here, what each does, and how to share the work
+
+### Fixes
+
+- **personas:** shorter seeded prompts that say what to do and why; the researcher fits code work
+
 ## 0.9.0 (2026-10-23)
 
 ### Features
