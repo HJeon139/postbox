@@ -168,8 +168,16 @@ export async function start({
 
   const streams = new Set();
   let offlineUntil = 0;
+  // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The headless checks
+  // run with it (check-all.mjs --lag) to show they wait for the page to hear a change, not for a fixed time.
+  const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   store.subscribe((ev) => {
-    for (const res of streams) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+    const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
+    const send = () => {
+      for (const res of streams) res.write(line);
+    };
+    if (lag > 0) setTimeout(send, lag).unref();
+    else send();
   });
   const keepAlive = setInterval(() => {
     for (const res of streams) res.write(': keep-alive\n\n');
