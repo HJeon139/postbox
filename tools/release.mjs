@@ -1,11 +1,10 @@
 // Releases a version: from the commits since the last tag, the next semantic version (tools/commits.mjs), written to
-// package.json and package-lock.json, a CHANGELOG.md section, a release commit and a tag. Run it on a checkout of main
-// after each merge. Main takes changes only through a pull request, so the release commit goes up on a release/vX.Y.Z
-// branch with the tag, and its pull request is merged with a merge commit, which keeps the tagged commit on main.
+// package.json and package-lock.json, a CHANGELOG.md section, a release commit and a tag. CI runs it after each merge
+// to main and pushes the commit and the tag (.github/workflows/release.yml), so nobody needs to run it by hand.
 //
 //   npm run release                 make the release
 //   npm run release -- --dry-run    say what it would do
-//   npm run release -- --check      fail if commits since the last tag change the version and aren’t released (CI on main)
+//   npm run release -- --check      fail if commits since the last tag change the version and aren’t released
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -27,7 +26,7 @@ const next = nextVersion(current, messages);
 if (check) {
   if (next) {
     console.error(
-      `✖ ${messages.length} commits since ${tag} move the version to ${next}, and it isn’t released. Run npm run release on main and push the commit and its tag.`,
+      `✖ ${messages.length} commits since ${tag} move the version to ${next}, and it isn’t released. The release workflow (.github/workflows/release.yml) releases each merge to main: see why its last run didn’t.`,
     );
     process.exit(1);
   }
@@ -60,7 +59,5 @@ writeFileSync('CHANGELOG.md', head + section + (log.startsWith(head) ? `\n${log.
 git('add', 'package.json', 'package-lock.json', 'CHANGELOG.md');
 git('commit', '-m', `chore(release): v${next}`);
 git('tag', '-a', `v${next}`, '-m', `Postbox ${next}`);
-console.log(
-  `release: v${next}. Push it with: git push origin HEAD:refs/heads/release/v${next} v${next}\n` +
-    `Then open a pull request from release/v${next} to main, and merge it with a merge commit: a squash or a rebase would leave the tag off main.`,
-);
+// In CI, the release workflow pushes them.
+console.log(`release: v${next}. Push it with: git push --atomic origin HEAD:main v${next}`);

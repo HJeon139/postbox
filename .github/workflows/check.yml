@@ -30,9 +30,6 @@ jobs:
       - name: Commit messages follow Conventional Commits
         if: github.event_name == 'pull_request'
         run: node tools/lint-commits.mjs "origin/${{ github.base_ref }}..HEAD" --since "$(git log -1 --format=%cI v0.2.0)"
-      - name: Every change on main is released
-        if: github.event_name == 'push'
-        run: node tools/release.mjs --check
 
   end-to-end:
     name: Demo in Chrome, with accessibility checks
