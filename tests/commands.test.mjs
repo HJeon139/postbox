@@ -176,7 +176,7 @@ test('#67: output past 64 KB keeps the end, the item says it was cut, and the st
   const c = children[0];
   const id = commandItem(store, t).id;
   const bytes = () =>
-    store.events.filter((e) => (e.type === 'item.patch' || e.type === 'item.text') && e.data.id === id).reduce((n, e) => n + JSON.stringify(e.data).length, 0);
+    store.since(0).filter((e) => (e.type === 'item.patch' || e.type === 'item.text') && e.data.id === id).reduce((n, e) => n + JSON.stringify(e.data).length, 0);
   c.stdout.write('a'.repeat(50 * 1024));
   await tick();
   rt.flushShellOutput();
