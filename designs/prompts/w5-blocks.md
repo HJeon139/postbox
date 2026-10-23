@@ -24,7 +24,7 @@ You’re fixing how blocks close, how blocks and math draw, and how a reply is r
 
 ## The work
 
-- **First, the move:** move `update_block`’s handling and the block-answer functions (`act`, `answerDelivered`, `unreadAnswer`) out of `server/runtime.mjs` into `server/blocks.mjs`, unchanged, with their ceilings. Nothing else changes in that commit. If `update_block` lives inside `toolsFor`, move only its handler and leave a one-line call.
+- **First, the move:** move `update_block`’s handling and the block-answer functions (`act`, `answerDelivered`, `unreadAnswer`) out of `server/runtime.mjs` into `server/blocks.mjs`, by the rewrite README.md’s “Length limits” allows, with their ceilings. Nothing else changes in that commit. `act`, `answerDelivered` and `unreadAnswer` are one run of methods. `update_block` is a closure inside `toolsFor` that reads `sessionId`, `turn`, `threadId()`, `se()` and `endSegment`. Move it as a function that takes those as parameters, as `askForTool(rt, sessionId, args, endSegment, threadId())` does, leave a one-line call in `toolsFor`, and name the parameters in the commit message.
 - **#106:**
   - An agent can withdraw a block it showed (an `update_block` that closes it with a reason), or amend one without asking again.
   - The person can dismiss a waiting block with a visible control, and the agent hears that it was dismissed.
@@ -47,7 +47,7 @@ You’re fixing how blocks close, how blocks and math draw, and how a reply is r
 
 - **Yours:** `shared/markdown.mjs`, `shared/text.mjs`, `announceStreaming` in `app/js/ui.mjs`, `app/js/blocks.mjs`, `shared/catalog.mjs`, `server/blocks.mjs` and the lines in `server/runtime.mjs` that call it, the CSP line in `server/index.mjs`, `server/sandbox.mjs`’s `img-src`, `tests/markdown.test.mjs` and the block tests.
 - **Shared:**
-  - **`server/runtime.mjs` and `biome.json`:** every wave 5 session moves its own concern out first. Move only the block functions, and lower `runtime.mjs`’s ceilings by what left.
+  - **`server/runtime.mjs` and `biome.json`:** every wave 5 session moves its own concern out first. Move only the block functions. Add a `biome.json` entry only for your new module, and leave `runtime.mjs`’s override to the integrator (README.md, “Length limits”).
   - **`server/mcp.mjs`:** the apps session adds `retire_app`. Change only the block tools’ definitions.
   - **#179** (the review block’s Preview / Lines and selection comments) is wave 5. Don’t start it here.
 

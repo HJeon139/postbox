@@ -25,7 +25,7 @@ Then, if time allows, two P2s on the same lines: #135 (a later turn from the sam
 
 ## The work
 
-- **First, the move:** move the side-thread functions (`agentWake`, `sideSession`, `forkBusy`, `forkFresh`, `forkNote`, `forkRetry`, `forkDone`, `resolveHop`, `bumpSideLink`, `recordAgentMessage`) into `server/side-threads.mjs`, unchanged, with their ceilings (architecture.md, “A ceiling moves with the code”). Nothing else changes in that commit.
+- **First, the move:** move the side-thread functions (`agentWake`, `sideSession`, `forkBusy`, `forkFresh`, `forkNote`, `forkRetry`, `forkDone`, `resolveHop`, `bumpSideLink`, `recordAgentMessage`) into `server/side-threads.mjs`, by the rewrite README.md’s “Length limits” allows (`this` becomes `rt`, and `Runtime` keeps a one-line delegator for each), with their ceilings. Nothing else changes in that commit. They’re one unbroken run in `runtime.mjs`, from `agentWake` to `recordAgentMessage`.
 - **#124:** the Threads page lists side threads with their pair, state and last activity, beside topic threads, and says which kind each is.
 - **#128, two ways back to the conversation** (the person’s decision of 23 October, recorded on #128):
   - **The person:** “Send to conversation” on a side-thread message, with the same contract as a topic thread’s Summarize back: the person chooses what goes, and it posts in the conversation as theirs.
@@ -38,7 +38,7 @@ Then, if time allows, two P2s on the same lines: #135 (a later turn from the sam
 
 - **Yours:** `server/side-threads.mjs`, and the lines in `server/runtime.mjs` that call it, `share_to_conversation` in `server/mcp.mjs` and its line in `server/adapters/guide.mjs` (within `guideText`’s 9,000-character budget), the Threads page in `app/js/shell.mjs` (`mountThreads`), side-thread rendering in `app/js/thread.mjs`, `tools/check-side-threads.mjs` and `tests/side-threads.test.mjs`.
 - **Shared:**
-  - **`server/runtime.mjs` and `biome.json`:** every wave 5 session moves its own concern out of `runtime.mjs` first. Move only the functions above, and lower `runtime.mjs`’s ceilings by what left.
+  - **`server/runtime.mjs` and `biome.json`:** every wave 5 session moves its own concern out of `runtime.mjs` first. Move only the functions above. Add a `biome.json` entry only for your new module, and leave `runtime.mjs`’s override to the integrator (README.md, “Length limits”).
   - **`app/js/agents.mjs`:** change only the side-thread entries. #191’s subagent entries stay as they are.
   - **`app/js/thread.mjs`:** the work-list session changes the work line under replies. Change only side-thread rendering.
   - **`app/js/shell.mjs`:** the pane session changes the rail’s collapse. Change only `mountThreads`.

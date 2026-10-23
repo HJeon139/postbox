@@ -22,7 +22,7 @@ You’re making each turn end with a list of what it did, every row leading to W
 
 ## The work
 
-- **First, make room:** `server/ledger.mjs` is at its ceiling. Move its git reading (the repository lookup, `status --porcelain` and `show --numstat`, and the commit and push recording) into `server/ledger-git.mjs`, unchanged, with their ceilings (architecture.md, “A ceiling moves with the code”). Nothing else changes in that commit. Put the command snapshots in the new module too.
+- **First, make room:** `server/ledger.mjs` is at its ceiling. Move its git reading into `server/ledger-git.mjs`, by the rewrite README.md’s “Length limits” allows, with their ceilings: `runGit`, `recordCommit`, `rootOf`, `tracked`, `pushed` and `gitState`. Nothing else changes in that commit. Push recording happens inside `commandEnded`, and moving it would split that method, so `commandEnded` stays where it is. Put the command snapshots in the new module.
 - **#156:** when a command ends in a git folder, compare `git rev-parse HEAD` and the branch list with their values when it started. Record any new commits from `git log <before>..<after> --numstat`, as the `gitOperation` path does. Keep `gitOperation` when the stream has it, and never record a commit twice.
 - **#195, the ledger:**
   - **Command changes:** snapshot `git status --porcelain` and `git diff --numstat` when a command starts and ends in a folder git tracks. Record each file that changed as a file entry under that command, with its diff from git, read-only (`GIT_OPTIONAL_LOCKS=0`, as today). When two commands overlap in one folder, name both rather than guess.
@@ -43,7 +43,7 @@ You’re making each turn end with a list of what it did, every row leading to W
 
 - **Yours:** `server/ledger.mjs`, `server/ledger-git.mjs`, `shared/work.mjs`, `app/js/work.mjs`, `workChip` and the new list in `app/js/thread.mjs`, the ledger’s scene in `server/adapters/mock.mjs`, `tools/check-work-pane.mjs`, `tests/work.test.mjs` and new `tests/work-*.test.mjs` files, and intent.md’s Work rows.
 - **Shared:**
-  - **`server/runtime.mjs` and `biome.json`:** the ledger is called from `deliver` and `endWork`. If recording publishes needs more than a call or two, move what it needs out first, like the other sessions, and lower `runtime.mjs`’s ceilings by what left.
+  - **`server/runtime.mjs` and `biome.json`:** the ledger is called from `deliver` and `endWork`. If recording publishes needs more than a call or two, move what it needs out first, like the other sessions. Add `biome.json` entries only for your new modules, and leave `runtime.mjs`’s and `ledger.mjs`’s overrides to the integrator (README.md, “Length limits”).
   - **`app/js/thread.mjs`:** the side-threads session changes side-thread rendering. Change only `workChip` and the list that replaces it.
   - **`server/mcp.mjs`:** the apps session adds `retire_app`. A retired app’s row says so; coordinate on its name through the integrator.
 

@@ -4,7 +4,7 @@ Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139
 
 The plan follows the triage of 22 October 2026 (#64’s last two comments), the wave 4 plan the two integrating sessions agreed on 23 October 2026, and the wave 5 plan the person approved the same day.
 
-**Who integrates wave 5.** The triage session integrates and merges all five sessions, and writes this page. The architectural review session reviews each pull request before it merges. (In wave 4 the reviewing session wrote this page and integrated three of its sessions. It isn’t running now.)
+**Who integrates wave 5.** The triage session integrates and merges all six sessions, and writes this page. The architectural review session reviews each pull request before it merges. (In wave 4 the reviewing session wrote this page and integrated three of its sessions. It isn’t running now.)
 
 A pull request merges once it’s approved and green. A CI failure that’s one of the known flaky checks, in a check the pull request doesn’t touch, doesn’t block it when its own checks pass locally (the person’s rule, 23 October 2026).
 
@@ -21,12 +21,13 @@ flowchart LR
     s3["3. The turn’s work list: #195, #156"]
     s4["4. Retiring apps and the app check: #193, #194, #89"]
     s5["5. The right pane: #197, #86, #122, #7"]
+    s6["6. UAT checks that recur for real: #213"]
   end
   subgraph w6["Wave 6 (next)"]
     v["Visual consistency: #8 + #181, #199, #116, #182"]
     rv["Review block: #179, #133"]
     be["Backends: #118, #136, #117, #167, #150"]
-    ck["App checks: #95, #102, #87"]
+    ck["App checks: #95 first, then #102, #87"]
     at["#85: agent attachments"]
   end
   w4 --> w5
@@ -42,16 +43,17 @@ flowchart LR
 | 5 | The turn’s work list | [w5-work-list.md](w5-work-list.md) | #195, #156 | 4850–4899, 10150–10199 | triage |
 | 5 | Retiring apps and the app check | [w5-apps.md](w5-apps.md) | #193, #194, #89 | 4900–4949, 10200–10249 | triage |
 | 5 | The right pane | [w5-pane.md](w5-pane.md) | #197, #86, #122, #7 | 4950–4999, 10250–10299 | triage |
+| 5 | UAT checks that recur for real | [w5-uat-checks.md](w5-uat-checks.md) | #213 | 5000–5049, 10300–10349 | triage |
 | 6 | Visual consistency | to write | #8 with #181 (what amber means), #199, #116; #182 if time allows | — | — |
 | 6 | Review block | to write | #179, with selection comments, and #133: agents comment on a review through the same comment model | — | — |
 | 6 | Backends | to write | #118, #136, #117’s rest (Codex, OpenCode), #167; #150 after the person’s `--compat` Codex run | — | — |
-| 6 | App checks | to write | #95, #102, #87 | — | — |
+| 6 | App checks | to write | #95 first (P1: it recurs, and its open questions need answers), then #102, #87 | — | — |
 | 6 | Attachments | to write | #85 | — | — |
 | — | Needs a decision first | — | #9 (a worktree per conversation), #84, #120; #201 and #203 (catalog changes), #202 (apps that collapse on their own); #189’s last fix (a subagent’s context share from its message’s `usage`, about five lines, left to the person by #191) | — | — |
 | — | Backlog | — | #11, #13, #14, #15, #16, #21, #37, #41, #44, #76, #99, #100, #103, #107, #111, #113, #115, #131, #134, #168, #177, #192 | — | — |
 
 **Wave 5’s overlaps:**
-- **`server/runtime.mjs` and `biome.json`:** sessions 1, 2 and 4 each move their concern out of `runtime.mjs` first (“Length limits”, below), and session 3 does if it needs more than a call or two. The moved functions don’t overlap. Each session lowers `runtime.mjs`’s ceilings by what it moved, so `biome.json` conflicts at merge: the integrator sets `runtime.mjs`’s ceilings to its size after each merge.
+- **`server/runtime.mjs` and `biome.json`:** sessions 1, 2 and 4 each move their concern out of `runtime.mjs` first (“Length limits”, below), and session 3 does if it needs more than a call or two. The moved functions don’t overlap. Sessions add `biome.json` entries only for their own new modules, in path order, and never edit an existing file’s override, so their hunks don’t touch. After each merge, the integrator alone lowers `runtime.mjs`’s and `ledger.mjs`’s ceilings to their measured sizes, in a commit of its own.
 - **`app/js/thread.mjs`:** side threads (side-thread rendering) and the work list (`workChip` and its list).
 - **`app/js/shell.mjs`:** side threads (`mountThreads`) and the pane (the rail’s collapse).
 - **`app/js/ui.mjs`:** blocks and text (`announceStreaming`) and the pane (routing).
@@ -59,7 +61,9 @@ flowchart LR
 - **`tools/check-work-pane.mjs`:** the work list and the pane add their own cases.
 - **The work list and apps:** the list shows a retired app’s row. The apps session names the state, through the integrator.
 
-**Merge order:** side threads, then blocks and text, then apps, then the work list, then the pane. Each later one rebases on main as the earlier ones land.
+**Why these, in this order.** Wave 5 takes the open P1s, the per-turn work list the person asked for, and the issues UAT runs keep catching. The person’s rule of 23 October 2026 is that recurring findings come first (tests/uat/e2e/README.md, “Recurring findings”). Across 15 runs, #106 and #128 recurred in three runs each and #156 in two, so they’re here. #213 comes from the same count: the issues that came back most after closing were mostly checks written before their fixes, so recurrence can’t be trusted until those checks are fixed.
+
+**Merge order:** UAT checks first, since it touches nothing the others do and makes the end-of-wave pass trustworthy. Then side threads, blocks and text, apps, the work list, and the pane. Each later one rebases on main as the earlier ones land.
 
 **End of wave 5:** a Claude-only UAT pass on Haiku, which the person approves with its estimated cost. It covers wave 4 too, since wave 4’s pass didn’t run:
 - `longresearch`, which confirms #63 live;
@@ -98,15 +102,28 @@ Merge order: M1 core, then transcript and threads.
 
 **Ports and data.** Use only your ports, for any server you start (`node server/index.mjs --port …`) and any headless Chrome (`launch({ port })` in `tools/cdp.mjs`). Give every server you start `--data` with a folder of your own, such as one in your scratchpad: without it, Postbox uses `~/.postbox`, which every clone, worktree and installed copy shares (#90). Never touch the preview on 4173, another tool’s server on 4320, the clone’s `data/`, or `~/.postbox`.
 
-**Length limits** (architecture.md, “Module and function size”). Biome fails any file or function past its default length, and a file already past it can shrink but not grow. So:
-- **Make room first.** When your change would grow a file at its ceiling, such as `server/runtime.mjs`, `server/ledger.mjs` or `app/js/thread.mjs`, first move the concern your prompt names into a module of its own. Move it unchanged, as its own commit, with no other change, so its diff reads as moved lines.
-- **Ceilings move with the code.** A moved function may take an override in `biome.json` at its current size, and so may its new module’s length. The old file’s ceilings drop by as much in the same commit: its file ceiling by the lines that left, and its function ceiling to its longest remaining function.
-- **Never raise a ceiling** for new code. A new function fits the defaults: 50 lines a function, 300 a file.
+**Length limits** (architecture.md, “Module and function size”). Biome fails any file or function past its default length (`biome.json`), and a file already past it can shrink but not grow. So:
+- **Make room first.** When your change would grow a file at its ceiling, such as `server/runtime.mjs`, `server/ledger.mjs` or `app/js/thread.mjs`, first move the concern your prompt names into a module of its own, as its own commit, with no other change.
+- **What the move may change** (architecture.md, “What a move may change”):
+  - A `Runtime` method becomes a function that takes `rt` first. `this` becomes `rt`, and nothing else in its body changes.
+  - `Runtime` keeps a one-line method that delegates to it (`agentWake(...a) { return agentWake(this, ...a); }`), so callers and tests don’t change.
+  - A static becomes a module constant, re-exported if a test reads it.
+  - A closure inside another function, such as a tool handler in `toolsFor`, takes the variables it read as parameters, and the commit message names them.
+- **Check the move before you commit it:**
+
+  ```bash
+  perl -pe 's/\brt\./this./g' server/<new module>.mjs > /tmp/undone.mjs   # then drop the rt parameter by hand
+  git show HEAD:server/runtime.mjs | sed -n '<first>,<last>p' > /tmp/removed.mjs
+  diff /tmp/removed.mjs /tmp/undone.mjs                                # only the delegators and imports differ
+  ```
+
+- **Ceilings move with the code.** Give your new module an override in `biome.json` at the size of the code it carries, when that’s past the default. Add only your own module’s entry, in path order. Don’t edit the override of the file you moved from: the integrator lowers it after each merge.
+- **New code fits the defaults** in `biome.json`. Never raise a ceiling for it.
 - **Tests too.** A new test for a test file at its ceiling goes in `tests/<module>-<concern>.test.mjs`, which must end in `.test.mjs`, or `npm test` never runs it.
 
 **Files.** Each prompt lists the files the session owns, and the files it shares with another session.
 - In a shared file, change only the function or block the prompt names, so the merges stay small.
-- Never reformat code you didn’t change, and never move code between files in wave 1.
+- Never reformat code you didn’t change. (Wave 1 also never moved code between files. From wave 5, a move is how you make room: “Length limits”, above.)
 
 **Branches.**
 - Branch from `main` at the start, and stay based on it.

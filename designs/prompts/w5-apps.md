@@ -24,8 +24,11 @@ The check exists so the agent hears about these before the person sees them (int
 ## The work
 
 - **First, make room:**
-  - Move the app functions (`registerApp`, `appCheck`, `needAppSend`, `appState`, `appQuery`, `appFile`, `appFiles`) out of `server/runtime.mjs` into `server/apps.mjs`, unchanged, with their ceilings. Nothing else changes in that commit.
-  - `app/kit/kit.js`’s check is one function far past the default. Move it into a module the sandbox loads beside the kit, unchanged, with its ceiling, if the sandbox can load it without a new origin or a build step. If it can’t, split the check into one function per kind of problem as its own commit, with no change in what it reports, and lower the ceiling.
+  - Move the app functions out of `server/runtime.mjs` into `server/apps.mjs`, by the rewrite README.md’s “Length limits” allows, with their ceilings, in one commit with nothing else:
+    - `registerApp`, `appCheck`, `appEvent`, `needAppSend`, `resolveAppSend`, `appState`, `appQuery`, `appFile`, `agentFolders`, `agentFile` and `appFiles`. `appEvent` is called from `server/index.mjs` and the tests, and `resolveAppSend` from `act`, so each keeps a delegator.
+    - Their constants and types: `AgentFileError` (re-exported, since `server/mcp.mjs` imports it), `FILE_NAME`, the `AppFile` typedef and `APP_WARNINGS`.
+    - `readCapped` is shared with the datasets code, so it stays in `runtime.mjs`, or moves to a small helper both import.
+  - `app/kit/kit.js` needs no move. It’s one IIFE, and Biome counts that wrapper as its 619-line function. Its longest real function is `legibility`, at 69 lines. In a commit of its own, set `"skipIifes": true` on kit.js’s `noExcessiveLinesPerFunction` override, lower its function ceiling to the measured size, and add a line to architecture.md §15 that the wrapper is a module scope, not a function.
 - **#193:** `retire_app { id, reason, replacedBy? }`, as #193 proposes:
   - It works only on the calling agent’s own apps.
   - A retired app shows in its place as one quiet line, such as “Retired by @researcher: replaced by *metro map*”, with a link that scrolls to the replacement, and the version menu kept.
@@ -41,9 +44,9 @@ The check exists so the agent hears about these before the person sees them (int
 
 ## Files
 
-- **Yours:** `server/apps.mjs` and the lines in `server/runtime.mjs` that call it, `retire_app` in `server/mcp.mjs`, `app/js/apps.mjs`, the check in `app/kit/kit.js` and any module it moves to, the app section of `server/adapters/guide.mjs` (within `guideText`’s 9,000-character budget), `tools/checks/app-*.mjs`, and the app and kit tests.
+- **Yours:** `server/apps.mjs` and the lines in `server/runtime.mjs` that call it, `retire_app` in `server/mcp.mjs`, `app/js/apps.mjs`, the check in `app/kit/kit.js` and its override in `biome.json`, the app section of `server/adapters/guide.mjs` (within `guideText`’s 9,000-character budget), `tools/checks/app-*.mjs`, and the app and kit tests.
 - **Shared:**
-  - **`server/runtime.mjs` and `biome.json`:** every wave 5 session moves its own concern out first. Move only the app functions, and lower `runtime.mjs`’s ceilings by what left.
+  - **`server/runtime.mjs` and `biome.json`:** every wave 5 session moves its own concern out first. Move only the app functions. Add a `biome.json` entry only for your new module, and leave `runtime.mjs`’s override to the integrator (README.md, “Length limits”).
   - **`server/mcp.mjs`:** the blocks session changes the block tools. Change only the app tools.
   - **The work list (#195)** lists published apps. Tell the integrator the retired state’s name, so its row can say so.
 
