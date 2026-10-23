@@ -84,6 +84,8 @@ async function check(name, fn) {
   }
 }
 async function open(hashTo) {
+  // What the check changed on the server must have reached the page first, or it shows what was there before.
+  await page.synced(store.state.seq);
   await page.evaluate(`location.hash = ${JSON.stringify(hashTo)}`);
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();

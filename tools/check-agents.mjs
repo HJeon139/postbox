@@ -148,8 +148,11 @@ async function check(name, fn) {
 let loaded = false;
 /** Opens a view: the first time by loading the page, then by changing the hash, as the app’s links do. */
 async function open(hash) {
-  if (loaded) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
-  else await page.goto(`${app.origin}/${hash}`);
+  if (loaded) {
+    // What the check changed on the server must have reached the page first, or it shows what was there before.
+    await page.synced(store.state.seq);
+    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+  } else await page.goto(`${app.origin}/${hash}`);
   loaded = true;
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();

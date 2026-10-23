@@ -48,9 +48,14 @@ try {
       if (await fn()) return true;
       await sleep(100);
     }
-    throw new Error(`Timed out waiting for ${label}.`);
+    throw new Error(`Timed out waiting for ${label}. Apps: ${JSON.stringify(Object.values(rt.s.apps).map((a) => [a.id, a.check.status]))}`);
   };
   const ev = (x) => page.evaluate(x);
+  // A conversation made a moment ago must have reached the page first: one it hasn’t heard of opens the overview.
+  const go = async (hash) => {
+    await page.synced(app.store.state.seq);
+    await ev(`location.hash = '${hash}'`);
+  };
   const click = async (x, y) => {
     // A pointer rests on what it clicks for a moment, as a hand does; an app frame needs it to see you point (#38).
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
@@ -171,7 +176,7 @@ try {
   // 7. Two more apps, in another conversation.
   const t2 = rt.createThread({ projectId, title: 'Full-screen check 2', personaIds: [rt.personaByHandle('librarian').id] });
   const tools2 = rt.toolsFor(rt.sessionsIn(t2.id)[0].id);
-  await ev(`location.hash = '#/t/${t2.id}'`);
+  await go(`#/t/${t2.id}`);
   tools2.show_app({ id: 'grow', title: 'Grow', code: GROW, permissions: [] });
   tools2.show_app({ id: 'own-escape', title: 'Own escape', code: OWN_ESCAPE, permissions: [] });
   const box = (title) => `[...document.querySelectorAll('.appframe')].find((n) => n.querySelector('.title')?.textContent === ${JSON.stringify(title)})`;
@@ -207,16 +212,16 @@ try {
 
   // Full screen ends with the view: leave the conversation while full screen, and come back.
   await clickEl(btnOf('Grow'));
-  await ev(`location.hash = '#/t/${t.id}'`);
+  await go(`#/t/${t.id}`);
   await sleep(800);
-  await ev(`location.hash = '#/t/${t2.id}'`);
+  await go(`#/t/${t2.id}`);
   await sleep(1200);
   check(await ev(`!document.querySelector('.fullscreen')`), 'coming back to the conversation doesn’t open the app full screen');
   // And Escape on another page after leaving one full screen isn’t taken by it.
   if (await ev(`!!document.querySelector('.fullscreen')`)) await ev(`${btnOf('Grow')}.click()`);
   await ev(`${box('Grow')}.scrollIntoView({ block: 'center' })`);
   await clickEl(btnOf('Grow'));
-  await ev(`location.hash = '#/t/${t.id}'`);
+  await go(`#/t/${t.id}`);
   await sleep(800);
   await ev(`window.__esc = null; addEventListener('keydown', (e) => { if (e.key === 'Escape') window.__esc = e.defaultPrevented; })`);
   await ev(`document.activeElement?.blur?.()`);

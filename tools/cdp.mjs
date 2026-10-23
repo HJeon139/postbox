@@ -135,6 +135,17 @@ export async function launch({ port = 9333 } = {}) {
       }
       throw new Error(`Timed out waiting for: ${label}`);
     },
+    /**
+     * Waits until Postbox’s page has applied the server’s events up to seq (its store’s state.seq). A change made
+     * on the server reaches the page over its event stream, which nothing orders with this protocol: on a busy
+     * computer it comes after the next command (check-all.mjs --lag shows it).
+     */
+    synced(seq, { timeout = 15000 } = {}) {
+      return page.waitFor(`import('/app/js/client.mjs').then(({ client }) => client.seq >= ${Number(seq)})`, {
+        timeout,
+        label: `the page to hear the server’s event ${seq}`,
+      });
+    },
     /** Screenshot the full content height (the app shell is pinned to that height while capturing). */
     async shoot(file, { width, baseH, scale }) {
       const mobile = width < 768;

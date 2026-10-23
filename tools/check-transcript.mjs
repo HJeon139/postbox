@@ -126,12 +126,14 @@ const shown = (id, more = '') => page.waitFor(`document.querySelector('[data-key
 
 /**
  * Opens a route, and waits for the view it builds (not the one it replaces) to settle. Within one conversation,
- * opening or closing the thread panel changes only the right pane, so then it waits for the pane instead.
+ * opening or closing the thread panel changes only the right pane, so then it waits for the pane instead. A
+ * conversation made a moment ago must have reached the page first: one it hasn’t heard of opens the overview.
  */
 async function open(hash) {
   const [, thread, side] = hash.match(/#\/t\/([^/]+)(?:\/side\/(.+))?/) ?? [];
   if (await page.evaluate('location.origin === "null" || location.href === "about:blank"')) await page.goto(`${app.origin}/${hash}`);
   else {
+    await page.synced(store.state.seq);
     const pane = side ? `!!document.querySelector('.sidepanel .transcript[data-thread="${side}"]')` : `!document.querySelector('.sidepanel')`;
     await page.evaluate(`(() => { const a = document.querySelector('.app'); if (a) a.dataset.old = '1'; location.hash = ${JSON.stringify(hash)}; })()`);
     await page.waitFor(
