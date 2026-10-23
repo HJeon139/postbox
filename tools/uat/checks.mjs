@@ -271,8 +271,8 @@ function postboxCallsAfter(events, after) {
  * one given while its turn runs waits for that turn to end. So an update with no new turn of that session since the
  * answer was written without it. A turn starts when the session starts thinking with finishedAt cleared, and ends when
  * finishedAt is set: a permission card mid-turn sets the state to needs, not finishedAt. A fix that marks the answer
- * read (answer.read, #123) is read too. A block shown before the history begins (a log that lost its first segment) is
- * skipped.
+ * read (answer.read, #123) is read too. A block that follows the conversation gets its new revision by item.move, with
+ * the same patch (#92, #173). A block shown before the history begins (a log that lost its first segment) is skipped.
  * @param {any[]} events
  */
 export function blockHistory(events) {
@@ -305,7 +305,7 @@ export function blockHistory(events) {
         revision: it.revision ?? 1,
         answer: null,
       });
-    } else if (e.type === 'item.patch') {
+    } else if (e.type === 'item.patch' || e.type === 'item.move') {
       const b = blocks.get(d.id);
       const p = d.patch ?? {};
       if (!b) continue;
@@ -769,21 +769,28 @@ export const CHECKS = [
         })),
   },
   {
+    // Since #49’s fix, a new version brings the app to the newest point, and every later message pushes it up again.
+    // So only the items that were already after the app when its last version landed count (#213). A version with no
+    // time counts every item after the app.
     id: 'updated-app-far-up',
     issue: 49,
     run: (f) =>
       Object.values(f.state.apps ?? {})
         .filter((app) => f.threads.includes(app.threadId) && app.versions?.length > 1)
-        .filter((app) => {
+        .flatMap((app) => {
           const list = f.state.items[app.threadId] ?? [];
           const at = list.findIndex((it) => it.id === app.itemId);
-          return at >= 0 && list.length - at > 6;
-        })
-        .map((app) => ({
-          key: app.id,
-          title: 'An updated app stays where it was first shown, far above the conversation',
-          evidence: `“${app.title}” is v${app.versions.length}, ${(f.state.items[app.threadId] ?? []).length - (f.state.items[app.threadId] ?? []).findIndex((it) => it.id === app.itemId) - 1} messages up.`,
-        })),
+          const landed = app.versions.at(-1)?.at;
+          const up = at < 0 ? 0 : list.slice(at + 1).filter((it) => !Number.isFinite(landed) || !(it.at > landed)).length;
+          if (up < 6) return [];
+          return [
+            {
+              key: app.id,
+              title: 'An updated app stays where it was first shown, far above the conversation',
+              evidence: `“${app.title}” is v${app.versions.length}, ${up} messages up when that version landed.`,
+            },
+          ];
+        }),
   },
   {
     id: 'version-menu-overflow',
