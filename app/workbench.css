@@ -235,8 +235,9 @@ pb-ring .dot.still { animation: none; }
 /* ───────── App shell ───────── */
 
 .app { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: auto 1fr; }
-.app.no-rail, .app.rail-hidden { grid-template-columns: minmax(0, 1fr); }
-.app.rail-hidden > .rail { display: none; }
+.app.no-rail, .app.rail-hidden, .app.rail-auto { grid-template-columns: minmax(0, 1fr); }
+/* rail-auto: hidden while the right pane needs its room (#7, pane-width.mjs). */
+.app.rail-hidden > .rail, .app.rail-auto > .rail { display: none; }
 .topbar { grid-column: 1 / -1; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 12px 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }

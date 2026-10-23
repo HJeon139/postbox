@@ -1,7 +1,8 @@
-// A headless Chrome check of how the right pane shares the window with the conversation (#197): at 800, 1024 and
+// A headless Chrome check of how the right pane shares the window with the conversation (#197, #7): at 800, 1024 and
 // 1280 px with the sidebar open, opening Work or a thread leaves the conversation column and the composer’s text box
-// at or above their minimums, or opens the view full screen, where Escape brings the conversation back; and what’s
-// open stays in the address, so a wider window puts the pane back beside the conversation.
+// at or above their minimums, or opens the view full screen, where Escape brings the conversation back; what’s open
+// stays in the address, so a wider window puts the pane back beside the conversation; and the sidebar hides first
+// while the pane needs its room, giving an app more width, and comes back when the pane closes.
 //
 //   node tools/check-pane-width.mjs
 //
@@ -86,7 +87,8 @@ const measure = () =>
     const w = (sel) => { const el = document.querySelector(sel); return el && el.getClientRects().length ? Math.round(el.getBoundingClientRect().width) : 0; };
     const reply = Math.max(0, ...[...document.querySelectorAll('.transcript .md')].map((el) => Math.round(el.getBoundingClientRect().width)));
     return { main: w('.main'), reply, box: w('.composer textarea'), pane: w('.rpane'), rail: w('.rail'),
-      full: !!document.querySelector('.pane-full'), focusIn: !!document.activeElement?.closest('.pane-full') };
+      app: w('.transcript .appframe'), auto: !!document.querySelector('.app.rail-auto'),
+      toggle: document.getElementById('rail-toggle')?.getAttribute('aria-label'), full: !!document.querySelector('.pane-full'), focusIn: !!document.activeElement?.closest('.pane-full') };
   })()`);
 
 // ── A conversation with replies and a topic thread ─────────────────────────────────────
@@ -98,6 +100,12 @@ for (let i = 1; i <= 4; i++) {
   rt.addItem(c.id, { kind: 'user', text: `Question ${i}: which citations does the script still miss?` });
   say(`Answer ${i}: ${'The parser drops entries whose year sits in a note field, so the list comes up short. '.repeat(3)}`);
 }
+rt.toolsFor(se.id).show_app({
+  id: 'explorer',
+  title: 'Explorer',
+  fallback: 'Explorer: a box as wide as its frame.',
+  code: '<div style="height:200px;border:1px solid">An explorer</div>',
+});
 const root = store.items(c.id).find((i) => i.kind === 'agent');
 const { threadId: topic } = rt.startTopic(c.id, root.id);
 const conv = (r) => `#/t/${c.id}${r}`;
@@ -151,6 +159,37 @@ await check('#197 a wider window puts the pane back beside the conversation, sin
   await page.size(800, 800);
   await page.waitFor(q('.workpane.pane-full'), { label: 'Work full screen again at 800 px' });
   assert.equal(await has(`${WORK}:not(.pane-full)`), false);
+});
+
+// ── #7: the sidebar hides first, while the pane needs its room ─────────────────────────
+
+await check('#7 at 1280 px, a thread hides the sidebar while it’s open, so an app keeps its room, and closing it brings the sidebar back', async () => {
+  await fresh(1280);
+  await page.waitFor(q('.transcript .appframe iframe'), { label: 'the app' });
+  const before = await measure();
+  assert.equal(before.rail, 248);
+  await open(conv(`/side/${topic}`));
+  await page.waitFor(q(THREAD), { label: 'the thread' });
+  const m = await measure();
+  assert.deepEqual([m.rail, m.auto, m.pane, m.toggle], [0, true, 440, 'Show the sidebar'], 'the sidebar didn’t hide for the pane');
+  // #7 measured an app at about 590 px beside the pane with the sidebar open.
+  assert.ok(m.app > 700, `the app is ${m.app} px`);
+  await click(`${q(THREAD)}.querySelector('button[aria-label="Close thread"]')`);
+  await page.waitFor(q('.rpane[hidden]'), { label: 'the thread to close' });
+  const back = await measure();
+  assert.deepEqual([back.rail, back.auto, back.toggle, back.app], [248, false, 'Hide the sidebar', before.app], 'the sidebar didn’t come back');
+  assert.equal(await page.evaluate(`localStorage.getItem('pb-rail')`), null, 'it changed what the person chose');
+});
+
+await check('#7 showing the sidebar again while the pane is open keeps it, and the pane makes do with what’s left', async () => {
+  await fresh(1280);
+  await click(q('#work-button'));
+  await page.waitFor(`${q(WORK)} && ${q('.app.rail-auto')}`, { label: 'Work, with the sidebar hidden' });
+  await click(q('#rail-toggle'));
+  await page.waitFor(`!${q('.app.rail-auto')}`, { label: 'the sidebar back' });
+  const m = await measure();
+  assert.deepEqual([m.rail, m.toggle, m.full], [248, 'Hide the sidebar', false]);
+  assert.ok(m.main >= COL_MIN && m.pane === 1280 - 248 - COL_MIN, `the column is ${m.main} px and the pane ${m.pane} px`);
 });
 
 await page.close();

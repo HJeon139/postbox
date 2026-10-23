@@ -9,7 +9,7 @@ import { agentsSection, joinedWhy, openAgentPanel, openAsks, openAsksEl } from '
 import { api, busy, client, hrefOf, liveSessions, needsYou, sessionsOf, stopSession, threadState, threadsOf, topicsOf, whereOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
-import { railHidden, toggleRail } from './rail-collapse.mjs';
+import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import { closeWork, menuAnchor, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
@@ -95,8 +95,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
           {
             type: 'button',
             id: 'rail-toggle',
-            'aria-label': railHidden() ? 'Show the sidebar' : 'Hide the sidebar',
-            'aria-pressed': String(!railHidden()),
+            'aria-label': railShown() ? 'Hide the sidebar' : 'Show the sidebar',
+            'aria-pressed': String(railShown()),
             'aria-keyshortcuts': 'Meta+Backslash',
             onclick: toggleRail,
           },

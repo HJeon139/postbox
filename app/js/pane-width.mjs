@@ -1,9 +1,10 @@
-// The right pane’s width beside the conversation (#197). The conversation column keeps a minimum, at which a
-// reply’s text and the composer stay usable (architecture.md §14). The pane gives up width to keep it, and where
-// even the pane’s own minimum doesn’t fit, its view opens full screen instead (pane.mjs). What’s open stays in the
-// address, so a wider window puts the pane back beside the conversation.
+// The right pane’s width beside the conversation (#197, #7). The conversation column keeps a minimum, at which a
+// reply’s text and the composer stay usable (architecture.md §14). To keep it, the rail hides first, while the pane
+// is open; then the pane gives up width; and where even the pane’s own minimum doesn’t fit, its view opens full
+// screen instead (pane.mjs). What’s open stays in the address, so a wider window puts the pane back beside the
+// conversation.
 
-import { railHidden } from './rail-collapse.mjs';
+import { railHidden, setRailAuto } from './rail-collapse.mjs';
 
 /** The conversation column’s narrowest, with its padding (architecture.md §14). */
 export const COL_MIN = 640;
@@ -15,16 +16,20 @@ const RAIL_W = 248;
 const NARROW = 768;
 
 /**
- * How the pane sits in a window win px wide when it wants want px: its width, the most it can take, and whether
- * it opens full screen, since even its minimum would squeeze the column.
+ * How the pane sits in a window win px wide when it wants want px: its width, the most it can take, whether the
+ * rail hides to make room (#7), and whether the view opens full screen, since even the pane’s minimum would squeeze
+ * the column.
  * @param {number} win
  * @param {number} want
- * @param {{ rail?: boolean }} [opts]  rail: whether the rail shows
+ * @param {{ rail?: boolean, keep?: boolean }} [opts]  rail: whether the person shows the rail; keep: they showed it
+ *   again while the pane was open, so it stays
  */
-export function fit(win, want, { rail = !railHidden() } = {}) {
-  const max = win - (rail ? RAIL_W : 0) - COL_MIN;
-  if (win < NARROW || max < PANE_MIN) return { width: want, max: want, full: win >= NARROW };
-  return { width: Math.min(want, max), max, full: false };
+export function fit(win, want, { rail = !railHidden(), keep = false } = {}) {
+  const room = (withRail) => win - (withRail ? RAIL_W : 0) - COL_MIN;
+  const max = room(rail && keep);
+  if (win < NARROW || max < PANE_MIN) return { width: want, max: want, collapse: false, full: win >= NARROW };
+  const width = Math.min(want, max);
+  return { width, max, collapse: rail && !keep && width > room(true), full: false };
 }
 
 /** Whether the pane fits beside the conversation in this window. */
@@ -39,15 +44,20 @@ export const besideFits = () => innerWidth >= NARROW && !fit(innerWidth, PANE_MI
 export function mountWidth(el, onCramped) {
   const want = PANE_W;
   let cramped = false;
-  /** Sets the width; whether the pane started or stopped having to open full screen. */
+  let keep = false;
+  /** Sets the width and the rail; whether the pane started or stopped having to open full screen. */
   function update() {
-    const f = fit(innerWidth, want);
+    if (el.hidden) keep = false;
+    const f = fit(innerWidth, want, { keep });
     el.parentElement?.style.setProperty('--pane-w', `${f.width}px`);
+    setRailAuto(!el.hidden && f.collapse);
     const was = cramped;
     cramped = !el.hidden && f.full;
     return was !== cramped;
   }
-  const refit = () => {
+  const refit = (/** @type {Event} */ e) => {
+    // The person showed the rail while the pane had hidden it: it stays, and the pane makes do with what’s left.
+    if (/** @type {CustomEvent} */ (e).detail?.keep) keep = true;
     if (update()) onCramped();
   };
   addEventListener('resize', refit);
@@ -55,7 +65,7 @@ export function mountWidth(el, onCramped) {
   return {
     update,
     /** Whether the pane’s view has to open full screen in this window. */
-    cramped: () => fit(innerWidth, want).full,
+    cramped: () => fit(innerWidth, want, { keep }).full,
     destroy() {
       removeEventListener('resize', refit);
       removeEventListener('pb-rail', refit);
