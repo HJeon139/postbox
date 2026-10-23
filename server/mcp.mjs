@@ -2,8 +2,9 @@
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, show_app, update_app, define_term, propose_agent, schedule_wake,
-// wake_agent, ask_for_tool, corpus_search and add_dataset. Every tool returns at once; when you answer a block, your answer reaches
-// the agent later as a new message carrying { blockId, action, values }.
+// wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search and add_dataset.
+// Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
+// carrying { blockId, action, values }.
 //
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
 // a risky tool call in “ask” mode, and it waits for your answer on a card in the conversation.
@@ -16,6 +17,7 @@
 import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
 import { AgentFileError } from './runtime.mjs';
+import { offersBring } from './side-threads.mjs';
 
 const PROTOCOL = '2025-06-18';
 const count = (k) => k.toLocaleString('en-US');
@@ -106,6 +108,12 @@ export const TOOL_DEFS = [
     description:
       'Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its own session in this conversation, so it remembers it (a fork of that session, if it’s busy). After 3 agent wakes in a row, the person must allow the next one.',
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
+  },
+  {
+    name: 'bring_to_conversation',
+    description:
+      'Post text in the main conversation from the side thread or topic thread you’re in. Use it only when the person asks for something to go to the main chat, in a message to you there: nothing goes there on its own. It shows as shared by you from the side or topic thread, and wakes no one; the conversation’s agents read it at their next turn.',
+    inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to post, in Markdown.' } }, required: ['text'] },
   },
   {
     name: 'read_conversation',
@@ -223,7 +231,7 @@ async function one(rt, sessionId, msg, turnToken) {
     case 'ping':
       return reply({});
     case 'tools/list':
-      return reply({ tools: TOOL_DEFS });
+      return reply({ tools: TOOL_DEFS.filter((t) => t.name !== 'bring_to_conversation' || inThread(rt, sessionId, turnToken)) });
     case 'tools/call': {
       if (!rt.s.sessions[sessionId]) return fail(-32602, 'Unknown Postbox session. Connect with /mcp?session=<id>.');
       if (turnToken === null)
@@ -251,6 +259,12 @@ async function one(rt, sessionId, msg, turnToken) {
     default:
       return fail(-32601, `Method “${msg.method}” isn’t supported.`);
   }
+}
+
+/** Whether the session’s turn is one bring_to_conversation is offered to (#128): the person’s, in a side or topic thread. */
+function inThread(rt, sessionId, turnToken) {
+  const turn = rt.turns.get(sessionId);
+  return turn?.token === turnToken && offersBring(rt, turn);
 }
 
 /**

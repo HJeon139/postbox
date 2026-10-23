@@ -3,7 +3,9 @@
 // is and who woke it; a fork that answered while its session was busy is a second entry under the same persona; one
 // waiting on a permission prompt counts in the tab title and ⌃J opens the side thread at its card; /stop in the
 // conversation reaches the side thread but not a topic thread; Copy link and the composer’s # link a thread, whose id
-// the agent then gets; and at 375 px the side-thread line fits.
+// the agent then gets; the Threads page lists side threads (#124); a side-thread message goes to the conversation by
+// Send to conversation or an agent’s bring_to_conversation (#128); a failed turn there shows on the side-thread line,
+// with Retry, and the line opens at its card (#151); and at 375 px the side-thread line fits.
 //
 //   node tools/check-side-threads.mjs
 //
@@ -12,132 +14,36 @@
 // PB_PORT and PB_CHROME_PORT move it; ONLY=<text> runs only the cases whose names include it.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
-import { finish, ports, record } from './harness.mjs';
-
-const { PORT, CHROME_PORT } = await ports(4890, 10090);
-
-process.env.POSTBOX_BACKENDS = 'mock';
-const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-side-'));
-const claudeHome = await mkdtemp(join(tmpdir(), 'pb-check-side-home-'));
-const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true, claudeHome });
-const page = await launch({ port: CHROME_PORT });
-const { rt, store } = app;
-
-// ── A backend that holds its turns ──────────────────────────────────────────────────────
-
-/** Every turn the fake was sent: who, where, and what came with it. */
-const turns = [];
-/** What the next turn of a session does, by session id; otherwise it holds until released or stopped. */
-const scripts = new Map();
-const releases = new Map();
-rt.adapters.register({
-  name: 'claude-code',
-  async folderFor() {
-    return dataDir;
-  },
-  fork() {},
-  async deliver(session, message, ctx) {
-    turns.push({ sessionId: session.id, thread: ctx.thread.id, text: message.text ?? '', context: message.context ?? [] });
-    const script = scripts.get(session.id);
-    scripts.delete(session.id);
-    if (script) return script(ctx);
-    ctx.status({ state: 'tool', currentStep: 'Reading the shelf' });
-    await new Promise((r) => {
-      releases.set(session.id, r);
-      ctx.signal.addEventListener('abort', r);
-    });
-    if (!ctx.signal.aborted) ctx.text('Done.');
-  },
-});
-const release = (id) => releases.get(id)?.();
-
-const personaNamed = (handle) => Object.values(store.state.personas).find((p) => p.handle === handle);
-for (const handle of ['indexer', 'researcher'])
-  store.emit('persona', { ...personaNamed(handle), backend: 'claude-code', model: 'claude-opus-5-5', version: (personaNamed(handle).version ?? 1) + 1 });
-const room = rt.createThread({
-  projectId: Object.keys(store.state.projects)[0],
-  title: 'Side checks',
-  personaIds: [personaNamed('indexer').id, personaNamed('researcher').id],
-});
-const sessionIn = (t, handle) => rt.sessionsIn(t.id).find((x) => x.handle === handle);
-const indexer = sessionIn(room, 'indexer');
-const researcher = sessionIn(room, 'researcher');
-const sideOf = () => Object.values(store.state.threads).find((t) => t.kind === 'side' && t.parentId === room.id);
-const busy = (id) => ['think', 'gen', 'tool', 'needs'].includes(store.state.sessions[id]?.state);
-/** An agent wakes another as if the person had just written: the wake limit (#108) isn’t what this checks. */
-const wake = (from, handle, text) => {
-  rt.putThread({ ...store.state.threads[room.id], hops: 0 });
-  return rt.agentWake(from, handle, text);
-};
-
-// ── Driving the page ────────────────────────────────────────────────────────────────────
-
-const KEYS = {
-  Enter: { code: 'Enter', keyCode: 13, text: '\r' },
-  Escape: { code: 'Escape', keyCode: 27 },
-  j: { code: 'KeyJ', keyCode: 74 },
-};
-/** Presses a key the way a keyboard does. ctrl: with Control held, as ⌃J is. */
-async function press(key, { ctrl = false } = {}) {
-  const k = KEYS[key];
-  const text = ctrl ? undefined : k.text;
-  const base = { key, code: k.code, windowsVirtualKeyCode: k.keyCode, nativeVirtualKeyCode: k.keyCode, modifiers: ctrl ? 2 : 0 };
-  await page.send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text, unmodifiedText: text } : {}) });
-  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  await settle();
-}
-/** Types into the focused field, as a keyboard’s text input does. */
-async function type(text) {
-  await page.send('Input.insertText', { text });
-  await settle();
-}
-const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
-async function until(test, label) {
-  for (let i = 0; i < 50; i++) {
-    if (test()) return;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`Timed out waiting for ${label}`);
-}
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
-/** An agent’s row in the sidebar, the li around its button. */
-const row = (handle) => `[...document.querySelectorAll('.rail .agent-row')].find((r) => r.querySelector('.agent-btn b')?.textContent === '@${handle}')`;
-const subs = (handle) => page.evaluate(`[...(${row(handle)}?.querySelectorAll('.agent-sub') ?? [])].map((n) => n.innerText.replace(/\\s+/g, ' ').trim())`);
-const sideLine = () =>
-  page.evaluate(`[...document.querySelectorAll('#main .pill')].find((p) => p.textContent.includes('asked'))?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
-
-async function check(name, fn) {
-  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
-  let timer;
-  try {
-    const late = new Promise((_, fail) => {
-      timer = setTimeout(() => fail(new Error('Timed out after 30 s')), 30000);
-    });
-    await Promise.race([fn(), late]);
-    record(true, name);
-  } catch (e) {
-    record(false, name, e.message);
-  } finally {
-    clearTimeout(timer);
-  }
-  for (let i = 0; i < 4 && (await page.evaluate(`!!document.querySelector('.backdrop, .menu')`)); i++) await press('Escape');
-}
-let loaded = false;
-async function open(hash) {
-  if (loaded) {
-    // What the check changed on the server must have reached the page first, or it shows what was there before.
-    await page.synced(store.state.seq);
-    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
-  } else await page.goto(`${app.origin}/${hash}`);
-  loaded = true;
-  await page.waitFor(`document.querySelector('header.topbar')`);
-  await settle();
-}
+import { rm } from 'node:fs/promises';
+import { finish, record } from './harness.mjs';
+import {
+  app,
+  busy,
+  check,
+  claudeHome,
+  dataDir,
+  indexer,
+  open,
+  page,
+  press,
+  q,
+  release,
+  researcher,
+  room,
+  row,
+  rt,
+  scripts,
+  sessionIn,
+  settle,
+  sideLine,
+  sideOf,
+  store,
+  subs,
+  turns,
+  type,
+  until,
+  wake,
+} from './side-threads-kit.mjs';
 
 await page.size(1280, 900);
 
@@ -299,6 +205,81 @@ await check('an agent woken from outside the conversation joins it, and its row,
   assert.equal(await page.evaluate(`document.getElementById('top-ring-${critic().id}').title`), 'Joined when @indexer woke it');
   // The agents the person added say nothing of the kind.
   assert.doesNotMatch(await page.evaluate(`${row('indexer')}.innerText`), /Joined when/);
+});
+
+await check('the Threads page lists side threads beside topic threads, with their pair, state, count and last activity (#124)', async () => {
+  const side = sideOf();
+  const link = store.items(room.id).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
+  await open(`#/p/${room.projectId}/threads`);
+  const cards = () =>
+    page.evaluate(
+      `[...document.querySelectorAll('.thread-list li')].map((li) => ({ kind: li.dataset.kind, text: li.innerText.replace(/\\s+/g, ' ').trim(), href: li.querySelector('a').getAttribute('href') }))`,
+    );
+  const card = (await cards()).find((c) => c.kind === 'side' && c.text.startsWith(side.title));
+  assert.ok(card, 'No card for the side thread');
+  assert.match(card.text, new RegExp(`^${side.title} Side thread · in Side checks · ${link.count} messages · (idle|@\\w+ [a-z ]+) · `));
+  assert.equal(card.href, `#/t/${room.id}/side/${side.id}`);
+  // A topic thread says which kind it is too.
+  assert.ok(
+    (await cards()).some((c) => c.kind === 'topic' && / Topic thread · in /.test(c.text)),
+    'No topic thread says its kind',
+  );
+});
+
+await check('a side-thread message goes to the conversation by Send to conversation, or by an agent the person asked (#128)', async () => {
+  const side = sideOf();
+  // The person asks an agent in the side thread, and it posts it with bring_to_conversation.
+  scripts.set(researcher.id, (ctx) => {
+    ctx.tools.bring_to_conversation({ text: 'The editions, for the main chat.' });
+    ctx.text('Posted it in the conversation.');
+  });
+  release(researcher.id);
+  await until(() => !busy(researcher.id), '@researcher to be free');
+  rt.sendMessage(side.id, { text: '@researcher post the editions in the main chat' });
+  await until(() => store.items(room.id).some((x) => x.kind === 'shared' && x.agent), 'the agent’s post');
+  await until(() => !busy(researcher.id), '@researcher’s turn to end');
+  const reply = store.items(side.id).findLast((x) => x.kind === 'agent' && x.handle === 'researcher' && x.text && !x.sharedAt);
+  await open(`#/t/${room.id}/side/${side.id}`);
+  const button = `[...document.querySelectorAll('.sidepanel [data-key="${reply.id}"] button')].find((b) => b.textContent === 'Send to conversation')`;
+  await page.waitFor(button, { label: 'Send to conversation on the side thread’s reply' });
+  await page.evaluate(`${button}.click()`);
+  await until(() => store.items(room.id).some((x) => x.kind === 'shared' && !x.agent && x.text === reply.text), 'the reply in the conversation');
+  await page.synced(store.state.seq);
+  await page.waitFor(`document.querySelector('.sidepanel [data-key="${reply.id}"]')?.innerText.includes('Sent to the conversation')`, { label: 'Sent' });
+  const cards = await page.evaluate(`[...document.querySelectorAll('#main .shared-head')].map((n) => n.innerText.replace(/\\s+/g, ' ').trim())`);
+  assert.ok(cards.includes(`From the thread “${side.title}” · shared by @researcher in a turn you started Open thread`), cards.join('\n'));
+  assert.ok(cards.includes(`From the thread “${side.title}” · @researcher Open thread`), cards.join('\n'));
+});
+
+await check('a failed side-thread turn shows on its line with Retry, and the line’s Open goes to its card (#151)', async () => {
+  release(researcher.id);
+  await until(() => !busy(researcher.id), '@researcher to be free');
+  const side = sideOf();
+  scripts.set(researcher.id, async () => {
+    throw new Error('API 500');
+  });
+  wake(indexer.id, 'researcher', 'Review the plan.');
+  await until(() => store.state.sessions[researcher.id].state === 'failed', 'the failed turn');
+  const card = store.state.sessions[researcher.id].needs;
+  assert.equal(card.threadId, side.id);
+  await open(`#/t/${room.id}`);
+  const line = `[...document.querySelectorAll('#main [data-side-sig]')].find((n) => n.querySelector('.pill')?.textContent.includes('@researcher failed'))`;
+  await page.waitFor(line, { label: 'the failure on the side-thread line' });
+  assert.equal(await page.evaluate(`${line}.querySelector('button')?.textContent`), 'Retry');
+  // It counts as needing you, in the tab title.
+  assert.match(await page.evaluate('document.title'), /^\(\d+\) /);
+  // Open goes to the side thread, at the card, with its Retry focused.
+  await page.evaluate(`${line}.querySelector('.pill').click()`);
+  await page.waitFor(`document.activeElement?.closest('[data-key="${card.itemId}"]')`, { label: 'focus on the failed card' });
+  assert.ok(await page.evaluate(`!!document.activeElement.closest('.sidepanel')`));
+  // Retry on the line answers the wake again.
+  await open(`#/t/${room.id}`);
+  await page.waitFor(line, { label: 'the line again' });
+  const before = turns.length;
+  await page.evaluate(`${line}.querySelector('button').click()`);
+  await until(() => turns.length > before && busy(researcher.id), 'the retried turn');
+  assert.deepEqual([turns.at(-1).sessionId, turns.at(-1).thread, turns.at(-1).text], [researcher.id, side.id, 'Review the plan.']);
+  release(researcher.id);
 });
 
 await check('at 375 px, the side-thread line with its agent’s state fits without scrolling sideways', async () => {

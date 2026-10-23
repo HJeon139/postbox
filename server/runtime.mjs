@@ -10,7 +10,6 @@ import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mj
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
-import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
@@ -19,14 +18,31 @@ import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupO
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { parseDataset } from './corpus.mjs';
+import { clip, clipText, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { runShell } from './shell.mjs';
+import {
+  agentWake,
+  bringToConversation,
+  bumpSideLink,
+  forkBusy,
+  forkDone,
+  forkFresh,
+  forkNote,
+  forkRetry,
+  recordAgentMessage,
+  resolveHop,
+  sideSession,
+  wakeAgent,
+} from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { askForTool, resolveToolAsk } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
-export const HOP_LIMIT = 3;
+export { httpError } from './helpers.mjs';
+export { HOP_LIMIT } from './side-threads.mjs';
+
 const DELETE_UNDO_MS = 10000;
 /** The days a conversation can sit with nothing happening before it archives itself (#101), unless Settings says otherwise. */
 export const ARCHIVE_AFTER_DAYS = 7;
@@ -56,8 +72,12 @@ const STOP_WATCHDOG_MS = 15000;
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
 const CATCH_UP_CHARS = 16000;
-const clipText = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const count = (n) => n.toLocaleString('en-US');
+/**
+ * What a turn was asked, kept on its failed reply so Retry sends it again as it was, with its own kind (#151): a wake
+ * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s.
+ */
+const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
 /**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
  * read_message takes, so the agent can read the rest (#109).
@@ -144,10 +164,6 @@ function blockContent(it) {
   if (b.outcome) out.push(`Outcome: ${b.outcome}`);
   return out.filter(Boolean).join('\n\n');
 }
-const clip = (s, n = 200) => {
-  const t = toPlainText(s);
-  return t.length > n ? t.slice(0, n - 1) + '…' : t;
-};
 
 export class Runtime {
   /**
@@ -279,6 +295,8 @@ export class Runtime {
       const replies = this.store.items(threadId).filter((x) => x.kind === 'user' || x.kind === 'agent').length;
       this.patchItem(t.parentId, t.rootItemId, { replies, lastReplyAt: it.at });
     }
+    // …and a message in a side thread on its line in the conversation, whoever wrote it (#130).
+    if (t?.kind === 'side' && (it.kind === 'user' || it.kind === 'agent')) this.bumpSideLink(threadId);
     return it;
   }
   patchItem(threadId, id, patch) {
@@ -925,7 +943,7 @@ export class Runtime {
           text: '',
           status: 'failed',
         }).id;
-      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null });
+      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null, asked: askedOf(turn) });
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
@@ -1015,7 +1033,6 @@ export class Runtime {
       this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)' });
       this.recordAgentMessage(se.id, 'to', this.s.sessions[turn.replyTo].handle, turn.said);
       this.recordAgentMessage(turn.replyTo, 'from', se.handle, turn.said);
-      this.bumpSideLink(turn.threadId);
     }
     const next = turn.pending.shift();
     if (next) {
@@ -1398,224 +1415,42 @@ export class Runtime {
     const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
     this.patchItem(threadId, itemId, { status: 'retried' });
     this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-    this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
+    if (it.asked) this.deliver(it.sessionId, { ...it.asked.message, retry: true }, { replyTo: it.asked.replyTo, summarizeTo: it.asked.summarizeTo, threadId });
+    // A failed reply stored before #151 kept nothing of what it was asked: the person’s last message is the best guess.
+    else this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
   }
 
   // ── Agents waking agents ───────────────────────────────────────────────────────────
 
-  /** After HOP_LIMIT agent-to-agent wakes in a row without you, the next one waits for your confirm. */
-  agentWake(fromSessionId, handle, text, { confirmed = false } = {}) {
-    const from = this.s.sessions[fromSessionId];
-    const p = this.personaByHandle(handle);
-    if (!from || !p) return { ok: false, message: `There’s no agent called @${handle}.` };
-    const t = this.s.threads[from.threadId];
-    const parent = t.kind === 'side' ? (this.s.threads[t.parentId] ?? t) : t;
-    if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) {
-      // One request at a time: further wakes wait behind the one you haven’t answered.
-      if (this.store.items(parent.id).some((x) => x.kind === 'hop' && x.status === 'open'))
-        return { ok: false, waiting: true, message: 'Another wake is already waiting for the person to allow it.' };
-      const it = this.addItem(parent.id, {
-        kind: 'hop',
-        fromSessionId,
-        from: from.handle,
-        to: p.handle,
-        // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
-        reason: clip(text, 200),
-        text,
-        status: 'open',
-        n: (parent.hops ?? 0) + 1,
-      });
-      this.updateSession(fromSessionId, {
-        // The card is in the conversation, even when the agent asking is a fork in a side thread (#121).
-        needs: { kind: 'hop', itemId: it.id, text: `@${from.handle} wants to wake @${p.handle}`, ...this.awayFrom(from, parent.id) },
-        state: this.turns.has(fromSessionId) ? from.state : 'needs',
-      });
-      this.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${(parent.hops ?? 0) + 1} since your last message.`);
-      return { ok: false, waiting: true, message: `Waiting for the person to allow waking @${p.handle}.` };
-    }
-    const hops = (parent.hops ?? 0) + 1;
-    this.putThread({ ...this.s.threads[parent.id], hops });
-    // A persona with no session here joins the conversation (sideSession), and the line says so.
-    const joins = !this.sessionsIn(parent.id).some((x) => x.personaId === p.id);
-    this.addItem(parent.id, {
-      kind: 'system',
-      variant: 'wake',
-      from: from.handle,
-      to: p.handle,
-      n: hops,
-      limit: HOP_LIMIT,
-      ...(joins ? { joined: true } : {}),
-    });
-    // The exchange happens in a side thread; your thread shows one line that links to it.
-    const pair = [from.handle, p.handle].sort().join('|');
-    let side = Object.values(this.s.threads).find((x) => x.kind === 'side' && x.parentId === parent.id && x.pair === pair);
-    if (!side) {
-      side = this.putThread({
-        id: newId('th'),
-        projectId: parent.projectId,
-        title: `@${from.handle} ↔ @${p.handle}`,
-        kind: 'side',
-        parentId: parent.id,
-        pair,
-        // Who answers in it before anyone has spoken there (sendMessage).
-        woke: p.handle,
-        members: [],
-        lastSpeaker: null,
-        hops: 0,
-        queue: [],
-        createdAt: Date.now(),
-        archived: false,
-      });
-      this.addItem(parent.id, { kind: 'sidelink', sideThreadId: side.id, from: from.handle, to: p.handle, count: 0 });
-    }
-    const said = this.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done' });
-    this.recordAgentMessage(from.id, 'to', p.handle, text);
-    // The woken agent answers from its session in the conversation, so it remembers the exchange (#110); a fork of it
-    // answers only while that session is busy.
-    const target = this.sideSession(side, p.id, from.handle);
-    this.recordAgentMessage(target.id, 'from', from.handle, text);
-    this.bumpSideLink(side.id);
-    this.deliver(target.id, { kind: 'agent', from: `@${from.handle}`, text, itemId: said.id }, { replyTo: from.id, threadId: side.id });
-    return { ok: true, message: target.forkOf?.busy ? `Woke @${p.handle}: its session was busy, so a fork of it answers.` : `Woke @${p.handle}.` };
+  agentWake(fromSessionId, handle, text, opts) {
+    return agentWake(this, fromSessionId, handle, text, opts);
   }
-
-  /**
-   * Who answers for a persona in a side thread (#110): one session per persona per conversation. That’s its session in
-   * the conversation, which joins it if it isn’t there yet. Only while that session is mid-turn (or archived) does a fork
-   * of it, taken at its latest point, answer instead: one per side thread, reused, and shown nested under the persona.
-   * @param {any} side @param {string} personaId @param {string} by  the handle that woke it, or 'you'
-   */
   sideSession(side, personaId, by) {
-    const parent = this.thread(side.parentId);
-    const home =
-      this.sessionsIn(parent.id).find((x) => x.personaId === personaId) ??
-      this.ensureSession(parent.id, personaId, {
-        brief: by === 'you' ? 'You were @-mentioned in a side thread of this conversation.' : `@${by} woke you in a side thread of this conversation.`,
-        joined: { by, in: side.id },
-      });
-    if (!home.archived && !this.turns.has(home.id) && !this.exiting.has(home.id)) return home;
-    // Busy in this side thread already: the message waits for that turn, as any message to a busy agent does. A fork
-    // here would be a second session doing the same work, which is #121 again.
-    const busyIn = this.turns.get(home.id)?.threadId ?? this.exiting.get(home.id)?.turn.threadId;
-    if (!home.archived && busyIn === side.id) return home;
-    const fork = this.sessionsIn(side.id).find((x) => x.personaId === personaId && !x.archived);
-    return fork ?? this.forkBusy(home, side, by);
+    return sideSession(this, side, personaId, by);
   }
-
-  /**
-   * A fork of a busy session into a side thread, at the session’s latest point: it starts with its memory, answers the
-   * wake, and when it’s done the session hears where to read what it did (forkDone).
-   * @param {any} src @param {any} side @param {string} by
-   */
   forkBusy(src, side, by) {
-    const se = this.ensureSession(side.id, src.personaId);
-    const adapter = this.adapters.get(this.persona(src.personaId)?.backend ?? 'mock');
-    // first: its first turn hasn’t ended yet. If that turn fails before it does anything, the fork starts again fresh.
-    this.updateSession(se.id, { personaSnapshot: src.personaSnapshot, forkOf: { sessionId: src.id, itemId: null, busy: true, by, first: true }, wokenBy: by });
-    if (adapter.capabilities?.fork === false) return this.forkFresh(se, src, side);
-    this.updateSession(se.id, {
-      backendState: { fork: null, forkFrom: src.backendState ?? null, contextWindow: src.backendState?.contextWindow },
-      ctx: src.ctx,
-      compactions: src.compactions,
-      // Its catch-up is this side thread’s, from the start.
-      seenItem: null,
-      context: [this.forkNote(src, side, null)],
-    });
-    try {
-      adapter.fork?.(src, this.s.sessions[se.id]);
-    } catch (e) {
-      return this.forkFresh(se, src, side, e);
-    }
-    return this.s.sessions[se.id];
+    return forkBusy(this, src, side, by);
   }
-
-  /**
-   * A fork that can’t start from its session’s memory: the backend can’t fork (Kiro), or forking failed. It’s a new
-   * session of the agent, and its note says so, and why.
-   * @param {any} se @param {any} src @param {any} side @param {any} [err]
-   */
-  forkFresh(se, src, side, err = null) {
-    if (err) console.error(`A fork of @${src.handle}’s session couldn’t start from its memory, so it starts fresh: ${err.message ?? err}`);
-    this.updateSession(se.id, {
-      backendState: {},
-      ctx: 2,
-      compactions: 0,
-      seenItem: null,
-      forkOf: { ...this.s.sessions[se.id].forkOf, fresh: true },
-      context: [this.forkNote(src, side, err)],
-    });
-    return this.s.sessions[se.id];
+  forkFresh(se, src, side, err) {
+    return forkFresh(this, se, src, side, err);
   }
-
-  /**
-   * What a fork reads first. fresh: null when it starts from its session’s memory; otherwise why it doesn’t (true for
-   * a backend that can’t fork, or the error).
-   * @param {any} src @param {any} side @param {any} fresh
-   */
   forkNote(src, side, fresh) {
-    const conv = this.s.threads[src.threadId]?.title ?? '';
-    const why = fresh && fresh !== true ? ` (starting from its memory failed: ${clipText(String(fresh.message ?? fresh), 200)})` : '';
-    return `[Postbox] You’re answering in the side thread “${side.title}” as a fork of your session in the conversation “${conv}”: that session was busy${src.archived ? ' (archived)' : ''}, so ${fresh ? `this is a new session of you, and it doesn’t remember the conversation${why}` : 'this one starts from what it remembered then'}. Your session there doesn’t see what you do here; when you’re done, it’s told where to read it.`;
+    return forkNote(this, src, side, fresh);
   }
-
-  /**
-   * A fork’s first turn failed before it said or did anything, which is how a backend’s fork of a session mid-turn
-   * fails: it starts again, once, as a fresh session, with the same message. Returns whether it did.
-   * @param {any} se @param {any} turn @param {any} err
-   */
   forkRetry(se, turn, err) {
-    if (!se.forkOf?.busy || !se.forkOf.first || se.forkOf.fresh || turn.first || turn.steps.length || turn.said) return false;
-    const src = this.s.sessions[se.forkOf.sessionId];
-    const side = this.s.threads[se.threadId];
-    if (!src || !side) return false;
-    this.forkFresh(se, src, side, err);
-    this.updateSession(se.id, { state: 'idle', needs: null, currentStep: '' });
-    const { message, replyTo, summarizeTo, threadId } = turn.asked;
-    this.deliver(se.id, message, { replyTo, summarizeTo, threadId });
-    this.turns.get(se.id)?.pending.push(...turn.pending);
-    return true;
+    return forkRetry(this, se, turn, err);
   }
-
-  /**
-   * A fork made because its session was busy finished a turn: its session’s next turn gets a pointer to it, with the
-   * thread id. The agent decides whether to bring it in: the fork’s summary (its last reply) or its full messages, both
-   * with read_conversation. Postbox sends neither. The pointer replaces an older one for the same thread.
-   * @param {any} se @param {any} turn
-   */
   forkDone(se, turn) {
-    if (!se.forkOf?.busy) return;
-    const main = this.s.sessions[se.forkOf.sessionId];
-    const side = this.s.threads[turn.threadId];
-    if (!main || !side) return;
-    const tag = `(thread ${side.id})`;
-    const text = `[Postbox] A fork of you answered in the side thread “${side.title}” ${tag} while you were busy, starting from what you remembered then. You don’t remember what it did. Its summary is its last reply: read_conversation with thread: "${side.id}" and limit: 1. Its full messages: read_conversation with thread: "${side.id}". Read either only if it matters to your work.`;
-    this.updateSession(main.id, { context: [...(main.context ?? []).filter((x) => !x.includes(tag)), text].slice(-20) });
+    return forkDone(this, se, turn);
   }
-
   resolveHop(threadId, itemId, allow) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
-    this.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined' });
-    this.addItem(threadId, { kind: 'voice', text: allow ? `Allowed: @${it.from} wakes @${it.to}` : `Didn’t allow @${it.from} to wake @${it.to}` });
-    const from = this.s.sessions[it.fromSessionId];
-    if (from) this.updateSession(from.id, { needs: null, state: this.turns.has(from.id) ? from.state : 'idle' });
-    this.putThread({ ...this.s.threads[threadId], hops: 0 });
-    // A request stored before #108 kept only the preview.
-    if (allow) this.agentWake(it.fromSessionId, it.to, it.text ?? it.reason, { confirmed: true });
-    else if (from) this.deliver(from.id, { kind: 'notice', text: `The person chose not to let you wake @${it.to}. Carry on without it.` });
+    return resolveHop(this, threadId, itemId, allow);
   }
-
   bumpSideLink(sideThreadId) {
-    const side = this.s.threads[sideThreadId];
-    if (side?.kind !== 'side') return;
-    const link = this.store.items(side.parentId).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
-    if (link) this.patchItem(side.parentId, link.id, { count: this.store.items(side.id).filter((x) => x.kind === 'agent' || x.kind === 'user').length });
+    return bumpSideLink(this, sideThreadId);
   }
-
   recordAgentMessage(sessionId, dir, other, text) {
-    const se = this.s.sessions[sessionId];
-    if (!se) return;
-    this.updateSession(sessionId, { agentMessages: [{ dir, other, text: clip(text, 120), at: Date.now() }, ...se.agentMessages].slice(0, 6) });
+    return recordAgentMessage(this, sessionId, dir, other, text);
   }
 
   // ── Acting in blocks ───────────────────────────────────────────────────────────────
@@ -1803,10 +1638,10 @@ export class Runtime {
     return this.s.sessions[se.id];
   }
 
-  /** “Send to conversation”: a reply from a topic thread is posted in its conversation, for you and its agents. */
+  /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
   shareToConversation(topicId, itemId) {
     const topic = this.thread(topicId);
-    if (topic.kind !== 'topic') throw httpError(409, 'Only replies in a topic thread can be sent to the conversation.');
+    if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only messages in a topic or side thread can be sent to the conversation.');
     const it = this.store.item(topicId, itemId);
     if (!it?.text) throw httpError(404, 'That reply has no text to send.');
     if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
@@ -1855,13 +1690,14 @@ export class Runtime {
   }
 
   /**
-   * Posts text from a topic thread in its conversation. The conversation’s agents read it at the start of
-   * their next turn rather than being woken by it, so sharing never costs a turn.
+   * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
+   * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
+   * bring_to_conversation, because the person asked it to (#128).
    */
-  shareText(threadId, { fromThreadId, handle, text, summary = false }) {
+  shareText(threadId, { fromThreadId, handle, text, summary = false, agent = false }) {
     const from = this.s.threads[fromThreadId];
     // The conversation’s agents read it at the start of their next turn, with everything else they missed.
-    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary });
+    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary, ...(agent ? { agent } : {}) });
     return it;
   }
 
@@ -1959,7 +1795,7 @@ export class Runtime {
         return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
-        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
+        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
       case 'system':
         if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
         if (i.variant === 'joined') return `@${i.to} joined`;
@@ -4071,9 +3907,8 @@ export class Runtime {
         const sc = rt.schedule(sessionId, { inMs: Math.round((+in_minutes || 1) * 60000), note });
         return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}.` };
       },
-      wake_agent({ handle, message }) {
-        return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
-      },
+      wake_agent: (args) => wakeAgent(rt, sessionId, args),
+      bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
       read_conversation(args = {}) {
         try {
           return { ok: true, message: rt.readConversation(se(), args) };
@@ -4260,9 +4095,6 @@ function writeOf(tool, input, detail, given) {
   };
 }
 
-export function httpError(status, message) {
-  return Object.assign(new Error(message), { status, userMessage: message });
-}
 /** An error the ledger raised with a status, as the API answers it. */
 const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;
