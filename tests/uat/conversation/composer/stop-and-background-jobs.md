@@ -16,7 +16,9 @@ An agent can start a command in the background (Bash with `run_in_background`), 
 - Stop, with a job running, asks “@developer has 1 background job running. Stop it too?” with **Stop it too**, **Keep running**, and an × (Don’t stop). Focus moves to Stop it too. Nothing stops until you answer.
   - Escape, or ×, closes the ask; the agent carries on, and focus goes back to Stop.
   - **Stop it too** stops the agent and its jobs. Their steps read “Stopped”.
-  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop. The agent’s next turn is told the job is still running and where its output is.
+  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop. The agent’s next turn is told the job is still running and where its output is. Postbox never kills a job you kept (#164):
+    - When it can’t tell which of the agent’s processes is the job, it keeps them all running. The job row says “Postbox couldn’t tell which of 2 processes is this job, so it kept them all running; stopping the job stops them all.”, the agent hears the same, and the job’s Stop stops them all ([screenshot](../../screenshots/kept-job-unsure.png)).
+    - When the job has no process left to keep, its step reads “Stopped: Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.”
 - Stop with no background job running stops at once, without asking.
 - **Send now** (or a message sent with Send now from the queue) stops the agent without asking, and keeps its jobs running.
 - After Stop, the agent reads “· stopping” beside its name until its process has exited, usually within a second or two, then “Stopped by you”. A message you send meanwhile appears at once and the agent starts on it when the old process has gone.
@@ -24,7 +26,7 @@ An agent can start a command in the background (Bash with `run_in_background`), 
 
 ## Steps to reproduce
 
-Automated: `node tools/check-stop.mjs` (headless Chrome, a scripted agent, no real processes).
+Automated: `node tools/check-stop.mjs` (headless Chrome, a scripted agent, no real processes). `PB_SHOT=tests/uat/screenshots/kept-job-unsure.png node tools/check-stop.mjs` retakes the screenshot.
 
 With a real agent:
 1. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>.
@@ -34,5 +36,6 @@ With a real agent:
 5. Press Stop again and choose Keep running. Check the agent reads “stopping”, then “Stopped by you”, and the job row stays. In a terminal, `ps axo pid,ppid,pgid,command | grep 'sleep 300'` still lists it.
 6. Press the job row’s Stop. Check the row goes, the step reads “Stopped”, and `ps` no longer lists it.
 7. Repeat steps 2 to 4, and choose Stop it too. Check the job row goes, and `ps` lists neither the CLI nor the job.
+8. Ask it: “Use the Bash tool with run_in_background set to true to run exactly: cd /tmp && for i in $(seq 1 60); do date >> pbx-heartbeat.log; sleep 5; done. Then wait for it with the Bash tool: sleep 120.” While it waits, press Stop and choose Keep running. Check the job row stays, and `tail -f /tmp/pbx-heartbeat.log` keeps growing (#164: Claude Code runs the job without its `cd`, which Postbox once failed to match, and killed). Then press the job row’s Stop.
 
 **Pass if:** every step behaves as described, and after each Stop no `claude -p` process of that agent is left running.

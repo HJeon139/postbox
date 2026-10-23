@@ -12,7 +12,7 @@ import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
-import { parsePs, runsCommand, shellGroups, stopTurn } from '../server/adapters/process-group.mjs';
+import { evalOf, parsePs, runsCommand, shellGroups, stopTurn } from '../server/adapters/process-group.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
@@ -106,6 +106,28 @@ test('#126: the recorded ps finds the CLI’s tool shells, each in a group of it
   assert.ok(!runsCommand(shells[1], 'sleep 170'));
 });
 
+test('#164: runsCommand reads what the eval runs, in either quoting, give or take a leading cd and whitespace, and no looser', () => {
+  const sq = (c) => ({ pid: 1, ppid: 1, pgid: 1, command: evalLine(c) });
+  const bs = (c) => ({ pid: 1, ppid: 1, pgid: 1, command: `/bin/bash -c eval '${c.replaceAll("'", `'\\''`)}' < /dev/null && pwd -P` });
+  for (const shell of [sq, bs]) {
+    assert.ok(runsCommand(shell("echo 'a b'; ls"), "echo 'a b'; ls"), 'a quote inside, either style');
+    assert.ok(runsCommand(shell('echo "\'"'), 'echo "\'"'));
+    assert.ok(runsCommand(shell("'\\''"), "'\\''"), 'the other style’s quoting, as text, isn’t undone');
+    assert.ok(runsCommand(shell('npm test'), 'cd /tmp/w && npm test'), 'a cd Claude Code applied itself');
+    assert.ok(runsCommand(shell('npm test'), "cd '/tmp/my work' && cd sub && npm test"), 'a quoted cd path, and two');
+    assert.ok(runsCommand(shell('cd /tmp/w && npm test'), 'npm test'), 'a cd left in the eval');
+    assert.ok(runsCommand(shell('sleep  5;\n  echo hi'), ' sleep 5; echo hi '), 'whitespace');
+    assert.ok(!runsCommand(shell('sleep 50'), 'sleep 5'));
+    assert.ok(!runsCommand(shell('sleep 5'), 'sleep 50'));
+    assert.ok(!runsCommand(shell('x'), 'echo hix'));
+    assert.ok(!runsCommand(shell('npm test'), 'npm install && npm test'), 'a command that only ends with it is another');
+    assert.ok(!runsCommand(shell('npm test'), 'cd /tmp/w'));
+  }
+  assert.ok(!runsCommand({ pid: 1, ppid: 1, pgid: 1, command: 'sleep 5' }, 'sleep 5'), 'not a tool shell');
+  assert.ok(!runsCommand(sq(''), ''));
+  assert.equal(evalOf("zsh -c eval 'a' && eval 'b'"), 'a', 'the wrapper’s eval, the first');
+});
+
 test('#126: the Claude Code CLI starts in its own group, and Stop signals the group, then every tool shell once it has exited', async () => {
   const child = fakeChild();
   const k = fakeKill();
@@ -176,7 +198,8 @@ test('#129: keeping a background job: the CLI gets SIGKILL at once, since its SI
     list: async () => PS,
     pollMs: 2,
   });
-  assert.deepEqual(kept, [{ id: 'bm2939coh', pgid: 69193 }]);
+  const shell = PS.find((p) => p.pid === 69193);
+  assert.deepEqual(kept, [{ id: 'bm2939coh', pgid: 69193, groups: [{ pgid: 69193, command: shell?.command }] }]);
   assert.deepEqual(k.sent, [
     [-CLI, 'SIGKILL'],
     [-69282, 'SIGKILL'],
@@ -184,13 +207,96 @@ test('#129: keeping a background job: the CLI gets SIGKILL at once, since its SI
   a.exit();
   await gone;
   assert.ok(!k.sent.some(([pid]) => pid === -69193), 'the kept job is never signaled');
-  // One whose shell can’t be found isn’t kept: everything stops as for a plain Stop.
+});
+
+// The shell #164 recorded with ps: Claude Code applied the job’s `cd` itself, so its eval runs the loop alone.
+const LOOP = "for i in $(seq 1 36); do date '+%H:%M:%S' >> heartbeat-1.log; sleep 5; done";
+const LOOP_JOB = `cd /private/tmp/w-1S75EQ && ${LOOP}`;
+const evalLine = (command) =>
+  `/bin/zsh -c source /Users/me/.claude/shell-snapshots/snapshot-zsh-1792726346291-5lxk5d.sh 2>/dev/null || true && eval '${command.replaceAll("'", `'"'"'`)}' < /dev/null && pwd -P >| /tmp/claude-a1b2-cwd`;
+/** The recorded ps, with the loop’s shell under the CLI too. */
+const PS_LOOP = [...PS, { pid: 69400, ppid: CLI, pgid: 69400, command: evalLine(LOOP) }, { pid: 69401, ppid: 69400, pgid: 69400, command: 'sleep 5' }];
+
+test('#164: a job whose cd Claude Code applied itself is kept: its shell’s eval runs the loop without the cd', async () => {
+  const loop = PS_LOOP.find((p) => p.pid === 69400);
+  assert.ok(loop && !loop.command.includes('cd /private'), 'as recorded: no cd in the eval');
+  assert.equal(evalOf(loop.command), LOOP);
+  assert.ok(runsCommand(loop, LOOP_JOB));
+  const k = fakeKill();
+  const a = exitLater(k);
+  const { kept, gone } = await stopTurn(fakeChild(), {
+    keep: [{ id: 'b8hb2', command: LOOP_JOB }],
+    exited: a.exited,
+    kill: k.kill,
+    list: async () => PS_LOOP,
+    pollMs: 2,
+  });
+  assert.deepEqual(kept, [{ id: 'b8hb2', pgid: 69400, groups: [{ pgid: 69400, command: loop?.command }] }]);
+  assert.deepEqual(k.sent, [
+    [-CLI, 'SIGKILL'],
+    [-69193, 'SIGKILL'],
+    [-69282, 'SIGKILL'],
+  ]);
+  a.exit();
+  await gone;
+  assert.ok(!k.sent.some(([pid]) => pid === -69400), 'the kept job is never signaled');
+});
+
+test('#164: a kept job that matches no shell isn’t killed: the CLI gets SIGKILL, and every other tool shell is kept as its groups', async () => {
+  const k = fakeKill();
+  const a = exitLater(k);
+  const { kept, gone } = await stopTurn(fakeChild(), {
+    keep: [{ id: 'x', command: 'npm run long' }],
+    exited: a.exited,
+    kill: k.kill,
+    list: async () => PS,
+    pollMs: 2,
+  });
+  const groups = shellGroups(PS, CLI).map((s) => ({ pgid: s.pgid, command: s.command }));
+  assert.deepEqual(kept, [{ id: 'x', pgid: 69193, groups }]);
+  assert.deepEqual(k.sent, [[-CLI, 'SIGKILL']], 'never SIGINT, which the CLI would pass on to its jobs');
+  a.exit();
+  await gone;
+  assert.deepEqual(k.sent, [[-CLI, 'SIGKILL']], 'no tool shell is killed, even once the CLI has gone');
+  // With another job found, its shell is its own, and the rest stay with the one that wasn’t.
   const k2 = fakeKill();
   const b = exitLater(k2);
-  const r = await stopTurn(fakeChild(), { keep: [{ id: 'x', command: 'npm run long' }], exited: b.exited, kill: k2.kill, list: async () => PS, pollMs: 2 });
-  assert.deepEqual(r.kept, []);
-  assert.deepEqual(k2.sent, [[-CLI, 'SIGINT']]);
+  const r = await stopTurn(fakeChild(), {
+    keep: [
+      { id: 'x', command: 'npm run long' },
+      { id: 'c', command: "sleep 170; echo 'pbx C'" },
+    ],
+    exited: b.exited,
+    kill: k2.kill,
+    list: async () => PS,
+    pollMs: 2,
+  });
+  assert.deepEqual(
+    r.kept.map((j) => [j.id, j.groups.map((g) => g.pgid)]),
+    [
+      ['x', [69282]],
+      ['c', [69193]],
+    ],
+  );
   b.exit();
+  await r.gone;
+  assert.deepEqual(k2.sent, [[-CLI, 'SIGKILL']]);
+});
+
+test('#164: a job to keep with no tool shell left isn’t kept, and nothing else is killed', async () => {
+  const k = fakeKill();
+  const a = exitLater(k);
+  const noShells = PS.filter((p) => p.pgid === CLI);
+  const r = await stopTurn(fakeChild(), {
+    keep: [{ id: 'x', command: 'npm run long' }],
+    exited: a.exited,
+    kill: k.kill,
+    list: async () => noShells,
+    pollMs: 2,
+  });
+  assert.deepEqual(r.kept, []);
+  assert.deepEqual(k.sent, [[-CLI, 'SIGKILL']]);
+  a.exit();
   await r.gone;
 });
 
@@ -441,8 +547,11 @@ function setup() {
 /** A kept job’s shell as ps shows it, leading its own group. */
 const shellRow = (pgid, command) => ({ pid: pgid, ppid: 1, pgid, command: `/bin/zsh -c source snapshot.sh && eval '${command}' < /dev/null` });
 
-/** A turn that runs until it’s aborted, then “exits” only when the test says so, like a CLI that takes a while to stop. */
-function slowToExit({ job = null } = {}) {
+/**
+ * A turn that runs until it’s aborted, then “exits” only when the test says so, like a CLI that takes a while to stop.
+ * kept: what the adapter reports for a job Stop kept running, or null when it found none to keep.
+ */
+function slowToExit({ job = null, kept = /** @type {object|null} */ ({ pgid: 4242 }) } = {}) {
   let exit = () => {};
   const exited = new Promise((r) => {
     exit = r;
@@ -455,7 +564,7 @@ function slowToExit({ job = null } = {}) {
     }
     await new Promise((r) => c.signal.addEventListener('abort', r));
     step.reason = c.signal.reason;
-    if (job && c.signal.reason?.keepJobs?.length) c.job({ id: job.id, kept: true, pgid: 4242 });
+    if (job && kept && c.signal.reason?.keepJobs?.length) c.job({ id: job.id, kept: true, ...kept });
     await exited;
   };
   step.exit = exit;
@@ -629,6 +738,81 @@ test('#129: a kept job’s group id taken by another process isn’t signaled', 
   await rt.stopJob(se.id, 'bgC');
   assert.deepEqual(k.sent, [], 'not the job’s any more');
   assert.deepEqual(store.state.sessions[se.id].jobs, []);
+});
+
+test('#164: a kept job’s groups stay its own while their leaders’ command lines are unchanged, and aren’t signaled once taken', async () => {
+  const { rt, store, adapter, t, se, k, procs } = setup();
+  const a = shellRow(4242, LOOP);
+  const b = shellRow(4343, 'sleep 600');
+  const s = slowToExit({ job: { id: 'bgG', command: LOOP_JOB }, kept: { pgid: 4242, groups: [a, b].map((p) => ({ pgid: p.pgid, command: p.command })) } });
+  adapter.next.push(s);
+  rt.sendMessage(t.id, { text: 'go' });
+  await sleep(5);
+  rt.stop(se.id, { jobs: 'keep' });
+  s.exit();
+  await sleep(10);
+  const [job] = store.state.sessions[se.id].jobs;
+  assert.deepEqual([job.kept, job.pgid, job.groups.length], [true, 4242, 2]);
+  // Postbox couldn’t tell which was the job: the step and the agent both hear it kept them all.
+  const step = () => store.items(t.id).find((i) => i.kind === 'agent' && i.activity?.steps?.length).activity.steps[0];
+  assert.equal(step().state, 'running');
+  assert.match(step().detail, /^Postbox couldn’t tell which of 2 processes is this job, so it kept them all running/);
+  assert.match(store.state.sessions[se.id].context.at(-1), /bgG .* is still running: .*couldn’t tell which of 2 processes/);
+  // The leaders are as they were at Stop, though the loop isn’t what the job’s command says: still running.
+  procs.push(a, b);
+  await rt.pollKept();
+  assert.equal(store.state.sessions[se.id].jobs.length, 1);
+  // 4343 has gone and its id has gone to another process: only 4242 is signaled.
+  procs.splice(1, 1, shellRow(4343, 'something else entirely'));
+  await rt.stopJob(se.id, 'bgG');
+  assert.deepEqual(k.sent, [[-4242, 'SIGINT']]);
+  assert.equal(step().state, 'stopped');
+  assert.equal(step().detail, null, 'it no longer says what was kept');
+});
+
+test('#164: a kept job saved before groups were recorded, with only its pgid, is still checked by its command and stopped', async () => {
+  const { rt, store, t, se, k, procs } = setup();
+  rt.updateSession(se.id, {
+    jobs: [
+      {
+        id: 'bgO',
+        sessionId: se.id,
+        turnId: 'turn_old',
+        threadId: t.id,
+        itemId: null,
+        toolUseId: 'tu_o',
+        label: 'Old',
+        command: 'job bgO',
+        outputFile: null,
+        startedAt: Date.now(),
+        state: 'running',
+        kept: true,
+        pgid: 4242,
+      },
+    ],
+  });
+  procs.push(shellRow(4242, 'job bgO'));
+  await rt.pollKept();
+  assert.equal(store.state.sessions[se.id].jobs.length, 1, 'its leader runs its command: still running');
+  await rt.stopJob(se.id, 'bgO');
+  assert.deepEqual(k.sent, [[-4242, 'SIGINT']]);
+  assert.deepEqual(store.state.sessions[se.id].jobs, []);
+});
+
+test('#164: a job Stop couldn’t keep, with no process left to keep, ends as stopped, and its step says so', async () => {
+  const { rt, store, adapter, t, se, k } = setup();
+  const s = slowToExit({ job: { id: 'bgL', command: 'npm run long' }, kept: null });
+  adapter.next.push(s);
+  rt.sendMessage(t.id, { text: 'go' });
+  await sleep(5);
+  rt.stop(se.id, { jobs: 'keep' });
+  s.exit();
+  await sleep(10);
+  assert.deepEqual(store.state.sessions[se.id].jobs, []);
+  const step = store.items(t.id).find((i) => i.kind === 'agent' && i.activity?.steps?.length).activity.steps[0];
+  assert.equal(step.state, 'stopped');
+  assert.match(step.detail, /^Postbox couldn’t find its process to keep it running/);
+  assert.deepEqual(k.sent, []);
 });
 
 test('#129: deleting a session for good stops the jobs Postbox kept running for it', async () => {
