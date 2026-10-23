@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.13.1 (2026-10-23)
+
+### Fixes
+
+- **adapters:** a failed Codex turn says why, from the error Codex reported
+- **adapters:** a folder an agent can't work in says so, not that the CLI is missing
+- **store:** a reconnecting browser no longer doubles a reply that was streaming
+
 ## 0.13.0 (2026-10-23)
 
 ### Features
