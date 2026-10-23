@@ -161,10 +161,16 @@ for (const [width, height] of [
   await page.waitFor(`document.querySelector('header.topbar #work-button')`, { label: 'the reloaded page' });
   await settle();
 
-  await check(`${at}: the top bar’s Work button opens Work alone in the pane, and it reaches the keyboard`, async () => {
+  await check(`${at}: the top bar’s Work button says Work (#183), opens Work alone in the pane, and it reaches the keyboard`, async () => {
     assert.equal(await page.evaluate(`${q('#work-button')}.getAttribute('aria-pressed')`), 'false');
-    // An icon with a name that says it, and a pressed state while it’s open.
-    assert.equal(await page.evaluate(`${q('#work-button')}.getAttribute('aria-label')`), 'Work');
+    // It says Work in words beside its icon (#183); on a phone only the icon shows, square, and Work is still its
+    // name. It shows pressed while Work is open.
+    const btn = await page.evaluate(
+      `(() => { const b = ${q('#work-button')}; const w = b.querySelector('.sr-sm'); return { name: b.textContent.trim(), label: b.getAttribute('aria-label'), icon: !!b.querySelector('.i-file'), word: w.getBoundingClientRect().width, width: b.getBoundingClientRect().width }; })()`,
+    );
+    assert.deepEqual([btn.name, btn.label, btn.icon], ['Work', null, true]);
+    if (width >= 768) assert.ok(btn.word > 20, `“Work” is ${btn.word} px wide, so it doesn’t show`);
+    else assert.deepEqual([btn.word <= 1, btn.width], [true, 26], `“Work” is ${btn.word} px wide on a phone, in a ${btn.width} px button`);
     await click(q('#work-button'));
     await page.waitFor(q(WORK), { label: 'the Work pane' });
     assert.equal(await hash(), pane('?work'));

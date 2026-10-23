@@ -17,6 +17,7 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 - With two agents in a room at 1280 px, the conversation’s title and the project show in full (#105).
 - At any width, nothing in the top bar overflows or runs under anything else (#72). When it doesn’t fit, it drops, in order: the project above the conversation’s title, the demo banner’s sentence (it folds to “Demo”), and last the rings fold into one stack of rings. The stack’s name is every ring’s label, and it opens a menu of the agents, each with its state and what it runs with, which leads to its quick panel. The title keeps about 100 px before anything drops for it. Postbox measures what fits, so it depends on the window’s width and on how many agents there are, not on a fixed breakpoint, and everything comes back when there’s room again. What each agent runs with is also in its overview card and in the conversation’s ⋯ menu, as text.
 - “⋯” opens the [conversation menu](conversation-menu.md).
+- In a conversation, “Work”, with a page icon, opens and closes the conversation’s Work in the right pane, and shows pressed while it’s open (#183). On a phone only its icon shows, and a screen reader still reads “Work”.
 - “Jump to… ⌘K” opens the [command palette](../command-palette.md).
 - The needs-you button counts agents waiting on you; it is disabled with “Nothing needs you” when none are, and ⌃J goes to the next one and focuses what it’s waiting on.
 - The gear opens Settings.
@@ -32,7 +33,7 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 6. Press ⌃J while something needs you.
 7. Add two more agents to “Corpus planning” (⋯ › Add an agent…), so it has four. Narrow the window from full width to its narrowest, then widen it again.
 
-**Pass if:** Every item above behaves as described, and the rings change within a second of the agent’s state. The demo banner shows on every view. In step 7, the top bar never overflows, every agent is reachable from a ring or the stack, the parts drop and come back in the order above, and ⋯ lists each agent’s backend, model, effort and state at every width. `node tools/check-header.mjs` passes.
+**Pass if:** Every item above behaves as described, and the rings change within a second of the agent’s state. The demo banner shows on every view. In step 7, the top bar never overflows, every agent is reachable from a ring or the stack, the parts drop and come back in the order above, and ⋯ lists each agent’s backend, model, effort and state at every width. `node tools/check-header.mjs` and `node tools/check-work-pane.mjs` pass.
 
 ## Related
 
