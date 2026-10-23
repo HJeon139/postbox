@@ -45,14 +45,18 @@ test('a fresh install seeds three generic agents, and no projects or conversatio
   });
 });
 
-test('the developer and critic agents and boilerplates carry their prompts from server/personas', () => {
+test('the fresh-install agents and their boilerplates carry the same prompts and tools, from server/personas', () => {
   const { personas } = freshInstall();
   const of = (handle) => personas.find((p) => p.handle === handle)?.instructions;
   const bp = (id) => BOILERPLATES.find((b) => b.id === id)?.instructions;
+  assert.match(of('researcher'), /^# Researcher standards\n/);
   assert.match(of('developer'), /^# Developer standards\n/);
   assert.match(of('critic'), /^# Critic standards\n/);
   assert.equal(bp('bp-developer'), of('developer'));
   assert.equal(bp('bp-critic'), of('critic'));
+  assert.equal(bp('bp-researcher'), of('researcher'));
+  for (const handle of ['researcher', 'developer', 'critic'])
+    assert.deepEqual(BOILERPLATES.find((b) => b.id === `bp-${handle}`)?.tools, personas.find((p) => p.handle === handle)?.tools, handle);
 });
 
 test('#5: the fresh-install developer and critic can run commands and read the web, but not reach agents outside Postbox', () => {

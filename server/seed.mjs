@@ -10,6 +10,7 @@ import { newId } from './store.mjs';
 
 // Read once, when the module loads: freshInstall() is synchronous, and the UAT's checks call it as well as seed().
 const prompt = (name) => readFileSync(new URL(`./personas/${name}.md`, import.meta.url), 'utf8').trim();
+const RESEARCHER = prompt('researcher');
 const DEVELOPER = prompt('developer');
 const CRITIC = prompt('critic');
 
@@ -24,8 +25,7 @@ export function freshInstall() {
         handle: 'researcher',
         description: 'Finds and reads sources, and explains what they show.',
         tools: ['web.fetch'],
-        instructions:
-          'Find and read sources, and cite every claim with a link. Explain step by step, with a diagram or math where it helps, and say what the sources leave unsettled.',
+        instructions: RESEARCHER,
         examples: [['What do the sources say about this?', 'A cited answer, and what is still open']],
       },
       {
@@ -101,8 +101,8 @@ export const BOILERPLATES = [
     id: 'bp-researcher',
     name: 'Researcher',
     description: 'Reads and cites sources',
-    instructions: 'Find and read sources. Cite every claim. Explain step by step.',
-    tools: ['corpus.search', 'web.fetch'],
+    instructions: RESEARCHER,
+    tools: ['web.fetch'],
   },
   {
     id: 'bp-critic',
