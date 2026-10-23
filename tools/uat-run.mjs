@@ -51,6 +51,11 @@ const { values: opt } = parseArgs({
     'turn-timeout': { type: 'string', default: '900' },
     budget: { type: 'string', default: '8' },
     'tester-model': { type: 'string', default: 'claude-sonnet-5-5' },
+    // The agents’ model and effort. A pass checks that Postbox works, and a fast model shows that as well as the
+    // default one does. Scenarios that measure what agents choose say `- models: persona`, and `persona` here keeps
+    // personas.json’s settings for every scenario.
+    'agent-model': { type: 'string', default: 'claude-haiku-5-5' },
+    'agent-effort': { type: 'string', default: 'low' },
     recheck: { type: 'string' },
     // After a run, verify the findings that have no verdict (--verify no skips it), and file the confirmed ones that no
     // open issue covers (--file no verifies without filing).
@@ -157,6 +162,9 @@ async function main() {
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
+  // The workspace is a git repository of its own. It lies inside the Postbox checkout, so without one an agent’s
+  // git add and commit would land in Postbox’s history; a workroom agent had to notice and make a nested repo.
+  spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -200,10 +208,22 @@ async function main() {
         }
       : p;
   };
+  // Claude agents run on the run’s model and effort, unless the scenario or the command line keeps the persona’s. An
+  // agent on another backend keeps the model its scenario names.
+  const fast = (p) => {
+    if (scenario.models === 'persona' || scenario.backends[p.handle]) return p;
+    return {
+      ...p,
+      ...(opt['agent-model'] !== 'persona' ? { model: opt['agent-model'] } : {}),
+      ...(opt['agent-effort'] !== 'persona' ? { effort: opt['agent-effort'] } : {}),
+    };
+  };
   const agents = [
     ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
     ...personas.filter((p) => !scenario.agents.includes(p.handle)),
-  ].map(onBackend);
+  ]
+    .map(fast)
+    .map(onBackend);
   if (opt.release) log('A release run: the release-only backends are on.');
   // Postbox registers the Kiro CLI only when it can run it, and seeding an agent on a backend it doesn’t have fails.
   // The same for the Antigravity CLI, which a release run alone may use (releaseGate). It always runs with the
@@ -223,6 +243,9 @@ async function main() {
     );
   }
   await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
+  // What the agents ran on, for the report: a fast run’s findings about agent choices aren’t the default model’s.
+  const agentModels = agents.map((p) => `@${p.handle} ${p.model ?? 'its default model'}${p.effort ? `, ${p.effort} effort` : ''}`).join('; ');
+  log(`Agents: ${agentModels}.`);
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,
     env: {
@@ -239,6 +262,13 @@ async function main() {
   server.stderr.on('data', (d) => log(`postbox (stderr): ${String(d).trim()}`));
   let exited = null;
   server.on('exit', (code) => (exited = code));
+  // Stopping the run stops its Postbox too, and with it the agents' turns: an orphaned server keeps agents running,
+  // and spending, after the run is gone.
+  for (const sig of ['SIGINT', 'SIGTERM'])
+    process.once(sig, () => {
+      if (exited === null) server.kill('SIGTERM');
+      process.exit(130);
+    });
   const api = async (p) => {
     if (exited !== null) throw new Error(`Postbox exited (code ${exited}); see run.log.`);
     return (await fetch(origin + p)).json();
@@ -258,6 +288,7 @@ async function main() {
   const findings = new Map(); // key → finding
   const timeline = [];
   const facts = {
+    agentModels,
     state: null,
     threads: [],
     startPersonas: [],
@@ -270,8 +301,9 @@ async function main() {
     console: page.logs,
     apps: {},
     // stale: the page’s notices that Postbox refused an answer as stale (#123); interrupts: how the runner answered
-    // Stop’s question about background jobs (#126). The triggers read both.
-    probes: { fullScreen: [], attachments: [], answers: [], stale: [], interrupts: [] },
+    // Stop’s question about background jobs (#126). The triggers read both. panels, panes and drafts: what the Agents
+    // section, the right pane and full screen showed (#105, #146).
+    probes: { fullScreen: [], attachments: [], answers: [], stale: [], interrupts: [], panels: [], panes: [], drafts: [] },
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
@@ -350,7 +382,14 @@ async function main() {
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
-      facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
+      facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
+      // The Agents section and the top bar (#105): who has a row, and whether the title or project is cut.
+      facts.ui.agentRows = await page.evaluate(
+        `[...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => (/@([\\w-]+)/.exec(b.textContent) ?? [])[1]).filter(Boolean)`,
+      );
+      facts.ui.topbarCut = await page.evaluate(
+        `innerWidth >= 1200 && [...document.querySelectorAll('header.topbar .title, header.topbar .crumb')].some((n) => n.scrollWidth > n.clientWidth + 1)`,
+      );
       facts.ui.reviewRawRows = await page.evaluate(
         `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
       );
@@ -553,6 +592,7 @@ async function main() {
           await d.stopAll();
           actionResult = 'Pressed Stop on the active reply.';
         } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
+        else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
         else if (a.type === 'act' || a.type === 'review') {
           // An answer is for the revision the tester read. If the block changed while it decided, a person would see
           // it change: say so instead of answering text it didn’t read. Otherwise note the revision it answers, so a
@@ -587,6 +627,25 @@ async function main() {
           ]
             .filter(Boolean)
             .join('\n\n');
+        } else if (a.type === 'agent_panel') {
+          const handle = String(a.target ?? '').replace(/^@/, '');
+          const set = { model: a.model, effort: a.effort, mode: a.mode, shell: a.shell };
+          const r = await d.agentPanel(handle, set);
+          facts.probes.panels.push({ handle, set, left: r.left, at: Date.now() });
+          actionResult = `@${handle}’s quick panel says:\n${r.said}\n\nIt was left at: ${JSON.stringify(r.left)}`;
+        } else if (a.type === 'pane') {
+          const r = await d.openPane(a.open === 'thread' ? 'thread' : 'work', key);
+          facts.probes.panes.push({ open: a.open, ...r });
+          actionResult = `The right pane: Work ${r.work ? `${r.work.w}×${r.work.h}` : 'not open'}, thread ${r.thread ? `${r.thread.w}×${r.thread.h}` : 'not open'}, in a ${r.viewport.w}×${r.viewport.h} window.`;
+        } else if (a.type === 'fullscreen') {
+          const shown = await d.fullscreen(a.pane === 'thread' ? 'thread' : 'work');
+          actionResult = `Full screen showed:\n${shown || '(nothing)'}\n\nIt’s closed again.`;
+        } else if (a.type === 'fullscreen_draft') {
+          const r = await d.fullscreenDraft(a.text ?? 'A draft I haven’t sent');
+          facts.probes.drafts.push(r);
+          actionResult = `Full screen: ${r.full ? 'opened' : 'didn’t open'}. After leaving it, the draft ${r.kept ? 'was still there' : `was ${JSON.stringify(r.draft)}`}, and the thread ended ${r.after.gap} px from its end (it was ${r.before.gap} px).`;
+        } else if (a.type === 'restore') {
+          actionResult = `Restore said: ${(await d.restoreFile(a.target ?? '')) || '(nothing)'}`;
         } else if (a.type === 'app_click') {
           // The transcript doesn’t change when an app does, so say what the click did inside the app.
           const before = (await d.appInside(key))?.text;
@@ -662,7 +721,7 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
   const credits = kiroCredits(facts.kiroStreams ?? []);
   // Antigravity reports tokens, and its free tier is what a release run spends (#143).
   const tokens = agyTokens(facts.agyStreams ?? []);
-  const usage = `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.`;
+  const usage = `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
   const caught = new Map();
   for (const f of findings) if (f.issue) caught.set(f.issue, [...(caught.get(f.issue) ?? []), f]);
   const { CHECKS } = await import('./uat/checks.mjs');
@@ -859,7 +918,14 @@ async function reviewFindings({ dir, scenario, findings, timeline, log, verify, 
 // Runs the checks again over a finished run’s saved data (no agents, no tester), for when the checks or the
 // driver improved. Tester findings and the timeline are kept; check findings are recomputed.
 
-const LIVE_ONLY = new Set(['fresh-install-agents', 'full-screen-noop', 'image-not-shown', 'silent-while-working']);
+const LIVE_ONLY = new Set([
+  'fresh-install-agents',
+  'full-screen-noop',
+  'image-not-shown',
+  'silent-while-working',
+  'agents-section-members',
+  'topbar-title-cut',
+]);
 
 async function recheck(dir) {
   // A run folder, or a run’s name in the runs folder.
@@ -917,7 +983,7 @@ async function recheck(dir) {
     };
     facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
-    facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
+    facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
     facts.ui.reviewRawRows = await page.evaluate(
       `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
     );

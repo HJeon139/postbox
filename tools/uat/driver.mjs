@@ -141,6 +141,13 @@ export function driver(page) {
       await press('Enter');
     },
 
+    /** Replies in the thread panel that’s open, to whoever is in that thread: messages inside the panel have no “Reply in thread”. */
+    async replyInOpenThread(text) {
+      if (!(await ev(`!!document.getElementById('side-input')`))) throw new Error('No thread is open in the right pane: open one with thread first.');
+      await typeInto(`document.getElementById('side-input')`, text, 'the thread reply box');
+      await press('Enter');
+    },
+
     /** Fills fields, picks options and presses a button inside one item (a block or a card). */
     async act(key, { fills = [], choose = [], button = null } = {}) {
       for (const { field, value } of fills) {
@@ -158,7 +165,8 @@ export function driver(page) {
         else await typeInto(control, String(value), `the field “${field}”`);
       }
       for (const option of choose) await clickAt(byText(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
-      if (button) await clickAt(byText(ITEM(key), 'button', button), `the button “${button}”`);
+      // A control may be a link, such as a reply’s work line (“2 files +112 −0”), which opens the Work pane.
+      if (button) await clickAt(byText(ITEM(key), 'button, a[href], [role=button]', button), `the button “${button}”`);
     },
 
     /**
@@ -343,6 +351,107 @@ export function driver(page) {
     },
 
     /** Presses an app’s Expand (full screen) button and reports whether anything visibly changed. */
+    /**
+     * Opens an agent’s quick panel from the sidebar’s Agents section (#105), sets what’s given, and closes it.
+     * Returns what the panel said, and what each control was left at.
+     * @param {string} handle  @param {{ model?: string, effort?: string, mode?: string, shell?: boolean }} set
+     */
+    async agentPanel(handle, set = {}) {
+      await clickAt(
+        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${J(`@${handle}`)}))`,
+        `@${handle}’s row in the Agents section`,
+      );
+      await page.waitFor(`!!document.querySelector('.dialog [role=radiogroup], .dialog [role=switch]')`, { label: 'the quick panel' });
+      try {
+        const group = (label) =>
+          `[...document.querySelectorAll('.dialog [role=radiogroup]')].find((g) => (g.getAttribute('aria-label') ?? '').toLowerCase().startsWith(${J(label.toLowerCase())}))`;
+        for (const [label, value] of [
+          ['Model', set.model],
+          ['Effort', set.effort],
+          ['Permission mode', set.mode],
+        ]) {
+          if (!value) continue;
+          await clickAt(
+            `[...(${group(label)}?.querySelectorAll('[role=radio]') ?? [])].find((r) => r.textContent.toLowerCase().includes(${J(String(value).toLowerCase())}))`,
+            `“${value}” under ${label}`,
+          );
+        }
+        const shellSwitch = `[...document.querySelectorAll('.dialog [role=switch]')].find((x) => (x.getAttribute('aria-label') ?? '').startsWith('Shell,'))`;
+        if (set.shell !== undefined && (await ev(`${shellSwitch}?.getAttribute('aria-checked') === 'true'`)) !== Boolean(set.shell))
+          await clickAt(shellSwitch, 'the Shell switch');
+        await sleep(400);
+        const said = await ev(`document.querySelector('.dialog')?.innerText ?? ''`);
+        const left = await ev(`({
+          groups: Object.fromEntries([...document.querySelectorAll('.dialog [role=radiogroup]')].map((g) => [g.getAttribute('aria-label'), g.querySelector('[aria-checked=true]')?.textContent.trim() ?? null])),
+          switches: Object.fromEntries([...document.querySelectorAll('.dialog [role=switch]')].map((x) => [x.getAttribute('aria-label'), x.getAttribute('aria-checked') === 'true'])),
+        })`);
+        return { said, left };
+      } finally {
+        // Closed whatever happened, so the next action starts from the conversation.
+        if (await ev(`!!document.querySelector('.dialog')`)) await press('Escape');
+      }
+    },
+
+    /** Opens a view in the right pane: Work by its top-bar button, or the thread on an item (#146). Returns both views’ sizes. */
+    async openPane(view, key = null) {
+      if (view === 'work') {
+        if (!(await ev(`document.getElementById('work-button')?.getAttribute('aria-pressed') === 'true'`)))
+          await clickAt(`document.getElementById('work-button')`, 'the Work button');
+      } else if (key) await clickAt(byText(ITEM(key), 'a, button', 'thread'), 'the item’s thread link');
+      await sleep(600);
+      return ev(`(() => {
+        const size = (sel) => { const n = document.querySelector(sel); const b = n?.getBoundingClientRect(); return b && b.height ? { w: Math.round(b.width), h: Math.round(b.height) } : null; };
+        return { work: size('.rpane > .workpane'), thread: size('.rpane > .sidepanel'), viewport: { w: innerWidth, h: innerHeight } };
+      })()`);
+    },
+
+    /**
+     * Opens the thread full screen, types a draft without sending it, and leaves full screen, the way the person
+     * would (#146): reports whether the draft and the scroll survived.
+     */
+    async fullscreenDraft(text) {
+      const box = `document.querySelector('.rpane .sidepanel textarea')`;
+      // Where the thread is scrolled, and how far from its end: a thread kept at its end may move as it re-wraps.
+      const scroll = `(() => { const b = document.querySelector('.rpane .sidepanel .sp-body'); return b ? { top: Math.round(b.scrollTop), gap: Math.round(b.scrollHeight - b.clientHeight - b.scrollTop) } : { top: 0, gap: 0 }; })()`;
+      const before = await ev(scroll);
+      await clickAt(`document.getElementById('thread-full')`, 'the thread’s full-screen button');
+      await sleep(400);
+      const full = await ev(`!!document.querySelector('.pane-full')`);
+      await typeInto(box, text, 'the thread’s composer');
+      await press('Escape');
+      await sleep(400);
+      const out = await ev(
+        `({ draft: ${box}?.value ?? null, exited: !document.querySelector('.pane-full'), focus: document.activeElement?.id ?? document.activeElement?.tagName })`,
+      );
+      return { full, before, after: await ev(scroll), kept: out.draft === text, ...out };
+    },
+
+    /** Opens a view full screen (#146), and returns what it shows, then leaves it with Escape. */
+    async fullscreen(view) {
+      if (view === 'thread') await clickAt(`document.getElementById('thread-full')`, 'the thread’s full-screen button');
+      else await clickAt(byText(`document.querySelector('.rpane .workpane')`, 'button', 'Full screen'), 'Work’s full-screen button');
+      await sleep(600);
+      const shown = await ev(`document.querySelector('.pane-full')?.innerText.slice(0, 4000) ?? ''`);
+      await press('Escape');
+      return shown;
+    },
+
+    /** In Work full screen, restores (or removes) a file the agents changed, and confirms (#138). Returns the toast or error text. */
+    async restoreFile(file) {
+      await this.openPane('work');
+      await clickAt(byText(`document.querySelector('.rpane .workpane')`, 'button', 'Full screen'), 'Work’s full-screen button');
+      await sleep(600);
+      await clickAt(
+        `[...document.querySelectorAll('.pane-full button[id^=restore-]')].find((b) => (b.closest('li, tr, section, div')?.textContent ?? '').includes(${J(file)}))`,
+        `Restore… for ${file}`,
+      );
+      await clickAt(`document.querySelector('.dialog .btn.danger')`, 'the confirm button');
+      await sleep(800);
+      const said = await ev(`[...document.querySelectorAll('.toast, .dialog .err')].map((x) => x.innerText).join(' | ')`);
+      await press('Escape');
+      return said;
+    },
+
     async probeFullScreen(key) {
       const before = await ev(
         `(() => { const f = ${ITEM(key)}?.querySelector('.appframe'); const b = f?.getBoundingClientRect(); return b ? { w: Math.round(b.width), h: Math.round(b.height) } : null; })()`,

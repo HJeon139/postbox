@@ -376,6 +376,23 @@ test('#129: a recorded background command stays running past the reply, and clos
   assert.ok(ctx.calls.status.some((s) => s.currentStep === 'Waiting for a background job'));
 });
 
+test('#129 with #132: a background command reaches the work ledger too: its result when it starts, and how it ended', () => {
+  const ended = [];
+  const results = [];
+  const ctx = fakeCtx({ taskEnded: (x) => ended.push(x), toolResult: (r) => results.push(r) });
+  const m = createStreamMapper(ctx, { now: () => 1000 });
+  for (const e of fixture('background-done')) m.push(e);
+  const id = 'toolu_01U5ezQtB9rnpsgKjmvcsvHj';
+  // The job’s own tracking and the ledger both hear the one task_notification.
+  assert.deepEqual(ctx.calls.jobs.at(-1), { id: 'by2p2pps3', state: 'done' });
+  assert.equal(ended.filter((x) => x.toolUseId === id).length, 1, 'the ledger doesn’t hear how the background command ended');
+  assert.equal(ended.find((x) => x.toolUseId === id).status, 'completed');
+  assert.ok(
+    results.some((r) => r.id === id),
+    'the ledger doesn’t get the result that started the job',
+  );
+});
+
 test('#129: a recorded Stop (SIGINT) ends the job as stopped; one whose shell was killed ends as failed', () => {
   const stopped = replay('background-stopped').ctx;
   assert.deepEqual(stopped.calls.jobs.at(-1), { id: 'bm2939coh', state: 'stopped' });

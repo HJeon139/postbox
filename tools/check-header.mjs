@@ -1,6 +1,7 @@
-// A headless Chrome check of the agent header and card: what each agent runs with (#60), the mock marker, the
-// demo banner and the line on installing Claude Code (#12), and what the top bar keeps at each width (#72): at
-// 1280 and 375 px, in both color schemes, it prints its measurements.
+// A headless Chrome check of what each agent runs with (#60), in its row in the sidebar’s Agents section (#105),
+// its card and the menus; the mock marker, the demo banner and the line on installing Claude Code (#12); and what
+// the top bar keeps at each width (#72, #105): at 1280 and 375 px, in both color schemes, it prints its
+// measurements.
 //
 //   node tools/check-header.mjs
 //
@@ -48,8 +49,9 @@ rt.updateSession(sessionOf('indexer').id, { lastModel: 'claude-sonnet-5-5', last
 // ── Helpers ─────────────────────────────────────────────────────────────────────────────
 
 const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
-const chip = (handle) =>
-  `[...document.querySelectorAll('header.topbar .who-chip')].find((c) => c.querySelector('b')?.textContent === ${JSON.stringify(`@${handle}`)})`;
+/** An agent’s row in the sidebar’s Agents section (#105): the button that opens its quick panel. */
+const row = (handle) =>
+  `[...document.querySelectorAll('.rail .agent-row .agent-btn')].find((c) => c.querySelector('b')?.textContent === ${JSON.stringify(`@${handle}`)})`;
 /** The text a person sees in an element (what’s rendered, not what’s hidden), as one line. */
 const seenText = (expr) => `(() => { const el = ${expr}; return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null; })()`;
 const seen = (expr) => page.evaluate(seenText(expr));
@@ -87,27 +89,27 @@ async function open(hash) {
   await settle();
 }
 
-// Wide enough for four chips to show everything; #72’s cases below measure what fits at 1280 and 375 px.
+// Wide; #72’s and #105’s cases below measure what fits at 1280 and 375 px.
 const WIDE = 2560;
 await page.size(WIDE, 900);
 
 // ── #60: the model that answered and the effort ─────────────────────────────────────────
 
-await check('#60 each chip says the model that answered and the effort, marked in words when the model differs', async () => {
+await check('#60 each agent’s row says its state, the model that answered and the effort, marked in words when the model differs', async () => {
   await open(`#/t/${room.id}`);
-  assert.equal(await seen(chip('indexer')), '@indexer · Sonnet 5.5, not Opus 5.5 · medium effort · idle');
+  assert.equal(await seen(row('indexer')), '@indexer · idle Sonnet 5.5, not Opus 5.5 · medium effort');
   // Before its first turn, the model and effort it’s set to.
-  assert.equal(await seen(chip('researcher')), '@researcher · Opus 5.5 · high effort · idle');
+  assert.equal(await seen(row('researcher')), '@researcher · idle Opus 5.5 · high effort');
   // A mock agent has no model or effort.
-  assert.equal(await seen(chip('critic')), '@critic mock · idle');
+  assert.equal(await seen(row('critic')), '@critic mock · idle');
 });
 
-await check('#60 a new last model reaches the chip without a reload', async () => {
+await check('#60 a new last model reaches the row without a reload', async () => {
   await open(`#/t/${room.id}`);
   rt.updateSession(sessionOf('researcher').id, { lastModel: 'claude-opus-5-5', lastEffort: 'high' });
-  await page.waitFor(`${seenText(chip('researcher'))}?.includes('Opus 5.5 · high effort')`);
+  await page.waitFor(`${seenText(row('researcher'))}?.includes('Opus 5.5 · high effort')`);
   rt.updateSession(sessionOf('researcher').id, { lastModel: 'claude-haiku-5-5' });
-  await page.waitFor(`${seenText(chip('researcher'))}?.includes('Haiku 5.5, not Opus 5.5')`, { label: 'the changed model in the chip' });
+  await page.waitFor(`${seenText(row('researcher'))}?.includes('Haiku 5.5, not Opus 5.5')`, { label: 'the changed model in the row' });
   rt.updateSession(sessionOf('researcher').id, { lastModel: 'claude-opus-5-5' });
 });
 
@@ -142,15 +144,15 @@ await check('#60 the card and the menus say it with full model ids', async () =>
 const visibleMarker = (expr) => page.evaluate(`(() => { const t = ${expr}; return !!t && t.offsetWidth > 0 && t.innerText.trim() === 'mock'; })()`);
 const railWho = `document.querySelector('.rail a.row[data-thread="${room.id}"] .sub')`;
 
-await check('#12 a mock agent is marked in its chip, rail row, card and speaker line, and a real one isn’t', async () => {
+await check('#12 a mock agent is marked in its agent row, rail row, card and speaker line, and a real one isn’t', async () => {
   // A reply each from @critic (mock) and @indexer (Claude Code), so both have speaker lines.
   for (const handle of ['critic', 'indexer']) {
     const se = sessionOf(handle);
     rt.addItem(room.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle, text: `A reply from @${handle}.`, status: 'done' });
   }
   await open(`#/t/${room.id}`);
-  assert.equal(await visibleMarker(`${chip('critic')}?.querySelector('.mock-tag')`), true, 'The chip has no visible “mock”');
-  assert.equal(await page.evaluate(`!!${chip('indexer')}?.querySelector('.mock-tag')`), false, 'A Claude Code agent’s chip says “mock”');
+  assert.equal(await visibleMarker(`${row('critic')}?.querySelector('.mock-tag')`), true, 'The agent row has no visible “mock”');
+  assert.equal(await page.evaluate(`!!${row('indexer')}?.querySelector('.mock-tag')`), false, 'A Claude Code agent’s row says “mock”');
   // The room’s rail row names all four, and marks the two on the mock.
   assert.equal(await seen(railWho), '@librarian mock, @indexer, @researcher, @critic mock · idle');
   // Speaker lines.
@@ -167,16 +169,16 @@ await check('#12 a mock agent is marked in its chip, rail row, card and speaker 
   assert.equal(await page.evaluate(`!!${card('indexer')}.querySelector('.mock-tag')`), false);
 });
 
-await check('#12 the marker follows the persona: moved to Claude Code, the chip and row lose it without a reload', async () => {
+await check('#12 the marker follows the persona: moved to Claude Code, the agent row and the rail row lose it without a reload', async () => {
   await open(`#/t/${room.id}`);
   real('librarian', { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'low' });
   // Its session keeps the effort it started with; the model was “mock”, so it runs the default.
-  await page.waitFor(`!${chip('librarian')}.querySelector('.mock-tag') && ${seenText(chip('librarian'))}.includes('Opus 5.5')`, {
-    label: 'the chip to drop “mock”',
+  await page.waitFor(`!${row('librarian')}.querySelector('.mock-tag') && ${seenText(row('librarian'))}.includes('Opus 5.5')`, {
+    label: 'the agent row to drop “mock”',
   });
   await page.waitFor(`${seenText(railWho)} === '@librarian, @indexer, @researcher, @critic mock · idle'`, { label: 'the rail row to drop “mock”' });
   real('librarian', { backend: 'mock', model: 'mock' });
-  await page.waitFor(`!!${chip('librarian')}.querySelector('.mock-tag')`, { label: 'the chip to say “mock” again' });
+  await page.waitFor(`!!${row('librarian')}.querySelector('.mock-tag')`, { label: 'the agent row to say “mock” again' });
 });
 
 await check('#12 the menus and the Personas list mark mock agents', async () => {
@@ -305,34 +307,36 @@ await check('#12 without --demo there’s no banner, and with Claude Code missin
   }
 });
 
-// ── #72: what the top bar keeps at each width ───────────────────────────────────────────
+// ── #72, #105: what the top bar keeps at each width ─────────────────────────────────────
+// The agents’ words are in the sidebar’s Agents section now (#105), and the top bar keeps a ring for each agent,
+// which opens its quick panel.
 
-/** The top bar’s fit, measured: its width and overflow, what it dropped, the title’s width, and each chip. */
+/** The top bar’s fit, measured: its width and overflow, what it dropped, the crumbs, and each ring. */
 const measure = () =>
   page.evaluate(`(() => {
     const bar = document.querySelector('header.topbar');
     const box = (el) => el.getBoundingClientRect();
-    const shown = (el) => !!el && el.offsetWidth > 0;
+    const shown = (el) => !!el && el.offsetWidth > 0 && box(el).left >= 0 && box(el).right <= innerWidth;
+    const full = (el) => !!el && shown(el) && el.scrollWidth <= el.clientWidth;
     const crumbs = box(bar.querySelector('.crumbs'));
     const present = bar.querySelector('.present');
+    const stack = bar.querySelector('.ring-stack');
     return {
       width: bar.clientWidth,
       overflow: bar.scrollWidth - bar.clientWidth,
       drop: bar.dataset.drop ?? '',
       title: Math.round(box(bar.querySelector('.crumbs > :last-child')).width),
-      // How far the crumbs run under the chips (0 or less: they don’t).
+      titleFull: full(bar.querySelector('.crumbs > .title')),
+      projectFull: full(bar.querySelector('.crumbs > .crumb.up')),
+      // How far the crumbs run under the rings (0 or less: they don’t).
       overlap: present ? Math.round(crumbs.right - box(present).left) : 0,
-      chips: [...bar.querySelectorAll('.present .who-chip')].map((c) => {
-        const ring = box(c.querySelector('pb-ring'));
-        return {
-          name: c.querySelector('b').textContent,
-          ring: ring.width > 0 && ring.left >= 0 && ring.right <= innerWidth,
-          handle: shown(c.querySelector('b')),
-          state: shown(c.querySelector('.who-state')),
-          model: shown(c.querySelector('.who-model')),
-          effort: shown(c.querySelector('.who-effort')),
-        };
-      }),
+      // Each agent’s ring button, shown on its own, or folded into the stack.
+      rings: [...bar.querySelectorAll('.present .ring-btn')].map((b) => ({
+        shown: shown(b),
+        name: b.querySelector('pb-ring svg')?.getAttribute('aria-label') ?? '',
+        popup: b.getAttribute('aria-haspopup'),
+      })),
+      stack: stack ? { shown: shown(stack), rings: stack.querySelectorAll('pb-ring').length } : null,
     };
   })()`);
 const fitted = async () => {
@@ -342,15 +346,38 @@ const fitted = async () => {
 };
 const report = (label, m) =>
   console.log(
-    `        ${label}: ${m.width} px, overflow ${m.overflow} px, title ${m.title} px, dropped “${m.drop}”, shown: ${m.chips
-      .map((c) => `${c.name}[${['ring', 'handle', 'state', 'model', 'effort'].filter((k) => c[k]).join(' ')}]`)
-      .join(' ')}`,
+    `        ${label}: ${m.width} px, overflow ${m.overflow} px, title ${m.title} px, dropped “${m.drop}”, rings ${m.rings.filter((r) => r.shown).length}/${m.rings.length}${m.stack?.shown ? ' (folded)' : ''}`,
   );
+const corpusPlanning = Object.values(store.state.threads).find((t) => t.title === 'Corpus planning');
+
+for (const theme of ['light', 'dark'])
+  await check(`#105 a room with two agents at 1280 px (${theme}): the title and the project show in full, with a labeled ring for each agent`, async () => {
+    await page.size(1280, 900, { theme });
+    try {
+      await open(`#/t/${corpusPlanning.id}`);
+      const m = await fitted();
+      report(`1280 px, ${theme}`, m);
+      assert.equal(m.overflow, 0, 'The top bar overflows');
+      assert.equal(m.drop, '', `The top bar dropped “${m.drop}”`);
+      assert.ok(m.projectFull, 'The project isn’t shown in full');
+      assert.ok(m.titleFull, 'The conversation’s title isn’t shown in full');
+      assert.ok(m.overlap <= 0, `The crumbs run ${m.overlap} px under the rings`);
+      assert.equal(m.rings.length, 2);
+      // Each ring’s accessible label is the agent’s name and state, and it opens the agent’s quick panel.
+      for (const r of m.rings) {
+        assert.ok(r.shown, 'A ring isn’t on screen');
+        assert.match(r.name, /^@(indexer|researcher): Idle, \d+% of context used$/);
+        assert.equal(r.popup, 'dialog');
+      }
+    } finally {
+      await page.size(1280, 900);
+    }
+  });
 
 for (const theme of ['light', 'dark'])
   for (const width of [1280, 375])
     await check(
-      `#72 a room with four agents at ${width} px (${theme}): no overflow, every ring shows, and the facts stay in the card and the menu`,
+      `#72 a room with four agents at ${width} px (${theme}): no overflow, every agent is reachable from the top bar, and the facts stay in the card and the menu`,
       async () => {
         await page.size(width, width < 768 ? 812 : 900, { theme });
         try {
@@ -358,11 +385,14 @@ for (const theme of ['light', 'dark'])
           const m = await fitted();
           report(`${width} px, ${theme}`, m);
           assert.equal(m.overflow, 0, 'The top bar overflows');
-          assert.ok(m.overlap <= 0, `The crumbs run ${m.overlap} px under the chips`);
-          assert.equal(m.chips.length, 4);
-          for (const c of m.chips) assert.ok(c.ring, `${c.name}’s ring isn’t on screen`);
-          if (width === 375) for (const c of m.chips) assert.ok(!c.state && !c.model, `${c.name}’s state or model still shows at 375 px`);
-          // What a chip dropped is in the card and the conversation’s menu, as text on screen.
+          assert.ok(m.overlap <= 0, `The crumbs run ${m.overlap} px under the rings`);
+          assert.equal(m.rings.length, 4);
+          // Every ring shows, or they’re folded into one stack that shows them all.
+          if (m.stack?.shown) assert.equal(m.stack.rings, 4);
+          else for (const r of m.rings) assert.ok(r.shown, `${r.name}’s ring isn’t on screen`);
+          for (const r of m.rings) assert.match(r.name, /^@\w+: Idle, \d+% of context used$/);
+          if (width === 1280) assert.equal(m.drop, '', `The top bar dropped “${m.drop}” at 1280 px`);
+          // What it runs with is in the conversation’s menu and the card, as text on screen.
           await page.evaluate(`document.querySelector('header.topbar #conversation-actions').click()`);
           await page.waitFor(`document.querySelector('.menu')`);
           const line = `[...document.querySelectorAll('.menu button.mi')].find((b) => b.innerText.includes('@indexer'))`;
@@ -384,47 +414,43 @@ for (const theme of ['light', 'dark'])
       },
     );
 
-await check('#72 with room to spare, nothing drops: one agent at 1280 px shows its state, model and effort', async () => {
+await check('#60 with one agent at 1280 px, its row shows its state, model and effort, and the top bar drops nothing', async () => {
   const dm = Object.values(store.state.threads).find((t) => t.title === 'Index the shelf');
   await open(`#/t/${dm.id}`);
   const m = await fitted();
   report('one agent, 1280 px', m);
   assert.equal(m.drop, '');
-  assert.deepEqual(
-    m.chips.map((c) => [c.name, c.handle, c.state, c.model, c.effort]),
-    [['@indexer', true, true, true, true]],
-  );
+  assert.ok(m.titleFull && m.projectFull, 'The title or the project isn’t shown in full');
+  assert.equal(await seen(row('indexer')), '@indexer · idle Opus 5.5 · medium effort');
 });
 
-await check('#72 the top bar refits when a chip’s words or the window change', async () => {
+await check('#72 the top bar refits when the window changes, and a state word changing doesn’t move it', async () => {
   await open(`#/t/${room.id}`);
-  const narrow = await fitted();
-  // Just wide enough for everything while every agent is idle.
-  await page.size(WIDE, 900);
-  assert.equal((await fitted()).drop, '');
-  const spare = await page.evaluate(
-    `(() => { const b = document.querySelector('header.topbar'); return b.querySelector('.top-actions').getBoundingClientRect().left - b.querySelector('#conversation-actions').getBoundingClientRect().right - 12; })()`,
-  );
-  const snug = WIDE - Math.floor(spare) + 8;
-  await page.size(snug, 900);
-  const idle = await fitted();
-  report(`${snug} px, all idle`, idle);
-  assert.equal(idle.drop, '', `Something dropped at ${snug} px`);
-  // “· calling tools” is longer than “· idle”: the status words drop, and nothing overflows.
+  const wide = await fitted();
+  assert.equal(wide.drop, '');
+  // “· calling tools” is longer than “· idle”; it’s in the sidebar, so the top bar stays as it was.
   const all = ['librarian', 'indexer', 'researcher', 'critic'];
   for (const handle of all) rt.updateSession(sessionOf(handle).id, { state: 'tool', currentStep: 'Working' });
-  await page.waitFor(`[...document.querySelectorAll('header.topbar .who-state')].every((w) => w.textContent === '· calling tools')`);
+  await page.waitFor(`${seenText(row('indexer'))}?.startsWith('@indexer · calling tools')`, { label: 'the row to say “calling tools”' });
   const busy = await fitted();
-  report(`${snug} px, all calling tools`, busy);
-  assert.equal(busy.overflow, 0, 'The top bar overflows once the words got longer');
-  assert.equal(busy.drop, 'state');
-  // Idle again, they come back.
+  assert.equal(busy.overflow, 0);
+  assert.equal(busy.drop, '');
+  assert.equal(busy.title, wide.title);
   for (const handle of all) rt.updateSession(sessionOf(handle).id, { state: 'idle', currentStep: '' });
-  await page.waitFor(`[...document.querySelectorAll('header.topbar .who-state')].every((w) => w.textContent === '· idle')`);
-  assert.equal((await fitted()).drop, '');
-  // And back to a narrow window.
-  await page.size(1280, 900);
-  assert.deepEqual(await fitted(), narrow);
+  await page.waitFor(`${seenText(row('indexer'))}?.startsWith('@indexer · idle')`);
+  // Narrow, it drops in order, and wide again, it brings everything back.
+  await page.size(375, 812);
+  try {
+    const narrow = await fitted();
+    report('375 px', narrow);
+    assert.equal(narrow.overflow, 0);
+    assert.ok(narrow.drop.startsWith('crumb'), `It dropped “${narrow.drop}”, not the project crumb first`);
+  } finally {
+    await page.size(1280, 900);
+  }
+  const back = await fitted();
+  assert.equal(back.drop, '');
+  assert.equal(back.title, wide.title);
 });
 
 await page.close();

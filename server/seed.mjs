@@ -148,5 +148,6 @@ export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = fal
   rt.createThread({ projectId: corpus.id, title: 'Corpus planning', personaIds: [P('indexer'), P('researcher')] });
   rt.createThread({ projectId: research.id, title: 'ReAct, step by step', personaIds: [P('researcher')] });
   rt.createThread({ projectId: research.id, title: 'Agent memory papers', personaIds: [P('researcher')] });
+  rt.createThread({ projectId: research.id, title: 'Citation fixes', personaIds: [P('researcher')] });
   return true;
 }

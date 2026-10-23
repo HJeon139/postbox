@@ -108,8 +108,9 @@ await check('#69 an older open block shows “1 open confirmation”, not needs-
     block: { id: 'old-ask', type: 'confirm', version: 1, fallback: 'x', statement: 'Rename them?', confirmLabel: 'Rename' },
   });
   await open(`#/t/${t.id}`);
-  const label = `${q('header.topbar [data-open-asks]')}`;
-  await page.waitFor(`${label} && !${label}.hidden`, { label: 'the top bar’s open-blocks button' });
+  // In @indexer’s row in the sidebar’s Agents section (#105).
+  const label = `${q(`.rail .agent-row [data-open-asks="${se.id}"]`)}`;
+  await page.waitFor(`${label} && !${label}.hidden`, { label: 'the agent row’s open-blocks button' });
   assert.equal(await page.evaluate(`${label}.textContent`), '1 open confirmation');
   assert.equal(store.state.sessions[se.id].needs, null);
   await click(label);
