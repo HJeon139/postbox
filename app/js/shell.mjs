@@ -10,7 +10,7 @@ import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
-import { navigate, openMenu, route, toast, undoToast } from './ui.mjs';
+import { menuAnchor, navigate, openMenu, route, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
 
@@ -572,6 +572,12 @@ export function mountOverview({ archived = false } = {}) {
   };
   paint();
   let t = 0;
+  // A card’s change re-sorts the columns a moment later, but not while a menu opened from a card is open: the
+  // card would move out from under the menu and the pointer, and a second click on its ⋯ would miss (#29).
+  const resort = () => {
+    if (grid.contains(menuAnchor())) t = setTimeout(resort, 300);
+    else paint();
+  };
   const off = client.on((ch) => {
     if (!['session', 'thread', 'load', 'remove', 'project', 'app', 'persona'].includes(ch.type)) return;
     if (ch.type === 'session') {
@@ -579,13 +585,19 @@ export function mountOverview({ archived = false } = {}) {
       if (node) {
         updateCard(node, ch.data);
         clearTimeout(t);
-        t = setTimeout(paint, 300);
+        t = setTimeout(resort, 300);
         return;
       }
     }
     paint();
   });
-  return { el, destroy: off };
+  return {
+    el,
+    destroy() {
+      off();
+      clearTimeout(t);
+    },
+  };
 }
 
 /**

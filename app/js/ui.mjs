@@ -233,6 +233,9 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
 let openMenuEl = null;
 /** @type {(() => HTMLElement | null) | null} */
 let openAnchor = null;
+/** The control the open menu belongs to, or null when no menu is open. */
+export const menuAnchor = () => (openMenuEl ? (openAnchor?.() ?? null) : null);
+
 export function closeMenu() {
   openMenuEl?.();
   openMenuEl = null;
