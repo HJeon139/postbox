@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.11.0 (2026-10-23)
+
+### Features
+
+- **package:** install and run Postbox as an npm package
+- **server:** keep the person's data and media in ~/.postbox
+
 ## 0.10.2 (2026-10-23)
 
 ### Fixes
