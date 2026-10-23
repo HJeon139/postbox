@@ -287,8 +287,14 @@ try {
       await page.evaluate(ways[1][2]);
       await sleep(300);
     }
-    // Its top at a third of the window, clear of the top bar and the composer.
-    await page.evaluate(`${scroller}.scrollBy(0, ${frameOf('Still')}.getBoundingClientRect().top - innerHeight / 3 - ${i === 0 ? SHIFT : 0})`);
+    // Its top at a third of the window, clear of the top bar and the composer. When content above it changes, the
+    // change is just below the middle of the window: Postbox holds still the message you read there (#88), so the
+    // app moves only when it’s below that.
+    await page.evaluate(
+      i === 0
+        ? `${scroller}.scrollBy(0, ${frameOf('Still')}.getBoundingClientRect().top - innerHeight / 3 - ${SHIFT})`
+        : `${scroller}.scrollBy(0, document.getElementById('pb-spacer').getBoundingClientRect().top - innerHeight / 2 - 24)`,
+    );
     await sleep(300);
     const rest = await page.evaluate(
       `(() => { const b = ${frameOf('Still')}.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + 60 - ${i === 0 ? 0 : SHIFT} }; })()`,
