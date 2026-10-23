@@ -25,7 +25,7 @@ flowchart LR
   end
   subgraph w5["Wave 5 (next)"]
     v["Visual consistency: #8 + #181, #183, #116, #182"]
-    rv["Review block: #179"]
+    rv["Review block: #179, #133"]
     ap["Apps: #36, #7 + #86 + #122, #44, #37, #87"]
     ck["Checks: #89, #95, #102"]
     be["Backends: #118, #136, #117, #167"]
@@ -45,13 +45,13 @@ flowchart LR
 | 4 | Install | [w4-install.md](w4-install.md) | #90, #157 (release blockers) | 4750–4799, 9950–9999 | reviewing |
 | 4 | Agent activity | [w4-agent-activity.md](w4-agent-activity.md) | #73 (elements 1–3 and 7), #129’s rest | 4800–4849, 10100–10149 | reviewing |
 | 5 | Visual consistency | to write | #8 with #181 (what amber means), #183, #116; #182 if time allows | — | — |
-| 5 | Review block | to write | #179, with selection comments | — | — |
+| 5 | Review block | to write | #179, with selection comments, and #133: agents comment on a review through the same comment model | — | — |
 | 5 | Apps | to write | #36, #7 with #86 and #122, #44, #37, #87 | — | — |
 | 5 | Checks | to write | #89, #95, #102 | — | — |
 | 5 | Backends | to write | #118, #136, #117’s rest (Codex, OpenCode), #167 | — | — |
 | 5 | Attachments | to write | #85 | — | — |
 | — | Needs a decision first | — | #9 (a worktree per conversation), #84, #120 | — | — |
-| — | Backlog | — | #11, #13, #14, #15, #16, #21, #28, #41, #76, #99, #100, #103, #107, #111, #113, #115, #131, #133, #134, #177 | — | — |
+| — | Backlog | — | #11, #13, #14, #15, #16, #21, #28, #41, #76, #99, #100, #103, #107, #111, #113, #115, #131, #134, #177 | — | — |
 
 **Wave 4’s overlaps:**
 - **Blocks and supervision:** #106 clears `needs` through the existing paths, and the supervision session owns how the overview and the sidebar draw needs-you.
