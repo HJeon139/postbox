@@ -47,7 +47,7 @@ const KIRO_PERMISSIONS = {
 };
 export const defaultBackend = () => BACKENDS.map(([id]) => id).find((id) => (client.config.adapters ?? []).includes(id)) ?? 'mock';
 
-function seg(label, options, value, onPick, { disabled = () => false, titleOf = () => null } = {}) {
+function seg(label, options, value, onPick) {
   return h(
     'div.seg',
     { role: 'radiogroup', 'aria-label': label },
@@ -58,8 +58,6 @@ function seg(label, options, value, onPick, { disabled = () => false, titleOf = 
           type: 'button',
           role: 'radio',
           'aria-checked': String(value === id),
-          disabled: disabled(id),
-          title: titleOf(id),
           onclick: () => onPick(id),
         },
         name,
@@ -204,26 +202,38 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
   const real = st.backend !== 'mock';
   const perm = PERMISSIONS.find(([id]) => id === st.permissionMode) ?? PERMISSIONS[0];
   return [
+    // A dropdown, as Effort is: four backends side by side wrapped their names onto two lines in a half-width
+    // field. One this computer can’t run stays in the list, disabled, so you can see it exists.
     h(
       'div.field',
-      h('span.label', 'Runs on'),
+      fixedBackend ? h('span.label', 'Runs on') : h('label.label', { for: `${idp}-b` }, 'Runs on'),
       fixedBackend
         ? h('span', BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend)
-        : seg(
-            'Runs on',
-            BACKENDS,
-            st.backend,
-            (id) => {
-              st.backend = id;
-              if (id !== 'mock' && (!st.model || st.model === 'mock')) st.model = client.config.defaultModel ?? MODELS[0];
-              paint();
-            },
-            {
-              disabled: (id) => !available.has(id),
-              titleOf: (id) => (available.has(id) ? null : 'Not available on this computer. See README, “Run real agents”.'),
-            },
+        : h(
+            'div.select-wrap',
+            h(
+              'select.select',
+              {
+                id: `${idp}-b`,
+                'aria-describedby': `${idp}-b-help`,
+                onchange: (e) => {
+                  const id = e.target.value;
+                  st.backend = id;
+                  if (id !== 'mock' && (!st.model || st.model === 'mock')) st.model = client.config.defaultModel ?? MODELS[0];
+                  paint();
+                },
+              },
+              BACKENDS.map(([id, name]) =>
+                h(
+                  'option',
+                  { value: id, selected: st.backend === id, disabled: !available.has(id) },
+                  available.has(id) ? name : `${name} (not on this computer)`,
+                ),
+              ),
+            ),
+            icon('down'),
           ),
-      h('span.help', BACKENDS.find(([id]) => id === st.backend)?.[2] ?? ''),
+      h('span.help', { id: `${idp}-b-help` }, BACKENDS.find(([id]) => id === st.backend)?.[2] ?? ''),
     ),
     real
       ? h(
