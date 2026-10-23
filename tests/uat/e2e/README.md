@@ -28,45 +28,54 @@ sequenceDiagram
 - **The driver** ([`tools/uat/driver.mjs`](../../../tools/uat/driver.mjs)) uses the UI the way a person does, with real clicks, key presses, typing and the file picker. It reads only what’s on screen, and reaches inside agent apps’ sandboxed frames to read and click them.
 - **The tester** ([`tools/uat/tester.mjs`](../../../tools/uat/tester.mjs)) plays the person in the scenario. It sees each step’s changes, with screenshots, and judges them: broken UI, errors, anything hidden or unreadable, and agents doing the wrong thing. It picks the next action, and matches what it finds to open issues. It runs on your signed-in `claude` CLI, isolated from your own Claude Code settings.
 - **What waits on the person.** Every step, the runner lists what “needs you” would count: blocks that ask and aren’t answered (review drafts included, whatever revision they’re on), wake requests, proposals, permission cards and failed turns. The tester answers them before it moves to the next phase or finishes. If it tries to move on, or to wait while no agent works, the runner holds the action once and says what’s still waiting. A review is answered with the `review` action: approve, or request changes with at least one comment on a line. The report lists anything left waiting at the end.
+- **While a turn runs.** The runner waits for the agents to finish before each step, so a `send`, `thread`, `act` or `review` can carry an `interrupt`: once an agent is working, the run lets it work for a number of seconds, then presses Stop, or writes a message and presses Send now on it. After Stop, it answers Postbox’s question about the agent’s background jobs (“Stop it too” or “Keep running”, #126) if one appears, and the `jobs` action answers one left on screen. A wake request is a card, answered with `act` and its button.
+- **Checks while agents work.** `background-step-closed` and `two-processes-one-session` also run every 15 seconds while an agent works, and during an interrupt’s wait: on `main`, a turn with a background command lasts until the command ends, so by the next step the stream has reported its end and the step’s “done” looks right again.
+- **What the tester read.** Before it answers a block, the runner checks that the block is still the revision the tester read. If an agent changed it meanwhile, it doesn’t answer, and tells the tester to read it again, as a person would see it change. It notes the revision it answered, for `approval-for-other-revision`. So that check’s “applied to another revision” half covers only the seconds the runner takes to answer; its other half, an update that erased an unread answer, covers #123’s own timeline.
 - **Settings.** The `settings` action opens Settings › Personas and edits an agent, and with `permissions` its permissions panel too. The tester gets their text, what their fields hold (backend, model, checkboxes) and screenshots, and the run closes them after.
 - **The checks** ([`tools/uat/checks.mjs`](../../../tools/uat/checks.mjs)) catch defect classes deterministically from:
   - Postbox’s state and the page
-  - every agent turn’s raw stream
+  - every agent turn’s raw stream, with when its process started and last wrote
+  - Postbox’s events for items and sessions, in order, followed from the server’s event stream (`tools/uat/history.mjs`): what was answered and updated when, which the state alone doesn’t keep
   - the agents’ Claude Code transcripts
   - probes of the UI
 
 ## The checks, and what they reproduce
 
-| Check                        | Issue | Looks for                                                                                                                                                                                     |
-| ---------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| fresh-install-agents         | #43   | A fresh install seeding use-case agents, or more than one agent or a sample project (from `server/seed.mjs`)                                                                                  |
-| hidden-turn-error            | #61   | A failed turn whose error gives no reason                                                                                                                                                     |
-| refusal-without-card         | #65   | Calls Claude Code refused (the result’s `permission_denials`) with no card in the conversation                                                                                                |
-| settings-leak                | #57   | The person’s output style, or a line of their global CLAUDE.md, in agent turns                                                                                                                |
-| tool-not-allowed             | #5    | A real agent’s tools include one its persona doesn’t tick, or one that acts outside Postbox (SendMessage, CronCreate…)                                                                        |
-| mcp-servers-missing          | #59   | The person’s MCP servers absent from the agents’ `init`                                                                                                                                       |
-| mcp-side-channel             | #54   | A Bash command posting to `/mcp?session=`                                                                                                                                                     |
-| prose-instead-of-block       | #63   | A turn ending in questions or numbered options, or a long draft, with no choice, form, review or confirm block. It also counts the replies that used the right block (M1’s exit check, below) |
-| lint-on-person-term          | #55   | A lint turn defining a term the person wrote                                                                                                                                                  |
-| topic-relints-parent-term    | #56   | A topic thread re-defining its conversation’s terms                                                                                                                                           |
-| diagram-error-not-fed-back   | #46   | A diagram that failed to draw                                                                                                                                                                 |
-| app-shows-missing-data       | #47   | An app whose only content is a missing-data message                                                                                                                                           |
-| unreadable-app-marks         | #53   | Most SVG marks under 4 px, or labels under 9 px, inside an app                                                                                                                                |
-| status-colors-for-categories | #52   | App code coloring with `--good`/`--alert` and none of `--s1`…`--s8`                                                                                                                           |
-| updated-app-far-up           | #49   | A new app version still far above the latest message                                                                                                                                          |
-| version-menu-overflow        | #36   | An app with 15 or more versions                                                                                                                                                               |
-| check-starved                | #37   | An app check that timed out                                                                                                                                                                   |
-| full-screen-noop             | #45   | Expand leaving the app frame the same size                                                                                                                                                    |
-| image-not-shown              | #48   | An attached image shown as a file chip                                                                                                                                                        |
-| review-table-raw             | #62   | A Markdown review block with a table                                                                                                                                                          |
-| stale-progress               | #58   | A progress step still running after its agent stopped                                                                                                                                         |
-| silent-while-working         | #68   | Agents thinking or calling tools with no working row on screen                                                                                                                                |
-| model-not-shown              | #60   | No model name in the top bar                                                                                                                                                                  |
-| kiro-settings-leak           | #57   | An Isolated Kiro agent’s turn that loaded steering files (its stream’s `steering_inclusion`)                                                                                                  |
-| kiro-mcp-leak                | #57   | An Isolated Kiro agent’s call to an MCP server other than Postbox’s that completed, such as one a managed install adds by itself                                                              |
-| kiro-refusal-not-shown       | #65   | A call Kiro refused (an ask no one could answer headless, or a deny rule) with no refused step under its id in the conversation                                                               |
-| kiro-tool-not-allowed        | #5    | A Kiro command or fetch that ran when the persona doesn’t tick `shell` or `web.fetch`                                                                                                         |
-| failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                                                                                                     |
+| Check                        | Issue | Looks for                                                                                                                                                                                                                                       |
+| ---------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| fresh-install-agents         | #43   | A fresh install seeding use-case agents, or more than one agent or a sample project (from `server/seed.mjs`)                                                                                                                                    |
+| hidden-turn-error            | #61   | A failed turn whose error gives no reason                                                                                                                                                                                                       |
+| refusal-without-card         | #65   | Calls Claude Code refused (the result’s `permission_denials`) with no card in the conversation                                                                                                                                                  |
+| settings-leak                | #57   | The person’s output style, or a line of their global CLAUDE.md, in agent turns                                                                                                                                                                  |
+| tool-not-allowed             | #5    | A real agent’s tools include one its persona doesn’t tick, or one that acts outside Postbox (SendMessage, CronCreate…)                                                                                                                          |
+| mcp-servers-missing          | #59   | The person’s MCP servers absent from the agents’ `init`                                                                                                                                                                                         |
+| mcp-side-channel             | #54   | A Bash command posting to `/mcp?session=`                                                                                                                                                                                                       |
+| prose-instead-of-block       | #63   | A turn ending in questions or numbered options, or a long draft, with no choice, form, review or confirm block. It also counts the replies that used the right block (M1’s exit check, below)                                                   |
+| lint-on-person-term          | #55   | A lint turn defining a term the person wrote                                                                                                                                                                                                    |
+| topic-relints-parent-term    | #56   | A topic thread re-defining its conversation’s terms                                                                                                                                                                                             |
+| diagram-error-not-fed-back   | #46   | A diagram that failed to draw                                                                                                                                                                                                                   |
+| app-shows-missing-data       | #47   | An app whose only content is a missing-data message                                                                                                                                                                                             |
+| unreadable-app-marks         | #53   | Most SVG marks under 4 px, or labels under 9 px, inside an app                                                                                                                                                                                  |
+| status-colors-for-categories | #52   | App code coloring with `--good`/`--alert` and none of `--s1`…`--s8`                                                                                                                                                                             |
+| updated-app-far-up           | #49   | A new app version still far above the latest message                                                                                                                                                                                            |
+| version-menu-overflow        | #36   | An app with 15 or more versions                                                                                                                                                                                                                 |
+| check-starved                | #37   | An app check that timed out                                                                                                                                                                                                                     |
+| full-screen-noop             | #45   | Expand leaving the app frame the same size                                                                                                                                                                                                      |
+| image-not-shown              | #48   | An attached image shown as a file chip                                                                                                                                                                                                          |
+| review-table-raw             | #62   | A Markdown review block with a table                                                                                                                                                                                                            |
+| stale-progress               | #58   | A progress step still running after its agent stopped                                                                                                                                                                                           |
+| silent-while-working         | #68   | Agents thinking or calling tools with no working row on screen                                                                                                                                                                                  |
+| model-not-shown              | #60   | No model name in the top bar                                                                                                                                                                                                                    |
+| kiro-settings-leak           | #57   | An Isolated Kiro agent’s turn that loaded steering files (its stream’s `steering_inclusion`)                                                                                                                                                    |
+| kiro-mcp-leak                | #57   | An Isolated Kiro agent’s call to an MCP server other than Postbox’s that completed, such as one a managed install adds by itself                                                                                                                |
+| kiro-refusal-not-shown       | #65   | A call Kiro refused (an ask no one could answer headless, or a deny rule) with no refused step under its id in the conversation                                                                                                                 |
+| kiro-tool-not-allowed        | #5    | A Kiro command or fetch that ran when the persona doesn’t tick `shell` or `web.fetch`                                                                                                                                                           |
+| two-processes-one-session    | #126  | Two turns of one Claude Code session whose streams overlap in time, or Postbox tool calls a stopped turn’s process made after Stop that Postbox didn’t refuse                                                                                   |
+| background-step-closed       | #126  | A background Bash call (`run_in_background`, or moved to the background) whose step shows done while its stream hasn’t reported the job’s end; with #126’s fix, while the session’s job record still says it runs (#129’s part that #126 takes) |
+| duplicate-block-id           | #125  | One session with two blocks that have the same id in a conversation                                                                                                                                                                             |
+| approval-for-other-revision  | #123  | An answer applied to a revision other than the one the person was answering, or an update that reopened an answered block before the agent had a turn to read the answer                                                                        |
+| wake-text-clipped            | #108  | An allowed wake whose delivered message is shorter than what the agent sent                                                                                                                                                                     |
+| failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                                                                                                                                                       |
 
 When a defect is filed from a run, add a check for it here if it can be caught deterministically, so later runs keep watching for it.
 
@@ -74,12 +83,24 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 
 - [SciFact: claims, abstracts and retrieval](scenarios/scifact.md)
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
-- [Mixed room: a Claude Code agent and a Kiro CLI agent](scenarios/mixedroom.md) ([#117](https://github.com/HJeon139/postbox/issues/117)): the researcher on Claude Code, the critic on the Kiro CLI with a GPT model; options, a second opinion, wakes both ways, and a topic thread where the Kiro agent is refused a command
-- [Codex: persistent turns, MCP and a topic fork](scenarios/codex.md) ([#144](https://github.com/HJeon139/postbox/issues/144)): resume a Codex app-server thread, call a Postbox tool, branch a topic thread, approve a command and stop a long turn
+- [P0 hotfixes](scenarios/p0.md) (#108, #123, #125, #126): two Claude Code agents in a room. Phase 1 has them send each other long lists through more than three wakes, so the allow card appears (#108). Phase 2 has a draft one agent revises while the other reviews it and you answer, with a Send now mid-revision (#123, #125, and #126’s original chain). Phase 3 has a background command, then Stop with Keep running, Stop with Stop it too, and Send now (#126).
+- [Work room: real changes, the agents in the sidebar, and the right pane](scenarios/workroom.md): @researcher changes real files and @critic reviews them, through the Agents section and the Work view in the right pane. Its plan is [plan-agents-and-work.md](../plan-agents-and-work.md).
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)
   - [Paper survey: a job that takes minutes](scenarios/papersurvey.md)
+
+### Compatibility scenarios
+
+A scenario that puts an agent on a backend other than Claude’s is a **compatibility run**. That’s the Kiro CLI today, and agy and Codex as they’re added. A compatibility run checks that the harness still works with Postbox, and it spends that harness’s credits. So it’s never part of a regular pass, such as a wave’s integration run. Run one occasionally, or when a change touches that backend’s adapter, with `--compat`. Without the flag, the runner refuses the scenario and says why.
+- [Mixed room: a Claude Code agent and a Kiro CLI agent](scenarios/mixedroom.md) ([#117](https://github.com/HJeon139/postbox/issues/117)): the researcher on Claude Code, the critic on the Kiro CLI; options, a second opinion, wakes both ways, and a topic thread where the Kiro agent is refused a command. Its model must be one your Kiro account offers (`kiro-cli chat --list-models`).
+
+- [Codex: persistent turns, MCP and a topic fork](scenarios/codex.md) ([#144](https://github.com/HJeon139/postbox/issues/144)): resume a Codex app-server thread, call a Postbox tool, branch a topic thread, approve a command and stop a long turn. Needs a signed-in Codex CLI.
+
+```bash
+node tools/uat-run.mjs --scenario mixedroom --compat
+node tools/uat-run.mjs --scenario codex --compat
+```
 
 A scenario is Markdown:
 - a title
@@ -130,6 +151,14 @@ Options:
 - `--port`, `--chrome-port`, for two runs at once
 - `--phase` (start at that phase, to rerun a later one; the tester sets up what it needs first)
 
+#126 showed up where `claude` is a launcher that starts the CLI as its child and doesn’t pass SIGINT on. Where `claude` is the CLI itself, Stop reaches it either way, so the P0 run puts the launcher in front of it:
+
+```bash
+POSTBOX_CLAUDE_BIN="$PWD/tools/uat/claude-launcher.mjs" node tools/uat-run.mjs --scenario p0 --file no
+```
+
+Give the launcher’s full path: the tester and the agents start in other folders, so a relative path fails with ENOENT before the first step.
+
 A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. A scenario with Kiro agents also needs the Kiro CLI, signed in; their turns use Kiro credits, which the report lists beside the agents’ cost. It uses real usage: a data-heavy agent turn can cost a few dollars.
 
 Each run writes to `uat-runs/<time>-<scenario>/`, which git ignores:
@@ -138,6 +167,7 @@ Each run writes to `uat-runs/<time>-<scenario>/`, which git ignores:
 - `run.log`
 - `shots/`: screenshots of every block and app the tester saw
 - `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/`
+- `events.jsonl`: Postbox’s events for items and sessions, which `--recheck` reads (Postbox’s own log in `data/` drops its early segments once a snapshot covers them)
 - `data/`: Postbox’s data, so a run can be reopened with `node server/index.mjs --data uat-runs/<run>/data`
 
 File what a run finds with the bug template in the [UAT README](../README.md), after checking each finding against its screenshot.

@@ -1,12 +1,16 @@
 // The MCP server: Postbox’s UI tools over JSON-RPC 2.0 (MCP’s Streamable HTTP transport, JSON responses).
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
-//   POST <origin>/mcp?session=<postbox session id>
+//   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, show_app, update_app, define_term, propose_agent, schedule_wake,
 // wake_agent and corpus_search. Every tool returns at once; when you answer a block, your answer reaches
 // the agent later as a new message carrying { blockId, action, values }.
 //
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
 // a risky tool call in “ask” mode, and it waits for your answer on a card in the conversation.
+//
+// Each turn Postbox starts gets its own token in the URL. A call with a token that isn’t the session’s running turn’s,
+// such as one from a turn you stopped whose process hadn’t exited yet, is refused, and nothing of it reaches the
+// conversation (#126). A call without one is from an agent you connected yourself (Settings shows the endpoint).
 
 import { limitText as n, PALETTES } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
@@ -22,12 +26,12 @@ const blockSchema = {
 export const TOOL_DEFS = [
   {
     name: 'show_block',
-    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the conversation. Returns at once; the person’s answer arrives later as a message. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')}, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters.`,
+    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the conversation. Its id names that one block in this conversation: showing an id you already showed is refused, so change a block with update_block, or pick a new id. Returns at once; the person’s answer arrives later as a message. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')}, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {
     name: 'update_block',
-    description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form or confirm (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, keeps the block answered, and changes nothing else. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
+    description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form or confirm (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, keeps the block answered, and changes nothing else. Each update makes the block’s next revision, and the person’s answer names the revision it’s for. An update over an answer you haven’t read yet (it waits until your turn ends), whether it asks again or sets outcome, is refused, and the reply says what they answered: read it, then update. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {
@@ -129,17 +133,18 @@ export const TOOL_DEFS = [
 
 /**
  * Handles one JSON-RPC message (or a batch). Returns the response body, or null for notifications.
- * @param {import('./runtime.mjs').Runtime} rt
+ * @param {import('./runtime.mjs').Runtime} rt @param {string|null} sessionId @param {any} body
+ * @param {string|null} [turnToken]  the turn’s token from the URL, if it carried one
  */
-export async function handleMcp(rt, sessionId, body) {
+export async function handleMcp(rt, sessionId, body, turnToken = null) {
   if (Array.isArray(body)) {
-    const out = (await Promise.all(body.map((m) => one(rt, sessionId, m)))).filter(Boolean);
+    const out = (await Promise.all(body.map((m) => one(rt, sessionId, m, turnToken)))).filter(Boolean);
     return out.length ? out : null;
   }
-  return one(rt, sessionId, body);
+  return one(rt, sessionId, body, turnToken);
 }
 
-async function one(rt, sessionId, msg) {
+async function one(rt, sessionId, msg, turnToken) {
   if (msg?.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
     return { jsonrpc: '2.0', id: msg?.id ?? null, error: { code: -32600, message: 'Not a JSON-RPC 2.0 request.' } };
   }
@@ -164,6 +169,8 @@ async function one(rt, sessionId, msg) {
       return reply({ tools: TOOL_DEFS });
     case 'tools/call': {
       if (!rt.s.sessions[sessionId]) return fail(-32602, 'Unknown Postbox session. Connect with /mcp?session=<id>.');
+      if (turnToken !== null && rt.turns.get(sessionId)?.token !== turnToken)
+        return fail(-32001, 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.');
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
       const tools = rt.toolsFor(sessionId, rt.turns.get(sessionId) ?? null);

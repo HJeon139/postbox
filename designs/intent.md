@@ -74,7 +74,7 @@ sequenceDiagram
   M-->>A: block or app
   A-->>U: renders it (fallback text if invalid)
   U->>A: acts in a block or app
-  A->>G: new message carrying { blockId, action, values }
+  A->>G: new message carrying { blockId, revision, action, values }
   G->>M: reply, or update the same block id
 ```
 
@@ -145,6 +145,7 @@ sequenceDiagram
 | Stop ends the reply cleanly and marks it “stopped” | A stopped reply is clearly different from a failed one. |
 | The connection uses server-sent events, shows a visible “Reconnecting…” line, and loses or duplicates nothing | Everything is kept in Postbox’s own store, so it survives a reload. |
 | Stop ends this agent’s turn and its subagents | Agents it woke keep running, each with its own Stop. |
+| Stop reaches every process of the turn, and the agent reads “stopping” until they’ve exited; its next turn waits for that. With background jobs running, Stop asks whether to stop them too; Send now keeps them running. A job that runs on is listed under its reply with its own Stop | Decided in #126 and #129: a turn that only looked stopped ran on beside the next one, and a background job’s step read “done” while it ran for half an hour. Send now is a change of course, not a reason to lose a job’s work. |
 | Each compaction gets a divider that expands to the summary the agent kept | You can see what it might have forgotten. |
 | Turns typed in an attached Claude Code session’s terminal are mirrored, marked “from terminal” | The thread stays the complete record. |
 | Citations are inline markers plus a sources list. A hover card fills a loading bar under its header, then becomes sticky; when the pointer leaves, the same bar counts down before it closes. Keyboard focus works the same way, Enter pins at once and Esc closes | Hover cards don’t flicker, and their links can be clicked. The same cards explain glossary terms. |
@@ -159,9 +160,10 @@ sequenceDiagram
 | Two tiers: catalog blocks and agent-written apps | Feedback needs consistency; explainers and explorers need freedom. |
 | Catalog: `choice`, `form` (with a long-text field), `table`, `progress`, `card`, `confirm`, `image`, `code`, `review`, `app` | Each block is validated against its schema. An invalid block shows its plain-text fallback and the raw JSON, and never breaks the transcript. |
 | Every block has an `id`, `type`, `version`, an optional `title` and a plain-text `fallback`. An unknown type, a bad field or a newer version shows the fallback plus a collapsed “Show the raw block” | Nothing fails silently. |
-| Blocks are append-only, except that sending the same `id` again updates the block in place | A progress list can move on without new copies. |
+| Blocks are append-only, except that `update_block` with the same `id` updates the block in place. Showing an id the agent already showed in the conversation is refused | A progress list can move on without new copies. Refused, not updated, because an answer must belong to one block, and an update can reopen one the person answered (#125). |
 | Apps can read aloud with a local voice (Kokoro), with a transcript that follows along and is always on screen | Decided in Stage 3, for narrated walkthroughs. No audio leaves the computer, and the walkthrough still works without sound. Recipes for it and for Slidev export are in [recipes.md](recipes.md). |
-| When you act in a block, the agent gets one event, `{ blockId, action, values }`; your action shows as a short line in your voice (“Chose: weekly · Monday 9:00”); the block turns read-only and shows your answer | Only a new block, or an update to the same id, can ask again. |
+| When you act in a block, the agent gets one event, `{ blockId, revision, action, values }`; your action shows as a short line in your voice (“Chose: weekly · Monday 9:00”); the block turns read-only and shows your answer | Only a new block, or an update to the same id, can ask again. |
+| An answer is for the revision you saw. If the agent changed the block while you were answering, the answer is refused, your draft stays, and you see what changed, with focus on that notice rather than the button you pressed; an update over an answer the agent hasn’t read yet, asking again or reporting an outcome, is refused | Decided after an agent published a draft on an approval of an earlier one (#123). An approval never lands on text you didn’t see, and your answer never disappears unread. Focus leaves the button so a second press by reflex can’t answer the new text unread. |
 | Links open in a new tab with `rel="noopener"`, URLs are checked, images load only from allowed origins and need alt text, and nothing an agent sends is used as a style or an attribute name | Agent content can’t restyle or script the page. |
 | Adding a catalog component needs an explicit decision | The catalog stays small enough to render consistently and to explain to agents. |
 | Apps run in a sandboxed iframe with no network; data comes only through the host bridge, using tools the agent already holds | Apps run automatically without risk to your files or accounts. |

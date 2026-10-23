@@ -1,0 +1,10 @@
+# ps axww -o pid=,ppid=,pgid=,command= while claude 2.1.296 (pid 69116, in a group of its own) ran a background and a
+# foreground Bash call, recorded for #126 with the stat and elapsed columns dropped and local paths removed. The CLI's own
+# row is abridged. 62253 is an earlier CLI's tool shell, orphaned (ppid 1) when that CLI got SIGKILL.
+62253 1 62253 /bin/zsh -c source /Users/me/.claude/shell-snapshots/snapshot-zsh-1792726045052-2xay56.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'until false; do sleep 40; done' < /dev/null && pwd -P >| /tmp/claude-0167-cwd
+68753 62253 62253 sleep 40
+69116 69040 69116 claude -p --output-format stream-json --include-partial-messages --verbose --model haiku
+69193 69116 69193 /bin/zsh -c source /Users/me/.claude/shell-snapshots/snapshot-zsh-1792726346291-5lxk5d.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'sleep 170; echo '"'"'pbx C'"'"'' < /dev/null && pwd -P >| /tmp/claude-f86f-cwd
+69194 69193 69193 sleep 170
+69282 69116 69282 /bin/zsh -c source /Users/me/.claude/shell-snapshots/snapshot-zsh-1792726346291-5lxk5d.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'until false; do sleep 40; done' < /dev/null && pwd -P >| /tmp/claude-0255-cwd
+69283 69282 69282 sleep 40

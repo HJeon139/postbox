@@ -31,7 +31,9 @@
 //   home of Postbox’s own, which holds nothing but the turn’s agent file, and loads only Postbox’s server. Either way
 //   a .kiro folder in the agent’s working folder still loads, as a project’s settings do for Claude Code.
 // The message goes in as the last argument, after `--`, so one that starts with a dash isn’t read as a flag.
-// Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_KIRO_RECORD=<folder> saves each turn’s raw stream.
+// The CLI runs in its own process group: Stop sends it SIGINT, then SIGKILL if it doesn’t exit, and to every shell it
+// started in a group of its own (server/adapters/process-group.mjs, #126). POSTBOX_KIRO_RECORD=<folder> saves each
+// turn’s raw stream.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -42,6 +44,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
+import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, setupOf } from './setup.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
@@ -476,10 +479,23 @@ export class KiroCliAdapter {
   name = 'kiro-cli';
 
   /**
-   * @param {{ bin?: string, workRoot: string, isolatedHome: string, models?: string[], spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv }} opts
-   *   models: what kiroModels found, offered in the model field
+   * @param {{ bin?: string, workRoot: string, isolatedHome: string, models?: string[], spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv,
+   *           kill?: import('./process-group.mjs').KillFn, listProcesses?: () => Promise<import('./process-group.mjs').Proc[]> }} opts
+   *   models: what kiroModels found, offered in the model field; kill and listProcesses: how Stop signals and finds
+   *   processes, which tests fake
    */
-  constructor({ bin = findKiro(), workRoot, isolatedHome, models = [], spawnImpl = spawn, env = process.env }) {
+  constructor({
+    bin = findKiro(),
+    workRoot,
+    isolatedHome,
+    models = [],
+    spawnImpl = spawn,
+    env = process.env,
+    kill = process.kill,
+    listProcesses: list = listProcesses,
+  }) {
+    this.kill = kill;
+    this.list = list;
     this.capabilities = { ...KIRO_CAPABILITIES, ...(models.length ? { models } : {}) };
     this.bin = bin;
     this.workRoot = workRoot;
@@ -526,17 +542,23 @@ export class KiroCliAdapter {
       return await new Promise((resolve, reject) => {
         let child;
         try {
-          child = this.spawn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+          // Its own process group, so Stop reaches everything it started (#126).
+          child = this.spawn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
         } catch (e) {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
         let stderr = '';
-        /** @type {NodeJS.Timeout|undefined} */
-        let killTimer;
+        const c = child;
+        const exited = new Promise((r) => {
+          c.once('exit', r);
+          c.once('close', r);
+          c.once('error', r);
+        });
+        /** @type {Promise<{ gone: Promise<void> }>|null} */
+        let stopping = null;
         const onAbort = () => {
-          child.kill('SIGINT');
-          killTimer = setTimeout(() => child.kill('SIGKILL'), 3000);
+          stopping = stopTurn(c, { exited, kill: this.kill, list: this.list });
         };
         if (ctx.signal.aborted) onAbort();
         else ctx.signal.addEventListener('abort', onAbort, { once: true });
@@ -573,8 +595,10 @@ export class KiroCliAdapter {
             ctx.saveState({ kiroSessionId: mapper.sessionId });
           }
         });
-        child.on('close', (code) => {
-          clearTimeout(killTimer);
+        let finished = false;
+        const done = (code) => {
+          if (finished) return;
+          finished = true;
           ctx.signal.removeEventListener('abort', onAbort);
           if (mapper.model) ctx.saveState({ model: mapper.model });
           if (ctx.signal.aborted) return resolve({});
@@ -582,6 +606,15 @@ export class KiroCliAdapter {
           if (mapper.error) return reject(new Error(mapper.error));
           if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr)));
           resolve({});
+        };
+        // A stopped turn ends once the CLI’s whole group has exited, as for the Claude backends (#126).
+        const settle = (code) => {
+          if (ctx.signal.aborted && stopping) stopping.then((r) => r.gone).then(() => done(code));
+          else done(code);
+        };
+        child.on('close', settle);
+        child.on('exit', (code) => {
+          if (ctx.signal.aborted) settle(code);
         });
       });
     } finally {
