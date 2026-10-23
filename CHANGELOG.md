@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.13.2 (2026-10-23)
+
+### Fixes
+
+- **adapters:** let a permission card wait a day on the Claude Code CLI
+
 ## 0.13.1 (2026-10-23)
 
 ### Fixes
