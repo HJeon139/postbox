@@ -2,6 +2,7 @@
 
 - persona: A research lead who wants a quick survey of a dozen papers before a planning meeting. Patient while work runs, but wants to know how far along it is without asking. Writes short messages.
 - agents: researcher
+- models: persona
 - project: Agent memory survey
 - conversation: Memory papers survey
 

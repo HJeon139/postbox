@@ -51,6 +51,11 @@ const { values: opt } = parseArgs({
     'turn-timeout': { type: 'string', default: '900' },
     budget: { type: 'string', default: '8' },
     'tester-model': { type: 'string', default: 'claude-sonnet-5-5' },
+    // The agents’ model and effort. A pass checks that Postbox works, and a fast model shows that as well as the
+    // default one does. Scenarios that measure what agents choose say `- models: persona`, and `persona` here keeps
+    // personas.json’s settings for every scenario.
+    'agent-model': { type: 'string', default: 'claude-haiku-5-5' },
+    'agent-effort': { type: 'string', default: 'low' },
     recheck: { type: 'string' },
     // After a run, verify the findings that have no verdict (--verify no skips it), and file the confirmed ones that no
     // open issue covers (--file no verifies without filing).
@@ -200,10 +205,22 @@ async function main() {
         }
       : p;
   };
+  // Claude agents run on the run’s model and effort, unless the scenario or the command line keeps the persona’s. An
+  // agent on another backend keeps the model its scenario names.
+  const fast = (p) => {
+    if (scenario.models === 'persona' || scenario.backends[p.handle]) return p;
+    return {
+      ...p,
+      ...(opt['agent-model'] !== 'persona' ? { model: opt['agent-model'] } : {}),
+      ...(opt['agent-effort'] !== 'persona' ? { effort: opt['agent-effort'] } : {}),
+    };
+  };
   const agents = [
     ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
     ...personas.filter((p) => !scenario.agents.includes(p.handle)),
-  ].map(onBackend);
+  ]
+    .map(fast)
+    .map(onBackend);
   if (opt.release) log('A release run: the release-only backends are on.');
   // Postbox registers the Kiro CLI only when it can run it, and seeding an agent on a backend it doesn’t have fails.
   // The same for the Antigravity CLI, which a release run alone may use (releaseGate). It always runs with the
@@ -223,6 +240,9 @@ async function main() {
     );
   }
   await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
+  // What the agents ran on, for the report: a fast run’s findings about agent choices aren’t the default model’s.
+  const agentModels = agents.map((p) => `@${p.handle} ${p.model ?? 'its default model'}${p.effort ? `, ${p.effort} effort` : ''}`).join('; ');
+  log(`Agents: ${agentModels}.`);
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,
     env: {
@@ -258,6 +278,7 @@ async function main() {
   const findings = new Map(); // key → finding
   const timeline = [];
   const facts = {
+    agentModels,
     state: null,
     threads: [],
     startPersonas: [],
@@ -689,7 +710,7 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
   const credits = kiroCredits(facts.kiroStreams ?? []);
   // Antigravity reports tokens, and its free tier is what a release run spends (#143).
   const tokens = agyTokens(facts.agyStreams ?? []);
-  const usage = `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.`;
+  const usage = `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
   const caught = new Map();
   for (const f of findings) if (f.issue) caught.set(f.issue, [...(caught.get(f.issue) ?? []), f]);
   const { CHECKS } = await import('./uat/checks.mjs');

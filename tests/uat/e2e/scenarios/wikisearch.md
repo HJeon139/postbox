@@ -2,6 +2,7 @@
 
 - persona: A backend engineer adding search to an internal wiki of about 20,000 pages that change daily. Knows databases well and information retrieval barely. Practical, writes short messages, and wants a recommendation but likes to make the call.
 - agents: researcher
+- models: persona
 - project: Wiki search
 - conversation: Picking a search approach
 

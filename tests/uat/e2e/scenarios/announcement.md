@@ -2,6 +2,7 @@
 
 - persona: A product manager announcing the new wiki search to the whole company. Busy, careful about tone and claims, writes short messages, and signs off on anything before it goes out.
 - agents: researcher
+- models: persona
 - project: Launch notes
 - conversation: Wiki search announcement
 

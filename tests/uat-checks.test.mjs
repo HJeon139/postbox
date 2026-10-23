@@ -1272,3 +1272,11 @@ describe('the Agents section, the Work ledger and the right pane (#105, #132, #1
     );
   });
 });
+
+test('a scenario that measures agent choices keeps the personas’ models', () => {
+  const head = (extra) => `# T\n\n- agents: researcher\n${extra}\n\nSummary.\n\n## Phase 1: One\n\nDo it.`;
+  assert.equal(parseScenario(head('- models: persona')).models, 'persona');
+  assert.equal(parseScenario(head('')).models, 'run');
+  for (const f of ['wikisearch', 'announcement', 'papersurvey'])
+    assert.equal(parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${f}.md`, import.meta.url), 'utf8')).models, 'persona', f);
+});
