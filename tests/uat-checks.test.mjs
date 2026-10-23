@@ -54,6 +54,14 @@ test('fresh-install-agents reads what a fresh install seeds, not the run’s age
     }),
   ).find((f) => f.issue === 43);
   assert.equal(found?.evidence, 'Seeded: 2 agents (@librarian, @assistant) and a sample project. Use-case: @librarian.');
+  // Several generic agents and no projects are a fresh install, not a finding.
+  const generic = base({
+    freshInstall: {
+      personas: ['researcher', 'developer', 'critic'].map((handle) => ({ handle, description: 'General.', instructions: '' })),
+      projects: [],
+    },
+  });
+  assert.ok(!issuesOf(generic).includes(43));
 });
 
 test('a clean run has no findings', () => {

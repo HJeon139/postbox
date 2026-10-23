@@ -1,27 +1,49 @@
-// First-run content. A fresh install gets one generic agent and nothing else; --demo gets the book-corpus
-// agents, two projects and a few empty conversations, which the demo, the screenshots and the tests play.
-// Both get the new-agent boilerplates. agents.json in the data folder, if present, seeds the agents
+// First-run content. A fresh install gets three generic agents (a researcher, a developer and a critic) and nothing
+// else; --demo gets the book-corpus agents, two projects and a few empty conversations, which the demo, the screenshots
+// and the tests play. Both get the new-agent boilerplates. agents.json in the data folder, if present, seeds the agents
 // instead, in either mode (see README).
 
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { newId } from './store.mjs';
 
+// Read once, when the module loads: freshInstall() is synchronous, and the UAT's checks call it as well as seed().
+const prompt = (name) => readFileSync(new URL(`./personas/${name}.md`, import.meta.url), 'utf8').trim();
+const RESEARCHER = prompt('researcher');
+const DEVELOPER = prompt('developer');
+const CRITIC = prompt('critic');
+
 /**
- * What a fresh install (no --demo) starts with: one generic agent, and no projects or conversations.
+ * What a fresh install (no --demo) starts with: three generic agents, and no projects or conversations.
  * Read by the UAT's fresh-install-agents check.
  */
 export function freshInstall() {
   return {
     personas: [
       {
-        handle: 'assistant',
-        description: 'A general-purpose agent. Ask it anything, or give it work to do in your project.',
-        // Commands and the web, as in your terminal: with #5 an unticked tool is denied, and the first run is the
-        // first loop. The permission mode still decides what it asks you about; agents outside Postbox stay off.
+        handle: 'researcher',
+        description: 'Finds and reads sources, and explains what they show.',
+        tools: ['web.fetch'],
+        instructions: RESEARCHER,
+        examples: [['What do the sources say about this?', 'A cited answer, and what is still open']],
+      },
+      {
+        handle: 'developer',
+        description: 'Changes code in your project, and verifies the change.',
+        // Commands and the web, as in your terminal: with #5 an unticked tool is denied. The permission mode still
+        // decides what it asks you about; agents outside Postbox stay off.
         tools: ['shell', 'web.fetch'],
-        instructions: 'Help the person with what they ask. Ask when something is unclear, and say what you did and what is left.',
-        examples: [['What can you help me with?', 'What it can do here, and how to ask']],
+        instructions: DEVELOPER,
+        examples: [['Fix this bug, and show me it’s fixed', 'The smallest fix, with the checks it ran']],
+      },
+      {
+        handle: 'critic',
+        description: 'Reviews code and documents, and reports what’s wrong with evidence.',
+        // Commands, to run the checks a review cites; the web, to verify its links.
+        tools: ['shell', 'web.fetch'],
+        instructions: CRITIC,
+        examples: [['Review my change', 'Findings ranked by what fixing them is worth']],
       },
     ],
     /** @type {{ name: string, folder: string }[]} */
@@ -79,15 +101,22 @@ export const BOILERPLATES = [
     id: 'bp-researcher',
     name: 'Researcher',
     description: 'Reads and cites sources',
-    instructions: 'Find and read sources. Cite every claim. Explain step by step.',
-    tools: ['corpus.search', 'web.fetch'],
+    instructions: RESEARCHER,
+    tools: ['web.fetch'],
   },
   {
     id: 'bp-critic',
     name: 'Critic',
-    description: 'Reviews line by line',
-    instructions: 'Review carefully, line by line. Resolve what you fix and explain what you leave open.',
-    tools: ['corpus.read'],
+    description: 'Reviews code and documents',
+    instructions: CRITIC,
+    tools: ['shell', 'web.fetch'],
+  },
+  {
+    id: 'bp-developer',
+    name: 'Developer',
+    description: 'Changes code and verifies it',
+    instructions: DEVELOPER,
+    tools: ['shell', 'web.fetch'],
   },
   {
     id: 'bp-indexer',
