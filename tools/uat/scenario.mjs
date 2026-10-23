@@ -11,6 +11,13 @@
 // Some of those also run only for a version release (RELEASE_ONLY): `--release`. The Antigravity CLI (#143) is on a
 // free tier, and even an occasional compatibility run would use up its quota. Outside a release run, a scenario that
 // puts an agent on one is refused, and Postbox starts without it, so the tester can’t pick it in a sheet either.
+//
+// How long a run is (see tests/uat/e2e/README.md, “How long a run is”): `- steps: N` in the header caps a scenario’s
+// steps, and --steps overrides it. A phase can open with its own settings, before its text:
+//   - triggers: wake-full-text, stop-keep-jobs   what Postbox must show for the phase to be done (tools/uat/triggers.mjs)
+//   - steps: 10                                  the most steps the phase gets before the run records a coverage gap
+// A phase with triggers ends when they’ve all happened, or at its cap. One without works as it always has: the tester
+// says when it’s done.
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
 export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
@@ -64,7 +71,8 @@ export function parseScenario(md) {
     backends: backendsOf(meta.backends),
     permissionModes: permissionModesOf(meta.permission_modes),
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- \w+: /.test(l)).join('\n'),
-    phases: phases.map((p) => ({ title: p.split('\n')[0].replace(/^##\s*/, ''), text: p.split('\n').slice(1).join('\n').trim() })),
+    steps: count(meta.steps),
+    phases: phases.map(phaseOf),
   };
 }
 
@@ -91,4 +99,68 @@ export function releaseGate(scenario, { release = false } = {}) {
       env: {},
     };
   return { error: null, env: Object.fromEntries(Object.values(RELEASE_ONLY).map((b) => [b.bin, NO_BIN])) };
+}
+
+// ── How long a run is ──────────────────────────────────────────────────────────────────────
+
+/**
+ * The steps an exploratory run gets unless its scenario or --steps says otherwise. Fifteen steps found about 89% of
+ * what twenty did over the first 11 runs, and the tester’s new findings per step fell from 0.26 (steps 1–5) to 0.09
+ * (steps 16–20). Refit it with `node tools/uat-stats.mjs` as runs accumulate.
+ */
+export const DEFAULT_STEPS = 15;
+/** The steps a phase with triggers gets unless it says otherwise: the P0 run hit each fix within about 10 turns. */
+export const PHASE_STEPS = 8;
+
+/** A whole number from 1 to 500, or null. */
+const count = (v) => {
+  const n = Number(String(v ?? '').trim());
+  return Number.isInteger(n) && n >= 1 && n <= 500 ? n : null;
+};
+
+/**
+ * A phase: its title, its own settings (the lines “- triggers: …” and “- steps: N” before its text), and its text.
+ * @param {string} p  the phase’s section, from its “## ” heading
+ * @returns {{ title: string, text: string, triggers: string[], steps: number|null }}
+ */
+function phaseOf(p) {
+  const [heading, ...rest] = p.split('\n');
+  /** @type {Record<string, string>} */
+  const meta = {};
+  let i = 0;
+  for (; i < rest.length; i++) {
+    const m = /^- (triggers?|steps): (.*)$/.exec(rest[i]);
+    if (m) meta[m[1].replace(/s$/, '')] = m[2].trim();
+    else if (rest[i].trim()) break;
+  }
+  return {
+    title: heading.replace(/^##\s*/, ''),
+    text: rest.slice(i).join('\n').trim(),
+    triggers: (meta.trigger ?? '')
+      .split(/,\s*/)
+      .map((t) => t.trim())
+      .filter(Boolean),
+    steps: count(meta.step),
+  };
+}
+
+/** Whether a scenario is targeted: every phase names what it must cause. Otherwise it’s exploratory. */
+export const isTargeted = (scenario) => scenario.phases.length > 0 && scenario.phases.every((p) => (p.triggers ?? []).length > 0);
+
+/** The most steps a phase with triggers gets; null for one without, which ends when the tester says. */
+export const phaseCap = (phase) => ((phase.triggers ?? []).length ? (phase.steps ?? PHASE_STEPS) : null);
+
+/**
+ * The most steps a run takes: --steps, else the scenario’s own `- steps: N`, else the sum of a targeted scenario’s
+ * phase caps, else DEFAULT_STEPS.
+ * @param {{ steps?: number|null, phases: { triggers?: string[], steps?: number|null }[] }} scenario
+ * @param {string|number|undefined} [flag]  --steps, when given
+ */
+export function stepCap(scenario, flag) {
+  const n = count(flag);
+  if (n) return n;
+  if (flag !== undefined && flag !== null && flag !== '') throw new Error(`--steps takes a whole number from 1 to 500, not “${flag}”.`);
+  if (scenario.steps) return scenario.steps;
+  if (isTargeted(scenario)) return scenario.phases.reduce((a, p) => a + /** @type {number} */ (phaseCap(p)), 0);
+  return DEFAULT_STEPS;
 }

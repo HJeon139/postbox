@@ -139,9 +139,18 @@ export const SCHEMA = {
           description: 'send, thread, act, review: act while the turn this starts is running.',
           properties: {
             after: { type: 'integer', description: 'Seconds to let the agent work first.' },
-            do: { enum: ['stop', 'send_now'] },
+            do: { enum: ['stop', 'send_now', 'answer'] },
             jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
             text: { type: 'string', description: 'send_now: the message to send.' },
+            item: { type: 'string', description: 'answer: the block to answer while the agent works, such as I7.' },
+            verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'answer, on a review: your verdict.' },
+            comments: {
+              type: 'array',
+              description: 'answer, on a review: comments on lines.',
+              items: { type: 'object', properties: { line: { type: 'string' }, text: { type: 'string' } }, required: ['line', 'text'] },
+            },
+            choose: { type: 'array', items: { type: 'string' }, description: 'answer, on a choice: the options to pick.' },
+            button: { type: 'string', description: 'answer, on any other block: the button to press.' },
           },
           required: ['after', 'do'],
         },
@@ -185,7 +194,7 @@ Then choose one action:
 
 Each step also lists what’s waiting on you: blocks that ask you something, review drafts, wake requests, permission cards, failed turns to retry. Answer them before you move to the next phase or finish, as a person clearing “needs you” would: an agent that asked is stuck until you do. If one isn’t on screen, open the thread it’s in.
 
-The run waits for the agents to finish before each step. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep), or send_now, to write text and press Send now on it.
+The run waits for the agents to finish before each step. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep); send_now, to write text and press Send now on it; or answer, to answer the block item while the agent works, as review (verdict, comments) or act (choose, button) would. Answer a draft that way while its agent is revising it, as a person reading along would.
 
 Scenario: ${scenario.title}
 ${scenario.summary}`;
@@ -203,7 +212,7 @@ export const VERIFY_SCHEMA = {
         type: 'object',
         properties: {
           index: { type: 'integer' },
-          verdict: { enum: ['confirmed', 'harness', 'not reproduced', 'duplicate', 'agent-work'] },
+          verdict: { enum: ['confirmed', 'duplicate', 'harness', 'agent', 'by-design', 'not-reproduced'] },
           duplicateOf: { type: ['integer', 'null'] },
           note: { type: 'string', description: 'Why, in one or two sentences.' },
           title: { type: 'string', description: 'confirmed: the issue title, a plain statement of the defect.' },
@@ -228,10 +237,11 @@ The scenario was “${scenario.title}”. A tester model played the person, driv
 
 For each finding, give a verdict:
 - confirmed: a real defect or UX problem in Postbox, supported by the evidence.
+- duplicate: an open issue already covers it (give its number in duplicateOf). Related isn’t duplicate: say so in the note instead. When the tester matched a finding to an issue, check that the issue really covers it.
 - harness: caused by the test runner, not by Postbox.
-- not reproduced: the evidence doesn’t support it.
-- duplicate: an open issue already covers it (give its number in duplicateOf). Related isn’t duplicate: say so in the note instead.
-- agent-work: a flaw in the agent’s own reasoning or content (a wrong number, a weak plan) that Postbox didn’t cause.
+- agent: a flaw in the agent’s own reasoning or content (a wrong number, a weak plan) that Postbox didn’t cause.
+- by-design: Postbox does this on purpose, as its docs or the agent guide say.
+- not-reproduced: the evidence doesn’t support it.
 
 For confirmed findings, write the issue:
 - a plain title stating the defect
@@ -245,7 +255,7 @@ For confirmed findings, write the issue:
 Write in plain American English, with curly quotes, in sentence case.
 
 Findings:
-${findings.map((f, i) => `[${i}] ${f.title} (${f.category ?? 'check'}, ${f.severity ?? '—'}, ${f.component ?? f.check}; step ${f.step}, ${f.phase ?? ''})\nEvidence: ${f.evidence}${f.expected ? `\nExpected: ${f.expected}` : ''}`).join('\n\n')}
+${findings.map((f, i) => `[${i}] ${f.title} (${f.category ?? 'check'}, ${f.severity ?? '—'}, ${f.component ?? f.check}; step ${f.step}, ${f.phase ?? ''})${f.issue ? `\nThe tester matched it to #${f.issue}.` : ''}\nEvidence: ${f.evidence}${f.expected ? `\nExpected: ${f.expected}` : ''}`).join('\n\n')}
 
 What the tester did, step by step:
 ${timeline.map((t) => `${t.step}. ${t.phase}: ${t.assessment} Then: ${JSON.stringify(t.action)}`).join('\n')}

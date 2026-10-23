@@ -1,0 +1,550 @@
+[
+  {
+    "run": "2026-10-22T00-53-32-scifact",
+    "scenario": "scifact",
+    "steps": 3,
+    "cost": { "agents": 4.17, "tester": 0.25 },
+    "findings": [
+      { "source": "check", "step": 0, "issue": 43, "key": "fresh-install-agents" },
+      { "source": "check", "step": 0, "issue": 60, "key": "model-not-shown" },
+      { "source": "check", "step": 1, "issue": 57, "key": "settings-leak" },
+      { "source": "check", "step": 1, "issue": 68, "key": "silent-while-working" },
+      { "source": "tester", "step": 2, "category": "bug", "title": "Formula in write-up renders duplicated and garbled" },
+      { "source": "tester", "step": 3, "category": "agent", "title": "Agent turns exploration request into unrequested quiz exercises" },
+      { "source": "tester", "step": 3, "category": "bug", "title": "Math duplicated again in the reply" }
+    ]
+  },
+  {
+    "run": "2026-10-22T01-01-16-scifact",
+    "scenario": "scifact",
+    "steps": 16,
+    "cost": { "agents": null, "tester": null },
+    "findings": [
+      { "source": "check", "step": "recheck", "issue": 57, "key": "settings-leak" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_wWQ94qfv" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_xzO5L5jC" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_VER2Y0y" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_LcnvH3j9" },
+      { "source": "check", "step": "recheck", "issue": 44, "key": "it_vpgcsHxE" },
+      { "source": "check", "step": "recheck", "issue": 49, "key": "scifact-explorer" },
+      { "source": "check", "step": "recheck", "issue": 60, "key": "model-not-shown" },
+      { "source": "check", "step": "live", "issue": 43, "key": "fresh-install-agents" },
+      { "source": "check", "step": "live", "issue": 48, "key": "image-not-shown" },
+      { "source": "check", "step": "live", "issue": 68, "key": "silent-while-working" },
+      { "source": "tester", "step": 2, "category": "agent", "issue": 63, "verdict": "confirmed", "title": "Long answer sent as prose with raw <details> HTML" },
+      { "source": "tester", "step": 2, "category": "ux", "issue": 68, "title": "No working indicator while agent runs 17 tools" },
+      { "source": "tester", "step": 3, "category": "bug", "verdict": "harness", "title": "Can't click inside the agent app" },
+      { "source": "tester", "step": 4, "category": "bug", "issue": 45, "title": "Expand grows the frame instead of going full screen" },
+      { "source": "tester", "step": 9, "category": "bug", "verdict": "harness", "title": "App frame and diagram blank in page screenshot" },
+      { "source": "tester", "step": 9, "category": "ux", "issue": 49, "title": "Updated app stays far up the conversation" },
+      { "source": "tester", "step": 9, "category": "agent", "issue": 63, "title": "Long comparison draft sent as prose, not a review block" },
+      { "source": "tester", "step": 10, "category": "bug", "issue": 48, "title": "Attached screenshot shows as a file chip, not an image" },
+      { "source": "tester", "step": 10, "category": "bug", "verdict": "harness", "title": "Diagram block can stay blank with no error or message" },
+      { "source": "tester", "step": 14, "category": "bug", "verdict": "confirmed", "title": "Raw <details> HTML tags shown as literal text" }
+    ]
+  },
+  {
+    "run": "2026-10-22T01-02-09-hotpotqa",
+    "scenario": "hotpotqa",
+    "steps": 19,
+    "cost": { "agents": null, "tester": null },
+    "findings": [
+      { "source": "check", "step": "recheck", "issue": 57, "key": "settings-leak" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_y8IZNK" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_C8cSVk4" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_YdI6mZN9" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_BdxJX1K" },
+      { "source": "check", "step": "recheck", "issue": 63, "key": "it_3t3WwV9c" },
+      { "source": "check", "step": "recheck", "issue": 55, "key": "lint-on-person-term" },
+      { "source": "check", "step": "recheck", "issue": 53, "key": "it_y8IZNK" },
+      { "source": "check", "step": "recheck", "issue": 62, "key": "it_yDxxy3KN" },
+      { "source": "check", "step": "recheck", "issue": 60, "key": "model-not-shown" },
+      { "source": "check", "step": 0, "issue": 43, "key": "fresh-install-agents" },
+      { "source": "check", "step": 1, "issue": 68, "key": "silent-while-working" },
+      { "source": "run", "step": 10, "verdict": "harness", "title": "An agent turn ran past the time limit" },
+      { "source": "tester", "step": 1, "category": "ux", "issue": 60, "title": "Top bar doesn't show agent model" },
+      { "source": "tester", "step": 2, "category": "ux", "issue": 68, "title": "No working indicator while agent runs 120s" },
+      { "source": "tester", "step": 2, "category": "agent", "issue": 57, "title": "Global CLAUDE.md leaks into agent (Mermaid)" },
+      { "source": "tester", "step": 2, "category": "ux", "issue": 55, "title": "Term lint made agent define 'supporting facts' that the person introduced" },
+      {
+        "source": "tester",
+        "step": 2,
+        "category": "agent",
+        "verdict": "agent-work",
+        "title": "Quiz not requested; choice options are labeled by entity name only, not full questions"
+      },
+      {
+        "source": "tester",
+        "step": 4,
+        "category": "agent",
+        "verdict": "agent-work",
+        "title": "Researcher drew a wrong conclusion about Q4 being memory-diagnostic, stated without checking"
+      },
+      { "source": "tester", "step": 4, "category": "agent", "issue": 63, "title": "Critic asked/proposed options in prose" },
+      {
+        "source": "tester",
+        "step": 5,
+        "category": "agent",
+        "issue": 57,
+        "verdict": "confirmed",
+        "title": "Agent published to an external claude.ai artifact link instead of an in-room app, and left it unverified"
+      },
+      { "source": "tester", "step": 5, "category": "ux", "issue": 54, "title": "Large app can't be sent as a file; agent gives up on in-room app" },
+      {
+        "source": "tester",
+        "step": 6,
+        "category": "bug",
+        "verdict": "harness",
+        "title": "App screenshot doesn't show the app; app contents unreadable to the person's tooling"
+      },
+      { "source": "tester", "step": 6, "category": "agent", "issue": 54, "title": "App content re-typed by hand, never compared with tested build" },
+      { "source": "tester", "step": 7, "category": "bug", "verdict": "harness", "title": "Can't click inside the agent app" },
+      { "source": "tester", "step": 8, "category": "bug", "issue": 45, "title": "Expand barely changes the app size (704×806 → 704×1036), not full screen" },
+      {
+        "source": "tester",
+        "step": 10,
+        "category": "bug",
+        "verdict": "harness",
+        "title": "Turn marked 'Stopped by you' though person never pressed stop; agent state still 'tool'"
+      },
+      { "source": "tester", "step": 10, "category": "ux", "issue": 58, "title": "Progress block stale/vague vs. agent's actual state" },
+      { "source": "tester", "step": 11, "category": "bug", "issue": 58, "title": "Progress block still 'running' after agent stopped" },
+      { "source": "tester", "step": 12, "category": "bug", "issue": 62, "title": "Review block shows Markdown table as raw pipes" },
+      {
+        "source": "tester",
+        "step": 12,
+        "category": "agent",
+        "verdict": "agent-work",
+        "title": "Renaming leaks identifying facts (exact dates, Billboard, counts, hit titles)"
+      },
+      {
+        "source": "tester",
+        "step": 12,
+        "category": "ux",
+        "verdict": "confirmed",
+        "title": "Review block with 137 'Comment on line N' buttons is very long for 5 records"
+      },
+      {
+        "source": "tester",
+        "step": 15,
+        "category": "agent",
+        "verdict": "agent-work",
+        "title": "Status says probe still running while the same message states its result"
+      },
+      { "source": "tester", "step": 15, "category": "agent", "issue": 63, "title": "Long critic report sent as prose, not a review block" },
+      {
+        "source": "tester",
+        "step": 15,
+        "category": "agent",
+        "verdict": "agent-work",
+        "title": "Critic, asked to check method, also rewrote the pipeline (perturb.py, probe.py)"
+      },
+      {
+        "source": "tester",
+        "step": 16,
+        "category": "agent",
+        "issue": 63,
+        "title": "Critic's long result posted as prose again (Taj Mahal, Vonnegut examples)"
+      },
+      { "source": "tester", "step": 18, "category": "bug", "verdict": "not reproduced", "title": "LaTeX formula shown as raw source text" },
+      { "source": "tester", "step": 18, "category": "agent", "verdict": "agent-work", "title": "Inconsistent yes/no count (10 vs 12) between replies" },
+      {
+        "source": "tester",
+        "step": 18,
+        "category": "agent",
+        "verdict": "agent-work",
+        "title": "Measurement plan ignores the known ~50% re-identification leak"
+      },
+      { "source": "tester", "step": 18, "category": "agent", "issue": 63, "title": "Long plan caveats sent as prose, not blocks" },
+      {
+        "source": "tester",
+        "step": 19,
+        "category": "ux",
+        "verdict": "confirmed",
+        "title": "Review block stays 'needs you' for an hour after the conversation moved on"
+      },
+      {
+        "source": "tester",
+        "step": 19,
+        "category": "agent",
+        "verdict": "agent-work",
+        "title": "Two renamed answers don't match their renamed context, so the earlier '188/188 pass' hid a defect"
+      }
+    ]
+  },
+  {
+    "run": "2026-10-23T04-30-15-mixedroom",
+    "scenario": "mixedroom",
+    "steps": 20,
+    "cost": { "agents": 4.02, "tester": 6.46 },
+    "findings": [
+      { "source": "check", "step": 1, "key": "block-use:1-of-1", "verdict": "measurement" },
+      { "source": "tester", "step": 2, "category": "agent", "title": "First block failed validation and was shown as 'Can't show this block'" },
+      {
+        "source": "tester",
+        "step": 2,
+        "category": "agent",
+        "title": "Agent recommended before the form answers came in, while saying the answer depends on them"
+      },
+      { "source": "check", "step": 4, "issue": 63, "key": "it_huflhEA6" },
+      { "source": "tester", "step": 5, "category": "agent", "issue": 63, "title": "Approaches not offered as a choice block" },
+      { "source": "tester", "step": 5, "category": "bug", "title": "Math renders as stacked fragments" },
+      { "source": "tester", "step": 5, "category": "ux", "title": "Sent summary of form omits the third answer" },
+      { "source": "check", "step": 5, "key": "it_TPMk5DqT" },
+      { "source": "check", "step": 5, "key": "it_dhxmmlcr" },
+      { "source": "check", "step": 5, "key": "block-use:2-of-2", "verdict": "measurement" },
+      { "source": "tester", "step": 6, "category": "bug", "issue": 118, "title": "Critic's configured model is unavailable; both turns failed" },
+      { "source": "tester", "step": 6, "category": "agent", "title": "Researcher tells the person critic is reviewing, though critic's wake failed" },
+      {
+        "source": "tester",
+        "step": 7,
+        "category": "ux",
+        "issue": 118,
+        "title": "Error doesn't point to the model setting or offer a way to pick another model"
+      },
+      { "source": "tester", "step": 7, "category": "bug", "title": "Kiro persona shows a model that isn't available" },
+      { "source": "check", "step": 7, "key": "it_kTPYb7KY" },
+      { "source": "tester", "step": 8, "category": "ux", "issue": 118, "title": "Retry repeats the same failing model with no alternative" },
+      { "source": "check", "step": 9, "key": "block-use:3-of-3", "verdict": "measurement" },
+      { "source": "check", "step": 11, "key": "it_Njn3wm3r" },
+      { "source": "tester", "step": 12, "category": "agent", "title": "Researcher keeps waking an agent it knows is failing" },
+      {
+        "source": "tester",
+        "step": 15,
+        "category": "ux",
+        "issue": 124,
+        "title": "Agent-to-agent thread link not reachable as a control; failure sits in a thread the person must hunt for"
+      },
+      { "source": "check", "step": 16, "key": "it_fojzAqYd" },
+      {
+        "source": "tester",
+        "step": 19,
+        "category": "ux",
+        "issue": 124,
+        "title": "Run can't move on: failed turn in inter-agent thread can't be reached or cleared"
+      }
+    ]
+  },
+  {
+    "run": "2026-10-23T04-30-30-scifact",
+    "scenario": "scifact",
+    "steps": 15,
+    "cost": { "agents": 28.59, "tester": 1.5 },
+    "findings": [
+      { "source": "run", "step": 2, "title": "An agent turn ran past the time limit" },
+      { "source": "check", "step": 1, "issue": 63, "key": "it_U2GTBC6f" },
+      { "source": "check", "step": 1, "key": "block-use:0-of-1", "verdict": "measurement" },
+      { "source": "tester", "step": 2, "category": "bug", "title": "Formula shows as scattered fragments" },
+      { "source": "tester", "step": 2, "category": "bug", "issue": 95, "title": "App chart labels too small at 375 px" },
+      { "source": "tester", "step": 2, "category": "agent", "issue": 63, "title": "Exercise written as prose with the answer in a details tag, not a block" },
+      { "source": "tester", "step": 6, "category": "bug", "issue": 137, "title": "Rewritten formula still renders broken" },
+      { "source": "check", "step": 12, "issue": 63, "key": "it_VlSGYpRQ" },
+      { "source": "tester", "step": 13, "category": "bug", "issue": 137, "title": "BM25 and nDCG formulas render as scattered fragments" },
+      { "source": "tester", "step": 13, "category": "agent", "issue": 63, "title": "Long worked example sent as prose, not a block" },
+      { "source": "check", "step": 13, "issue": 63, "key": "it_hdj1nL" }
+    ]
+  },
+  {
+    "run": "2026-10-23T04-30-34-p0",
+    "scenario": "p0",
+    "steps": 33,
+    "cost": { "agents": 178.86, "tester": 12.1 },
+    "findings": [
+      { "source": "check", "step": 1, "issue": 63, "key": "it_AdGLjQj" },
+      { "source": "check", "step": 1, "issue": 63, "key": "it_Xlka0Fo" },
+      { "source": "check", "step": 1, "key": "block-use:3-of-3", "verdict": "measurement" },
+      {
+        "source": "tester",
+        "step": 2,
+        "category": "agent",
+        "issue": 110,
+        "title": "Researcher got only a summary of critic's round 1 fixes and built a divergent v2"
+      },
+      { "source": "tester", "step": 2, "category": "ux", "title": "Wake request card counts differ from the wake labels" },
+      {
+        "source": "tester",
+        "step": 2,
+        "category": "agent",
+        "issue": 63,
+        "title": "Agents ask for the wake approval in prose and write the checklist as prose"
+      },
+      { "source": "check", "step": 3, "issue": 63, "key": "it_8uJbIBOw" },
+      { "source": "check", "step": 3, "issue": 63, "key": "it_G1PVJaDV" },
+      { "source": "check", "step": 3, "issue": 63, "key": "it_z9SVMF7f" },
+      { "source": "check", "step": 3, "issue": 63, "key": "it_WPeoAN6X" },
+      { "source": "check", "step": 3, "issue": 63, "key": "it_9Vs1xXK" },
+      { "source": "check", "step": 3, "key": "block-use:4-of-4", "verdict": "measurement" },
+      { "source": "tester", "step": 6, "category": "ux", "title": "Link to open the agent-to-agent side thread isn't reachable as a control" },
+      { "source": "tester", "step": 10, "category": "agent", "issue": 110, "title": "Main-room agent can't read or quote what the side-thread copy received" },
+      { "source": "tester", "step": 10, "category": "bug", "issue": 124, "title": "Blocks raised in the inter-agent thread need me but can't be reached" },
+      {
+        "source": "tester",
+        "step": 10,
+        "category": "ux",
+        "issue": 114,
+        "title": "Critic reports three wakes after the one I allowed, with no card for the others"
+      },
+      { "source": "check", "step": 12, "key": "block-use:5-of-5", "verdict": "measurement" },
+      { "source": "check", "step": 13, "issue": 63, "key": "it_ZWzbVXo" },
+      { "source": "check", "step": 13, "key": "block-use:7-of-8", "verdict": "measurement" },
+      {
+        "source": "tester",
+        "step": 14,
+        "category": "agent",
+        "issue": 110,
+        "title": "Critic and researcher work from different records of the same conversation"
+      },
+      { "source": "check", "step": 14, "issue": 63, "key": "it_gkwjtzvE" },
+      { "source": "check", "step": 14, "issue": 63, "key": "it_6P8wQXOW" },
+      { "source": "check", "step": 14, "key": "block-use:7-of-11", "verdict": "measurement" },
+      { "source": "check", "step": 15, "issue": 63, "key": "it_TlayUZd8" },
+      { "source": "check", "step": 15, "key": "block-use:8-of-12", "verdict": "measurement" },
+      { "source": "tester", "step": 16, "category": "agent", "title": "Checklist ships claims the agent says it didn't check" },
+      { "source": "tester", "step": 18, "category": "bug", "issue": 106, "title": "No way to dismiss stale 'needs you' blocks left in a thread I can't open" },
+      {
+        "source": "tester",
+        "step": 19,
+        "category": "bug",
+        "issue": 106,
+        "title": "Agents can't withdraw their own blocks, and can't see the thread where they posted them"
+      },
+      { "source": "check", "step": 20, "issue": 63, "key": "it_LObxCuK5" },
+      { "source": "check", "step": 20, "issue": 63, "key": "it_jBOelTdg" },
+      { "source": "check", "step": 20, "issue": 63, "key": "it_KiSFqs7" },
+      { "source": "check", "step": 20, "key": "block-use:10-of-15", "verdict": "measurement" },
+      {
+        "source": "tester",
+        "step": 21,
+        "category": "agent",
+        "issue": 109,
+        "title": "Critic can't read review block contents and asks for text pasted in the room"
+      },
+      { "source": "tester", "step": 22, "category": "ux", "title": "Review with comments and a verdict stays as unsent drafts" },
+      { "source": "check", "step": 22, "issue": 63, "key": "it_YCbM0cQ" },
+      { "source": "check", "step": 22, "key": "block-use:10-of-16", "verdict": "measurement" },
+      { "source": "tester", "step": 23, "category": "ux", "title": "Send now stops the agent's turn instead of folding my correction into the revision" },
+      { "source": "check", "step": 23, "key": "block-use:10-of-17", "verdict": "measurement" },
+      { "source": "tester", "step": 26, "category": "ux", "title": "Approve on a review block only registers after Submit review" },
+      { "source": "check", "step": 27, "key": "block-use:11-of-18", "verdict": "measurement" },
+      { "source": "check", "step": 28, "key": "block-use:11-of-20", "verdict": "measurement" },
+      {
+        "source": "tester",
+        "step": 29,
+        "category": "bug",
+        "issue": 125,
+        "title": "Revision 6 was posted as a second review block in the side thread instead of updating checklist-final"
+      },
+      { "source": "check", "step": 31, "issue": 126, "key": "toolu_0149MgkPSHQDfXpdPbvoHapU" },
+      { "source": "check", "step": 31, "key": "block-use:12-of-21", "verdict": "measurement" },
+      {
+        "source": "tester",
+        "step": 32,
+        "category": "ux",
+        "issue": 129,
+        "title": "Progress block shows 0 of 36 lines and 'No update' while job is kept running"
+      },
+      { "source": "check", "step": 32, "issue": 126, "key": "toolu_018tpiuAJUrqCzfKWGeLjsa5" },
+      { "source": "tester", "step": 33, "category": "agent", "issue": 126, "title": "Agent's checker kept running and posting after I pressed Stop" },
+      { "source": "tester", "step": 33, "category": "bug", "issue": 129, "title": "Agent's step reads done while the background command still runs" },
+      { "source": "tester", "step": 33, "category": "agent", "title": "Reply drifts to unrelated work and contradicts itself on whether the job is running" }
+    ]
+  },
+  {
+    "run": "2026-10-23T04-38-34-mixedroom-glm5",
+    "scenario": "mixedroom-glm5",
+    "steps": 18,
+    "cost": { "agents": 7.8, "tester": 7.58 },
+    "findings": [
+      { "source": "check", "step": 1, "key": "block-use:1-of-1", "verdict": "measurement" },
+      {
+        "source": "tester",
+        "step": 2,
+        "category": "agent",
+        "title": "Form block rejected as invalid, shown as 'Can't show this block' above a duplicate working form"
+      },
+      { "source": "tester", "step": 2, "category": "bug", "issue": 137, "title": "Math in the reply shows as broken text" },
+      { "source": "check", "step": 3, "issue": 63, "key": "it_qzPtW1CF" },
+      {
+        "source": "tester",
+        "step": 4,
+        "category": "agent",
+        "issue": 63,
+        "title": "Approaches offered as prose with a single recommendation, not a choice block"
+      },
+      { "source": "tester", "step": 4, "category": "bug", "issue": 137, "title": "Math in the reply still shows as broken, spread-out text" },
+      { "source": "check", "step": 4, "key": "block-use:4-of-4", "verdict": "measurement" },
+      { "source": "tester", "step": 5, "category": "agent", "title": "@critic couldn't open the design note and reviewed a summary" },
+      {
+        "source": "tester",
+        "step": 5,
+        "category": "agent",
+        "issue": 133,
+        "title": "@critic's review block is a fresh design note with a wrong date, not a critique"
+      },
+      { "source": "tester", "step": 5, "category": "ux", "issue": 124, "title": "Three review blocks wait on me, one in an inter-agent thread" },
+      { "source": "check", "step": 6, "issue": 63, "key": "it_VcD0Ky9a" },
+      {
+        "source": "tester",
+        "step": 7,
+        "category": "agent",
+        "issue": 133,
+        "title": "Agents can't open each other's review blocks, and the first round hid this from me"
+      },
+      {
+        "source": "tester",
+        "step": 7,
+        "category": "agent",
+        "issue": 63,
+        "title": "@critic sends long review text as prose and drafts blocks without a required field"
+      },
+      { "source": "check", "step": 7, "issue": 63, "key": "it_aRAX2W8D" },
+      { "source": "check", "step": 7, "key": "block-use:4-of-5", "verdict": "measurement" },
+      { "source": "tester", "step": 8, "category": "agent", "issue": 63, "title": "Researcher asks 'save as Markdown file, or break into tasks?' in prose" },
+      { "source": "check", "step": 8, "key": "block-use:5-of-6", "verdict": "measurement" },
+      { "source": "tester", "step": 9, "category": "agent", "title": "@critic claimed its findings were addressed, then admitted it can't see them" },
+      {
+        "source": "tester",
+        "step": 9,
+        "category": "agent",
+        "issue": 114,
+        "title": "Agent-to-agent chatter continues after approval and reaches the wake limit"
+      },
+      { "source": "check", "step": 9, "issue": 63, "key": "it_8Q47Nui" },
+      { "source": "check", "step": 9, "key": "block-use:7-of-8", "verdict": "measurement" },
+      { "source": "tester", "step": 10, "category": "agent", "issue": 131, "title": "@critic loses track of the conversation and doubts events I can see" },
+      { "source": "tester", "step": 10, "category": "agent", "title": "@critic asks the same thing twice, in a choice and a form, after an invalid block" },
+      { "source": "check", "step": 10, "issue": 63, "key": "it_KNDX1t6j" },
+      { "source": "check", "step": 10, "key": "block-use:7-of-9", "verdict": "measurement" },
+      { "source": "tester", "step": 11, "category": "agent", "title": "@critic invents a contradiction and rejects my form answer" },
+      { "source": "tester", "step": 11, "category": "agent", "issue": 63, "title": "@critic asks me to retype an answer I just gave through its form" },
+      { "source": "tester", "step": 12, "category": "ux", "issue": 107, "title": "@critic was woken although I said to leave it out" },
+      {
+        "source": "tester",
+        "step": 12,
+        "category": "agent",
+        "issue": 131,
+        "title": "@critic says it can't see what's in the room and blames system summaries"
+      },
+      { "source": "check", "step": 12, "key": "block-use:8-of-10", "verdict": "measurement" },
+      {
+        "source": "tester",
+        "step": 13,
+        "category": "agent",
+        "title": "@critic asks me to paste the whole note into a form to save a file that already exists"
+      },
+      { "source": "tester", "step": 13, "category": "agent", "issue": 117, "title": "@critic never says up front what it can't do (read blocks, write files)" },
+      {
+        "source": "tester",
+        "step": 13,
+        "category": "ux",
+        "issue": 106,
+        "title": "Open 'needs you' items in the agent-to-agent thread are stale and I can't see them"
+      },
+      {
+        "source": "tester",
+        "step": 16,
+        "category": "ux",
+        "issue": 124,
+        "title": "The 'Open' link on the agent-to-agent thread chip isn't reachable as a control"
+      },
+      {
+        "source": "tester",
+        "step": 17,
+        "category": "ux",
+        "issue": 124,
+        "title": "Blocks waiting in the agent-to-agent thread can't be reached from the conversation"
+      }
+    ]
+  },
+  {
+    "run": "2026-10-23T05-02-26-codex",
+    "scenario": "codex",
+    "steps": 23,
+    "cost": { "agents": 0, "tester": 5.34 },
+    "findings": [
+      { "source": "tester", "step": 2, "category": "ux", "verdict": "duplicate", "title": "Permission card doesn't show the command" },
+      {
+        "source": "tester",
+        "step": 4,
+        "category": "ux",
+        "verdict": "not reproduced",
+        "title": "Repeated identical command permission cards for one simple request"
+      },
+      { "source": "tester", "step": 5, "category": "bug", "verdict": "duplicate", "title": "Codex agent's Postbox MCP calls (glossary, card) rejected" },
+      {
+        "source": "tester",
+        "step": 5,
+        "category": "ux",
+        "verdict": "not reproduced",
+        "title": "Agent's failure reason is vague and nothing in the UI shows the rejection"
+      },
+      {
+        "source": "tester",
+        "step": 6,
+        "category": "bug",
+        "verdict": "confirmed",
+        "title": "Allowing the MCP permission card still yields 'user rejected MCP tool call'"
+      },
+      { "source": "tester", "step": 6, "category": "bug", "verdict": "confirmed", "title": "MCP tool approvals are labelled as Bash commands" },
+      {
+        "source": "tester",
+        "step": 12,
+        "category": "ux",
+        "verdict": "not reproduced",
+        "title": "Settings don't explain that Postbox MCP tools need approval under Codex"
+      },
+      { "source": "check", "step": 21, "issue": 63, "key": "it_Fq3gNgnb" },
+      { "source": "tester", "step": 22, "category": "agent", "verdict": "agent-work", "title": "Essay cites a source without a link or reference" }
+    ]
+  },
+  {
+    "run": "2026-10-23T05-13-07-codex",
+    "scenario": "codex",
+    "steps": 15,
+    "cost": { "agents": 0, "tester": 2.12 },
+    "findings": [
+      { "source": "tester", "step": 2, "category": "agent", "title": "Agent woke itself instead of answering directly" },
+      { "source": "tester", "step": 2, "category": "ux", "title": "Glossary definition not shown in the conversation as a result" },
+      { "source": "tester", "step": 4, "category": "agent", "title": "Self-wake repeated for a simple recall question" },
+      { "source": "tester", "step": 11, "category": "bug", "title": "Writes outside the Codex workspace sandbox ran with no approval card" },
+      { "source": "tester", "step": 13, "category": "agent", "title": "Agent expanded a simple essay request into a research workflow with file writes" },
+      { "source": "tester", "step": 15, "category": "ux", "title": "Permissions panel says Tools decide what Codex may do, but Codex has no Tools checklist" },
+      { "source": "tester", "step": 15, "category": "ux", "title": "No Stop control found on a running Codex turn in a topic thread" }
+    ]
+  },
+  {
+    "run": "2026-10-23T05-19-01-codex",
+    "scenario": "codex",
+    "steps": 14,
+    "cost": { "agents": 0, "tester": 2.72 },
+    "findings": [
+      { "source": "tester", "step": 2, "category": "agent", "title": "Glossary definition not visibly shown in the conversation" },
+      { "source": "tester", "step": 7, "category": "agent", "issue": 128, "title": "Agent in a topic thread can't update the card it was forked from" },
+      { "source": "tester", "step": 9, "category": "ux", "title": "Permission card doesn't show the folder the command runs in" },
+      { "source": "check", "step": 12, "issue": 63, "key": "it_UQ2bhnsx" },
+      { "source": "check", "step": 13, "issue": 63, "key": "it_JqlaJ8IX" },
+      {
+        "source": "tester",
+        "step": 14,
+        "category": "ux",
+        "title": "Permissions panel gives one Codex note for all four modes and doesn't say which map to the same policy"
+      },
+      { "source": "tester", "step": 14, "category": "agent", "title": "Stop could not be tested: long Codex turns finish in seconds" }
+    ]
+  },
+  {
+    "run": "2026-10-23T05-23-29-codex",
+    "scenario": "codex",
+    "steps": 15,
+    "cost": { "agents": 0, "tester": 0.84 },
+    "findings": [
+      { "source": "tester", "step": 2, "category": "agent", "title": "Agent woke itself and spawned a self-conversation" },
+      { "source": "tester", "step": 2, "category": "ux", "title": "Glossary definition of 'thread' not visible as a result" },
+      { "source": "tester", "step": 5, "category": "ux", "title": "Sandbox description contradicts itself across settings panels" },
+      { "source": "tester", "step": 7, "category": "agent", "title": "Topic-thread agent can't update the card it was forked from" },
+      { "source": "tester", "step": 11, "category": "ux", "title": "Garbled permission card title" },
+      { "source": "tester", "step": 15, "category": "agent", "title": "sleep 90 reported finished almost instantly, with no approval card" },
+      { "source": "tester", "step": 15, "category": "bug", "title": "Stop could not be exercised" }
+    ]
+  }
+]
