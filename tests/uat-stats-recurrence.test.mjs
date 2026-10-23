@@ -16,6 +16,8 @@ const runs = [
       { source: 'run', check: 'coverage-gap', issue: 123, key: 'phase-2', verdict: 'duplicate' },
       { source: 'tester', title: 'Something', issue: 128 },
       check(49, { closedIssue: { issue: 49, hasFix: null } }),
+      // A closed issue’s match from a run without its fix: the defect as it was, not a recurrence.
+      check(63, { key: 'before-fix', verdict: 'duplicate', verdictBy: 'runner', duplicateOf: 63, closedIssue: { issue: 63, hasFix: false } }),
     ],
   },
   {

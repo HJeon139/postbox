@@ -178,8 +178,9 @@ const runTime = (run) => {
 
 /**
  * Each issue a run caught again, as tests/uat/e2e/README.md (“Recurring findings”) counts them: findings whose verdict
- * is duplicate by verdictOf(), each issue once per run; measurements and coverage rows aren’t defects. A run after its
- * issue closed may be a regression. Sorted by runs, then findings.
+ * is duplicate by verdictOf(), each issue once per run; measurements and coverage rows aren’t defects, and neither
+ * is a closed issue’s match from a run without its fix (closedIssue.hasFix false): that’s the defect as it was, not
+ * a recurrence (#213). A run after its issue closed may be a regression. Sorted by runs, then findings.
  * @param {{ run: string, findings: any[] }[]} runs
  * @param {Map<number, { state: string, closedAt?: string|null, priority?: string|null }>} [issues]  from gh; empty without it
  */
@@ -189,7 +190,7 @@ export function recurrence(runs, issues = new Map()) {
   for (const r of runs)
     for (const f of r.findings ?? []) {
       const n = f.duplicateOf ?? f.issue;
-      if (verdictOf(f) !== 'duplicate' || f.check === 'coverage-gap' || !Number.isInteger(n)) continue;
+      if (verdictOf(f) !== 'duplicate' || f.check === 'coverage-gap' || f.closedIssue?.hasFix === false || !Number.isInteger(n)) continue;
       const row = rows.get(n) ?? { issue: n, runs: new Set(), findings: 0, after: new Set() };
       row.runs.add(r.run);
       row.findings++;
