@@ -154,6 +154,10 @@
       }
     },
     {
+      "includes": ["app/js/work-sections.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 67 } } } } }
+    },
+    {
       "includes": ["app/js/work.mjs"],
       "linter": {
         "rules": {
