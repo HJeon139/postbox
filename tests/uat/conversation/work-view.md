@@ -4,7 +4,7 @@
 
 ![A turn’s line, under its last reply (the screenshot predates the list, #195)](../screenshots/work-chip.png)
 
-**Where:** The conversation’s right pane (`#/t/<id>?work`, or `#/t/<id>/side/<thread>?work` beside a thread), opened by **Work** in the top bar, the conversation’s ⋯ › Work, or the line on top of the list under a turn’s last reply (“4 files +15 −3 · 4 commands (1 failed) · 1 app · $0.31”), which opens it at that turn (`&turn=<id>`). Each row of that list opens it full screen at its item (`&full=work&at=<entry>`). The full-screen icon in the pane’s head (the app frames’ own) shows the whole view over the window (`&full=work`). #138’s addresses, `#/t/<id>/work` and `/work/<turnId>`, open the pane.
+**Where:** The conversation’s right pane (`#/t/<id>?work`, or `#/t/<id>/side/<thread>?work` beside a thread), opened by **Work** in the top bar, the conversation’s ⋯ › Work, or the line on top of the list under a turn’s last reply (“4 files +15 −3 · 4 commands (1 failed) · 1 app · 23 s in all · $0.31”, the turn’s elapsed time said as such, #214), which opens it at that turn (`&turn=<id>`). Each row of that list opens it full screen at its item (`&full=work&at=<entry>`). The full-screen icon in the pane’s head (the app frames’ own) shows the whole view over the window (`&full=work`). #138’s addresses, `#/t/<id>/work` and `/work/<turnId>`, open the pane.
 
 ## Why it exists
 
@@ -49,7 +49,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 - The second reply’s line opens Work above the thread, at that turn, with focus on it; the reload brings back both, the divider where you left it.
 - The thread full screen reads at the message column’s width, keeps the unsent reply and the message you were reading, streams the new reply, and comes back to the pane as it was.
 - At 375 px nothing scrolls sideways, and the top bar’s **Work** stays in reach above the pane.
-- The first turn’s line, under its last reply, reads “4 files +15 −3 · 4 commands (1 failed) · 1 app · 1 outside Postbox”, over rows for the four files, “Citation preview · v1”, the issue, the four commands and “Read 2 files”; the second’s reads “1 command (1 failed)”. Each row opens Work at that item, and Escape puts focus back on the row.
+- The first turn’s line, under its last reply, reads “4 files +15 −3 · 4 commands (1 failed) · 1 app · 1 outside Postbox · N s in all”, over rows for the four files, “Citation preview · v1”, the issue, the four commands and “Read 2 files”; the second’s reads “1 command (1 failed) · N s in all”. The activity line above a reply says its time as “N s in tools”. Each row opens Work at that item, and Escape puts focus back on the row.
 - `notes.md` is outside the project; `refs.bib` and `cite.mjs` can’t be given back by git; the diff of `refs.bib` shows `yeer` replaced by `year`.
 - After Restore, `refs.bib` has `yeer` again on disk, reads **Put back**, and the conversation has the line in your voice.
 - The second turn is listed under **Left nothing lasting**, and **Open this turn** on it shows only the benchmark command.

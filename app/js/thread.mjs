@@ -497,7 +497,7 @@ function renderItem(it, prev, ctx) {
                 'summary',
                 icon('right', 'i-sm'),
                 activityLabel(steps),
-                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s` : '',
+                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
                 running ? ' · running' : '',
               ),
               stepTree(steps),

@@ -273,7 +273,7 @@ test('git says whether each change is uncommitted, committed or pushed, with rea
   assert.equal(agentSum, s.total.added);
   assert.equal(stateSum, s.total.added);
   assert.equal(s.flagged, 1);
-  assert.equal(turnLine(entries, 'turn_1'), '3 files +3 −2 · 3 commands (1 failed) · 1 commit · <$0.01');
+  assert.equal(turnLine(entries, 'turn_1'), '3 files +3 −2 · 3 commands (1 failed) · 1 commit · 4 s in all · <$0.01');
 });
 
 test('effort that left nothing lasting is listed apart', () => {

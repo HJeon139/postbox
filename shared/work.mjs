@@ -257,6 +257,8 @@ export function turnLine(entries, turnId) {
   if (s.commits.length) parts.push(s.commits.length === 1 ? '1 commit' : `${s.commits.length} commits`);
   if (s.external.length) parts.push(`${s.external.length} outside Postbox`);
   if (s.reads.length && parts.length === 0) parts.push(readsLine(s.reads));
+  // The turn’s elapsed time, said as such: the reply’s activity line sums its tool steps instead (#214).
+  if (s.effort.ms >= 100) parts.push(`${formatDuration(s.effort.ms)} in all`);
   if (s.effort.priced) parts.push(formatCost(s.effort.costUsd));
   return parts.join(' · ');
 }

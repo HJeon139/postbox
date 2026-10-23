@@ -56,7 +56,7 @@ test('a turn lists the commit no gitOperation reported, the app it showed and it
   );
   assert.equal(rows.find((r) => r.kind === 'publish').detail, 'v1');
   assert.match(rows.at(-1).label, /^git add -A && git commit/, 'the command without the project folder’s cd');
-  assert.equal(turnLine(entries, turn.id), '2 commands · 1 app · 1 commit');
+  assert.equal(turnLine(entries, turn.id), '2 commands · 1 app · 1 commit · 1 s in all');
   assert.deepEqual(summarize(entries).idle.list, [], 'the turn left something lasting');
 });
 
@@ -86,7 +86,7 @@ test('reads and fetches are one row, last, and a turn that only read still has i
   );
   const entries = store.state.work.th_1;
   assert.deepEqual(turnRows(entries, turn.id), [{ kind: 'reads', at: 'work-reads', label: 'Read 2 files · fetched 1 page · 2 searches', count: 5 }]);
-  assert.equal(turnLine(entries, turn.id), 'Read 2 files · fetched 1 page · 2 searches');
+  assert.equal(turnLine(entries, turn.id), 'Read 2 files · fetched 1 page · 2 searches · 1 s in all', 'with the turn’s elapsed time, said as such (#214)');
 });
 
 test('a command row shows the agent’s description, or the command without the project folder’s cd', () => {
