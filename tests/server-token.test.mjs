@@ -63,6 +63,7 @@ const WRITE_ROUTES = {
   'POST ^\\/api\\/threads\\/([^/]+)\\/agent-command$': ['/api/threads/th_none/agent-command'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/shell$': ['/api/threads/th_none/shell'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/shell\\/([^/]+)\\/stop$': ['/api/threads/th_none/shell/it_none/stop'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/work\\/files\\/([^/]+)\\/restore$': ['/api/threads/th_none/work/files/wf_none/restore'],
   'POST /api/claude-sessions/attach': ['/api/claude-sessions/attach'],
   'POST /api/personas': ['/api/personas'],
   'PATCH ^\\/api\\/personas\\/([^/]+)$': ['/api/personas/pe_none'],

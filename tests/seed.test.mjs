@@ -55,7 +55,7 @@ test('--demo seeds the book-corpus agents, their projects and conversations', as
     DEMO_PERSONAS.map((p) => `@${p.handle} on claude-code`),
   );
   assert.deepEqual(demo.projects, ['Book corpus', 'Agent research']);
-  assert.equal(demo.threads, 7);
+  assert.equal(demo.threads, 8);
 });
 
 test('agents.json in the data folder replaces the agents in either mode', async () => {

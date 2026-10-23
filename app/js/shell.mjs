@@ -18,7 +18,7 @@ const S = () => client.state;
  * The top bar: Postbox, then Overview and each project as tabs, the open conversation’s title and who’s in
  * it, and the global actions. On a phone the tabs fold into one menu button.
  */
-export function topbar({ title = '', threadId = null, projectId = null }) {
+export function topbar({ title = '', threadId = null, projectId = null, work = false }) {
   const t = threadId ? S().threads[threadId] : null;
   const pid = t?.projectId ?? projectId;
   const project = pid ? S().projects[pid] : null;
@@ -105,6 +105,15 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
         : [icon('right', `i-sm${up}`), h(t || title ? `a.crumb${up}` : 'span.title', t || title ? { href: '#/' } : {}, 'Overview')],
       title ? [icon('right', 'i-sm'), h('span.title', title)] : null,
     ),
+    // A conversation has two views: its transcript, and its Work (#132).
+    t
+      ? h(
+          'nav.conv-tabs',
+          { 'aria-label': 'Views of this conversation' },
+          h('a', { href: `#/t/${t.id}`, 'aria-current': work ? null : 'page' }, 'Conversation'),
+          h('a', { href: `#/t/${t.id}/work`, 'aria-current': work ? 'page' : null }, 'Work'),
+        )
+      : null,
     present,
     t
       ? h(
@@ -936,6 +945,12 @@ function conversationMenu(anchor, t) {
         icon: 'agent',
         desc: room ? 'It joins the room' : 'This conversation becomes a room',
         run: () => openNewAgent({ threadId: t.id }),
+      },
+      {
+        label: 'Work',
+        icon: 'file',
+        desc: 'What its agents changed, ran and published',
+        run: () => navigate(`#/t/${t.id}/work`),
       },
       {
         label: 'Permissions…',

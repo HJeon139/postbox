@@ -351,3 +351,36 @@ sequenceDiagram
 **`!` commands** ([#67](https://github.com/HJeon139/postbox/issues/67)) run as you, through your shell, in the conversation’s folder, so they need more than the token, which a determined process can get (above): the route also refuses unless Postbox listens on 127.0.0.1 and the request came from this computer. Each runs in its own process group, so Postbox stops them all when it shuts down (SIGINT, then SIGKILL), and keeps a bounded amount of each one’s output. Postbox listens there today; the check means a later change to the listen address can’t open it silently. Your shell is the point here: you typed a command line, as in your terminal. That’s different from the rule against spawning through a shell, which is about strings from agents and data.
 
 **Revisit when** Postbox listens beyond localhost, or serves more than one person. Then it needs real sign-in, not a page token, and `!` stays off.
+
+## 14. The work ledger: built from tool calls, counted from diffs
+
+**Decision** ([#132](https://github.com/HJeon139/postbox/issues/132)). Each conversation keeps a ledger of what its agents’ turns changed, ran and published, and what they cost ([`server/ledger.mjs`](../server/ledger.mjs), with the shared counting and totals in [`shared/work.mjs`](../shared/work.mjs)). It lives in the store as `state.work[conversationId]`, a list of entries (`turn`, `file`, `change`, `command`, `commit`, `push`, `branch`, `external`, `restore`) added and patched by `work.add` and `work.patch` events, so the Work view and the line under each reply update live like everything else. File copies and command output go to the blob store, never into the log.
+
+```mermaid
+flowchart LR
+  S[Claude Code stream] --> M[stream mapper]
+  M -->|"toolUse: whole input, before it runs"| L[ledger]
+  M -->|"toolResult: tool_use_result"| L
+  M -->|"taskEnded, usage"| L
+  L -->|"read the file before / after"| F[(person’s files)]
+  L -->|copies, output| B[(blob store)]
+  L -->|"work.add / work.patch"| ST[(store)]
+  W[Work view] -->|"GET …/work/git"| G["git, read only"]
+```
+
+**What it rests on**
+- **Recorded, not guessed.** Two real turns are fixtures ([`ledger-edits.jsonl`](../tests/fixtures/claude-code/ledger-edits.jsonl), [`ledger-push.jsonl`](../tests/fixtures/claude-code/ledger-push.jsonl)). They show what the stream gives on the event that carries a tool’s result (`tool_use_result`):
+  - Edit and Write give the file’s contents before the change (`originalFile`, null for a file Write created), and git’s line counts.
+  - Bash gives its `stdout`, `stderr` and `interrupted`, a `backgroundTaskId` for a background command, and `gitOperation` with `commit: { sha, branch }` and `push: { branch }`. A `vcs_state_changed` system event names the repository’s folder.
+  - A failed command’s result starts “Exit code N”.
+  - A background command ends with `task_notification` (its tool call’s id, a summary with its exit code, and its output file), and that can come after the turn’s first `result`.
+  - `total_cost_usd` and `modelUsage` are running totals for the process, so a turn’s spend is its last result’s, summed over the processes a turn ran (a fork retried).
+  - A subagent’s results carry no `tool_use_result`.
+- **The file before.** It’s read synchronously the moment the call’s whole input is known, which can lose the race with the tool. The tool’s own `originalFile` replaces that read whenever the result has one, so only a subagent’s edits rely on the race.
+- **Counted from the diff.** Lines are counted with Myers’ algorithm the way `git diff --numstat` counts them: a missing final newline changes the last line. A file’s count is against the copy from before the agents’ first change in the conversation, so edits that are put back count as nothing. Each turn’s own change is kept too, so the lines written along the way show beside the lines kept. Kept lines count toward the agent that changed a file last, so the agents’ rows add up to the conversation’s.
+- **Git is only read.** Where each file stands comes from `git status --porcelain`, `git log -1 -- <file>` and `git branch -r --contains`, run with an argument array and `GIT_OPTIONAL_LOCKS=0`, so an agent committing at the same moment never meets Postbox’s lock. A commit’s files and lines come from `git show --numstat`, so they match git.
+- **Restore never overwrites newer work.** It writes the copy from before atomically beside the file, or removes a file an agent created, and only when the file on disk still matches the agents’ last change. The conversation gets a line in the person’s voice, which is how the agents learn of it.
+
+**What it doesn’t see.** A file a command changes (a formatter, a script, `sed -i`) isn’t listed: only the file tools name files. Snapshotting the whole folder at each turn’s ends would catch those, at the cost of a second repository per folder and of attribution when turns overlap. A background command still running when its process ends is shown as having said nothing about how it ended (#129). Artifacts (recordings, reports, screenshots) and servers or ports a command started aren’t picked out yet.
+
+**Revisit when** a command’s file changes matter as much as the file tools’ (then add folder snapshots for git repositories, alongside this), when the CLI reports files a command changed, or when the Agent SDK’s results stop carrying `tool_use_result`.

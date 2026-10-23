@@ -68,6 +68,8 @@ const AFTER = [
     `[...document.querySelectorAll('.transcript > .item')].find((n) => n.querySelector('.who pb-ring') && n.querySelector('.md p'))`,
   ],
   ['activity-line', 'Index the shelf', `[...document.querySelectorAll('.transcript details.activity')].at(0)?.closest('.item')`, 'open-activity'],
+  ['work-chip', 'Citation fixes', `document.querySelector('.transcript .work-chip')?.closest('.item')`],
+  ['work-view', 'work:Citation fixes', q('main.work-view')],
   ['explainer-citations', 'ReAct, step by step', item('Step 1')],
   ['citation-card', 'ReAct, step by step', q('.hovercard'), 'cite'],
   ['glossary-term', 'ReAct, step by step', item('observation budget')],
@@ -246,13 +248,15 @@ try {
   const hashFor = (where) =>
     where.startsWith('#')
       ? where
-      : where === 'threads'
-        ? `#/p/${topic?.projectId ?? project.id}/threads`
-        : where === 'topic'
-          ? `#/t/${topic.parentId}/side/${topic.id}`
-          : where === 'side'
-            ? `#/t/${side.parentId}/side/${side.id}`
-            : `#/t/${byTitle(where)?.id}`;
+      : where.startsWith('work:')
+        ? `#/t/${byTitle(where.slice(5))?.id}/work`
+        : where === 'threads'
+          ? `#/p/${topic?.projectId ?? project.id}/threads`
+          : where === 'topic'
+            ? `#/t/${topic.parentId}/side/${topic.id}`
+            : where === 'side'
+              ? `#/t/${side.parentId}/side/${side.id}`
+              : `#/t/${byTitle(where)?.id}`;
   for (const [name, where, finder, prep] of AFTER) {
     if (ONLY && !ONLY.has(name)) continue;
     await goto(hashFor(where));
