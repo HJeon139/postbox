@@ -386,7 +386,7 @@ flowchart LR
 - **Git is only read.** Where each file stands comes from `git status --porcelain`, `git log -1 -- <file>` and `git branch -r --contains`, run with an argument array and `GIT_OPTIONAL_LOCKS=0`, so an agent committing at the same moment never meets Postbox’s lock. A commit’s files and lines come from `git show --numstat`, so they match git.
 - **Restore never overwrites newer work.** It writes the copy from before atomically beside the file, or removes a file an agent created, and only when the file on disk still matches the agents’ last change. The conversation gets a line in the person’s voice, which is how the agents learn of it.
 
-**What it doesn’t see.** A file a command changes (a formatter, a script, `sed -i`) isn’t listed: only the file tools name files. Snapshotting the whole folder at each turn’s ends would catch those, at the cost of a second repository per folder and of attribution when turns overlap. A background command still running when its process ends is shown as having said nothing about how it ended (#129). Artifacts (recordings, reports, screenshots) and servers or ports a command started aren’t picked out yet.
+**What it doesn’t see yet.** A file a command changes (a formatter, a script, `sed -i`) isn’t listed: only the file tools name files. Decided 23 October 2026 (#195, intent.md’s Work decisions): in a git folder, the ledger will compare `git status --porcelain` and `git diff --numstat` before and after each command, read-only, and list what changed under that command. Files git ignores, and folders outside git, stay unseen. That replaces snapshotting the whole folder, which would have cost a second repository per folder and attribution when turns overlap. A background command still running when its process ends is shown as having said nothing about how it ended (#129). Artifacts (recordings, reports, screenshots) and servers or ports a command started aren’t picked out yet.
 
 **Where it shows: the right pane.** Work is one of the conversation’s side views in the right pane ([`app/js/pane.mjs`](../app/js/pane.mjs)), beside a thread or alone, not a page of its own. What’s open is in the address after the conversation’s path, so a reload restores it and the views change in place without rebuilding the transcript:
 
@@ -406,7 +406,7 @@ flowchart LR
 - The pane’s width is `--pane-w`, so a resizable pane (#86) changes one value.
 - Both forms read the same ledger through `summarize()` and ask git through the same endpoint; the compact form adds nothing to the store.
 
-**Revisit when** a command’s file changes matter as much as the file tools’ (then add folder snapshots for git repositories, alongside this), when the CLI reports files a command changed, or when the Agent SDK’s results stop carrying `tool_use_result`.
+**Revisit when** the CLI reports files a command changed (then use that, in place of #195’s git comparison), or when the Agent SDK’s results stop carrying `tool_use_result`.
 
 ## 15. Module and function size: a ceiling that only comes down
 
@@ -420,6 +420,7 @@ flowchart LR
 
 **How a ceiling moves**
 - **Down:** a change that shrinks an offender lowers its ceilings to the new sizes in the same change, and removes the override once the file is under the default. No check enforces this yet, so the reviewer does.
-- **Never up in the change that tripped it** (developing.md, “Lint and type-check exceptions”). A file that needs to grow is split first. A split that needs a design, as `server/runtime.mjs` does (which module owns which of its state), is decided in this document before its code moves.
+- **Never up in the change that tripped it** (developing.md, “Lint and type-check exceptions”). A file that needs to grow is split first.
+- **Test files too** (decided by the person, 23 October 2026). A test for code whose test file is at its ceiling goes in a new test file, named for what it tests, rather than raising the ceiling. A split that needs a design, as `server/runtime.mjs` does (which module owns which of its state), is decided in this document before its code moves.
 
 **Revisit when** the overrides are gone, or ceilings left loose after a file shrank become common: then a test that each ceiling equals its file’s size makes the lowering automatic.
