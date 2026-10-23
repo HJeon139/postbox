@@ -397,11 +397,31 @@ export class Runtime {
   postAndDeliver(threadId, { text, attachments }, targets) {
     const item = this.addItem(threadId, { kind: 'user', text, attachments });
     this.putThread({ ...this.s.threads[threadId], hops: 0 });
+    const refs = this.threadRefs(threadId, text);
     for (const { se, woke } of targets) {
       if (woke) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
-      this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id }, { threadId });
+      this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id, ...(refs.length ? { context: refs } : {}) }, { threadId });
     }
     return { item };
+  }
+
+  /**
+   * The threads a message of yours links to (#121), as Copy link or the composer’s # gives them, each with its id and
+   * title so the agent can read it. Only threads of the same conversation: read_conversation reads no others.
+   * @param {string} threadId @param {string} text
+   */
+  threadRefs(threadId, text) {
+    const root = (x) => this.lineage(x).at(-1);
+    const ids = new Set();
+    for (const m of String(text).matchAll(/#\/t\/(th_[A-Za-z0-9]+)(?:\/side\/(th_[A-Za-z0-9]+))?/g)) ids.add(m[2] ?? m[1]);
+    const out = [];
+    for (const id of [...ids].slice(0, 10)) {
+      const t = this.s.threads[id];
+      if (!t || t.deleting || id === threadId || root(id) !== root(threadId)) continue;
+      const what = t.kind === 'side' ? 'side thread' : t.kind === 'topic' ? 'topic thread' : 'conversation';
+      out.push(`[Postbox] The person’s message links to the ${what} “${t.title}” (thread ${id}). Read it with read_conversation with thread: "${id}".`);
+    }
+    return out;
   }
 
   editQueued(threadId, queueId, text) {
@@ -478,7 +498,7 @@ export class Runtime {
     const slash = message.slash === true;
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
-      message = { ...message, context: se.context };
+      message = { ...message, context: [...se.context, ...(message.context ?? [])] };
       this.updateSession(sessionId, { context: [] });
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
@@ -1282,7 +1302,8 @@ export class Runtime {
         n: (parent.hops ?? 0) + 1,
       });
       this.updateSession(fromSessionId, {
-        needs: { kind: 'hop', itemId: it.id, text: `@${from.handle} wants to wake @${p.handle}` },
+        // The card is in the conversation, even when the agent asking is a fork in a side thread (#121).
+        needs: { kind: 'hop', itemId: it.id, text: `@${from.handle} wants to wake @${p.handle}`, ...this.awayFrom(from, parent.id) },
         state: this.turns.has(fromSessionId) ? from.state : 'needs',
       });
       this.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${(parent.hops ?? 0) + 1} since your last message.`);
@@ -1818,7 +1839,7 @@ export class Runtime {
         if (i.variant === 'left') return `@${i.to} left`;
         return null;
       case 'sidelink':
-        return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages)`;
+        return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages; read_conversation with thread: "${i.sideThreadId}" reads it)`;
       case 'command': {
         // A `!command` the person ran (#67), with its output, as Claude Code’s bash mode passes it on.
         const how =

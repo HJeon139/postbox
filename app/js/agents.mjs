@@ -2,11 +2,15 @@
 // ring, name, state, what it runs with and its open asks, and a quick panel behind each row and each ring in the
 // top bar. The panel changes the model, effort, permission mode and tools in two clicks, without a command, and
 // says the scope of each: model and effort are this conversation’s, mode and tools the persona’s, everywhere.
+//
+// Under each row, the room’s agent tree (#121): where the agent’s turn is when it’s in a side thread, and each fork of
+// it that answered there while it was busy (#110), with who woke it, its state and a Stop. A persona with two
+// sessions shows two entries.
 
 import { BACKEND_NAMES, chipEffort, chipModel, shortModel } from '/shared/agent-facts.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
-import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, sessionsOf, sideSessionsOf, stopSession } from './client.mjs';
 import { fill, h, plural, syncList } from './dom.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -22,9 +26,16 @@ const S = () => client.state;
 const ASK_NOUNS = { choice: ['choice', 'choices'], form: ['form', 'forms'], confirm: ['confirmation', 'confirmations'], review: ['review', 'reviews'] };
 /** @returns {{ text: string, itemId: string } | null} */
 export function openAsks(se) {
-  const open = itemsOf(se.threadId).filter(
-    (it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered && it.id !== se.needs?.itemId,
-  );
+  // Its own thread’s, and those it showed while answering in a side thread of it (#110).
+  const threads = [
+    se.threadId,
+    ...Object.values(S().threads)
+      .filter((t) => t.kind === 'side' && t.parentId === se.threadId)
+      .map((t) => t.id),
+  ];
+  const open = threads
+    .flatMap(itemsOf)
+    .filter((it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered && it.id !== se.needs?.itemId);
   if (!open.length) return null;
   const types = new Set(open.map((it) => it.block.type));
   const [one, many] = types.size === 1 ? ASK_NOUNS[open[0].block.type] : ['request', 'requests'];
@@ -70,8 +81,16 @@ function goToItem(itemId) {
 
 // ── The section ─────────────────────────────────────────────────────────────────────────
 
-/** Which agents a conversation or topic thread lists: the ones in it, not archived. */
-const agentsIn = (threadId) => sessionsOf(threadId).filter((x) => !x.archived);
+/**
+ * Which agents a conversation or topic thread lists: the ones in it, not archived, then any side-thread session whose
+ * persona isn’t one of them (from before #110, each wake started one).
+ */
+const agentsIn = (threadId) => {
+  const own = sessionsOf(threadId).filter((x) => !x.archived);
+  const personas = new Set(own.map((x) => x.personaId));
+  const strays = sideSessionsOf(threadId).filter((x) => !x.archived && !personas.has(x.personaId) && !x.forkOf?.busy);
+  return [...own, ...strays];
+};
 
 /**
  * The Agents section for a conversation (the sidebar) or a topic thread (its panel): a heading, then a row per
@@ -95,10 +114,68 @@ export function agentsSection(threadId, { label = 'Agents' } = {}) {
   };
   paint();
   const off = client.on((ch) => {
-    if (ch.type === 'session' && ch.data.threadId !== threadId) return;
+    if (ch.type === 'session' && ch.data.threadId !== threadId && S().threads[ch.data.threadId]?.parentId !== threadId) return;
     if (['session', 'thread', 'persona', 'load', 'remove'].includes(ch.type)) paint();
   });
   return { el, destroy: off };
+}
+
+/**
+ * The entries nested under an agent’s row (#121): its own turn when that’s in a side thread, and the forks of it in
+ * this conversation’s side threads. A side-thread session that isn’t in the conversation shows where it is.
+ */
+function treeOf(se) {
+  const conv = S().threads[se.threadId];
+  const out = [];
+  const here = se.sideTurn && S().threads[se.sideTurn.threadId];
+  if (here) out.push({ se, thread: here, by: se.sideTurn.by, fork: false });
+  if (conv?.kind === 'side') out.push({ se, thread: conv, by: se.wokenBy ?? null, fork: false });
+  else
+    for (const f of sideSessionsOf(se.threadId).filter((x) => x.personaId === se.personaId && x.id !== se.id && !x.archived))
+      out.push({ se: f, thread: S().threads[f.threadId], by: f.forkOf?.by ?? null, fork: true });
+  return out;
+}
+const treeSig = (list) => JSON.stringify(list.map((x) => [x.se.id, x.se.state, x.thread.id, x.thread.title, x.by, x.fork]));
+
+/** One nested entry: where it is (a link that opens the side thread), who woke it, its state, and its Stop. */
+function treeEntry({ se, thread, by, fork }) {
+  const who = by === 'you' ? 'you' : by ? `@${by}` : null;
+  // Who it’s talking with there: the other agent of the side thread’s pair, else who woke it.
+  const partner = (thread.pair ?? '').split('|').find((x) => x && x !== se.handle) ?? (by && by !== 'you' ? by : null);
+  // One line, state first, so it fits the sidebar: “Calling tools with @indexer”, or “Fork · calling tools with …”.
+  const state = fork ? stateWord(se.state).toLowerCase() : stateWord(se.state);
+  const line = `${fork ? 'Fork · ' : ''}${state}${partner ? ` with @${partner}` : ''}`;
+  const where = `in the side thread “${thread.title}”${who ? `, woken by ${who}` : ''}`;
+  const ring = fork ? ringFor(se, 'xs') : null;
+  if (ring) ring.dataset.session = se.id;
+  const stop = h(
+    'button.btn.sm.ghost',
+    {
+      type: 'button',
+      hidden: !busy(se),
+      'aria-label': `Stop @${se.handle}${fork ? '’s fork' : ''} in ${thread.title}`,
+      onclick: () =>
+        stopSession(se).then(
+          (r) => (r?.ask ? navigate(hrefOf(thread.id)) : say(`Stopping @${se.handle}${fork ? '’s fork' : ''}.`)),
+          (e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }),
+        ),
+    },
+    'Stop',
+  );
+  return h(
+    'li.agent-sub',
+    { dataset: { session: se.id, fork: String(fork) } },
+    h(
+      'a.agent-sub-link',
+      // The thread and who woke it are on hover and in its name; the link opens the thread.
+      { href: hrefOf(thread.id), title: `${where[0].toUpperCase()}${where.slice(1)}`, 'aria-label': `${line}, ${where}` },
+      ring ? h('span.ring-slot', { 'aria-hidden': 'true' }, ring) : null,
+      // Under its persona’s row, so a fork needs no name.
+      h('span.name', fork ? [h('b', 'Fork'), ` · ${line.slice('Fork · '.length)}`] : line),
+    ),
+    stop,
+    fork ? h('div.agent-asks', openAsksEl(se, true)) : null,
+  );
 }
 
 /** One agent’s row: a button that opens its quick panel, and its open asks under it. */
@@ -114,7 +191,12 @@ function agentRow(se) {
   const ring = ringFor(se, 'sm');
   ring.dataset.session = se.id;
   button.append(h('span.ring-slot', { 'aria-hidden': 'true' }, ring), h('span.name'));
-  const n = h('li.agent-row', button, h('div.agent-asks', openAsksEl(se, true)));
+  const n = h(
+    'li.agent-row',
+    button,
+    h('div.agent-asks', openAsksEl(se, true)),
+    h('ul.agent-subs', { 'aria-label': `@${se.handle}’s sessions in side threads` }),
+  );
   paintRow(n, se, true);
   return n;
 }
@@ -122,15 +204,33 @@ function agentRow(se) {
 function paintRow(n, se, fresh = false) {
   const f = factsOf(se);
   const runs = f.mock ? '' : `${chipModel(f)} · ${chipEffort(f)}`;
-  const sig = JSON.stringify([se.handle, f.mock, se.state, runs]);
+  const joined = joinedWhy(se);
+  const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined]);
   ringFor(se, 'sm', n.querySelector('.agent-btn pb-ring'));
+  const tree = treeOf(se);
+  const subs = n.querySelector('.agent-subs');
+  subs.hidden = !tree.length;
+  if (fresh || subs.dataset.sig !== treeSig(tree)) {
+    subs.dataset.sig = treeSig(tree);
+    subs.replaceChildren(...tree.map(treeEntry));
+  }
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
   fill(
     n.querySelector('.agent-btn .name'),
     h('span', h('b', `@${se.handle}`), mockMarker(se), h('span.agent-state', ` · ${stateWord(se.state).toLowerCase()}`)),
     runs ? h('span.sub', runs) : null,
+    joined ? h('span.sub', joined) : null,
   );
+}
+
+/**
+ * Why an agent the person never added is in the conversation: another agent woke it, or they @-mentioned it, in a side
+ * thread, and it joined to answer (#110). null for one the person added.
+ */
+export function joinedWhy(se) {
+  if (!se.joinedBy) return null;
+  return se.joinedBy === 'you' ? 'Joined when you @-mentioned it in a side thread' : `Joined when @${se.joinedBy} woke it`;
 }
 
 // ── The quick panel ─────────────────────────────────────────────────────────────────────
@@ -150,7 +250,7 @@ export function openAgentPanel(sessionId, from = null) {
   const first = S().sessions[sessionId];
   if (!first) return;
   const t = S().threads[first.threadId];
-  const where = t?.kind === 'topic' ? 'this thread' : 'this conversation';
+  const where = t?.kind === 'topic' ? 'this thread' : t?.kind === 'side' ? 'this side thread' : 'this conversation';
   let status = '';
   /** @type {{ close: () => void, dialog: HTMLElement } | null} */
   let dlg = null;

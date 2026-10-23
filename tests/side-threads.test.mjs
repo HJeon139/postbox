@@ -332,3 +332,29 @@ test('#110: an item read_conversation cut in a side thread can be read in full w
   const theirs = rt.addItem(other.id, { kind: 'agent', sessionId: 'x', handle: 'beta', text: 'Not yours.', status: 'done' });
   assert.equal(tools.read_message({ id: theirs.id }).ok, false);
 });
+
+test('#121: the catch-up line for a side thread gives its id, so an agent can read it', async () => {
+  const { store, rt, adapter, t, alpha } = setup();
+  rt.agentWake(alpha.id, 'beta', 'Check this.');
+  await settle(rt);
+  const side = sideOf(store, t);
+  rt.sendMessage(t.id, { text: '@gamma what happened?' });
+  await settle(rt);
+  const ctx = adapter.calls.at(-1).message.context.join('\n');
+  assert.match(ctx, new RegExp(`@alpha and @beta talked in a side thread \\(\\d+ messages?; read_conversation with thread: "${side.id}" reads it\\)`));
+});
+
+test('#121: a link to a thread of the conversation in your message reaches the agent with the thread’s id and title', async () => {
+  const { store, rt, adapter, t, a, alpha } = setup();
+  rt.agentWake(alpha.id, 'beta', 'Check this.');
+  await settle(rt);
+  const side = sideOf(store, t);
+  const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id] });
+  rt.sendMessage(t.id, { text: `@alpha look at [it](http://127.0.0.1:4400/#/t/${t.id}/side/${side.id}) and #/t/${other.id}` });
+  await settle(rt);
+  const call = adapter.calls.findLast((c) => c.sessionId === alpha.id && c.message.kind === 'user');
+  const refs = call.message.context.filter((x) => x.includes('links to'));
+  assert.deepEqual(refs, [
+    `[Postbox] The person’s message links to the side thread “${side.title}” (thread ${side.id}). Read it with read_conversation with thread: "${side.id}".`,
+  ]);
+});
