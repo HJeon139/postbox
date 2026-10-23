@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.6.3 (2026-10-23)
+
+### Fixes
+
+- **agents:** a block's answer says the person gave it, and read_message says where an item ends
+- **agents:** history and read_conversation give a block's content and answer
+- **agents:** history says where it cut an item, and read_message reads it in full
+
 ## 0.6.2 (2026-10-23)
 
 ### Fixes
