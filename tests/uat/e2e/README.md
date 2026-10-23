@@ -84,6 +84,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 - [SciFact: claims, abstracts and retrieval](scenarios/scifact.md)
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
 - [P0 hotfixes](scenarios/p0.md) (#108, #123, #125, #126): two Claude Code agents in a room. Phase 1 has them send each other long lists through more than three wakes, so the allow card appears (#108). Phase 2 has a draft one agent revises while the other reviews it and you answer, with a Send now mid-revision (#123, #125, and #126’s original chain). Phase 3 has a background command, then Stop with Keep running, Stop with Stop it too, and Send now (#126).
+- [Work room: real changes, the agents in the sidebar, and the right pane](scenarios/workroom.md): @researcher changes real files and @critic reviews them, through the Agents section and the Work view in the right pane. Its plan is [plan-agents-and-work.md](../plan-agents-and-work.md).
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)
