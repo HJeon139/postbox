@@ -48,7 +48,7 @@ Things to try in the demo’s conversations (`node server/index.mjs --demo --fre
 | Corpus schema spec | Review my corpus schema line by line | Markdown, code and app reviews, then a revision shown as a diff |
 | Index the shelf | Index the shelf · Rebuild without the prefaces · Show it as a timeline · Show me the shelf map · Show me a dashboard · Clear the old index cache · Draw the whole indexing pipeline | Progress, subagents and a compaction · a failed reply with Retry · blocks Postbox can’t show · a crashed app · an app that fails its check and gets fixed · a permission card · a diagram too wide to read, flagged by the diagram linter and redrawn |
 | Corpus planning | @indexer check the editions with the researcher, in a loop | Agents waking each other in a side thread until the limit asks you |
-| Citation fixes | Fix the citation script · then Try a faster parser · then **Work** in the top bar, and **Expand** | Every file the agent changed with its diff and a copy from before, flagged changes, the commands as they ran, an issue it filed, and a turn that left nothing lasting |
+| Citation fixes | Fix the citation script · then Try a faster parser · then **Work** in the top bar, and its full-screen icon | Every file the agent changed with its diff and a copy from before, flagged changes, the commands as they ran, an issue it filed, and a turn that left nothing lasting |
 
 ## Conversations and threads
 
@@ -66,7 +66,7 @@ Each conversation has a **Work** view, opened with **Work** in the top bar: ever
 - **Commands** exactly as they ran, with their exit, duration and all their output, background commands included.
 - **Effort:** turns, wall time, tool calls, tokens and spend, by agent, with what they produced, and the turns that left nothing lasting.
 
-It opens in the right pane, beside a thread if one is open, in a compact form: what needs review, files by where they stand, commands and how many failed, what was written outside Postbox, spend, and each turn’s line. **Expand** shows all of the above over the whole window. Under each reply, a line such as “3 files +40 −12 · 2 commands · $0.31” opens the pane at that turn. It’s built from the turn’s tool calls; changes a command makes, such as a formatter’s, aren’t seen. Git is only read, without its optional locks, so an agent’s own git never waits on Postbox.
+It opens in the right pane, beside a thread if one is open, in a compact form: what needs review, files by where they stand, commands and how many failed, what was written outside Postbox, spend, and each turn’s line. Its full-screen icon shows all of the above over the whole window, as a thread’s does for the thread. Under each reply, a line such as “3 files +40 −12 · 2 commands · $0.31” opens the pane at that turn. It’s built from the turn’s tool calls; changes a command makes, such as a formatter’s, aren’t seen. Git is only read, without its optional locks, so an agent’s own git never waits on Postbox.
 
 ## How it fits together
 

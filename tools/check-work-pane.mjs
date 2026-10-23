@@ -1,7 +1,8 @@
 // A headless Chrome check of the right pane (#132, reworked from #138’s tabs): a conversation’s Work and a thread
-// open beside it alone or together, split by a divider that moves by keyboard and mouse; Work expands to the whole
-// window and closes with Escape or Close, with focus back where it was; a reply’s work line opens the pane at its
-// turn; a reload restores what was open; and nothing scrolls sideways. Every case runs at 1280 and at 375 px.
+// open beside it alone or together, split by a divider that moves by keyboard and mouse; either goes full screen
+// with the app frames’ icon and comes back with Escape or the icon, with focus on it; a thread does so in place,
+// keeping its draft, its scroll and a streaming reply; a reply’s work line opens the pane at its turn; a reload
+// restores what was open; and nothing scrolls sideways. Every case runs at 1280 and at 375 px.
 //
 //   node tools/check-work-pane.mjs
 //
@@ -106,7 +107,7 @@ async function noSideways(where) {
     const out = [];
     const d = document.documentElement;
     if (d.scrollWidth > innerWidth + 1) out.push('the page by ' + (d.scrollWidth - innerWidth) + ' px');
-    for (const sel of ['.wp-body', '.sp-body', '.dialog.full .d-body', '.rpane']) {
+    for (const sel of ['.wp-body', '.sp-body', '.rpane', '.pane-full']) {
       const el = document.querySelector(sel);
       if (el && el.scrollWidth > el.clientWidth + 1) out.push(sel + ' by ' + (el.scrollWidth - el.clientWidth) + ' px');
     }
@@ -134,7 +135,9 @@ await waitUntil(() => turnsDone() >= 2, 'the second turn’s work');
 const turns = store.state.work[conv.id].filter((e) => e.kind === 'turn');
 const root = store.items(conv.id).find((i) => i.kind === 'agent');
 const { threadId: topic } = rt.startTopic(conv.id, root.id);
-rt.addItem(topic, { kind: 'user', text: 'A question on the side.' });
+// Long enough to scroll, in the pane and full screen.
+for (let i = 0; i < 24; i++)
+  rt.addItem(topic, { kind: 'user', text: `Side question ${i + 1}: ${'a longer line that wraps across the panel and reads at the column width, '.repeat(3)}` });
 
 const pane = (r) => `#/t/${conv.id}${r}`;
 const WORK = 'aside.workpane';
@@ -226,41 +229,133 @@ for (const [width, height] of [
     await noSideways('with both open');
   });
 
-  await check(`${at}: Expand shows the whole Work view over the window; Escape and Close bring it back, with focus on Expand`, async () => {
-    await click(q('#work-expand'));
-    await page.waitFor(`${q('.dialog.full .work-view')}`, { label: 'the expanded view' });
-    assert.match(await hash(), /[?&]full\b/);
-    assert.ok(await inside('.dialog.full'), 'focus didn’t move into the expanded view');
-    const r = await page.evaluate(`(() => { const b = ${q('.dialog.full')}.getBoundingClientRect(); return { w: b.width, h: b.height }; })()`);
-    assert.ok(r.w >= width - 16 && r.w <= width && r.h >= height - 16 && r.h <= height, `not the window: ${Math.round(r.w)} × ${Math.round(r.h)}`);
-    // Everything #138’s page showed.
-    for (const id of ['work-files', 'work-vcs', 'work-external', 'work-commands', 'work-effort']) assert.ok(await has(`.dialog.full #${id}`), `no #${id}`);
-    await noSideways('expanded');
+  await check(`${at}: Work goes full screen with the app frames’ icon; Escape and the icon bring it back, with focus on the icon`, async () => {
+    assert.equal(await page.evaluate(`${q('#work-full')}.getAttribute('aria-label')`), 'Full screen');
+    await click(q('#work-full'));
+    await page.waitFor(q('.workpane.pane-full .work-view'), { label: 'Work full screen' });
+    assert.match(await hash(), /[?&]full=work\b/);
+    assert.ok(await inside('.workpane.pane-full'), 'focus didn’t move into it');
+    assert.equal(await page.evaluate(`${q('#work-full')}.getAttribute('aria-label')`), 'Exit full screen');
+    const r = await page.evaluate(`(() => { const b = ${q('.workpane.pane-full')}.getBoundingClientRect(); return { w: b.width, h: b.height }; })()`);
+    assert.ok(r.w === width && r.h === height, `not the window: ${Math.round(r.w)} × ${Math.round(r.h)}`);
+    // #138’s view, as it was.
+    for (const id of ['work-files', 'work-vcs', 'work-external', 'work-commands', 'work-effort']) assert.ok(await has(`.pane-full #${id}`), `no #${id}`);
+    // Tab stays in it.
+    for (let i = 0; i < 30; i++) await press('Tab', { quick: true });
+    assert.ok(await inside('.workpane.pane-full'), 'Tab left full screen');
+    await noSideways('full screen');
     await press('Escape');
-    await page.waitFor(`!${q('.backdrop')}`, { label: 'the expanded view to close' });
-    assert.equal(await focusedId(), 'work-expand');
+    await page.waitFor(`!${q('.pane-full')}`, { label: 'full screen to end' });
+    assert.equal(await focusedId(), 'work-full');
     assert.doesNotMatch(await hash(), /full/);
-    assert.ok(await has(WORK), 'the pane closed too');
-    // The visible Close button does the same.
-    await click(q('#work-expand'));
-    await page.waitFor(q('.dialog.full'), { label: 'the expanded view again' });
-    await click(`document.querySelector('.dialog.full .d-head button[aria-label="Close"]')`);
-    await page.waitFor(`!${q('.backdrop')}`, { label: 'Close to close it' });
-    assert.equal(await focusedId(), 'work-expand');
+    assert.ok(await has('.wp-body .wc-sec'), 'the compact form didn’t come back');
+    // The icon, now “Exit full screen”, does the same.
+    await click(q('#work-full'));
+    await page.waitFor(q('.workpane.pane-full'), { label: 'full screen again' });
+    await click(q('#work-full'));
+    await page.waitFor(`!${q('.pane-full')}`, { label: 'the icon to end it' });
+    assert.equal(await focusedId(), 'work-full');
   });
 
-  await check(`${at}: an item in the pane opens expanded at that item, and focus comes back to it`, async () => {
+  await check(`${at}: an item in the pane opens full screen at that item`, async () => {
     const file = store.state.work[conv.id].find((e) => e.kind === 'file' && e.rel?.endsWith('refs.bib'));
     const row = `document.getElementById('wc-file-${file.id}') ?? document.getElementById('wc-review-${file.id}')`;
     await page.evaluate(`(${row}).focus()`);
-    const id = await focusedId();
     await press('Enter');
-    await page.waitFor(`document.querySelector('.dialog.full details[open] > summary#wsum-${file.id}')`, { label: 'refs.bib, opened' });
+    await page.waitFor(`document.querySelector('.pane-full details[open] > summary#wsum-${file.id}')`, { label: 'refs.bib, opened' });
     assert.equal(await focusedId(), `wsum-${file.id}`);
-    await page.waitFor(`document.querySelector('.dialog.full .work-diff')`, { label: 'its diff' });
+    await page.waitFor(`document.querySelector('.pane-full .work-diff')`, { label: 'its diff' });
     await press('Escape');
-    await page.waitFor(`!${q('.backdrop')}`, { label: 'the expanded view to close' });
-    assert.equal(await focusedId(), id);
+    await page.waitFor(`!${q('.pane-full')}`, { label: 'full screen to end' });
+    assert.equal(await focusedId(), 'work-full');
+  });
+
+  await check(`${at}: the thread goes full screen in place, keeping its draft, its scroll and a streaming reply`, async () => {
+    const body = q(`${THREAD} .sp-body`);
+    const ta = q(`${THREAD} .composer textarea`);
+    await page.evaluate(`window.__ta = ${ta}; window.__body = ${body}; window.__panel = ${q(THREAD)};`);
+    await page.evaluate(`(() => { const t = ${ta}; t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); t.focus(); })()`);
+    await page.send('Input.insertText', { text: 'A draft reply' });
+    // Scrolled up to the middle, by the wheel, as a person scrolls, so there’s more than a window’s worth below it.
+    const b = await centerOf(body);
+    for (let i = 0; i < 8; i++) await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: b.x, y: b.y, deltaX: 0, deltaY: -300 });
+    await settle();
+    const reading = () =>
+      page.evaluate(`(() => {
+        const box = ${body}.getBoundingClientRect();
+        // What the transcript holds in place when its size changes: the first message still in view.
+        const items = [...${body}.querySelectorAll('.transcript > [data-key]')];
+        const it = items.find((n) => n.getBoundingClientRect().bottom > box.top) ?? items[0];
+        return { key: it.dataset.key, top: Math.round(it.getBoundingClientRect().top - box.top) };
+      })()`);
+    const before = await reading();
+    await click(q('#thread-full'));
+    await page.waitFor(q('.sidepanel.pane-full'), { label: 'the thread full screen' });
+    assert.match(await hash(), /[?&]full=thread\b/);
+    assert.equal(await focusedId(), 'thread-full');
+    assert.equal(await page.evaluate(`${q('#thread-full')}.getAttribute('aria-label')`), 'Exit full screen');
+    // The same nodes, not a copy: nothing was rebuilt.
+    assert.equal(await page.evaluate(`window.__ta === ${ta} && window.__body === ${body} && window.__panel === ${q(THREAD)}`), true, 'the thread was rebuilt');
+    assert.equal(await page.evaluate(`${ta}.value`), 'A draft reply');
+    const r = await page.evaluate(`(() => { const b = ${q('.sidepanel.pane-full')}.getBoundingClientRect(); return { w: b.width, h: b.height }; })()`);
+    assert.ok(r.w === width && r.h === height, `not the window: ${Math.round(r.w)} × ${Math.round(r.h)}`);
+    // At the message column’s width.
+    const col = await page.evaluate(`Math.round(${q('.sidepanel.pane-full .sp-body .transcript')}.getBoundingClientRect().width)`);
+    assert.ok(col <= 760 && col >= Math.min(760, width - 48), `the column is ${col} px`);
+    // The message you were reading starts where it did, though the wider column makes it shorter.
+    const topNow = (key = before.key) =>
+      page.evaluate(`Math.round(document.querySelector('[data-key="${key}"]').getBoundingClientRect().top - ${body}.getBoundingClientRect().top)`);
+    const inFull = await topNow();
+    assert.ok(Math.abs(inFull - before.top) <= 3, `the message you were reading moved from ${before.top} to ${inFull} px`);
+    await noSideways('with the thread full screen');
+    // A reply streams in while it’s full screen, into the same transcript.
+    const n = store.items(topic).length;
+    rt.sendMessage(topic, { text: 'One more thing on the side' });
+    await waitUntil(
+      () =>
+        store
+          .items(topic)
+          .slice(n)
+          .some((i) => i.kind === 'agent'),
+      'the reply to start',
+    );
+    const reply = store
+      .items(topic)
+      .slice(n)
+      .find((i) => i.kind === 'agent');
+    await page.waitFor(`document.querySelector('.sidepanel.pane-full [data-key="${reply.id}"]')`, { label: 'the reply, full screen' });
+    await waitUntil(() => store.items(topic).find((i) => i.id === reply.id)?.status === 'done', 'the reply to finish');
+    const final = store
+      .items(topic)
+      .find((i) => i.id === reply.id)
+      .text.slice(-12);
+    await page.waitFor(`document.querySelector('.sidepanel.pane-full [data-key="${reply.id}"]')?.textContent.includes(${JSON.stringify(final)})`, {
+      label: 'the reply to finish, full screen',
+    });
+    // Escape brings it back to the pane, with focus on the icon, the draft and the transcript as they were: the first
+    // message in view stays where it starts.
+    const last = await reading();
+    await press('Escape');
+    await page.waitFor(`!${q('.pane-full')}`, { label: 'full screen to end' });
+    assert.equal(await focusedId(), 'thread-full');
+    assert.equal(await page.evaluate(`window.__ta === ${ta} && ${ta}.value`), 'A draft reply');
+    const back = await topNow(last.key);
+    assert.ok(Math.abs(back - last.top) <= 3, `back in the pane, the message you were reading moved from ${last.top} to ${back} px`);
+    assert.ok(await has(`.sidepanel [data-key="${reply.id}"]`), 'the reply went');
+    // The icon brings it back too.
+    await click(q('#thread-full'));
+    await page.waitFor(q('.sidepanel.pane-full'));
+    await click(q('#thread-full'));
+    await page.waitFor(`!${q('.pane-full')}`, { label: 'the icon to end it' });
+    assert.equal(await focusedId(), 'thread-full');
+    // A reload restores it.
+    await click(q('#thread-full'));
+    await page.waitFor(q('.sidepanel.pane-full'));
+    await page.evaluate('location.reload()');
+    await page.waitFor(`${q('.sidepanel.pane-full .sp-body .transcript [data-key]')}`, { label: 'the thread full screen, after the reload' });
+    await press('Escape');
+    await page.waitFor(`!${q('.pane-full')}`);
+    assert.equal(await focusedId(), 'thread-full');
   });
 
   await check(`${at}: a reply’s work line opens Work at its turn, beside the thread`, async () => {
@@ -285,9 +380,9 @@ for (const [width, height] of [
     assert.match(await page.evaluate(`document.querySelector('#wturn-${second.id}').textContent`), /1 command \(1 failed\)/);
     // Its own lines go on to that turn alone, expanded.
     await click(`document.getElementById('wc-open-${second.id}')`);
-    await page.waitFor(`document.querySelector('.dialog.full .work-turn')`, { label: 'one turn, expanded' });
+    await page.waitFor(`document.querySelector('.pane-full .work-turn')`, { label: 'one turn, full screen' });
     await press('Escape');
-    await page.waitFor(`!${q('.backdrop')}`);
+    await page.waitFor(`!${q('.pane-full')}`);
     await noSideways('at a turn');
   });
 
@@ -299,14 +394,14 @@ for (const [width, height] of [
     await page.evaluate('location.reload()');
     await page.waitFor(`${q('.rpane.split')} && ${q(WORK)} && ${q(THREAD)}`, { label: 'both, after the reload' });
     assert.equal(await page.evaluate(`${q('.rp-divider')}.getAttribute('aria-valuenow')`), '25');
-    // Expanded, too.
-    await click(q('#work-expand'));
-    await page.waitFor(q('.dialog.full'));
+    // Full screen, too.
+    await click(q('#work-full'));
+    await page.waitFor(q('.workpane.pane-full'));
     await page.evaluate('location.reload()');
-    await page.waitFor(`${q('.dialog.full .work-view')} && ${q(WORK)} && ${q(THREAD)}`, { label: 'expanded, after the reload' });
+    await page.waitFor(`${q('.workpane.pane-full .work-view')} && ${q(THREAD)}`, { label: 'full screen, after the reload' });
     await press('Escape');
-    await page.waitFor(`!${q('.backdrop')}`);
-    assert.equal(await focusedId(), 'work-expand');
+    await page.waitFor(`!${q('.pane-full')}`);
+    assert.equal(await focusedId(), 'work-full');
     // Another conversation has nothing open; coming back, Work is open again, and so for a plain link to it.
     await open(`#/t/${other.id}`);
     assert.equal(await has('.rpane:not([hidden])'), false);

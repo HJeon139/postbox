@@ -4,7 +4,7 @@
 // whenever a turn ends.
 //
 // It has two forms. In the conversation’s right pane, beside a thread or alone, a compact one (mountWorkPane): what
-// needs review, files by where they stand, commands, what was published, spend, and each turn’s line. Expanded, the
+// needs review, files by where they stand, commands, what was published, spend, and each turn’s line. Full screen, the
 // whole of it over the window (mountWork): every file with its diff and Restore, version control, every command with
 // its output, and effort by agent.
 
@@ -45,7 +45,7 @@ function signedEl(added, deleted) {
 }
 
 /**
- * A link to Work as the pane or the expanded view shows it, which replaces the address like the rest of the pane.
+ * A link to Work as the pane or full-screen Work shows it, which replaces the address like the rest of the pane.
  * @param {string} threadId
  * @param {{ turn?: string|null, full?: boolean, at?: string|null }} to
  */
@@ -106,7 +106,7 @@ function watchGit(threadId, onChange) {
 }
 
 /**
- * The whole Work view, expanded over the window from the pane.
+ * The whole Work view: Work’s full form, shown when Work in the pane goes full screen.
  * @param {string} threadId  the conversation
  * @param {{ turnId?: string|null, at?: string|null }} [opts]  turnId: show one turn’s work; at: the item or section to
  *   open and go to
@@ -711,11 +711,16 @@ const failedCommand = (c) => c.state === 'failed' || c.state === 'denied';
 /**
  * Work in the conversation’s right pane, its compact form: what needs review, files by where they stand, commands
  * and how many failed, what was published outside Postbox, spend, and each turn’s line, newest first. Each list is
- * short, and each item opens in the expanded view. Nothing here moves or pulses: it’s a record, read when you look.
+ * short, and each item opens in the full form. Nothing here moves or pulses: it’s a record, read when you look.
+ * Full screen (pane.mjs), the body holds the full form instead (setFull): #138’s view, as it was.
  * @param {string} threadId  the conversation
  */
 export function mountWorkPane(threadId) {
   const body = h('div.wp-body', { tabindex: '-1' });
+  // The full-screen control, the app frames’ own (#45); pane.mjs gives it its job.
+  const fullBtn = h('button.btn.icon.sm', { type: 'button', id: 'work-full', 'aria-label': 'Full screen' }, icon('expand'));
+  /** The full form while full screen, and which turn and item it opened on. */
+  let full = null;
   const el = h(
     'aside.workpane',
     { id: 'work-pane', 'aria-labelledby': 'wp-title', dataset: { thread: threadId } },
@@ -723,7 +728,7 @@ export function mountWorkPane(threadId) {
       'div.wp-head',
       icon('file', 'dim'),
       h('div.grow', h('b', { id: 'wp-title' }, 'Work'), h('div.small.dim', 'What the agents changed, ran and published')),
-      h('button.btn.sm', { type: 'button', id: 'work-expand', onclick: () => openWork(threadId, { full: true }) }, icon('expand', 'i-sm'), 'Expand'),
+      fullBtn,
       h('button.btn.icon.sm.ghost', { type: 'button', id: 'work-close', 'aria-label': 'Close Work', onclick: () => closeWork(threadId) }, icon('x')),
     ),
     body,
@@ -995,6 +1000,7 @@ export function mountWorkPane(threadId) {
 
   const paint = () =>
     keepFocus(body, () => {
+      if (full) return;
       const entries = S().work?.[threadId] ?? [];
       const s = summarize(entries, { git });
       const lines = s.turns
@@ -1032,9 +1038,31 @@ export function mountWorkPane(threadId) {
     focus() {
       body.focus();
     },
+    fullBtn,
+    /**
+     * Shows the full form in place of the compact one, on a turn or opened at an item (opts), or the compact one
+     * again (null). Returns what focus should go to.
+     * @param {{ turn?: string|null, at?: string|null } | null} opts
+     */
+    setFull(opts) {
+      const key = opts ? `${opts.turn ?? ''}|${opts.at ?? ''}` : null;
+      if (key === (full?.key ?? null)) return full ? full.view.target() : fullBtn;
+      full?.view.destroy();
+      full = null;
+      if (opts) {
+        const view = mountWork(threadId, { turnId: opts.turn ?? null, at: opts.at ?? null });
+        full = { key, view };
+        fill(body, view.el);
+        body.scrollTop = 0;
+        return view.target();
+      }
+      paint();
+      return fullBtn;
+    },
     destroy() {
       off();
       gitNow.stop();
+      full?.view.destroy();
       cancelAnimationFrame(frame);
     },
   };

@@ -961,11 +961,11 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 .work-view { max-width: 980px; width: 100%; margin: 0 auto; padding: 4px 0 32px; display: flex; flex-direction: column; gap: 20px; }
 .work-view:focus { outline: none; }
 
-/* Expanded: the whole Work view over the window, as a dialog. */
-.backdrop:has(> .dialog.full) { padding: 8px; grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
-.dialog.full { max-width: none; height: 100%; max-height: none; }
-.dialog.full .d-body { flex: 1; }
-
+/* Full screen: a pane view fixed over the window, where it is in the page (pane.mjs). A thread reads at the
+   message column’s width; Work shows its full form. */
+.rpane > .pane-full { position: fixed; inset: 0; z-index: 28; background: var(--bg); }
+.sidepanel.pane-full .sp-body > *, .sidepanel.pane-full .sp-foot > * { width: 100%; max-width: 760px; margin-inline: auto; }
+.workpane.pane-full .wp-body { padding: 16px 24px 32px; }
 /* Compact, in the pane: short lists, each item opening the expanded view. */
 .wp-body { flex: 1; overflow: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 18px; }
 .wp-body:focus { outline: none; }
@@ -1057,8 +1057,7 @@ code.wc-name { font-size: 12px; }
 .work-tbl th { padding: 8px 12px; }
 .work-tbl th, .work-tbl td { white-space: nowrap; }
 @media (max-width: 767px) {
-  .backdrop:has(> .dialog.full) { padding: 0; }
-  .dialog.full { border: 0; border-radius: 0; }
+  .workpane.pane-full .wp-body { padding: 12px 12px 24px; }
   .work-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .work-path { flex-basis: 140px; }
   .work-body { padding-left: 12px; }
