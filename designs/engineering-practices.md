@@ -28,7 +28,7 @@ The browser half of the gate:
 npm run check:browser
 ```
 
-It runs every headless Chrome check (`tools/check-*.mjs` and `tools/checks/*.mjs`, found by name) in parallel, 4 at a time. Each check gets its own free ports and a timeout that kills it and its Chrome. The run prints each check’s counts, time and first failure, and keeps each full log. CI runs it on every pull request. `node tools/check-all.mjs shell header` runs only the checks whose name has one of those in it.
+It runs every headless Chrome check (`tools/check-*.mjs` and `tools/checks/*.mjs`, found by name) in parallel, 4 at a time. Each check gets its own free ports and a timeout that kills it and its Chrome. The run prints each check’s counts, time and first failure, and keeps each full log. CI runs it on every pull request. `node tools/check-all.mjs shell header` runs only the checks whose name has one of those in it. `--lag 300` holds each server’s events back 300 ms, as a busy runner can: a check that passes with it waits for the page to hear a change, not for a fixed time.
 
 A change that’s visible in the UI also gets a headless Chrome check (`tools/cdp.mjs`) from whoever writes it. It reports through `tools/harness.mjs`: `ports()` for `PB_PORT` and `PB_CHROME_PORT`, `record()` for each case, and `finish()` at the end. That way the run reads its results, not its text.
 

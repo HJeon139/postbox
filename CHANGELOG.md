@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.10.1 (2026-10-23)
+
+### Fixes
+
+- **shell:** the top bar keeps focus on its control when it repaints
+
 ## 0.10.0 (2026-10-23)
 
 ### Features

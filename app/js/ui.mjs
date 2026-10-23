@@ -247,7 +247,7 @@ export function keepFocus(root, paint) {
  * @param {Element} el
  * @returns {() => HTMLElement | null}
  */
-function refind(el) {
+export function refind(el) {
   const id = el.id;
   const label = el.getAttribute('aria-label');
   const scope = el.parentElement?.closest('[data-key]');
