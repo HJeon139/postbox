@@ -379,8 +379,17 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         status({ currentStep: 'Summarizing the conversation' });
       } else if (e.subtype === 'permission_denied') {
         denial(e);
-      } else if (e.subtype === 'task_notification' && st.jobs.has(e.task_id)) {
-        endJob(e.task_id, e.status, e.summary);
+      } else if (e.subtype === 'task_notification' && (st.jobs.has(e.task_id) || e.tool_use_id)) {
+        // A background command or subagent ended, maybe long after its tool call returned (#129). A job’s step and
+        // state end here, and the work ledger records how the command ended (#132): one event, told to both.
+        if (st.jobs.has(e.task_id)) endJob(e.task_id, e.status, e.summary);
+        if (e.tool_use_id)
+          ctx.taskEnded?.({
+            toolUseId: e.tool_use_id,
+            status: String(e.status ?? ''),
+            summary: typeof e.summary === 'string' ? e.summary : '',
+            outputFile: typeof e.output_file === 'string' ? e.output_file : null,
+          });
       } else if (e.subtype === 'task_started' && e.task_id && e.tool_use_id) {
         st.tasks.set(e.task_id, e.tool_use_id);
       } else if (e.subtype === 'task_progress' && e.tool_use_id) {
@@ -393,14 +402,6 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       } else if (e.subtype === 'vcs_state_changed' && typeof e.cwd === 'string') {
         // A commit or push (recorded: tests/fixtures/claude-code/ledger-push.jsonl); its tool result names the commit.
         st.vcsCwd = e.cwd;
-      } else if (e.subtype === 'task_notification' && e.tool_use_id) {
-        // A background command or subagent ended, maybe long after its tool call returned (#129).
-        ctx.taskEnded?.({
-          toolUseId: e.tool_use_id,
-          status: String(e.status ?? ''),
-          summary: typeof e.summary === 'string' ? e.summary : '',
-          outputFile: typeof e.output_file === 'string' ? e.output_file : null,
-        });
       } else if (e.subtype === 'task_summary' && e.detail) {
         glimpse(e.detail);
       } else if (e.subtype === 'compact_boundary') {
