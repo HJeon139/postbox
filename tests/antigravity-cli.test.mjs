@@ -272,6 +272,9 @@ test('the rules file: the guide, the note on refusals, and what the persona turn
   const all = agyRules({ persona: { tools: ['shell', 'web.fetch', 'agents.outside'], canPublish: true }, guide: 'GUIDE' });
   assert.doesNotMatch(all, /What you don’t do here/);
   assert.match(off, /A refusal ends your turn there, before you can reply/);
+  // Pointed at agy’s file tools, unless commands are allowed.
+  assert.match(off, /Use list_dir, find_by_name, grep_search and view_file/);
+  assert.doesNotMatch(agyRules({ persona: { permissionMode: 'bypass' }, guide: 'G' }), /Looking at files/);
 });
 
 test('the rules name Postbox’s tools and where their schemas are, so the agent never lists the folder with a command', () => {

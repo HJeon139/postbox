@@ -238,6 +238,12 @@ const TOOL_WORDS = /** @type {Record<string, string>} */ ({
 const HEADLESS_NOTE =
   '## Refused tool calls\n\nPostbox runs you headless, so Antigravity can’t ask the person to approve a tool call: one that would need approval is refused, and Antigravity reports it as “user denied permission”. The person didn’t see or decline it. A refusal ends your turn there, before you can reply, so don’t make a call that needs approval when you can do without it. If one is refused, say next turn which call it was and that your permissions in Postbox didn’t allow it.';
 
+// In the Gemini room UAT rerun, an agent looking for a plan ran `ls -la` in its folder twice: refused, and each time
+// its turn ended with no reply. agy’s file tools read its folders without asking (every read_file in that run went
+// through), so it’s pointed at them. Run everything allows commands, so it isn’t told this.
+const LOOKING_NOTE =
+  '## Looking at files\n\nUse list_dir, find_by_name, grep_search and view_file to look at files: in your folders they don’t need approval. Don’t use run_command to look around (ls, find, cat): a command needs approval here, so it’s refused, and your turn ends with nothing said. What another agent showed in a block that read_conversation doesn’t give you, ask that agent for.';
+
 /**
  * Where agy keeps each Postbox tool’s input schema, which the model reads before a call (recorded: read_file of
  * <dir>/show_block.json). In the Gemini room UAT, an agent that wasn’t told ran `ls` on the folder to find the
@@ -262,7 +268,7 @@ export function agyRules({ persona, guide, schemas = null }) {
   const limits = off.length
     ? `\n\n## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}. Antigravity can’t enforce that, so it’s up to you: don’t do them, and say so if a task needs one.`
     : '';
-  return `${guide}\n\n${schemas ? `${toolsNote(schemas)}\n\n` : ''}${HEADLESS_NOTE}${limits}\n`;
+  return `${guide}\n\n${schemas ? `${toolsNote(schemas)}\n\n` : ''}${HEADLESS_NOTE}${persona?.permissionMode === 'bypass' ? '' : `\n\n${LOOKING_NOTE}`}${limits}\n`;
 }
 
 /** The plugin’s files, by path under its folder. Pure, so the tests can check them. */

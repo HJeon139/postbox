@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { agyTokens, kiroCredits, runChecks, waitingOnYou } from '../tools/uat/checks.mjs';
-import { parseScenario, RELEASE_ONLY, releaseGate } from '../tools/uat/scenario.mjs';
+import { CLAUDE_BACKENDS, compatBackends, parseScenario, RELEASE_ONLY, releaseGate } from '../tools/uat/scenario.mjs';
 import { SCHEMA, signInSettings, systemPrompt, unaddressed } from '../tools/uat/tester.mjs';
 
 const stream = (name) =>
@@ -556,9 +556,12 @@ test('the Antigravity CLI runs only in a release run: refused in a scenario, and
   assert.equal(plain.error, null);
   assert.deepEqual(Object.keys(plain.env), ['POSTBOX_AGY_BIN']);
   assert.ok(Object.hasOwn(RELEASE_ONLY, 'antigravity-cli'));
+  // A release-only backend is a compatibility backend first: it’s never one of Claude’s.
+  for (const b of Object.keys(RELEASE_ONLY)) assert.ok(!CLAUDE_BACKENDS.has(b), b);
   // The Gemini room is the release run’s scenario.
   const gemini = parseScenario(readFileSync(new URL('uat/e2e/scenarios/geminiroom.md', import.meta.url), 'utf8'));
   assert.deepEqual(gemini.backends, { critic: { backend: 'antigravity-cli', model: 'gemini-3.8-flash-high' } });
+  assert.deepEqual(compatBackends(gemini), ['antigravity-cli']);
   assert.match(String(releaseGate(gemini).error), /@critic on the Antigravity CLI/);
   assert.equal(releaseGate(gemini, { release: true }).error, null);
 });
