@@ -25,13 +25,16 @@ Then, if time allows, two P2s on the same lines: #135 (a later turn from the sam
 ## The work
 
 - **#124:** the Threads page lists side threads with their pair, state and last activity, beside topic threads, and says which kind each is.
-- **#128:** “Send to conversation” on a side-thread message, with the same contract as a topic thread’s Summarize back: the person chooses what goes, and it posts in the conversation as theirs. Nothing flows back unless the person sends it (intent.md, principle 7).
+- **#128, two ways back to the conversation** (the person’s decision of 23 October, recorded on #128):
+  - **The person:** “Send to conversation” on a side-thread message, with the same contract as a topic thread’s Summarize back: the person chooses what goes, and it posts in the conversation as theirs.
+  - **An agent the person asked:** an MCP tool, `share_to_conversation { text }`, offered only in side and topic threads. It posts a `shared` item in the conversation, marked as shared by that agent from that thread, and wakes no one, so it doesn’t count against the wake limit. Under principle 7, the person who asked counts as the sender. The guide says when to use it: only when the person asks for something to go to the main chat.
+  - Nothing else flows back on its own (intent.md, principle 7).
 - **#151:** a failed side-thread turn puts its retry card where the room can see it: on the side-thread line, and in `needsYou` with `needs.threadId`, as #171 does for permission cards. The line’s Open opens the thread at the card.
 - **#130:** count every item added to a side thread, through `addItem`, not only wakes.
 
 ## Files
 
-- **Yours:** the side-thread code in `server/runtime.mjs` (`agentWake`, `sideSession`, `bumpSideLink` and the sidelink item), the Threads page in `app/js/shell.mjs` (`mountThreads`), side-thread rendering in `app/js/thread.mjs`, `tools/check-side-threads.mjs` and `tests/side-threads.test.mjs`.
+- **Yours:** the side-thread code in `server/runtime.mjs` (`agentWake`, `sideSession`, `bumpSideLink` and the sidelink item), `share_to_conversation` in `server/mcp.mjs` and its line in `server/adapters/guide.mjs` (within `guideText`’s 9,000-character budget), the Threads page in `app/js/shell.mjs` (`mountThreads`), side-thread rendering in `app/js/thread.mjs`, `tools/check-side-threads.mjs` and `tests/side-threads.test.mjs`.
 - **Shared:**
   - **`app/js/agents.mjs`:** the agent-activity session (#73) adds subagents as children in #171’s tree. Change only the side-thread entries, and expect it to rebase on you.
   - **`app/js/shell.mjs`:** the supervision session owns the overview. Change only `mountThreads`.
@@ -39,4 +42,5 @@ Then, if time allows, two P2s on the same lines: #135 (a later turn from the sam
 ## Done when
 
 - Each issue has a test that fails without its fix, and `check-side-threads` covers #124, #128 and #151 in the page, clean with `--lag 300`.
+- #128’s acceptance holds both ways: the person can send a side-thread message to the conversation, and an agent in a side or topic thread that’s asked to post this in the main chat can do it.
 - The UAT docs for side threads and the Threads page say what changed (text only).
