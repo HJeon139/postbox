@@ -24,6 +24,7 @@ import {
   FolderQueue,
   modelIds,
   PLUGIN_DIR,
+  refusalFollowUp,
 } from '../server/adapters/antigravity-cli.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
 
@@ -114,6 +115,16 @@ test('a recorded refused command: a denied step, worded for what happened; a glo
   // agy ends the turn at the refusal without a reply, and the turn still succeeds.
   assert.equal(ctx.calls.text, '');
   assert.equal(m.error, null);
+});
+
+test('a turn agy ended at a refused call, with nothing said after it, is marked; one that went on isn’t', () => {
+  assert.equal(replay('refused').m.endedOnRefusal, 'Ran echo hi > out.txt');
+  // Refused only in the result’s denied_actions.
+  assert.equal(replay('auto-unavailable').m.endedOnRefusal, 'Ran echo hi > out.txt');
+  // Refused reads, then a model call agy retried: still the refusal that ended it.
+  assert.equal(replay('error-after-refusal').m.endedOnRefusal, 'Read package.json');
+  for (const name of ['block', 'first', 'resume', 'error-after-reply']) assert.equal(replay(name).m.endedOnRefusal, null, name);
+  assert.match(refusalFollowUp('Ran ls -la'), /^\[Postbox\] Antigravity refused your last call \(Ran ls -la\).*Nobody was asked/);
 });
 
 test('a refusal only the result reports: auto mode unavailable, the step ended DONE, denied_actions says otherwise', () => {
@@ -440,6 +451,46 @@ test('a folder’s own .agents folder stays; only Postbox’s plugin is removed'
   const adapter = adapterFor(root, [{ lines: fixture('first'), code: 0 }], []);
   await adapter.deliver({}, { kind: 'user', text: 'hi' }, fakeCtx({ project: { folder } }));
   assert.deepEqual(readdirSync(join(folder, '.agents')), ['rules']);
+});
+
+/** A recorded stream, as if it were in another conversation. */
+const inConversation = (id, lines) => JSON.parse(JSON.stringify(lines).replace(/"conversation_id":"[^"]*"/g, `"conversation_id":"${id}"`));
+
+test('a turn agy ended at a refusal goes on once, in the same conversation, for the agent to say what was refused', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const seen = [];
+  const adapter = adapterFor(
+    root,
+    [
+      { lines: fixture('refused'), code: 0 },
+      // The follow-up resumes the same conversation.
+      { lines: inConversation('ecb9ae82-d2c0-49dc-ac0d-638934ef0cb8', fixture('first')), code: 0 },
+    ],
+    seen,
+  );
+  const ctx = fakeCtx();
+  await adapter.deliver({}, { kind: 'user', text: 'Run it.' }, ctx);
+  assert.equal(seen.length, 2);
+  assert.ok(!seen[0].args.includes('--conversation'));
+  assert.equal(seen[1].args[seen[1].args.indexOf('--conversation') + 1], 'ecb9ae82-d2c0-49dc-ac0d-638934ef0cb8');
+  assert.equal(seen[1].args.at(-1), `--print=${refusalFollowUp('Ran echo hi > out.txt')}`);
+  assert.ok(seen[1].mcp, 'the plugin is still there for it');
+  assert.equal(ctx.calls.text, 'hello there\n');
+  assert.ok(ctx.calls.status.some((x) => x.currentStep === 'Telling you about the refused call'));
+  // A refusal in the follow-up isn’t followed up again, and a turn that ended well isn’t followed up at all.
+  const again = [];
+  await adapterFor(
+    mkdtempSync(join(tmpdir(), 'pb-agy-')),
+    [
+      { lines: fixture('refused'), code: 0 },
+      { lines: fixture('refused'), code: 0 },
+    ],
+    again,
+  ).deliver({}, { kind: 'user', text: 'Run it.' }, fakeCtx());
+  assert.equal(again.length, 2);
+  const once = [];
+  await adapterFor(mkdtempSync(join(tmpdir(), 'pb-agy-')), [{ lines: fixture('block'), code: 0 }], once).deliver({}, { kind: 'user', text: 'hi' }, fakeCtx());
+  assert.equal(once.length, 1);
 });
 
 test('a conversation agy no longer has: that run is stopped, and the turn starts over once, saying so', async () => {

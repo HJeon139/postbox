@@ -271,6 +271,10 @@ export function agyRules({ persona, guide, schemas = null }) {
   return `${guide}\n\n${schemas ? `${toolsNote(schemas)}\n\n` : ''}${HEADLESS_NOTE}${persona?.permissionMode === 'bypass' ? '' : `\n\n${LOOKING_NOTE}`}${limits}\n`;
 }
 
+/** What Postbox tells the agent when agy ended its turn at a refused call. */
+export const refusalFollowUp = (label) =>
+  `[Postbox] Antigravity refused your last call (${clip(label, 120)}) and ended your turn before you replied. Nobody was asked: Postbox runs you headless. In a sentence, tell the person which call was refused and that your permissions in Postbox didn’t allow it, then carry on without it. Don’t try it again another way.`;
+
 /** The plugin’s files, by path under its folder. Pure, so the tests can check them. */
 export const agyPlugin = ({ mcpUrl, rules }) => ({
   'plugin.json': `${JSON.stringify({ name: POSTBOX_SERVER })}\n`,
@@ -352,23 +356,26 @@ const labelOf = ({ name, input }) =>
  * the model and the tools), then step_update for each step (user_input, system_message, agent_response with its
  * text_delta, tool with its state: ACTIVE, DONE or ERROR), then result. Pure apart from the ctx calls, so recorded
  * streams can test it.
- * @param {any} ctx @param {{ now?: () => number, effort?: string|null, resumed?: string|null }} [opts]
- *   resumed: the conversation the turn asked for, if any
+ * @param {any} ctx @param {{ now?: () => number, effort?: string|null, resumed?: string|null, wrote?: boolean }} [opts]
+ *   resumed: the conversation the turn asked for, if any; wrote: the reply already has text (a follow-up run)
  */
-export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = null } = {}) {
+export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = null, wrote = false } = {}) {
   const st = {
     sessionId: /** @type {string|null} */ (null),
     model: /** @type {string|null} */ (null),
     finished: /** @type {any} */ (null),
     error: /** @type {string|null} */ (null),
     missingSession: false,
-    wrote: false,
+    wrote,
+    // The refused call the turn ended on, with nothing said after it: agy ends a turn at a refusal.
+    refusedLast: /** @type {string|null} */ (null),
+    textSinceTool: false,
     // Whether a model call failed, and whether the turn went on after the last one (agy retries a failed call).
     retried: false,
     // Whether the model got anywhere this turn (a tool step or a reply), and whether the last thing was a failed call.
     went: false,
     stuck: false,
-    afterTool: false,
+    afterTool: wrote,
     tools: new Map(),
     state: /** @type {string|null} */ (null),
   };
@@ -392,6 +399,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
       ms: 0,
     };
     st.tools.set(key(s), t);
+    st.refusedLast = null;
+    st.textSinceTool = false;
     if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state: 'running' });
     status({ state: 'tool', currentStep: t.label });
     st.afterTool = true;
@@ -408,6 +417,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     const detail = refused ? REFUSAL : failed ? firstSentence(why || 'It failed without saying why.', 300) : '';
     const ms = typeof s.duration_seconds === 'number' ? Math.round(s.duration_seconds * 1000) : now() - t.started;
     Object.assign(t, { state, ms, output: s.tool_info?.output !== undefined });
+    if (refused) st.refusedLast = t.label;
     // Postbox’s own tools stay quiet, unless agy refused one: then the allow rule in your settings is missing.
     if (refused && t.quiet)
       ctx.activity({
@@ -433,6 +443,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
       const t = [...st.tools.values()].reverse().find((x) => x.name === name && x.state === 'done' && !x.output);
       if (!t) continue;
       t.state = 'denied';
+      if (t === [...st.tools.values()].at(-1) && !st.textSinceTool) st.refusedLast = t.label;
       if (!t.quiet)
         ctx.activity({
           id: t.id,
@@ -459,6 +470,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
         if (st.wrote && st.afterTool) ctx.text('\n\n');
         st.afterTool = false;
         st.wrote = true;
+        st.refusedLast = null;
+        st.textSinceTool = true;
         if (st.state !== 'gen') status({ state: 'gen', currentStep: 'Writing a reply' });
         ctx.text(text);
         return;
@@ -490,6 +503,14 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     },
     get error() {
       return st.error;
+    },
+    /** The label of the refused call the turn ended on, with nothing said after it; else null. */
+    get endedOnRefusal() {
+      return st.refusedLast;
+    },
+    /** Whether the reply has text. */
+    get wrote() {
+      return st.wrote;
     },
     /** The turn asked for a conversation agy no longer has, and agy started a new one. */
     get missingSession() {
@@ -682,13 +703,20 @@ export class AntigravityCliAdapter {
         await writeFile(join(plugin, path), text);
       }
       try {
-        const first = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null });
+        let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
-        if (first.missingSession && !ctx.signal.aborted) {
+        if (done.missingSession && !ctx.signal.aborted) {
           ctx.saveState({ agySessionId: null });
           ctx.state.agySessionId = null;
           const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
-          await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null });
+          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null });
+        }
+        // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that
+        // high: the person saw a refused step and silence). So the conversation goes on once, for the agent to say
+        // what was refused and carry on. A refusal in that run isn’t followed up again.
+        if (done.endedOnRefusal && !ctx.signal.aborted && ctx.state.agySessionId) {
+          ctx.status({ state: 'think', currentStep: 'Telling you about the refused call' });
+          await this.run({ ctx, cwd, addDirs, prompt: refusalFollowUp(done.endedOnRefusal), sessionId: ctx.state.agySessionId, wrote: done.wrote });
         }
       } finally {
         await rm(plugin, { recursive: true, force: true }).catch(() => {});
@@ -698,13 +726,16 @@ export class AntigravityCliAdapter {
     });
   }
 
-  /** @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, sessionId: string|null }} turn */
-  run({ ctx, cwd, addDirs, prompt, sessionId }) {
+  /**
+   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, sessionId: string|null, wrote?: boolean }} turn
+   * @returns {Promise<{ missingSession?: boolean, endedOnRefusal?: string|null, wrote?: boolean }>}
+   */
+  run({ ctx, cwd, addDirs, prompt, sessionId, wrote = false }) {
     const persona = ctx.persona;
     const model = agyModel(persona, this.models);
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs });
-    const mapper = createAgyMapper(ctx, { effort, resumed: sessionId });
+    const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
     return new Promise((resolve, reject) => {
       let child;
       try {
@@ -766,7 +797,7 @@ export class AntigravityCliAdapter {
         if (ctx.signal.aborted) return resolve({});
         if (mapper.error) return reject(new Error(mapper.error));
         if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr)));
-        resolve({});
+        resolve({ endedOnRefusal: mapper.endedOnRefusal, wrote: mapper.wrote });
       });
     });
   }
