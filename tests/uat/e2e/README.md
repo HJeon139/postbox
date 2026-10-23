@@ -141,8 +141,10 @@ Options:
 #126 showed up where `claude` is a launcher that starts the CLI as its child and doesn’t pass SIGINT on. Where `claude` is the CLI itself, Stop reaches it either way, so the P0 run puts the launcher in front of it:
 
 ```bash
-POSTBOX_CLAUDE_BIN=tools/uat/claude-launcher.mjs node tools/uat-run.mjs --scenario p0 --file no
+POSTBOX_CLAUDE_BIN="$PWD/tools/uat/claude-launcher.mjs" node tools/uat-run.mjs --scenario p0 --file no
 ```
+
+Give the launcher’s full path: the tester and the agents start in other folders, so a relative path fails with ENOENT before the first step.
 
 A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. A scenario with Kiro agents also needs the Kiro CLI, signed in; their turns use Kiro credits, which the report lists beside the agents’ cost. It uses real usage: a data-heavy agent turn can cost a few dollars.
 

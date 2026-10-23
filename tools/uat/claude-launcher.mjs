@@ -4,7 +4,9 @@
 // process group, as the fix does, reaches the CLI too. On a machine where `claude` is the CLI itself, a P0 run needs
 // this to put Stop in #126’s conditions:
 //
-//   POSTBOX_CLAUDE_BIN=tools/uat/claude-launcher.mjs node tools/uat-run.mjs --scenario p0
+//   POSTBOX_CLAUDE_BIN="$PWD/tools/uat/claude-launcher.mjs" node tools/uat-run.mjs --scenario p0
+//
+// The path must be absolute: the tester and the agents start in other folders.
 //
 // It runs POSTBOX_UAT_REAL_CLAUDE, or `claude` on the PATH, with the same arguments, input and output.
 
