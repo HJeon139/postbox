@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.15.0 (2026-10-23)
+
+### Features
+
+- **side-threads:** send a side-thread message to the conversation, yourself or by an agent
+- **threads:** the Threads page lists side threads beside topic threads
+
+### Fixes
+
+- **side-threads:** a failed side-thread turn shows on its line, with Retry, and opens at its card
+- **side-threads:** the side-thread line counts every message there
+
 ## 0.14.0 (2026-10-23)
 
 ### Features
