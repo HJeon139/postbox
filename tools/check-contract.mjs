@@ -142,11 +142,8 @@ try {
   rt.sendMessage(room.id, { text: '@critic review what researcher wrote' });
   const replied = () => store.items(room.id).find((x) => x.kind === 'agent' && x.handle === 'critic' && x.status === 'done');
   await until(replied, '@critic to reply');
-  await page.synced(store.state.seq);
-  const reply = replied();
-  const said109 = await page.evaluate(
-    `new Promise((ok) => { const read = () => document.querySelector('[data-item="${reply.id}"]')?.closest('.turn')?.querySelector('.md')?.innerText ?? ''; const t = setInterval(() => { if (read().includes('It ends')) { clearInterval(t); ok(read()); } }, 100); setTimeout(() => { clearInterval(t); ok(read()); }, 5000); })`,
-  );
+  // What @critic said, as the server has it: the case is about what it read, not how the page draws it.
+  const said109 = replied().text ?? '';
   check(long.length > 5000 && long.indexOf(LAST) > 2000, 'the reply is over 5,000 characters, and its last paragraph is past the cut', String(long.length));
   check(said109.includes(LAST), '@critic quotes the last paragraph of the reply, which its history cut', said109);
 
@@ -163,10 +160,7 @@ try {
   rt.sendMessage(room2.id, { text: '@critic review the draft researcher showed' });
   const replied2 = () => store.items(room2.id).find((x) => x.kind === 'agent' && x.handle === 'critic' && x.status === 'done');
   await until(replied2, '@critic to reply about the draft');
-  await page.synced(store.state.seq);
-  const said153 = await page.evaluate(
-    `new Promise((ok) => { const read = () => document.querySelector('[data-item="${replied2().id}"]')?.closest('.turn')?.querySelector('.md')?.innerText ?? ''; const t = setInterval(() => { if (read().includes('It ends')) { clearInterval(t); ok(read()); } }, 100); setTimeout(() => { clearInterval(t); ok(read()); }, 5000); })`,
-  );
+  const said153 = replied2().text ?? '';
   check(shownPlan.ok && draft.indexOf(END) > 2000, 'the draft is shown as a review block, and how it ends is past the cut', JSON.stringify(shownPlan));
   check(said153.includes(END), '@critic quotes how the draft in the review block ends', said153);
 } catch (e) {
