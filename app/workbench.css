@@ -749,7 +749,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .ov-idle { display: flex; flex-direction: column; gap: 8px; }
 .ov-idle h2.label { margin: 0; }
 .ov-rows { list-style: none; margin: 0; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-.ov-row { display: grid; grid-template-columns: 30px minmax(0, 18rem) minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
+.ov-row { display: grid; grid-template-columns: 30px minmax(0, 18rem) minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px;
   min-height: 44px; padding: 6px 10px 6px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .ov-row:last-child { border-bottom: 0; }
 .ov-row:hover { background: var(--sunk); }
@@ -828,7 +828,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   .has-panel .main { margin-right: 0; }
   .ov { padding: 14px 12px 32px; }
   .ov-grid { grid-template-columns: 1fr; }
-  .ov-row { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .ov-row { grid-template-columns: 30px minmax(0, 1fr) auto auto; }
   .ov-row .ov-row-last { grid-column: 2 / -1; grid-row: 2; }
   .toasts { left: 12px; right: 12px; width: auto; top: 108px; }
   .toasts.bottom { left: 12px; right: 12px; transform: none; }

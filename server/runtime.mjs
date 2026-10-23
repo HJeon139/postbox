@@ -28,6 +28,9 @@ import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
 export const HOP_LIMIT = 3;
 const DELETE_UNDO_MS = 10000;
+/** The days a conversation can sit with nothing happening before it archives itself (#101), unless Settings says otherwise. */
+export const ARCHIVE_AFTER_DAYS = 7;
+export const ARCHIVE_AFTER_CHOICES = [0, 1, 3, 7, 30]; // 0: never
 /** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
 const LINT_SETTLE_MS = 1500;
 /** …and at most, while an app of the agent’s is still being checked. */
@@ -3217,6 +3220,76 @@ export class Runtime {
     if (t?.archived) this.putThread({ ...t, archived: false });
   }
 
+  /**
+   * A conversation or room and every thread under it, a side thread a topic thread’s fork woke included: what
+   * archiving or restoring it covers (#101).
+   */
+  archiveScope(threadId) {
+    const t = this.thread(threadId);
+    if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Archive the conversation it belongs to instead.');
+    return [t, ...Object.values(this.s.threads).filter((x) => x.id !== t.id && this.lineage(x.id).at(-1) === t.id)];
+  }
+
+  /**
+   * Archives a conversation (#101): every session in it, its side and topic threads’ forks too, through archive(),
+   * so each keeps its transcript and its backend session for Restore. It leaves the overview and the rail.
+   */
+  archiveThread(threadId) {
+    const threads = this.archiveScope(threadId);
+    const ids = threads
+      .flatMap((t) => this.sessionsIn(t.id))
+      .filter((se) => !se.archived)
+      .map((se) => se.id);
+    for (const id of ids) this.archive(id);
+    for (const t of threads) if (!this.s.threads[t.id].archived) this.putThread({ ...this.s.threads[t.id], archived: true });
+    // What it archived, so Restore in its toast brings back only these, not an agent archived on its own before.
+    return ids;
+  }
+
+  /** Restores every archived session in a conversation and its side and topic threads, and the threads with them. */
+  restoreThread(threadId) {
+    const threads = this.archiveScope(threadId);
+    for (const t of threads) for (const se of this.sessionsIn(t.id)) if (se.archived) this.restore(se.id);
+    for (const t of threads) if (this.s.threads[t.id].archived) this.putThread({ ...this.s.threads[t.id], archived: false });
+  }
+
+  /**
+   * Archives each conversation where nothing has happened for the days Settings says (#101): no message, no turn,
+   * nothing waiting on you (a question, an unread reply, a queued message), nothing working, no background job
+   * running and no wake scheduled, in it or the threads under it. The server runs it at startup and every hour. It
+   * only archives: deleting stays the person’s action.
+   * @param {number} [now]
+   * @returns {string[]} the conversations it archived
+   */
+  archiveIdle(now = Date.now()) {
+    const days = this.s.settings.archiveAfterDays ?? ARCHIVE_AFTER_DAYS;
+    if (!days) return [];
+    const done = [];
+    for (const t of Object.values(this.s.threads)) {
+      if (t.kind === 'topic' || t.kind === 'side' || t.archived || t.deleting) continue;
+      const threads = this.archiveScope(t.id);
+      const ses = threads.flatMap((x) => this.sessionsIn(x.id)).filter((se) => !se.archived);
+      const waiting = (se) =>
+        se.needs ||
+        se.unread ||
+        ['think', 'gen', 'tool', 'stopping'].includes(se.state) ||
+        this.turns.has(se.id) ||
+        // A background job still running (#129), or a wake an agent scheduled, is something happening too.
+        (se.jobs ?? []).some((j) => j.state === 'running') ||
+        Object.values(this.s.schedules).some((sc) => sc.sessionId === se.id);
+      if (!ses.length || ses.some(waiting) || threads.some((x) => x.queue?.length)) continue;
+      const last = Math.max(
+        t.createdAt ?? 0,
+        ...ses.map((se) => Math.max(se.updatedAt ?? 0, se.finishedAt ?? 0, se.startedAt ?? 0)),
+        ...threads.map((x) => this.store.items(x.id).at(-1)?.at ?? 0),
+      );
+      if (now - last < days * 864e5) continue;
+      this.archiveThread(t.id);
+      done.push(t.id);
+    }
+    return done;
+  }
+
   /** Deletes after DELETE_UNDO_MS unless undone. The persona always stays. */
   deleteSession(sessionId) {
     this.stop(sessionId, { silent: true });
@@ -3347,7 +3420,8 @@ export class Runtime {
           if (!this.s.schedules[sc.id]) return;
           this.store.emit('schedule', { id: sc.id, removed: true });
           if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'done' });
-          if (!this.s.sessions[sc.sessionId]) return;
+          // An archived agent isn’t woken: deliver() would refuse it, here outside any request (#101).
+          if (!this.s.sessions[sc.sessionId] || this.s.sessions[sc.sessionId].archived) return;
           this.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
           this.deliver(sc.sessionId, { kind: 'wake', note: sc.note });
         },

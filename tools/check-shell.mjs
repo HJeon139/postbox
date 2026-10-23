@@ -218,6 +218,7 @@ const MENUS = [
   ['the conversation’s ⋯', 'conversation', 'header.topbar button[aria-label^="Actions for"]'],
   ['the composer’s +', 'conversation', 'button[aria-label="Add a file or a new agent"]'],
   ['a session card’s ⋯', 'overview', 'main.ov button[aria-label^="Session actions for"]'],
+  ['an idle conversation’s ⋯', 'overview', 'main.ov .ov-row button[aria-haspopup=menu]'],
 ];
 // Only an agent that needs you or is working has a card (#3), so @indexer works through these.
 const indexer = rt.sessionsIn(threadNamed('Corpus planning').id).find((x) => x.handle === 'indexer');

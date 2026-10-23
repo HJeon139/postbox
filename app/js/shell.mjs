@@ -317,7 +317,12 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
     const threads = threadsOf(projectId).filter((x) => !x.archived);
     const others = Object.values(S().projects).filter((p) => p.id !== projectId);
     const otherNeeds = others.map((p) => [p, needsYou().filter((se) => S().threads[se.threadId]?.projectId === p.id).length]).filter(([, n]) => n);
-    const archived = Object.values(S().sessions).filter((se) => se.archived && !se.deleting).length;
+    // Archived counts conversations, as its page lists them (#101).
+    const archived = new Set(
+      Object.values(S().sessions)
+        .filter((se) => se.archived && !se.deleting)
+        .map((se) => convOf(se.threadId)),
+    ).size;
     fill(
       el,
       ...otherNeeds.map(([p, n]) =>
@@ -532,11 +537,11 @@ export function mountOverview({ archived = false } = {}) {
     headEl.replaceChildren(
       h(
         'div.grow',
-        h('h1.title', { style: { fontSize: '20px' } }, archived ? 'Archived sessions' : 'Overview'),
+        h('h1.title', { style: { fontSize: '20px' } }, archived ? 'Archived' : 'Overview'),
         h(
           'p.small.dim',
           archived
-            ? 'Sessions you archived. Restore one to pick it up again.'
+            ? 'Conversations you archived or that sat idle, and agents you archived on their own. Restore one to pick it up again.'
             : [
                 `${plural(live.length, 'live session')} in ${plural(Object.keys(S().projects).length, 'project')}`,
                 n ? [' · ', h('span.st-needs', `${n} need${n === 1 ? 's' : ''} you`)] : '',
@@ -603,7 +608,9 @@ export function mountOverview({ archived = false } = {}) {
         return;
       }
     }
-    paint();
+    // Any other change repaints now, unless a menu from a card or a row is open: then once it closes.
+    clearTimeout(t);
+    resort();
   });
   return {
     el,
@@ -640,29 +647,54 @@ function installLine() {
   );
 }
 
+/**
+ * What’s archived, one row per conversation with its archived agents (#101): a conversation archived whole, or an
+ * agent archived on its own. Restore brings back every agent the row lists.
+ */
 function archivedList(collapsed = false) {
-  const list = Object.values(S().sessions).filter((se) => se.archived && !se.deleting);
+  const by = new Map();
+  for (const se of Object.values(S().sessions)) {
+    const t = S().threads[convOf(se.threadId)];
+    if (!se.archived || se.deleting || !t || t.deleting) continue;
+    by.set(t.id, [...(by.get(t.id) ?? []), se]);
+  }
+  const at = (ses) => Math.max(...ses.map((se) => se.archivedAt ?? se.updatedAt ?? 0));
+  const list = [...by].sort((a, b) => at(b[1]) - at(a[1]));
   if (!list.length) return collapsed ? h('span') : h('p.empty-note', 'Nothing is archived.');
   const table = h(
     'table.tbl',
     h(
       'tbody',
-      list.map((se) => {
-        const t = S().threads[se.threadId];
-        const ring = ringFor(se, 'xs');
+      list.map(([id, ses]) => {
+        const t = S().threads[id];
         return h(
           'tr',
-          h('td', h('span.row-flex', ring, h('b', `@${se.handle}`), mockMarker(se))),
-          h('td', `${S().projects[t?.projectId]?.name ?? ''} · ${t?.title ?? ''}`),
-          h('td.dim.small', `Archived ${ago(se.archivedAt ?? se.updatedAt ?? Date.now())}`),
+          { dataset: { thread: id } },
+          h(
+            'td',
+            h(
+              'span.row-flex',
+              ses.slice(0, 4).map((se) => ringFor(se, 'xs')),
+              h(
+                'span',
+                ses.flatMap((se, i) => [i ? ', ' : '', h('b', `@${se.handle}`), mockMarker(se)]),
+              ),
+            ),
+          ),
+          h('td', `${S().projects[t.projectId]?.name ?? ''} · ${t.title}`),
+          h('td.dim.small', `Archived ${ago(at(ses) || Date.now())}`),
           h(
             'td.act',
             h(
               'button.btn.sm',
-              { type: 'button', onclick: () => api(`/api/sessions/${se.id}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message })) },
+              {
+                type: 'button',
+                'aria-label': `Restore ${t.title}`,
+                onclick: () => api(`/api/threads/${id}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message, level: 'blocking' })),
+              },
               'Restore',
             ),
-            h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open'),
+            h('a.btn.sm.ghost', { href: `#/t/${id}`, 'aria-label': `Open ${t.title}` }, 'Open'),
           ),
         );
       }),
@@ -676,16 +708,17 @@ function archivedList(collapsed = false) {
       { style: { cursor: 'pointer', listStyle: 'none' } },
       icon('archive', 'dim'),
       h('span.title.grow', 'Archived'),
-      h('span.small.dim', plural(list.length, 'session')),
+      h('span.small.dim', plural(list.length, 'conversation')),
     ),
     table,
   );
 }
 
-/** The conversation a thread belongs to: a side or topic thread’s parent, or itself. */
+/** The conversation a thread belongs to: itself, or for a side or topic thread, the one it branched from. */
 const convOf = (threadId) => {
-  const t = S().threads[threadId];
-  return t && (t.kind === 'side' || t.kind === 'topic') ? t.parentId : threadId;
+  let id = threadId;
+  for (let i = 0; i < 8 && ['side', 'topic'].includes(S().threads[id]?.kind) && S().threads[id].parentId; i++) id = S().threads[id].parentId;
+  return id;
 };
 const lastActive = (se) => se.finishedAt ?? se.updatedAt ?? se.startedAt ?? 0;
 
@@ -750,7 +783,44 @@ function updateIdleRow(node, { t, ses }, fresh = false) {
       ...ses.map((x) => openAsksEl(x)),
       unread ? [`Finished ${ago(when || Date.now())} `, h('span.badge', String(unread))] : when ? ago(when) : '',
     ),
+    h(
+      'button.btn.icon.sm.ghost',
+      {
+        type: 'button',
+        'aria-label': `Actions for ${t.title}`,
+        'aria-haspopup': 'menu',
+        onclick: (e) =>
+          openMenu(
+            e.currentTarget,
+            [
+              { label: 'Open conversation', icon: 'thread', run: () => navigate(hrefOf(t.id)) },
+              { ...archiveItem(t), desc: 'Takes it and its agents off the overview. Restore any time from Archived.' },
+            ],
+            { label: `Actions for ${t.title}` },
+          ),
+      },
+      icon('more'),
+    ),
   );
+}
+
+/**
+ * Archive conversation, for a menu (#101): it archives every agent’s session in it, its side threads’ forks too,
+ * through the sessions’ own archive, so each keeps its transcript, and Restore brings them all back.
+ */
+function archiveItem(t) {
+  // Restore in the toast undoes this archive only: an agent archived on its own before stays archived.
+  const restore = (ids) =>
+    Promise.all(ids.map((id) => api(`/api/sessions/${id}/restore`, {}))).catch((e) => toast({ title: 'Couldn’t restore', text: e.message, level: 'blocking' }));
+  return {
+    label: `Archive ${t.kind === 'room' ? 'room' : 'conversation'}`,
+    icon: 'archive',
+    desc: 'Stops its agents and takes it off the overview. Restore any time from Archived.',
+    run: () =>
+      api(`/api/threads/${t.id}/archive`, {})
+        .then((r) => toast({ title: `Archived “${t.title}”`, action: { label: 'Restore', run: () => restore(r.archived ?? []) } }))
+        .catch((e) => toast({ title: 'Couldn’t archive', text: e.message, level: 'blocking' })),
+  };
 }
 
 function card(se) {
@@ -1053,7 +1123,9 @@ export function sessionMenu(anchor, se) {
 }
 
 /** The conversation’s menu in the top bar: rename it, bring in an agent, or delete it. */
-function conversationMenu(anchor, t) {
+function conversationMenu(anchor, shown) {
+  // The top bar may be older than the thread: archived since, say.
+  const t = S().threads[shown.id] ?? shown;
   const room = t.kind === 'room';
   openMenu(
     anchor,
@@ -1079,6 +1151,18 @@ function conversationMenu(anchor, t) {
       },
       'hr',
       ...agentLines(t),
+      ...(t.kind === 'side' || t.kind === 'topic'
+        ? []
+        : t.archived
+          ? [
+              {
+                label: `Restore ${room ? 'room' : 'conversation'}`,
+                icon: 'archive',
+                desc: 'Brings back its agents, on the overview and in the sidebar',
+                run: () => api(`/api/threads/${t.id}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message, level: 'blocking' })),
+              },
+            ]
+          : [archiveItem(t)]),
       {
         label: `Delete ${room ? 'room' : 'conversation'}…`,
         icon: 'trash',

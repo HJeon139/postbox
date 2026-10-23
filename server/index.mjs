@@ -26,7 +26,7 @@ import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
-import { DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
+import { ARCHIVE_AFTER_CHOICES, DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
 import { isLoopback } from './shell.mjs';
@@ -133,6 +133,9 @@ export async function start({
   rt.ledger.expireStale();
   rt.expireStaleJobs();
   rt.rearmMirrors();
+  // Conversations where nothing has happened for a while archive themselves (#101).
+  rt.archiveIdle();
+  const archiveSweep = setInterval(() => rt.archiveIdle(), 3600e3).unref();
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
@@ -340,6 +343,12 @@ export async function start({
       rt.undoDeleteThread(m[1]);
       return send(res, 200, { ok: true });
     }
+    // A whole conversation, with its side and topic threads (#101).
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/(archive|restore)$/)) && req.method === 'POST') {
+      if (m[2] === 'archive') return send(res, 200, { ok: true, archived: rt.archiveThread(m[1]) });
+      rt.restoreThread(m[1]);
+      return send(res, 200, { ok: true });
+    }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
       rt.view(m[1]);
@@ -460,8 +469,16 @@ export async function start({
       return send(res, 200, { ok: true });
     }
     if (path === '/api/settings' && req.method === 'PUT') {
-      const theme = ['system', 'light', 'dark'].includes(body.theme) ? body.theme : 'system';
-      store.emit('settings', { theme });
+      const patch = {};
+      if ('theme' in body) patch.theme = ['system', 'light', 'dark'].includes(body.theme) ? body.theme : 'system';
+      if ('archiveAfterDays' in body) {
+        if (!ARCHIVE_AFTER_CHOICES.includes(body.archiveAfterDays))
+          throw httpError(422, `Archive after ${ARCHIVE_AFTER_CHOICES.join(', ')} days (0 for never).`);
+        patch.archiveAfterDays = body.archiveAfterDays;
+      }
+      store.emit('settings', patch);
+      // A shorter wait takes effect now, not at the next hourly sweep.
+      if ('archiveAfterDays' in patch) rt.archiveIdle();
       return send(res, 200, store.state.settings);
     }
     if (demo && path === '/api/demo/offline' && req.method === 'POST') {
@@ -559,6 +576,7 @@ export async function start({
     handle,
     async close() {
       clearInterval(keepAlive);
+      clearInterval(archiveSweep);
       for (const r of streams) r.destroy();
       for (const t of rt.timers.values()) clearTimeout(t);
       rt.stopMirrors();
