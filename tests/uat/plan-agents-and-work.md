@@ -35,7 +35,7 @@ These changes move the controls you use most. Agent settings leave the top bar f
   - `scifact.md` and `hotpotqa.md`: the long-running regression pair.
   - `wikisearch.md`, `announcement.md` and `papersurvey.md`: M1’s exit check, so agents still pick blocks without being asked.
   - `workroom.md`: the new features.
-  - `mixedroom.md`: only where `kiro-cli` is installed. This computer doesn’t have it, so say so in the report rather than skip it silently.
+  - Not `mixedroom.md`: UAT passes are Claude only. Mixed rooms and other backends get an occasional compatibility run (`--compat`), outside wave passes.
 
 ## Harness work before the run
 
