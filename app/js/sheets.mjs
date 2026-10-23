@@ -884,7 +884,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
         ['appearance', 'Appearance'],
         ['personas', 'Personas'],
         ['projects', 'Projects'],
-        ['connect', 'Connect an agent'],
+        ['connect', 'Backends'],
       ].map(([id, label]) =>
         h(
           'button',
@@ -1133,12 +1133,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
   const connect = () => [
     h(
       'p',
-      'Real agents reach Postbox’s UI tools over MCP. The Claude Code and Agent SDK backends connect to it by themselves; any other agent can connect to the endpoint below.',
+      'Real agents reach Postbox’s UI tools over MCP. Postbox connects each backend it runs, with a token for each turn, so only an agent turn Postbox started can call them.',
     ),
     h(
       'dl.facts',
-      h('dt', 'MCP endpoint'),
-      h('dd.mono', `${client.config.origin}/mcp?session=<session id>`),
       h('dt', 'Adapters'),
       h('dd', client.config.adapters.join(', ')),
       h('dt', 'Corpus'),

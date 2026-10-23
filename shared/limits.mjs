@@ -7,8 +7,14 @@
 export const LIMITS = Object.freeze({
   /** An app event’s values as JSON (postbox.send), in bytes. */
   eventBytes: 64 * 1024,
-  /** An app’s code (show_app, update_app). */
+  /** An app’s code (show_app, update_app), inline or from codePath. */
   appCode: 600_000,
+  /** Data files one app version carries (show_app and update_app’s files, #54). */
+  appFiles: 8,
+  /** One of those data files, in bytes. */
+  appFileBytes: 20 * 1024 * 1024,
+  /** A dataset file an agent loads into the corpus with add_dataset (#47), in bytes. */
+  datasetBytes: 50 * 1024 * 1024,
   /** Every block’s plain-text fallback. */
   fallback: 4000,
   /** A choice’s or form’s prompt, and a confirm’s statement. */
@@ -44,12 +50,13 @@ export const READING = Object.freeze({
 /** @typedef {keyof typeof LIMITS} LimitName */
 
 /**
- * A limit as agents read it: “64 KB” for a byte size, “5,000” for the rest.
+ * A limit as agents read it: “64 KB” or “20 MB” for a byte size, “5,000” for the rest.
  * @param {LimitName} name  @param {Record<string, number>} [limits]  the limits to read, for tests
  */
 export function limitText(name, limits = LIMITS) {
   const n = limits[name];
-  return name.endsWith('Bytes') ? `${Math.round(n / 1024).toLocaleString('en-US')} KB` : n.toLocaleString('en-US');
+  if (!name.endsWith('Bytes')) return n.toLocaleString('en-US');
+  return n >= 1024 * 1024 && n % (1024 * 1024) === 0 ? `${(n / 1024 / 1024).toLocaleString('en-US')} MB` : `${Math.round(n / 1024).toLocaleString('en-US')} KB`;
 }
 
 const range = (prefix, n) => Array.from({ length: n }, (_, i) => `--${prefix}${i + 1}`);

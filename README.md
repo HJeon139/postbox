@@ -98,7 +98,7 @@ A block is JSON naming one component. Agents send it with the `show_block` tool.
 
 | Field | Required | Notes |
 |---|---|---|
-| `id` | Yes | Letters, digits and `- _ . :`. Sending the same id with `update_block` replaces the block in place. An id names one block of its agent’s in a conversation, so `show_block` refuses an id that agent already showed there. |
+| `id` | Yes | Letters, digits and `- _ . :`. Sending the same id with `update_block` replaces the block; one that asks again (a choice, form, confirm or review) moves to the newest point, with a line where it was. An id names one block of its agent’s in a conversation, so `show_block` refuses an id that agent already showed there. |
 | `type` | Yes | One of the components below. |
 | `version` | Yes | The component version. This app reads version 1 of each. |
 | `title` | No | Up to 200 characters. |
@@ -155,6 +155,7 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](app/kit/kit.js)) provides:
 |---|---|
 | `postbox.ready` | Resolves to `{ state, theme, appId }` once Postbox says hello |
 | `postbox.query(tool, args)` | Asks the host for data. It works only for tools in the app’s `permissions` that its agent also holds, such as `corpus.search`, `corpus.read` and `corpus.stats`. |
+| `postbox.file(name)` | A data file the agent attached to this version with `files`, as text (#54). |
 | `postbox.send(action, values, summary)` | Sends one event to the agent. `summary` is the line you see in your voice. |
 | `postbox.saveState(obj)`, `postbox.restoreState()` | Saved state survives unloading, reloading and new versions |
 | `postbox.anchors({ name: element })` | Parts you can pin review comments to |
@@ -176,7 +177,7 @@ The stylesheet is preloaded, so apps use the same classes and tokens as Postbox,
 
 The first failure goes back to the agent as an `app-check` message. If the next version still fails, the app is shown with a note. A script error shows a “stopped working” card with Reload and Ask to fix.
 
-**Lifecycle.** An app reloads from its saved state as you approach it, and unloads when it’s well off screen. A same-size placeholder keeps the transcript from jumping. A new version replaces the app in place, and older versions stay in its version menu.
+**Lifecycle.** An app reloads from its saved state as you approach it, and unloads when it’s well off screen. A same-size placeholder keeps the transcript from jumping. A new version brings the app to the newest point in the conversation, beside the agent’s note about it, and leaves one line where it was that leads to it. It’s the same app, with its saved state, and older versions stay in its version menu.
 
 ## Run real agents
 
@@ -248,14 +249,14 @@ export class MyAdapter {
 
 The two real adapters share a system prompt that teaches the catalog, the kit and the [recipes](designs/recipes.md) ([`server/adapters/guide.mjs`](server/adapters/guide.mjs)), and a mapper from Claude Code’s stream to the turn context ([`server/adapters/claude-stream.mjs`](server/adapters/claude-stream.mjs)).
 
-**MCP.** The UI tools are served over JSON-RPC 2.0 at `POST /mcp?session=<session id>` ([`server/mcp.mjs`](server/mcp.mjs)):
+**MCP.** The UI tools are served over JSON-RPC 2.0 at `POST /mcp?session=<session id>&turn=<token>` ([`server/mcp.mjs`](server/mcp.mjs)). Postbox gives each turn it starts its own token, and a tool call without the running turn’s token is refused (#54), so only an agent turn Postbox started can call them, not a script that knows a session id. A large app goes by `codePath`, a file in the agent’s folder, and an app’s data files by `files`, which the app reads with `postbox.file(name)`. The tools:
 - `show_block`, `update_block`
 - `show_app`, `update_app`
 - `define_term`
 - `propose_agent`
 - `schedule_wake`, `wake_agent`
 - `ask_for_tool`, which asks you on a card to turn on a tool that’s turned off for the agent
-- `corpus_search`
+- `corpus_search`, and `add_dataset`, which loads a JSON Lines file from the project’s `.postbox/datasets/` folder into the corpus with no restart. A dataset is searched only when a search names it in `books`, and it’s loaded again after a restart (#47).
 - `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one). A block comes with what it holds: a review, card or code block’s content, a choice or form’s prompt, options or fields and your answer, an app’s title. Both cut an item at 2,000 characters, saying how much they kept and giving its id.
 - `read_message`, one item in full by that id or a block’s id, 40,000 characters at a time
 - `permission_prompt`, which Claude Code calls before a tool that needs your OK

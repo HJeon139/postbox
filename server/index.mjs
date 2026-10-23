@@ -136,6 +136,8 @@ export async function start({
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
+  // Datasets agents loaded (#47) come back from their projects’ .postbox/datasets/.
+  await rt.reloadDatasets();
 
   // The page’s token (#74): a secret made at each launch, which a browser gets in a cookie when it loads `/`. Every
   // write needs it, so an agent that uses Postbox’s API with curl, casually or because something told it to, can’t
@@ -305,6 +307,14 @@ export async function start({
       return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
       return raw(res, 200, await rt.workOutput(m[1], m[2]), { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
+    // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.
+    if ((m = path.match(/^\/api\/apps\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET')
+      return raw(res, 200, await rt.appFile(decodeURIComponent(m[1]), decodeURIComponent(m[2]), Number(url.searchParams.get('v')) || undefined), {
+        'content-type': 'text/plain; charset=utf-8',
+        'x-content-type-options': 'nosniff',
+        'content-security-policy': "sandbox; default-src 'none'",
+        'cache-control': 'no-store',
+      });
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
         res.writeHead(503, { 'retry-after': '1' });

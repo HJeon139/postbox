@@ -22,6 +22,8 @@ export class Corpus {
     this.byId = new Map();
     this.books = [];
     this.index = null;
+    /** Datasets agents loaded (#47): searched only when a search names them. */
+    this.datasets = new Set();
   }
 
   async loadDir(dir) {
@@ -49,6 +51,31 @@ export class Corpus {
     this.books.push({ id, ...meta, passages: n, chapters: chapters.length });
   }
 
+  /**
+   * Adds a dataset an agent loaded (#47), one passage per record, in place of any dataset with the same id. Its
+   * records stay out of a search that doesn’t name it in books, so they don’t mix into other agents’ results.
+   * @param {string} id @param {{ id: string, text: string, title?: string }[]} records @param {{ title: string, author: string }} meta
+   */
+  addRecords(id, records, meta) {
+    this.remove(id);
+    for (const r of records) {
+      const p = { id: `${id}:${r.id}`, book: id, title: meta.title, author: meta.author, year: null, chapter: r.title ?? '', text: r.text };
+      this.passages.push(p);
+      this.byId.set(p.id, p);
+    }
+    this.books.push({ id, ...meta, year: null, passages: records.length, chapters: 0, dataset: true });
+    this.datasets.add(id);
+  }
+
+  /** Takes a book or dataset out, before reindex(). */
+  remove(id) {
+    if (!this.books.some((b) => b.id === id)) return;
+    for (const p of this.passages) if (p.book === id) this.byId.delete(p.id);
+    this.passages = this.passages.filter((p) => p.book !== id);
+    this.books = this.books.filter((b) => b.id !== id);
+    this.datasets.delete(id);
+  }
+
   reindex() {
     this.index = buildIndex(this.passages);
   }
@@ -59,11 +86,13 @@ export class Corpus {
    */
   search(query, { mode = 'both', k = 12, books } = {}) {
     const allowed = books?.length ? new Set(books) : null;
+    // Books are searched unless the search names others; datasets only when it names them (#47).
+    const skip = (p) => (allowed ? !allowed.has(p.book) : this.datasets.has(p.book));
     const hits = new Map();
     if (mode !== 'semantic') {
       for (const h of bm25(this.index, query, { k: 200 })) {
         const p = this.byId.get(h.id);
-        if (allowed && !allowed.has(p.book)) continue;
+        if (skip(p)) continue;
         hits.set(h.id, { ...view(p), lexical: { score: round(h.score), terms: h.terms }, semantic: null });
       }
     }
@@ -71,7 +100,7 @@ export class Corpus {
       // The stub is too slow to run over every passage, so it rescores lexical neighbors plus a sample.
       const pool = mode === 'semantic' ? this.passages.filter((_, i) => i % 7 === 0) : [...hits.keys()].map((id) => this.byId.get(id));
       for (const p of pool) {
-        if (allowed && !allowed.has(p.book)) continue;
+        if (skip(p)) continue;
         const s = semanticStub(p.text, query);
         if (s < 0.5) continue;
         const prev = hits.get(p.id) ?? { ...view(p), lexical: null };
@@ -92,10 +121,60 @@ export class Corpus {
 
   stats() {
     return {
-      books: this.books.map(({ id, title, author, year, passages, chapters }) => ({ id, title, author, year, passages, chapters })),
+      books: this.books.map(({ id, title, author, year, passages, chapters, dataset }) => ({
+        id,
+        title,
+        author,
+        year,
+        passages,
+        chapters,
+        ...(dataset ? { dataset: true } : {}),
+      })),
       passages: this.passages.length,
     };
   }
+}
+
+/**
+ * Reads a dataset file (#47): JSON Lines, one record per line, { id?, text, title? }. A record without an id is
+ * numbered by its line. Returns the records, or throws with the first problems and their line numbers.
+ * @param {string} raw
+ * @returns {{ id: string, text: string, title?: string }[]}
+ */
+export function parseDataset(raw) {
+  const records = [];
+  const problems = [];
+  const seen = new Set();
+  const lines = raw.split('\n');
+  for (let i = 0; i < lines.length && problems.length < 3; i++) {
+    if (!lines[i].trim()) continue;
+    const at = `line ${(i + 1).toLocaleString('en-US')}`;
+    let r;
+    try {
+      r = JSON.parse(lines[i]);
+    } catch {
+      problems.push(`${at} isn’t JSON`);
+      continue;
+    }
+    if (!r || typeof r !== 'object' || Array.isArray(r)) {
+      problems.push(`${at} isn’t an object`);
+      continue;
+    }
+    if (typeof r.text !== 'string' || !r.text.trim()) {
+      problems.push(`${at} has no text`);
+      continue;
+    }
+    const id = String(r.id ?? i + 1).slice(0, 100);
+    if (seen.has(id)) {
+      problems.push(`${at} repeats the id “${id}”`);
+      continue;
+    }
+    seen.add(id);
+    records.push({ id, text: r.text, ...(typeof r.title === 'string' ? { title: r.title.slice(0, 200) } : {}) });
+  }
+  if (problems.length) throw new Error(`The dataset isn’t valid JSON Lines of { id?, text, title? }: ${problems.join('; ')}.`);
+  if (!records.length) throw new Error('The dataset has no records.');
+  return records;
 }
 
 const round = (n) => Math.round(n * 10) / 10;

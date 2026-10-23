@@ -70,6 +70,16 @@ addEventListener('message', async (e) => {
         reply(null, err.message);
       }
       break;
+    case 'file':
+      // A data file of the version this frame runs (#54); the check’s frame reads it too, as the app will.
+      try {
+        const r = await fetch(`/api/apps/${encodeURIComponent(rec.appId)}/files/${encodeURIComponent(String(m.name))}?v=${rec.version}`);
+        if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `Postbox couldn’t read the file “${m.name}”.`);
+        reply(await r.text());
+      } catch (err) {
+        reply(null, err.message);
+      }
+      break;
     case 'event':
       if (!current) return reply(null, rec.check ? 'Events are off during the check.' : 'This is an older version, shown read-only.');
       {
@@ -811,7 +821,7 @@ export function renderAppSendCard(it, ctx) {
         : null,
       h(
         'ul.appsend-list',
-        it.events.map((ev) => h('li', ev.voice)),
+        it.events.map((ev) => h('li', ev.voice, ev.quote ? h('span.app-says', 'The app’s summary: ', h('q', ev.quote)) : null)),
       ),
       !open
         ? h(

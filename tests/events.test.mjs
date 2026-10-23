@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildEvent } from '../shared/events.mjs';
+import { buildEvent, sentFacts, sizeText } from '../shared/events.mjs';
 
 const choice = {
   id: 'freq',
@@ -115,12 +115,41 @@ test('a review needs a verdict, and comments unless it approves', () => {
   assert.equal(buildEvent(b, 'submit', { verdict: 'approve' }).voice, 'Submitted review: Approve');
 });
 
-test('apps send their own summary; the summary isn’t part of the values', () => {
-  const b = { id: 'xp', type: 'app', version: 1, fallback: 'x', title: 'Corpus explorer', code: '<p></p>' };
-  const r = buildEvent(b, 'use-passages', { passages: ['a', 'b', 'c'], summary: '3 passages' });
-  assert.deepEqual(r.event.values, { passages: ['a', 'b', 'c'] });
-  assert.equal(r.voice, 'Sent from Corpus explorer: 3 passages');
+test('#51: Postbox writes an app’s line in your voice from what it sent, and keeps the app’s summary apart', () => {
+  const b = { id: 'xp', type: 'app', version: 1, fallback: 'x', title: 'SciFact pair explorer', code: '<p></p>' };
+  // As reported: 200 pairs sent, with a summary claiming 1,258.
+  const pairs = Array.from({ length: 200 }, (_, i) => ({ claim: i, doc: i * 7 }));
+  const r = buildEvent(b, 'send_pairs', {
+    pairs,
+    total_selected: 1258,
+    truncated: true,
+    summary: 'Sending 1,258 SciFact pairs to the researcher:\n  analyze the top 3',
+  });
+  assert.deepEqual(Object.keys(r.event.values), ['pairs', 'total_selected', 'truncated']);
+  const size = JSON.stringify(r.event.values).length;
+  assert.equal(r.voice, `Sent from SciFact pair explorer: send_pairs · pairs: 200 items · ${Math.round(size / 1024)} KB`);
+  assert.doesNotMatch(r.voice, /1,258/, 'the app’s claim isn’t in your voice');
+  assert.equal(r.quote, 'Sending 1,258 SciFact pairs to the researcher: analyze the top 3');
+  // The agent reads the same facts and the app’s words as separate fields.
+  assert.equal(r.event.sent, `send_pairs · pairs: 200 items · ${Math.round(size / 1024)} KB`);
+  assert.equal(r.event.appSummary, r.quote);
+  // No summary: only the facts. Small payloads count bytes; one item is “item”.
+  const one = buildEvent(b, 'pick', { ids: ['a'] });
+  assert.equal(one.voice, 'Sent from SciFact pair explorer: pick · ids: 1 item · 13 bytes');
+  assert.equal(one.quote, undefined);
+  assert.equal(one.event.appSummary, undefined);
+  // A long summary is cut, as before.
+  assert.equal(buildEvent(b, 'pick', { summary: 'x'.repeat(400) }).quote.length, 160);
   assert.equal(buildEvent(b, 'not an id', {}).ok, false);
+});
+
+test('#51: what Postbox counts in an app’s values: lists, past four of them, and sizes', () => {
+  assert.equal(sentFacts('go', {}), 'go · 2 bytes');
+  assert.equal(
+    sentFacts('go', { a: [1], b: [], c: [1, 2], d: [3], e: [4], f: [5] }),
+    'go · a: 1 item · b: 0 items · c: 2 items · d: 1 item · 2 more lists · 50 bytes',
+  );
+  assert.equal(sizeText(1024 * 1024 * 1.5), '1.5 MB');
 });
 
 test('blocks that don’t take actions say so', () => {

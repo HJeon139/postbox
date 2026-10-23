@@ -605,7 +605,7 @@ test('#126: Send now waits on the same exit', async () => {
   assert.equal(adapter.calls.at(-1).message.text, 'change of plan');
 });
 
-test('#126: a stopped turn’s tool calls are refused, and show nothing; the next turn’s, and calls without a token, still work', async () => {
+test('#126: a stopped turn’s tool calls are refused, and show nothing; the next turn’s still work, and a call without a token is refused (#54)', async () => {
   const { rt, store, adapter, t, se } = setup();
   const first = slowToExit();
   adapter.next.push(first);
@@ -639,7 +639,12 @@ test('#126: a stopped turn’s tool calls are refused, and show nothing; the nex
   assert.notEqual(next, token, 'each turn has its own token');
   assert.equal((await call(next, 4)).result.isError, false);
   assert.equal((await call(token, 5)).error.code, -32001);
-  assert.equal((await call(null, 6)).result.isError, false, 'an agent you connected yourself sends no token');
+  // A script that knows only the session id can’t act as the agent (#54), and nothing of it is shown.
+  const shown = blocks();
+  const none = await call(null, 6);
+  assert.equal(none.error.code, -32001);
+  assert.match(none.error.message, /only from an agent turn it started/);
+  assert.equal(blocks(), shown);
 });
 
 test('#129: Stop asks when background jobs run, and stops nothing until you answer', async () => {

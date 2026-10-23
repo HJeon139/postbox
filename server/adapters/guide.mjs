@@ -63,7 +63,7 @@ The Postbox tools (the “postbox” MCP server) return at once: the person’s 
 
 ## Blocks
 
-Every block has id (letters, digits, - _ . :; one block per id in a conversation), type, version: 1, title?, and fallback: plain text (up to ${n('fallback')} characters) the person can answer in chat if the block can’t be shown. Objects are strict: you’re told about an unknown field. Long text is Markdown, with a prompt or statement up to ${n('prompt')} characters; labels are plain text.
+Every block has id (letters, digits, - _ . :; one block per id in a conversation), type, version: 1, title?, and fallback: plain text (up to ${n('fallback')} characters) the person can answer in chat if the block can’t be shown. Long text is Markdown, with a prompt or statement up to ${n('prompt')} characters; labels are plain text.
 - choice: options [{ id, label }] (1–${n('choiceOptions')}), prompt?, multiple?, max?, other?: { label, placeholder? }, display?: "chips" | "buttons", submitLabel?, outcome?. Answer: "choose", { selected: [ids], other? }.
 - form: fields (up to ${n('formFields')}) [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
 - confirm: statement, confirmLabel (the action, such as “Delete 23 frames”), cancelLabel?, outcome?. Answer: "confirm" or "cancel".
@@ -82,7 +82,7 @@ Diagrams are scaled to a 728 px column, so a wide one becomes unreadable. Keep a
 
 ## Apps
 
-When a tool would explain better than prose (an explorer, a simulator, a chart someone can change, a practice exercise), write one with show_app { id, title, code, permissions?, fallback? }. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters. It runs with no network: no fetch, no external scripts, fonts or images. Use Postbox’s classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so it works in light and dark. In charts:
+When a tool would explain better than prose (an explorer, a simulator, a chart to play with, an exercise), write one with show_app { id, title, code, permissions?, fallback? }. Change it with update_app, not a new app. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters; for a large one, use codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). add_dataset loads searchable JSONL from .postbox/datasets/ (up to ${n('datasetBytes')}); searches name it in books. It has no network: no fetch, external scripts, fonts or images. Use Postbox’s classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so it works in light and dark. In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox object gives you:
@@ -91,7 +91,7 @@ The global postbox object gives you:
   - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
   - "corpus.read" with { id } returns { id, book, title, author, year, chapter, text }
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
-- postbox.send(action, values, summary) sends you one event; summary is the line the person sees in their voice. Call it only from the person’s click or key press in the app. Up to 5 a minute reach you; more wait for the person to allow them. One event carries up to ${n('eventBytes')} of JSON: a larger send rejects inside the app, so hand over many items by id.
+- postbox.send(action, values, summary) sends you one event; summary shows as the app’s words, not the person’s. Call it only from the person’s click or key press in the app. Up to 5 a minute reach you; more wait for the person to allow them. One event carries up to ${n('eventBytes')} of JSON: a larger send rejects inside the app, so hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state across reloads and versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
@@ -103,7 +103,6 @@ Don’t move focus into the app (no autofocus): Postbox takes the keyboard back,
 
 - Every agent in a conversation sees all of it. A turn may open with “[Postbox] What happened in this room…”; read it first. read_conversation has older history; read_message { id } reads cut items whole.
 - In a room, answer only your part of a message. Writing @handle wakes that agent, so to refer to one, write its name without the @.
-- wake_agent brings in another agent, schedule_wake wakes you later, and propose_agent suggests a new teammate.
 - Define a term with define_term the first time you use it, so later mentions link to it.
 
 ## Recipes
@@ -113,7 +112,6 @@ Follow one when the person asks for something it covers.
 - Explainer with practice: Markdown with a \`\`\`mermaid diagram and math, define_term for new terms, then a small practice app.
 - Narrated walkthrough: passages first (one per slide, two or three short sentences, up to 1,200 characters each), then an app with slides, Previous and Next buttons, and postbox.narration(el, passages, { onPassage: (i) => showSlide(i) }), with permission "narrate.speak".
 - Slidev export: write slides.md (slides split by ---, notes in <!-- --> comments), show it as a code block with filename "slides.md", and say \`npx @slidev/cli export slides.md\` makes a PDF.
-- Dashboard: an app with postbox.charts; each chart has a Table view.
 
 ## Writing
 
@@ -142,7 +140,14 @@ function formatBody(message, pathOf) {
       return [message.text, files.length ? `Attached:\n${files.join('\n')}` : ''].filter(Boolean).join('\n\n') || '(The person sent an empty message.)';
     }
     case 'event':
-      return `[Postbox] The person acted in block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`;
+      return [
+        `[Postbox] The person acted in block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`,
+        // From an app (#51): what Postbox counted, and the app’s own summary, which the person didn’t write.
+        message.event.sent ? `What Postbox counted in it: ${message.event.sent}` : '',
+        message.event.appSummary ? `The app’s own summary, not the person’s words: “${message.event.appSummary}”` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
     case 'agent':
       return `[Postbox] ${message.from} wrote to you:\n\n${message.text}`;
     case 'wake':

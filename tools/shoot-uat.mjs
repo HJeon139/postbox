@@ -151,7 +151,7 @@ const PREPARE = {
   'settings:personas': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Personas').click(); })()`,
   'settings:persona-edit': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Personas').click(); setTimeout(() => [...document.querySelectorAll('.dialog button')].find((b) => b.textContent.trim() === 'Edit').click(), 100); })()`,
   'settings:projects': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Projects').click(); })()`,
-  'settings:connection': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Connect an agent').click(); })()`,
+  'settings:connection': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Backends').click(); })()`,
   'folder-picker': `(() => { document.querySelector('[aria-label="Add a file or a new agent"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From the project folder')).click(); })()`,
   'app-fullscreen': `document.querySelector('.appframe [aria-label="Full screen"]')?.click()`,
   // Three sends the browser asks the server to hold (as it does past its limit), so the card shows.

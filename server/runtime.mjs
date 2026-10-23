@@ -3,13 +3,13 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
+import { open, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, resolve, sep } from 'node:path';
-import { ASKING, validateBlock } from '../shared/catalog.mjs';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { READING } from '../shared/limits.mjs';
+import { LIMITS, limitText, READING } from '../shared/limits.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { turnLine } from '../shared/work.mjs';
@@ -18,6 +18,7 @@ import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.m
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
+import { parseDataset } from './corpus.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { runShell } from './shell.mjs';
@@ -262,6 +263,32 @@ export class Runtime {
   }
   patchItem(threadId, id, patch) {
     this.store.emit('item.patch', { threadId, id, patch });
+  }
+  /**
+   * Brings an item to the newest point in its thread (#49, #92), for an update the person has to see: an app’s new
+   * version, or a block that asks again. The agent explains the change in its newest message, so the item belongs
+   * beside it. The item keeps its id, so there’s only ever one live copy, and a one-line stub takes its old place and
+   * leads to it. An item that’s already the newest just takes the patch.
+   * @param {string} threadId @param {string} id
+   * @param {{ what: 'app'|'block', title: string, v?: number }} stub  what the stub says moved
+   * @param {Record<string, any>} [patch]  set on the item as it moves
+   * @returns {boolean} whether it moved
+   */
+  bringForward(threadId, id, stub, patch = {}) {
+    const items = this.store.items(threadId);
+    const i = items.findIndex((x) => x.id === id);
+    if (i < 0) return false;
+    if (i === items.length - 1) {
+      if (Object.keys(patch).length) this.patchItem(threadId, id, patch);
+      return false;
+    }
+    const now = Date.now();
+    const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub };
+    this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, at: now, movedAt: now } });
+    // A session whose catch-up marker was the item now reads on from the stub, where the item was, so what came
+    // after it isn’t skipped.
+    for (const se of this.sessionsIn(threadId)) if (se.seenItem === id) this.updateSession(se.id, { seenItem: st.id });
+    return true;
   }
   updateSession(id, patch) {
     const se = this.s.sessions[id];
@@ -1839,7 +1866,9 @@ export class Runtime {
       case 'voice': {
         // The agent hears about its own blocks as events already.
         const block = i.blockItemId && this.store.item(se?.threadId, i.blockItemId);
-        return block && block.sessionId === se?.id ? null : `You: ${text(i.text)}`;
+        if (block && block.sessionId === se?.id) return null;
+        // An app’s summary is its own wording, never the person’s (#51).
+        return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
         return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
@@ -1847,6 +1876,7 @@ export class Runtime {
         if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
         if (i.variant === 'joined') return `@${i.to} joined`;
         if (i.variant === 'left') return `@${i.to} left`;
+        if (i.variant === 'dataset') return `@${i.handle} loaded the dataset “${i.dataset}” (${i.records} records); search it by naming it in books`;
         return null;
       case 'sidelink':
         return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages; read_conversation with thread: "${i.sideThreadId}" reads it)`;
@@ -3392,7 +3422,7 @@ export class Runtime {
     const recent = items.filter((x) => x.kind === 'voice' && x.appId === appId && !x.approved && now - (x.sentAt ?? x.at) < Runtime.APP_SEND_WINDOW_MS).length;
     // Once some sends wait, later ones wait behind them, so the agent gets them in order.
     if (card || hold || recent >= Runtime.APP_SEND_LIMIT) {
-      const held = { action: r.event.action, values: r.event.values, voice: r.voice };
+      const held = { action: r.event.action, values: r.event.values, voice: r.voice, sent: r.event.sent, ...(r.quote ? { quote: r.quote } : {}) };
       const waiting = (card?.events.length ?? 0) + 1;
       if (card) {
         if (card.events.length >= Runtime.APP_HOLD_MAX)
@@ -3409,7 +3439,7 @@ export class Runtime {
         message: `Held for the person to allow: an app sends up to ${Runtime.APP_SEND_LIMIT} messages a minute. ${waiting === 1 ? '1 message is' : `${waiting} messages are`} waiting.`,
       };
     }
-    this.addItem(app.threadId, { kind: 'voice', text: r.voice, appId, sentAt: now });
+    this.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
     if (this.s.sessions[app.sessionId]) this.deliver(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId });
     return { ok: true, voice: r.voice };
   }
@@ -3439,8 +3469,15 @@ export class Runtime {
     }
     const se = this.s.sessions[it.sessionId];
     for (const ev of it.events) {
-      this.addItem(threadId, { kind: 'voice', text: ev.voice, appId: it.appId, sentAt: now, approved: true });
-      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event: { blockId: it.appId, action: ev.action, values: ev.values } }, { threadId });
+      this.addItem(threadId, { kind: 'voice', text: ev.voice, ...(ev.quote ? { quote: ev.quote } : {}), appId: it.appId, sentAt: now, approved: true });
+      const event = {
+        blockId: it.appId,
+        action: ev.action,
+        values: ev.values,
+        ...(ev.sent ? { sent: ev.sent } : {}),
+        ...(ev.quote ? { appSummary: ev.quote } : {}),
+      };
+      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event }, { threadId });
     }
     return { ok: true };
   }
@@ -3466,6 +3503,174 @@ export class Runtime {
     return hostTool(this, tool, args);
   }
 
+  /**
+   * A data file of an app’s version (#54), as the app reads it with postbox.file(name).
+   * @param {string} appId @param {string} name @param {number} [v]  the version; the current one by default
+   */
+  async appFile(appId, name, v) {
+    const app = this.s.apps[appId];
+    if (!app) throw httpError(404, 'That app doesn’t exist.');
+    const ver = app.versions[(Number(v) || app.current) - 1];
+    const f = ver?.files?.find((x) => x.name === name);
+    if (!f || !this.blobs) throw httpError(404, `This version of ${app.title} has no file “${name}”.`);
+    return this.blobs.get(f.sha256);
+  }
+
+  // ── Files an agent names (#54) ─────────────────────────────────────────────────────
+
+  /** The folders an agent works in: its own (where it starts), the project’s, and any added for the conversation. */
+  async agentFolders(sessionId) {
+    const se = this.session(sessionId);
+    const persona = this.personaFor(se);
+    const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
+    const adapter = this.adapters.get(persona?.backend);
+    const own = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona?.folder || project?.folder || null;
+    return [...new Set([own, project?.folder, ...(se.addDirs ?? [])].filter(Boolean))];
+  }
+
+  /**
+   * Reads a file an agent named for an app: a path in one of its folders (relative to its own), followed through
+   * links, so a link can’t reach outside them. Larger than max bytes is refused before it’s read.
+   * @param {string} sessionId @param {unknown} path @param {number} max @param {string} what  how the error names it
+   */
+  async agentFile(sessionId, path, max, what) {
+    if (typeof path !== 'string' || !path.trim()) throw new AgentFileError(`${what} needs a path to a file in your folder.`);
+    const folders = await this.agentFolders(sessionId);
+    if (!folders.length) throw new AgentFileError(`You have no folder to read ${what} from. Send it inline instead.`);
+    const real = await realpath(resolve(folders[0], path)).catch(() => null);
+    if (!real) throw new AgentFileError(`There’s no file at ${path} (${what}).`);
+    const roots = await Promise.all(folders.map((f) => realpath(f).catch(() => null)));
+    if (!roots.some((r) => r && (real === r || real.startsWith(r + sep))))
+      throw new AgentFileError(`${path} is outside your folders, so Postbox didn’t read it (${what}).`);
+    const st = await stat(real);
+    if (!st.isFile()) throw new AgentFileError(`${path} isn’t a file (${what}).`);
+    const over = () => new AgentFileError(`${path} is over the limit for ${what}.`);
+    if (st.size > max) throw over();
+    const buf = await readCapped(real, max);
+    if (!buf) throw over();
+    return buf;
+  }
+
+  /**
+   * show_app and update_app as an agent calls them over MCP (#54): code may come from codePath, a file in its folder,
+   * and files names data files there for the app to read. Postbox reads both itself, under the same limits as an
+   * inline call, and stores the data files with the version. Returns the call’s arguments with code filled in, and
+   * the files as Postbox stored them; a call can’t name stored files itself.
+   * @param {string} sessionId @param {any} args
+   * @returns {Promise<{ args: any, files?: AppFile[] }>}
+   */
+  async appFiles(sessionId, args) {
+    const { codePath, files: wanted, ...rest } = args ?? {};
+    const out = { ...rest };
+    if (codePath !== undefined) {
+      if (typeof rest.code === 'string' && rest.code) throw new AgentFileError('Send code or codePath, not both.');
+      // A character is at most 4 bytes, so a file within the limit in characters is within 4 times it in bytes.
+      out.code = (await this.agentFile(sessionId, codePath, LIMITS.appCode * 4, 'codePath')).toString('utf8');
+      if (out.code.length > LIMITS.appCode)
+        throw new AgentFileError(`${codePath} has ${out.code.length.toLocaleString('en-US')} characters; an app’s code is up to ${limitText('appCode')}.`);
+    }
+    if (wanted === undefined) return { args: out };
+    if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
+    if (wanted.length > LIMITS.appFiles) throw new AgentFileError(`An app carries up to ${limitText('appFiles')} data files.`);
+    if (!this.blobs) throw new AgentFileError('This Postbox can’t store files.');
+    /** @type {AppFile[]} */
+    const stored = [];
+    for (const f of wanted) {
+      const path = typeof f === 'string' ? f : f?.path;
+      const name = String((typeof f === 'object' && f?.name) || basename(String(path ?? '')));
+      if (!FILE_NAME.test(name)) throw new AgentFileError(`“${name}” can’t name a file: use letters, digits and - _ . (up to 64).`);
+      if (stored.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
+      const buf = await this.agentFile(sessionId, path, LIMITS.appFileBytes, `the file “${name}” (up to ${limitText('appFileBytes')})`);
+      const { sha256, size } = await this.blobs.put(buf);
+      stored.push({ name, sha256, size });
+    }
+    return { args: out, files: stored };
+  }
+
+  // ── Datasets (#47) ─────────────────────────────────────────────────────────────────
+
+  /**
+   * add_dataset: loads a JSON Lines file from the project’s own Postbox folder, .postbox/datasets/, into the corpus,
+   * without a restart, which would end every agent’s session. Its records are searched only when a search names the
+   * dataset, so they don’t mix into other agents’ results. An event keeps it, so it’s loaded again after a restart,
+   * and a line in the conversation says it was loaded. Loading the same id again replaces it.
+   * @param {string} sessionId @param {{ id?: unknown, path?: unknown, title?: unknown }} args
+   */
+  async addDataset(sessionId, { id, path, title } = {}) {
+    const se = this.session(sessionId);
+    const project = this.s.projects[this.s.threads[se.threadId]?.projectId];
+    const name = String(id ?? '');
+    if (!DATASET_ID.test(name)) return { ok: false, message: 'A dataset id is letters, digits, - and _ (up to 64), such as “scifact-abstracts”.' };
+    const taken = this.corpus.stats().books.find((b) => b.id === name);
+    if (taken && !taken.dataset) return { ok: false, message: `“${name}” is a book in the corpus. Pick another id.` };
+    if (!project?.folder)
+      return {
+        ok: false,
+        message: 'This conversation’s project has no folder, so there’s no .postbox/datasets/ to load from. Ask the person to give the project a folder.',
+      };
+    const dir = datasetDir(project.folder);
+    let raw;
+    try {
+      raw = await this.datasetFile(dir, path);
+    } catch (e) {
+      return { ok: false, message: e.message };
+    }
+    let records;
+    try {
+      records = parseDataset(raw.text);
+    } catch (e) {
+      return { ok: false, message: e.message };
+    }
+    const meta = { title: clip(String(title ?? '') || name, 200), author: `@${se.handle}` };
+    this.corpus.addRecords(name, records, meta);
+    this.corpus.reindex();
+    this.store.emit('dataset', { id: name, projectId: project.id, path: raw.path, ...meta, records: records.length, by: se.handle, at: Date.now() });
+    this.addItem(se.threadId, { kind: 'system', variant: 'dataset', handle: se.handle, dataset: name, records: records.length });
+    return {
+      ok: true,
+      message: `Loaded ${records.length.toLocaleString('en-US')} records as the dataset “${name}”. It’s searched only when a search names it: corpus.search with books: ["${name}"]. corpus.read with id "${name}:<record id>" reads one record.`,
+    };
+  }
+
+  /**
+   * Reads a dataset file: a path in the project’s .postbox/datasets/ (relative to it), followed through links, so a
+   * link can’t lead outside it, and up to datasetBytes.
+   * @param {string} dir @param {unknown} path
+   */
+  async datasetFile(dir, path) {
+    if (typeof path !== 'string' || !path.trim()) throw new Error(`add_dataset needs the path of a .jsonl file in ${dir}.`);
+    const root = await realpath(dir).catch(() => null);
+    if (!root) throw new Error(`There’s no folder ${dir} yet. Write the dataset there, then load it.`);
+    const real = await realpath(resolve(root, path)).catch(() => null);
+    if (!real) throw new Error(`There’s no file at ${path} in ${dir}.`);
+    if (!real.startsWith(root + sep)) throw new Error(`${path} is outside ${dir}. Datasets load only from there.`);
+    const st = await stat(real);
+    if (!st.isFile()) throw new Error(`${path} isn’t a file.`);
+    const over = () => new Error(`${path} is over ${limitText('datasetBytes')}, the limit for a dataset.`);
+    if (st.size > LIMITS.datasetBytes) throw over();
+    const buf = await readCapped(real, LIMITS.datasetBytes);
+    if (!buf) throw over();
+    return { path: relative(root, real), text: buf.toString('utf8') };
+  }
+
+  /** At startup: loads the datasets agents added before the restart, from where they were. Returns how many loaded. */
+  async reloadDatasets() {
+    let n = 0;
+    for (const ds of Object.values(this.s.datasets ?? {})) {
+      const folder = this.s.projects[ds.projectId]?.folder;
+      try {
+        if (!folder) throw new Error('its project has no folder now');
+        const { text } = await this.datasetFile(datasetDir(folder), ds.path);
+        this.corpus.addRecords(ds.id, parseDataset(text), { title: ds.title, author: ds.author });
+        n++;
+      } catch (e) {
+        console.warn(`Couldn’t load the dataset “${ds.id}” again: ${e.message}`);
+      }
+    }
+    if (n) this.corpus.reindex();
+    return n;
+  }
+
   // ── Presence ───────────────────────────────────────────────────────────────────────
 
   view(threadId) {
@@ -3489,7 +3694,8 @@ export class Runtime {
     // Where the turn speaks: its session’s thread, or the side thread it answers in (#110).
     const threadId = () => turn?.threadId ?? se().threadId;
     return {
-      show_block({ block }) {
+      /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
+      show_block({ block }, given = {}) {
         // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
         // answers, even Cancel, so it’s refused here and only taken by update_block once the block is answered.
         if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
@@ -3501,7 +3707,7 @@ export class Runtime {
         let renamed = null;
         if (v.ok && v.block.type === 'app' && rt.s.apps[v.block.id]) {
           const { id, code, permissions, title } = /** @type {any} */ (v.block);
-          if (rt.s.apps[id].sessionId === sessionId) return this.update_app({ id, code, permissions, title });
+          if (rt.s.apps[id].sessionId === sessionId) return this.update_app({ id, code, permissions, title }, given);
           renamed = newId(String(id).slice(0, 40));
           v.block = { ...v.block, id: renamed };
         }
@@ -3533,7 +3739,7 @@ export class Runtime {
                 fallback: v.fallback,
               },
         );
-        if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId());
+        if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
         return v.ok
           ? { ok: true, message: renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown block ${v.block.id}.` }
           : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
@@ -3578,42 +3784,74 @@ export class Runtime {
         if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
         // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
         if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
-        rt.patchItem(where, existing.id, patch);
-        return { ok: true, message: `Updated block ${v.block.id}.` };
+        if (!followsConversation(v.block)) {
+          rt.patchItem(where, existing.id, patch);
+          return { ok: true, message: `Updated block ${v.block.id}.` };
+        }
+        // It asks again, so it comes to the newest point, where the person will look for it (#92). Text the turn writes
+        // next goes after it, when it’s in the turn’s own thread.
+        if (where === threadId()) endSegment();
+        const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
+        return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
       },
-      show_app({ id, title, code, permissions = [], fallback }) {
+      /**
+       * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
+       * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
+       */
+      show_app({ id, title, code, permissions = [], fallback }, given = {}) {
         const blockId = id ?? newId('app');
         const existing = rt.s.apps[blockId];
-        if (existing?.sessionId === sessionId) return this.update_app({ id: blockId, code, permissions, title });
-        return this.show_block({
-          block: {
-            id: blockId,
-            type: 'app',
-            version: 1,
-            title: title ?? 'App',
-            fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
-            code,
-            permissions,
+        if (existing?.sessionId === sessionId) return this.update_app({ id: blockId, code, permissions, title }, given);
+        return this.show_block(
+          {
+            block: {
+              id: blockId,
+              type: 'app',
+              version: 1,
+              title: title ?? 'App',
+              fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
+              code,
+              permissions,
+            },
           },
-        });
+          given,
+        );
       },
-      update_app({ id, code, permissions, title, summary = '' }) {
+      /**
+       * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
+       * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
+       */
+      update_app({ id, code, permissions, title, summary = '' }, given = {}) {
         const app = rt.s.apps[id];
         if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
         const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
         if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
         const versions = [
           ...app.versions,
-          { v: app.versions.length + 1, code, permissions: v.block.permissions ?? [], summary: String(summary ?? '').slice(0, 300), at: Date.now() },
+          {
+            v: app.versions.length + 1,
+            code,
+            permissions: v.block.permissions ?? [],
+            files: given.files ?? app.versions[app.current - 1].files ?? [],
+            summary: String(summary ?? '').slice(0, 300),
+            at: Date.now(),
+          },
         ];
-        rt.store.emit('app', {
+        const next = {
           ...app,
           title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
           versions,
           current: versions.length,
           check: { status: 'pending', attempt: app.check.attempt },
-        });
-        return { ok: true, message: `App ${id} is now v${versions.length}.` };
+        };
+        rt.store.emit('app', next);
+        // A new version always comes to the newest point, where the agent says what changed (#49).
+        let moved = false;
+        if (followsConversation({ type: 'app' })) {
+          if (app.threadId === threadId()) endSegment();
+          moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
+        }
+        return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
       },
       define_term({ term, definition, key, source }) {
         if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
@@ -3682,24 +3920,65 @@ export class Runtime {
       ask_for_tool(args = {}) {
         return askForTool(rt, sessionId, args, endSegment, threadId());
       },
+      add_dataset(args) {
+        return rt.addDataset(sessionId, args);
+      },
       corpus_search(args) {
         return { ok: true, results: hostTool(rt, 'corpus.search', args) };
       },
     };
   }
 
-  registerApp(sessionId, block, itemId, threadId = this.s.sessions[sessionId]?.threadId) {
+  /** @param {string} sessionId @param {any} block @param {string} itemId @param {string} [threadId] @param {AppFile[]} [files] */
+  registerApp(sessionId, block, itemId, threadId = this.s.sessions[sessionId]?.threadId, files = []) {
     this.store.emit('app', {
       id: block.id,
       threadId,
       sessionId,
       itemId,
       title: block.title ?? 'App',
-      versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], at: Date.now(), summary: '' }],
+      versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], files, at: Date.now(), summary: '' }],
       current: 1,
       state: null,
       check: { status: 'pending', attempt: 0, problems: [] },
     });
+  }
+}
+
+/** What a block’s stub calls it once it moved (#92): its title, or the start of what it asks. @param {any} b */
+const blockTitle = (b) => clip(String(b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id).replace(/\s+/g, ' '), 80);
+
+const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+/** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */
+const datasetDir = (folder) => join(folder, '.postbox', 'datasets');
+
+/** A data file of an app’s version, stored by its hash (#54). @typedef {{ name: string, sha256: string, size: number }} AppFile */
+const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+/** A file an agent named that Postbox can’t use; its message goes back to the agent. */
+export class AgentFileError extends Error {}
+
+/**
+ * Reads a file, but never more than max bytes of it: null when it has more. Its size was checked before, but a file
+ * that’s still being written can grow after that, so the read itself stops past the limit.
+ * @param {string} path @param {number} max
+ */
+export async function readCapped(path, max) {
+  const fh = await open(path, 'r');
+  try {
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      // One byte past the limit is enough to know it’s over.
+      const chunk = Buffer.alloc(Math.min(1024 * 1024, max + 1 - total));
+      const { bytesRead } = await fh.read(chunk, 0, chunk.length, total);
+      if (!bytesRead) break;
+      chunks.push(chunk.subarray(0, bytesRead));
+      total += bytesRead;
+      if (total > max) return null;
+    }
+    return Buffer.concat(chunks, total);
+  } finally {
+    await fh.close();
   }
 }
 

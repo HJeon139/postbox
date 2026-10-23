@@ -189,7 +189,9 @@ test('#66: a subagent’s prompt names the subagent, from the stream', async () 
 test('#66: MCP permission_prompt passes suggestions and the agent id, and answers with your edit or Always allow', async () => {
   const { rt, store, t, adapter, se } = await setup();
   const replies = [];
-  const ask = (args) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'permission_prompt', arguments: args } });
+  // The turn’s own token, as Claude Code sends it (#54).
+  const token = () => rt.turns.get(se.id)?.token ?? null;
+  const ask = (args) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'permission_prompt', arguments: args } }, token());
   const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Read', ruleContent: '//data/**' }], behavior: 'allow', destination: 'localSettings' }];
   adapter.next.push(async (c) => {
     c.subagentNames(({ agentId }) => (agentId === 'task-1' ? 'Explore' : null));

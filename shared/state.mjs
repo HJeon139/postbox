@@ -15,6 +15,8 @@ export function emptyState() {
     glossary: {},
     apps: {},
     files: {},
+    // Datasets agents loaded into the corpus (#47), so they’re loaded again after a restart.
+    datasets: {},
     schedules: {},
     // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
     work: {},
@@ -48,6 +50,9 @@ export function apply(s, type, d) {
     case 'file':
       s.files[d.id] = d;
       break;
+    case 'dataset':
+      (s.datasets ??= {})[d.id] = d;
+      break;
     case 'schedule':
       if (d.removed) delete s.schedules[d.id];
       else s.schedules[d.id] = d;
@@ -61,6 +66,16 @@ export function apply(s, type, d) {
     case 'item.patch': {
       const it = s.items[d.threadId]?.find((i) => i.id === d.id);
       if (it) Object.assign(it, d.patch);
+      break;
+    }
+    // An item brought to the newest point (#49, #92): a stub takes its old place, and the item itself, with its id,
+    // goes last, so whatever names it (an answer, a needs-you, an app) still finds the one live copy.
+    case 'item.move': {
+      const list = s.items[d.threadId];
+      const i = list?.findIndex((x) => x.id === d.id) ?? -1;
+      if (i < 0) break;
+      const [it] = list.splice(i, 1, d.stub);
+      list.push(Object.assign(it, d.patch));
       break;
     }
     case 'item.text': {
