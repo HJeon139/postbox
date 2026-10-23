@@ -12,6 +12,7 @@ The agent’s answer, streamed as it’s written, in Markdown.
 
 - Speaker line: ring, @name, “mock” for a mock agent (#12), status word while it works, time.
 - Text streams with a caret; only the newest segment of a turn shows the caret.
+- A screen reader hears the reply through the live region a sentence at a time, once each sentence is finished, as plain text: no code ticks, emphasis or heading marks, list bullets or link addresses, and no code blocks. A table is read a row at a time, as its cells, without its delimiter row. A dot inside a word (`converter.py`, `v0.13.0`, `6.21371`, “e.g.”) stays in its sentence, and nothing before it is lost (#196).
 - Raw HTML is shown as text, never rendered; links open in a new tab with noopener.
 - Bold and italic text can hold inline code: **Add three checks to `rename.py`:** is bold, with no asterisks showing (#82).
 - The one exception: `<details><summary>Answer</summary> … </details>`, with no attributes, folds its Markdown away until you open it (agents use it to hide an exercise’s answer). It opens by click or by Enter on the summary, and folds can nest. A `<details>` with attributes, or one that’s never closed, stays text.

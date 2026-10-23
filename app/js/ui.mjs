@@ -2,7 +2,7 @@
 // and hover cards for citations and glossary terms.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
-import { finishedSentences } from '/shared/text.mjs';
+import { spokenSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
 
 // ── Navigation ──────────────────────────────────────────────────────────────────────────
@@ -186,8 +186,8 @@ export function undoToast({ text, until, onUndo }) {
 const spoken = new Map(); // itemId → characters already announced
 export function announceStreaming(itemId, text, done, who) {
   const prev = spoken.get(itemId) ?? 0;
-  const r = finishedSentences(text, prev, done);
-  spoken.set(itemId, r.spoken);
+  const r = spokenSentences(text, prev, done);
+  spoken.set(itemId, r.sentences.length || prev ? r.spoken : 0); // a reply that opens with code still says who it’s from
   if (r.sentences.length) say(`${prev === 0 && who ? who + ': ' : ''}${r.sentences.join(' ')}`);
 }
 export function say(text, urgent = false) {
