@@ -1034,6 +1034,7 @@ export class Runtime {
       // Postbox couldn’t tell which of the turn’s processes was the job, so it kept them all (#164): say so.
       const unsure = groups.length > 1 ? keepUnsure(groups.length) : null;
       if (unsure) this.setJobStep(old, { detail: unsure });
+      this.ledger.jobUpdate(old, { kept: true });
       // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running.
       this.tellAgent(
         se.id,
@@ -1057,6 +1058,8 @@ export class Runtime {
     const se = this.s.sessions[sessionId];
     const job = se?.jobs?.find((j) => j.id === jobId);
     if (!se || !job) return;
+    // Work says how it ended too: its turn may have ended thinking it was still running (#164).
+    this.ledger.jobUpdate(job, { state, by });
     this.updateSession(sessionId, { jobs: se.jobs.filter((j) => j.id !== jobId) });
     if (this.keptPoll && !this.keptJobs().length) {
       clearInterval(this.keptPoll);

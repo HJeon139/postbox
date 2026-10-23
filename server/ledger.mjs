@@ -486,6 +486,28 @@ export class Ledger {
     );
   }
 
+  /**
+   * What became of a background command after its turn, as the runtime saw it (#164): Stop kept it running (kept), or
+   * it ended (state: 'done' | 'failed' | 'stopped', by: 'you' when the person stopped it). The turn’s end alone can’t
+   * tell a job you stopped with its agent from one still running. An end the CLI reported (taskEnded) knows the exit,
+   * so it isn’t overwritten; one Postbox saw only as its process going (a kept job’s) doesn’t.
+   * @param {{ threadId: string, toolUseId: string, startedAt?: number }} job
+   * @param {{ kept?: boolean, state?: string|null, by?: string|null }} what
+   */
+  jobUpdate(job, { kept = false, state = null, by = null }) {
+    const convId = this.convOf(job.threadId);
+    const e = this.entries(convId).find((x) => x.kind === 'command' && x.toolUseId === job.toolUseId);
+    if (!e) return;
+    if (kept) this.patch(convId, e.id, { keptRunning: true, ...(e.state === 'unknown' ? { state: 'background' } : {}) });
+    else if (state && ['running', 'background', 'unknown'].includes(e.state))
+      this.patch(convId, e.id, {
+        state: state === 'stopped' || state === 'failed' ? state : 'unknown',
+        ms: this.now() - (e.startedAt ?? this.now()),
+        leftRunning: false,
+        ...(by === 'you' ? { stoppedBy: 'you' } : {}),
+      });
+  }
+
   /** What the backend reports the turn’s process has spent so far (its totals run for the process). */
   usage(turn, { key = 'run', costUsd = null, tokens = null }) {
     turn.work?.usage.set(key, { costUsd, tokens });
@@ -521,11 +543,11 @@ export class Ledger {
         tokens: tokened.length ? { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead'), cacheWrite: sum('cacheWrite') } : null,
       });
       // A command with no result when its turn ended: stopped with it, or still running in the background,
-      // where Postbox can’t see it end (#129).
+      // where Postbox can’t see it end (#129) unless the runtime does (jobUpdate). One you kept running still is.
       for (const id of w.commands.values()) {
         const e = this.entry(w.convId, id);
         if (e?.state === 'running') this.patch(w.convId, id, { state: status === 'stopped' ? 'stopped' : 'unknown', ms: endedAt - e.startedAt });
-        else if (e?.state === 'background') this.patch(w.convId, id, { state: 'unknown', leftRunning: true });
+        else if (e?.state === 'background') this.patch(w.convId, id, { ...(e.keptRunning ? {} : { state: 'unknown' }), leftRunning: true });
       }
       for (const id of w.externals.values()) {
         const e = this.entry(w.convId, id);

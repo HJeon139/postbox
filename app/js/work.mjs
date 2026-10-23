@@ -594,7 +594,18 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
       c.description ? h('p.small.dim', c.description) : null,
       h('pre.md-code.work-cmd-full', h('code', c.command)),
       h('p.small.dim', `Started ${timeOf(c.startedAt)}${c.who ? ` by the subagent ${c.who}` : ''}.`),
-      c.leftRunning ? h('p.small.dim', 'It was still running in the background when the turn ended, so Postbox didn’t see it end.') : null,
+      c.keptRunning
+        ? h(
+            'p.small.dim',
+            c.leftRunning
+              ? 'You kept it running when you stopped its agent.'
+              : c.state === 'stopped'
+                ? `You kept it running when you stopped its agent, then ${c.stoppedBy === 'you' ? 'you' : 'Postbox'} stopped it.`
+                : 'You kept it running when you stopped its agent. It has ended; Postbox saw its process go, not its exit.',
+          )
+        : c.leftRunning
+          ? h('p.small.dim', 'It was still running in the background when the turn ended, so Postbox didn’t see it end.')
+          : null,
       c.endedInBackground ? h('p.small.dim', 'It ran in the background; this is its output file.') : null,
       c.output?.cut ? h('p.small.dim', 'Earlier output was cut: this is the last 4 MB.') : null,
       c.state === 'running'

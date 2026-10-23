@@ -454,3 +454,66 @@ test('a command refused by the backend or declined on a permission card reads as
     'and a command with no result when you stopped the turn stopped with it',
   );
 });
+
+test('a background command says what became of it after Stop: stopped with its agent, or kept running and how it ended (#164)', async () => {
+  const store = new Store(null);
+  let now = 1000;
+  const ledger = new Ledger({ store, io: memIo(), git: fakeGit([]), now: () => now });
+  store.emit('thread', { id: 'th_1', kind: 'thread', members: [] });
+  const cmd = (id) => store.state.work.th_1.find((e) => e.kind === 'command' && e.toolUseId === id);
+  const inBackground = (turn, id) => {
+    ledger.toolUse(turn, { id, name: 'Bash', input: { command: `sleep 600 # ${id}`, run_in_background: true } });
+    ledger.toolResult(turn, { id, text: 'Command running in background', result: { backgroundTaskId: `b_${id}` } });
+  };
+  const turn = { id: 'turn_1', threadId: 'th_1', startedAt: 0 };
+  ledger.startTurn(turn, { se: { id: 'se_1', handle: 'dev' } });
+  for (const id of ['a', 'b', 'c', 'd']) inBackground(turn, id);
+  await ledger.idle();
+  const job = (id) => ({ threadId: 'th_1', toolUseId: id });
+  // Stop it too, heard before the turn ends: stopped, not left running.
+  ledger.jobUpdate(job('a'), { state: 'stopped' });
+  // Keep running, heard before the turn ends.
+  ledger.jobUpdate(job('b'), { kept: true });
+  ledger.jobUpdate(job('c'), { kept: true });
+  now = 4000;
+  await ledger.endTurn(turn, { status: 'stopped' });
+  // Stop it too, heard after the turn ended: it was left running, and now isn’t.
+  ledger.jobUpdate(job('d'), { state: 'stopped' });
+  assert.deepEqual([cmd('a').state, !!cmd('a').leftRunning, cmd('a').ms], ['stopped', false, 0]);
+  assert.deepEqual([cmd('d').state, !!cmd('d').leftRunning, cmd('d').ms], ['stopped', false, 3000]);
+  assert.deepEqual([cmd('b').state, cmd('b').leftRunning, cmd('b').keptRunning], ['background', true, true], 'a kept job still reads as running');
+  // Later, one ends on its own (Postbox saw its process go) and you stop the other.
+  ledger.jobUpdate(job('b'), { state: 'done' });
+  ledger.jobUpdate(job('c'), { state: 'stopped', by: 'you' });
+  assert.deepEqual([cmd('b').state, !!cmd('b').leftRunning, cmd('b').keptRunning], ['unknown', false, true], 'its exit isn’t known');
+  assert.deepEqual([cmd('c').state, cmd('c').stoppedBy], ['stopped', 'you']);
+  // An end the CLI reported, with its exit, isn’t overwritten.
+  const t2 = { id: 'turn_2', threadId: 'th_1', startedAt: 0 };
+  ledger.startTurn(t2, { se: { id: 'se_1', handle: 'dev' } });
+  inBackground(t2, 'e');
+  await ledger.idle();
+  ledger.taskEnded(t2, { toolUseId: 'e', status: 'completed', summary: 'exit code 0' });
+  await ledger.idle();
+  ledger.jobUpdate(job('e'), { state: 'stopped' });
+  assert.equal(cmd('e').state, 'done');
+});
+
+test('the runtime tells Work when Stop keeps a job and when it ends', async () => {
+  const io = memIo({});
+  const { rt, store, adapter, t } = runtimeWith(io);
+  rt.listProcesses = async () => [{ pid: 4242, ppid: 1, pgid: 4242, command: "/bin/zsh -c eval 'sleep 600' < /dev/null" }];
+  rt.signalProcess = () => true;
+  adapter.next.push(async (c) => {
+    c.toolUse({ id: 'tu_1', name: 'Bash', input: { command: 'sleep 600', run_in_background: true } });
+    c.toolResult({ id: 'tu_1', text: 'Command running in background', result: { backgroundTaskId: 'job1' } });
+    c.job({ id: 'job1', toolUseId: 'tu_1', label: 'sleep 600', command: 'sleep 600', state: 'running' });
+    c.job({ id: 'job1', kept: true, pgid: 4242 });
+  });
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
+  const cmd = () => store.state.work[t.id].find((e) => e.kind === 'command');
+  assert.deepEqual([cmd().state, cmd().keptRunning], ['background', true]);
+  const se = Object.values(store.state.sessions).find((s) => s.jobs?.length);
+  await rt.stopJob(se.id, 'job1');
+  assert.deepEqual([cmd().state, cmd().stoppedBy, !!cmd().leftRunning], ['stopped', 'you', false]);
+});
