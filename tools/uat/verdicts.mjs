@@ -92,14 +92,39 @@ export function setVerdict(f, { verdict, by, note = null, issue = null, at = new
   f.verdictAt = at;
   if (note !== null) f.note = note;
   if (v === 'duplicate') f.duplicateOf = issue ?? f.duplicateOf;
-  else delete f.duplicateOf;
+  else {
+    delete f.duplicateOf;
+    // A regression someone judged otherwise isn’t one (#213): no comment goes out for it, and the report doesn’t list
+    // its closed issue as caught again.
+    delete f.regression;
+    if (f.closedIssue) unmatchClosed(f);
+  }
   return true;
+}
+
+/** Takes a closed issue off a finding that isn’t a duplicate of it, keeping it as matchedIssue. @param {any} f */
+export function unmatchClosed(f) {
+  if (!Number.isInteger(f.issue)) return;
+  f.matchedIssue = f.issue;
+  f.issue = null;
+}
+
+/**
+ * A finding without a check’s own preset (a duplicate set by “check”), for a recheck that sets it again against what’s
+ * known now: the issue may have closed since (#213). Any other verdict stays.
+ * @param {any} f
+ */
+export function withoutPreset(f) {
+  if (f.verdictBy !== 'check' || normalVerdict(f.verdict) !== 'duplicate') return f;
+  const { verdict, verdictBy, verdictAt, verdicts, note, duplicateOf, ...rest } = f;
+  return rest;
 }
 
 /**
  * The verdict a finding carries for counting: its own, in this set, or one implied by how the run handled it, as
  * presetVerdicts sets it on new runs: a filed finding was confirmed, and a check that matched an open issue caught it
- * again. Null for one no one reviewed (a tester’s match to an issue is a guess until verified).
+ * again. Null for one no one reviewed (a tester’s match to an issue is a guess until verified), and for a check’s match
+ * to a closed issue that wasn’t verified (#213, tools/uat/regressions.mjs).
  * @param {any} f
  * @returns {string|null}
  */
@@ -107,7 +132,7 @@ export function verdictOf(f) {
   const v = normalVerdict(f.verdict);
   if (v) return v;
   if (f.filed) return 'confirmed';
-  if (f.duplicateOf || (f.source === 'check' && Number.isInteger(f.issue))) return 'duplicate';
+  if (f.duplicateOf || (f.source === 'check' && Number.isInteger(f.issue) && !f.closedIssue)) return 'duplicate';
   return null;
 }
 
@@ -131,7 +156,8 @@ export function mergePeopleVerdicts(findings, onDisk) {
 
 /**
  * Verdicts that need no model: a check that matched an open issue caught that issue again (a duplicate of it), and
- * a measurement or a coverage gap carries its own. Leaves a finding with a verdict as it is.
+ * a measurement or a coverage gap carries its own. A match to a closed issue (closedIssue, from markClosed in
+ * tools/uat/regressions.mjs) isn’t preset: it may be a stale check (#213). Leaves a finding with a verdict as it is.
  * @param {any[]} findings
  */
 export function presetVerdicts(findings) {
@@ -142,7 +168,7 @@ export function presetVerdicts(findings) {
       if (v && v !== f.verdict) f.verdict = v;
       continue;
     }
-    if (f.source === 'check' && Number.isInteger(f.issue))
+    if (f.source === 'check' && Number.isInteger(f.issue) && !f.closedIssue)
       setVerdict(f, { verdict: 'duplicate', by: 'check', issue: f.issue, note: `A check caught #${f.issue} again.` });
   }
 }

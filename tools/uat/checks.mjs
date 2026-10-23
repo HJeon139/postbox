@@ -32,6 +32,9 @@ import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from 
 import { freshInstall } from '../../server/seed.mjs';
 import { ASKING } from '../../shared/catalog.mjs';
 import { toPlainText } from '../../shared/markdown.mjs';
+import { asksInProse, blockUseTally } from './block-use.mjs';
+
+export { callsFor, LONG_TURN_MS, LONG_TURN_TOOLS } from './block-use.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
 const clip = (s, n = 240) => {
@@ -40,29 +43,6 @@ const clip = (s, n = 240) => {
     .trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
-// ── M1’s exit check: did a reply that called for a block use the right one? (#64) ──────────────────────
-// What a turn calls for, from what the person asked and what the agent did, as the agent guide maps them:
-// - a long job → progress: the turn showed a progress block, or did a job of several steps (10 or more tool calls,
-//   or 2 minutes or more with 3 or more). Writing alone isn’t a job: a 2-minute turn that only writes a doc isn’t one.
-// - a draft → review: the turn showed a review block, or the prose itself holds a draft (8 or more lines that don’t
-//   just point at a block) when the person asked for something to approve, or the agent asks them to approve it. A
-//   report, an explanation or a result isn’t a draft, however long.
-// - options → choice: two or more list items with a question asking the person to pick (which, choose, prefer…)
-//   that isn’t itself a list item.
-// - questions → form or choice: three or more questions to the person.
-// Practice questions (inside <details>, or under a Practice or Exercise heading) ask nothing of the person, and a
-// reply to Postbox’s own lint message isn’t a reply to the person. A turn is right only if everything it called for
-// has one of its expected blocks. Tuned on the first wave 2 runs (uat-runs/2026-10-22T19-07-51-*): a long job with a
-// progress block and a table had read as a missed draft.
-const BLOCK_USE = {
-  options: { blocks: ['choice'], words: 'options' },
-  questions: { blocks: ['form', 'choice'], words: 'questions' },
-  draft: { blocks: ['review'], words: 'a draft' },
-  long: { blocks: ['progress'], words: 'a long job' },
-  decision: { blocks: ['confirm'], words: 'a decision' },
-};
-/** @type {Record<string, keyof typeof BLOCK_USE>} */
-const SERVES = { choice: 'options', form: 'questions', review: 'draft', progress: 'long', confirm: 'decision' };
 
 // ── Kiro CLI turns (#117) ──────────────────────────────────────────────────────────────────────────────
 // What each Kiro turn’s stream says about its tool calls, for the checks below: one entry per toolCallId, with its
@@ -185,120 +165,6 @@ const deniedSteps = (f) =>
       .map((st) => st.id),
   );
 
-export const LONG_TURN_MS = 120_000;
-export const LONG_TURN_TOOLS = 10;
-const LONG_TURN_MIN_TOOLS = 3;
-const DRAFT_LINES = 8;
-// What the person asked for, or what the agent asks of them, when a reply is something to approve. The person
-// saying “approved” is an answer, not a request.
-const ASKS_FOR_DRAFT =
-  /\b(draft|(for|to) (my |your )?(approv\w*|sign[- ]?off|review)|announcement|newsletter|e-?mail|letter|proposal|press release|release notes|blog post|write[- ]?up)\b/i;
-const ASKS_TO_APPROVE =
-  /\b(approv\w*|sign[- ]?off|ready to (send|post|publish|go out)|before (it goes out|you send|sending|posting|publishing)|look(s)? good to you)\b/i;
-// A reply that points at a block rather than holding the draft itself.
-const POINTS_AT_BLOCK = /\b(review block|in the review|up for (your )?review|ready for (you to|your) review|shows what changed|in the block|above)\b/i;
-const PICK = /\b(which|pick|choose|prefer|rather|would you like|want me to|should (i|we)|go with)\b/i;
-const LIST_ITEM = /^\s*(?:\d+[.)]|[-*])\s+\S/;
-
-/** The lines of a reply the person is asked to act on: no practice questions, no hidden answers. */
-function askingLines(text) {
-  const out = [];
-  let practice = false;
-  for (const line of String(text ?? '')
-    .replace(/<details>[\s\S]*?<\/details>/gi, '')
-    .split('\n')) {
-    if (/^\s*(#+\s*|\*\*)?(practice|exercise|try (it|this)|quiz)\b/i.test(line)) practice = true;
-    else if (/^\s*#+\s/.test(line)) practice = false;
-    if (!practice) out.push(line);
-  }
-  return out;
-}
-
-/** What a turn’s reply calls for, by the rules above. */
-export function callsFor({ text = '', types = [], person = '', ms = 0, tools = 0, lint = false }) {
-  /** @type {Set<keyof typeof BLOCK_USE>} */
-  const calls = new Set(types.flatMap((t) => (SERVES[t] ? [SERVES[t]] : [])));
-  if (lint) return calls;
-  const lines = askingLines(text);
-  const tail = lines.slice(-14);
-  const prose = lines.filter((l) => l.trim());
-  const questions =
-    tail
-      .filter((l) => !LIST_ITEM.test(l))
-      .join('\n')
-      .match(/\?/g)?.length ?? 0;
-  const items = tail.filter((l) => LIST_ITEM.test(l)).length;
-  if (questions >= 3) calls.add('questions');
-  else if (items >= 2 && tail.some((l) => !LIST_ITEM.test(l) && l.includes('?') && PICK.test(l))) calls.add('options');
-  const approval = ASKS_FOR_DRAFT.test(person) || ASKS_TO_APPROVE.test(tail.join('\n'));
-  if (approval && prose.length >= DRAFT_LINES && !POINTS_AT_BLOCK.test(text)) calls.add('draft');
-  if (tools >= LONG_TURN_TOOLS || (ms >= LONG_TURN_MS && tools >= LONG_TURN_MIN_TOOLS)) calls.add('long');
-  return calls;
-}
-
-function blockUseTally() {
-  let right = 0;
-  let wrong = 0;
-  /** @type {Record<string, number>} */
-  const used = {};
-  /** @type {Record<string, number>} */
-  const missed = {};
-  const count = (o, k) => {
-    o[k] = (o[k] ?? 0) + 1;
-  };
-  const list = (o) =>
-    Object.entries(o)
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([k, n]) => `${k} ${n}`)
-      .join(', ');
-  return {
-    /** @param {any[]} items  the turn’s items  @param {string[]} types  its valid blocks  @param {string} person  what the person last wrote */
-    add(items, types, person) {
-      const text = items
-        .filter((it) => it.kind === 'agent')
-        .map((it) => it.text ?? '')
-        .join('\n');
-      // How long it ran: from its first item to its last, or its tool steps’ own times, whichever is longer. A turn
-      // that writes only at the end has one reply item, made at its first step, so the items alone can read as 0.
-      const at = items.map((it) => it.at).filter((n) => typeof n === 'number');
-      // Tool calls: not a thought, or a subagent’s narration (#73).
-      const steps = items.flatMap((it) => it.activity?.steps ?? []).filter((st) => st.kind !== 'thought' && st.kind !== 'said');
-      const ms = Math.max(
-        at.length ? Math.max(...at) - Math.min(...at) : 0,
-        steps.reduce((a, st) => a + (Number(st.ms) || 0), 0),
-      );
-      const calls = callsFor({ text, types, person, ms, tools: steps.length, lint: items.some((it) => it.lintReply) });
-      if (!calls.size) return;
-      const lacking = [...calls].filter((c) => !BLOCK_USE[c].blocks.some((b) => types.includes(b)));
-      if (lacking.length) {
-        wrong++;
-        for (const c of lacking) count(missed, BLOCK_USE[c].words);
-      } else {
-        right++;
-        for (const t of new Set(types)) if (SERVES[t]) count(used, t);
-      }
-    },
-    /**
-     * The run’s counts, as information rather than a defect: no issue, so “Known issues caught again” doesn’t list
-     * it, and a verdict of its own, so the runner neither verifies nor files it. Its key carries the counts, so a
-     * live run logs each new total, and the last is the run’s.
-     */
-    finding() {
-      const called = right + wrong;
-      if (!called) return null;
-      return {
-        key: `block-use:${right}-of-${called}`,
-        issue: null,
-        title: `M1 exit check: ${right} of ${called} replies that called for a block used the right one`,
-        evidence: `${right} right${right ? ` (${list(used)})` : ''}; ${wrong} without the block they called for${wrong ? ` (${list(missed)})` : ''}.`,
-        verdict: 'measurement',
-        note: 'Not a defect: the block counts for M1’s exit check (#64).',
-        counts: { right, wrong, byType: used, missed },
-      };
-    },
-  };
-}
-
 /**
  * What’s waiting on the person in these threads, as the “needs you” count sees it: a block that asks (choice,
  * form, confirm, review) and isn’t answered, an open wake request or proposal, and whatever a session says it
@@ -405,8 +271,8 @@ function postboxCallsAfter(events, after) {
  * one given while its turn runs waits for that turn to end. So an update with no new turn of that session since the
  * answer was written without it. A turn starts when the session starts thinking with finishedAt cleared, and ends when
  * finishedAt is set: a permission card mid-turn sets the state to needs, not finishedAt. A fix that marks the answer
- * read (answer.read, #123) is read too. A block shown before the history begins (a log that lost its first segment) is
- * skipped.
+ * read (answer.read, #123) is read too. A block that follows the conversation gets its new revision by item.move, with
+ * the same patch (#92, #173). A block shown before the history begins (a log that lost its first segment) is skipped.
  * @param {any[]} events
  */
 export function blockHistory(events) {
@@ -439,7 +305,7 @@ export function blockHistory(events) {
         revision: it.revision ?? 1,
         answer: null,
       });
-    } else if (e.type === 'item.patch') {
+    } else if (e.type === 'item.patch' || e.type === 'item.move') {
       const b = blocks.get(d.id);
       const p = d.patch ?? {};
       if (!b) continue;
@@ -761,7 +627,7 @@ export const CHECKS = [
   },
   {
     // Besides a finding per reply that should have been a block, it counts M1’s exit check (#64) over the run: the
-    // replies that called for a block, and the ones that used the right one. See BLOCK_USE above.
+    // replies that called for a block, and the ones that used the right one. See tools/uat/block-use.mjs.
     id: 'prose-instead-of-block',
     issue: 63,
     run: (f) => {
@@ -786,15 +652,16 @@ export const CHECKS = [
           .map((it) => it.text ?? '')
           .join('\n');
         const tail = text.split('\n').slice(-14).join('\n');
-        const numbered = (tail.match(/^\s*(?:\d+[.)]|[-*])\s+\S/gm) ?? []).length;
-        const questions = (tail.match(/\?/g) ?? []).length;
-        const draft = text.split('\n').length > 40;
         tally.add(list, types, person.get(turnId) ?? '');
         if (types.some((t) => ['choice', 'form', 'review', 'confirm'].includes(t))) continue;
-        if ((numbered >= 2 && questions >= 1) || questions >= 3 || draft)
+        const asks = asksInProse(text);
+        if (asks)
           out.push({
             key: list[0].id,
-            title: draft ? 'A long draft was sent as prose, not a review block' : 'Questions or options were asked in prose, not a form or choice block',
+            title:
+              asks === 'draft'
+                ? 'A draft to approve was sent as prose, not a review block'
+                : 'Questions or options were asked in prose, not a form or choice block',
             evidence: `@${list[0].handle}: “${clip(tail, 200)}”`,
           });
       }
@@ -903,21 +770,30 @@ export const CHECKS = [
         })),
   },
   {
+    // Since #49’s fix, a new version brings the app to the newest point (item.move sets movedAt), and every later
+    // message pushes it up again: no finding (#213). An app its last version didn’t move, with anything from before
+    // that version under it, is the defect. A version with no time counts every item after the app, as before.
     id: 'updated-app-far-up',
     issue: 49,
     run: (f) =>
       Object.values(f.state.apps ?? {})
         .filter((app) => f.threads.includes(app.threadId) && app.versions?.length > 1)
-        .filter((app) => {
+        .flatMap((app) => {
           const list = f.state.items[app.threadId] ?? [];
           const at = list.findIndex((it) => it.id === app.itemId);
-          return at >= 0 && list.length - at > 6;
-        })
-        .map((app) => ({
-          key: app.id,
-          title: 'An updated app stays where it was first shown, far above the conversation',
-          evidence: `“${app.title}” is v${app.versions.length}, ${(f.state.items[app.threadId] ?? []).length - (f.state.items[app.threadId] ?? []).findIndex((it) => it.id === app.itemId) - 1} messages up.`,
-        })),
+          const landed = app.versions.at(-1)?.at;
+          const timed = Number.isFinite(landed);
+          if (at < 0 || (timed && Number.isFinite(list[at].movedAt) && list[at].movedAt >= landed - SLACK_MS)) return [];
+          const up = list.slice(at + 1).filter((it) => !timed || !(it.at > landed)).length;
+          if (up < (timed ? 1 : 6)) return [];
+          return [
+            {
+              key: app.id,
+              title: 'An updated app stays where it was first shown, far above the conversation',
+              evidence: `“${app.title}” is v${app.versions.length}, ${up} message${up === 1 ? '' : 's'} up when that version landed, and that version didn’t move it.`,
+            },
+          ];
+        }),
   },
   {
     id: 'version-menu-overflow',
