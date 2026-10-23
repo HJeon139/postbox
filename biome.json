@@ -3,6 +3,7 @@
   "files": {
     "includes": [
       "app/js/**",
+      "app/kit/check.js",
       "app/kit/kit.js",
       "app/kit/diagram.js",
       "app/theme.js",
@@ -158,6 +159,10 @@
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 549 } } }
         }
       }
+    },
+    {
+      "includes": ["app/kit/check.js"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 69, "skipIifes": true } } } } }
     },
     {
       "includes": ["app/kit/diagram.js"],

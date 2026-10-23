@@ -38,7 +38,7 @@ export function csp(origin) {
   ].join('; ');
 }
 
-// The kit, its stylesheet and the diagram script are inlined into each page, so a sandboxed page loads no
+// The kit, its stylesheet and the diagram script are inlined into each page (and the check into a check frame’s), so a sandboxed page loads no
 // files: some browsers (the Claude desktop app’s browser pane) block every request from an opaque origin.
 const files = new Map();
 function inline(rel, closer) {
@@ -65,7 +65,7 @@ export function sandboxPage({ origin, app, version, theme, check }) {
 <title>${esc(app.title)}</title>
 ${css()}
 <script data-init="${esc(JSON.stringify(init))}">${inline('kit/kit.js', '</script')}</script>
-</head>
+${check ? `<script>${inline('kit/check.js', '</script')}</script>\n` : ''}</head>
 <body>
 ${version.code}
 </body>
