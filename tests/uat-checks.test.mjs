@@ -512,12 +512,22 @@ test('the tester can answer a review, and is told to clear what waits on it befo
   assert.match(prompt, /Answer them before you move to the next phase or finish/);
 });
 
-test('a message that names an agent without its @ is flagged: it goes to whoever spoke last', () => {
+test('a message that addresses an agent by name without its @ is flagged: it goes to whoever spoke last', () => {
   const handles = ['researcher', 'critic'];
   assert.deepEqual(unaddressed('critic: of everything you raised, what’s the biggest concern?', handles), ['critic']);
-  assert.deepEqual(unaddressed('researcher: did you fix the gap critic found?', handles), ['researcher', 'critic']);
-  assert.deepEqual(unaddressed('@researcher did you fix the gap critic found?', handles), [], 'it mentions someone');
+  assert.deepEqual(unaddressed('  Researcher, did you fix the gap critic found?', handles), ['researcher']);
+  // A name that doesn’t open the message, followed by “:” or “,”, isn’t addressing anyone.
+  assert.deepEqual(unaddressed('What did the researcher find?', handles), []);
+  assert.deepEqual(unaddressed('the critics agree', handles), []);
+  // It went to the agent it named anyway.
+  assert.deepEqual(unaddressed('critic: and the second point?', handles, { lastSpeaker: 'critic' }), []);
+  // Mentions are read as Postbox reads them: one in the text counts; one in code, or after a letter, doesn’t.
+  assert.deepEqual(unaddressed('critic: ask @researcher too', handles), []);
+  assert.deepEqual(unaddressed('critic: try `@researcher` in the composer', handles), ['critic']);
+  assert.deepEqual(unaddressed('critic: write to x@researcher', handles), ['critic']);
   assert.deepEqual(unaddressed('Good draft. Ship it.', handles), []);
-  assert.deepEqual(unaddressed('the critics agree', handles), [], 'a longer word isn’t the handle');
-  assert.match(systemPrompt({ scenario: parseScenario('# T\n'), issues: [] }), /write its handle with the @/);
+  const prompt = systemPrompt({ scenario: parseScenario('# T\n'), issues: [] });
+  assert.match(prompt, /write its handle with the @/);
+  // The actions stay one list: the waiting-on-you paragraph comes after done.
+  assert.match(prompt, /- next_phase: [^\n]*\n- done: [^\n]*\n\nEach step also lists what’s waiting on you/);
 });

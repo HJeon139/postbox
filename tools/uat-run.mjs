@@ -379,14 +379,17 @@ async function main() {
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
         if (a.type === 'send') {
           await d.send(a.text ?? '');
-          // A message that names an agent without its @ goes to the last speaker, not to that agent: say so, so the
-          // tester knows where it went. The first mixed-room run wrote “critic: …” and “researcher: …”.
+          // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
+          // so, so the tester knows where it went. The first mixed-room run wrote “critic: …” and “researcher: …”.
+          const st = facts.state;
+          const last = st?.sessions?.[st?.threads?.[mainThread]?.lastSpeaker]?.handle ?? null;
           const named = unaddressed(
             a.text ?? '',
-            Object.values(facts.state?.personas ?? {}).map((p) => p.handle),
+            Object.values(st?.personas ?? {}).map((p) => p.handle),
+            { lastSpeaker: last },
           );
           if (named.length)
-            actionResult = `It names ${named.map((h) => `“${h}”`).join(' and ')} without the @, so it mentions no agent and went to whichever agent spoke last. Write @${named[0]} to address it.`;
+            actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
         } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'act') await d.act(key, a);
         else if (a.type === 'review') await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });

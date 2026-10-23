@@ -4,9 +4,10 @@
 // screenshots the runner saves. One Claude Code session per run, resumed each step, so it remembers the run.
 
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseMentions } from '../../shared/text.mjs';
 
 /**
  * How the person’s Claude Code signs in, taken from their user settings, so the tester keeps it while it leaves the
@@ -34,21 +35,40 @@ export function signInSettings({ dir = process.env.CLAUDE_CONFIG_DIR || join(hom
   if (Object.keys(env).length) out.env = env;
   return out;
 }
-/** `--settings` with the sign-in, when the person’s settings have one. */
+/**
+ * `--settings` with the sign-in, when the person’s settings have one. It goes in a file only this user can read,
+ * written once per run and removed when the run exits, not inline: an inline value shows in the process list for as
+ * long as the tester runs, and `env` can hold a key.
+ */
+let signInFile;
 const signIn = () => {
-  const s = signInSettings();
-  return Object.keys(s).length ? ['--settings', JSON.stringify(s)] : [];
+  if (signInFile === undefined) {
+    const s = signInSettings();
+    signInFile = null;
+    if (Object.keys(s).length) {
+      const dir = mkdtempSync(join(tmpdir(), 'postbox-uat-'));
+      signInFile = join(dir, 'settings.json');
+      writeFileSync(signInFile, JSON.stringify(s), { mode: 0o600 });
+      process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+    }
+  }
+  return signInFile ? ['--settings', signInFile] : [];
 };
 
 /**
- * The agents a message names without their @, when it @-mentions none: Postbox sends such a message to the agent
- * that spoke last, so “critic: what’s your concern?” may not reach the critic. Empty when it mentions anyone.
- * @param {string} text  @param {string[]} handles
+ * The agent a message addresses by name without its @, as in “critic: what’s your concern?”: Postbox sends a message
+ * that @-mentions no one to the agent that spoke last, so this one may not reach the critic. Only a name that opens
+ * the message, followed by “:” or “,”, counts: “what did the researcher find?” is meant for whoever spoke last.
+ * Nothing when the message @-mentions anyone (read as Postbox reads mentions, shared/text.mjs), or when the agent
+ * it names spoke last, since the message reached it anyway.
+ * @param {string} text  @param {string[]} handles  @param {{ lastSpeaker?: string|null }} [opts]  the last speaker’s handle
+ * @returns {string[]}
  */
-export function unaddressed(text, handles) {
-  const esc = (h) => String(h).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (handles.some((h) => new RegExp(`@${esc(h)}(?![\\w-])`, 'i').test(text))) return [];
-  return handles.filter((h) => new RegExp(`(?:^|[^@\\w-])${esc(h)}(?![\\w-])`, 'i').test(text));
+export function unaddressed(text, handles, { lastSpeaker = null } = {}) {
+  if (parseMentions(text, handles).length) return [];
+  const name = /^\s*([A-Za-z0-9_-]+)\s*[:,]/.exec(String(text ?? ''))?.[1]?.toLowerCase();
+  const h = handles.find((x) => x.toLowerCase() === name);
+  return h && h !== lastSpeaker ? [h] : [];
 }
 
 export const SCHEMA = {
@@ -120,9 +140,9 @@ Then choose one action:
 - full_screen {item}: press that app’s Expand button.
 - wait {seconds}: when an agent is still working.
 - next_phase: when this phase’s goal is met, or blocked after two honest tries.
+- done: after the last phase.
 
 Each step also lists what’s waiting on you: blocks that ask you something, review drafts, wake requests, permission cards, failed turns to retry. Answer them before you move to the next phase or finish, as a person clearing “needs you” would: an agent that asked is stuck until you do. If one isn’t on screen, open the thread it’s in.
-- done: after the last phase.
 
 Scenario: ${scenario.title}
 ${scenario.summary}`;
