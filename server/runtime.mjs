@@ -2629,6 +2629,17 @@ export class Runtime {
           renamed = newId(String(id).slice(0, 40));
           v.block = { ...v.block, id: renamed };
         }
+        // Any other id names one block of this session in this conversation, answered or not, so an answer to it,
+        // and an update or outcome by it, always means that block (#125). Showing it again is refused, not turned
+        // into an update: an update can reopen a block the person answered.
+        if (v.ok && v.block.type !== 'app') {
+          const id = v.block.id;
+          const shown = rt.store.items(threadId()).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
+          // An app’s id can’t take a block’s update, so that case only asks for a new id.
+          if (shown?.block.type === 'app')
+            return { ok: false, message: `${id} is the id of your app “${shown.block.title ?? id}”. Pick a new id for this block.` };
+          if (shown) return { ok: false, message: `Block ${id} is already shown. Use update_block to change it, or pick a new id.` };
+        }
         endSegment();
         const it = rt.addItem(
           threadId(),
