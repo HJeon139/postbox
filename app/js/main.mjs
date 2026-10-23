@@ -20,7 +20,7 @@ let pane = null;
 /** @param {{ rebuild?: boolean }} [opts]  rebuild: the whole view, even when only the pane changed */
 function render({ rebuild = false } = {}) {
   const r = route();
-  const to = canonical(r);
+  const to = canonical(r, current);
   if (to) {
     navigate(to, { replace: true });
     return;

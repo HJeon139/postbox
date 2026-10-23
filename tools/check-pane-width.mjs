@@ -1,10 +1,10 @@
-// A headless Chrome check of how the right pane shares the window with the conversation (#197, #7, #86): at 800, 1024 and
+// A headless Chrome check of how the right pane shares the window with the conversation (#197, #7, #86, #122): at 800, 1024 and
 // 1280 px with the sidebar open, opening Work or a thread leaves the conversation column and the composer’s text box
 // at or above their minimums, or opens the view full screen, where Escape brings the conversation back; what’s open
 // stays in the address, so a wider window puts the pane back beside the conversation; and the sidebar hides first
 // while the pane needs its room, giving an app more width, and comes back when the pane closes. A handle on the
 // pane’s edge resizes it by keyboard, drag and double-click, within the column’s minimum, with axe clean on it, and
-// its width survives a reload.
+// its width survives a reload. A thread left open in a conversation opens again when you come back to it.
 //
 //   node tools/check-pane-width.mjs
 //
@@ -113,6 +113,7 @@ rt.toolsFor(se.id).show_app({
 const root = store.items(c.id).find((i) => i.kind === 'agent');
 const { threadId: topic } = rt.startTopic(c.id, root.id);
 const conv = (r) => `#/t/${c.id}${r}`;
+const other = Object.values(store.state.threads).find((t) => t.title === 'Agent memory papers');
 const WORK = 'aside.workpane';
 const THREAD = 'aside.sidepanel';
 
@@ -253,6 +254,35 @@ await check('#86 a drag resizes the pane, its width survives a reload, and a dou
   // At 375 px the pane covers the conversation, so it has no handle to show.
   await page.size(375, 812);
   await page.waitFor(`innerWidth === 375 && !${q('.rp-handle')}.getClientRects().length`, { label: 'no handle at 375 px' });
+});
+
+// ── #122: a thread left open opens again ──────────────────────────────────────────────
+
+await check('#122 a thread left open in a conversation opens again when you come back, until you close it', async () => {
+  await fresh(1280);
+  await open(conv(`/side/${topic}`));
+  await page.waitFor(q(THREAD), { label: 'the thread' });
+  await open(`#/t/${other.id}`);
+  await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${other.id}`)} && ${q('.rpane[hidden]')}`, { label: 'the other conversation, alone' });
+  await open(conv(''));
+  await page.waitFor(q(THREAD), { label: 'the thread, open again' });
+  assert.equal(await hash(), conv(`/side/${topic}`));
+  // Closed, it stays closed.
+  await click(`${q(THREAD)}.querySelector('button[aria-label="Close thread"]')`);
+  await page.waitFor(q('.rpane[hidden]'), { label: 'the thread to close' });
+  assert.equal(await hash(), conv(''));
+  await open(`#/t/${other.id}`);
+  await open(conv(''));
+  assert.deepEqual([await hash(), await has(THREAD)], [conv(''), false]);
+});
+
+await check('#122 in a window with no room for the pane, coming back opens the conversation, not the thread over it', async () => {
+  await fresh(800);
+  await open(conv(`/side/${topic}`));
+  await page.waitFor(q('.sidepanel.pane-full'), { label: 'the thread, full screen' });
+  await open(`#/t/${other.id}`);
+  await open(conv(''));
+  assert.deepEqual([await hash(), await has(THREAD)], [conv(''), false]);
 });
 
 await page.close();
