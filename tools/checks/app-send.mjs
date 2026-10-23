@@ -148,6 +148,8 @@ try {
   await until(() => voices('spam').length >= 1, 'the clicked send').catch(() => {});
   check(voices('spam')[0]?.quote === 'Clicked #1', 'a send right after a real click in the app is accepted', JSON.stringify(rt.s.apps.spam.state));
   // #51: Postbox writes your line from what the app sent; the app’s summary shows beside it, as the app’s words.
+  await page.synced(store.state.seq);
+  await page.waitFor(`!!document.querySelector('[data-key="${voices('spam')[0]?.id}"] .voice')`, { label: 'your line' }).catch(() => {});
   const line = await page.evaluate(
     `(() => { const n = document.querySelector('[data-key="${voices('spam')[0]?.id}"]'); return n ? [n.querySelector('.voice')?.textContent, n.querySelector('.app-says')?.textContent] : null; })()`,
   );
