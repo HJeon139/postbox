@@ -102,6 +102,71 @@ const RULES = PUBLISHING_TOOLS.map((r) => new RegExp(`^${r.replace(/[.+?^${}()|[
 export const isPublishingTool = (name) => RULES.some((r) => r.test(String(name)));
 
 /**
+ * Ask rules for calls that write outside Postbox (#112), passed in the settings overlay’s `permissions.ask` with the
+ * conversation’s own. Claude Code then asks before each one in every mode but bypass, through Postbox’s permission
+ * prompt, and the card shows the draft before anything exists outside. An agent created a document in a shared folder
+ * of an external doc tool with a number already taken, and with broken links, and everyone with access saw it first.
+ *
+ * Unlike PUBLISHING_TOOLS these ask rather than deny, on every server, local ones too: a local server can write to a
+ * remote service (a doc tool’s server runs on this computer), and Postbox can’t tell which. Calls the person has
+ * settled pass without a card (server/write-guard.mjs): an Always allow for the tool itself, and the publishing tools
+ * when the persona may publish. Matched by the verb in the tool’s name, as PUBLISHING_TOOLS is:
+ * - write, create, edit, upload, append, insert, delete, remove, patch, move, rename, copy, add, put and set, verb
+ *   first or after a service prefix, at _ or - (create_document, notion_create_page, notion-create-pages), and in
+ *   camelCase (createIssue, createConfluencePage, jiraCreateIssue). Not add or set in camelCase: addressOf, settings
+ *   and getAddress would ask;
+ * - update only on its own, after a prefix (issue_update, notion-update-page, notionUpdatePage), at - (update-page),
+ *   or with a named target (update_file, updateIssue), since Postbox’s own update_block and update_app must never
+ *   match: ask beats the allow rule for mcp__postbox.
+ * - gh commands that file or change issues, pull requests and releases.
+ * tests/claude-code.test.mjs checks that none matches a Postbox tool, and which real tool names they catch.
+ */
+const WRITE_VERBS = ['write', 'create', 'edit', 'upload', 'append', 'insert', 'delete', 'remove', 'patch', 'move', 'rename', 'copy', 'add', 'put', 'set'];
+const UPDATE_TARGETS = [
+  'file',
+  'document',
+  'doc',
+  'page',
+  'issue',
+  'pull_request',
+  'comment',
+  'post',
+  'message',
+  'record',
+  'row',
+  'item',
+  'entry',
+  'task',
+  'ticket',
+  'event',
+  'card',
+  'database',
+  'sheet',
+  'note',
+  'block_children',
+];
+const CAMEL = WRITE_VERBS.filter((v) => v !== 'add' && v !== 'set');
+const word = (v) => `${v[0].toUpperCase()}${v.slice(1)}`;
+/** The verb after a prefix, at _ or -: notion_create_page, issue_update, notion-create-pages, notion-update. */
+const later = (v) => [`mcp__*__*_${v}`, `mcp__*__*_${v}_*`, `mcp__*__*-${v}`, `mcp__*__*-${v}-*`];
+export const WRITE_TOOLS = [
+  // A verb first: create_document and create-document, or in camelCase createIssue, which create* covers.
+  ...WRITE_VERBS.flatMap((v) => (CAMEL.includes(v) ? [`mcp__*__${v}*`] : [`mcp__*__${v}`, `mcp__*__${v}_*`, `mcp__*__${v}-*`])),
+  ...WRITE_VERBS.flatMap(later),
+  // A verb later in camelCase: jiraCreateIssue, notionUpdatePage.
+  ...CAMEL.map((v) => `mcp__*__*${word(v)}*`),
+  'mcp__*__update',
+  'mcp__*__update-*',
+  ...later('update'),
+  'mcp__*__*Update*',
+  ...UPDATE_TARGETS.flatMap((t) => [`mcp__*__update_${t}`, `mcp__*__update${t.split('_').map(word).join('')}`]),
+  ...['issue create', 'issue comment', 'issue edit', 'pr create', 'pr comment', 'pr edit', 'pr review', 'release create'].map((c) => `Bash(gh ${c}:*)`),
+];
+
+/** The ask rules for writes outside Postbox, for a persona’s turn: none in bypass, which runs everything. */
+export const writeRules = (persona) => (persona?.permissionMode === 'bypass' ? [] : [...WRITE_TOOLS]);
+
+/**
  * Tools that act outside Postbox’s record, denied for real backends unless the persona has `agents.outside`. They
  * bypass the wake cap and the record of who woke whom (intent.md, principle 6); Postbox’s own schedule_wake and
  * wake_agent are the way to do that here.
@@ -149,6 +214,24 @@ export const TOOL_RULES = /** @type {Record<string, string[]>} */ ({
  * KNOWN_TOOLS holds the rest). Personas from before an id existed don’t have it, so its tools are denied.
  */
 export const REAL_BACKEND_TOOLS = [['agents.outside', 'Message, schedule or start agents outside Postbox']];
+
+/** What each tool id lets an agent do, in the words the agent guide uses when it’s turned off (#104). */
+export const TOOL_WORDS = /** @type {Record<string, string>} */ ({
+  shell: 'running commands',
+  'web.fetch': 'fetching web pages or searching the web',
+  'agents.outside': 'messaging, scheduling or starting agents outside Postbox',
+});
+
+/**
+ * The tool ids a backend turns off for this persona: those in its rule map (TOOL_RULES, or the Kiro CLI’s) that
+ * aren’t ticked. The agent never sees their tools, so the guide tells it which are off and why (#104).
+ * @param {any} persona @param {Record<string, unknown>|null} [rules]  keyed by tool id; null for a backend that can’t turn tools off
+ */
+export function toolsOff(persona, rules = TOOL_RULES) {
+  if (!rules) return [];
+  const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
+  return Object.keys(rules).filter((id) => !has.has(id));
+}
 
 /** Every deny rule for a persona’s turn: the publishing tools unless it may publish, then its unticked tools. */
 export function deniedTools(persona) {

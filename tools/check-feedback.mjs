@@ -5,6 +5,8 @@
 //     app that shows only an error, are shown with notes and reach the agent; a readable chart passes.
 //   • #58: a progress step shows “2 of 4 papers” with a bar, the block says when it last moved, a running step’s
 //     time goes up and its glyph turns (still with reduced motion), and a step left running looks stalled.
+//   • #63: a reply that ends with options in prose comes back to the agent as a lint turn, and the person sees the
+//     choice it shows then, with no second reply.
 //
 // SHOTS=dir also saves a screenshot of the progress block, running and stalled.
 //
@@ -16,6 +18,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { formatMessage } from '../server/adapters/guide.mjs';
 import { start } from '../server/index.mjs';
 import { launch, sleep } from './cdp.mjs';
 import { record as check, finish, ports } from './harness.mjs';
@@ -73,12 +76,28 @@ const scripts = {
   apps: (ctx) => {
     for (const [id, a] of Object.entries(APPS)) ctx.tools.show_app({ id, title: a.title, code: a.code });
   },
+  options: (ctx) =>
+    ctx.text('I can’t read the shared folder yet.\n\nTo unblock, pick one:\n1. Share the folder\n2. Paste the documents\n3. Point me at an export'),
+};
+// What the agent does with Postbox’s check of a reply that should have been a choice (#63).
+const UNBLOCK = {
+  id: 'unblock',
+  type: 'choice',
+  version: 1,
+  title: 'How should I get the documents?',
+  fallback: 'Share the folder, paste the documents, or point me at an export.',
+  options: [
+    { id: 'share', label: 'Share the folder' },
+    { id: 'paste', label: 'Paste the documents' },
+    { id: 'export', label: 'Point me at an export' },
+  ],
 };
 const agent = {
   name: 'mock',
   async deliver(_session, message, ctx) {
     calls.push(message);
     if (message.kind === 'user') await scripts[message.text]?.(ctx);
+    if (message.kind === 'lint' && message.problems.some((p) => p.code === 'options-in-prose')) ctx.tools.show_block({ block: UNBLOCK });
   },
 };
 
@@ -185,6 +204,31 @@ try {
   const told = await until(() => calls.filter((m) => m.kind === 'lint').find((m) => m.problems.some((p) => p.code === 'steps-left-running')));
   check(!!told, '#58: the agent is told to close the step');
   await shoot('progress-stalled');
+
+  // #63: options in prose.
+  const before = calls.filter((m) => m.kind === 'lint').length;
+  rt.sendMessage(thread.id, { text: 'options' });
+  const nudge = await until(() =>
+    calls
+      .filter((m) => m.kind === 'lint')
+      .slice(before)
+      .find((m) => m.problems.some((p) => p.code === 'options-in-prose')),
+  );
+  check(!!nudge, '#63: a reply that ends with options in prose comes back to the agent as a lint turn');
+  check(
+    /Your reply should have been a block:\n- It ends with options in a list\. Offer them as a choice block/.test(nudge ? formatMessage(nudge) : ''),
+    '#63: the agent reads that the reply should have been a choice block',
+  );
+  const CHOICE = `[...document.querySelectorAll('.transcript .block')].find((b) => b.textContent.includes('How should I get the documents?'))`;
+  await page.waitFor(`!!${CHOICE}`, { label: 'the choice' });
+  const choice = await page.evaluate(`[...${CHOICE}.querySelectorAll('button')].map((b) => b.textContent.trim())`);
+  check(
+    ['Share the folder', 'Paste the documents', 'Point me at an export'].every((o) => choice.includes(o)),
+    '#63: the person picks with a click',
+  );
+  await sleep(500);
+  const replies = rt.store.items(thread.id).filter((i) => i.kind === 'agent' && /To unblock/.test(i.text ?? '')).length;
+  check(replies === 1 && !rt.store.items(thread.id).some((i) => i.kind === 'agent' && i.lintReply), '#63: no second reply, only the choice');
 } finally {
   await page.close?.();
   await app.close();

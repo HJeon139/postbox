@@ -283,7 +283,7 @@ test('apps: a missing-data message is #47, tiny marks are #53, status colors for
 });
 
 // M1’s exit check (#64): the person never asks for a block, so the agent has to choose one by itself.
-const EXIT = ['wikisearch', 'announcement', 'papersurvey'];
+const EXIT = ['wikisearch', 'announcement', 'papersurvey', 'longresearch'];
 
 test('the scenarios parse into phases the tester works through', () => {
   const dir = new URL('uat/e2e/scenarios/', import.meta.url);
@@ -1277,6 +1277,5 @@ test('a scenario that measures agent choices keeps the personas’ models', () =
   const head = (extra) => `# T\n\n- agents: researcher\n${extra}\n\nSummary.\n\n## Phase 1: One\n\nDo it.`;
   assert.equal(parseScenario(head('- models: persona')).models, 'persona');
   assert.equal(parseScenario(head('')).models, 'run');
-  for (const f of ['wikisearch', 'announcement', 'papersurvey'])
-    assert.equal(parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${f}.md`, import.meta.url), 'utf8')).models, 'persona', f);
+  for (const f of EXIT) assert.equal(parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${f}.md`, import.meta.url), 'utf8')).models, 'persona', f);
 });

@@ -254,6 +254,7 @@ The two real adapters share a system prompt that teaches the catalog, the kit an
 - `define_term`
 - `propose_agent`
 - `schedule_wake`, `wake_agent`
+- `ask_for_tool`, which asks you on a card to turn on a tool that’s turned off for the agent
 - `corpus_search`
 - `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one). A block comes with what it holds: a review, card or code block’s content, a choice or form’s prompt, options or fields and your answer, an app’s title. Both cut an item at 2,000 characters, saying how much they kept and giving its id.
 - `read_message`, one item in full by that id or a block’s id, 40,000 characters at a time

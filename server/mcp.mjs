@@ -2,7 +2,7 @@
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, show_app, update_app, define_term, propose_agent, schedule_wake,
-// wake_agent and corpus_search. Every tool returns at once; when you answer a block, your answer reaches
+// wake_agent, ask_for_tool and corpus_search. Every tool returns at once; when you answer a block, your answer reaches
 // the agent later as a new message carrying { blockId, action, values }.
 //
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
@@ -132,6 +132,16 @@ export const TOOL_DEFS = [
         agent_id: { type: 'string' },
       },
       required: ['tool_name', 'input'],
+    },
+  },
+  {
+    name: 'ask_for_tool',
+    description:
+      'Ask the person to turn on a tool that’s turned off for you in Postbox (an id from “Turned off for you” in your instructions, such as shell), when a request needs it. Say in why what you’d use it for. The person sees a card that turns it on for you, in every conversation, from your next turn. Returns at once; their answer arrives as a message, so end your turn.',
+    inputSchema: {
+      type: 'object',
+      properties: { tool: { type: 'string', description: 'The tool’s id, such as shell or web.fetch.' }, why: { type: 'string' } },
+      required: ['tool', 'why'],
     },
   },
   {

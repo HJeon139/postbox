@@ -8,7 +8,8 @@
 //          --mcp-config '{ postbox: { type: http, url: <ctx.mcpUrl>, alwaysLoad } }'  [--strict-mcp-config (Isolated)]
 //          --append-system-prompt <guide>  --allowedTools mcp__postbox [rules allowed once after a refusal]
 //          --setting-sources user,project,local | project,local (Isolated)
-//          --settings '{"outputStyle":"default", "deniedMcpServers": [servers the persona turned off]}'
+//          --settings '{"outputStyle":"default", "deniedMcpServers": [servers the persona turned off],
+//                       "permissions": { "ask": [writes outside Postbox (all but bypass), the conversation’s] }}'
 //          --disallowedTools <tools that publish outside Postbox (unless the persona can publish), the tools of
 //                            unticked Tools, and tools that act outside Postbox (unless it allows them)>
 //          --permission-mode auto | manual | acceptEdits | bypassPermissions
@@ -33,7 +34,7 @@ import { withAskRules } from '../permission-rules.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
-import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
+import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
 // settings, or auto, and an agent you set to ask could end up not asking. (manual is the CLI’s name for default.)
@@ -117,7 +118,8 @@ export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs 
     '--setting-sources',
     (setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES).join(','),
     '--settings',
-    JSON.stringify(withAskRules(settingsFor(persona), rules.ask)),
+    // With ask rules for writes outside Postbox (#112), so each comes to a card first, and the conversation’s own.
+    JSON.stringify(withAskRules(settingsFor(persona), [...writeRules(persona), ...(rules.ask ?? [])])),
     ...(denied.length ? ['--disallowedTools', ...denied] : []),
     ...MODES[mode],
     ...addDirs.flatMap((d) => ['--add-dir', d]),

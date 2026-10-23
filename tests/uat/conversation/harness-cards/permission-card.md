@@ -11,6 +11,8 @@ In ask mode (and when auto mode can’t decide) you approve exactly what will ru
 ## Expected functionality
 
 - Shows the exact command or file, wrapped so it’s fully visible. A subagent’s prompt names it: “Let @coder’s subagent (Explore) …”.
+- A call that writes outside Postbox (an MCP tool that creates, changes or deletes, or `gh issue create` and the like) asks in every mode but Run everything, and says where it lands, then that nothing happens yet: “This writes outside Postbox, to docs (folder “Use cases”). Nothing is created, sent or changed until you allow it.” The target is the folder, database, parent, repository, channel, space, project or path its input names, when it names one. Its draft (the longest of its markdown, content, body, text, message or description) shows as it will read, above the other arguments, in a box that scrolls; the arguments show “(the draft above)” in its place ([screenshot](../../screenshots/write-card.png), [#112](https://github.com/HJeon139/postbox/issues/112)). Always allow there saves a rule for that tool, after which its writes run without a card, and the card says so first: “From now on @coder can use mcp__docs__create_document without showing you a draft.”; a persona that can publish outside Postbox runs its publishing tools without one.
+- An MCP tool call names the tool, in its own case (`mcp__github__create_issue`, not uppercased with the card’s label), and shows its arguments. A Codex agent’s card reads “Let @critic use github tool create_issue?”, with the tool’s description and arguments, never “run a command” ([#150](https://github.com/HJeon139/postbox/issues/150)).
 - **Allow:** runs the call as asked.
 - **Always allow:** runs it, and keeps allowing calls like it. The card says the rule and where it’s saved before you click: “Always allow `Bash(npm test:*)` in this folder (.claude/settings.local.json)”. It isn’t offered when there’s nothing safe to save: the Agent SDK suggests nothing, or says the rule would grant more than this call, or the rule would be too long to keep (a command with a heredoc).
   - With the Agent SDK, the rule is Claude Code’s own suggestion. One it suggested for the session only is saved in the folder’s local settings instead (each Postbox turn is a new session), and the card says so.
@@ -23,7 +25,7 @@ In ask mode (and when auto mode can’t decide) you approve exactly what will ru
 
 ## Steps to reproduce
 
-1. Run `node tools/check-permissions.mjs`. It answers a card each way with real clicks and key presses, including a subagent’s prompt. Every line should say ok.
+1. Run `node tools/check-permissions.mjs`. It answers a card each way with real clicks and key presses, including a subagent’s prompt, a Codex MCP tool call, and a write outside Postbox with its draft. Every line should say ok.
 2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open. Scene 10 (“Clear the index cache”): answer Allow.
 3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. In a project whose folder you can lose, set an agent to Ask me and send: “Run `echo hi > note.txt` yourself, then have a general-purpose subagent run `echo bye > note2.txt`.”
 4. On the first card, choose Edit…, change the command to `echo edited > note.txt`, and allow it. On the subagent’s card, choose Always allow.

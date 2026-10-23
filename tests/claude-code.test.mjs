@@ -7,7 +7,7 @@ import { AgentSdkAdapter, liveControl, sdkOptions } from '../server/adapters/age
 import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
 import { contextPercent, createStreamMapper, describePermission, describeTool, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
-import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES } from '../server/adapters/setup.mjs';
+import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES, WRITE_TOOLS } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
 
 // Streams recorded from real Claude Code turns (claude 2.1.296, claude-opus-5-5), with local paths removed.
@@ -587,7 +587,7 @@ test('#66: a conversation’s rules and added folders reach both backends', () =
   const allowed = args.indexOf('--allowedTools');
   assert.deepEqual(args.slice(allowed, allowed + 4), ['--allowedTools', 'mcp__postbox', 'Bash(rm a)', 'Bash(npm test:*)']);
   assert.deepEqual(args.slice(args.indexOf('--disallowedTools'), args.indexOf('--disallowedTools') + 2), ['--disallowedTools', 'WebFetch']);
-  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).permissions, { ask: ['Bash(git push:*)'] });
+  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).permissions, { ask: [...WRITE_TOOLS, 'Bash(git push:*)'] });
   assert.deepEqual(args.slice(args.indexOf('--add-dir'), args.indexOf('--add-dir') + 2), ['--add-dir', '/data']);
   const opts = sdkOptions({
     persona,
@@ -602,11 +602,13 @@ test('#66: a conversation’s rules and added folders reach both backends', () =
   });
   assert.deepEqual(opts.allowedTools, ['Bash(npm test:*)']);
   assert.deepEqual(opts.disallowedTools, ['WebFetch']);
-  assert.deepEqual(opts.settings.permissions, { ask: ['Bash(git push:*)'] });
+  assert.deepEqual(opts.settings.permissions, { ask: [...WRITE_TOOLS, 'Bash(git push:*)'] });
   assert.deepEqual(opts.additionalDirectories, ['/data']);
-  // No conversation rules: the overlay is as before.
+  // No conversation rules: only the asks for writes outside Postbox (#112), and none in bypass.
   const plain = claudeArgs({ persona, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g' });
-  assert.equal(JSON.parse(plain[plain.indexOf('--settings') + 1]).permissions, undefined);
+  assert.deepEqual(JSON.parse(plain[plain.indexOf('--settings') + 1]).permissions, { ask: WRITE_TOOLS });
+  const bypass = claudeArgs({ persona: { ...persona, permissionMode: 'bypass' }, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g' });
+  assert.equal(JSON.parse(bypass[bypass.indexOf('--settings') + 1]).permissions, undefined);
 });
 
 test('#66: the SDK adapter’s live control changes a running query’s mode, and says when it couldn’t', async () => {
@@ -788,10 +790,10 @@ test('every combination of the setup choices reaches both backends', () => {
       const args = claudeArgs({ ...base, persona });
       const sources = usesHostSetup === false ? 'project,local' : 'user,project,local';
       assert.equal(after(args, '--setting-sources'), sources, label);
-      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' }, label);
+      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } }, label);
       const o = sdkOptions({ ...sdkBase, persona });
       assert.deepEqual(o.settingSources, sources.split(','), label);
-      assert.deepEqual(o.settings, { outputStyle: 'default' }, label);
+      assert.deepEqual(o.settings, { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } }, label);
       if (canPublish === true) {
         assert.ok(!args.includes('--disallowedTools'), label);
         assert.equal(o.disallowedTools, undefined, label);

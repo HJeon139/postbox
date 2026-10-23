@@ -4,7 +4,8 @@
 // - an agent’s skill, picked in a room with two agents, fills `/name `, shows its argument hint, and runs as that
 //   agent’s turn;
 // - `!` runs a command in the conversation’s folder and shows its output, exit code and duration; a failing command
-//   shows its exit code; Stop stops one; the next turn of an agent reads it, and nothing woke it;
+//   shows its exit code; Stop stops one; the next turn of an agent reads it, and nothing woke it; in a topic thread,
+//   `!` says before sending that it won’t run there (#104);
 // - a `!` request without the page’s token gets 403.
 //
 //   node tools/check-commands.mjs
@@ -230,6 +231,24 @@ await check('#67 the next turn reads what ran, with its output', async () => {
   const context = turn.message.context.join('\n');
   assert.match(context, /You ran `cat hello\.txt && pwd` in .* \(it exited with 0\)\. Output:\n```\nhello from the folder/);
   assert.match(context, /You ran `echo oops >&2; exit 3` in .* \(it exited with 3\)/);
+});
+
+await check('#104 ! in a topic thread says before sending that it won’t run there, and goes as a message', async () => {
+  const root = store.items(room.id).find((i) => i.kind === 'agent');
+  const { threadId } = rt.startTopic(room.id, root.id);
+  await page.evaluate(`location.hash = '#/t/${room.id}/side/${threadId}'`);
+  await page.waitFor(`!!${q('#side-input')}`, { label: 'the topic thread’s composer' });
+  await click(q('#side-input'));
+  await type('!gh --help');
+  const hint = await text(`${q('#side-input')}.closest('.composer').querySelector('.hint')`);
+  assert.match(hint, /! runs commands only in the conversation’s own composer\. Here, this goes to the agent as a message\./);
+  // Back to a message, the hint is the thread’s own again.
+  await page.evaluate(`(() => { const t = ${q('#side-input')}; t.value = 'gh --help'; t.dispatchEvent(new Event('input')); })()`);
+  await settle();
+  assert.doesNotMatch(await text(`${q('#side-input')}.closest('.composer').querySelector('.hint')`), /runs commands only/);
+  assert.equal(store.items(threadId).filter((i) => i.kind === 'command').length, 0, 'nothing ran in the thread');
+  await page.evaluate(`location.hash = '#/t/${room.id}'`);
+  await page.waitFor(`!${q('#side-input')}`, { label: 'the panel to close' });
 });
 
 await check('#67 a ! request without the page’s token gets 403, and nothing runs', async () => {

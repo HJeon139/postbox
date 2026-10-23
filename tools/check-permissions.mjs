@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { codexApproval } from '../server/adapters/codex.mjs';
 import { start } from '../server/index.mjs';
 import { launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
@@ -218,6 +219,98 @@ await check('#66 a subagent’s prompt names the subagent', async () => {
   assert.equal((await answered(6)).allow, true);
 });
 
+await check('#150 a Codex approval for an MCP tool names the tool and shows its arguments, with a title that reads cleanly', async () => {
+  const replies = [];
+  script.push(async (ctx) => {
+    // What Codex’s app-server sends before a third-party MCP call (server/adapters/codex.mjs).
+    const request = {
+      id: 91,
+      method: 'mcpServer/elicitation/request',
+      params: {
+        serverName: 'github',
+        message: 'Allow the github MCP server to run tool "create_issue"?',
+        _meta: { codex_approval_kind: 'mcp_tool_call', tool_description: 'Create a GitHub issue.', tool_params: { title: 'Glossary links break' } },
+      },
+    };
+    replies.push(await codexApproval(ctx, request));
+  });
+  rt.sendMessage(thread.id, { text: 'File the issue.' });
+  const summary = 'use github tool create_issue';
+  await page.waitFor(`!!(${card(summary)})?.querySelector('.block-foot')`, { label: 'the Codex MCP card' });
+  assert.equal(await text(`${card(summary)}.querySelector('.title')`), 'Let @coder use github tool create_issue?');
+  // The tool’s name keeps its case: the label around it is uppercase.
+  assert.equal(await text(`${card(summary)}.querySelector('.kind .tool-name')`), 'mcp__github__create_issue');
+  const detail = await text(`${card(summary)}.querySelector('.perm-detail')`);
+  assert.match(detail, /Create a GitHub issue\./);
+  assert.match(detail, /"title": "Glossary links break"/);
+  assert.doesNotMatch(await text(card(summary)), /run a command|Codex wants/);
+  await click(byText('.transcript .block-foot button', 'Allow'));
+  await until(() => replies.length && rt.turns.size === 0, 'the answer to reach Codex');
+  assert.deepEqual(replies[0], { action: 'accept', content: {} });
+});
+
+await check('#112 a write outside Postbox waits on a card with its draft as it will read; Always allow lets the next one through', async () => {
+  const replies = [];
+  const req = {
+    tool: 'mcp__docs__create_document',
+    summary: 'use create document from docs',
+    detail: '{}',
+    input: { folder: 'Use cases', title: '05 · Search', content: '# 05 · Search\n\n## Problem\n\nRunbooks are **hard** to find.' },
+  };
+  script.push(async (ctx) => {
+    replies.push(await ctx.askPermission(req));
+  });
+  rt.sendMessage(thread.id, { text: 'Define the use case document in the team folder.' });
+  const write = card('use create document from docs');
+  await page.waitFor(`!!(${write})?.querySelector('.block-foot')`, { label: 'the write card' });
+  assert.match(await text(write), /This writes outside Postbox, to docs \(folder “Use cases”\)\. Nothing is created, sent or changed until you allow it\./);
+  // The draft is rendered, not shown as JSON, and the arguments point up at it.
+  const draft = `${write}.querySelector('.perm-draft')`;
+  assert.equal(await text(`${draft}.querySelector('h3')`), '05 · Search');
+  assert.equal(await text(`${draft}.querySelector('strong')`), 'hard');
+  assert.equal(await page.evaluate(`${draft}.getAttribute('aria-label')`), 'The draft');
+  assert.match(await text(`${write}.querySelector('.perm-detail')`), /"content": "\(the draft above\)"/);
+  assert.match(await text(`${write}.querySelector('.perm-always')`), /Always allow mcp__docs__create_document in this folder/);
+  assert.match(await text(`${write}.querySelector('.perm-always')`), /From now on @coder can use mcp__docs__create_document without showing you a draft\./);
+  await click(byText('.transcript .block-foot button', 'Always allow'));
+  await until(() => replies.length && rt.turns.size === 0, 'the answer');
+  assert.equal(replies[0].allow, true);
+  // The next one: Claude Code asks again (ask beats allow), and Postbox lets it through without a card.
+  script.push(async (ctx) => {
+    replies.push(await ctx.askPermission({ ...req, input: { ...req.input, title: '06 · Ranking' } }));
+  });
+  const cards = store.items(thread.id).filter((i) => i.kind === 'permission').length;
+  rt.sendMessage(thread.id, { text: 'And the ranking one.' });
+  await until(() => replies.length === 2 && rt.turns.size === 0, 'the second write');
+  assert.deepEqual(replies[1], { allow: true });
+  assert.equal(store.items(thread.id).filter((i) => i.kind === 'permission').length, cards, 'no second card');
+});
+
+await check('#104 an agent asks for a tool that’s off; the card says what turning it on does, and the button turns it on', async () => {
+  const asked = [];
+  script.push(async (ctx) => {
+    asked.push(ctx.tools.ask_for_tool({ tool: 'agents.outside', why: 'To schedule the nightly run with CronCreate.' }));
+  });
+  rt.sendMessage(thread.id, { text: 'Schedule the nightly run.' });
+  const ask = byText('.transcript .block', 'asks you to turn on “Message, schedule');
+  await page.waitFor(`!!(${ask})?.querySelector('.block-foot')`, { label: 'the card' });
+  assert.equal(asked[0].ok, true);
+  assert.equal(await text(`${ask}.querySelector('.title')`), '@coder asks you to turn on “Message, schedule or start agents outside Postbox”');
+  const body = await text(`${ask}.querySelector('.block-body')`);
+  assert.match(body, /It’s turned off for @coder in Postbox, so it can’t use it here\./);
+  // The id is the label beside the title, in its own case.
+  assert.equal(await text(`${ask}.querySelector('.kind .tool-name')`), 'agents.outside');
+  assert.match(body, /@coder: To schedule the nightly run with CronCreate\./);
+  assert.match(body, /in every conversation, from its next turn\. Its permission mode still decides each call\./);
+  await click(byText('.transcript .block-foot button', 'Turn on for @coder'));
+  await page.waitFor(`/Turned on./.test((${ask})?.innerText ?? '')`, { label: 'the answered card' });
+  assert.ok(store.state.personas[persona.id].tools.includes('agents.outside'), 'the persona has it ticked');
+  assert.equal(await focused(), 'composer-input', 'focus goes back to the composer');
+  await until(() => rt.turns.size === 0, 'the agent’s next turn');
+  // Leave the persona as the panel checks expect it.
+  rt.updatePersona(persona.id, { tools: ['shell'] });
+});
+
 // ── The panel ───────────────────────────────────────────────────────────────────────────
 
 const dialog = q('.dialog');
@@ -232,6 +325,7 @@ await check('#66 the panel opens from ⋯ › Permissions… with the mode, rule
   assert.match(all, /Bash\(git status\) from your user settings/);
   assert.match(all, /Bash\(npm test:\*\) from this folder’s local settings/);
   assert.match(all, /WebFetch, WebSearch, Monitor from the persona’s Tools: web\.fetch is unticked/);
+  assert.match(all, /and \d+ more, from Postbox’s check on writes outside it: tools and gh commands that create, change or delete/);
   assert.match(all, /Folders.*Where it works/i);
   assert.match(all, /MCP servers/i);
   // The effective view, as you type.
@@ -247,6 +341,9 @@ await check('#66 the panel opens from ⋯ › Permissions… with the mode, rule
   await page.evaluate(`document.getElementById('perm-call').select()`);
   await type('Bash(make)');
   assert.match(await text(q('.perm-verdict')), /No rule covers it, so Ask me mode decides: @coder asks you/);
+  await page.evaluate(`document.getElementById('perm-call').select()`);
+  await type('mcp__github__create_issue');
+  assert.match(await text(q('.perm-verdict')), /Asks you: the ask rule mcp__\*__create\* from Postbox’s check on writes outside it/);
   assert.match(all, /Claude Code has the final say/);
 });
 
