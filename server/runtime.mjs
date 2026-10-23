@@ -655,6 +655,8 @@ export class Runtime {
     // one a restart left behind, too.
     this.clearSummaryPending(turn.threadId);
     if (err && err.name !== 'AbortError') {
+      // Its progress steps still running show as stalled, as at any turn’s end (#98).
+      this.stallLeftRunning(turn, se, 'failed');
       const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
       const target =
         turn.segment ??
@@ -760,9 +762,10 @@ export class Runtime {
    * and the session shows as stopping until it has exited: its next turn waits for that (#126).
    * jobs: what happens to the background jobs the turn started (#129): 'stop' them with it, or 'keep' them running,
    * each with its own Stop.
-   * @param {string} sessionId @param {{ silent?: boolean, jobs?: 'stop' | 'keep' }} [opts]
+   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words.
+   * @param {string} sessionId @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' }} [opts]
    */
-  stop(sessionId, { silent = false, jobs = 'stop' } = {}) {
+  stop(sessionId, { silent = false, jobs = 'stop', by = 'you' } = {}) {
     const turn = this.turns.get(sessionId);
     if (!turn) return false;
     const keep = jobs === 'keep' ? this.runningJobs(sessionId, turn.id) : [];
@@ -791,7 +794,9 @@ export class Runtime {
       });
     }
     this.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
+    // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
     const se = this.s.sessions[sessionId];
+    if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : 'stopped');
     // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
     setTimeout(() => {
       if (this.exiting.get(sessionId)?.turn !== turn) return;
@@ -1024,7 +1029,7 @@ export class Runtime {
    */
   async stopTurns({ graceMs = 4000 } = {}) {
     this.closing = true;
-    for (const id of [...this.turns.keys()]) this.stop(id, { silent: true });
+    for (const id of [...this.turns.keys()]) this.stop(id, { silent: true, by: 'shutdown' });
     await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.');
     /** @type {NodeJS.Timeout|undefined} */
     let timer;
@@ -1555,6 +1560,21 @@ export class Runtime {
       );
     problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
     return problems;
+  }
+
+  /**
+   * A turn that was stopped or failed starts no lint turn, but its progress steps still running show as stalled, as
+   * at a normal end (#58), and the agent hears which at the start of its next turn (#98).
+   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown'} how
+   */
+  stallLeftRunning(turn, se, how) {
+    const problems = this.stallSteps(turn, se);
+    if (!problems.length) return;
+    const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
+    this.tellAgent(
+      se.id,
+      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
+    );
   }
 
   /** Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them. */
