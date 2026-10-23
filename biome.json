@@ -263,7 +263,7 @@
     },
     {
       "includes": ["server/side-threads.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 66 } } } } }
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 65 } } } } }
     },
     {
       "includes": ["shared/catalog.mjs"],

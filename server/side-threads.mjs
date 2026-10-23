@@ -80,7 +80,6 @@ export function agentWake(rt, fromSessionId, handle, text, { confirmed = false }
   // answers only while that session is busy.
   const target = rt.sideSession(side, p.id, from.handle);
   rt.recordAgentMessage(target.id, 'from', from.handle, text);
-  rt.bumpSideLink(side.id);
   rt.deliver(target.id, { kind: 'agent', from: `@${from.handle}`, text, itemId: said.id }, { replyTo: from.id, threadId: side.id });
   return { ok: true, message: target.forkOf?.busy ? `Woke @${p.handle}: its session was busy, so a fork of it answers.` : `Woke @${p.handle}.` };
 }
@@ -211,11 +210,19 @@ export function resolveHop(rt, threadId, itemId, allow) {
   else if (from) rt.deliver(from.id, { kind: 'notice', text: `The person chose not to let you wake @${it.to}. Carry on without it.` });
 }
 
+/**
+ * The side thread's line in the conversation: how many messages it holds, as the side thread shows them, and when the
+ * last one came (#130). Yours and each wake count one each, and an agent's turn counts one however many items it
+ * posted (blocks split a reply). addItem calls it for every message there.
+ */
 export function bumpSideLink(rt, sideThreadId) {
   const side = rt.s.threads[sideThreadId];
   if (side?.kind !== 'side') return;
   const link = rt.store.items(side.parentId).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
-  if (link) rt.patchItem(side.parentId, link.id, { count: rt.store.items(side.id).filter((x) => x.kind === 'agent' || x.kind === 'user').length });
+  if (!link) return;
+  // A turn that failed or was stopped before it said anything left an empty placeholder: not a message.
+  const said = rt.store.items(side.id).filter((x) => x.kind === 'user' || (x.kind === 'agent' && (x.text || x.status === 'streaming')));
+  rt.patchItem(side.parentId, link.id, { count: new Set(said.map((x) => x.turnId ?? x.id)).size, lastAt: said.at(-1)?.at ?? link.at });
 }
 
 export function recordAgentMessage(rt, sessionId, dir, other, text) {

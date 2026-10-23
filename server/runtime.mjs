@@ -277,6 +277,8 @@ export class Runtime {
       const replies = this.store.items(threadId).filter((x) => x.kind === 'user' || x.kind === 'agent').length;
       this.patchItem(t.parentId, t.rootItemId, { replies, lastReplyAt: it.at });
     }
+    // …and a message in a side thread on its line in the conversation, whoever wrote it (#130).
+    if (t?.kind === 'side' && (it.kind === 'user' || it.kind === 'agent')) this.bumpSideLink(threadId);
     return it;
   }
   patchItem(threadId, id, patch) {
@@ -1013,7 +1015,6 @@ export class Runtime {
       this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)' });
       this.recordAgentMessage(se.id, 'to', this.s.sessions[turn.replyTo].handle, turn.said);
       this.recordAgentMessage(turn.replyTo, 'from', se.handle, turn.said);
-      this.bumpSideLink(turn.threadId);
     }
     const next = turn.pending.shift();
     if (next) {
