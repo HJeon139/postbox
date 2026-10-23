@@ -466,6 +466,8 @@ function renderItem(it, prev, ctx) {
               h('ul.steps', steps.map(stepRow)),
             )
           : null,
+        // What the turn changed, ran and published, from the work ledger (#132), leading to it.
+        it.work ? workChip(it, ctx) : null,
         it.text || it.status === 'streaming' ? h('div.md') : null,
         it.status === 'stopped' ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
         it.status === 'failed'
@@ -582,6 +584,13 @@ function renderItem(it, prev, ctx) {
     default:
       return h('div.col.small.dim', `Unknown item “${it.kind}”.`);
   }
+}
+
+/** A turn’s line from the work ledger (#132), which opens the conversation’s Work view on that turn. */
+function workChip(it, ctx) {
+  const t = client.state.threads[ctx.threadId];
+  const conv = (t?.kind === 'side' || t?.kind === 'topic') && t.parentId ? t.parentId : ctx.threadId;
+  return h('a.work-chip', { href: `#/t/${conv}/work/${it.turnId}`, 'aria-label': `This turn’s work: ${it.work}` }, icon('file', 'i-sm'), it.work);
 }
 
 function failureText(msg = 'This reply didn’t finish.') {

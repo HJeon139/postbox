@@ -9,6 +9,7 @@ import { openPalette } from './sheets.mjs';
 import { mountEmptyProject, mountOverview, mountRail, mountThreads, nextNeedsYou, railHidden, toggleRail, topbar } from './shell.mjs';
 import { focusComposer, mountComposer, mountSidePanel, mountTranscript } from './thread.mjs';
 import { initHoverCards, mdNode, navigate, route, say, setAttention, toast } from './ui.mjs';
+import { mountWork } from './work.mjs';
 
 const root = $('#root');
 let mounted = [];
@@ -69,6 +70,23 @@ function render() {
   }
   remember(t);
   const rail = mountRail(t.id);
+  // The conversation’s Work view (#132): what its agents changed, ran and published, in place of the transcript.
+  if (r.work) {
+    const page = mountWork(t.id, { turnId: r.workTurn });
+    mounted.push(rail, page);
+    root.replaceChildren(
+      h(
+        'div.app',
+        { class: railHidden() ? 'rail-hidden' : '' },
+        topbar({ title: t.title, threadId: t.id, work: true }),
+        rail.el,
+        h('div.main', rail.strip, page.el),
+      ),
+    );
+    paintWords();
+    setAttention(needsYou().length, `Work · ${t.title}`);
+    return;
+  }
   const tr = mountTranscript(t.id);
   const comp = mountComposer(t.id);
   const jumpBox = h('div.jump', { hidden: true });
@@ -200,7 +218,7 @@ function refreshTop() {
       render();
       return;
     }
-    old.replaceWith(topbar({ title: t.title, threadId: t.id }));
+    old.replaceWith(topbar({ title: t.title, threadId: t.id, work: current.work }));
   } else if (current.projectId) old.replaceWith(topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId }));
   else old.replaceWith(topbar({ title: location.hash === '#/archived' ? 'Archived' : '' }));
 }

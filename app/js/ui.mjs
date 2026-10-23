@@ -6,11 +6,12 @@ import { finishedSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
 
 // ── Navigation ──────────────────────────────────────────────────────────────────────────
-// Routes: #/ (overview), #/t/<threadId>, #/t/<threadId>/side/<sideThreadId>
+// Routes: #/ (overview), #/t/<threadId>, #/t/<threadId>/side/<sideThreadId>, and a conversation’s Work view (#132),
+// #/t/<threadId>/work, or one turn’s work, #/t/<threadId>/work/<turnId>
 
 export function route() {
-  const m = location.hash.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+))?/);
-  if (m) return { view: 'thread', threadId: m[1], sideId: m[2] ?? null };
+  const m = location.hash.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+)|\/(work)(?:\/([^/]+))?)?/);
+  if (m) return { view: 'thread', threadId: m[1], sideId: m[2] ?? null, work: Boolean(m[3]), workTurn: m[4] ?? null };
   const p = location.hash.match(/^#\/p\/([^/]+)(\/threads)?/);
   if (p) return { view: p[2] ? 'threads' : 'project', projectId: p[1] };
   return { view: 'overview' };

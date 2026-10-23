@@ -931,3 +931,88 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 .cmd-out:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .cmd-failed .cmd-exit, .cmd-failed .cmd-exit .i { color: var(--alert-ink); }
 .cmd-note { text-align: right; }
+
+/* ───────── Work (#132): what a conversation’s agents changed, ran and published ───────── */
+
+/* The conversation’s two views, in the top bar. */
+.conv-tabs { display: inline-flex; gap: 2px; flex: none; }
+.conv-tabs a { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 6px; font-size: 13px; color: var(--dim); text-decoration: none; border: 1px solid transparent; }
+.conv-tabs a:hover { color: var(--text); border-color: var(--line); }
+.conv-tabs a[aria-current="page"] { color: var(--text); background: var(--panel); border-color: var(--line); box-shadow: inset 0 -2px var(--accent); }
+.conv-tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* A command that didn’t say how it ended: a dashed circle, never a color alone (its words say it too). */
+.g-unknown { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6' stroke-dasharray='2.4 2.2'/></svg>"); }
+
+/* The line under a turn’s activity that leads to its work. */
+.work-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); text-decoration: none; padding: 2px 8px 2px 6px; border: 1px solid var(--line); border-radius: 6px; }
+.work-chip:hover { color: var(--text); border-color: var(--line-strong); }
+.work-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.work-view { max-width: 980px; width: 100%; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 20px; }
+.work-view p { margin: 0; }
+.work-turn { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px !important; font-size: 13px; }
+.work-sum { display: flex; flex-direction: column; gap: 8px; }
+.work-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.work-tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.work-tile b { font-size: 18px; font-weight: 600; }
+.work-tile.ws-uncommitted { border-style: dashed; border-color: var(--line-strong); }
+.work-effort { font-size: 13px; }
+.work-flag-note { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--alert-ink); }
+
+.work-n { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; white-space: nowrap; }
+.work-n .add { color: var(--good); }
+.work-n .del { color: var(--alert-ink); }
+
+.work-sec { display: flex; flex-direction: column; gap: 8px; }
+.work-sec h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; font-weight: 600; }
+.work-sec h3 { margin: 8px 0 0; }
+.work-items { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.work-item + .work-item { border-top: 1px solid var(--line); }
+.work-item > summary { list-style: none; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; cursor: pointer; min-height: 40px; }
+.work-item > summary::-webkit-details-marker { display: none; }
+.work-item > summary:hover { background: var(--sunk); }
+.work-item > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.work-item > summary .i-right { transition: transform .12s; color: var(--dim); }
+.work-item[open] > summary .i-right { transform: rotate(90deg); }
+.work-item.flagged > summary { box-shadow: inset 3px 0 var(--alert); }
+.work-path, .work-cmd-line { min-width: 0; flex: 1 1 200px; overflow-wrap: anywhere; color: var(--text); }
+.work-cmd-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.work-who { margin-left: auto; }
+.work-exit { color: var(--dim); }
+.work-exit.bad { color: var(--alert-ink); }
+.work-body { display: flex; flex-direction: column; gap: 8px; padding: 4px 12px 12px 34px; }
+.work-full { overflow-wrap: anywhere; color: var(--dim); }
+.work-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 0 7px; height: 18px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); }
+.work-tag.warn { color: var(--alert-ink); border-color: var(--alert-ink); }
+.status-tag.ws-uncommitted { border-style: dashed; border-color: var(--line-strong); color: var(--text); }
+.status-tag.ws-committed { color: var(--text); }
+.status-tag.ws-pushed { color: var(--good); }
+.status-tag.ws-outside, .status-tag.ws-unchanged { color: var(--dim); }
+.status-tag.ws-failed { color: var(--alert-ink); }
+.work-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.work-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.work-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.work-list li { overflow-wrap: anywhere; }
+.work-list .status-tag { vertical-align: 1px; }
+.work-cmd-full { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* A file’s diff, in the review block’s rows: a line number, then the line, with +/− in the gutter. */
+.work-diff-wrap { max-height: 480px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.work-diff-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.work-diff { font-size: 12.5px; }
+.work-diff .tx { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; padding: 1px 12px; }
+.work-diff .g-ln { padding: 1px 10px 1px 0; }
+.work-diff .rv-line.del > .tx { text-decoration: none; }
+.work-gap { grid-column: 1 / -1; padding: 2px 12px 2px 54px; font-size: 11.5px; color: var(--dim); background: var(--sunk); }
+.work-tbl { max-height: none; border: 1px solid var(--line); border-radius: 8px; }
+.work-tbl:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.work-tbl tfoot th, .work-tbl tfoot td { font-weight: 600; border-bottom: 0; position: static; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.work-tbl th { padding: 8px 12px; }
+.work-tbl th, .work-tbl td { white-space: nowrap; }
+@media (max-width: 767px) {
+  .conv-tabs a { padding: 0 6px; font-size: 12px; }
+  .work-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .work-path { flex-basis: 140px; }
+  .work-body { padding-left: 12px; }
+}

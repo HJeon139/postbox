@@ -48,12 +48,25 @@ Things to try in the demo’s conversations (`node server/index.mjs --demo --fre
 | Corpus schema spec | Review my corpus schema line by line | Markdown, code and app reviews, then a revision shown as a diff |
 | Index the shelf | Index the shelf · Rebuild without the prefaces · Show it as a timeline · Show me the shelf map · Show me a dashboard · Clear the old index cache · Draw the whole indexing pipeline | Progress, subagents and a compaction · a failed reply with Retry · blocks Postbox can’t show · a crashed app · an app that fails its check and gets fixed · a permission card · a diagram too wide to read, flagged by the diagram linter and redrawn |
 | Corpus planning | @indexer check the editions with the researcher, in a loop | Agents waking each other in a side thread until the limit asks you |
+| Citation fixes | Fix the citation script · then Try a faster parser · then **Work** in the top bar | Every file the agent changed with its diff and a copy from before, flagged changes, the commands as they ran, an issue it filed, and a turn that left nothing lasting |
 
 ## Conversations and threads
 
 The **Postbox** menu in the top bar goes to the overview or any project, from anywhere. In a project, the rail lists its **conversations**: direct messages with one agent, and rooms with several (**+** beside Rooms starts one with two or more agents). Each agent in a conversation has one session, and everything said there is shared: each turn starts with what the agent missed since its last one, so an agent you bring into a room knows what was discussed. ⌘\ hides the sidebar. The **⋯** beside a conversation’s title renames it, adds an agent, or deletes it, with 10 seconds of Undo.
 
 Any message can start a **topic thread**, as in Slack: choose **Reply in thread** under it. The thread opens in the panel beside the conversation, and its agent is a fork of the agent’s session at that message. It remembers the conversation up to there, and the conversation never sees the thread. That’s the point: you decide what each agent keeps in its context. To bring something back, choose **Send to conversation** under a reply, or **Summarize back** to have the thread’s agent post a short summary. The conversation’s agents read it at the start of their next turn. The rail’s **Threads** entry lists a project’s topic threads.
+
+## Work
+
+Each conversation has a **Work** tab beside its title: everything its agents’ work touched, and what it took ([#132](https://github.com/HJeon139/postbox/issues/132)). It covers every session in the conversation, side and topic threads included, so you never have to ask an agent to recount what it did.
+
+- **Files** each agent’s edits changed, each with its diff, its lines added and deleted, and where it stands in git: uncommitted, committed or pushed. Lines are counted from the diff against the file before the agents’ first change, so five edits that end where they began count as nothing. A change outside the project, or to a file that existed before and git doesn’t track, is flagged. Postbox keeps a copy of each file from before, so **Restore** can put it back.
+- **Version control:** branches made, commits with their files and lines from git, and pushes.
+- **Outside Postbox:** issues, pull requests and comments written with `gh` or a connector, with links.
+- **Commands** exactly as they ran, with their exit, duration and all their output, background commands included.
+- **Effort:** turns, wall time, tool calls, tokens and spend, by agent, with what they produced, and the turns that left nothing lasting.
+
+Under each reply, a line such as “3 files +40 −12 · 2 commands · $0.31” opens that turn’s work. It’s built from the turn’s tool calls; changes a command makes, such as a formatter’s, aren’t seen. Git is only read, without its optional locks, so an agent’s own git never waits on Postbox.
 
 ## How it fits together
 
@@ -253,6 +266,7 @@ They cover:
 - the store: the event log, crash recovery, snapshots and blobs
 - the runtime: queueing, Stop, failures and Retry, needs-you, the wake limit, side threads, topic threads with forked sessions, delete with undo, app permissions, the check-and-fix loop, permission cards and MCP
 - both real adapters, replaying streams recorded from real Claude Code turns ([`tests/fixtures/claude-code/`](tests/fixtures/claude-code/))
+- the work ledger: line counts against git’s, recorded turns that edit, commit, push and run background commands, where git says each change stands, and Restore
 - the diagram linter, against text sizes measured in Chrome
 - attaching and mirroring Claude Code sessions, narration, and the lint rules themselves
 

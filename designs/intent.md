@@ -152,6 +152,16 @@ sequenceDiagram
 | A pluggable linter flags coined terms that have no definition, and tells the agent | It is pattern-based offline and can be model-backed later. Until the agent defines the term, you see only a faint dotted underline. |
 | A diagram linter flags Mermaid diagrams people can’t read (a long chain side by side, one wide row, long labels, too many parts) and tells the agent what to change; the browser also measures each rendered diagram and reports any whose text ends up under 10 px | Added after Stage 3. Diagrams are scaled to fit the column, so the usual failure is quiet: the text shrinks until it can’t be read. The agent hears once per diagram, and its redraw isn’t linted again. |
 
+### Work
+
+| Decision | Why |
+|---|---|
+| Each conversation has a Work view, a tab beside its title, listing every file its agents changed, every commit, push, branch and write outside Postbox, every command, and the effort that went into them, by agent. A line under each reply opens that turn’s work | Decided 23 October 2026 (#132). The person learned the state of the work only by asking an agent to recount it, and then had to trust the recounting; in one session a wrong diagnosis came out only after asking for “a transcript of all commands”. A full view, not the right panel, because diffs and tables need the width and the panel means a thread |
+| It’s built from the turn’s tool calls: the files an Edit, Write or NotebookEdit names, read before the tool runs (the tool’s own record of the file wins when it has one) and after the turn ends. Changes a command makes aren’t seen, and the view says so | Chosen over snapshotting the whole folder: Postbox never writes into the person’s repository or keeps a second one, and every change is attributed to the agent and turn that made it, even when two agents work at once |
+| Lines are counted from the diff, as git counts them, against the file before the agents’ first change; lines written along the way are shown beside the lines kept. Where a file stands (uncommitted, committed, pushed) is asked of git, read-only, when the view opens | The counts add up by agent, by commit, by state and in all, and match `git diff --stat`. Five edits that end where they began count as nothing |
+| A change outside the project, or to a file that existed before and git doesn’t track, is flagged. Every file’s copy from before is kept, and Restore puts it back behind a confirm, refusing if the file changed since; the conversation gets a line in your voice so the agents know | Git can give back a tracked file; nothing else could give back the untracked one a formatter rewrote. Restore never overwrites newer work |
+| Effort (turns, wall time, tool calls, tokens and spend) shows per agent and per file, and turns that tried something and left nothing lasting are listed apart | Spend that produced nothing is effort too, and hiding it hides rework. Spend comes from the backend’s own totals; session cards, daily totals and budgets are #13 |
+
 ### Dynamic UI
 
 | Decision | Why |

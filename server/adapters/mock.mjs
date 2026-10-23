@@ -4,6 +4,8 @@
 // Each persona has scripts chosen by keywords in your message (see SCRIPTS below) and handlers for the
 // events it receives: your block answers, app events, wake-ups, lint results and failed app checks.
 
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { brokenMapApp, dashboardApp, explorerApp, layoutApp, practiceApp, walkthroughApp } from '../mock/apps.mjs';
 
 // POSTBOX_MOCK_SPEED scales every pause: 1 is a natural pace, 0.2 is fast. It’s read on each pause, so a demo can change it.
@@ -98,6 +100,38 @@ function kit(ctx, session, mem) {
       ctx.denied({ toolUseId: id, tool, input, label, reason, reasonType, who });
       ctx.activity({ id, label, state: 'denied', ms, who });
     },
+    /**
+     * Writes a file for real, reporting the call as Claude Code does (the Write tool, with the file’s contents
+     * before), so the work ledger (#132) records it. Only the demo’s own folders are written.
+     */
+    async write(path, content, { label = `Wrote ${path.replace(/^.*\//, '')}`, who = null, ms = 300 } = {}) {
+      const id = `t${++n}`;
+      ctx.activity({ id, label, state: 'running', who });
+      ctx.toolUse?.({ id, name: 'Write', input: { file_path: path, content }, who });
+      const before = await readFile(path, 'utf8').catch(() => null);
+      await sleep(ms);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, content);
+      ctx.toolResult?.({ id, text: 'ok', result: who ? null : { type: before === null ? 'create' : 'update', originalFile: before } });
+      ctx.activity({ id, label, state: 'done', ms, who });
+    },
+    /** A command, as Claude Code reports one. Nothing runs: the output is the script’s. */
+    async run(command, { output = '', exit = 0, ms = 500, background = false, label = null, who = null } = {}) {
+      const id = `t${++n}`;
+      const name = label ?? `Ran ${command.slice(0, 60)}`;
+      ctx.activity({ id, label: name, state: 'running', who });
+      ctx.toolUse?.({ id, name: 'Bash', input: { command, ...(background ? { run_in_background: true } : {}) }, who });
+      await sleep(ms);
+      if (exit) ctx.toolResult?.({ id, isError: true, text: `Exit code ${exit}\n${output}`, result: `Error: Exit code ${exit}\n${output}` });
+      else
+        ctx.toolResult?.({
+          id,
+          text: output,
+          result: { stdout: background ? '' : output, stderr: '', interrupted: false, ...(background ? { backgroundTaskId: `b${n}` } : {}) },
+        });
+      ctx.activity({ id, label: name, state: exit ? 'failed' : 'done', ms, who, ...(exit ? { detail: output.split('\n')[0] } : {}) });
+    },
+    folder: ctx.project?.folder ?? null,
     status: (p) => ctx.status(p),
     /** Asks you, as a real agent in “ask” mode does before a risky tool call. */
     ask: (req) => ctx.askPermission(req),
@@ -169,6 +203,8 @@ const HANDLERS = {
         'All six books are Project Gutenberg plain-text editions. Three have more than one edition in the folder, so we should pick one each:\n\n- *Middlemarch*: keep the 1874 one-volume text; drop the serial parts.\n- *Emma* and *Persuasion*: keep the editions with chapter headings intact.\n\nPlain text has no page numbers, so I suggest we keep **chapter and character offsets** per passage instead. They survive re-chunking.',
       );
     }
+    if (has(text, /citation script/)) return citationFix(a);
+    if (has(text, /faster parser/)) return fasterParser(a);
     if (has(text, /walk me through|out loud|narrat/)) return walkthrough(a);
     if (has(text, /explain|react|reason/)) return explainer(a, mem);
     if (has(text, /paper|memory|read/)) return paperChoice(a);
@@ -913,6 +949,89 @@ async function tidyRetry(a) {
 }
 
 // The narrated walkthrough recipe: slides that follow a local voice, with the transcript always visible.
+// The work ledger’s scene (#132): real files in the demo’s research folder, and commands as Claude Code reports
+// them. refs.bib stands for a file of the person’s that an agent changes; the notes go outside the project.
+const CITE_V1 = `export function format(entry) {
+  const [first, second] = entry.authors;
+  return \`\${first.last} and \${second.last}, \${entry.title}\`;
+}
+`;
+const CITE_V2 = `// Formats one bibliography entry as “Last and Last (year), Title”.
+export function format(entry) {
+  const names = entry.authors.map((a) => a.last);
+  const who = names.length > 2 ? \`\${names[0]} et al.\` : names.join(' and ');
+  return \`\${who} (\${entry.year ?? 'n.d.'}), \${entry.title}\`;
+}
+`;
+const CITE_TEST = `import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { format } from './cite.mjs';
+
+test('two authors keep the year', () => {
+  assert.equal(format({ authors: [{ last: 'Yao' }, { last: 'Zhao' }], year: 2023, title: 'ReAct' }), 'Yao and Zhao (2023), ReAct');
+});
+`;
+const REFS = `@article{yao2023react,
+  title = {ReAct: Synergizing Reasoning and Acting in Language Models},
+  author = {Yao, Shunyu and Zhao, Jeffrey},
+  year = {2023}
+}
+@article{shinn2023reflexion,
+  title = {Reflexion},
+  author = {Shinn, Noah and Cassano, Federico},
+  yeer = {2023}
+}
+`;
+async function citationFix(a) {
+  if (!a.folder) return a.say('This project has no folder, so there’s nothing for me to fix here.');
+  const at = (p) => join(a.folder, p);
+  const notes = join(a.folder, '..', 'workspaces', 'researcher', 'notes.md');
+  // The person’s files as they were before this conversation, every time the demo plays.
+  await writeFile(at('cite.mjs'), CITE_V1);
+  await writeFile(at('refs.bib'), REFS);
+  for (const p of [at('cite.test.mjs'), notes]) await rm(p, { force: true });
+  await a.thinkAloud('The citation script drops the year, and one entry spells the field wrong. I’ll reproduce it, fix the formatter, then fix the entry.');
+  await a.run('node cite.mjs refs.bib', {
+    exit: 1,
+    output: "TypeError: Cannot read properties of undefined (reading 'last')\n    at format (cite.mjs:3:44)",
+    label: 'Ran the citation script',
+  });
+  await a.write(at('cite.mjs'), CITE_V2, { label: 'Edited cite.mjs' });
+  await a.write(at('cite.test.mjs'), CITE_TEST, { label: 'Wrote cite.test.mjs' });
+  await a.write(at('refs.bib'), REFS.replace('yeer', 'year'), { label: 'Edited refs.bib' });
+  await a.run('node --test cite.test.mjs', { output: '✔ two authors keep the year (0.9ms)\nℹ tests 1\nℹ pass 1\nℹ fail 0', label: 'Ran the tests' });
+  await a.write(notes, '# Notes to self\n\n- refs.bib had a misspelled field (yeer); check the other bibliographies.\n', {
+    label: 'Wrote notes.md',
+  });
+  await a.run('node serve-refs.mjs --port 4190', {
+    background: true,
+    label: 'Started the references server',
+    output: 'Command running in background with ID: b1',
+  });
+  // lint-allow quotes: a shell command line, whose quotes are the shell’s.
+  await a.run('gh issue create --title "Citations drop the year" --body "Fixed in cite.mjs; refs.bib had a typo."', {
+    output: 'https://github.com/example/agent-research/issues/12',
+    label: 'Filed an issue',
+  });
+  await a.say(
+    'Fixed. `cite.mjs` now keeps the year and handles any number of authors, with a test for the two-author case, and `refs.bib` had `yeer` for `year` in one entry. I filed the issue, and left a note for myself about the other bibliographies. **Work** shows every file, with what it looked like before.',
+  );
+}
+async function fasterParser(a) {
+  if (!a.folder) return a.say('This project has no folder, so there’s nothing to try here.');
+  const path = join(a.folder, 'cite.mjs');
+  const kept = await readFile(path, 'utf8').catch(() => CITE_V2);
+  await a.thinkAloud('A regular expression might parse the bibliography faster than splitting fields. I’ll try it and measure.');
+  await a.write(path, kept.replace("names.join(' and ')", "names.join(' & ')"), { label: 'Edited cite.mjs' });
+  await a.run('node bench.mjs refs.bib', {
+    exit: 1,
+    output: 'bench: 412 ms per 1,000 entries (was 380 ms)\nslower than before',
+    label: 'Benchmarked the parser',
+  });
+  await a.write(path, kept, { label: 'Put cite.mjs back' });
+  await a.say('It was slower (412 ms against 380 ms per 1,000 entries), so I put `cite.mjs` back as it was. Nothing changed.');
+}
+
 async function walkthrough(a) {
   await a.think(500);
   await a.say('Here’s ReAct as a short walkthrough. Press **Play** to hear it; the slides follow along, and the transcript is all there if you’d rather read.');

@@ -11,10 +11,12 @@ import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/d
 import { buildEvent } from '../shared/events.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
+import { turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
+import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { runShell } from './shell.mjs';
 import { newId } from './store.mjs';
@@ -49,10 +51,11 @@ export class Runtime {
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
    *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
-   *           spawnShell?: typeof import('node:child_process').spawn }} deps
+   *           spawnShell?: typeof import('node:child_process').spawn, ledger?: Ledger }} deps
    *   spawnShell: how `!command` starts a process (#67); tests pass a fake
+   *   ledger: the work ledger (#132); tests pass one with fake files and git
    */
-  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell }) {
+  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, ledger }) {
     this.store = store;
     this.adapters = adapters;
     this.corpus = corpus;
@@ -73,6 +76,8 @@ export class Runtime {
     this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
     this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
+    // What each conversation’s agents changed, ran and published (#132).
+    this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
   }
 
   get s() {
@@ -365,6 +370,14 @@ export class Runtime {
       startedAt: Date.now(),
     };
     this.turns.set(sessionId, turn);
+    // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
+    // flagged; the adapter knows the agent’s folder.
+    const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
+    this.ledger.startTurn(turn, {
+      se,
+      folder: adapter?.folderFor ? Promise.resolve().then(() => adapter.folderFor(persona, project)) : persona?.folder || project?.folder || null,
+      projectFolder: project?.folder ?? null,
+    });
     // Rules the person allowed once (from a refusal card) apply to this turn only.
     turn.allowOnce = se.allowOnce ?? [];
     this.updateSession(sessionId, {
@@ -459,7 +472,23 @@ export class Runtime {
       /** The backend refused a tool call without asking: { toolUseId, tool, input, label, reason, reasonType, who }. */
       denied(d) {
         if (!live()) return;
+        rt.ledger.denied(turn, d.toolUseId);
         rt.recordDenial(turn, d);
+      },
+      // For the work ledger (#132): each tool call with its whole input, before it runs ({ id, name, input, who });
+      // what it returned ({ id, isError, text, result: the tool’s own record, vcsCwd }); a background task’s end
+      // ({ toolUseId, status, summary, outputFile }); and the process’s running spend ({ key, costUsd, tokens }).
+      toolUse(u) {
+        if (live()) rt.ledger.toolUse(turn, u);
+      },
+      toolResult(r) {
+        if (live()) rt.ledger.toolResult(turn, r);
+      },
+      taskEnded(t) {
+        if (live()) rt.ledger.taskEnded(turn, t);
+      },
+      usage(u) {
+        if (live()) rt.ledger.usage(turn, u);
       },
       /**
        * Where this turn ends in the backend’s own transcript, such as { claudeSessionId, uuid }. A topic
@@ -582,10 +611,20 @@ export class Runtime {
     };
   }
 
+  /** The turn’s work is recorded (#132), then its first reply gets the line that leads to it. */
+  endWork(turn, status) {
+    const first = turn.first;
+    return this.ledger.endTurn(turn, { status }).then(() => {
+      const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
+      if (line && first && this.store.item(turn.threadId, first)) this.patchItem(turn.threadId, first, { work: line });
+    });
+  }
+
   endTurn(turn, err) {
     if (turn.closed) return;
     turn.closed = true;
     this.turns.delete(turn.sessionId);
+    this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
     this.mirrors.get(turn.sessionId)?.tail.skipToEnd();
@@ -713,6 +752,7 @@ export class Runtime {
     turn.abort.abort();
     turn.closed = true;
     this.turns.delete(sessionId);
+    this.endWork(turn, 'stopped');
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', 'You stopped the agent.');
     for (const it of this.store.items(turn.threadId)) {
@@ -1969,6 +2009,41 @@ export class Runtime {
    * After a restart, nothing Postbox started is running any more, unless Postbox stopped without shutting down (a crash),
    * which can leave a command running on its own. Either way its output here ends.
    */
+  // ── The work ledger (#132) ─────────────────────────────────────────────────────────
+  // What a conversation’s agents changed, ran and published, read by the Work view. A conversation is the one a
+  // thread belongs to: its side and topic threads count toward it.
+
+  workConversation(threadId) {
+    const t = this.thread(threadId);
+    if (t.kind === 'side' || t.kind === 'topic') throw httpError(404, 'Open the conversation this thread belongs to: its work is there.');
+    return t.id;
+  }
+  /** Where each changed file and commit stands in git now (read-only). */
+  workGit(threadId) {
+    return this.ledger.gitState(this.workConversation(threadId));
+  }
+  /** @param {string} threadId @param {string} fileId @param {string|null} [changeId] */
+  workDiff(threadId, fileId, changeId = null) {
+    return this.ledger.fileDiff(this.workConversation(threadId), fileId, changeId).catch(asHttp);
+  }
+  workOutput(threadId, entryId) {
+    return this.ledger.output(this.workConversation(threadId), entryId).catch(asHttp);
+  }
+  /**
+   * Puts a file back as it was before the agents first changed it (or removes one they created), and says so in the
+   * conversation, so its agents read it on their next turn.
+   */
+  async restoreWork(threadId, fileId) {
+    const convId = this.workConversation(threadId);
+    const f = await this.ledger.restore(convId, fileId).catch(asHttp);
+    const who = f?.handles?.length ? f.handles.map((h) => `@${h}`).join(', ') : 'the agents';
+    this.addItem(convId, {
+      kind: 'voice',
+      text: f?.before?.exists ? `Restored ${f.rel} to how it was before ${who} changed it` : `Removed ${f?.rel}, which ${who} created`,
+    });
+    return f;
+  }
+
   expireStaleCommands() {
     for (const [threadId, items] of Object.entries(this.s.items))
       for (const it of items)
@@ -2835,6 +2910,10 @@ function stampSteps(item, block, now) {
 export function httpError(status, message) {
   return Object.assign(new Error(message), { status, userMessage: message });
 }
+/** An error the ledger raised with a status, as the API answers it. */
+const asHttp = (e) => {
+  throw e?.status ? httpError(e.status, e.message) : e;
+};
 const snapshotOf = (p) =>
   pick(p, ['description', 'instructions', 'model', 'effort', 'permissionMode', 'usesHostSetup', 'canPublish', 'mcpOff', 'folder', 'tools', 'version']);
 const MAX_MCP_OFF = 100;

@@ -156,6 +156,11 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     glimpse: '',
     glimpseAt: 0,
     state: null,
+    used: new Set(), // tool_use ids whose whole input went to ctx.toolUse
+    vcsCwd: null, // the folder of the latest commit or push Claude Code reported
+    // This process’s usage key: a turn can run more than one process (a fork retried), and each reports its own
+    // running totals.
+    key: Math.random().toString(36).slice(2),
   };
   const status = (patch) => {
     if (patch.state && patch.state === st.state && Object.keys(patch).length === 1) return;
@@ -200,10 +205,20 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     }
     if (!who) status({ state: 'tool' });
   };
+  // The work ledger (#132) gets each call once, with its whole input, as soon as it’s known: before the tool runs,
+  // so the file it changes can still be read as it was.
+  const used = (id, t) => {
+    if (st.used.has(id)) return;
+    st.used.add(id);
+    ctx.toolUse?.({ id, name: t.name, input: t.input ?? {}, who: t.who });
+  };
   const labelTool = (id, input) => {
     const t = st.tools.get(id);
     if (!t) return;
-    if (input && Object.keys(input).length) t.input = input;
+    if (input && Object.keys(input).length) {
+      t.input = input;
+      used(id, t);
+    }
     const label = describeTool(t.name, input);
     if (label !== t.label) {
       t.label = label;
@@ -223,6 +238,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     const t = st.tools.get(id);
     if (!t || t.done) return;
     t.done = true;
+    used(id, t);
     if (failed && detail) t.error = detail;
     const state = st.denied.has(id) ? 'denied' : failed ? 'failed' : 'done';
     if (!t.quiet) ctx.activity(stepOf(id, t, state, failed && detail && state !== 'denied' ? { detail: firstSentence(detail, 300) } : {}));
@@ -329,6 +345,17 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           pushSubagents();
           glimpse(`${sub.name}: ${e.description}`);
         }
+      } else if (e.subtype === 'vcs_state_changed' && typeof e.cwd === 'string') {
+        // A commit or push (recorded: tests/fixtures/claude-code/ledger-push.jsonl); its tool result names the commit.
+        st.vcsCwd = e.cwd;
+      } else if (e.subtype === 'task_notification' && e.tool_use_id) {
+        // A background command or subagent ended, maybe long after its tool call returned (#129).
+        ctx.taskEnded?.({
+          toolUseId: e.tool_use_id,
+          status: String(e.status ?? ''),
+          summary: typeof e.summary === 'string' ? e.summary : '',
+          outputFile: typeof e.output_file === 'string' ? e.output_file : null,
+        });
       } else if (e.subtype === 'task_summary' && e.detail) {
         glimpse(e.detail);
       } else if (e.subtype === 'compact_boundary') {
@@ -416,8 +443,18 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     }
 
     if (e.type === 'user') {
-      for (const b of e.message?.content ?? []) {
-        if (b.type === 'tool_result') endTool(b.tool_use_id, b.is_error === true, b.is_error ? resultText(b.content) : '');
+      const results = (e.message?.content ?? []).filter((b) => b.type === 'tool_result');
+      for (const b of results) {
+        endTool(b.tool_use_id, b.is_error === true, b.is_error ? resultText(b.content) : '');
+        // What the tool returned, for the work ledger (#132). tool_use_result is the tool’s own record (a file’s
+        // contents before an edit, a command’s stdout and exit, a commit), on the event that carries the result.
+        ctx.toolResult?.({
+          id: b.tool_use_id,
+          isError: b.is_error === true,
+          text: resultText(b.content),
+          result: results.length === 1 ? (e.tool_use_result ?? null) : null,
+          vcsCwd: st.vcsCwd,
+        });
       }
       if (!parent) status({ state: 'think', currentStep: 'Thinking' });
       return;
@@ -431,6 +468,20 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         const pct = contextPercent(st.lastUsage, st.contextWindow);
         if (pct !== null) status({ ctx: pct });
       }
+      // What the process has spent so far: the result’s totals run for the whole process, so the last one counts.
+      const models = Object.values(e.modelUsage ?? {});
+      ctx.usage?.({
+        key: st.key,
+        costUsd: typeof e.total_cost_usd === 'number' ? e.total_cost_usd : null,
+        tokens: models.length
+          ? {
+              input: models.reduce((n, u) => n + (u?.inputTokens ?? 0), 0),
+              output: models.reduce((n, u) => n + (u?.outputTokens ?? 0), 0),
+              cacheRead: models.reduce((n, u) => n + (u?.cacheReadInputTokens ?? 0), 0),
+              cacheWrite: models.reduce((n, u) => n + (u?.cacheCreationInputTokens ?? 0), 0),
+            }
+          : null,
+      });
       // Refusals the stream didn’t report as they happened.
       for (const d of e.permission_denials ?? []) denial(d, { fromResult: true });
       for (const [id] of st.tools) endTool(id, e.is_error === true);

@@ -112,6 +112,7 @@ export async function start({
   rt.rearmDeletions();
   rt.expireStalePermissions();
   rt.expireStaleCommands();
+  rt.ledger.expireStale();
   rt.rearmMirrors();
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
@@ -276,6 +277,12 @@ export async function start({
       const q = (k) => url.searchParams.get(k) || null;
       return send(res, 200, await rt.permissionsView({ sessionId: q('sessionId'), personaId: q('personaId'), projectId: q('projectId') }));
     }
+    // The work ledger (#132): where each change stands in git, a file’s diff and a command’s output.
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/git$/)) && req.method === 'GET') return send(res, 200, await rt.workGit(m[1]));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/files\/([^/]+)\/diff$/)) && req.method === 'GET')
+      return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
+      return raw(res, 200, await rt.workOutput(m[1], m[2]), { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
         res.writeHead(503, { 'retry-after': '1' });
@@ -334,6 +341,8 @@ export async function start({
       shellAllowed(req);
       return send(res, 201, await rt.runShellCommand(m[1], body.command));
     }
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/files\/([^/]+)\/restore$/)) && req.method === 'POST')
+      return send(res, 200, await rt.restoreWork(m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell\/([^/]+)\/stop$/)) && req.method === 'POST') return send(res, 200, rt.stopShellCommand(m[1], m[2]));
     if (path === '/api/claude-sessions' && req.method === 'GET') return send(res, 200, { sessions: await rt.claudeSessions() });
     if (path === '/api/claude-sessions/attach' && req.method === 'POST') return send(res, 201, await rt.attachClaudeSession(body));
