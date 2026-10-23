@@ -270,6 +270,9 @@ const HANDLERS = {
       return a.say(`Thanks ${m.from}, noted.`);
     }
     const text = m.text ?? '';
+    // Asked about what another agent wrote, which its history cut: it reads the whole of it first (#109).
+    const cut = [...(m.context ?? []).join('\n').matchAll(/read_message \{ id: "([^"]+)" \}/g)].at(-1)?.[1];
+    if (cut && has(text, /\b(?:wrote|reply|draft|message)\b/)) return criticReadsInFull(a, cut);
     if (has(text, /review|spec|schema|layout/)) return criticReview(a, mem);
     await a.think(400);
     await a.say('Send me a spec, some code or a layout and I’ll review it with you line by line. Try “Review my corpus schema”.');
@@ -857,6 +860,17 @@ async function criticReview(a, _mem) {
     appId: 'layout-proposal',
     fallback: 'Review of the explorer layout: comment in the chat.',
   });
+}
+
+/** Reads one cut item with read_message, as a real agent would, and quotes how it ends. */
+async function criticReadsInFull(a, id) {
+  a.status({ state: 'tool', currentStep: 'Reading a message in full' });
+  await a.sleep(300);
+  const r = a.t.read_message({ id });
+  if (!r.ok) return a.say(r.message);
+  await a.think(400);
+  const last = r.message.trim().split('\n\n').at(-1);
+  await a.say(`I read all of it, not only the start my history gave me. It ends:\n\n> ${last}`);
 }
 
 async function criticRevise(ev, a, _mem) {

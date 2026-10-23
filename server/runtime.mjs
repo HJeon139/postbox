@@ -9,6 +9,7 @@ import { basename, isAbsolute, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { READING } from '../shared/limits.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { turnLine } from '../shared/work.mjs';
@@ -48,6 +49,93 @@ export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
 const CATCH_UP_CHARS = 16000;
 const clipText = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const count = (n) => n.toLocaleString('en-US');
+/**
+ * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
+ * read_message takes, so the agent can read the rest (#109).
+ */
+const clipItem = (s, n, id) => {
+  const t = String(s ?? '');
+  return t.length > n ? `${t.slice(0, n)}… (${count(n)} of ${count(t.length)} characters; read_message { id: "${id}" } has the rest)` : t;
+};
+/** Code in a fence longer than any run of backticks in it. */
+const fenced = (code, language = '') => {
+  const ticks = '`'.repeat(Math.max(3, ...[...String(code).matchAll(/`+/g)].map((m) => m[0].length + 1)));
+  return `${ticks}${language}\n${code}\n${ticks}`;
+};
+/** Where a review comment points: a line, a part of an app, or a thread it answers. */
+const commentAt = (c) => (c.line != null ? `line ${c.line}` : c.anchor != null ? `“${c.anchor}”` : c.threadId != null ? `thread ${c.threadId}` : 'the draft');
+
+/**
+ * What a block holds, as text an agent can read and quote (#153): a review, card or code block’s content, a choice
+ * or form’s prompt and options or fields, any other block’s fallback, and the person’s answer if there is one. An
+ * app is its title alone, which its agent’s line names.
+ * @param {any} it  a block item
+ */
+function blockContent(it) {
+  const b = it.block ?? {};
+  const out = [];
+  const lines = (list) => list.map((x) => `- ${x}`).join('\n');
+  switch (b.type) {
+    case 'review':
+      if (b.format === 'app') out.push(`It reviews the app ${b.appId}.`);
+      else out.push(b.format === 'code' ? `${b.filename ? `${b.filename}:\n` : ''}${fenced(b.content ?? '', b.language)}` : String(b.content ?? ''));
+      for (const th of b.threads ?? []) out.push(`Comments on ${commentAt(th)} (${th.status}):\n${lines(th.comments.map((c) => `${c.author}: ${c.text}`))}`);
+      break;
+    case 'card':
+      if (b.body) out.push(b.body);
+      if (b.facts?.length) out.push(lines(b.facts.map((f) => `${f.label}: ${f.value}`)));
+      if (b.actions?.length) out.push(`Buttons: ${b.actions.map((x) => x.label).join(' · ')}`);
+      break;
+    case 'code':
+      out.push(`${b.filename ? `${b.filename}:\n` : ''}${fenced(b.code ?? '', b.language)}`);
+      break;
+    case 'choice':
+      if (b.prompt) out.push(b.prompt);
+      out.push(
+        `Options${b.multiple ? ' (any of them)' : ''}: ${b.options.map((o) => o.label).join(' · ')}${b.other ? `, or their own (${b.other.label})` : ''}`,
+      );
+      break;
+    case 'form':
+      if (b.prompt) out.push(b.prompt);
+      out.push(
+        `Fields:\n${lines(b.fields.map((f) => `${f.label} (${f.kind}${f.required ? ', required' : ''})${f.options ? `: ${f.options.map((o) => o.label).join(' · ')}` : ''}`))}`,
+      );
+      break;
+    case 'confirm':
+      out.push(b.statement);
+      break;
+    case 'app':
+      return '';
+    default:
+      out.push(String(b.fallback ?? ''));
+  }
+  const a = it.answered ? it.answer : null;
+  if (a) {
+    const v = a.values ?? {};
+    if (b.type === 'review') {
+      const comments = Array.isArray(v.comments) ? v.comments : [];
+      out.push(
+        `The person’s review: ${String(a.voice ?? '').replace(/^Submitted review: /, '')}${comments.length ? `\n${lines(comments.map((c) => `${commentAt(c)}: ${c.text}`))}` : ''}`,
+      );
+    } else if (b.type === 'form') {
+      const shown = (f) => {
+        const x = v[f.id];
+        if (f.kind === 'toggle') return x ? 'on' : 'off';
+        if (f.kind === 'select') return f.options?.find((o) => o.id === x)?.label ?? x;
+        return String(x);
+      };
+      out.push(
+        `The person answered:\n${lines(b.fields.filter((f) => v[f.id] !== undefined && v[f.id] !== '').map((f) => `${f.label}: ${shown(f)}`)) || '- (nothing filled in)'}`,
+      );
+    } else if (b.type === 'choice') {
+      const picked = (v.selected ?? []).map((id) => b.options.find((o) => o.id === id)?.label ?? id);
+      out.push(`The person answered: ${[...picked, ...(v.other ? [`“${v.other}”`] : [])].join(' · ')}`);
+    } else out.push(`The person answered: ${a.voice ?? a.action}`);
+  }
+  if (b.outcome) out.push(`Outcome: ${b.outcome}`);
+  return out.filter(Boolean).join('\n\n');
+}
 const clip = (s, n = 200) => {
   const t = toPlainText(s);
   return t.length > n ? t.slice(0, n - 1) + '…' : t;
@@ -1481,7 +1569,7 @@ export class Runtime {
     const root = this.store.item(t.parentId, t.rootItemId);
     if (!root) return null;
     // The thread is about this message, so it gets more room than an item in the catch-up.
-    const text = (s) => clipText(String(s ?? ''), 4000);
+    const text = (s) => clipItem(s, 4000, root.id);
     const from = 'This thread started from';
     switch (root.kind) {
       case 'user':
@@ -1489,10 +1577,11 @@ export class Runtime {
       case 'agent':
         return `${from} @${root.handle}’s message: ${text(root.text)}`;
       case 'block': {
-        // The title names it; the fallback is the plain text an agent can quote (a table’s rows, say).
+        // The title names it; what it holds is the text an agent can quote (a draft, or a table’s rows) (#153).
         const b = root.block ?? {};
         const what = b.type === 'app' ? 'app' : b.type ? `${b.type} block` : 'block';
-        return `${from} @${root.handle}’s ${what}${b.title ? ` “${clipText(String(b.title), 200)}”` : ''}: ${text(b.fallback ?? root.fallback)}`;
+        const body = (root.valid && blockContent(root)) || String(b.fallback ?? root.fallback ?? '');
+        return `${from} @${root.handle}’s ${what}${b.title ? ` “${clipText(String(b.title), 200)}”` : ''}: ${text(body)}`;
       }
       default: {
         const line = this.describeItem(root, se);
@@ -1502,20 +1591,27 @@ export class Runtime {
   }
 
   /**
-   * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out.
-   * @param {any} i @param {any} [se]
+   * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out. Its
+   * text is cut at n characters, saying so (#109).
+   * @param {any} i @param {any} [se] @param {number} [n]
    */
-  describeItem(i, se = null) {
-    const text = (s) => clipText(String(s ?? ''), 2000);
+  describeItem(i, se = null, n = READING.item) {
+    const text = (s) => clipItem(s, n, i.id);
     switch (i.kind) {
       case 'user':
         return `You: ${text(i.text)}${i.attachments?.length ? ` [attached: ${i.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
       case 'agent':
         return i.text && i.status !== 'failed' ? `@${i.handle}: ${text(i.text)}` : null;
-      case 'block':
-        return i.valid
-          ? `@${i.handle} showed ${i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`} “${text(i.block.title ?? i.block.fallback)}”`
-          : null;
+      case 'block': {
+        if (!i.valid) return null;
+        // What it holds comes with it, so another agent can review it (#153).
+        const body = blockContent(i);
+        const what = i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`;
+        const title = i.block.title ?? (i.block.type === 'app' ? i.block.fallback : null);
+        return text(
+          `@${i.handle} showed ${what}${title ? ` “${clipText(String(title), 200)}”` : ''}${body ? `${body.includes('\n') ? ':\n' : ': '}${body}` : ''}`,
+        );
+      }
       case 'voice': {
         // The agent hears about its own blocks as events already.
         const block = i.blockItemId && this.store.item(se?.threadId, i.blockItemId);
@@ -1557,11 +1653,51 @@ export class Runtime {
     const n = Math.max(1, Math.min(200, Number(limit) || 50));
     const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
     const slice = items.slice(Math.max(0, end - n), end);
-    const lines = slice
-      .map((i) => (i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipText(i.text ?? '', 2000)}` : this.describeItem(i)))
-      .filter(Boolean);
+    const lines = slice.map((i) => this.readLine(i, se)).filter(Boolean);
     const before = end - slice.length;
     return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
+  }
+
+  /**
+   * An item as read_conversation and read_message give it to `se`, whose own messages say “You”.
+   * @param {any} i @param {any} se @param {number} [n]
+   */
+  readLine(i, se, n = READING.item) {
+    return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n);
+  }
+
+  /**
+   * read_message: one item in full, by its id (the history and read_conversation give it where they cut one) or by
+   * a block’s id, from this thread or the conversation it branched from. Long text comes in parts (#109).
+   * @param {any} se @param {{ id?: string, from?: number }} [args]
+   */
+  readMessage(se, { id, from = 0 } = {}) {
+    const key = String(id ?? '').trim();
+    if (!key) return { ok: false, message: 'Name the item: read_message { id }, with an id from your history or read_conversation.' };
+    const threads = this.lineage(se.threadId);
+    let it = threads.map((th) => this.store.item(th, key)).find(Boolean);
+    if (!it) {
+      const blocks = threads.flatMap((th) => this.store.items(th).filter((i) => i.kind === 'block' && i.valid && i.block?.id === key));
+      if (blocks.length > 1)
+        return {
+          ok: false,
+          message: `More than one block is called “${key}”: ${blocks.map((b) => `@${b.handle}’s is ${b.id}`).join(', ')}. Read one by that id.`,
+        };
+      it = blocks[0];
+    }
+    if (!it)
+      return {
+        ok: false,
+        message: `There’s no item “${clipText(key, 80)}” in this conversation. Your history and read_conversation give the id of each item they cut.`,
+      };
+    const full = this.readLine(it, se, Infinity);
+    if (!full) return { ok: false, message: `${it.id} has nothing to read.` };
+    const start = Math.max(0, Math.min(full.length, Math.floor(Number(from) || 0)));
+    if (start >= full.length) return { ok: true, message: `Nothing after character ${count(full.length)}: that’s the end of ${it.id}.` };
+    const end = Math.min(full.length, start + READING.part);
+    if (start === 0 && end === full.length) return { ok: true, message: full };
+    const more = end < full.length ? ` read_message { id: "${it.id}", from: ${end} } reads on.` : '';
+    return { ok: true, message: `${full.slice(start, end)}\n\n(Characters ${count(start + 1)}–${count(end)} of ${count(full.length)}.${more})` };
   }
 
   // ── The lint pipeline ──────────────────────────────────────────────────────────────
@@ -3264,6 +3400,9 @@ export class Runtime {
       },
       read_conversation(args = {}) {
         return { ok: true, message: rt.readConversation(se(), args) };
+      },
+      read_message(args = {}) {
+        return rt.readMessage(se(), args);
       },
       corpus_search(args) {
         return { ok: true, results: hostTool(rt, 'corpus.search', args) };

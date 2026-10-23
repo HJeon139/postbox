@@ -3,6 +3,9 @@
 //        reaches the conversation; the same hand-off by id goes through.
 //   #94: update_block with outcome on an answered confirm shows the result as a Markdown line under the answer,
 //        and the block stays answered, with no needs-you.
+//   #109: asked to review another agent’s 5,000-character reply, @critic quotes its last paragraph: its history
+//        cut the reply and gave its id, and read_message gave it the rest.
+//   #153: asked to review the draft @researcher showed in a review block, @critic quotes how the draft ends.
 //
 //   node tools/check-contract.mjs
 //
@@ -126,6 +129,41 @@ try {
   check(!rt.s.sessions[se.id].needs, 'the agent doesn’t need the person', JSON.stringify(rt.s.sessions[se.id].needs));
   const needsGlyph = await page.evaluate(`!!${node}.querySelector('.g-needs')`);
   check(!needsGlyph, 'the block shows no needs-you mark');
+
+  // ── #109: a reviewer reads another agent’s long reply in full ─────────────────────────
+  const room = rt.createThread({ projectId, title: 'Reading check', personaIds: ['researcher', 'critic'].map((h) => rt.personaByHandle(h).id) });
+  const researcher = rt.sessionsIn(room.id).find((x) => x.handle === 'researcher');
+  const LAST = 'Last, the conclusion holds only for adults over 60.';
+  const long = `${Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}: the claim in section ${i + 1} rests on one study, and its sample is small. `.repeat(3)).join('\n\n')}\n\n${LAST}`;
+  rt.addItem(room.id, { kind: 'agent', sessionId: researcher.id, handle: 'researcher', text: long, status: 'done' });
+  await page.evaluate(`location.hash = '#/t/${room.id}'`);
+  rt.sendMessage(room.id, { text: '@critic review what researcher wrote' });
+  const replied = () => store.items(room.id).find((x) => x.kind === 'agent' && x.handle === 'critic' && x.status === 'done');
+  await until(replied, '@critic to reply');
+  const reply = replied();
+  const said109 = await page.evaluate(
+    `new Promise((ok) => { const read = () => document.querySelector('[data-item="${reply.id}"]')?.closest('.turn')?.querySelector('.md')?.innerText ?? ''; const t = setInterval(() => { if (read().includes('It ends')) { clearInterval(t); ok(read()); } }, 100); setTimeout(() => { clearInterval(t); ok(read()); }, 5000); })`,
+  );
+  check(long.length > 5000 && long.indexOf(LAST) > 2000, 'the reply is over 5,000 characters, and its last paragraph is past the cut', String(long.length));
+  check(said109.includes(LAST), '@critic quotes the last paragraph of the reply, which its history cut', said109);
+
+  // ── #153: a reviewer reads the draft another agent showed in a review block ────────────
+  const room2 = rt.createThread({ projectId, title: 'Draft check', personaIds: ['researcher', 'critic'].map((h) => rt.personaByHandle(h).id) });
+  const author = rt.sessionsIn(room2.id).find((x) => x.handle === 'researcher');
+  const END = 'Risk: two editions with different page breaks hash apart, so compare their text, not their pages.';
+  const draft = `# Dedup plan\n\n${Array.from({ length: 30 }, (_, i) => `${i + 1}. Hash passage group ${i + 1} by its normalized text, and keep the earliest edition.`).join('\n')}\n\n${END}`;
+  const shownPlan = rt.toolsFor(author.id).show_block({
+    block: { id: 'dedup-plan', type: 'review', version: 1, title: 'Dedup plan', format: 'markdown', content: draft, fallback: 'The dedup plan.' },
+  });
+  await page.evaluate(`location.hash = '#/t/${room2.id}'`);
+  rt.sendMessage(room2.id, { text: '@critic review the draft researcher showed' });
+  const replied2 = () => store.items(room2.id).find((x) => x.kind === 'agent' && x.handle === 'critic' && x.status === 'done');
+  await until(replied2, '@critic to reply about the draft');
+  const said153 = await page.evaluate(
+    `new Promise((ok) => { const read = () => document.querySelector('[data-item="${replied2().id}"]')?.closest('.turn')?.querySelector('.md')?.innerText ?? ''; const t = setInterval(() => { if (read().includes('It ends')) { clearInterval(t); ok(read()); } }, 100); setTimeout(() => { clearInterval(t); ok(read()); }, 5000); })`,
+  );
+  check(shownPlan.ok && draft.indexOf(END) > 2000, 'the draft is shown as a review block, and how it ends is past the cut', JSON.stringify(shownPlan));
+  check(said153.includes(END), '@critic quotes how the draft in the review block ends', said153);
 } catch (e) {
   check(false, 'the check ran to the end', e.message);
 } finally {

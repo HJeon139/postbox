@@ -1796,6 +1796,296 @@ test('a long history is capped, says so, and read_conversation has the rest', as
   assert.match(rt.readConversation(se, { limit: 2, skip: 58 }).message ?? rt.readConversation(se, { limit: 2, skip: 58 }), /message 1/);
 });
 
+/** A reply of about 5,000 characters, as @critic's were in the research UAT (#109), with a last paragraph to quote. */
+const LONG_REPLY = `${Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}: the claim in section ${i + 1} rests on one study, and its sample is small. `.repeat(3)).join('\n\n')}\n\nLast, the conclusion holds only for adults over 60.`;
+
+/** @alpha writes LONG_REPLY, then the person asks @beta to review it. Returns @beta’s session and its catch-up. */
+async function longReplyReviewed() {
+  const ctx = setup();
+  const { rt, store, t, adapter } = ctx;
+  adapter.next.push(async (c) => c.text(LONG_REPLY));
+  rt.sendMessage(t.id, { text: 'Write up the findings' });
+  await settle(rt);
+  rt.sendMessage(t.id, { text: '@beta review what alpha wrote' });
+  await settle(rt);
+  const reply = store.items(t.id).find((i) => i.kind === 'agent' && i.handle === 'alpha');
+  const call = adapter.calls.at(-1);
+  return { ...ctx, reply, se: rt.s.sessions[call.sessionId], catchUp: (call.message.context ?? []).join('\n') };
+}
+
+test('#109 history cuts a long reply, says how much it kept, and gives the id read_message takes', async () => {
+  const { reply, catchUp } = await longReplyReviewed();
+  assert.ok(LONG_REPLY.length > 5000);
+  const total = LONG_REPLY.length.toLocaleString('en-US');
+  assert.ok(catchUp.includes(`@alpha: ${LONG_REPLY.slice(0, 2000)}… (2,000 of ${total} characters; read_message { id: "${reply.id}" } has the rest)`));
+  assert.doesNotMatch(catchUp, /adults over 60/);
+});
+
+test('#109 read_message gives the reviewer the whole reply, so it can quote the last paragraph', async () => {
+  const { rt, reply, se } = await longReplyReviewed();
+  const r = rt.toolsFor(se.id).read_message({ id: reply.id });
+  assert.equal(r.ok, true);
+  assert.equal(r.message, `@alpha: ${LONG_REPLY}`);
+  assert.match(r.message, /Last, the conclusion holds only for adults over 60\.$/);
+});
+
+test('#109 read_conversation cuts the same way, the agent’s own messages too, and stays as it was otherwise', async () => {
+  const { rt, t, a, reply, se } = await longReplyReviewed();
+  const total = LONG_REPLY.length.toLocaleString('en-US');
+  const theirs = rt.toolsFor(se.id).read_conversation({}).message;
+  assert.match(theirs, /^You: Write up the findings\n\n@alpha: Finding 1/);
+  assert.ok(theirs.includes(`… (2,000 of ${total} characters; read_message { id: "${reply.id}" } has the rest)\n\nYou: @beta review what alpha wrote`));
+  const alpha = rt.sessionsIn(t.id).find((x) => x.personaId === a.id);
+  assert.ok(
+    rt
+      .toolsFor(alpha.id)
+      .read_conversation({})
+      .message.includes(`You (@alpha): ${LONG_REPLY.slice(0, 2000)}… (2,000 of ${total}`),
+  );
+  // A short item is whole, with no id.
+  assert.doesNotMatch(theirs, /review what alpha wrote… \(/);
+});
+
+test('#109 read_message reads a long item in parts, and says where it couldn’t find one', async () => {
+  const { rt, store, t, se } = await longReplyReviewed();
+  const huge = 'x'.repeat(95_000);
+  const it = rt.addItem(t.id, { kind: 'agent', handle: 'alpha', sessionId: 'other', text: huge, status: 'done' });
+  const read = rt.toolsFor(se.id).read_message;
+  const one = read({ id: it.id });
+  assert.equal(one.ok, true);
+  assert.ok(one.message.startsWith(`@alpha: ${'x'.repeat(39_992)}\n\n`));
+  assert.match(one.message, new RegExp(`\\(Characters 1–40,000 of 95,008\\. read_message \\{ id: "${it.id}", from: 40000 \\} reads on\\.\\)$`));
+  const last = read({ id: it.id, from: 80_000 });
+  assert.match(last.message, /\(Characters 80,001–95,008 of 95,008\.\)$/);
+  assert.equal(last.message.split('\n\n')[0].length, 15_008);
+  // At or past the end, it says so rather than giving an empty part.
+  for (const from of [95_008, 120_000]) {
+    const after = read({ id: it.id, from });
+    assert.equal(after.ok, true);
+    assert.equal(after.message, `Nothing after character 95,008: that’s the end of ${it.id}.`);
+  }
+  const missing = read({ id: 'it_nope' });
+  assert.equal(missing.ok, false);
+  assert.match(missing.message, /There’s no item “it_nope” in this conversation/);
+  assert.equal(read({}).ok, false);
+  assert.ok(store.items(t.id).includes(it));
+});
+
+test('#109 read_message is in the MCP tool list and answers over MCP', async () => {
+  const { rt, reply, se } = await longReplyReviewed();
+  const tools = (await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).result.tools;
+  const def = tools.find((x) => x.name === 'read_message');
+  assert.deepEqual(def?.inputSchema.required, ['id']);
+  assert.match(def.description, /2,000 characters/);
+  assert.match(def.description, /a block’s whole content with its comments and the person’s answer/);
+  assert.match(tools.find((x) => x.name === 'read_conversation').description, /cut at 2,000 characters, and a cut gives the id read_message takes/);
+  const r = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'read_message', arguments: { id: reply.id } } });
+  assert.equal(r.result.isError, false);
+  assert.match(r.result.content[0].text, /adults over 60\.$/);
+  const bad = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'read_message', arguments: { id: 'it_nope' } } });
+  assert.equal(bad.result.isError, true);
+});
+
+test('#109 a topic thread’s root, cut at 4,000, gives its id, and read_message reads it from the thread', async () => {
+  const { rt, store, t, adapter, reply } = await longReplyReviewed();
+  rt.createPersona({ handle: 'critic' });
+  const { threadId } = rt.startTopic(t.id, reply.id);
+  rt.sendMessage(threadId, { text: '@critic is the last point right?' });
+  await settle(rt);
+  const call = adapter.calls.at(-1);
+  assert.equal(call.handle, 'critic');
+  const context = (call.message.context ?? []).join('\n');
+  assert.match(
+    context,
+    new RegExp(
+      `This thread started from @alpha’s message: Finding 1[^]*… \\(4,000 of [\\d,]+ characters; read_message \\{ id: "${reply.id}" \\} has the rest\\)`,
+    ),
+  );
+  assert.match(rt.toolsFor(call.sessionId).read_message({ id: reply.id }).message, /adults over 60\.$/);
+  assert.ok(store.items(threadId).length >= 1);
+});
+
+/** The plan @researcher showed in the Gemini room UAT (#153), as a review block. */
+const PLAN =
+  '# Dedup plan\n\n1. Hash each passage’s normalized text.\n2. Keep the earliest edition of each hash.\n\nRisk: two editions with different page breaks hash apart.';
+
+/** @alpha shows `blocks` in one turn and the person answers some; then @beta is asked about them. */
+async function blocksShown(blocks, answers = []) {
+  const ctx = setup();
+  const { rt, store, t, adapter } = ctx;
+  adapter.next.push(async (c) => {
+    for (const b of blocks) assert.equal(c.tools.show_block({ block: { version: 1, ...b } }).ok, true, b.id);
+  });
+  rt.sendMessage(t.id, { text: 'Show me' });
+  await settle(rt);
+  const item = (id) => store.items(t.id).find((i) => i.kind === 'block' && i.block.id === id);
+  for (const [id, action, values] of answers) rt.act(t.id, item(id).id, action, values);
+  await settle(rt);
+  rt.sendMessage(t.id, { text: '@beta what do you make of these?' });
+  await settle(rt);
+  const call = adapter.calls.at(-1);
+  assert.equal(call.handle, 'beta');
+  return { ...ctx, item, se: rt.s.sessions[call.sessionId], catchUp: (call.message.context ?? []).join('\n') };
+}
+
+test('#153 another agent reads a review block’s draft in its history, not only its title', async () => {
+  const { rt, se, catchUp } = await blocksShown([
+    { id: 'dedup-plan', type: 'review', title: 'Dedup plan', format: 'markdown', content: PLAN, fallback: 'The dedup plan.' },
+  ]);
+  assert.ok(catchUp.includes(`@alpha showed a review block “Dedup plan”:\n${PLAN}`), catchUp);
+  assert.ok(rt.toolsFor(se.id).read_conversation({}).message.includes(`@alpha showed a review block “Dedup plan”:\n${PLAN}`));
+});
+
+test('#153 a choice and a form give their prompt, options or fields, and the person’s answer', async () => {
+  const { catchUp } = await blocksShown(
+    [
+      {
+        id: 'when',
+        type: 'choice',
+        title: 'When',
+        prompt: 'When should the digest go out?',
+        options: [
+          { id: 'mon', label: 'Monday 9:00' },
+          { id: 'fri', label: 'Friday 16:00' },
+        ],
+        fallback: 'Monday or Friday?',
+      },
+      {
+        id: 'brief',
+        type: 'form',
+        title: 'Brief',
+        prompt: 'Two questions before I start.',
+        fields: [
+          { id: 'reader', label: 'Who will read it?', kind: 'text', required: true },
+          {
+            id: 'tone',
+            label: 'Tone',
+            kind: 'select',
+            options: [
+              { id: 'plain', label: 'Plain' },
+              { id: 'warm', label: 'Warm' },
+            ],
+          },
+          { id: 'notes', label: 'Anything else?', kind: 'longtext' },
+        ],
+        fallback: 'Who will read it, and in what tone?',
+      },
+    ],
+    [
+      ['when', 'choose', { selected: ['fri'] }],
+      ['brief', 'submit', { reader: 'The board', tone: 'warm', notes: 'Keep it under a page.' }],
+    ],
+  );
+  assert.ok(
+    catchUp.includes(
+      '@alpha showed a choice block “When”:\nWhen should the digest go out?\n\nOptions: Monday 9:00 · Friday 16:00\n\nThe person answered: Friday 16:00',
+    ),
+    catchUp,
+  );
+  assert.ok(
+    catchUp.includes(
+      '@alpha showed a form block “Brief”:\nTwo questions before I start.\n\nFields:\n- Who will read it? (text, required)\n- Tone (select): Plain · Warm\n- Anything else? (longtext)\n\nThe person answered:\n- Who will read it?: The board\n- Tone: Warm\n- Anything else?: Keep it under a page.',
+    ),
+    catchUp,
+  );
+});
+
+test('#153 a card and a code block give their content; an app only its title; a table its fallback', async () => {
+  const { catchUp } = await blocksShown([
+    {
+      id: 'c',
+      type: 'card',
+      title: 'Corpus',
+      body: 'Loaded **12** books.',
+      facts: [{ label: 'Passages', value: '4,210' }],
+      actions: [{ id: 'go', label: 'Index it' }],
+      fallback: 'Loaded 12 books.',
+    },
+    { id: 'k', type: 'code', title: 'Chunker', code: 'const fence = "```";', language: 'js', filename: 'chunk.js', fallback: 'The chunker.' },
+    {
+      id: 'r',
+      type: 'table',
+      title: 'Results',
+      columns: [{ id: 'c', label: 'Claim' }],
+      rows: [{ id: 'r1', cells: { c: '12' } }],
+      fallback: 'Claim 12 | supported',
+    },
+  ]);
+  assert.ok(catchUp.includes('@alpha showed a card block “Corpus”:\nLoaded **12** books.\n\n- Passages: 4,210\n\nButtons: Index it'), catchUp);
+  assert.ok(catchUp.includes('@alpha showed a code block “Chunker”:\nchunk.js:\n````js\nconst fence = "```";\n````'), catchUp);
+  assert.ok(catchUp.includes('@alpha showed a table block “Results”: Claim 12 | supported'), catchUp);
+});
+
+test('#153 an app is still its title alone', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => c.tools.show_app({ id: 'explorer', title: 'Explorer', code: '<main>Secret code</main>' }));
+  rt.sendMessage(t.id, { text: 'Build it' });
+  await settle(rt);
+  rt.sendMessage(t.id, { text: '@beta look' });
+  await settle(rt);
+  const ctx = adapter.calls.at(-1).message.context.join('\n');
+  assert.match(ctx, /@alpha showed an app “Explorer”\n/);
+  assert.doesNotMatch(ctx, /Secret code/);
+  assert.ok(store.items(t.id).some((i) => i.kind === 'block'));
+});
+
+test('#153 a long draft is cut with its id, and read_message gives the whole block, comments and review', async () => {
+  const draft = `${'A paragraph of the design note, with its reasons. '.repeat(60)}\n\nLast: ship the dedup behind a flag.`;
+  const { rt, se, item, catchUp } = await blocksShown(
+    [
+      {
+        id: 'note',
+        type: 'review',
+        title: 'Design note',
+        format: 'markdown',
+        content: draft,
+        threads: [{ id: 'th1', line: 1, status: 'open', comments: [{ author: '@critic', text: 'Which flag?' }] }],
+        fallback: 'The design note.',
+      },
+    ],
+    [['note', 'submit', { verdict: 'request_changes', comments: [{ line: 3, text: 'Name the flag.' }] }]],
+  );
+  const it = item('note');
+  assert.match(
+    catchUp,
+    new RegExp(
+      `@alpha showed a review block “Design note”:\\nA paragraph[^]*… \\(2,000 of [\\d,]+ characters; read_message \\{ id: "${it.id}" \\} has the rest\\)`,
+    ),
+  );
+  assert.doesNotMatch(catchUp, /ship the dedup/);
+  for (const id of [it.id, 'note']) {
+    const r = rt.toolsFor(se.id).read_message({ id });
+    assert.equal(r.ok, true, id);
+    assert.ok(
+      r.message.includes(
+        `${draft}\n\nComments on line 1 (open):\n- @critic: Which flag?\n\nThe person’s review: Request changes · 1 comment\n- line 3: Name the flag.`,
+      ),
+      r.message,
+    );
+  }
+});
+
+test('#153 an agent reads its own review block’s content in read_conversation', async () => {
+  const { rt, t, a } = await blocksShown([{ id: 'dedup-plan', type: 'review', title: 'Dedup plan', format: 'markdown', content: PLAN, fallback: 'The plan.' }]);
+  const alpha = rt.sessionsIn(t.id).find((x) => x.personaId === a.id);
+  assert.ok(rt.toolsFor(alpha.id).read_conversation({}).message.includes(`@alpha showed a review block “Dedup plan”:\n${PLAN}`));
+});
+
+test('#153 read_message by a block id two agents both used asks for the item id', async () => {
+  const { rt, t, se, item } = await blocksShown([{ id: 'plan', type: 'code', code: 'a', fallback: 'a' }]);
+  rt.addItem(t.id, {
+    kind: 'block',
+    sessionId: se.id,
+    handle: 'beta',
+    valid: true,
+    block: { id: 'plan', type: 'code', version: 1, code: 'b', fallback: 'b' },
+    answered: false,
+  });
+  const r = rt.toolsFor(se.id).read_message({ id: 'plan' });
+  assert.equal(r.ok, false);
+  assert.match(r.message, new RegExp(`More than one block is called “plan”: @alpha’s is ${item('plan').id}, @beta’s is it_`));
+});
+
 test('saving the same app state again changes nothing, so it can’t start a render loop', () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
