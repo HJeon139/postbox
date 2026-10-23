@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.6.5 (2026-10-23)
+
+### Fixes
+
+- **threads:** side-thread sessions show in their conversation, stop with it, and can be linked
+- **threads:** one session per persona per conversation; a side-thread wake forks only a busy session
+
 ## 0.6.4 (2026-10-23)
 
 ### Fixes
