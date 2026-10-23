@@ -50,6 +50,7 @@ import { createInterface } from 'node:readline';
 import { TOOL_DEFS } from '../mcp.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
+import { listProcesses, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, setupOf } from './setup.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
@@ -641,7 +642,10 @@ export async function excludePlugin(cwd) {
   const line = `${PLUGIN_DIR.split('\\').join('/')}/`;
   if (text.split('\n').includes(line)) return true;
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}# Postbox’s plugin for an Antigravity turn, there only while it runs\n${line}\n`);
+  // Written beside it and renamed, so git never reads half a file.
+  const tmp = `${file}.postbox-${process.pid}`;
+  await writeFile(tmp, `${text}${text && !text.endsWith('\n') ? '\n' : ''}# Postbox’s plugin for an Antigravity turn, there only while it runs\n${line}\n`);
+  await rename(tmp, file);
   return true;
 }
 
@@ -649,10 +653,22 @@ export class AntigravityCliAdapter {
   name = 'antigravity-cli';
 
   /**
-   * @param {{ bin?: string, workRoot: string, models?: string[], settingsFile?: string, spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv }} opts
+   * @param {{ bin?: string, workRoot: string, models?: string[], settingsFile?: string, spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv,
+   *           kill?: typeof process.kill, listProcesses?: typeof listProcesses }} opts
    *   models: what agyModels found, offered in the model field; settingsFile: your agy settings
    */
-  constructor({ bin = findAgy(), workRoot, models = [], settingsFile = agySettingsFile(), spawnImpl = spawn, env = process.env }) {
+  constructor({
+    bin = findAgy(),
+    workRoot,
+    models = [],
+    settingsFile = agySettingsFile(),
+    spawnImpl = spawn,
+    env = process.env,
+    kill = process.kill,
+    listProcesses: list = listProcesses,
+  }) {
+    this.kill = kill;
+    this.list = list;
     this.capabilities = { ...AGY_CAPABILITIES, ...(models.length ? { models } : {}) };
     this.models = models;
     this.bin = bin;
@@ -739,18 +755,24 @@ export class AntigravityCliAdapter {
     return new Promise((resolve, reject) => {
       let child;
       try {
-        child = this.spawn(this.bin, args, { cwd, env: this.env, stdio: ['ignore', 'pipe', 'pipe'] });
+        // Its own process group, so Stop reaches everything it started (#126).
+        child = this.spawn(this.bin, args, { cwd, env: this.env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
       } catch (e) {
         reject(new Error(`Couldn’t start the Antigravity CLI (${this.bin}): ${e.message}`));
         return;
       }
       let stderr = '';
-      /** @type {NodeJS.Timeout|undefined} */
-      let killTimer;
+      const c = child;
+      const exited = new Promise((r) => {
+        c.once('exit', r);
+        c.once('close', r);
+        c.once('error', r);
+      });
+      // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
+      /** @type {Promise<{ gone: Promise<void> }>|null} */
+      let stopping = null;
       const stop = () => {
-        if (killTimer) return;
-        child.kill('SIGINT');
-        killTimer = setTimeout(() => child.kill('SIGKILL'), 3000);
+        stopping ??= stopTurn(c, { exited, kill: this.kill, list: this.list });
       };
       if (ctx.signal.aborted) stop();
       else ctx.signal.addEventListener('abort', stop, { once: true });
@@ -789,8 +811,7 @@ export class AntigravityCliAdapter {
           ctx.saveState({ agySessionId: mapper.sessionId });
         }
       });
-      child.on('close', (code) => {
-        clearTimeout(killTimer);
+      const finish = (code) => {
         ctx.signal.removeEventListener('abort', stop);
         if (mapper.missingSession) return resolve({ missingSession: true });
         if (mapper.model) ctx.saveState({ model: mapper.model });
@@ -798,6 +819,11 @@ export class AntigravityCliAdapter {
         if (mapper.error) return reject(new Error(mapper.error));
         if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr)));
         resolve({ endedOnRefusal: mapper.endedOnRefusal, wrote: mapper.wrote });
+      };
+      // A stopped turn ends once agy's whole group has exited, so the next turn can’t resume beside it (#126).
+      child.on('close', (code) => {
+        if (stopping) stopping.then((r) => r.gone).then(() => finish(code));
+        else finish(code);
       });
     });
   }

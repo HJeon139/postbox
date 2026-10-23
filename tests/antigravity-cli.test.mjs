@@ -548,3 +548,44 @@ test('Stop: agy gets SIGINT, and the turn ends without an error; a turn stopped 
   await adapter.deliver({}, { kind: 'user', text: 'hi' }, early);
   assert.equal(seen.length, 1);
 });
+
+test('Stop signals agy’s whole process group, and the turn ends once the group is gone (#126)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const seen = [];
+  const ctx = fakeCtx();
+  const play = fakeSpawn([{ lines: fixture('first').slice(0, 2), code: 130 }], seen);
+  /** @type {any[]} */
+  const signals = [];
+  let closed = false;
+  let detached = null;
+  const adapter = new AntigravityCliAdapter({
+    workRoot: join(root, 'work'),
+    settingsFile: join(root, 'settings.json'),
+    spawnImpl: /** @type {any} */ (
+      (bin, args, opts) => {
+        detached = opts.detached;
+        const child = /** @type {any} */ (play(bin, args, opts));
+        child.pid = 4242;
+        child.on('close', () => {
+          closed = true;
+        });
+        ctx.abort.abort();
+        return child;
+      }
+    ),
+    env: {},
+    // The group is there until the process has closed: signal 0 then fails, as process.kill does.
+    kill: /** @type {any} */ (
+      (pid, sig) => {
+        if (sig === 0 && closed) throw Object.assign(new Error('no such process'), { code: 'ESRCH' });
+        if (sig !== 0) signals.push([pid, sig]);
+        return true;
+      }
+    ),
+    listProcesses: async () => [],
+  });
+  await adapter.deliver({}, { kind: 'user', text: 'hi' }, ctx);
+  assert.equal(detached, true, 'agy starts in a process group of its own');
+  assert.deepEqual(signals[0], [-4242, 'SIGINT'], 'Stop signals the group, not only agy');
+  assert.equal(closed, true);
+});
