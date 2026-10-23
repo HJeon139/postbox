@@ -189,6 +189,11 @@ const page = await launch({ port: Number(process.env.PB_CHROME_PORT ?? 9391) });
 await page.size(1280, 1000, { theme: 'light' });
 let loads = 0;
 const goto = async (hash) => {
+  // Each view opens as its address says: a conversation’s Work stays open only where the address asks for it, not
+  // because an earlier view left it open in this browser.
+  await page
+    .evaluate(`(() => { try { for (const k of Object.keys(localStorage)) if (k.startsWith('pb-work-')) localStorage.removeItem(k); } catch {} })()`)
+    .catch(() => {});
   await page.goto(`${origin}/?v=${++loads}${hash}`);
   await sleep(1200);
 };

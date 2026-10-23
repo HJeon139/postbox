@@ -17,7 +17,9 @@ export function route() {
   const m = path.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+)|\/(work)(?:\/([^/]+))?)?/);
   if (m) {
     const q = new URLSearchParams(query);
-    const full = q.has('full') ? (q.get('full') === 'thread' && m[2] ? 'thread' : 'work') : null;
+    // Only a view that’s there can be full screen: Work, or the thread when one is open.
+    const f = q.get('full');
+    const full = f === 'work' || (f === 'thread' && m[2]) ? f : null;
     return {
       view: 'thread',
       threadId: m[1],
@@ -517,6 +519,8 @@ export function initHoverCards(resolve) {
       pin();
     }
     if (e.key === 'Escape' && card) {
+      // Escape was for the card, so it’s handled: a full-screen view under it stays (pane.mjs).
+      e.preventDefault();
       const tr = card.trigger;
       hide();
       if (document.activeElement !== tr) {

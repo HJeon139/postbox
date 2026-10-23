@@ -9,7 +9,7 @@ import { mountSidePanel } from './thread.mjs';
 import { setPaneFull } from './ui.mjs';
 import { mountWorkPane } from './work.mjs';
 
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE = 'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])';
 
 const SPLIT_KEY = 'pb-pane-split';
 const MIN = 20;
@@ -90,18 +90,20 @@ export function mountPane(convId) {
   // Either view goes full screen with the app frames’ icon (#45) in its head. It isn’t moved or rebuilt: the view
   // itself is fixed over the window (class pane-full), so a thread keeps its draft, where it was scrolled, and a
   // reply that’s streaming; Work swaps its compact form for its full one. It’s a dialog while it lasts: Tab stays in
-  // it, and Escape or the icon (now “Exit full screen”) brings it back to the pane, with focus on the icon.
+  // it, and Escape or the icon (now “Exit full screen”) brings it back to the pane, with focus on what opened it.
 
   /** @type {'work' | 'thread' | null} */
   let fullKind = null;
+  /** What had focus when full screen began, found again by id if the pane repainted it. */
+  let opener = null;
   const viewOf = (kind) => (kind === 'work' ? work : kind === 'thread' ? thread?.view : null);
   const titleOf = (kind) => (kind === 'work' ? 'wp-title' : 'sp-title');
 
   const onKey = (e) => {
     const v = viewOf(fullKind);
     if (!v || e.defaultPrevented) return;
-    // A menu or dialog over it takes its own keys.
-    if (document.querySelector('body > .backdrop, .menu')) return;
+    // A menu or dialog over it takes its own keys (a dialog’s never get here).
+    if (e.target instanceof Element && e.target.closest('.menu')) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       setPaneFull(null);
@@ -125,6 +127,9 @@ export function mountPane(convId) {
     if (!v) return;
     const was = fullKind;
     if (was && was !== kind) leaveFull({ focus: false });
+    // Before Work swaps its body, which takes the item you chose with it.
+    const from = document.activeElement;
+    if (was !== kind) opener = from && from !== document.body ? { el: from, id: from.id } : null;
     const to = kind === 'work' ? work.setFull({ turn: r.turn, at: r.at }) : v.fullBtn;
     if (was === kind) {
       if (kind === 'work') to.focus();
@@ -149,7 +154,10 @@ export function mountPane(convId) {
     for (const a of ['role', 'aria-modal']) v.el.removeAttribute(a);
     v.fullBtn.setAttribute('aria-label', 'Full screen');
     if (kind === 'work') work.setFull(null);
-    if (focus) v.fullBtn.focus();
+    // Focus goes back to what opened it: the icon, or the item you chose in the pane.
+    const back = opener?.el.isConnected ? opener.el : opener?.id ? document.getElementById(opener.id) : null;
+    opener = null;
+    if (focus) (back instanceof HTMLElement && back.offsetParent ? back : v.fullBtn).focus();
   }
   /** The icon in a view’s head: full screen, or back to the pane. */
   const fullToggle = (kind) => () => setPaneFull(fullKind === kind ? null : kind);
@@ -158,6 +166,7 @@ export function mountPane(convId) {
 
   function set(r, { again = false } = {}) {
     const had = el.contains(document.activeElement);
+    const closing = { work: !!work && !r.work, thread: thread && thread.id !== (r.sideId ?? null) ? thread.id : null };
     const sideId = r.sideId ?? null;
     // A view leaving full screen goes back first, so it’s in the pane when it closes or another view goes full.
     // Focus goes back to its icon only if it stays open.
@@ -203,10 +212,13 @@ export function mountPane(convId) {
     el.hidden = !work && !thread;
     el.parentElement?.classList.toggle('has-panel', !el.hidden);
 
-    // Focus that was in a view that closed goes to what opened it: the top bar’s Work button, or the conversation.
+    // Focus that was in a view that closed goes to what opens it: for Work, the top bar’s Work button; for a thread,
+    // its line in the conversation; else the conversation.
     if (had && !el.contains(document.activeElement)) {
-      const button = document.getElementById('work-button');
-      (button?.offsetParent ? button : document.getElementById('main'))?.focus();
+      const button = closing.work ? document.getElementById('work-button') : null;
+      const link = closing.thread ? document.querySelector(`#main a[href*="/side/${CSS.escape(closing.thread)}"]`) : null;
+      const to = [button, link].find((x) => x instanceof HTMLElement && x.offsetParent);
+      /** @type {HTMLElement | null} */ (to ?? document.getElementById('main'))?.focus();
     }
 
     // Full screen: Work on a turn or at an item, or the thread.

@@ -966,7 +966,7 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 .rpane > .pane-full { position: fixed; inset: 0; z-index: 28; background: var(--bg); }
 .sidepanel.pane-full .sp-body > *, .sidepanel.pane-full .sp-foot > * { width: 100%; max-width: 760px; margin-inline: auto; }
 .workpane.pane-full .wp-body { padding: 16px 24px 32px; }
-/* Compact, in the pane: short lists, each item opening the expanded view. */
+/* Compact, in the pane: short lists, each item opening Work full screen. */
 .wp-body { flex: 1; overflow: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 18px; }
 .wp-body:focus { outline: none; }
 .wp-body p { margin: 0; }

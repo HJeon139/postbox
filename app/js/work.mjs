@@ -67,13 +67,14 @@ function workLink(threadId, to, ...children) {
 
 /**
  * Where each change stands, asked of git when Work opens and again once a turn ends, a commit or push lands, or a
- * file is restored. Calls back on every answer.
+ * file is restored. Calls back everyone listening on every answer; the pane’s two forms share one.
  * @param {string} threadId
- * @param {() => void} onChange
  */
-function watchGit(threadId, onChange) {
+function watchGit(threadId) {
   const g = { data: /** @type {any} */ (null), error: '' };
+  const listeners = new Set();
   let timer = 0;
+  let stopped = false;
   const load = async () => {
     try {
       const r = await fetch(`/api/threads/${threadId}/work/git`, { cache: 'no-store' });
@@ -84,7 +85,7 @@ function watchGit(threadId, onChange) {
     } catch (e) {
       g.error = e.message;
     }
-    onChange();
+    if (!stopped) for (const fn of [...listeners]) fn();
   };
   const off = client.on((ch) => {
     if ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId) {
@@ -98,7 +99,13 @@ function watchGit(threadId, onChange) {
   });
   load();
   return Object.assign(g, {
+    /** @param {() => void} fn  @returns {() => void} */
+    listen(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
     stop() {
+      stopped = true;
       off();
       clearTimeout(timer);
     },
@@ -108,19 +115,20 @@ function watchGit(threadId, onChange) {
 /**
  * The whole Work view: Work’s full form, shown when Work in the pane goes full screen.
  * @param {string} threadId  the conversation
- * @param {{ turnId?: string|null, at?: string|null }} [opts]  turnId: show one turn’s work; at: the item or section to
- *   open and go to
+ * @param {{ turnId?: string|null, at?: string|null, gitWatch?: any }} [opts]  turnId: show one turn’s work; at: the item
+ *   or section to open and go to; gitWatch: the pane’s git watcher, to share
  */
-export function mountWork(threadId, { turnId = null, at = null } = {}) {
+export function mountWork(threadId, { turnId = null, at = null, gitWatch = null } = {}) {
   const el = h('div.work-view', { tabindex: '-1', dataset: { thread: threadId } });
   let handle = null;
   const opened = new Set(at ? [at] : []); // ids of the items you opened, kept across repaints
   const loaded = new Map(); // what a diff or an output request returned, by item
   const asked = new Set();
+  const gitNow = gitWatch ?? watchGit(threadId);
   /** @type {any} */
-  let git = null;
-  let gitError = '';
-  const gitNow = watchGit(threadId, () => {
+  let git = gitNow.data;
+  let gitError = gitNow.error;
+  const unlisten = gitNow.listen(() => {
     git = gitNow.data;
     gitError = gitNow.error;
     paint();
@@ -695,7 +703,8 @@ export function mountWork(threadId, { turnId = null, at = null } = {}) {
     },
     destroy() {
       off();
-      gitNow.stop();
+      unlisten();
+      if (!gitWatch) gitNow.stop();
       cancelAnimationFrame(frame);
     },
   };
@@ -739,12 +748,13 @@ export function mountWorkPane(threadId) {
   /** @type {any} */
   let git = null;
   let gitError = '';
-  const gitNow = watchGit(threadId, () => {
+  const gitNow = watchGit(threadId);
+  gitNow.listen(() => {
     git = gitNow.data;
     gitError = gitNow.error;
     paint();
   });
-  /** Opens the expanded view, at an item or section, or on one turn. */
+  /** Opens Work full screen, at an item or section, or on one turn. */
   const go = (to) => openWork(threadId, { full: true, ...to });
 
   const sec = (id, title, count, ...kids) =>
@@ -1050,7 +1060,7 @@ export function mountWorkPane(threadId) {
       full?.view.destroy();
       full = null;
       if (opts) {
-        const view = mountWork(threadId, { turnId: opts.turn ?? null, at: opts.at ?? null });
+        const view = mountWork(threadId, { turnId: opts.turn ?? null, at: opts.at ?? null, gitWatch: gitNow });
         full = { key, view };
         fill(body, view.el);
         body.scrollTop = 0;

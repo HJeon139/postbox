@@ -261,13 +261,15 @@ for (const [width, height] of [
     const file = store.state.work[conv.id].find((e) => e.kind === 'file' && e.rel?.endsWith('refs.bib'));
     const row = `document.getElementById('wc-file-${file.id}') ?? document.getElementById('wc-review-${file.id}')`;
     await page.evaluate(`(${row}).focus()`);
+    const id = await focusedId();
     await press('Enter');
     await page.waitFor(`document.querySelector('.pane-full details[open] > summary#wsum-${file.id}')`, { label: 'refs.bib, opened' });
     assert.equal(await focusedId(), `wsum-${file.id}`);
     await page.waitFor(`document.querySelector('.pane-full .work-diff')`, { label: 'its diff' });
     await press('Escape');
     await page.waitFor(`!${q('.pane-full')}`, { label: 'full screen to end' });
-    assert.equal(await focusedId(), 'work-full');
+    // Back to the item you chose.
+    assert.equal(await focusedId(), id);
   });
 
   await check(`${at}: the thread goes full screen in place, keeping its draft, its scroll and a streaming reply`, async () => {
@@ -402,12 +404,18 @@ for (const [width, height] of [
     await press('Escape');
     await page.waitFor(`!${q('.pane-full')}`);
     assert.equal(await focusedId(), 'work-full');
-    // Another conversation has nothing open; coming back, Work is open again, and so for a plain link to it.
+    // Another conversation has nothing open; coming back, Work is open again, and so for a plain link to it. In a
+    // narrow window, where the pane would cover it, the conversation opens on its own.
     await open(`#/t/${other.id}`);
     assert.equal(await has('.rpane:not([hidden])'), false);
     await open(pane(''));
-    await page.waitFor(q(WORK), { label: 'Work again' });
-    assert.equal(await hash(), pane('?work'));
+    if (width >= 768) {
+      await page.waitFor(q(WORK), { label: 'Work again' });
+      assert.equal(await hash(), pane('?work'));
+    } else {
+      assert.equal(await hash(), pane(''));
+      assert.equal(await has('.rpane:not([hidden])'), false, 'the pane covers the conversation');
+    }
   });
 
   await check(`${at}: #138’s Work page links open the pane`, async () => {
@@ -418,6 +426,9 @@ for (const [width, height] of [
       label: 'the turn’s redirect',
     });
     assert.equal(await has('nav.conv-tabs'), false, 'the tabs are back');
+    // Only a view that’s open goes full screen: with no thread, no thread full screen.
+    await open(pane('?full=thread'));
+    assert.equal(await has('.pane-full'), false, 'something went full screen');
     await noSideways('after the redirect');
   });
 }
