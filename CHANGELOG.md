@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.13.0 (2026-10-23)
+
+### Features
+
+- **agents:** show subagents' narration, thinking and hierarchy in the agent tree
+
+### Fixes
+
+- **agents:** Monitor and other background tools are jobs, and a step after a kept job runs on
+
 ## 0.12.0 (2026-10-23)
 
 ### Features
