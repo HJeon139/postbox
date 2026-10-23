@@ -390,7 +390,9 @@ async function main() {
           // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
           // so, so the tester knows where it went. The first mixed-room run wrote “critic: …” and “researcher: …”.
           const st = facts.state;
-          const last = st?.sessions?.[st?.threads?.[mainThread]?.lastSpeaker]?.handle ?? null;
+          // Who Postbox sends it to: the last speaker, or before anyone has spoken, the conversation’s first agent.
+          const t = st?.threads?.[mainThread];
+          const last = st?.sessions?.[t?.lastSpeaker ?? t?.members?.[0]]?.handle ?? null;
           const named = unaddressed(
             a.text ?? '',
             Object.values(st?.personas ?? {}).map((p) => p.handle),

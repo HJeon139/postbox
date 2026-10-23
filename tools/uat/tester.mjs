@@ -49,7 +49,14 @@ const signIn = () => {
       const dir = mkdtempSync(join(tmpdir(), 'postbox-uat-'));
       signInFile = join(dir, 'settings.json');
       writeFileSync(signInFile, JSON.stringify(s), { mode: 0o600 });
-      process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+      const remove = () => rmSync(dir, { recursive: true, force: true });
+      process.once('exit', remove);
+      // Ctrl+C or a kill skips 'exit': remove it, then let the signal end the run as it would have.
+      for (const sig of ['SIGINT', 'SIGTERM'])
+        process.once(sig, () => {
+          remove();
+          process.kill(process.pid, sig);
+        });
     }
   }
   return signInFile ? ['--settings', signInFile] : [];
