@@ -6,7 +6,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
+import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
@@ -29,6 +29,7 @@ import {
   needAppSend,
   registerApp,
   resolveAppSend,
+  updateApp,
 } from './apps.mjs';
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
@@ -3532,41 +3533,8 @@ export class Runtime {
           given,
         );
       },
-      /**
-       * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
-       * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
-       */
-      update_app({ id, code, permissions, title, summary = '' }, given = {}) {
-        const app = rt.s.apps[id];
-        if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
-        const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
-        if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
-        const versions = [
-          ...app.versions,
-          {
-            v: app.versions.length + 1,
-            code,
-            permissions: v.block.permissions ?? [],
-            files: given.files ?? app.versions[app.current - 1].files ?? [],
-            summary: String(summary ?? '').slice(0, 300),
-            at: Date.now(),
-          },
-        ];
-        const next = {
-          ...app,
-          title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
-          versions,
-          current: versions.length,
-          check: { status: 'pending', attempt: app.check.attempt },
-        };
-        rt.store.emit('app', next);
-        // A new version always comes to the newest point, where the agent says what changed (#49).
-        let moved = false;
-        if (followsConversation({ type: 'app' })) {
-          if (app.threadId === threadId()) endSegment();
-          moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
-        }
-        return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
+      update_app(args, given) {
+        return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
       },
       define_term({ term, definition, key, source }) {
         if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };

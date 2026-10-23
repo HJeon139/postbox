@@ -2,6 +2,7 @@
 // and its saved state and the host data it asks for; the files an agent names for it are in server/agent-files.mjs.
 // Each is a Runtime method’s body, with the instance first; Runtime keeps a one-line method that calls it.
 
+import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { httpError } from './helpers.mjs';
 
@@ -187,6 +188,45 @@ export function registerApp(rt, sessionId, block, itemId, threadId = rt.s.sessio
     state: null,
     check: { status: 'pending', attempt: 0, problems: [] },
   });
+}
+
+/**
+ * @param {any} rt  the Runtime @param {string} sessionId @param {any} turn  the turn the tools act for, or null
+ * @param {() => string} threadId  where the turn speaks @param {() => void} endSegment  ends the reply so far
+ * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
+ * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
+ */
+export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '' }, given = {}) {
+  const app = rt.s.apps[id];
+  if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
+  const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
+  if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
+  const versions = [
+    ...app.versions,
+    {
+      v: app.versions.length + 1,
+      code,
+      permissions: v.block.permissions ?? [],
+      files: given.files ?? app.versions[app.current - 1].files ?? [],
+      summary: String(summary ?? '').slice(0, 300),
+      at: Date.now(),
+    },
+  ];
+  const next = {
+    ...app,
+    title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
+    versions,
+    current: versions.length,
+    check: { status: 'pending', attempt: app.check.attempt },
+  };
+  rt.store.emit('app', next);
+  // A new version always comes to the newest point, where the agent says what changed (#49).
+  let moved = false;
+  if (followsConversation({ type: 'app' })) {
+    if (app.threadId === threadId()) endSegment();
+    moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
+  }
+  return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
 }
 
 /** Host tools that apps (through the bridge) and agents can use, if granted. */
