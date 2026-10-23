@@ -79,7 +79,7 @@ Merge order: M1 core, then transcript and threads.
 **Branches.**
 - Branch from `main` at the start, and stay based on it.
 - Don’t rebase onto another session’s branch.
-- One commit per issue, as a Conventional Commit (`feat(scope): …`, `fix(scope): …`, `type!: …` for a breaking change; see engineering-practices.md, “Commits and versions”), with `Fixes #n` on its own line, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. The integrator runs `npm run release` after each merge to main.
+- One commit per issue, as a Conventional Commit (`feat(scope): …`, `fix(scope): …`, `type!: …` for a breaking change; see engineering-practices.md, “Commits and versions”), with `Fixes #n` on its own line, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. CI releases each merge to main (`.github/workflows/release.yml`).
 
 **Gate.** Before you hand off, these pass in your worktree:
 - `npm run check`
