@@ -11,6 +11,7 @@ Follow a side question without filling the main agent’s memory: the thread’s
 ## Expected functionality
 
 - Shows the root message (clamped, Show all), what the forked agent remembers, the replies, and a composer.
+- Under its header, “Agents in this thread” lists the thread’s agents, with the same rows and [quick panel](../../shell/rail/agents-section.md) as the sidebar’s (#105). The thread’s composer has no `/` commands, so this is where its agents’ model, effort, mode and tools change. Model and effort set here are the thread’s own: the conversation’s session keeps its own.
 - Summarize back posts a summary to the conversation; Send to conversation posts one reply.
 - One summary at a time (#93): from the click until the summary is posted, the button reads “Summary requested…” and is disabled, in every tab, and the server refuses a second request. If the turn fails or is stopped, the button comes back.
 - Once the summary is posted, the reply it came from shows “Sent to the conversation”, with no Send button, so it can’t go twice. While the summary is still being written, its replies can’t be sent on their own.

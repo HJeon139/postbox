@@ -4,6 +4,7 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
+import { agentsSection } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession, uploadFile } from './client.mjs';
@@ -11,7 +12,7 @@ import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from 
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
-import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
+import { announceStreaming, navigate, openMenu, openWork, paneHref, say, toast } from './ui.mjs';
 
 const S = () => client.state;
 const handles = () =>
@@ -467,6 +468,8 @@ function renderItem(it, prev, ctx) {
             )
           : null,
         jobRows(it, steps),
+        // What the turn changed, ran and published, from the work ledger (#132), leading to it.
+        it.work ? workChip(it, ctx) : null,
         it.text || it.status === 'streaming' ? h('div.md') : null,
         it.status === 'stopped' ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
         it.status === 'failed'
@@ -584,6 +587,26 @@ function renderItem(it, prev, ctx) {
     default:
       return h('div.col.small.dim', `Unknown item “${it.kind}”.`);
   }
+}
+
+/** A turn’s line from the work ledger (#132), which opens the conversation’s Work in the right pane, at that turn. */
+function workChip(it, ctx) {
+  const t = client.state.threads[ctx.threadId];
+  const conv = (t?.kind === 'side' || t?.kind === 'topic') && t.parentId ? t.parentId : ctx.threadId;
+  return h(
+    'a.work-chip',
+    {
+      href: paneHref(conv, { work: true, turn: it.turnId }),
+      'aria-label': `This turn’s work: ${it.work}`,
+      // Beside the thread that’s open, if any: the address is worked out when you choose it.
+      onclick: (e) => {
+        e.preventDefault();
+        openWork(conv, { turn: it.turnId });
+      },
+    },
+    icon('file', 'i-sm'),
+    it.work,
+  );
 }
 
 function failureText(msg = 'This reply didn’t finish.') {
@@ -2147,6 +2170,8 @@ export function mountSidePanel(parentId, sideId) {
   const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
   const agents = sessionsOf(sideId).filter((x) => !x.archived);
   const body = h('div.sp-body', topic ? threadRoot(root, agents) : null, tr.el);
+  // A topic thread’s agents, with the same rows and quick panel as the sidebar’s (#105): its composer has no / commands.
+  const who = topic ? agentsSection(sideId, { label: 'Agents in this thread' }) : null;
   // One summary at a time (#93): from the request until it’s posted or the turn ends, the button waits. The
   // server keeps the request on the thread, so a reload or a second tab waits too, and it refuses a second one.
   // From the click until the server’s own state shows the request: its agent at work on it.
@@ -2208,6 +2233,7 @@ export function mountSidePanel(parentId, sideId) {
         icon('x'),
       ),
     ),
+    who ? h('div.sp-agents', who.el) : null,
     body,
     h('div.sp-foot', comp.el),
   );
@@ -2218,6 +2244,7 @@ export function mountSidePanel(parentId, sideId) {
     el,
     destroy() {
       off();
+      who?.destroy();
       tr.destroy();
       comp.destroy();
     },

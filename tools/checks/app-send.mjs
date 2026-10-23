@@ -19,8 +19,8 @@ import { start } from '../../server/index.mjs';
 import { Runtime } from '../../server/runtime.mjs';
 import { launch, sleep } from '../cdp.mjs';
 
-const PORT = 4411;
-const CHROME_PORT = 9611;
+const PORT = Number(process.env.PB_PORT ?? 4411);
+const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9611);
 const LIMIT = Runtime.APP_SEND_LIMIT;
 
 /** Fails fast when something else already listens on a port this check needs. */
@@ -227,8 +227,9 @@ try {
   let stole = false;
   for (let i = 0; i < 3; i++) {
     await clickSpam();
+    // The page, where nothing acts on a click: the conversation’s title in the top bar (its rings open panels, #105).
     const top = await page.evaluate(
-      `(() => { const b = document.querySelector('.topbar').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
+      `(() => { const b = document.querySelector('.topbar .crumbs .title').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
     );
     await click(top.x, top.y);
     await sleep(300);

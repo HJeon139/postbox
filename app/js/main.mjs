@@ -4,20 +4,54 @@ import './ring.mjs';
 import { onThemeChange } from './apps.mjs';
 import { client, connect, hrefOf, itemsOf, load, needsYou, threadsOf } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
+import { mountPane } from './pane.mjs';
 import { paintStateWords, ringFor } from './ring.mjs';
 import { openPalette } from './sheets.mjs';
 import { mountEmptyProject, mountOverview, mountRail, mountThreads, nextNeedsYou, railHidden, toggleRail, topbar } from './shell.mjs';
-import { focusComposer, mountComposer, mountSidePanel, mountTranscript } from './thread.mjs';
-import { initHoverCards, mdNode, navigate, route, say, setAttention, toast } from './ui.mjs';
+import { focusComposer, mountComposer, mountTranscript } from './thread.mjs';
+import { initHoverCards, mdNode, navigate, paneHref, rememberWork, route, say, setAttention, toast, workRemembered } from './ui.mjs';
 
 const root = $('#root');
 let mounted = [];
 let current = null;
+/** The open conversation’s right pane, which changes in place while you stay in the conversation. */
+let pane = null;
+/** Below this width the right pane covers the conversation (workbench.css). */
+const narrow = matchMedia('(max-width: 767px)');
 
-function render() {
+/**
+ * The address a conversation’s route should have, when it isn’t the one it has: the Work page #138 had opens the
+ * Work pane, and a conversation left with Work open opens it again (rememberWork in ui.mjs).
+ */
+function canonical(r) {
+  if (r.view !== 'thread' || !client.state.threads[r.threadId]) return null;
+  if (r.oldWork) return paneHref(r.threadId, { work: true, turn: r.turn });
+  if (r.work) rememberWork(r.threadId, true);
+  // In a narrow window the pane covers the conversation, so coming back opens the conversation, not Work over it.
+  else if (workRemembered(r.threadId) && !narrow.matches) return paneHref(r.threadId, { side: r.sideId, work: true });
+  return null;
+}
+
+/** @param {{ rebuild?: boolean }} [opts]  rebuild: the whole view, even when only the pane changed */
+function render({ rebuild = false } = {}) {
+  const r = route();
+  const to = canonical(r);
+  if (to) {
+    navigate(to, { replace: true });
+    return;
+  }
+  // Within a conversation, opening and closing a thread or Work changes only the pane: the transcript, the composer
+  // and where you were in them stay as they are.
+  if (!rebuild && pane && current?.view === 'thread' && r.view === 'thread' && r.threadId === current.threadId) {
+    current = r;
+    pane.set(r);
+    document.getElementById('work-button')?.setAttribute('aria-pressed', String(r.work));
+    view(r.threadId);
+    return;
+  }
   for (const m of mounted) m.destroy?.();
   mounted = [];
-  const r = route();
+  pane = null;
   const archived = location.hash === '#/archived';
   if (r.view === 'thread' && !client.state.threads[r.threadId]) {
     navigate('#/');
@@ -78,18 +112,19 @@ function render() {
   });
   comp.el.querySelector('.col').style.position = 'relative';
   comp.el.querySelector('.col').prepend(jumpBox);
-  mounted.push(rail, tr, comp);
-  const side = r.sideId ? mountSidePanel(t.id, r.sideId) : null;
-  if (side) mounted.push(side);
+  // The right pane: a thread, Work, or both.
+  pane = mountPane(t.id);
+  mounted.push(rail, tr, comp, pane);
   const shell = h(
     'div.app',
-    { class: [side ? 'has-panel' : '', railHidden() ? 'rail-hidden' : ''].join(' ') },
+    { class: railHidden() ? 'rail-hidden' : '' },
     topbar({ title: t.title, threadId: t.id }),
     rail.el,
     h('div.main', rail.strip, tr.el, comp.el),
-    side?.el,
+    pane.el,
   );
   root.replaceChildren(shell);
+  pane.set(r);
   paintWords();
   requestAnimationFrame(() => tr.settle());
   view(t.id);
@@ -167,7 +202,7 @@ const paintWords = () => {
 
 client.on((ch) => {
   if (['session', 'item.add', 'load'].includes(ch.type)) paintWords();
-  // The top bar keeps its chips between rebuilds, so its rings follow the session in place (issue #2).
+  // The top bar keeps its rings between rebuilds, so they follow the session in place (issue #2).
   if (ch.type === 'session')
     for (const r of root.querySelectorAll(`header.topbar pb-ring[data-session="${CSS.escape(ch.data.id)}"]`)) ringFor(ch.data, r.getAttribute('size'), r);
   if (ch.type === 'settings' || ch.type === 'load') applyTheme();
@@ -195,9 +230,9 @@ function refreshTop() {
     const t = client.state.threads[current.threadId];
     if (!t) return;
     // Members changed (an agent joined or left): rebuild the whole view.
-    const members = old.querySelectorAll('.present .who-chip').length;
+    const members = old.querySelectorAll('.present .ring-btn').length;
     if (members !== t.members.filter((id) => client.state.sessions[id] && !client.state.sessions[id].archived && !client.state.sessions[id].deleting).length) {
-      render();
+      render({ rebuild: true });
       return;
     }
     old.replaceWith(topbar({ title: t.title, threadId: t.id }));
@@ -313,7 +348,12 @@ initHoverCards((trigger) => {
 
 // ── Boot ────────────────────────────────────────────────────────────────────────────────
 
-addEventListener('hashchange', render);
+addEventListener('hashchange', () => render());
+// Asked to open what’s already open (Work at the same turn): go there again.
+addEventListener('pb-pane', (e) => {
+  const r = route();
+  if (pane && current?.view === 'thread' && r.threadId === current.threadId) pane.set(r, /** @type {CustomEvent} */ (e).detail);
+});
 try {
   await load();
   applyTheme();

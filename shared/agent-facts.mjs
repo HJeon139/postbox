@@ -1,5 +1,5 @@
 // What an agent runs with, in words: its backend, the model that answered its last turn and the effort (#60).
-// The top bar’s chips, the overview’s cards and the conversation and session menus all say it the same way,
+// The sidebar’s agent rows (#105), the overview’s cards and the conversation and session menus all say it the same way,
 // so this is plain data and text, with no DOM. A session runs with the model and effort in its snapshot
 // (fixed when it started, or changed by a command), falling back to its persona’s; the server does the same
 // (server/runtime.mjs, personaFor; server/adapters/setup.mjs, modelOf and effortOf).
@@ -75,12 +75,12 @@ export function runsWith(se, persona, config) {
   };
 }
 
-/** For the top bar’s chip, where room is short: “Opus 5.5”, or “Sonnet 5.5, not Opus 5.5” when it differs. */
+/** For an agent’s row in the sidebar, where room is short: “Opus 5.5”, or “Sonnet 5.5, not Opus 5.5” when it differs. */
 export function chipModel(f) {
   if (f.mock) return '';
   return f.modelDiffers ? `${shortModel(f.model)}, not ${shortModel(f.setModel)}` : shortModel(f.model);
 }
-/** For the chip: “medium effort”, or “high effort, set to medium” when the setting changed since. */
+/** For the row: “medium effort”, or “high effort, set to medium” when the setting changed since. */
 export function chipEffort(f) {
   if (f.mock) return '';
   return f.effortDiffers ? `${effortWord(f.effort)} effort, set to ${effortWord(f.setEffort)}` : `${effortWord(f.effort)} effort`;

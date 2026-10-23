@@ -10,7 +10,7 @@ You switch between a project’s conversations constantly and need to spot a blo
 
 ## Expected functionality
 
-- Shows Overview, Threads (topic threads, with how many have new replies), Direct messages and Rooms, each with a “+”.
+- Shows Overview, Threads (topic threads, with how many have new replies), the open conversation’s [Agents](agents-section.md) (#105), then Direct messages and Rooms, each with a “+”.
 - Other projects with agents that need you are listed at the top.
 - Archived and Personas at the bottom, with the build under Personas in tiny text: `vX.Y.Z · commit`, the version from package.json and the commit Postbox runs from (`POSTBOX_COMMIT`, or the git checkout).
 - Hidden and shown with the sidebar toggle or ⌘\.
@@ -18,7 +18,7 @@ You switch between a project’s conversations constantly and need to spot a blo
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Open a project and check the sections.
+2. Open a project and check the sections. In a conversation, Agents lists its agents, above Direct messages.
 3. Use “+” beside Direct messages and beside Rooms (cancel each).
 4. Open Threads.
 
@@ -27,3 +27,4 @@ You switch between a project’s conversations constantly and need to spot a blo
 ## Related
 
 - [rail row](rail-row.md)
+- [agents section](agents-section.md)

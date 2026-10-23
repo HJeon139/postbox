@@ -53,6 +53,8 @@ const AFTER = [
   ['conversation-menu', 'Corpus planning', q('.menu'), 'conversation-menu'],
   ['rail', 'Corpus planning', q('nav.rail')],
   ['rail-row', 'Corpus planning', q('nav.rail a.row[aria-current]')],
+  ['agents-section', 'Corpus planning', q('nav.rail .agents-sec')],
+  ['agent-quick-panel', 'Corpus planning', q('.dialog.quick'), 'agent-panel'],
   ['overview', '#/', q('main.ov')],
   ['overview-card', '#/', `[...document.querySelectorAll('.ov-col')].find((n) => n.classList.contains('needs'))`],
   ['session-menu', '#/', q('.menu'), 'session-menu'],
@@ -68,6 +70,8 @@ const AFTER = [
     `[...document.querySelectorAll('.transcript > .item')].find((n) => n.querySelector('.who pb-ring') && n.querySelector('.md p'))`,
   ],
   ['activity-line', 'Index the shelf', `[...document.querySelectorAll('.transcript details.activity')].at(0)?.closest('.item')`, 'open-activity'],
+  ['work-chip', 'Citation fixes', `document.querySelector('.transcript .work-chip')?.closest('.item')`],
+  ['work-view', 'work:Citation fixes', q('aside.workpane')],
   ['explainer-citations', 'ReAct, step by step', item('Step 1')],
   ['citation-card', 'ReAct, step by step', q('.hovercard'), 'cite'],
   ['glossary-term', 'ReAct, step by step', item('observation budget')],
@@ -130,6 +134,7 @@ const PREPARE = {
   plus: `document.querySelector('.menu') || document.querySelector('[aria-label="Add a file or a new agent"]').click()`,
   'postbox-menu': `document.querySelector('button.brand').click()`,
   'conversation-menu': `document.querySelector('header.topbar [aria-label^="Actions for"]').click()`,
+  'agent-panel': `document.querySelector('nav.rail .agent-btn').click()`,
   'session-menu': `[...document.querySelectorAll('.ov-col')][0].querySelector('[aria-haspopup="menu"]').click()`,
   mention: `(() => { const t = document.getElementById('composer-input'); t.focus(); t.value = '@'; t.setSelectionRange(1, 1); t.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   'open-activity': `document.querySelector('.transcript details.activity')?.setAttribute('open', '')`,
@@ -187,6 +192,11 @@ const page = await launch({ port: Number(process.env.PB_CHROME_PORT ?? 9391) });
 await page.size(1280, 1000, { theme: 'light' });
 let loads = 0;
 const goto = async (hash) => {
+  // Each view opens as its address says: a conversation’s Work stays open only where the address asks for it, not
+  // because an earlier view left it open in this browser.
+  await page
+    .evaluate(`(() => { try { for (const k of Object.keys(localStorage)) if (k.startsWith('pb-work-')) localStorage.removeItem(k); } catch {} })()`)
+    .catch(() => {});
   await page.goto(`${origin}/?v=${++loads}${hash}`);
   await sleep(1200);
 };
@@ -246,13 +256,15 @@ try {
   const hashFor = (where) =>
     where.startsWith('#')
       ? where
-      : where === 'threads'
-        ? `#/p/${topic?.projectId ?? project.id}/threads`
-        : where === 'topic'
-          ? `#/t/${topic.parentId}/side/${topic.id}`
-          : where === 'side'
-            ? `#/t/${side.parentId}/side/${side.id}`
-            : `#/t/${byTitle(where)?.id}`;
+      : where.startsWith('work:')
+        ? `#/t/${byTitle(where.slice(5))?.id}?work`
+        : where === 'threads'
+          ? `#/p/${topic?.projectId ?? project.id}/threads`
+          : where === 'topic'
+            ? `#/t/${topic.parentId}/side/${topic.id}`
+            : where === 'side'
+              ? `#/t/${side.parentId}/side/${side.id}`
+              : `#/t/${byTitle(where)?.id}`;
   for (const [name, where, finder, prep] of AFTER) {
     if (ONLY && !ONLY.has(name)) continue;
     await goto(hashFor(where));

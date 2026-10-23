@@ -5,7 +5,7 @@
 //   node tools/checks/persona-setup.mjs
 //
 // It starts its own fresh Postbox on port 4400 (demo mode, with a stand-in Claude Code backend so the real
-// backend’s fields show) and Chrome on 9600, prints one PASS or FAIL line per assertion, and exits non-zero on
+// backend’s fields show) and Chrome on 9600 (PB_PORT and PB_CHROME_PORT move them), prints one PASS or FAIL line per assertion, and exits non-zero on
 // any failure.
 
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -15,8 +15,8 @@ import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
 import { launch, sleep } from '../cdp.mjs';
 
-const PORT = 4400;
-const CHROME_PORT = 9600;
+const PORT = Number(process.env.PB_PORT ?? 4400);
+const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9600);
 
 /** Fails fast when something else already listens on a port this check needs. */
 const free = (port) =>

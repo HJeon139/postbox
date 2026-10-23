@@ -6,11 +6,31 @@ import { finishedSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
 
 // ── Navigation ──────────────────────────────────────────────────────────────────────────
-// Routes: #/ (overview), #/t/<threadId>, #/t/<threadId>/side/<sideThreadId>
+// Routes: #/ (overview), #/t/<threadId>, and #/t/<threadId>/side/<sideThreadId> with a thread in the right pane.
+// After either, what else the pane shows (#132): ?work opens the conversation’s Work, turn=<turnId> scrolls it to a
+// turn, full=work or full=thread shows that view full screen (Work on that turn alone, with turn), and at=<id> opens
+// one item in full-screen Work. The Work page #138 had, #/t/<threadId>/work or /work/<turnId>, is read as oldWork,
+// and main.mjs sends it to the pane.
 
 export function route() {
-  const m = location.hash.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+))?/);
-  if (m) return { view: 'thread', threadId: m[1], sideId: m[2] ?? null };
+  const [path, query = ''] = location.hash.split('?');
+  const m = path.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+)|\/(work)(?:\/([^/]+))?)?/);
+  if (m) {
+    const q = new URLSearchParams(query);
+    // Only a view that’s there can be full screen: Work, or the thread when one is open.
+    const f = q.get('full');
+    const full = f === 'work' || (f === 'thread' && m[2]) ? f : null;
+    return {
+      view: 'thread',
+      threadId: m[1],
+      sideId: m[2] ?? null,
+      work: full === 'work' || q.has('work'),
+      turn: q.get('turn') || m[4] || null,
+      full,
+      at: q.get('at') || null,
+      oldWork: Boolean(m[3]),
+    };
+  }
   const p = location.hash.match(/^#\/p\/([^/]+)(\/threads)?/);
   if (p) return { view: p[2] ? 'threads' : 'project', projectId: p[1] };
   return { view: 'overview' };
@@ -19,6 +39,74 @@ export function navigate(hash, { replace = false } = {}) {
   if (location.hash === hash) return;
   if (replace) location.replace(hash);
   else location.hash = hash;
+}
+
+/**
+ * A conversation’s address with its right pane: a thread (side), and its Work, scrolled to a turn, either view full
+ * screen (full: 'work' or 'thread'; true means Work), or full-screen Work with one item open (at).
+ * @param {string} threadId
+ * @param {{ side?: string|null, work?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null }} [pane]
+ */
+export function paneHref(threadId, { side = null, work = false, turn = null, full = null, at = null } = {}) {
+  const f = full === true ? 'work' : full || null;
+  const q = [
+    work || f === 'work' ? 'work' : '',
+    turn ? `turn=${encodeURIComponent(turn)}` : '',
+    f ? `full=${f}` : '',
+    at ? `at=${encodeURIComponent(at)}` : '',
+  ].filter(Boolean);
+  return `#/t/${threadId}${side ? `/side/${side}` : ''}${q.length ? `?${q.join('&')}` : ''}`;
+}
+
+// A conversation keeps its Work open until you close it, in this browser: a link to the conversation or one of its
+// threads opens Work beside it again. Opening and closing it replace the address rather than add to the history,
+// like the rail, so Back goes to where you were, not to the pane as it was.
+const workKey = (threadId) => `pb-work-${threadId}`;
+/** Whether Work was left open in a conversation. */
+export function workRemembered(threadId) {
+  try {
+    return localStorage.getItem(workKey(threadId)) === '1';
+  } catch {
+    return false;
+  }
+}
+export function rememberWork(threadId, open) {
+  try {
+    if (open) localStorage.setItem(workKey(threadId), '1');
+    else localStorage.removeItem(workKey(threadId));
+  } catch {}
+}
+/**
+ * Opens a conversation’s Work in its right pane, beside the thread open there. turn scrolls it to a turn’s line;
+ * full shows it full screen, at opens one item there. Asked again for what’s already open, it goes there
+ * again (the event “pb-pane”), since the address doesn’t change.
+ * @param {string} threadId
+ * @param {{ turn?: string|null, full?: boolean, at?: string|null }} [opts]
+ */
+export function openWork(threadId, { turn = null, full = false, at = null } = {}) {
+  const r = route();
+  const here = r.view === 'thread' && r.threadId === threadId;
+  rememberWork(threadId, true);
+  const href = paneHref(threadId, { side: here ? r.sideId : null, work: true, turn, full, at });
+  if (location.hash === href) dispatchEvent(new CustomEvent('pb-pane', { detail: { again: true } }));
+  else navigate(href, { replace: here });
+}
+/** Closes a conversation’s Work. */
+export function closeWork(threadId) {
+  const r = route();
+  rememberWork(threadId, false);
+  navigate(paneHref(threadId, { side: r.threadId === threadId ? r.sideId : null }), { replace: true });
+}
+/**
+ * Shows a view of the open conversation’s pane full screen (kind 'work' or 'thread'), or brings it back to the pane
+ * (null). turn and at say where full-screen Work opens.
+ * @param {string|null} kind
+ * @param {{ turn?: string|null, at?: string|null }} [opts]
+ */
+export function setPaneFull(kind, { turn = null, at = null } = {}) {
+  const r = route();
+  if (r.view !== 'thread') return;
+  navigate(paneHref(r.threadId, { side: r.sideId, work: r.work, full: kind, turn, at }), { replace: true });
 }
 
 // ── Toasts ──────────────────────────────────────────────────────────────────────────────
@@ -140,11 +228,13 @@ const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabi
 export function keepFocus(root, paint) {
   const was = document.activeElement;
   if (!root || !was || !root.contains(was)) return paint();
-  const at = $$(FOCUSABLE, root).indexOf(was);
+  // A control that comes back disabled can’t hold focus, so it goes to the next one that can (#105: Stop, once stopped).
+  const enabled = () => $$(FOCUSABLE, root).filter((x) => !(/** @type {any} */ (x).disabled));
+  const at = enabled().indexOf(was);
   const result = paint();
   if (!was.isConnected) {
     const same = was.id ? document.getElementById(was.id) : null;
-    const list = $$(FOCUSABLE, root);
+    const list = enabled();
     /** @type {HTMLElement | undefined} */ (same && root.contains(same) ? same : list[Math.min(at, list.length - 1)])?.focus();
   }
   return result;
@@ -172,7 +262,13 @@ function refind(el) {
 // ── Dialogs ─────────────────────────────────────────────────────────────────────────────
 // Modal, with focus kept inside and returned to where it came from when closed.
 
-export function openDialog({ title, sub, body, foot, size = '', role = 'dialog', onClose, initialFocus }) {
+/**
+ * Opens a modal dialog. With an anchor, a window wide enough shows it beside the anchor, as a popover over the
+ * page; a narrow one shows it as a sheet, like any dialog (#105).
+ * @param {{ title: any, sub?: any, body: any, foot?: any, size?: string, role?: string, onClose?: () => void,
+ *   initialFocus?: () => HTMLElement | null, anchor?: HTMLElement | null }} opts
+ */
+export function openDialog({ title, sub, body, foot, size = '', role = 'dialog', onClose, initialFocus, anchor = null }) {
   // Focus goes back where it came from, or to what replaced it if that was rebuilt meanwhile.
   const back = document.activeElement && document.activeElement !== document.body ? refind(document.activeElement) : null;
   const titleId = `dlg-${Math.random().toString(36).slice(2, 8)}`;
@@ -223,8 +319,23 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
   };
   document.addEventListener('keydown', onKey, true);
   document.body.append(backdrop);
+  if (anchor && innerWidth >= 768) placeBeside(backdrop, dialog, anchor);
   (initialFocus?.() ?? $('input, textarea, select, button.send, .d-body button', dialog))?.focus();
   return { close, dialog };
+}
+
+/** Puts an anchored dialog to the right of its anchor, else below it, inside the window. */
+function placeBeside(backdrop, dialog, anchor) {
+  backdrop.classList.add('anchored');
+  const r = anchor.getBoundingClientRect();
+  const w = dialog.offsetWidth;
+  const ht = dialog.offsetHeight;
+  const beside = r.right + 8 + w <= innerWidth - 8;
+  const top = Math.max(8, Math.min(beside ? r.top : r.bottom + 6, innerHeight - ht - 8));
+  dialog.style.left = `${beside ? r.right + 8 : Math.max(8, Math.min(r.left, innerWidth - w - 8))}px`;
+  dialog.style.top = `${top}px`;
+  // It may grow as it repaints; its body scrolls rather than run off the window.
+  dialog.style.maxHeight = `${innerHeight - top - 8}px`;
 }
 
 // ── Menus ───────────────────────────────────────────────────────────────────────────────
@@ -232,6 +343,9 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
 let openMenuEl = null;
 /** @type {(() => HTMLElement | null) | null} */
 let openAnchor = null;
+/** The control the open menu belongs to, or null when no menu is open. */
+export const menuAnchor = () => (openMenuEl ? (openAnchor?.() ?? null) : null);
+
 export function closeMenu() {
   openMenuEl?.();
   openMenuEl = null;
@@ -431,6 +545,8 @@ export function initHoverCards(resolve) {
       pin();
     }
     if (e.key === 'Escape' && card) {
+      // Escape was for the card, so it’s handled: a full-screen view under it stays (pane.mjs).
+      e.preventDefault();
       const tr = card.trigger;
       hide();
       if (document.activeElement !== tr) {

@@ -16,6 +16,8 @@ export function emptyState() {
     apps: {},
     files: {},
     schedules: {},
+    // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
+    work: {},
   };
 }
 
@@ -66,11 +68,20 @@ export function apply(s, type, d) {
       if (it) it.text = (it.text ?? '') + d.text;
       break;
     }
+    case 'work.add':
+      ((s.work ??= {})[d.convId] ??= []).push(d.entry);
+      break;
+    case 'work.patch': {
+      const e = s.work?.[d.convId]?.find((x) => x.id === d.id);
+      if (e) Object.assign(e, d.patch);
+      break;
+    }
     case 'remove': {
       if (d.kind === 'thread') {
         delete s.threads[d.id];
         delete s.items[d.id];
         delete s.glossary[d.id];
+        if (s.work) delete s.work[d.id];
       }
       if (d.kind === 'session') delete s.sessions[d.id];
       if (d.kind === 'app') delete s.apps[d.id];
