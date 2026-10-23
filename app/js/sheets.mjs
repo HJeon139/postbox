@@ -40,7 +40,8 @@ const PERMISSIONS = [
   ['bypass', 'Run everything', 'It never asks. Use it only in a folder you can lose.'],
 ];
 // The Kiro CLI runs headless, where every ask is a refusal (server/adapters/kiro-cli.mjs), so the modes read differently.
-const KIRO_PERMISSIONS = {
+// The permissions panel uses them too (app/js/permissions.mjs).
+export const KIRO_PERMISSIONS = {
   auto: 'Kiro has no safety check, so this is Ask me: it reads in its folders and runs a few read-only commands, such as git status, and refuses the rest.',
   ask: 'It reads in its folders and runs a few read-only commands, such as git status, and refuses the rest: it can’t ask you.',
   acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',

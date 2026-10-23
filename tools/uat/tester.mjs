@@ -94,13 +94,14 @@ export const SCHEMA = {
     action: {
       type: 'object',
       properties: {
-        type: { enum: ['send', 'thread', 'act', 'review', 'app_click', 'attach_screenshot', 'full_screen', 'wait', 'next_phase', 'done'] },
+        type: { enum: ['send', 'thread', 'act', 'review', 'settings', 'app_click', 'attach_screenshot', 'full_screen', 'wait', 'next_phase', 'done'] },
         text: { type: 'string', description: 'send, thread, attach_screenshot: the message to write.' },
         item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
         choose: { type: 'array', items: { type: 'string' } },
         button: { type: 'string' },
-        target: { type: 'string', description: 'app_click: the visible text to click inside the app.' },
+        target: { type: 'string', description: 'app_click: the visible text to click inside the app. settings: the agent’s handle.' },
+        permissions: { type: 'boolean', description: 'settings: also open its permissions panel.' },
         seconds: { type: 'integer' },
         verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'review: your verdict.' },
         comments: {
@@ -135,6 +136,7 @@ Then choose one action:
 - thread {item, text}: reply in a topic thread on that message.
 - act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text.
 - review {item, verdict, comments}: answer a review block. Approve only what you’d sign off as it is. Otherwise request changes, with at least one comment on a line saying what to change; comment, with comments, when you only have questions.
+- settings {target, permissions?}: open Settings › Personas and edit that agent (target is its handle), to see what it runs on, its model, permissions and setup; with permissions, also open its permissions panel. You get what they say and their screenshots; they close after.
 - app_click {item, target}: click something inside that app by its visible text.
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.
 - full_screen {item}: press that app’s Expand button.

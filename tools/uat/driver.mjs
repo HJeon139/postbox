@@ -175,6 +175,62 @@ export function driver(page) {
       await clickAt(byText(ITEM(key), 'button', 'Submit review'), '“Submit review”');
     },
 
+    /**
+     * Opens Settings › Personas › Edit @handle, as a person does, and reads what the editor says; with
+     * `permissions`, also its Permissions… panel. Screenshots go to `shots`, named by `stem`. Closes it all after.
+     * @param {string} handle  @param {{ permissions?: boolean, shots: string, stem: string }} opts
+     * @returns {Promise<{ editor: string, panel: string|null, files: string[] }>}
+     */
+    async personaSettings(handle, { permissions = false, shots, stem }) {
+      const h = String(handle).replace(/^@/, '');
+      const top = `[...document.querySelectorAll('.dialog')].at(-1)`;
+      // The text, then what its fields hold, which innerText leaves out: the model typed in, the backend picked.
+      const read = () =>
+        ev(`(() => {
+          const d = ${top};
+          if (!d) return '';
+          const name = (c) => (c.id && d.querySelector('label[for="' + c.id + '"]')?.textContent) || c.closest('label')?.textContent || c.getAttribute('aria-label') || '';
+          const values = [...d.querySelectorAll('input, select, textarea')]
+            .filter((c) => c.offsetParent !== null && c.type !== 'file')
+            .map((c) => name(c).trim().replace(/\\s+/g, ' ').slice(0, 60) + ': ' + (c.type === 'checkbox' ? (c.checked ? 'on' : 'off') : c.tagName === 'SELECT' ? c.selectedOptions[0]?.textContent ?? '' : c.value || '(empty)').slice(0, 120))
+            .filter((v) => !v.startsWith(': '));
+          for (const c of d.querySelectorAll('[role=checkbox]'))
+            values.push((c.getAttribute('aria-label') || c.textContent).trim().replace(/\\s+/g, ' ').slice(0, 60) + ': ' + (c.getAttribute('aria-checked') === 'true' ? 'on' : 'off'));
+          return d.innerText.replace(/\\n{3,}/g, '\\n\\n').slice(0, 2500) + (values.length ? '\\n\\nFields hold: ' + values.join('; ') : '');
+        })()`);
+      const files = [];
+      const shoot = async (name) => {
+        const f = `${shots}/${stem}-${name}.png`;
+        const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(f, Buffer.from(data, 'base64'));
+        files.push(f);
+      };
+      try {
+        await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
+        await clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Personas'), 'the Personas tab');
+        await clickAt(`document.querySelector(${J(`.dialog [aria-label="Edit @${h}"]`)})`, `Edit @${h}`);
+        await page.waitFor(`!!document.getElementById('pe-d')`, { label: 'the persona editor' });
+        await sleep(300);
+        const editor = await read();
+        await shoot('persona');
+        let panel = null;
+        if (permissions) {
+          if (!(await ev(`!!document.getElementById('pe-perms')`))) panel = '(This persona has no Permissions… button: it runs on the mock.)';
+          else {
+            const before = await ev(`document.querySelectorAll('.dialog').length`);
+            await clickAt(`document.getElementById('pe-perms')`, 'Permissions…');
+            await page.waitFor(`document.querySelectorAll('.dialog').length > ${before}`, { label: 'the permissions panel' });
+            await sleep(800);
+            panel = await read();
+            await shoot('permissions');
+          }
+        }
+        return { editor, panel, files };
+      } finally {
+        for (let i = 0; i < 3 && (await ev(`!!document.querySelector('.backdrop')`)); i++) await press('Escape');
+      }
+    },
+
     /** Attaches a file through the composer’s file picker. */
     async attach(file) {
       const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('.composer input[type=file]')` });

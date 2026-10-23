@@ -33,6 +33,8 @@ const { values: opt } = parseArgs({
     port: { type: 'string', default: '4310' },
     'chrome-port': { type: 'string', default: '9510' },
     steps: { type: 'string', default: '40' },
+    // Start at this phase (1 is the first), to rerun a later one without the earlier ones; the tester sets up what it needs.
+    phase: { type: 'string', default: '1' },
     'turn-timeout': { type: 'string', default: '900' },
     budget: { type: 'string', default: '8' },
     'tester-model': { type: 'string', default: 'claude-sonnet-5-5' },
@@ -217,7 +219,8 @@ async function main() {
     const labels = new Map(); // item key → I1…
     const keys = new Map(); // I1… → item key
     const seen = new Map(); // item key → text last shown to the tester
-    let phase = 0;
+    let phase = Math.min(Math.max(Number(opt.phase) - 1 || 0, 0), scenario.phases.length - 1);
+    if (phase) log(`Starting at phase ${phase + 1}: ${scenario.phases[phase].title}.`);
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
@@ -335,7 +338,12 @@ async function main() {
         ph.text,
         lastAction
           ? `Your last action: ${JSON.stringify(lastAction)}${actionError ? `. It failed: ${actionError}` : ''}${actionResult ? `. Result: ${actionResult}` : ''}`
-          : 'Nothing has happened yet: start the phase.',
+          : phase
+            ? `Nothing has happened yet. This run starts at phase ${phase + 1}, skipping the ones before it, so first set up briefly what this phase needs (the earlier phases are only context): ${scenario.phases
+                .slice(0, phase)
+                .map((p) => p.title)
+                .join('; ')}.`
+            : 'Nothing has happened yet: start the phase.',
         timedOut ? `The run itself pressed Stop: ${timedOut} A “Stopped by you” line is from that, not a bug.` : '',
         obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
         `Agents: ${obs.states.join('; ') || 'none yet'}`,
@@ -393,7 +401,20 @@ async function main() {
         } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'act') await d.act(key, a);
         else if (a.type === 'review') await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
-        else if (a.type === 'app_click') {
+        else if (a.type === 'settings') {
+          const r = await d.personaSettings(a.target ?? '', {
+            permissions: a.permissions === true,
+            shots: paths.shots,
+            stem: `${String(step).padStart(2, '0')}-settings`,
+          });
+          actionResult = [
+            `Settings › Personas › @${String(a.target ?? '').replace(/^@/, '')} says:\n${r.editor}`,
+            r.panel ? `Its permissions panel says:\n${r.panel}` : '',
+            `Screenshots: ${r.files.map((f) => relative(dir, f)).join(', ')}`,
+          ]
+            .filter(Boolean)
+            .join('\n\n');
+        } else if (a.type === 'app_click') {
           // The transcript doesn’t change when an app does, so say what the click did inside the app.
           const before = (await d.appInside(key))?.text;
           await d.appClick(key, a.target ?? '');
