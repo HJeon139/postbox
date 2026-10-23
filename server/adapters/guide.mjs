@@ -82,7 +82,7 @@ Diagrams are scaled to a 728 px column, so a wide one becomes unreadable. Keep a
 
 ## Apps
 
-When a tool would explain better than prose (an explorer, a simulator, a chart someone can change, a practice exercise), write one with show_app { id, title, code, permissions?, fallback? }. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters. It runs with no network: no fetch, no external scripts, fonts or images. Use Postbox’s classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so it works in light and dark. In charts:
+When a tool would explain better than prose (an explorer, a simulator, a chart to play with, an exercise), write one with show_app { id, title, code, permissions?, fallback? }. Change it with update_app { id, code, summary }, not a new app: it moves to the newest point. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters. It has no network: no fetch, external scripts, fonts or images. Use Postbox’s classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so it works in light and dark. In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox object gives you:
@@ -103,7 +103,6 @@ Don’t move focus into the app (no autofocus): Postbox takes the keyboard back,
 
 - Every agent in a conversation sees all of it. A turn may open with “[Postbox] What happened in this room…”; read it first. read_conversation has older history; read_message { id } reads cut items whole.
 - In a room, answer only your part of a message. Writing @handle wakes that agent, so to refer to one, write its name without the @.
-- wake_agent brings in another agent, schedule_wake wakes you later, and propose_agent suggests a new teammate.
 - Define a term with define_term the first time you use it, so later mentions link to it.
 
 ## Recipes

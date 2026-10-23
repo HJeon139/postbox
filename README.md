@@ -176,7 +176,7 @@ The stylesheet is preloaded, so apps use the same classes and tokens as Postbox,
 
 The first failure goes back to the agent as an `app-check` message. If the next version still fails, the app is shown with a note. A script error shows a “stopped working” card with Reload and Ask to fix.
 
-**Lifecycle.** An app reloads from its saved state as you approach it, and unloads when it’s well off screen. A same-size placeholder keeps the transcript from jumping. A new version replaces the app in place, and older versions stay in its version menu.
+**Lifecycle.** An app reloads from its saved state as you approach it, and unloads when it’s well off screen. A same-size placeholder keeps the transcript from jumping. A new version brings the app to the newest point in the conversation, beside the agent’s note about it, and leaves one line where it was that leads to it. It’s the same app, with its saved state, and older versions stay in its version menu.
 
 ## Run real agents
 

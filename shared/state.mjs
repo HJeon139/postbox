@@ -63,6 +63,16 @@ export function apply(s, type, d) {
       if (it) Object.assign(it, d.patch);
       break;
     }
+    // An item brought to the newest point (#49, #92): a stub takes its old place, and the item itself, with its id,
+    // goes last, so whatever names it (an answer, a needs-you, an app) still finds the one live copy.
+    case 'item.move': {
+      const list = s.items[d.threadId];
+      const i = list?.findIndex((x) => x.id === d.id) ?? -1;
+      if (i < 0) break;
+      const [it] = list.splice(i, 1, d.stub);
+      list.push(Object.assign(it, d.patch));
+      break;
+    }
     case 'item.text': {
       const it = s.items[d.threadId]?.find((i) => i.id === d.id);
       if (it) it.text = (it.text ?? '') + d.text;

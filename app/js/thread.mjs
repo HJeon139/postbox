@@ -261,6 +261,23 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       el.append(n);
       paintWorking();
       grew();
+    } else if (ch.type === 'item.move' && d.threadId === threadId) {
+      // An update brought an app or a block to the newest point (#49, #92). Its stub takes its old place, the same
+      // height a line takes, and what you were reading stays put: if that was the item, the stub holds its place.
+      const list = itemsOf(threadId);
+      const at = list.findIndex((x) => x.id === d.stub.id);
+      const stub = render(d.stub, list[at - 1]);
+      nodes.get(d.id)?.replaceWith(stub);
+      nodes.set(d.stub.id, stub);
+      if (anchor?.key === d.id) anchor = { key: d.stub.id, at: Math.max(0, anchor.at) };
+      // The message after it now follows the stub, so whether it names its speaker can change.
+      if (list[at + 1] && list[at + 1].id !== d.id) rerender(list[at + 1].id);
+      release();
+      const n = render(list[list.length - 1], list[list.length - 2]);
+      nodes.set(d.id, n);
+      el.append(n);
+      paintWorking();
+      grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
       rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
@@ -605,6 +622,8 @@ function renderItem(it, prev, ctx) {
       return toolAskBlock(it, ctx);
     case 'appsend':
       return renderAppSendCard(it, ctx);
+    case 'moved':
+      return movedLine(it, ctx);
     case 'proposal':
       return proposalBlock(it, ctx, showWho);
     default:
@@ -853,6 +872,37 @@ function systemLine(it, _ctx) {
     default:
       return h('div.col.sys-line', it.text ?? '');
   }
+}
+
+/**
+ * Where an app or a block was before an update brought it to the newest point (#49, #92): one line that leads to it.
+ * There’s one live copy, below; this only says it moved.
+ */
+function movedLine(it, ctx) {
+  const live = itemsOf(ctx.threadId).some((x) => x.id === it.itemId);
+  return h(
+    'div.col.sys-line.moved',
+    icon('down', 'i-sm'),
+    h('span', h('b', it.title), it.what === 'app' ? ` · updated to v${it.v} below` : ' · asked again below'),
+    live
+      ? h(
+          'button.btn.sm.ghost',
+          {
+            type: 'button',
+            // The name starts with the words on the button, so saying what you see presses it (WCAG 2.5.3).
+            'aria-label': `Go to it: ${it.title}`,
+            onclick: (e) => {
+              const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
+              const node = box?.querySelector(`:scope > [data-key="${CSS.escape(it.itemId)}"]`);
+              if (!(node instanceof HTMLElement)) return;
+              node.scrollIntoView({ block: 'center' });
+              (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
+            },
+          },
+          'Go to it',
+        )
+      : null,
+  );
 }
 
 function hopBlock(it, ctx) {

@@ -18,6 +18,7 @@ const EVENT_TYPES = [
   'glossary',
   'item.add',
   'item.patch',
+  'item.move',
   'item.text',
   'work.add',
   'work.patch',

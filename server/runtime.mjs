@@ -263,6 +263,32 @@ export class Runtime {
   patchItem(threadId, id, patch) {
     this.store.emit('item.patch', { threadId, id, patch });
   }
+  /**
+   * Brings an item to the newest point in its thread (#49, #92), for an update the person has to see: an app’s new
+   * version, or a block that asks again. The agent explains the change in its newest message, so the item belongs
+   * beside it. The item keeps its id, so there’s only ever one live copy, and a one-line stub takes its old place and
+   * leads to it. An item that’s already the newest just takes the patch.
+   * @param {string} threadId @param {string} id
+   * @param {{ what: 'app'|'block', title: string, v?: number }} stub  what the stub says moved
+   * @param {Record<string, any>} [patch]  set on the item as it moves
+   * @returns {boolean} whether it moved
+   */
+  bringForward(threadId, id, stub, patch = {}) {
+    const items = this.store.items(threadId);
+    const i = items.findIndex((x) => x.id === id);
+    if (i < 0) return false;
+    if (i === items.length - 1) {
+      if (Object.keys(patch).length) this.patchItem(threadId, id, patch);
+      return false;
+    }
+    const now = Date.now();
+    const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub };
+    this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, at: now, movedAt: now } });
+    // A session whose catch-up marker was the item now reads on from the stub, where the item was, so what came
+    // after it isn’t skipped.
+    for (const se of this.sessionsIn(threadId)) if (se.seenItem === id) this.updateSession(se.id, { seenItem: st.id });
+    return true;
+  }
   updateSession(id, patch) {
     const se = this.s.sessions[id];
     if (!se) return;
@@ -3606,14 +3632,18 @@ export class Runtime {
           ...app.versions,
           { v: app.versions.length + 1, code, permissions: v.block.permissions ?? [], summary: String(summary ?? '').slice(0, 300), at: Date.now() },
         ];
-        rt.store.emit('app', {
+        const next = {
           ...app,
           title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
           versions,
           current: versions.length,
           check: { status: 'pending', attempt: app.check.attempt },
-        });
-        return { ok: true, message: `App ${id} is now v${versions.length}.` };
+        };
+        rt.store.emit('app', next);
+        // A new version always comes to the newest point, where the agent says what changed (#49).
+        endSegment();
+        const moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
+        return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
       },
       define_term({ term, definition, key, source }) {
         if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };

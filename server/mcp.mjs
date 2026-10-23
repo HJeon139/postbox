@@ -52,7 +52,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'update_app',
-    description: `Replace an app you showed with a new version, in place, up to ${n('appCode')} characters. Older versions stay in its version menu.`,
+    description: `Replace an app you showed with a new version, up to ${n('appCode')} characters, rather than showing a second app. The app moves to the newest point in the conversation, with its saved state, and its old place becomes a one-line link to it. Older versions stay in its version menu; summary (up to 300 characters) names what changed.`,
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' }, code: { type: 'string' }, permissions: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } },

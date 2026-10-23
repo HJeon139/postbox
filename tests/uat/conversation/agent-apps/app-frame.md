@@ -15,6 +15,7 @@ Agents write software when it explains better than prose; it must run safely and
 - Checked at 375 and 1280 px before you see it; a failed check goes back to the agent once, then shows with a note.
 - The check also measures legibility: SVG marks under 4 px, text under 9 px, dashes too fine to tell from solid lines, and an app that shows only an error or missing-data message. These are warnings: the app is shown “with notes for @agent”, and the agent is told in its lint turn.
 - Version menu ([screenshot](../../screenshots/app-version-menu.png)) shows older versions read-only.
+- **A new version follows the conversation** (#49): `update_app` brings the app to the newest point, beside the agent’s note about the change, so it’s in view without scrolling when you’re at the bottom. Its old place becomes one line, “Pair explorer · updated to v2 below”, with Go to it. It’s the same app, not a copy: one frame runs, and its saved state and version menu carry over. Scrolled up, what you’re reading doesn’t move; if you were reading the app itself, its line takes its place. An app that’s already the newest item just updates.
 - **Full screen** ([screenshot](../../screenshots/app-fullscreen.png)) fills the window with the app, in place: the same frame, so it doesn’t reload and keeps what you were doing. Focus moves to the button, now “Exit full screen”, and Tab stays inside. Escape (on the page, or inside the app unless the app uses Escape itself) or the button brings it back to the column, with focus on the button, at the height its content now needs (up to the column’s cap). The version menu works while full screen. Leaving the conversation ends full screen: coming back shows the app in the column.
 - A crash shows a card with Reload and Ask to fix ([screenshot](../../screenshots/app-crashed.png)).
 - Saved state survives reloads; saving never reloads the frame.
@@ -28,11 +29,12 @@ Agents write software when it explains better than prose; it must run safely and
 2. In “Corpus explorer”, search, pick passages, send them; switch to v1 and back. Press Full screen, use the app, switch versions, then press Escape; do it again and close it with the button, by keyboard.
 3. Reload the page and check the app restores its state.
 4. Run `node tools/checks/app-fullscreen.mjs`: the frame fills at least 90% of the window without reloading, Escape brings it back with focus on the button, an app that grew comes back taller, an app’s own Escape stays in the app, and full screen ends when you leave the conversation.
-5. Run `node tools/checks/app-send.mjs`: an app that sends on load is refused, a click or Enter in it sends, and a frame that grabs focus can’t send.
-6. Run `node tools/check-contract.mjs`: a hand-off of 1,258 items with their text rejects inside the app, naming the 64 KB limit, and the same hand-off by id goes through.
-7. For the legibility warnings, run `node tools/check-feedback.mjs`: it shows a chart too small to read, a readable one, and an app with only an error.
+5. Run `node tools/checks/follow.mjs`: an updated app shows at the bottom, in view, with one frame and a stub where it was; scrolled up, the message you’re reading stays put; reading the app, its stub holds the place, and Go to it leads to the app.
+6. Run `node tools/checks/app-send.mjs`: an app that sends on load is refused, a click or Enter in it sends, and a frame that grabs focus can’t send.
+7. Run `node tools/check-contract.mjs`: a hand-off of 1,258 items with their text rejects inside the app, naming the 64 KB limit, and the same hand-off by id goes through.
+8. For the legibility warnings, run `node tools/check-feedback.mjs`: it shows a chart too small to read, a readable one, and an app with only an error.
 
-**Pass if:** The app works, versions switch, state restores, the frame doesn’t reload on its own or when it goes full screen, no line appears in your voice that you didn’t click or type for, and only the unreadable apps get notes.
+**Pass if:** The app works, versions switch, a new version shows at the bottom with one line where it was, state restores, the frame doesn’t reload on its own or when it goes full screen, no line appears in your voice that you didn’t click or type for, and only the unreadable apps get notes.
 
 ## Related
 
