@@ -12,11 +12,27 @@ A chat room for directing several AI agents at once. You message them, wake them
 
 ## Run it
 
-Postbox needs Node 22 or later. It runs with no dependencies at all:
+Postbox needs Node 22 or later. It runs with no dependencies at all. From a clone:
 
 ```bash
-node server/index.mjs
+npm start
 ```
+
+**As a package.** Postbox isn’t published to npm yet, so pack it from a clone and install the file it makes, which gives you a `postbox` command:
+
+```bash
+npm pack
+```
+
+```bash
+npm install -g ./postbox-<version>.tgz
+```
+
+```bash
+postbox
+```
+
+A global install brings the optional packages too (the Agent SDK and Kokoro, several hundred MB); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo` and `--move-data`. The package holds only what runs (`bin/`, `app/`, `server/` and `shared/`), and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
 
 Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `~/.postbox` as an event log, so they survive a restart and an upgrade. Set `POSTBOX_HOME` to keep them somewhere else, or pass `--data <folder>` for one run. Add `--fresh` to start over.
 
@@ -307,7 +323,7 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 
 | Command | What it does |
 |---|---|
-| `node server/index.mjs [--port 4173] [--data <folder>] [--fresh] [--demo]` | Runs Postbox, with its data in `~/.postbox` unless `POSTBOX_HOME` or `--data` says otherwise. A fresh install seeds three agents: @researcher, @developer and @critic. `--demo` seeds the demo’s agents, projects and conversations instead, enables the demo controls and uses the mock only. |
+| `postbox [--port 4173] [--data <folder>] [--fresh] [--demo]` | The same as `npm start` or `node server/index.mjs` in a clone. Runs Postbox, with its data in `~/.postbox` unless `POSTBOX_HOME` or `--data` says otherwise. A fresh install seeds three agents: @researcher, @developer and @critic. `--demo` seeds the demo’s agents, projects and conversations instead, enables the demo controls and uses the mock only. |
 | `node tools/demo.mjs [--port] [--speed]` | Plays every block and error state on a fresh Postbox |
 | `node tools/shoot-app.mjs [--baseline]` | Plays the demo in headless Chrome, screenshots every scene at 375 and 1280 px in both modes, and checks each with axe-core (`AXE=0` skips it) |
 | `node tools/shoot.mjs [--baseline]` | Screenshots the static mockups |

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { buildInfo } from '../server/build-info.mjs';
 import { bumpOf, changelogSection, nextVersion, parseCommit } from '../tools/commits.mjs';
@@ -55,18 +57,23 @@ test('the changelog groups breaking changes, features and fixes', () => {
 });
 
 test('the build comes from package.json and the commit Postbox runs from', () => {
-  const root = new URL('..', import.meta.url).pathname;
-  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  assert.deepEqual(buildInfo({ root, env: { POSTBOX_COMMIT: 'ABCDEF1234567' }, git: () => 'unused' }), { version, commit: 'abcdef1' });
-  assert.deepEqual(buildInfo({ root, env: {}, git: () => 'fedcba9\n' }), { version, commit: 'fedcba9' });
-  assert.deepEqual(
-    buildInfo({
-      root,
-      env: {},
-      git: () => {
-        throw new Error('not a git checkout');
-      },
-    }),
-    { version, commit: null },
-  );
+  const root = mkdtempSync(join(tmpdir(), 'pb-build-'));
+  try {
+    writeFileSync(join(root, 'package.json'), '{"version":"1.2.3"}');
+    mkdirSync(join(root, 'server'));
+    const version = '1.2.3';
+    const noGit = () => {
+      throw new Error('not a git checkout');
+    };
+    assert.deepEqual(buildInfo({ root, env: { POSTBOX_COMMIT: 'ABCDEF1234567' }, git: () => 'unused' }), { version, commit: 'abcdef1' });
+    // A clone: git’s top is Postbox’s own folder.
+    assert.deepEqual(buildInfo({ root, env: {}, git: () => `${root}\nfedcba9\n` }), { version, commit: 'fedcba9' });
+    assert.deepEqual(buildInfo({ root, env: {}, git: noGit }), { version, commit: null });
+    // An installed copy (#157): the commit npm pack wrote, even inside someone else’s repository.
+    writeFileSync(join(root, 'server', 'build-commit.txt'), '1234abc\n');
+    assert.deepEqual(buildInfo({ root, env: {}, git: noGit }), { version, commit: '1234abc' });
+    assert.deepEqual(buildInfo({ root, env: {}, git: () => `${tmpdir()}\n9999999\n` }), { version, commit: '1234abc' });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

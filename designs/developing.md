@@ -220,7 +220,7 @@ engineering-practices.md, “Tests”, covers speed, recorded fixtures, a failin
 
 ## What ships is what to optimize for
 
-Postbox ships as the repository: `npm start` runs `server/index.mjs`, and whatever that loads is the product. **A convenience that exists for a test or for the demo must not change what a real run does.**
+Postbox ships as the npm package that `files` in package.json lists: the `postbox` command runs `bin/postbox.mjs` (`npm start` in a clone), and whatever that loads is the product. **A convenience that exists for a test or for the demo must not change what a real run does.**
 
 Ask two questions of any test-only affordance:
 1. **Does it ship?** A command-line flag, an environment variable and a default all ship. A fake under `tests/`, a dev dependency and a fixture don’t. `--demo`, `POSTBOX_BACKENDS=mock` and `POSTBOX_CLAUDE_RECORD` all ship.

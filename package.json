@@ -5,6 +5,16 @@
   "license": "Apache-2.0",
   "type": "module",
   "private": true,
+  "bin": {
+    "postbox": "bin/postbox.mjs"
+  },
+  "files": [
+    "bin/",
+    "app/",
+    "server/",
+    "shared/",
+    "CHANGELOG.md"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -25,7 +35,9 @@
     "uat": "node tools/uat-run.mjs",
     "lint:commits": "node tools/lint-commits.mjs",
     "release": "node tools/release.mjs",
-    "hooks": "git config core.hooksPath .githooks"
+    "hooks": "git config core.hooksPath .githooks",
+    "prepack": "node server/build-info.mjs pack",
+    "postpack": "node server/build-info.mjs unpack"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.2",
