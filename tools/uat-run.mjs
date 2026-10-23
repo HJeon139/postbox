@@ -334,6 +334,8 @@ async function main() {
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
       const obs = await observe();
       const fresh = newFindings();
+      // Stop’s question about background jobs (#126) can be a dialog, which isn’t an item: say it’s there.
+      const jobsAsk = await d.jobsAsk();
       const ph = scenario.phases[phase];
       // What “needs you” counts, every step, whether or not it changed: an old review draft stays on the list.
       const waiting = waitingOnYou(facts.state, facts.threads).map((w) => {
@@ -356,6 +358,7 @@ async function main() {
         obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
         `Agents: ${obs.states.join('; ') || 'none yet'}`,
         waiting.length ? `Waiting on you:\n${waiting.map((w) => `- ${w}`).join('\n')}` : 'Nothing is waiting on you.',
+        jobsAsk ? `Postbox is asking about background jobs: “${jobsAsk}” Answer it with jobs.` : '',
         fresh.length ? `The automatic checks found:\n${fresh.map((f) => `- ${f.title}${f.issue ? ` (#${f.issue})` : ''}: ${f.evidence}`).join('\n')}` : '',
       ]
         .filter(Boolean)
@@ -409,8 +412,24 @@ async function main() {
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
         } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
-        else if (a.type === 'act') await d.act(key, a);
-        else if (a.type === 'review') await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
+        else if (a.type === 'act' || a.type === 'review') {
+          // An answer is for the revision the tester read. If the block changed while it decided, a person would see
+          // it change: say so instead of answering text it didn’t read. Otherwise note the revision it answers, so a
+          // check can tell whether Postbox applied the answer to that one (#123).
+          const itemIn = (st) =>
+            Object.values(st?.items ?? {})
+              .flatMap((list) => list ?? [])
+              .find((x) => x?.id === key);
+          const shown = itemIn(facts.state);
+          const now = shown?.kind === 'block' ? itemIn((await api('/api/state')).state) : null;
+          if (now && (now.revision ?? 1) !== (shown.revision ?? 1))
+            throw new Error(
+              `That block changed while you were deciding: you read revision ${shown.revision ?? 1}, and it’s now at revision ${now.revision ?? 1}. Read it again before you answer.`,
+            );
+          if (now) facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
+          if (a.type === 'act') await d.act(key, a);
+          else await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
+        } else if (a.type === 'jobs') await d.answerJobs(a.answer);
         else if (a.type === 'settings') {
           const r = await d.personaSettings(a.target ?? '', {
             permissions: a.permissions === true,
@@ -445,6 +464,11 @@ async function main() {
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
         } else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
+        // Stop or Send now while the turn this action started is running (#126).
+        if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
+          const said = await d.interrupt(a.interrupt);
+          actionResult = actionResult ? `${actionResult} ${said}` : said;
+        }
       } catch (e) {
         actionError = e.message;
         log(`action failed: ${e.message}`);
