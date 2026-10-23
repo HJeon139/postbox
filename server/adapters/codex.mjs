@@ -283,6 +283,17 @@ export class CodexAdapter {
     let activeTurnId = null;
     const pending = new Map();
     let exited = false;
+    /** What Codex last said went wrong in this turn, for the turn’s failure to give as its reason (#61). */
+    let reported = null;
+    /** @type {(err?: Error) => void} */
+    let finish = () => {};
+    // The turn’s end: resolved when it completes or you stop it, rejected with why when it fails. It can fail before
+    // it’s awaited (the app-server exits while it starts), so a rejection waits for the await below.
+    const ended = new Promise((resolve, reject) => {
+      finish = (err) => (err ? reject(err) : resolve(undefined));
+    });
+    ended.catch(() => {});
+    const why = (text) => `${text}${reported ? `: ${reported}` : '.'}`;
     const send = (payload) => child.stdin.write(`${JSON.stringify(payload)}\n`);
     const request = (method, params) =>
       new Promise((resolve, reject) => {
@@ -321,32 +332,44 @@ export class CodexAdapter {
       if (msg.method === 'turn/started') activeTurnId = msg.params?.turn?.id ?? activeTurnId;
       const result = mapper.push(msg);
       if (result?.completed) {
-        mapper.onComplete?.(result.status);
-        if (result.status !== 'completed') fail(new Error(`Codex turn ${result.status ?? 'did not complete'}.`));
-      } else if (result?.error) fail(new Error(result.error));
+        const err = result.status === 'completed' ? undefined : new Error(why(`Codex turn ${result.status ?? 'did not complete'}`));
+        if (err) fail(err);
+        finish(err);
+      } else if (result?.error) {
+        reported = result.error;
+        fail(new Error(result.error));
+      }
     };
     rl.on('line', (line) => {
       void onLine(line).catch(fail);
     });
-    child.on('error', (e) =>
-      fail(
-        new Error(
-          /** @type {any} */ (e).code === 'ENOENT'
-            ? 'Codex CLI is not installed or not on PATH. Install it, or set POSTBOX_CODEX_BIN.'
-            : `Codex app-server could not start: ${e.message}`,
-        ),
-      ),
-    );
+    child.on('error', (e) => {
+      const err = new Error(
+        /** @type {any} */ (e).code === 'ENOENT'
+          ? 'Codex CLI is not installed or not on PATH. Install it, or set POSTBOX_CODEX_BIN.'
+          : `Codex app-server could not start: ${e.message}`,
+      );
+      fail(err);
+      finish(err);
+    });
     child.on('close', (code) => {
       exited = true;
-      if (code !== 0) fail(new Error(`Codex app-server exited with code ${code}${stderr ? `: ${stderr.trim().slice(-500)}` : ''}.`));
+      const err = new Error(
+        code !== 0
+          ? why(`Codex app-server exited with code ${code}${stderr ? ` (${stderr.trim().slice(-500)})` : ''}`)
+          : why('Codex app-server exited before the turn completed'),
+      );
+      fail(err);
+      finish(err);
     });
     // Stop asks Codex to interrupt the turn; the app-server itself is stopped as the turn ends, below.
     const onAbort = () => {
       const threadId = ctx.state.codexThreadId;
       if (threadId && activeTurnId) send({ id: requestId++, method: 'turn/interrupt', params: { threadId, turnId: activeTurnId } });
+      finish();
     };
-    ctx.signal.addEventListener('abort', onAbort, { once: true });
+    if (ctx.signal.aborted) onAbort();
+    else ctx.signal.addEventListener('abort', onAbort, { once: true });
     try {
       await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
       send({ method: 'initialized', params: {} });
@@ -381,22 +404,7 @@ export class CodexAdapter {
         ...(started?.turn?.model || codexModelOf(ctx.persona) ? { model: started?.turn?.model ?? codexModelOf(ctx.persona) } : {}),
         effort: started?.turn?.effort ?? codexEffortOf(ctx.persona),
       });
-      await new Promise((resolve, reject) => {
-        const check = setInterval(() => {
-          if (ctx.signal.aborted) {
-            clearInterval(check);
-            resolve(undefined);
-          } else if (exited) {
-            clearInterval(check);
-            reject(new Error('Codex app-server exited before the turn completed.'));
-          }
-        }, 25);
-        mapper.onComplete = (status) => {
-          clearInterval(check);
-          if (status === 'completed' || ctx.signal.aborted) resolve(undefined);
-          else reject(new Error(`Codex turn ${status ?? 'did not complete'}.`));
-        };
-      });
+      await ended;
     } finally {
       ctx.signal.removeEventListener('abort', onAbort);
       rl.close();
