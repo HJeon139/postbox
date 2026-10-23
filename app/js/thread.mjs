@@ -4,6 +4,7 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
+import { agentsSection } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, uploadFile } from './client.mjs';
@@ -2029,6 +2030,8 @@ export function mountSidePanel(parentId, sideId) {
   const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
   const agents = sessionsOf(sideId).filter((x) => !x.archived);
   const body = h('div.sp-body', topic ? threadRoot(root, agents) : null, tr.el);
+  // A topic thread’s agents, with the same rows and quick panel as the sidebar’s (#105): its composer has no / commands.
+  const who = topic ? agentsSection(sideId, { label: 'Agents in this thread' }) : null;
   // One summary at a time (#93): from the request until it’s posted or the turn ends, the button waits. The
   // server keeps the request on the thread, so a reload or a second tab waits too, and it refuses a second one.
   // From the click until the server’s own state shows the request: its agent at work on it.
@@ -2090,6 +2093,7 @@ export function mountSidePanel(parentId, sideId) {
         icon('x'),
       ),
     ),
+    who ? h('div.sp-agents', who.el) : null,
     body,
     h('div.sp-foot', comp.el),
   );
@@ -2100,6 +2104,7 @@ export function mountSidePanel(parentId, sideId) {
     el,
     destroy() {
       off();
+      who?.destroy();
       tr.destroy();
       comp.destroy();
     },

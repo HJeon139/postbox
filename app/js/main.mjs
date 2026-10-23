@@ -185,7 +185,7 @@ const paintWords = () => {
 
 client.on((ch) => {
   if (['session', 'item.add', 'load'].includes(ch.type)) paintWords();
-  // The top bar keeps its chips between rebuilds, so its rings follow the session in place (issue #2).
+  // The top bar keeps its rings between rebuilds, so they follow the session in place (issue #2).
   if (ch.type === 'session')
     for (const r of root.querySelectorAll(`header.topbar pb-ring[data-session="${CSS.escape(ch.data.id)}"]`)) ringFor(ch.data, r.getAttribute('size'), r);
   if (ch.type === 'settings' || ch.type === 'load') applyTheme();
@@ -213,7 +213,7 @@ function refreshTop() {
     const t = client.state.threads[current.threadId];
     if (!t) return;
     // Members changed (an agent joined or left): rebuild the whole view.
-    const members = old.querySelectorAll('.present .who-chip').length;
+    const members = old.querySelectorAll('.present .ring-btn').length;
     if (members !== t.members.filter((id) => client.state.sessions[id] && !client.state.sessions[id].archived && !client.state.sessions[id].deleting).length) {
       render();
       return;

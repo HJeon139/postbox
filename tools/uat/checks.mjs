@@ -14,7 +14,7 @@
 //   apps,            { [itemId]: { text, marks, tinyMarks, svgText, tinyText, fonts } } read from inside each app
 //   probes,          { fullScreen: [{ key, before, after, viewport }], attachments: [{ key, images, attachments }] }
 //   samples,         [{ busy: [handles thinking or calling tools], rows: number }]: the working row while agents worked
-//   ui,              { headerText, reviewRawRows: { [itemId]: rows of a review block shown as raw “| … |” text } }
+//   ui,              { headerText (the sidebar’s Agents section, #105), reviewRawRows: { [itemId]: rows of a review block shown as raw “| … |” text } }
 //   userMcpServers,  names of MCP servers in the person’s own Claude Code config
 //   userRulesMarker, a line from the person’s global CLAUDE.md. Since #57, agents load the person’s setup on
 //                    purpose, so it reaching them isn’t a finding; no check uses it now.
@@ -685,7 +685,7 @@ export const CHECKS = [
       f.ui?.headerText &&
       !/opus|sonnet|haiku|fable/i.test(f.ui.headerText) &&
       !Object.values(f.state?.personas ?? {}).some((p) => p.model && p.model !== 'mock' && f.ui.headerText.includes(p.model))
-        ? [{ title: 'The UI doesn’t show which model an agent runs', evidence: `Top bar: “${clip(f.ui.headerText, 120)}”.` }]
+        ? [{ title: 'The UI doesn’t show which model an agent runs', evidence: `The sidebar’s Agents section: “${clip(f.ui.headerText, 120)}”.` }]
         : [],
   },
   {

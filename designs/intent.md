@@ -46,7 +46,8 @@ flowchart TD
   P --> R[Room: several agents]
   T --> S[Session: one per persona per conversation]
   R --> S
-  RL["Rail: direct messages, rooms and Threads, with rings"] --> T
+  RL["Rail: the open conversation’s agents, then direct messages, rooms and Threads, with rings"] --> T
+  RL --> QP["An agent’s quick panel: model and effort here; mode and tools everywhere"]
   RL --> R
   T --> TT["Topic thread, from any message: a fork of the session at that message"]
   R --> TT
@@ -89,6 +90,7 @@ sequenceDiagram
 | The Postbox mark in the top bar opens a menu of places: the overview and every project, with what needs you in each. Beside it, the path (Project › Conversation) links back. A project opens the conversation you were last in there | Changed after Stage 3. Getting from the overview to a project took the palette or an agent’s menu; a tab per project was tried and dropped, since projects are switched rarely and tabs don’t scale. |
 | A conversation’s menu (⋯ in the top bar) renames it, adds an agent, or deletes it with 10 seconds of Undo; the rail’s Rooms section always offers New room, which asks for two or more agents | Added after Stage 3: rooms could only appear by @-mentioning a second agent, and nothing deleted a whole conversation. |
 | The rail lists the project’s conversations, as direct messages and rooms, each with the agent’s ring, name and what it’s doing in words (“thinking”, “calling tools”), plus a Threads entry for its topic threads. Projects are switched from the Postbox menu, not the rail. The rail can be hidden (⌘\\), and stays as you left it | Changed after Stage 3: the words used to show only with reduced motion; the rail’s own project switcher duplicated the Postbox menu. |
+| The rail’s Agents section lists the open conversation’s agents, above Direct messages, and a topic thread’s panel lists its own: ring, name, state, model and effort, and open asks. A row opens the agent’s quick panel: model and effort for this conversation, permission mode and tools for the persona everywhere, links to its permissions and persona, and Stop, Compact and Archive. Each control says its scope. The top bar keeps only a ring per agent, which opens the same panel, and folds the rings into one stack where even they don’t fit | Decided 22 October 2026 (#105). The agent chips crowded the top bar until the title read “UseCase - E…”, and one agent’s settings were in four places; in #104 the person couldn’t tell that @critic’s shell was off. Tools apply to every conversation and the model only to this one, so the panel says which is which. A topic thread’s composer has no `/`, so its panel is where its agents change |
 | Apps and large blocks sit inline at full thread width, capped at about 80% of the viewport, with Expand | Agent software is part of the conversation, not a detour. Text stays at a readable width of about 760px. |
 | The right panel holds threads: topic threads you start from a message, and side threads between agents | Changed after Stage 3, to follow Slack: the conversation stays in view while you follow a thread. Apps never compete with the panel, so it still has one meaning: a thread. |
 | On a phone, each view is a stacked full screen | The overview cards stack, rings sit in a strip under the top bar, and side threads open as full-screen sheets. |

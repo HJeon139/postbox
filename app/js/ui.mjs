@@ -141,11 +141,13 @@ const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabi
 export function keepFocus(root, paint) {
   const was = document.activeElement;
   if (!root || !was || !root.contains(was)) return paint();
-  const at = $$(FOCUSABLE, root).indexOf(was);
+  // A control that comes back disabled can’t hold focus, so it goes to the next one that can (#105: Stop, once stopped).
+  const enabled = () => $$(FOCUSABLE, root).filter((x) => !(/** @type {any} */ (x).disabled));
+  const at = enabled().indexOf(was);
   const result = paint();
   if (!was.isConnected) {
     const same = was.id ? document.getElementById(was.id) : null;
-    const list = $$(FOCUSABLE, root);
+    const list = enabled();
     /** @type {HTMLElement | undefined} */ (same && root.contains(same) ? same : list[Math.min(at, list.length - 1)])?.focus();
   }
   return result;
@@ -173,7 +175,13 @@ function refind(el) {
 // ── Dialogs ─────────────────────────────────────────────────────────────────────────────
 // Modal, with focus kept inside and returned to where it came from when closed.
 
-export function openDialog({ title, sub, body, foot, size = '', role = 'dialog', onClose, initialFocus }) {
+/**
+ * Opens a modal dialog. With an anchor, a window wide enough shows it beside the anchor, as a popover over the
+ * page; a narrow one shows it as a sheet, like any dialog (#105).
+ * @param {{ title: any, sub?: any, body: any, foot?: any, size?: string, role?: string, onClose?: () => void,
+ *   initialFocus?: () => HTMLElement | null, anchor?: HTMLElement | null }} opts
+ */
+export function openDialog({ title, sub, body, foot, size = '', role = 'dialog', onClose, initialFocus, anchor = null }) {
   // Focus goes back where it came from, or to what replaced it if that was rebuilt meanwhile.
   const back = document.activeElement && document.activeElement !== document.body ? refind(document.activeElement) : null;
   const titleId = `dlg-${Math.random().toString(36).slice(2, 8)}`;
@@ -224,8 +232,23 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
   };
   document.addEventListener('keydown', onKey, true);
   document.body.append(backdrop);
+  if (anchor && innerWidth >= 768) placeBeside(backdrop, dialog, anchor);
   (initialFocus?.() ?? $('input, textarea, select, button.send, .d-body button', dialog))?.focus();
   return { close, dialog };
+}
+
+/** Puts an anchored dialog to the right of its anchor, else below it, inside the window. */
+function placeBeside(backdrop, dialog, anchor) {
+  backdrop.classList.add('anchored');
+  const r = anchor.getBoundingClientRect();
+  const w = dialog.offsetWidth;
+  const ht = dialog.offsetHeight;
+  const beside = r.right + 8 + w <= innerWidth - 8;
+  const top = Math.max(8, Math.min(beside ? r.top : r.bottom + 6, innerHeight - ht - 8));
+  dialog.style.left = `${beside ? r.right + 8 : Math.max(8, Math.min(r.left, innerWidth - w - 8))}px`;
+  dialog.style.top = `${top}px`;
+  // It may grow as it repaints; its body scrolls rather than run off the window.
+  dialog.style.maxHeight = `${innerHeight - top - 8}px`;
 }
 
 // ── Menus ───────────────────────────────────────────────────────────────────────────────

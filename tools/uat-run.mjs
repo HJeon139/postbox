@@ -238,7 +238,7 @@ async function main() {
       facts.streams = readStreams(paths.streams);
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.transcripts = readTranscripts(facts, paths.workspace);
-      facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
+      facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
       facts.ui.reviewRawRows = await page.evaluate(
         `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
       );
@@ -683,7 +683,7 @@ async function recheck(dir) {
     };
     facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
-    facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
+    facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
     facts.ui.reviewRawRows = await page.evaluate(
       `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
     );

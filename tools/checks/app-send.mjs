@@ -227,8 +227,9 @@ try {
   let stole = false;
   for (let i = 0; i < 3; i++) {
     await clickSpam();
+    // The page, where nothing acts on a click: the conversation’s title in the top bar (its rings open panels, #105).
     const top = await page.evaluate(
-      `(() => { const b = document.querySelector('.topbar').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
+      `(() => { const b = document.querySelector('.topbar .crumbs .title').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
     );
     await click(top.x, top.y);
     await sleep(300);

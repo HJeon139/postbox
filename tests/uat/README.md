@@ -26,6 +26,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
   - **rail/**
     - [Rail (sidebar)](shell/rail/rail.md)
     - [Rail row](shell/rail/rail-row.md)
+    - [Agents section and quick panel](shell/rail/agents-section.md)
 - **overview/**
   - [Overview](overview/overview.md)
   - [Session card](overview/session-card.md)

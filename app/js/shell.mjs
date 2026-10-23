@@ -1,11 +1,11 @@
 // The shell: top bar, rail (conversations and rooms with rings), the phone ring strip, and the overview —
 // one column per live session, with quick answers, tool calls, subagents, agent messages and stats.
 
-import { chipEffort, chipModel, factsText, installNote } from '/shared/agent-facts.mjs';
-import { ASKING } from '/shared/catalog.mjs';
+import { factsText, installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
-import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
+import { agentsSection, openAgentPanel, openAsks, openAsksEl } from './agents.mjs';
+import { api, busy, client, hrefOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -15,31 +15,42 @@ import { menuAnchor, navigate, openMenu, route, toast, undoToast } from './ui.mj
 const S = () => client.state;
 
 /**
- * The top bar: Postbox, then Overview and each project as tabs, the open conversation’s title and who’s in
- * it, and the global actions. On a phone the tabs fold into one menu button.
+ * The top bar: the places menu, the path to the open conversation and its two views, a ring for each agent in
+ * it, and the global actions. The agents’ words live in the sidebar’s Agents section (#105), so the title and
+ * the project have room; each ring opens the agent’s quick panel, for when the sidebar is hidden or the window
+ * is narrow.
  */
 export function topbar({ title = '', threadId = null, projectId = null, work = false }) {
   const t = threadId ? S().threads[threadId] : null;
   const pid = t?.projectId ?? projectId;
   const project = pid ? S().projects[pid] : null;
+  const here = t ? sessionsOf(threadId).filter((x) => !x.archived) : [];
+  const ring = (se) => {
+    const r = ringFor(se, 'xs');
+    r.dataset.session = se.id;
+    return r;
+  };
   const present = t
     ? h(
         'div.present',
-        sessionsOf(threadId)
-          .filter((x) => !x.archived)
-          .map((se) => {
-            const r = ringFor(se, 'xs');
-            r.dataset.session = se.id;
-            // Ring, name, what it runs with, then its state. #73’s “subagents running” goes after the state.
-            return h(
-              'span.who-chip',
-              r,
-              h('b', `@${se.handle}`),
-              chipFacts(se),
-              h('span.who-state', { dataset: { session: se.id } }, `· ${stateWord(se.state).toLowerCase()}`),
-              openAsksEl(se, true),
-            );
-          }),
+        { role: 'group', 'aria-label': 'Agents here' },
+        here.map((se) => {
+          // The ring’s own label is the button’s name: the agent’s name and state, kept up to date in place.
+          const b = h(
+            'button.ring-btn',
+            { type: 'button', id: `top-ring-${se.id}`, 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: () => openAgentPanel(se.id, b) },
+            ring(se),
+          );
+          return b;
+        }),
+        // Where even the rings don’t fit, they fold into one stack, whose menu leads to each agent’s panel.
+        here.length > 1
+          ? h(
+              'button.ring-stack',
+              { type: 'button', id: 'top-ring-stack', 'aria-haspopup': 'menu', onclick: (e) => agentsMenu(e.currentTarget, threadId) },
+              h('span.stack', here.slice(0, 4).map(ring)),
+            )
+          : null,
       )
     : null;
   const n = needsYou().length;
@@ -99,7 +110,7 @@ export function topbar({ title = '', threadId = null, projectId = null, work = f
     ),
     h(
       'span.crumbs',
-      // The crumb above the title (.up) is the first thing the top bar drops for room after the chips’ words (#72).
+      // The crumb above the title (.up) is the first thing the top bar drops for room (#72).
       project
         ? [icon('right', `i-sm${up}`), h(`a.crumb${up}`, { href: `#/p/${project.id}` }, project.name)]
         : [icon('right', `i-sm${up}`), h(t || title ? `a.crumb${up}` : 'span.title', t || title ? { href: '#/' } : {}, 'Overview')],
@@ -152,19 +163,34 @@ export function topbar({ title = '', threadId = null, projectId = null, work = f
     ),
   );
   fitter?.observe(bar);
-  if (present) refitter?.observe(present, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
   return bar;
 }
 
-// ── Fitting the top bar (#72) ───────────────────────────────────────────────────────────
-// When the top bar doesn’t fit, it drops, in this order: the chips’ status words, their models, the project
-// above the conversation’s title, the demo banner’s sentence (it folds to “Demo”), the chips’ efforts, their
-// open-blocks buttons, and last their names. The rings always show. It’s measured, not a fixed breakpoint,
-// because what fits depends on how many agents there are and what their chips say. What a chip drops is still in
-// the overview card and the conversation’s ⋯ menu, as text, and each ring’s label reads the name and state.
+/** The folded rings’ menu: each agent with its state and what it runs with, now, leading to its quick panel. */
+function agentsMenu(anchor, threadId) {
+  openMenu(
+    anchor,
+    sessionsOf(threadId)
+      .filter((x) => !x.archived)
+      .map((se) => ({
+        label: [`@${se.handle}`, mockMarker(se)],
+        icon: 'agent',
+        desc: `${stateWord(se.state)} · ${factsText(factsOf(se))}`,
+        // Focus goes back to the stack when the panel closes; the stack opens a menu, not the panel, so it isn’t marked open.
+        run: () => openAgentPanel(se.id),
+      })),
+    { label: 'Agents here' },
+  );
+}
 
-const DROPS = ['state', 'model', 'crumb', 'demo', 'effort', 'asks', 'names'];
-/** The room the open conversation’s title keeps, in pixels, before a chip drops anything for it. */
+// ── Fitting the top bar (#72) ───────────────────────────────────────────────────────────
+// With the agents’ words in the sidebar (#105), only a narrow window is short of room. Then the top bar drops, in
+// this order: the project above the conversation’s title; the demo banner’s sentence (it folds to “Demo”); and
+// last the rings fold into one stack. It’s measured, not a fixed breakpoint, because what fits depends on how many
+// agents there are.
+
+const DROPS = ['crumb', 'demo', 'rings'];
+/** The room the open conversation’s title keeps, in pixels, before the top bar drops anything for it. */
 const TITLE_ROOM = 96;
 
 /** Drops the fewest parts that let the top bar fit. */
@@ -172,13 +198,14 @@ function fitTopbar(bar) {
   if (!bar.isConnected) return;
   const title = bar.querySelector('.crumbs > :last-child');
   const fits = () => bar.scrollWidth <= bar.clientWidth && (!title || title.clientWidth >= Math.min(title.scrollWidth, TITLE_ROOM));
+  // One agent has no stack to fold into, so its ring always stays.
+  const drops = bar.querySelector('.ring-stack') ? DROPS : DROPS.filter((d) => d !== 'rings');
   let n = 0;
   bar.dataset.drop = '';
-  while (n < DROPS.length && !fits()) bar.dataset.drop = DROPS.slice(0, ++n).join(' ');
+  while (n < drops.length && !fits()) bar.dataset.drop = drops.slice(0, ++n).join(' ');
 }
 
-// It refits when the top bar’s width changes, and when a chip’s words change, even words it had dropped: a status
-// word that went from “calling tools” back to “idle” may fit again.
+// It refits when the top bar’s width changes.
 const fitter =
   typeof ResizeObserver === 'function'
     ? new ResizeObserver((entries) => {
@@ -186,13 +213,6 @@ const fitter =
           if (target.isConnected) fitTopbar(target);
           else fitter?.unobserve(target);
         }
-      })
-    : null;
-const refitter =
-  typeof MutationObserver === 'function'
-    ? new MutationObserver((records) => {
-        const bars = new Set(records.map((r) => (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest('header.topbar')));
-        for (const bar of bars) if (bar) fitTopbar(bar);
       })
     : null;
 
@@ -203,76 +223,6 @@ const refitter =
 function demoNote() {
   if (!client.config?.demo) return null;
   return h('span.demo-note', h('span.demo-long', 'Demo mode: scripted agents'), h('span.demo-short', { 'aria-hidden': 'true' }, 'Demo'));
-}
-
-// ── Open blocks ─────────────────────────────────────────────────────────────────────────
-// Asking blocks you left open from an earlier turn don’t make their agent need you. They show quietly
-// beside it instead, as “1 open review”, and stay open so you can still answer them (#69).
-
-const ASK_NOUNS = { choice: ['choice', 'choices'], form: ['form', 'forms'], confirm: ['confirmation', 'confirmations'], review: ['review', 'reviews'] };
-/** @returns {{ text: string, itemId: string } | null} */
-export function openAsks(se) {
-  const open = itemsOf(se.threadId).filter(
-    (it) => it.kind === 'block' && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered && it.id !== se.needs?.itemId,
-  );
-  if (!open.length) return null;
-  const types = new Set(open.map((it) => it.block.type));
-  const [one, many] = types.size === 1 ? ASK_NOUNS[open[0].block.type] : ['request', 'requests'];
-  return { text: plural(open.length, `open ${one}`, `open ${many}`), itemId: open[0].id };
-}
-/** “1 open review” for an agent: quiet text on its overview card, or a button in the top bar that goes to the block. */
-function openAsksEl(se, button = false) {
-  const el = button
-    ? h('button.btn.sm.ghost', { type: 'button', dataset: { openAsks: se.id }, onclick: () => goToItem(el.dataset.item) })
-    : h('span.small.dim', { dataset: { openAsks: se.id } });
-  paintOpenAsks(el);
-  return el;
-}
-function paintOpenAsks(el) {
-  const se = S().sessions[el.dataset.openAsks];
-  const ask = se ? openAsks(se) : null;
-  el.hidden = !ask;
-  if (el.textContent !== (ask?.text ?? '')) el.textContent = ask?.text ?? '';
-  if (ask) el.dataset.item = ask.itemId;
-  if (ask && el.tagName === 'BUTTON') el.setAttribute('aria-label', `${ask.text} from @${se.handle}: go to it`);
-}
-client.on((ch) => {
-  if (['session', 'item.add', 'item.patch', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-open-asks]')) paintOpenAsks(el);
-  if (['session', 'persona', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-facts]')) paintFacts(el);
-});
-// ── What an agent runs with ─────────────────────────────────────────────────────────────
-// Its chip says the model that answered its last turn and the effort, short; its card and the menus say the
-// same with full model ids (#60). A model or effort that isn’t the one set says so in words.
-
-/** The mock marker, or the model and effort, in an agent’s chip, kept up to date in place. */
-function chipFacts(se) {
-  const el = h('span.who-facts', { dataset: { facts: se.id } }, h('span.who-mock'), h('span.who-model'), h('span.who-effort'));
-  paintFacts(el);
-  return el;
-}
-function paintFacts(el) {
-  const se = S().sessions[el.dataset.facts];
-  if (!se) return;
-  const f = factsOf(se);
-  const [mock, model, effort] = el.children;
-  if (mock.dataset.on !== String(f.mock)) {
-    mock.dataset.on = String(f.mock);
-    fill(mock, mockMarker(se));
-    mock.hidden = !f.mock;
-  }
-  const text = (n, t) => {
-    if (n.textContent !== t) n.textContent = t;
-    n.hidden = !t;
-  };
-  text(model, f.mock ? '' : `· ${chipModel(f)}`);
-  text(effort, f.mock ? '' : `· ${chipEffort(f)}`);
-}
-
-function goToItem(itemId) {
-  const node = document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
-  if (!node) return;
-  node.scrollIntoView({ block: 'center' });
-  (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus();
 }
 
 // ── The sidebar ─────────────────────────────────────────────────────────────────────────
@@ -321,10 +271,15 @@ export function nextNeedsYou() {
 
 // ── Rail ────────────────────────────────────────────────────────────────────────────────
 
-/** The rail for a project: its conversations (direct messages and rooms) and its topic threads. */
+/**
+ * The rail for a project: the open conversation’s agents (#105), its conversations (direct messages and rooms)
+ * and its topic threads.
+ */
 export function mountRail(threadId, { projectId: pid = null, view = 'thread' } = {}) {
   const el = h('nav.rail', { 'aria-label': 'Conversations' });
   const strip = h('nav.ringstrip', { 'aria-label': 'Conversations' });
+  // Kept between repaints: it follows its own agents.
+  const agents = threadId ? agentsSection(threadId) : null;
   const paint = () => {
     const t = threadId ? S().threads[threadId] : null;
     const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
@@ -344,6 +299,7 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
       ),
       h('a.row', { href: '#/', style: { minHeight: '32px' } }, icon('agent', 'dim'), h('span.name', 'Overview'), h('kbd', '⌃J')),
       threadsRow(projectId, view === 'threads'),
+      agents?.el,
       h(
         'div.rail-sec',
         h('span.label', 'Direct messages'),
@@ -430,7 +386,14 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
       paint();
     }
   });
-  return { el, strip, destroy: off };
+  return {
+    el,
+    strip,
+    destroy() {
+      off();
+      agents?.destroy();
+    },
+  };
 }
 
 /** “Threads”: the project’s topic threads, with how many have replies you haven’t seen. */
@@ -985,8 +948,9 @@ function conversationMenu(anchor, t) {
 }
 
 /**
- * Each agent in the conversation, with its backend, model, effort and state as text: everything its chip in the
- * top bar shows, and what a narrow window drops from it (#60, #72). Choosing one opens its persona.
+ * Each agent in the conversation, with its backend, model, effort and state as text, with full model ids: what
+ * its row in the sidebar says, for when the sidebar is hidden or the window is narrow (#60, #105). Choosing one
+ * opens its persona.
  */
 function agentLines(t) {
   const ses = sessionsOf(t.id).filter((x) => !x.archived);

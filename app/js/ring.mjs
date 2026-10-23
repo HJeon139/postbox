@@ -15,7 +15,7 @@ export const stateWord = (s) => STATE_WORD[s] ?? 'Idle';
 /**
  * Status words beside agent names: a <span class="who-state" data-session> gets “· thinking” and so on. In the
  * transcript (data-item set) it shows only on the agent’s latest message, and only while it’s busy or needs
- * you; in the top bar it always shows.
+ * you; elsewhere it always shows.
  */
 export function paintStateWords(root, sessions, latestItemOf) {
   for (const el of root.querySelectorAll('.who-state[data-session]')) {
