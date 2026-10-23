@@ -12,7 +12,7 @@
 // screenshots, each agent turn’s raw stream, and Postbox’s data.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
@@ -23,6 +23,7 @@ import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
 import { kiroCredits, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver } from './uat/driver.mjs';
+import { followEvents, readHistory } from './uat/history.mjs';
 import { parseScenario } from './uat/scenario.mjs';
 import { askOnce, createTester, systemPrompt, unaddressed, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
 
@@ -71,13 +72,16 @@ const portFree = (port) =>
   });
 
 /** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), or by the Kiro CLI
- * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/. */
+ * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/. A file is named for when its turn’s process started, and its last
+ * write is when that process last said anything (#126). */
 function readStreams(folder) {
   if (!existsSync(folder)) return [];
   return readdirSync(folder)
     .filter((f) => f.endsWith('.jsonl'))
     .map((f) => ({
       handle: f.replace(/^\d+-/, '').replace(/\.jsonl$/, ''),
+      started: Number(/^(\d+)-/.exec(f)?.[1]) || undefined,
+      ended: statSync(join(folder, f)).mtimeMs,
       events: readFileSync(join(folder, f), 'utf8')
         .split('\n')
         .filter(Boolean)
@@ -185,6 +189,8 @@ async function main() {
       await sleep(250);
     }
   }
+  // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
+  const history = followEvents(origin);
   const page = await launch({ port: Number(opt['chrome-port']) });
   const findings = new Map(); // key → finding
   const timeline = [];
@@ -194,10 +200,11 @@ async function main() {
     startPersonas: [],
     streams: [],
     kiroStreams: [],
+    events: [],
     transcripts: [],
     console: page.logs,
     apps: {},
-    probes: { fullScreen: [], attachments: [] },
+    probes: { fullScreen: [], attachments: [], answers: [] },
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
@@ -237,6 +244,7 @@ async function main() {
       facts.threads = threadsUnderTest(facts.state);
       facts.streams = readStreams(paths.streams);
       facts.kiroStreams = readStreams(paths.kiroStreams);
+      facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
       facts.ui.reviewRawRows = await page.evaluate(
@@ -446,6 +454,8 @@ async function main() {
     await settle();
     await refreshFacts();
     newFindings();
+    // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
+    await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
     if (opt.file !== 'no') {
@@ -453,6 +463,7 @@ async function main() {
       await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
     }
   } finally {
+    history.close();
     await page.close().catch(() => {});
     server.kill();
   }
@@ -674,9 +685,10 @@ async function recheck(dir) {
       startPersonas: [],
       streams: readStreams(join(dir, 'streams')),
       kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
+      events: readHistory(dir),
       console: page.logs,
       apps: {},
-      probes: saved.probes ?? { fullScreen: [], attachments: [] },
+      probes: { fullScreen: [], attachments: [], answers: [], ...(saved.probes ?? {}) },
       samples: saved.samples ?? [],
       ui: {},
       ...userSetup(join(dir, 'workspace')),
