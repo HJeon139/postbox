@@ -148,7 +148,11 @@ test('an open choice makes the agent need you; answering it sends one event and 
   await settle(rt);
   assert.equal(store.item(t.id, block.id).answered, true);
   assert.ok(store.items(t.id).some((i) => i.kind === 'voice' && i.text === 'Chose: A'));
-  assert.deepEqual(adapter.calls.at(-1).message, { kind: 'event', event: { blockId: 'q', action: 'choose', values: { selected: ['a'] } } });
+  assert.deepEqual(adapter.calls.at(-1).message, {
+    kind: 'event',
+    event: { blockId: 'q', revision: 1, action: 'choose', values: { selected: ['a'] } },
+    blockItemId: block.id,
+  });
   assert.throws(() => rt.act(t.id, block.id, 'choose', { selected: ['a'] }), /already answered/);
 });
 
@@ -1437,6 +1441,178 @@ test('#125: show_block refuses an id this session already shows here, open or an
   const other = rt.ensureSession(t.id, b.id);
   assert.equal(rt.toolsFor(other.id).show_block({ block: review('Theirs', 'C') }).ok, true);
   assert.equal(blocks().length, 3);
+});
+
+/** A review block, and a turn the test holds open until it calls release(); started() resolves once it’s held. */
+function reviewSetup() {
+  const s = setup();
+  const review = (content, extra = {}) => ({ id: 'issue', type: 'review', version: 1, fallback: 'Draft', format: 'markdown', content, ...extra });
+  let release = () => {};
+  let isHeld = () => {};
+  const holding = new Promise((r) => {
+    isHeld = r;
+  });
+  const held = () =>
+    new Promise((r) => {
+      release = r;
+      isHeld();
+    });
+  return { ...s, review, held, started: () => holding, release: () => release() };
+}
+
+test('#123: update_block won’t reopen a block over an answer the agent hasn’t read; the reply says what it was', async () => {
+  const { rt, store, t, adapter, review, held, started, release } = reviewSetup();
+  adapter.next.push(async (c) => c.tools.show_block({ block: review('v1') }));
+  rt.sendMessage(t.id, { text: 'draft it' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  // The UAT’s order: the agent is working on revision 2 when the person answers it, and then it updates again.
+  let refused;
+  adapter.next.push(async (c) => {
+    c.tools.update_block({ block: review('v2') });
+    await held();
+    refused = c.tools.update_block({ block: review('v3') });
+  });
+  rt.sendMessage(t.id, { text: 'revise it' });
+  await started();
+  rt.act(
+    t.id,
+    item.id,
+    'submit',
+    {
+      verdict: 'request_changes',
+      comments: [
+        { line: 1, text: 'a' },
+        { line: 1, text: 'b' },
+        { line: 1, text: 'c' },
+      ],
+    },
+    2,
+  );
+  // The answer waits in the agent’s queue while it works.
+  assert.equal(store.item(t.id, item.id).answer.read, false);
+  release();
+  await settle(rt);
+  assert.equal(refused.ok, false);
+  const at = new Date(store.item(t.id, item.id).answer.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  assert.equal(
+    refused.message,
+    `The update wasn’t applied. The person answered revision 2 of issue at ${at}: request_changes, 3 comments. Their answer stays on screen. It reaches you when this turn ends: read it, then update.`,
+  );
+  // Nothing changed for the person: their answer, the revision they answered, and the text.
+  const it = store.item(t.id, item.id);
+  assert.equal(it.answered, true);
+  assert.equal(it.revision, 2);
+  assert.equal(it.block.content, 'v2');
+  // When the turn ended, the answer reached the agent, naming revision 2; now it has read it, so an update applies.
+  const event = adapter.calls.at(-1).message;
+  assert.equal(event.kind, 'event');
+  assert.equal(event.event.revision, 2);
+  assert.equal(it.answer.read, true);
+  adapter.next.push(async (c) => {
+    refused = c.tools.update_block({ block: review('v3', { previous: 'v2' }) });
+  });
+  rt.sendMessage(t.id, { text: 'go on' });
+  await settle(rt);
+  assert.equal(refused.ok, true);
+  assert.equal(store.item(t.id, item.id).answered, false);
+  assert.equal(store.item(t.id, item.id).revision, 3);
+});
+
+test('#123: an outcome over an answer the agent hasn’t read is refused, and a dropped answer comes in the reply', async () => {
+  const { rt, store, t, adapter, held, started, release } = reviewSetup();
+  const confirm = { id: 'frames', type: 'confirm', version: 1, fallback: 'Delete?', statement: 'Delete 23 frames?', confirmLabel: 'Delete' };
+  adapter.next.push(async (c) => c.tools.show_block({ block: confirm }));
+  rt.sendMessage(t.id, { text: 'clean up' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  const se = rt.sessionsIn(t.id)[0];
+  const replies = [];
+  adapter.next.push(async (c) => {
+    await held();
+    replies.push(c.tools.update_block({ block: { ...confirm, outcome: 'Deleted.' } }));
+  });
+  rt.sendMessage(t.id, { text: 'busy' });
+  await started();
+  // The person presses Cancel while the agent works; not having read that, it reports the frames deleted.
+  rt.act(t.id, item.id, 'cancel', {}, 1);
+  release();
+  await settle(rt);
+  assert.equal(replies[0].ok, false);
+  const at = new Date(store.item(t.id, item.id).answer.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  assert.equal(
+    replies[0].message,
+    `The outcome wasn’t recorded: you haven’t read the answer it reports on. The person answered revision 1 of frames at ${at}: cancel {}. Their answer stays on screen. It reaches you when this turn ends: read it, then record the outcome.`,
+  );
+  assert.equal(store.item(t.id, item.id).block.outcome, undefined);
+  assert.equal(store.item(t.id, item.id).answered, true);
+  // Once it has read the Cancel, its outcome records (#94).
+  adapter.next.push(async (c) => replies.push(c.tools.update_block({ block: { ...confirm, outcome: 'Kept them.' } })));
+  rt.sendMessage(t.id, { text: 'and?' });
+  await settle(rt);
+  assert.equal(replies[1].ok, true);
+  assert.equal(store.item(t.id, item.id).block.outcome, 'Kept them.');
+
+  // Stop drops what waited behind the turn, so the answer never reaches the agent: the refusal carries all of it.
+  rt.patchItem(t.id, item.id, { answered: false, answer: null });
+  let working = () => {};
+  const isWorking = new Promise((r) => {
+    working = r;
+  });
+  adapter.next.push(async (c) => {
+    c.text('working');
+    working();
+    await new Promise((_res, rej) => c.signal.addEventListener('abort', () => rej(Object.assign(new Error('x'), { name: 'AbortError' }))));
+  });
+  rt.sendMessage(t.id, { text: 'go' });
+  await isWorking;
+  rt.act(t.id, item.id, 'cancel', {}, store.item(t.id, item.id).revision ?? 1);
+  rt.stop(se.id);
+  await settle(rt);
+  assert.equal(store.item(t.id, item.id).answer.read, false);
+  const tools = rt.toolsFor(se.id);
+  const r = tools.update_block({ block: { ...confirm, statement: 'Delete 4 more?' } });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /^The update wasn’t applied\. The person answered revision 2 of frames at \d\d:\d\d: cancel \{\}\. Their answer stays on screen\./);
+  assert.match(r.message, /It didn’t reach you in a turn, so that’s the whole answer\. Read it, then update\.$/);
+  assert.equal(store.item(t.id, item.id).answered, true);
+  // Having read it in that reply, the agent can ask again.
+  assert.equal(tools.update_block({ block: { ...confirm, statement: 'Delete 4 more?' } }).ok, true);
+  assert.equal(store.item(t.id, item.id).answered, false);
+});
+
+test('#123: an answer to a revision the agent has since replaced is refused, and nothing reaches the agent', async () => {
+  const { rt, store, t, adapter, review } = reviewSetup();
+  adapter.next.push(async (c) => c.tools.show_block({ block: review('v1') }));
+  rt.sendMessage(t.id, { text: 'draft it' });
+  await settle(rt);
+  const item = store.items(t.id).find((i) => i.kind === 'block');
+  adapter.next.push(async (c) => c.tools.update_block({ block: review('v2', { previous: 'v1' }) }));
+  rt.sendMessage(t.id, { text: 'revise it' });
+  await settle(rt);
+  const calls = adapter.calls.length;
+  // The person approves the text they saw, revision 1; the agent has replaced it with revision 2.
+  assert.throws(
+    () => rt.act(t.id, item.id, 'submit', { verdict: 'approve', comments: [] }, 1),
+    (e) =>
+      e.status === 409 &&
+      e.code === 'stale' &&
+      e.message === 'This changed while you were answering: you answered revision 1, and it’s now revision 2. Look it over, then answer again.',
+  );
+  assert.equal(store.item(t.id, item.id).answered, false);
+  assert.ok(!store.items(t.id).some((i) => i.kind === 'voice'));
+  await settle(rt);
+  assert.equal(adapter.calls.length, calls);
+  // A revision that isn’t a whole number is a bad request.
+  assert.throws(
+    () => rt.act(t.id, item.id, 'submit', { verdict: 'approve', comments: [] }, '2'),
+    (e) => e.status === 422,
+  );
+  // Answering the revision on screen goes through, and the event names it.
+  rt.act(t.id, item.id, 'submit', { verdict: 'approve', comments: [] }, 2);
+  await settle(rt);
+  assert.equal(adapter.calls.at(-1).message.event.revision, 2);
+  assert.equal(store.item(t.id, item.id).answer.revision, 2);
 });
 
 test('#125: an app id the session owns still makes a new version, and an invalid block can be sent again', () => {

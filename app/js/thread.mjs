@@ -526,8 +526,9 @@ function renderItem(it, prev, ctx) {
         // made each version.
         return h('div.wide', showWho ? h('div.col', who(it)) : null, renderAppItem(it, ctx));
       }
-      const act = async (action, values) => {
-        const r = await api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action, values });
+      // revision: the one the person answered (#123); a card’s or table’s action doesn’t say.
+      const act = async (action, values, revision) => {
+        const r = await api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action, values, revision });
         focusComposer();
         return r;
       };

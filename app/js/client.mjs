@@ -119,7 +119,8 @@ export async function api(path, body, method = 'POST') {
     throw Object.assign(new Error('You’re offline, so that didn’t go through. It will work again once the connection is back.'), { offline: true });
   }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(data.error ?? `The server answered ${r.status}.`), { status: r.status, fieldErrors: data.fieldErrors });
+  if (!r.ok)
+    throw Object.assign(new Error(data.error ?? `The server answered ${r.status}.`), { status: r.status, fieldErrors: data.fieldErrors, code: data.code });
   return data;
 }
 

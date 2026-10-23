@@ -16,6 +16,7 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 - In a diff, an added or removed table row, list item or code line stays in place inside its block, marked added or removed.
 - Comments are drafted, then submitted with a verdict (comment, approve, request changes).
 - A revision shows as a diff against the previous version; resolved threads collapse.
+- If the agent changes the draft while you’re answering, your submit is refused, your comments are kept, and you see what changed: see [A block that changed while you were answering](changed-while-answering.md).
 
 ## Steps to reproduce
 

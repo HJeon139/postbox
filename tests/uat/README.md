@@ -60,6 +60,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Image block](conversation/blocks/image.md)
     - [Code block](conversation/blocks/code.md)
     - [Review block](conversation/blocks/review.md)
+    - [A block that changed while you were answering](conversation/blocks/changed-while-answering.md)
     - [Invalid block fallback](conversation/blocks/invalid-block.md)
   - **harness-cards/**
     - [Permission card](conversation/harness-cards/permission-card.md)

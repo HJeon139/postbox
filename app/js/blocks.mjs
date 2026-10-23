@@ -2,6 +2,7 @@
 // nothing an agent sends becomes markup, a style or an attribute name. Answered blocks turn read-only
 // and show what you chose. Drafts (selections, typed text, review comments) survive re-renders.
 
+import { ASKING } from '/shared/catalog.mjs';
 import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { formatDuration } from '/shared/text.mjs';
@@ -13,6 +14,29 @@ const drafts = new Map(); // item id → local, unsent input
 const draft = (id, init) => {
   if (!drafts.has(id)) drafts.set(id, init());
   return drafts.get(id);
+};
+
+// What the person is answering (#123): the revision of each open choice, form, confirm or review as it was when
+// this page first showed it. The answer says which revision it’s for, so one the agent replaced meanwhile is
+// refused instead of landing on text they didn’t see. After a refusal (stale: what they saw before), the revision
+// they answer is the first newer one the page draws, with the notice and diff; a later one is refused again.
+/** @type {Map<string, { revision: number, block: any, after: number | null, stale: { block: any, fresh: boolean } | null }>} */
+const seen = new Map();
+function track(item) {
+  if (!ASKING.has(item.block.type) || item.answered) return void seen.delete(item.id);
+  const rev = item.revision ?? 1;
+  const s = seen.get(item.id);
+  if (!s) seen.set(item.id, { revision: rev, block: item.block, after: null, stale: null });
+  else if (s.after !== null && rev > s.after) Object.assign(s, { revision: rev, block: item.block, after: null });
+}
+// The notice on a block whose answer was refused because it changed. It’s announced once, when it appears, and has
+// an id so focus on it survives a re-render.
+const staleNote = (item, text) => {
+  const s = seen.get(item.id)?.stale;
+  if (!s) return null;
+  const note = h('div.callout.stale-note', { id: `${item.id}-stale`, role: s.fresh ? 'alert' : null, tabindex: '-1' }, icon('warn'), h('span', text));
+  s.fresh = false;
+  return note;
 };
 const md = (src, cls = '') => h(`div.md${cls}`, { html: trusted(renderMarkdown(src)) });
 const KIND = {
@@ -35,6 +59,7 @@ const KIND = {
 export function renderBlock(item, ctx) {
   if (!item.valid) return invalidBlock(item);
   const b = item.block;
+  track(item);
   const r = RENDER[b.type];
   const node = r(b, item, ctx);
   node.classList.add('block');
@@ -55,11 +80,25 @@ const errLine = (msg) => (msg ? h('span.err', { role: 'alert' }, icon('warn'), m
 
 async function submit(item, ctx, action, values, setError) {
   setError(null);
+  const s = seen.get(item.id);
   try {
-    await ctx.act(action, values);
+    await ctx.act(action, values, s?.revision ?? item.revision ?? 1);
     drafts.delete(item.id);
+    seen.delete(item.id);
   } catch (e) {
-    setError(e.message, e.fieldErrors);
+    if (e.code !== 'stale' || !s) return setError(e.message, e.fieldErrors);
+    // It changed while they were answering: keep the draft, show what changed, and let them answer again.
+    s.stale = { block: s.block, fresh: true };
+    s.after = s.revision;
+    const d = drafts.get(item.id);
+    if (d && 'view' in d) d.view = 'diff';
+    const live = document.querySelector(`[data-block-item="${CSS.escape(item.id)}"]`);
+    if (!live) return;
+    const next = renderBlock(item, ctx);
+    live.replaceWith(next);
+    // Focus goes to the notice, beside the button they used: pressing it again by reflex can’t answer text they
+    // haven’t read, and Tab goes on to the buttons.
+    /** @type {HTMLElement | null} */ (next.querySelector('.stale-note'))?.focus();
   }
 }
 
@@ -91,6 +130,9 @@ function invalidBlock(item) {
 const RENDER = {
   choice(b, item, ctx) {
     const d = draft(item.id, () => ({ selected: [], other: '', otherOn: false, error: null }));
+    // A pick the agent’s new version dropped (#123) isn’t shown, counted or sent.
+    d.selected = d.selected.filter((id) => b.options.some((o) => o.id === id));
+    if (!b.other) d.otherOn = false;
     const done = item.answered;
     const chosen = done ? new Set(item.answer.values.selected) : new Set(d.selected);
     const [hd, titleId] = head(b, [], b.multiple ? 'Choice · several' : 'Choice');
@@ -160,6 +202,10 @@ const RENDER = {
       );
     }
     if (done) body.append(answeredNote(item), outcomeLine(item) ?? '');
+    else
+      body.append(
+        staleNote(item, 'This changed while you were answering. Your choice is kept where the new version still has it: check it, then send it again.') ?? '',
+      );
     node.append(hd, body);
     if (!done) {
       const n = d.selected.length + (d.otherOn && d.other.trim() ? 1 : d.otherOn ? 1 : 0);
@@ -175,7 +221,10 @@ const RENDER = {
           'div.block-foot',
           h(
             'button.btn.send',
-            { type: 'button', onclick: () => submit(item, ctx, 'choose', { selected: d.selected, ...(d.otherOn ? { other: d.other } : {}) }, setError) },
+            {
+              type: 'button',
+              onclick: () => submit(item, ctx, 'choose', { selected: d.selected, ...(d.otherOn ? { other: d.other } : {}) }, setError),
+            },
             label,
           ),
           !b.multiple ? h('span.small.dim', `or press 1–${Math.min(9, opts.length)}`) : null,
@@ -209,6 +258,8 @@ const RENDER = {
       errors: {},
       error: null,
     }));
+    // A field the agent’s new version added (#123) starts from its default, as it would have.
+    for (const f of b.fields) if (!Object.hasOwn(d.values, f.id)) d.values[f.id] = f.default ?? (f.kind === 'toggle' ? false : '');
     const done = item.answered;
     const vals = done ? item.answer.values : d.values;
     const [hd, titleId] = head(b);
@@ -312,7 +363,15 @@ const RENDER = {
       'div',
       { class: done ? 'answered' : '', 'aria-labelledby': titleId },
       hd,
-      h('div.block-body', b.prompt ? md(b.prompt) : null, grid, done ? answeredNote(item) : null, outcomeLine(item)),
+      h(
+        'div.block-body',
+        b.prompt ? md(b.prompt) : null,
+        grid,
+        done
+          ? answeredNote(item)
+          : staleNote(item, 'This changed while you were answering. Your answers are kept: check them against the new version, then send again.'),
+        outcomeLine(item),
+      ),
     );
     // submit() clears the error (one re-render) before it sets the new one, so replace the copy on screen now.
     const rerender = () => {
@@ -330,7 +389,15 @@ const RENDER = {
       node.append(
         h(
           'div.block-foot',
-          h('button.btn.send', { type: 'button', onclick: () => submit(item, ctx, 'submit', { ...d.values }, setError) }, b.submitLabel ?? 'Send form'),
+          h(
+            'button.btn.send',
+            {
+              type: 'button',
+              // Only this version’s fields: one the agent removed meanwhile isn’t sent.
+              onclick: () => submit(item, ctx, 'submit', Object.fromEntries(b.fields.map((f) => [f.id, d.values[f.id]])), setError),
+            },
+            b.submitLabel ?? 'Send form',
+          ),
           errLine(d.error),
         ),
       );
@@ -524,6 +591,7 @@ const RENDER = {
               item.answer.action === 'confirm' ? `Confirmed at ${timeOf(item.answer.at)}` : `Not confirmed · ${timeOf(item.answer.at)}`,
             )
           : null,
+        done ? null : staleNote(item, 'This changed while you were answering. Read it again, then answer.'),
         outcomeLine(item),
       ),
     );
@@ -620,7 +688,15 @@ function fmtCell(v, _col) {
 // comments marked resolved or open.
 
 function renderReview(b, item, ctx) {
-  const d = draft(item.id, () => ({ comments: [], composing: null, verdict: 'request_changes', view: 'diff', error: null }));
+  const d = draft(item.id, () => ({ comments: [], composing: null, verdict: 'request_changes', view: 'diff', error: null, on: b.content }));
+  // Draft comments name lines of the text they were written on. If the agent changed it under them (#123), each
+  // follows its line into the new text; one whose line changed or went moves to the next line, marked.
+  if (b.format !== 'app' && d.on !== b.content) {
+    d.comments = followLines(d.comments, d.on, b.content);
+    // An open comment box goes with its line too.
+    if (typeof d.composing === 'number') d.composing = followLines([{ line: d.composing, text: '' }], d.on, b.content)[0].line ?? null;
+    d.on = b.content;
+  }
   const rerender = () => {
     const n = renderBlock(item, ctx);
     node.replaceWith(n);
@@ -638,8 +714,13 @@ function renderReview(b, item, ctx) {
       ?.focus();
   };
   const done = item.answered;
-  const isDiff = !!b.previous && d.view === 'diff';
-  const viewSeg = b.previous
+  // After an answer refused because the draft changed, the diff is from the text the person saw.
+  const stale = done ? null : (seen.get(item.id)?.stale ?? null);
+  const since = stale && b.format !== 'app' ? String(stale.block.content ?? '') : null;
+  const before = since ?? b.previous;
+  const hasDiff = since !== null || !!b.previous;
+  const isDiff = hasDiff && d.view === 'diff';
+  const viewSeg = hasDiff
     ? h(
         'span.seg',
         { role: 'radiogroup', 'aria-label': 'View' },
@@ -654,7 +735,7 @@ function renderReview(b, item, ctx) {
               rerender();
             },
           },
-          `Diff v${(b.revision ?? 2) - 1} → v${b.revision ?? 2}`,
+          since !== null ? 'Changes since you looked' : `Diff v${(b.revision ?? 2) - 1} → v${b.revision ?? 2}`,
         ),
         h(
           'button',
@@ -667,7 +748,7 @@ function renderReview(b, item, ctx) {
               rerender();
             },
           },
-          `v${b.revision ?? 2}`,
+          since !== null ? 'Current' : `v${b.revision ?? 2}`,
         ),
       )
     : h('span.small.dim', `v${b.revision ?? 1}`);
@@ -714,6 +795,7 @@ function renderReview(b, item, ctx) {
               'span.meta',
               h('b', 'You'),
               h('span.status-tag.draft', 'Draft'),
+              c.moved ? h('span.status-tag', 'Its line changed') : null,
               done
                 ? null
                 : h(
@@ -798,10 +880,9 @@ function renderReview(b, item, ctx) {
     });
     node.append(h('div.app-review-wrap', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, appEl, pins));
   } else {
-    const split = (src) => String(src ?? '').split(/\r\n?|\n/);
-    const lines = split(b.content);
+    const lines = splitLines(b.content);
     const doc = h('div.rv-doc', { class: b.format === 'code' ? 'code-doc code' : '', role: 'list', 'aria-label': 'Lines' });
-    const rows = isDiff ? diffLines(split(b.previous), lines) : lines.map((t, i) => ({ t, kind: 'same', n: i + 1 }));
+    const rows = isDiff ? diffLines(splitLines(before), lines) : lines.map((t, i) => ({ t, kind: 'same', n: i + 1 }));
     // Markdown renders by block (a table, list or fence as a whole), with a target per line inside it.
     const groups = b.format === 'markdown' ? groupReviewLines(rows) : rows.map((r) => ({ type: 'line', depth: 0, unit: rowUnit(r) }));
     const marked = (u) => u.lines.some((k) => threadsAt(k).length || draftsAt(k).length);
@@ -956,14 +1037,52 @@ function renderReview(b, item, ctx) {
         ),
         h(
           'button.btn.send',
-          { type: 'button', onclick: () => submit(item, ctx, 'submit', { verdict: d.verdict, comments: d.comments }, setError) },
+          {
+            type: 'button',
+            onclick: () =>
+              submit(
+                item,
+                ctx,
+                'submit',
+                // moved is only for the person: the agent gets each comment as its line now.
+                { verdict: d.verdict, comments: d.comments.map(({ moved: _, ...c }) => c) },
+                setError,
+              ),
+          },
           'Submit review',
         ),
         err,
       ),
     );
+    const note = staleNote(
+      item,
+      since !== null
+        ? 'This draft changed while you were answering. What changed since you looked is marked above, and your comments are kept. Check them, then submit again.'
+        : 'This changed while you were answering. Your comments are kept: look it over, then submit again.',
+    );
+    if (note) node.lastElementChild?.before(note);
   }
   return node;
+}
+
+const splitLines = (src) => String(src ?? '').split(/\r\n?|\n/);
+
+/**
+ * Moves draft comments from lines of one text to the same lines of the next (#123). A comment on a line that changed
+ * goes to the line that replaced it; one on a line that went, to the next line after it, or the last. Either is
+ * marked moved.
+ * @param {{ line?: number, text: string, moved?: boolean }[]} comments @param {string} from @param {string} to
+ */
+function followLines(comments, from, to) {
+  if (!comments.some((c) => typeof c.line === 'number')) return comments;
+  const rows = diffLines(splitLines(from), splitLines(to));
+  const last = splitLines(to).length;
+  return comments.map((c) => {
+    const i = rows.findIndex((r) => r.o === c.line);
+    if (i < 0) return c;
+    if (rows[i].kind === 'same') return { ...c, line: rows[i].n };
+    return { ...c, line: rows.slice(i).find((r) => r.n !== undefined)?.n ?? last, moved: true };
+  });
 }
 
 /** Bold, italic and code inside a review line, without block structure. A fold shows as its source. */

@@ -40,11 +40,11 @@ Postbox shows blocks the person answers with a click. Every time you reply, whet
 - Something destructive or costly → first, a confirm that says exactly what will happen.
 - Anything else → Markdown.
 
-The Postbox tools (the “postbox” MCP server) return at once: the person’s answer arrives later as a new message. So ask, end your turn, and continue when it comes. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered choice, form or confirm with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
+The Postbox tools (the “postbox” MCP server) return at once: the person’s answer arrives later as a new message. So ask, end your turn, and continue when it comes. The answer names the block and its revision. One that comes while you work waits for your turn to end; until you’ve read it, update_block can’t change the block. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered choice, form or confirm with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
 
 ## Blocks
 
-Every block has id (letters, digits, - _ . :; one block per id in a conversation, so show_block refuses an id you already showed: change that block with update_block, or pick a new id), type, version: 1, title?, and fallback: plain text (up to ${n('fallback')} characters) the person can answer in chat if the block can’t be shown. Objects are strict: you’re told about an unknown field. Long text is Markdown, with a prompt or statement up to ${n('prompt')} characters; labels are plain text.
+Every block has id (letters, digits, - _ . :; one block per id in a conversation), type, version: 1, title?, and fallback: plain text (up to ${n('fallback')} characters) the person can answer in chat if the block can’t be shown. Objects are strict: you’re told about an unknown field. Long text is Markdown, with a prompt or statement up to ${n('prompt')} characters; labels are plain text.
 - choice: options [{ id, label }] (1–${n('choiceOptions')}), prompt?, multiple?, max?, other?: { label, placeholder? }, display?: "chips" | "buttons", submitLabel?, outcome?. Answer: "choose", { selected: [ids], other? }.
 - form: fields (up to ${n('formFields')}) [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
 - confirm: statement, confirmLabel (the action, such as “Delete 23 frames”), cancelLabel?, outcome?. Answer: "confirm" or "cancel".
@@ -123,7 +123,7 @@ function formatBody(message, pathOf) {
       return [message.text, files.length ? `Attached:\n${files.join('\n')}` : ''].filter(Boolean).join('\n\n') || '(The person sent an empty message.)';
     }
     case 'event':
-      return `[Postbox] The person acted in block “${message.event.blockId}”: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`;
+      return `[Postbox] The person acted in block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`;
     case 'agent':
       return `[Postbox] ${message.from} wrote to you:\n\n${message.text}`;
     case 'wake':
