@@ -5,7 +5,7 @@
 //   claude -p --output-format stream-json --include-partial-messages --verbose
 //          --thinking-display summarized --forward-subagent-text
 //          --model <persona model>  --effort <persona effort>  --session-id <uuid> | --resume <uuid>
-//          --mcp-config '{ postbox: { type: http, url: <ctx.mcpUrl>, alwaysLoad } }'  [--strict-mcp-config (Isolated)]
+//          --mcp-config '{ postbox: { type: http, url: <ctx.mcpUrl>, alwaysLoad, timeout: 25 h } }'  [--strict-mcp-config (Isolated)]
 //          --append-system-prompt <guide>  --allowedTools mcp__postbox [rules allowed once after a refusal]
 //          --setting-sources user,project,local | project,local (Isolated)
 //          --settings '{"outputStyle":"default", "deniedMcpServers": [servers the persona turned off],

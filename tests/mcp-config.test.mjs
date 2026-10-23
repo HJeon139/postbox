@@ -158,16 +158,21 @@ test('the publishing deny list holds once connectors and plugin servers load, an
 const base = { sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g' };
 const sdkBase = { cwd: '/w', sessionId: 's', resume: false, mcpUrl: 'http://x/mcp', guide: 'g', abortController: new AbortController() };
 const after = (args, flag) => args[args.indexOf(flag) + 1];
+// #217: permission_prompt waits for the person’s answer, and Claude Code cut an HTTP server’s call at 60 s without
+// a per-server timeout (claude 2.1.308). 25 hours, in ms, so a card can wait a day.
+const DAY_AND_AN_HOUR = 25 * 60 * 60 * 1000;
 
 test('personas that use your setup load your MCP servers next to Postbox’s; Isolated ones load only Postbox’s', () => {
   for (const usesHostSetup of [undefined, true]) {
     const persona = { model: 'mock', usesHostSetup };
     const args = claudeArgs({ ...base, persona });
     assert.ok(!args.includes('--strict-mcp-config'));
-    assert.deepEqual(JSON.parse(after(args, '--mcp-config')), { mcpServers: { postbox: { type: 'http', url: 'http://x/mcp', alwaysLoad: true } } });
+    assert.deepEqual(JSON.parse(after(args, '--mcp-config')), {
+      mcpServers: { postbox: { type: 'http', url: 'http://x/mcp', alwaysLoad: true, timeout: DAY_AND_AN_HOUR } },
+    });
     const o = sdkOptions({ ...sdkBase, persona });
     assert.equal(o.strictMcpConfig, undefined);
-    assert.deepEqual(o.mcpServers, { postbox: { type: 'http', url: 'http://x/mcp', alwaysLoad: true } });
+    assert.deepEqual(o.mcpServers, { postbox: { type: 'http', url: 'http://x/mcp', alwaysLoad: true, timeout: DAY_AND_AN_HOUR } });
   }
   const isolated = { model: 'mock', usesHostSetup: false, mcpOff: ['search'] };
   const args = claudeArgs({ ...base, persona: isolated });
@@ -177,6 +182,16 @@ test('personas that use your setup load your MCP servers next to Postbox’s; Is
   const o = sdkOptions({ ...sdkBase, persona: isolated });
   assert.equal(o.strictMcpConfig, true);
   assert.deepEqual(o.settings, { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } });
+});
+
+test('a permission card can wait a day: Postbox’s server is passed with a 25-hour timeout, in both backends (#217)', () => {
+  for (const usesHostSetup of [true, false]) {
+    const persona = { model: 'mock', usesHostSetup, permissionMode: 'ask' };
+    const args = claudeArgs({ ...base, persona });
+    assert.ok(args.includes('--permission-prompt-tool'));
+    assert.equal(JSON.parse(after(args, '--mcp-config')).mcpServers.postbox.timeout, DAY_AND_AN_HOUR);
+    assert.equal(sdkOptions({ ...sdkBase, persona }).mcpServers.postbox.timeout, DAY_AND_AN_HOUR);
+  }
 });
 
 test('servers a persona turned off are denied by name in both backends; Postbox’s own never is', () => {
