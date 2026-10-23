@@ -48,7 +48,7 @@ flowchart LR
 | 3 | #87 | measure, then calibrate, the explainer guide | reviewing |
 | 4 | M4: supervision and side threads | #3, #6, #8, #11, #13, #14, #16; #85’s Files view and room menu; P1: #109, #124, #128, #106, #129’s rest; P2: #99, #101, #107, #114, #117’s rest (Codex, OpenCode), #118, #119, #130, #133–#137; P3: #111 | reviewing |
 | 4 | #9 | worktree per conversation | reviewing |
-| — | Backlog | #84 and #95 (each needs a decision), #15, #21, #28, #41, #76, #100, #103, #113, #115, #116, #120 (needs an intent decision), #131 | — |
+| — | Backlog | #84 (needs a decision), #15, #21, #28, #41, #76, #100, #103, #113, #115, #116, #120 (needs an intent decision), #131 | — |
 
 ## Wave 2 (merged)
 
