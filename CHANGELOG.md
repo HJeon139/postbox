@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.10.2 (2026-10-23)
+
+### Fixes
+
+- **shell:** clip the version menu's second line with an ellipsis too
+- **shell:** label Work, fit long menus, and keep the folder picker usable around links
+
 ## 0.10.1 (2026-10-23)
 
 ### Fixes
