@@ -1069,6 +1069,24 @@ function permissionBlock(it, ctx) {
     ),
     h(
       'div.block-body',
+      // A write outside Postbox (#112): say so, and show its draft as it will read, before anything exists outside.
+      it.outside
+        ? h(
+            'p.small',
+            h('b', 'This writes outside Postbox'),
+            it.where ? [', to ', h('b', it.where.server), it.where.target ? ` (${it.where.target.what} “${it.where.target.name}”)` : ''] : '',
+            '.',
+            open ? ' Nothing is created, sent or changed until you allow it.' : '',
+          )
+        : null,
+      it.draft
+        ? h(
+            'div.col.perm-draft',
+            { role: 'group', 'aria-label': 'The draft', tabindex: '0' },
+            h('span.label', `The draft, from ${it.draft.field}`),
+            h('div.md', { html: trusted(renderMarkdown(it.draft.text)) }),
+          )
+        : null,
       // The whole command, wrapped: you decide on what you can see.
       it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
       // What Always allow saves, in words, before you click it.
@@ -1078,6 +1096,8 @@ function permissionBlock(it, ctx) {
             { id: `${titleId}-always` },
             it.always.lines.map((l) => h('p', l.rule ? ['Always allow ', h('code', l.rule), l.text.slice(`Always allow ${l.rule}`.length)] : l.text)),
             it.always.moved ? h('p.dim', it.always.moved) : null,
+            // What Always allow gives up on a write outside Postbox (#112): the draft step, for that tool.
+            it.outside ? h('p', `From now on ${by} can use `, h('code', it.tool), ' without showing you a draft.') : null,
           )
         : null,
       open ? form : null,

@@ -15,7 +15,7 @@ import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
-import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES } from './adapters/setup.mjs';
+import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { Ledger } from './ledger.mjs';
@@ -23,6 +23,7 @@ import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules,
 import { runShell } from './shell.mjs';
 import { newId } from './store.mjs';
 import { askForTool, resolveToolAsk } from './tool-ask.mjs';
+import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
 export const HOP_LIMIT = 3;
 const DELETE_UNDO_MS = 10000;
@@ -2187,11 +2188,19 @@ export class Runtime {
    * SDK’s `suggestions`), which Always allow returns; agentId names the subagent that asks, when one does.
    * @param {string} sessionId
    * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
+   * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
    * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
-   *           agentId?: string|null, suppressAlways?: boolean }} req
+   *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null }} req
    * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
    */
-  requestPermission(sessionId, { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false }) {
+  async requestPermission(sessionId, req) {
+    // A write outside Postbox the person already settled runs without a card (#112).
+    if (isWriteCall(req.tool, req.input) && this.s.sessions[sessionId] && (await writePasses(this, sessionId, req).catch(() => false))) return { allow: true };
+    return this.askPerson(sessionId, req);
+  }
+
+  /** @param {string} sessionId @param {Parameters<Runtime['requestPermission']>[1]} req */
+  askPerson(sessionId, { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false, draft }) {
     const se = this.s.sessions[sessionId];
     const turn = this.turns.get(sessionId);
     if (!se || !turn) return Promise.resolve({ allow: false, message: 'The turn has ended.' });
@@ -2203,7 +2212,7 @@ export class Runtime {
       turnId: turn.id,
       tool: String(tool ?? '').slice(0, 120),
       summary: String(summary).slice(0, 200),
-      detail: String(detail).slice(0, 4000),
+      ...writeOf(tool, input, detail, draft),
       // The tool call it’s about, so a refusal of a call you answered here doesn’t get a second card.
       toolUseId: toolUseId ? String(toolUseId) : null,
       // What Edit starts from; an input too large to edit here can still be allowed as it is.
@@ -2437,7 +2446,7 @@ export class Runtime {
   /**
    * Everything the panel shows. Rule lists carry their source: user, project, local (the settings files), conversation
    * (this session’s), tools (the persona’s unticked Tools, as deny rules), publishing (when it may not publish outside
-   * Postbox) and postbox (its own tools, always allowed).
+   * Postbox), writes (ask rules for writes outside Postbox, #112) and postbox (its own tools, always allowed).
    * @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
    */
   async permissionsView(who) {
@@ -2471,6 +2480,8 @@ export class Runtime {
       conversation,
       tools,
       publishing: canPublish ? [] : [...PUBLISHING_TOOLS],
+      // Writes outside Postbox ask first (#112), except what the persona may publish, for a backend that reads rules.
+      writes: { rules: real && readsRules ? writeRules(persona) : [], unless: canPublish ? [...PUBLISHING_TOOLS] : [] },
       folders: [
         ...(folder ? [{ path: folder, source: 'folder' }] : []),
         ...(project?.folder && project.folder !== folder ? [{ path: project.folder, source: 'project' }] : []),
@@ -3777,6 +3788,26 @@ function liveGroups(job, procs) {
     const leader = members.find((p) => p.pid === g.pgid);
     return members.length > 0 && (!leader || (g.command !== null ? leader.command === g.command : runsCommand(leader, job.command)));
   });
+}
+
+/**
+ * A permission card’s detail, and for a write outside Postbox (#112) that it is one, and its draft, which the card shows
+ * as Markdown above the other arguments.
+ * @param {unknown} tool @param {any} input @param {unknown} detail @param {{ field: string, text: string } | null | undefined} given
+ */
+function writeOf(tool, input, detail, given) {
+  const outside = isWriteCall(String(tool ?? ''), input);
+  const draft = given === undefined ? draftOf(String(tool ?? ''), input) : given;
+  const rest =
+    draft && input && typeof input === 'object' && Object.hasOwn(input, draft.field)
+      ? JSON.stringify({ ...input, [draft.field]: '(the draft above)' }, null, 2)
+      : null;
+  return {
+    detail: String(rest ?? detail).slice(0, 4000),
+    // Where it lands, so the card can say so before anything exists there.
+    ...(outside ? { outside: true, where: whereOf(String(tool ?? ''), input) } : {}),
+    ...(draft ? { draft: { field: draft.field, text: String(draft.text).slice(0, 20000) } } : {}),
+  };
 }
 
 export function httpError(status, message) {

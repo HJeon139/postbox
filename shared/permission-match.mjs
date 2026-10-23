@@ -197,9 +197,22 @@ export function ruleMatches(rule, call, where) {
 }
 
 /**
- * @typedef {{ rule: string, source: string, root?: string }} SourcedRule
- *   source says where the rule comes from: user, project, local, conversation, tools (the persona’s Tools), postbox.
- *   root is where a `/path` rule starts (the folder of the settings file it’s in).
+ * Whether an allow rule lets a write outside Postbox past Postbox’s check without a card (#112, server/write-guard.mjs):
+ * one that names the MCP tool itself, as Always allow saves it, not its whole server, which may be allowed for its
+ * reads; for Bash, one with a command pattern that covers this command, not Bash on its own.
+ * @param {string} rule @param {{ tool: string, arg: string|null }} call @param {{ cwd: string, home: string, root?: string }} where
+ */
+export function passesWriteCheck(rule, call, where) {
+  const r = parseRule(rule);
+  if (call.tool === 'Bash') return r.tool === 'Bash' && r.spec !== null && ruleMatches(rule, call, where);
+  return r.tool === call.tool && r.spec === null;
+}
+
+/**
+ * @typedef {{ rule: string, source: string, root?: string, unless?: string[] }} SourcedRule
+ *   source says where the rule comes from: user, project, local, conversation, tools (the persona’s Tools), postbox,
+ *   writes (Postbox’s ask rules for writes outside it, #112). root is where a `/path` rule starts (the folder of the
+ *   settings file it’s in). unless: for a writes rule, the tools it doesn’t ask about (those the persona may publish).
  * @typedef {{ decision: 'deny'|'ask'|'allow'|'mode', rule?: string, source?: string, part?: string, mode?: string,
  *             outcome: 'refused'|'asks'|'runs'|'decides' }} Verdict
  */
@@ -224,7 +237,15 @@ export function decide({ call, rules, mode, cwd, home }) {
   const c = parseCall(call);
   const parts = c.tool === 'Bash' && c.arg ? splitCommand(c.arg) : [c.arg];
   const calls = (parts.length ? parts : [c.arg]).map((arg) => ({ tool: c.tool, arg }));
-  const hit = (list, cl) => list.find((r) => ruleMatches(r.rule, cl, { cwd, home, root: r.root ?? cwd }));
+  const at = (r) => ({ cwd, home, root: r.root ?? cwd });
+  // A writes ask rule doesn’t ask about a call the person settled: Always allowed, or one the persona may publish.
+  // Postbox’s own tools are never held as writes (server/write-guard.mjs).
+  const settled = (r, cl) =>
+    r.source === 'writes' &&
+    (cl.tool.startsWith('mcp__postbox__') ||
+      (r.unless ?? []).some((u) => ruleMatches(u, cl, at(r))) ||
+      rules.allow.some((a) => passesWriteCheck(a.rule, cl, at(a))));
+  const hit = (list, cl) => list.find((r) => ruleMatches(r.rule, cl, at(r)) && !settled(r, cl));
   for (const behavior of /** @type {const} */ (['deny', 'ask'])) {
     for (const cl of calls) {
       const r = hit(rules[behavior], cl);

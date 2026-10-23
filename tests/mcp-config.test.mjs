@@ -8,7 +8,7 @@ import { sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { claudeArgs } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { mcpServerList, yourMcpServers } from '../server/adapters/mcp-config.mjs';
-import { isPublishingTool } from '../server/adapters/setup.mjs';
+import { isPublishingTool, WRITE_TOOLS } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
 
 const HOME = '/home/pat';
@@ -172,15 +172,20 @@ test('personas that use your setup load your MCP servers next to Postbox’s; Is
   const isolated = { model: 'mock', usesHostSetup: false, mcpOff: ['search'] };
   const args = claudeArgs({ ...base, persona: isolated });
   assert.ok(args.includes('--strict-mcp-config'));
-  assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' }, 'nothing else loads, so nothing to deny');
+  // Nothing else loads, so nothing to deny; writes outside Postbox still ask (#112): gh runs in an Isolated persona too.
+  assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } });
   const o = sdkOptions({ ...sdkBase, persona: isolated });
   assert.equal(o.strictMcpConfig, true);
-  assert.deepEqual(o.settings, { outputStyle: 'default' });
+  assert.deepEqual(o.settings, { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } });
 });
 
 test('servers a persona turned off are denied by name in both backends; Postbox’s own never is', () => {
   const persona = { model: 'mock', mcpOff: ['search', 'claude.ai Google Drive', 'postbox'] };
-  const want = { outputStyle: 'default', deniedMcpServers: [{ serverName: 'search' }, { serverName: 'claude.ai Google Drive' }] };
+  const want = {
+    outputStyle: 'default',
+    deniedMcpServers: [{ serverName: 'search' }, { serverName: 'claude.ai Google Drive' }],
+    permissions: { ask: WRITE_TOOLS },
+  };
   assert.deepEqual(JSON.parse(after(claudeArgs({ ...base, persona }), '--settings')), want);
   assert.deepEqual(sdkOptions({ ...sdkBase, persona }).settings, want);
 });

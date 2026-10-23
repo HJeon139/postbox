@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { draftOf } from '../write-guard.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
@@ -139,6 +140,8 @@ export async function codexApproval(ctx, msg) {
         detail,
         toolUseId: msg.id,
         suppressAlways: true,
+        // A write’s draft shows as Markdown on the card (#112). No input: Codex can’t run an edited call.
+        ...(draftOf(tool, args) ? { draft: draftOf(tool, args) } : {}),
       });
       return answer?.allow ? { action: 'accept', content: {} } : { action: 'decline' };
     }

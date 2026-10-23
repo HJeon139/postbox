@@ -31,6 +31,7 @@ const SOURCE = {
   conversation: 'this conversation',
   tools: 'the persona’s Tools',
   publishing: '“Can publish outside Postbox” is off',
+  writes: 'Postbox’s check on writes outside it',
   postbox: 'Postbox’s own tools',
   folder: 'where it works',
 };
@@ -198,6 +199,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
         for (const rule of view.conversation[b]) out[b].push({ rule, source: 'conversation', removable: true });
     for (const x of view.tools) if (!x.on) for (const rule of x.rules) out.deny.push({ rule, source: 'tools', removable: false });
     for (const rule of view.publishing) out.deny.push({ rule, source: 'publishing', removable: false });
+    for (const rule of view.writes?.rules ?? []) out.ask.push({ rule, source: 'writes', unless: view.writes.unless, removable: false });
     out.allow.push({ rule: 'mcp__postbox', source: 'postbox', removable: false });
     return out;
   }
@@ -208,7 +210,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     const unreadable = view.files.filter((f) => f.error);
     const list = (b) => {
       // The persona’s Tools and the publishing list are many rules with one cause each: one row per cause.
-      const own = rules[b].filter((r) => r.source !== 'tools' && r.source !== 'publishing' && r.source !== 'postbox');
+      const own = rules[b].filter((r) => r.source !== 'tools' && r.source !== 'publishing' && r.source !== 'writes' && r.source !== 'postbox');
       const rows = own.map((r) =>
         h(
           'li',
@@ -271,6 +273,22 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
             ),
           );
       }
+      // Writes outside Postbox (#112): many rules with one cause, and what lets a call through without asking.
+      if (b === 'ask' && view.writes?.rules.length)
+        rows.push(
+          h(
+            'li',
+            h(
+              'span.grow',
+              h('code.perm-rule', `${view.writes.rules.slice(0, 3).join(', ')}…`),
+              h('span.small.dim', ` and ${view.writes.rules.length - 3} more, from ${SOURCE.writes}`),
+              h(
+                'span.small.dim',
+                `: tools and gh commands that create, change or delete something outside Postbox. Always allow on a card lets that one tool through${view.writes.unless.length ? ', and so does “Can publish outside Postbox” for the tools it covers' : ''}.`,
+              ),
+            ),
+          ),
+        );
       if (b === 'allow')
         rows.push(h('li', h('code.perm-rule', 'mcp__postbox'), h('span.small.dim.grow', `from ${SOURCE.postbox}: they only show things here`)));
       return h(
