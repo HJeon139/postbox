@@ -157,7 +157,7 @@ for (const [width, height] of [
     `(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('pb-work-') || k === 'pb-pane-split') localStorage.removeItem(k); })()`,
   );
   await open(pane(''));
-  await page.evaluate('location.reload()');
+  await page.reload();
   await page.waitFor(`document.querySelector('header.topbar #work-button')`, { label: 'the reloaded page' });
   await settle();
 
@@ -354,7 +354,7 @@ for (const [width, height] of [
     // A reload restores it.
     await click(q('#thread-full'));
     await page.waitFor(q('.sidepanel.pane-full'));
-    await page.evaluate('location.reload()');
+    await page.reload();
     await page.waitFor(`${q('.sidepanel.pane-full .sp-body .transcript [data-key]')}`, { label: 'the thread full screen, after the reload' });
     await press('Escape');
     await page.waitFor(`!${q('.pane-full')}`);
@@ -394,13 +394,13 @@ for (const [width, height] of [
     await page.evaluate(`${q('.rp-divider')}.focus()`);
     await press('Home');
     await press('ArrowDown');
-    await page.evaluate('location.reload()');
+    await page.reload();
     await page.waitFor(`${q('.rpane.split')} && ${q(WORK)} && ${q(THREAD)}`, { label: 'both, after the reload' });
     assert.equal(await page.evaluate(`${q('.rp-divider')}.getAttribute('aria-valuenow')`), '25');
     // Full screen, too.
     await click(q('#work-full'));
     await page.waitFor(q('.workpane.pane-full'));
-    await page.evaluate('location.reload()');
+    await page.reload();
     await page.waitFor(`${q('.workpane.pane-full .work-view')} && ${q(THREAD)}`, { label: 'full screen, after the reload' });
     await press('Escape');
     await page.waitFor(`!${q('.pane-full')}`);

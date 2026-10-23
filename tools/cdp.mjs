@@ -144,6 +144,16 @@ export async function launch({ port = 9333 } = {}) {
       await Promise.race([loaded, late]).finally(() => clearTimeout(timer));
       await evaluate('document.fonts.ready.then(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 120))))');
     },
+    /** Reloads the page and waits for the new document to load, so nothing after it reads the old one. */
+    async reload() {
+      const loaded = once('Page.loadEventFired');
+      await send('Page.reload');
+      let timer;
+      const late = new Promise((_, fail) => {
+        timer = setTimeout(() => fail(new Error('The page didn’t load again after a reload.')), 15000);
+      });
+      await Promise.race([loaded, late]).finally(() => clearTimeout(timer));
+    },
     async waitFor(expr, { timeout = 15000, label = expr } = {}) {
       const end = Date.now() + timeout;
       while (Date.now() < end) {
