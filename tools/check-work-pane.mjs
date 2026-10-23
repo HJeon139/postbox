@@ -16,9 +16,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { launch } from './cdp.mjs';
+import { finish, ports, record } from './harness.mjs';
 
-const PORT = Number(process.env.PB_PORT ?? 4870);
-const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 10070);
+const { PORT, CHROME_PORT } = await ports(4870, 10070);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 process.env.POSTBOX_MOCK_SPEED = '0.1';
@@ -26,7 +26,6 @@ const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-work-pane-'));
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 const page = await launch({ port: CHROME_PORT });
 const { rt, store } = app;
-const failures = [];
 
 // ── Real input ──────────────────────────────────────────────────────────────────────────
 
@@ -77,10 +76,9 @@ async function check(name, fn) {
       timer = setTimeout(() => fail(new Error('Timed out after 60 s')), 60000);
     });
     await Promise.race([fn(), late]);
-    console.log(`  ok    ${name}`);
+    record(true, name);
   } catch (e) {
-    failures.push(name);
-    console.log(`  FAIL  ${name}\n        ${e.message.split('\n').join('\n        ')}`);
+    record(false, name, e.message);
   } finally {
     clearTimeout(timer);
   }
@@ -285,9 +283,10 @@ for (const [width, height] of [
     const reading = () =>
       page.evaluate(`(() => {
         const box = ${body}.getBoundingClientRect();
-        // What the transcript holds in place when its size changes: the first message still in view.
-        const items = [...${body}.querySelectorAll('.transcript > [data-key]')];
-        const it = items.find((n) => n.getBoundingClientRect().bottom > box.top) ?? items[0];
+        // What the transcript holds in place when its size changes: the message across the middle of the view (#162).
+        const mid = box.top + ${body}.clientHeight / 2;
+        const items = [...${body}.querySelectorAll('.transcript > [data-key]')].filter((n) => n.getBoundingClientRect().bottom > box.top);
+        const it = items.find((n) => n.getBoundingClientRect().bottom > mid) ?? items.at(-1);
         return { key: it.dataset.key, top: Math.round(it.getBoundingClientRect().top - box.top) };
       })()`);
     const before = await reading();
@@ -436,6 +435,5 @@ for (const [width, height] of [
 await page.close();
 await app.close();
 await rm(dataDir, { recursive: true, force: true });
-if (page.logs.length) console.log(`\nPage errors:\n  ${page.logs.join('\n  ')}`);
-console.log(failures.length ? `\n${failures.length} failed.` : '\nAll work pane checks passed.');
-process.exit(failures.length ? 1 : 0);
+record(!page.logs.length, 'the page logged no errors', page.logs.join('\n'));
+finish();
