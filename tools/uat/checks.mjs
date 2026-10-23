@@ -261,7 +261,8 @@ function blockUseTally() {
       // How long it ran: from its first item to its last, or its tool steps’ own times, whichever is longer. A turn
       // that writes only at the end has one reply item, made at its first step, so the items alone can read as 0.
       const at = items.map((it) => it.at).filter((n) => typeof n === 'number');
-      const steps = items.flatMap((it) => it.activity?.steps ?? []).filter((st) => st.kind !== 'thought');
+      // Tool calls: not a thought, or a subagent’s narration (#73).
+      const steps = items.flatMap((it) => it.activity?.steps ?? []).filter((st) => st.kind !== 'thought' && st.kind !== 'said');
       const ms = Math.max(
         at.length ? Math.max(...at) - Math.min(...at) : 0,
         steps.reduce((a, st) => a + (Number(st.ms) || 0), 0),

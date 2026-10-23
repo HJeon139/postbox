@@ -26,6 +26,7 @@ One agent’s settings were in four places: `/model`, `/effort` and `/mode` in t
 - Model and effort changed elsewhere (`/model`, another tab) show in the open panel at once.
 - An agent the person never added, which joined because another agent woke it in a side thread, says so under its row (“Joined when @indexer woke it”) and on its ring in the top bar; the wake’s line in the conversation ends “joined the conversation” (#110).
 - **The agent tree** (#121, #110). Under an agent’s row, a short entry each, wrapped rather than cut: its turn when it answers in a side thread (“Calling tools with @indexer”), and each fork of it that answered there while its session was busy elsewhere (“Fork · calling tools with @indexer”), each with a Stop while it works. Each entry opens its side thread; hovering it shows which thread and who woke it. A persona running in two sessions shows two entries, and one of them waiting for you counts in “needs you”, ⌃J and the tab title.
+- **Subagents in the tree** (#73). While an agent’s subagents work, each is an entry under its row, nested under the subagent that started it: its ring, its name and what it was asked (“general-purpose · subagent: Reader”, or “subagent in the background” for one that works on after its call returned), and on a line of its own what it’s doing now: its latest narration in its own words, in quotes, followed by its current step once that has changed since (““The word count came back as 3.” · Nested checker”), else its current step, or “Thinking: …” in italics. All of it is on screen, not in a tooltip. Each leaves the tree when it ends.
 
 ## Steps to reproduce
 
@@ -36,9 +37,10 @@ One agent’s settings were in four places: `/model`, `/effort` and `/mode` in t
 5. Under an agent reply, choose Reply in thread. In the thread’s panel, open its agent’s quick panel and change its model; the conversation’s agent keeps its own.
 6. Narrow the window to 375 px. Open the panel from a ring in the top bar (in a room, from the stack of rings’ menu), and from a topic thread’s panel.
 7. In a room, ask @indexer to wake @researcher with a long task, and while @researcher works in the side thread, have @indexer wake it again. Check the tree under @researcher, the side-thread line, and `/stop` in the conversation.
-8. Run `node tools/check-agents.mjs` and `node tools/check-side-threads.mjs`.
+8. With a real agent, ask it to use a subagent that starts its own subagent, and watch the tree under its row while they work.
+9. Run `node tools/check-agents.mjs` and `node tools/check-side-threads.mjs`.
 
-**Pass if:** Each change takes two clicks from the sidebar, with no command, in a conversation and in a topic thread; every control says whether it’s for this conversation or for the persona everywhere; the panel works by keyboard and fits at 375 and 1280 px; an agent at work in a side thread, and each fork of it, shows under its row with a Stop; and the checks pass.
+**Pass if:** Each change takes two clicks from the sidebar, with no command, in a conversation and in a topic thread; every control says whether it’s for this conversation or for the persona everywhere; the panel works by keyboard and fits at 375 and 1280 px; an agent at work in a side thread, and each fork of it, shows under its row with a Stop; each subagent at work shows under it with what it was asked and what it’s doing now, nested by who started it; and the checks pass.
 
 ## Related
 

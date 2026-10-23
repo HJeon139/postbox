@@ -1,7 +1,8 @@
 // A headless Chrome check of the agents section and each agent’s quick panel (#105), driven with real key presses
 // and clicks, at 1280 and 375 px: the rows in the sidebar and in a topic thread’s panel; changing the model, effort,
-// permission mode and shell in two clicks; the scope each control says; the links, Stop, Compact and Archive; and
-// the rings in the top bar, which open the same panel where the sidebar is hidden.
+// permission mode and shell in two clicks; the scope each control says; the links, Stop, Compact and Archive; the
+// rings in the top bar, which open the same panel where the sidebar is hidden; and the subagents at work in the tree
+// and the working row, from a recorded stream (#73).
 //
 //   node tools/check-agents.mjs
 //
@@ -11,9 +12,11 @@
 // parallel don’t collide; ONLY=<text> runs only the cases whose names include it.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { start } from '../server/index.mjs';
 import { launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
@@ -26,8 +29,11 @@ const claudeHome = await mkdtemp(join(tmpdir(), 'pb-check-agents-home-'));
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true, claudeHome });
 const page = await launch({ port: CHROME_PORT });
 const { rt, store } = app;
-// What the real backends were sent: a turn each, recorded, never run.
+// What the real backends were sent: a turn each, recorded, never run. A turn can instead replay a recorded stream
+// through the real stream mapper (`replays`), as far as its `pause` and then the rest once `go` is called.
 const turns = [];
+/** @type {{ lines: any[], pause: number, go: () => void, wait: Promise<void>, held: boolean }[]} */
+const replays = [];
 for (const name of ['claude-code', 'agent-sdk'])
   rt.adapters.register({
     name,
@@ -36,9 +42,29 @@ for (const name of ['claude-code', 'agent-sdk'])
     },
     async deliver(session, message, ctx) {
       turns.push({ handle: session.handle, text: message.text });
-      ctx.text('Done.');
+      const r = replays.shift();
+      if (!r) return ctx.text('Done.');
+      const m = createStreamMapper(ctx);
+      for (const e of r.lines.slice(0, r.pause)) m.push(e);
+      r.held = true;
+      await r.wait;
+      for (const e of r.lines.slice(r.pause)) m.push(e);
     },
   });
+/** A recorded stream to replay on the next turn, held after its line `pause` until `go()`. */
+function replayNext(name, pauseWhen) {
+  const lines = readFileSync(new URL(`../tests/fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
+  let go = () => {};
+  const wait = new Promise((r) => {
+    go = () => r(undefined);
+  });
+  const r = { lines, pause: lines.findIndex(pauseWhen) + 1, go, wait, held: false };
+  replays.push(r);
+  return r;
+}
 
 // ── The agents ──────────────────────────────────────────────────────────────────────────
 
@@ -418,6 +444,56 @@ await check('in a topic thread, by keyboard: Enter on the row opens the panel, a
 });
 
 // ── The top bar’s rings, and a narrow window ────────────────────────────────────────────
+
+// ── Subagents (#73) ─────────────────────────────────────────────────────────────────────
+
+await check('a subagent at work is a child in the agent tree, with what it was asked and what it’s doing now, without hover', async () => {
+  // Recorded: tests/fixtures/claude-code/subagent-tree.jsonl, held once the Reader has started its own subagent.
+  const NESTED = 'toolu_014cQVtisPCNL6gRibMij5jM';
+  const r = replayNext('subagent-tree', (e) => e.type === 'user' && e.message?.content?.some?.((b) => b.tool_use_id === NESTED));
+  await open(`#/t/${planning.id}`);
+  try {
+    rt.sendMessage(planning.id, { text: '@indexer count the words, with a subagent' });
+    const subs = `${row('indexer')}.closest('.agent-row').querySelectorAll('.agent-sub.subagent')`;
+    await until(() => r.held, 'the replay to reach its pause');
+    await page.synced(store.state.seq);
+    const shown = await page.evaluate(
+      `[...${subs}].map((li) => ({ depth: li.dataset.depth, head: li.querySelector('.sub-head').innerText, now: li.querySelector('.sub-now').innerText, w: li.querySelector('.sub-now').offsetWidth, title: li.querySelector('[title]')?.title ?? null }))`,
+    );
+    // The Reader, then the subagent it started, nested under it; each with what it was asked and, on a line of its own,
+    // what it’s doing now: the Reader’s latest narration in its own words, then its step since.
+    assert.deepEqual(
+      shown.map((x) => [x.depth, x.head]),
+      [
+        ['0', 'general-purpose · subagent: Reader'],
+        ['1', 'general-purpose · subagent in the background: Nested checker'],
+      ],
+    );
+    // Its step changed after it spoke, so the line says both.
+    assert.equal(shown[0].now, '“The word count came back as 3.” · Subagent: Nested checker');
+    assert.equal(shown[1].now, 'Nested checker');
+    // On screen, not in a tooltip.
+    assert.ok(
+      shown.every((x) => x.w > 0 && x.title === null),
+      JSON.stringify(shown),
+    );
+    // The working row says it too, attributed.
+    assert.match(await page.evaluate(`${q('.working .work-row')}?.innerText ?? ''`), /general-purpose: “The word count came back as 3\.”/);
+    r.go();
+    // The turn ends: its subagents leave the tree, and its activity list nests each subagent’s steps under it.
+    await until(() => store.state.sessions[indexer.id].state === 'idle', 'the turn to end');
+    await page.synced(store.state.seq);
+    assert.equal(await page.evaluate(`${subs}.length`), 0, 'The subagents are still in the tree');
+    const reply = `[...document.querySelectorAll('.turn details.activity')].at(-1)`;
+    const tree = await page.evaluate(
+      `(() => { const top = ${reply}.querySelector(':scope > ul.steps'); const reader = [...top.children].find((li) => li.querySelector(':scope > .step-text')?.textContent.includes('Subagent: Reader')); return { said: [...reader.querySelectorAll(':scope > ul.steps > li.said')].map((li) => li.querySelector('.step-text > summary, .step-text').textContent), nested: !!reader.querySelector(':scope > ul.steps > li > ul.steps li.said') }; })()`,
+    );
+    assert.equal(tree.said[0], "general-purpose: I'll count the words in the test string with Bash to get the first result.");
+    assert.ok(tree.nested, 'The nested subagent’s narration isn’t nested under it');
+  } finally {
+    r.go();
+  }
+});
 
 await check('at 1280 px, a ring in the top bar opens the same panel, and Escape returns to the ring', async () => {
   await open(`#/t/${planning.id}`);

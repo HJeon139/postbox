@@ -745,6 +745,34 @@ test('#129: a progress step that follows a kept job reads as running on, and sta
   assert.match(context(), /bgH ended while progress steps were running:\n- Block “Heartbeat” \(id hb\): Step “Write heartbeat-1\.log” was still running/);
 });
 
+test('#73: a subagent still working in the background when its turn is stopped reads stopped, with its own calls', async () => {
+  const { rt, store, adapter, t, se } = setup();
+  const first = slowToExit();
+  const step = async (c) => {
+    c.activity({ id: 'ag', label: 'Subagent: Sleeper', state: 'running', kind: 'agent', detail: 'Working in the background' });
+    c.activity({ id: 'sh', label: 'Sleep 25 seconds', state: 'running', who: 'general-purpose', parent: 'ag' });
+    c.activity({ id: 'own', label: 'Read notes.md', state: 'running' });
+    await first(c);
+  };
+  adapter.next.push(step);
+  rt.sendMessage(t.id, { text: 'go' });
+  await sleep(5);
+  rt.stop(se.id);
+  first.exit();
+  await sleep(10);
+  const steps = store.items(t.id).find((i) => i.kind === 'agent' && i.activity?.steps?.length).activity.steps;
+  assert.deepEqual(
+    steps.map((s) => [s.id, s.state]),
+    [
+      ['ag', 'stopped'],
+      ['sh', 'stopped'],
+      ['own', 'running'],
+    ],
+    'only the subagent and its calls: nothing else changes here',
+  );
+  assert.equal(steps[0].detail, 'its turn ended before it finished');
+});
+
 test('#129: a kept job whose group is gone has ended; shutting down stops the ones still running', async () => {
   const { rt, store, adapter, t, se, k, procs } = setup();
   for (const id of ['bgA', 'bgB']) {

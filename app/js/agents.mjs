@@ -5,7 +5,8 @@
 //
 // Under each row, the room’s agent tree (#121): where the agent’s turn is when it’s in a side thread, and each fork of
 // it that answered there while it was busy (#110), with who woke it, its state and a Stop. A persona with two
-// sessions shows two entries.
+// sessions shows two entries. Then the subagents at work in its turn (#73), each under the one that started it, with
+// what it was asked and what it’s doing now, a line each, without hover.
 
 import { BACKEND_NAMES, chipEffort, chipModel, shortModel } from '/shared/agent-facts.mjs';
 import { ASKING } from '/shared/catalog.mjs';
@@ -137,6 +138,80 @@ function treeOf(se) {
 }
 const treeSig = (list) => JSON.stringify(list.map((x) => [x.se.id, x.se.state, x.thread.id, x.thread.title, x.by, x.fork]));
 
+/**
+ * The subagents at work in an agent’s turn (#73), each after the one that started it, with how deep it is. One whose
+ * parent isn’t listed (it ended, or the entry is from before #73) is at the top.
+ */
+function subagentsOf(se) {
+  const subs = Array.isArray(se.subagents) ? se.subagents : [];
+  const ids = new Set(subs.map((x) => x.id).filter(Boolean));
+  const parentOf = (x) => (x.parent && x.parent !== x.id && ids.has(x.parent) ? x.parent : null);
+  /** @type {{ sub: any, depth: number }[]} */
+  const out = [];
+  const seen = new Set();
+  const walk = (parent, depth) => {
+    for (const sub of subs.filter((x) => parentOf(x) === parent && !seen.has(x))) {
+      seen.add(sub);
+      out.push({ sub, depth });
+      if (sub.id) walk(sub.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  // Any a bad parent left out of the walk (a loop) is at the top, rather than gone.
+  for (const sub of subs) if (!seen.has(sub)) out.push({ sub, depth: 0 });
+  return out;
+}
+
+/**
+ * What a subagent is doing now, in a line (#73): its latest narration in its own words, then its step if that changed
+ * since; else its step, or what it’s thinking, labeled as thinking.
+ * @param {{ said?: string, doing?: string, thinking?: boolean, since?: boolean }} sub
+ */
+export function subagentNow(sub) {
+  const step = sub.doing ? (sub.thinking ? `Thinking: ${sub.doing}` : sub.doing) : '';
+  if (sub.said) return `“${sub.said}”${sub.since && step ? ` · ${step}` : ''}`;
+  return step || 'Starting';
+}
+
+/**
+ * The subagents under an agent’s row, after its side-thread entries (#73). Each entry is kept and changed in place as
+ * the subagent works, so its ring keeps turning and the entries beside it (and a focused Stop) aren’t rebuilt.
+ * @param {HTMLElement} list @param {number} after how many entries come first @param {{ sub: any, depth: number }[]} subs
+ */
+function paintSubagents(list, after, subs) {
+  const keyOf = (/** @type {any} */ sub) => String(sub.id ?? sub.name);
+  /** @type {Map<string, HTMLElement>} */
+  const had = new Map(
+    [...list.querySelectorAll(':scope > li.subagent')].map((li) => [/** @type {HTMLElement} */ (li).dataset.subagent ?? '', /** @type {HTMLElement} */ (li)]),
+  );
+  subs.forEach(({ sub, depth }, i) => {
+    let li = had.get(keyOf(sub));
+    had.delete(keyOf(sub));
+    if (!li) {
+      li = h(
+        'li.agent-sub.subagent',
+        { dataset: { subagent: keyOf(sub) } },
+        h('span.ring-slot', { 'aria-hidden': 'true' }, h('pb-ring', { size: 'xs' })),
+        h('span.name', h('span.sub-head'), h('span.sub-now')),
+      );
+    }
+    li.dataset.depth = String(Math.min(depth, 3));
+    // Set only when changed: a ring repaints on each attribute it’s given.
+    const ring = li.querySelector('pb-ring');
+    const ctx = String(Math.round(sub.ctx ?? 0));
+    if (ring?.getAttribute('name') !== sub.name) ring?.setAttribute('name', sub.name);
+    if (ring?.getAttribute('state') !== sub.state) ring?.setAttribute('state', sub.state);
+    if (ring?.getAttribute('ctx') !== ctx) ring?.setAttribute('ctx', ctx);
+    const asked = sub.asked && sub.asked !== sub.name ? sub.asked : null;
+    fill(li.querySelector('.sub-head'), h('b', sub.name), ` · ${sub.bg ? 'subagent in the background' : 'subagent'}`, asked ? `: ${asked}` : '');
+    const now = /** @type {HTMLElement} */ (li.querySelector('.sub-now'));
+    if (now.textContent !== subagentNow(sub)) now.textContent = subagentNow(sub);
+    now.className = `sub-now${sub.said ? ' said' : sub.thinking ? ' thinking' : ''}`;
+    if (list.children[after + i] !== li) list.insertBefore(li, list.children[after + i] ?? null);
+  });
+  for (const li of had.values()) li.remove();
+}
+
 /** One nested entry: where it is (a link that opens the side thread), who woke it, its state, and its Stop. */
 function treeEntry({ se, thread, by, fork }) {
   const who = by === 'you' ? 'you' : by ? `@${by}` : null;
@@ -195,7 +270,7 @@ function agentRow(se) {
     'li.agent-row',
     button,
     h('div.agent-asks', openAsksEl(se, true)),
-    h('ul.agent-subs', { 'aria-label': `@${se.handle}’s sessions in side threads` }),
+    h('ul.agent-subs', { 'aria-label': `@${se.handle}’s sessions in side threads, and its subagents` }),
   );
   paintRow(n, se, true);
   return n;
@@ -208,12 +283,14 @@ function paintRow(n, se, fresh = false) {
   const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined]);
   ringFor(se, 'sm', n.querySelector('.agent-btn pb-ring'));
   const tree = treeOf(se);
+  const subagents = subagentsOf(se);
   const subs = n.querySelector('.agent-subs');
-  subs.hidden = !tree.length;
+  subs.hidden = !tree.length && !subagents.length;
   if (fresh || subs.dataset.sig !== treeSig(tree)) {
     subs.dataset.sig = treeSig(tree);
-    subs.replaceChildren(...tree.map(treeEntry));
+    subs.replaceChildren(...tree.map(treeEntry), ...subs.querySelectorAll(':scope > li.subagent'));
   }
+  paintSubagents(subs, tree.length, subagents);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
   fill(
