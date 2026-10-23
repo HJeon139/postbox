@@ -2,7 +2,7 @@
 // verifier judges whether the evidence shows the defect. gh, git and the verifier are stand-ins here.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { closedIssues, hasFix, markClosed, presetFindings, verifyRegressions } from '../tools/uat/regressions.mjs';
+import { closedIssues, commentRegressions, hasFix, markClosed, presetFindings, verifyRegressions } from '../tools/uat/regressions.mjs';
 import { verdictOf } from '../tools/uat/verdicts.mjs';
 
 const FIX = '9dd3c46c9116c2e0ca64ba31ca93c8617d5251ec';
@@ -100,24 +100,29 @@ test('the verifier judges only the evidence: shown is a regression commented on 
     };
   };
   await verifyRegressions({ root: '.', testerModel: 'm', dir: '/runs/2026-10-23T21-18-25-p0', findings, log: () => {}, file: true, ask, gh: gh(calls) });
+  commentRegressions({ root: '.', dir: '/runs/2026-10-23T21-18-25-p0', findings, log: () => {}, gh: gh(calls) });
   assert.match(asked[0].prompt, /\[0\] #123 Issue 123\nIts fix: commit 9dd3c46\./);
   const [shown, stale] = findings;
   assert.deepEqual([shown.verdict, shown.verdictBy, shown.duplicateOf, shown.regression], ['duplicate', 'verifier', 123, true]);
   assert.equal(stale.verdict, 'harness');
+  // Not caught again: the report doesn’t list it under #123.
+  assert.deepEqual([stale.issue, stale.matchedIssue], [null, 123]);
   assert.match(stale.note, /^The approval-for-other-revision check matched closed #123, and the evidence doesn’t show it/);
   const comments = calls.filter((a) => a[1] === 'comment');
   assert.equal(comments.length, 1);
   assert.equal(comments[0][2], '123');
   assert.match(comments[0][4], /`2026-10-23T21-18-25-p0`, at 7fa3a6d.*which has the fix \(commit 9dd3c46\)/);
   assert.match(comments[0][4], /The runner doesn’t reopen issues/);
+  assert.match(comments[0][4], /\*\*Verifier:\*\* The update erased an unread answer\./);
   assert.equal(shown.regressionComment, 'https://github.com/HJeon139/postbox/issues/123#issuecomment-1');
   // Nothing reopens, and a second pass comments nothing more: every finding has its verdict.
   assert.ok(!calls.some((a) => a.includes('reopen')));
   await verifyRegressions({ root: '.', testerModel: 'm', dir: '/r', findings, log: () => {}, file: true, ask, gh: gh(calls) });
+  commentRegressions({ root: '.', dir: '/r', findings, log: () => {}, gh: gh(calls) });
   assert.equal(calls.filter((a) => a[1] === 'comment').length, 1);
 });
 
-test('with --file no, a confirmed regression is recorded and the issue isn’t commented on', async () => {
+test('with --file no, a confirmed regression is recorded, and the next pass that files comments on it', async () => {
   const findings = [check(123)];
   presetFindings(findings, { root: '.', commit: RUN, gh: gh(), git });
   const calls = [];
@@ -128,4 +133,18 @@ test('with --file no, a confirmed regression is recorded and the issue isn’t c
     calls.filter((a) => a[1] === 'comment'),
     [],
   );
+  // A later recheck that files: the verdict is there, so nothing is verified again, and the issue gets its comment.
+  await verifyRegressions({ root: '.', testerModel: 'm', dir: '/r', findings, log: () => {}, file: true, ask, gh: gh(calls) });
+  commentRegressions({ root: '.', dir: '/r', findings, log: () => {}, gh: gh(calls) });
+  assert.equal(calls.filter((a) => a[1] === 'comment').length, 1);
+  assert.match(calls.find((a) => a[1] === 'comment')[4], /It came back\./);
+});
+
+test('when gh can’t read an issue, its match isn’t preset as a duplicate: it may be closed', () => {
+  const down = () => ({ status: 1, stdout: '', stderr: 'gh: not signed in' });
+  const findings = [check(123)];
+  presetFindings(findings, { root: '.', commit: RUN, gh: down, git });
+  assert.equal(findings[0].verdict, undefined);
+  assert.equal(verdictOf(findings[0]), null);
+  assert.equal(findings[0].note, 'gh couldn’t read #123, so whether it’s closed can’t be told, and it isn’t preset. Not verified.');
 });

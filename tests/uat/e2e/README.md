@@ -254,7 +254,8 @@ Each records who set it (`person`, `reviewer` or `verifier`, or `check` and `run
 2. **Compares a closed issue’s fix with the run’s commit**, for a check that matched a closed issue ([`tools/uat/regressions.mjs`](../../../tools/uat/regressions.mjs)). The preset doesn’t apply to it: a check written before its issue’s fix can keep firing after it (#213). The fix is the commit that closed the issue, or else its closing pull request’s commits, and `git merge-base --is-ancestor` says whether the run’s commit (`run.json`) has it:
    - **Without the fix**, it’s the defect as it was: a `duplicate`, set by the runner.
    - **With the fix**, it’s a possible regression. A verifier judges only whether the evidence shows the defect. Shown: a `duplicate` of the closed issue, marked `regression`, and, when the run files, a comment on the issue with the evidence. The triage session or the person reopens it; the runner never does. Not shown: `harness`, with the check named in the note, so the check gets fixed.
-   - **A run without a recorded commit**, or a fix this clone can’t compare, says so in the finding’s note, and the finding isn’t verified.
+   - **A run without a recorded commit**, an issue closed with no commit or pull request named, a fix this clone can’t compare, or an issue `gh` couldn’t read, says so in the finding’s note, and the finding isn’t verified. A person or a reviewer can set its verdict (`tools/uat-verdict.mjs`).
+   - A confirmed regression found with `--file no` is commented on by the next run or recheck that files.
 3. **Verifies** the rest in a fresh model session against the screenshots and the run’s evidence, including the tester’s own matches to open issues. It does this with `--file no` too; `--verify no` skips it.
 4. **Files** each confirmed finding with the bug template: component, urgency, steps to reproduce, expected, and what failed instead. It gets the `uat` label, a priority from its severity, and a hidden fingerprint so later runs don’t file it again. The report shows each verdict, who set it, and the issue number. `--file no` verifies without filing.
 
@@ -282,12 +283,12 @@ The person’s rule (23 October 2026): **recurring findings are prioritized.** A
 
 **Reading it.** `node tools/uat-stats.mjs` ends with the count, as a table by issue, open and closed (`recurrence` in `tools/uat/stats.mjs`). It reads the issues’ states and priorities through `gh`, and says “?” without it:
 
-| Column | What it is |
-|---|---|
-| Issue, State, Priority | the issue, open or closed, and its P label now |
-| Runs | the runs that caught it again, each once: what the priority rule reads |
-| Findings | the findings that did, across those runs: one check can fire several times in a run |
-| Runs after close | the runs that started after the issue closed. A rechecked one counts here only with a verified regression, or on a commit that predates the fix (an older branch): read its notes to tell which |
+| Column                 | What it is                                                                                                                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issue, State, Priority | the issue, open or closed, and its P label now                                                                                                                                                  |
+| Runs                   | the runs that caught it again, each once: what the priority rule reads                                                                                                                          |
+| Findings               | the findings that did, across those runs: one check can fire several times in a run                                                                                                             |
+| Runs after close       | the runs that started after the issue closed. A rechecked one counts here only with a verified regression, or on a commit that predates the fix (an older branch): read its notes to tell which |
 
 It’s sorted by runs, then findings, so what recurs most is first. Recheck the runs first (`--recheck <run> --file no`, no model call), so every finding is counted with the current checks and presets: a run not rechecked since #213 still counts its check’s matches to closed issues.
 

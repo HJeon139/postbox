@@ -2,7 +2,7 @@
 // (tools/uat-run.mjs calls it).
 
 import { spawnSync } from 'node:child_process';
-import { verifyRegressions } from './regressions.mjs';
+import { commentRegressions, verifyRegressions } from './regressions.mjs';
 import { askOnce, VERIFY_SCHEMA, verifyPrompt } from './tester.mjs';
 import { setVerdict } from './verdicts.mjs';
 
@@ -23,6 +23,7 @@ const fingerprint = (f) =>
  */
 export async function reviewFindings(o) {
   if (o.verify) await verifyRegressions(o);
+  if (o.file) commentRegressions(o);
   await verifyAndFile(o);
 }
 

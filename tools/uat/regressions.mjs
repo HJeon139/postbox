@@ -8,7 +8,7 @@
 import { spawnSync } from 'node:child_process';
 import { basename } from 'node:path';
 import { askOnce } from './tester.mjs';
-import { presetVerdicts, setVerdict } from './verdicts.mjs';
+import { normalVerdict, presetVerdicts, setVerdict } from './verdicts.mjs';
 
 /** @typedef {(args: string[]) => { status: number|null, stdout: string, stderr?: string }} Cli */
 
@@ -25,14 +25,16 @@ const json = (r) => {
 
 /**
  * Each closed issue among these numbers, with its fix: the commit its last “closed” event names, else its closing
- * pull request’s merge and head commits. An open issue, or one gh can’t read, is left out.
+ * pull request’s merge and head commits. An open issue is left out. One gh can’t read is kept as unread: it may be
+ * closed, so it mustn’t be preset as a duplicate.
  * @param {number[]} numbers  @param {Cli} gh
- * @returns {Map<number, { fix: string[], by: string|null }>}
+ * @returns {Map<number, { fix: string[], by: string|null, unread?: true }>}
  */
 export function closedIssues(numbers, gh) {
   const out = new Map();
   for (const n of new Set(numbers)) {
     const issue = json(gh(['issue', 'view', String(n), '--json', 'state,closedByPullRequestsReferences']));
+    if (!issue) out.set(n, { fix: [], by: null, unread: true });
     if (issue?.state !== 'CLOSED') continue;
     const events = gh(['api', '--paginate', `repos/{owner}/{repo}/issues/${n}/events`, '--jq', '.[] | select(.event == "closed") | (.commit_id // "-")']);
     const commit = events.status === 0 ? events.stdout.trim().split('\n').at(-1) : null;
@@ -66,9 +68,10 @@ export function hasFix(fix, commit, git) {
 /**
  * Marks every check finding that matches a closed issue with what the run’s commit says about it (closedIssue), so
  * the preset passes it by. Before the fix, it’s the defect as it was: a duplicate, by the runner, from git. With the
- * fix, it waits for verifyRegressions. With no commit or no fix to compare, it isn’t verified, and its note says why.
- * A verdict it already has stays.
- * @param {any[]} findings  @param {{ closed: Map<number, { fix: string[], by: string|null }>, commit: string|null, git: Cli }} o
+ * fix, it waits for verifyRegressions. With no commit or no fix to compare, or an issue gh couldn’t read, it isn’t
+ * verified, and its note says why. A verdict it already has stays; one that isn’t a duplicate (the verifier found the
+ * check wrong) takes the issue off the finding, so the report doesn’t list it as caught again.
+ * @param {any[]} findings  @param {{ closed: Map<number, { fix: string[], by: string|null, unread?: true }>, commit: string|null, git: Cli }} o
  */
 export function markClosed(findings, { closed, commit, git }) {
   for (const f of findings) {
@@ -76,9 +79,13 @@ export function markClosed(findings, { closed, commit, git }) {
     if (!c) continue;
     const n = f.issue;
     const has = commit && c.fix.length ? hasFix(c.fix, commit, git) : null;
-    f.closedIssue = { issue: n, fix: c.fix[0] ?? null, by: c.by, commit, hasFix: has };
-    if (f.verdict) continue;
-    if (has === false)
+    f.closedIssue = { issue: n, fix: c.fix[0] ?? null, by: c.by, commit, hasFix: has, ...(c.unread ? { unread: true } : {}) };
+    if (f.verdict) {
+      if (normalVerdict(f.verdict) !== 'duplicate') unmatch(f);
+      continue;
+    }
+    if (c.unread) f.note = `gh couldn’t read #${n}, so whether it’s closed can’t be told, and it isn’t preset. Not verified.`;
+    else if (has === false)
       setVerdict(f, {
         verdict: 'duplicate',
         by: 'runner',
@@ -93,6 +100,12 @@ export function markClosed(findings, { closed, commit, git }) {
           : `#${n} is closed, and the run’s commit ${short(commit)} has its fix (${c.by}): a possible regression, for the verifier.`;
   }
 }
+
+/** Takes a closed issue off a finding the verifier didn’t confirm, keeping it as matchedIssue. @param {any} f */
+const unmatch = (f) => {
+  f.matchedIssue = f.issue;
+  f.issue = null;
+};
 
 /**
  * The verdicts that need no model, in a checkout: a match to a closed issue is marked first (markClosed), and the
@@ -141,8 +154,8 @@ ${findings
 
 /**
  * Asks a verifier whether each finding on a closed issue that the run had the fix for shows the defect. Shown: a
- * duplicate of that issue, marked as a regression, and (when filing) a comment on the issue with the evidence. Not
- * shown: harness, naming the check, so the check gets fixed.
+ * duplicate of that issue, marked as a regression, for commentRegressions. Not shown: harness, naming the check, so
+ * the check gets fixed.
  * @param {{ root: string, testerModel: string, dir: string, findings: any[], log: (l: string) => void, file: boolean, ask?: typeof askOnce, gh?: Cli }} o
  */
 export async function verifyRegressions({ root, testerModel, dir, findings, log, file, ask = askOnce, gh = cli('gh', root) }) {
@@ -161,16 +174,26 @@ export async function verifyRegressions({ root, testerModel, dir, findings, log,
     if (!f) continue;
     const n = f.closedIssue.issue;
     if (!r.shown) {
-      setVerdict(f, { verdict: 'harness', by: 'verifier', note: `The ${f.check} check matched closed #${n}, and the evidence doesn’t show it: ${r.note}` });
+      if (setVerdict(f, { verdict: 'harness', by: 'verifier', note: `The ${f.check} check matched closed #${n}, and the evidence doesn’t show it: ${r.note}` }))
+        unmatch(f);
       continue;
     }
     if (!setVerdict(f, { verdict: 'duplicate', by: 'verifier', issue: n, note: `#${n} came back after its fix (${f.closedIssue.by}): ${r.note}` })) continue;
     f.regression = true;
-    if (!file || f.regressionComment) {
-      if (!file) log(`#${n} came back after its fix. With --file no, the issue wasn’t commented on.`);
-      continue;
-    }
-    const c = gh(['issue', 'comment', String(n), '--body', regressionComment(f, dir, r.note)]);
+    f.regressionNote = r.note;
+    if (!file) log(`#${n} came back after its fix. With --file no, the issue wasn’t commented on: a run that files will.`);
+  }
+}
+
+/**
+ * Comments on each confirmed regression’s issue with the evidence, once: one confirmed by a pass that didn’t file
+ * (--file no) is commented on by the next that does. The runner never reopens the issue.
+ * @param {{ root: string, dir: string, findings: any[], log: (l: string) => void, gh?: Cli }} o
+ */
+export function commentRegressions({ root, dir, findings, log, gh = cli('gh', root) }) {
+  for (const f of findings.filter((x) => x.regression && !x.regressionComment && Number.isInteger(x.closedIssue?.issue))) {
+    const n = f.closedIssue.issue;
+    const c = gh(['issue', 'comment', String(n), '--body', regressionComment(f, dir, f.regressionNote ?? f.note)]);
     if (c.status === 0) f.regressionComment = c.stdout.trim();
     else log(`Couldn’t comment on #${n}: ${String(c.stderr ?? '').trim()}`);
   }

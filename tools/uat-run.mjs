@@ -926,7 +926,7 @@ async function recheck(dir) {
       const b = before.get(`${c.check}:${c.key}`);
       // Its step too: the refit counts a finding at the step it was first seen.
       if (b)
-        for (const k of ['step', 'phase', 'filed', 'regression', 'regressionComment', ...(b.verdictBy === 'check' ? [] : reviewed)])
+        for (const k of ['step', 'phase', 'filed', 'regression', 'regressionNote', 'regressionComment', ...(b.verdictBy === 'check' ? [] : reviewed)])
           if (b[k] !== undefined) c[k] = b[k];
     }
     // Coverage is read again from the whole run: a phase’s triggers either happened in it or didn’t. A gap saved
