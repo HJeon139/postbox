@@ -22,6 +22,7 @@ import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { runShell } from './shell.mjs';
 import { newId } from './store.mjs';
+import { askForTool, resolveToolAsk } from './tool-ask.mjs';
 
 export const HOP_LIMIT = 3;
 const DELETE_UNDO_MS = 10000;
@@ -882,6 +883,7 @@ export class Runtime {
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
     const refused = items.filter((it) => it.kind === 'denial' && it.turnId === turn.id && it.status === 'open');
+    const askedTool = items.filter((it) => it.kind === 'toolask' && it.turnId === turn.id && it.status === 'open').at(-1);
     const needs = open.length
       ? {
           kind: 'block',
@@ -896,9 +898,11 @@ export class Runtime {
             text: `${refused.length === 1 ? 'A step was' : `${refused.length} steps were`} refused: ${refused.at(-1).summary}`,
             ...this.awayFrom(se, turn.threadId),
           }
-        : se.needs?.kind === 'hop'
-          ? se.needs
-          : null;
+        : askedTool
+          ? { kind: 'toolask', itemId: askedTool.id, text: `@${se.handle} asks you to turn on “${askedTool.label}”`, ...this.awayFrom(se, turn.threadId) }
+          : se.needs?.kind === 'hop'
+            ? se.needs
+            : null;
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
     this.updateSession(se.id, {
       state: needs ? 'needs' : 'idle',
@@ -912,7 +916,8 @@ export class Runtime {
       unread: viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
       stopAsk: null,
     });
-    if (needs && (needs.kind === 'block' || needs.kind === 'denial')) this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
+    if (needs && (needs.kind === 'block' || needs.kind === 'denial' || needs.kind === 'toolask'))
+      this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
     else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
     else if (turn.said && !viewing) this.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
 
@@ -1508,6 +1513,7 @@ export class Runtime {
     if (it.kind === 'permission') return this.resolvePermission(threadId, itemId, action, values);
     if (it.kind === 'denial') return this.resolveDenial(threadId, itemId, action);
     if (it.kind === 'appsend') return this.resolveAppSend(threadId, itemId, action);
+    if (it.kind === 'toolask') return resolveToolAsk(this, threadId, itemId, action);
     if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
     if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
     // Progress, image and code never ask; a card or table action doesn’t lock the block.
@@ -3657,6 +3663,9 @@ export class Runtime {
       },
       read_message(args = {}) {
         return rt.readMessage(se(), args);
+      },
+      ask_for_tool(args = {}) {
+        return askForTool(rt, sessionId, args, endSegment, threadId());
       },
       corpus_search(args) {
         return { ok: true, results: hostTool(rt, 'corpus.search', args) };

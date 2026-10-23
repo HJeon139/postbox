@@ -150,6 +150,24 @@ export const TOOL_RULES = /** @type {Record<string, string[]>} */ ({
  */
 export const REAL_BACKEND_TOOLS = [['agents.outside', 'Message, schedule or start agents outside Postbox']];
 
+/** What each tool id lets an agent do, in the words the agent guide uses when it’s turned off (#104). */
+export const TOOL_WORDS = /** @type {Record<string, string>} */ ({
+  shell: 'running commands',
+  'web.fetch': 'fetching web pages or searching the web',
+  'agents.outside': 'messaging, scheduling or starting agents outside Postbox',
+});
+
+/**
+ * The tool ids a backend turns off for this persona: those in its rule map (TOOL_RULES, or the Kiro CLI’s) that
+ * aren’t ticked. The agent never sees their tools, so the guide tells it which are off and why (#104).
+ * @param {any} persona @param {Record<string, unknown>|null} [rules]  keyed by tool id; null for a backend that can’t turn tools off
+ */
+export function toolsOff(persona, rules = TOOL_RULES) {
+  if (!rules) return [];
+  const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
+  return Object.keys(rules).filter((id) => !has.has(id));
+}
+
 /** Every deny rule for a persona’s turn: the publishing tools unless it may publish, then its unticked tools. */
 export function deniedTools(persona) {
   const { canPublish } = setupOf(persona);

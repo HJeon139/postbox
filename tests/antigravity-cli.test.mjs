@@ -301,7 +301,12 @@ test('the arguments: model, effort where it’s taken, the conversation, the mod
 test('the rules file: the guide, the note on refusals, and what the persona turned off that agy can’t', () => {
   const off = agyRules({ persona: { tools: ['web.fetch'] }, guide: 'GUIDE' });
   assert.ok(off.startsWith('GUIDE\n\n## Refused tool calls'));
-  assert.match(off, /turned these off for you in Postbox: running commands; messaging, scheduling or starting agents outside Postbox; publishing/);
+  assert.match(
+    off,
+    /turned these off for you in Postbox: running commands \(shell\); messaging, scheduling or starting agents outside Postbox \(agents\.outside\); publishing/,
+  );
+  // It can ask to have one turned on (#104).
+  assert.match(off, /ask_for_tool \{ tool: "shell", why \}/);
   assert.doesNotMatch(off, /fetching web pages/);
   const all = agyRules({ persona: { tools: ['shell', 'web.fetch', 'agents.outside'], canPublish: true }, guide: 'GUIDE' });
   assert.doesNotMatch(all, /What you don’t do here/);

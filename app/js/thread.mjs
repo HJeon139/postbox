@@ -601,6 +601,8 @@ function renderItem(it, prev, ctx) {
       return commandBlock(it, ctx);
     case 'denial':
       return denialBlock(it, ctx);
+    case 'toolask':
+      return toolAskBlock(it, ctx);
     case 'appsend':
       return renderAppSendCard(it, ctx);
     case 'proposal':
@@ -1146,6 +1148,45 @@ function denialBlock(it, ctx) {
           h('button.btn', { type: 'button', onclick: () => act('once') }, 'Allow once and retry'),
           h('button.btn', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`),
           h('button.btn.ghost', { type: 'button', onclick: () => act('leave') }, 'Leave it'),
+        )
+      : null,
+  );
+}
+
+// An agent asks for a tool the person turned off for it (#104). The card says what turning it on does before the click:
+// it changes the persona, in every conversation, and the permission mode still decides each call.
+function toolAskBlock(it, ctx) {
+  const open = it.status === 'open';
+  const act = (action) =>
+    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
+      .then(focusComposer)
+      .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
+  const titleId = `ta-${it.id}`;
+  return h(
+    'div.col.block',
+    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
+    h(
+      'div.block-head',
+      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
+      h('span.title.grow', { id: titleId }, `@${it.handle} asks you to turn on “${it.label}”`),
+      h('span.kind', 'Turned off · ', h('span.tool-name', it.tool)),
+    ),
+    h(
+      'div.block-body',
+      h('p', `It’s turned off for @${it.handle} in Postbox, so it can’t use it here.`),
+      it.why ? h('p.small', h('b', `@${it.handle}: `), it.why) : null,
+      open
+        ? h(
+            'p.small.dim',
+            `Turning it on ticks it in @${it.handle}’s Tools, in every conversation, from its next turn. Its permission mode still decides each call.`,
+          )
+        : h('span.answered-note', icon(it.status === 'on' ? 'check' : 'x', 'i-sm'), it.status === 'on' ? 'Turned on.' : 'Kept off.'),
+    ),
+    open
+      ? h(
+          'div.block-foot',
+          h('button.btn', { type: 'button', onclick: () => act('on') }, `Turn on for @${it.handle}`),
+          h('button.btn.ghost', { type: 'button', onclick: () => act('off') }, 'Keep it off'),
         )
       : null,
   );
@@ -1863,7 +1904,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     updateSlash();
     // The hint line follows what the line will do: a picked skill, a ! command, or a message.
     if (slashTarget && !ta.value.startsWith(`/${slashTarget.name}`)) slashTarget = null;
-    if (commands && (ta.value.startsWith('!') || ta.value.startsWith('/') || hint.dataset.mode)) paint();
+    if (ta.value.startsWith('!') || hint.dataset.mode || (commands && ta.value.startsWith('/'))) paint();
   });
   ta.addEventListener('click', () => {
     updateMention();
@@ -2067,7 +2108,18 @@ export function mountComposer(threadId, { side = false } = {}) {
     );
     // What Enter will do with a / or ! line (#67).
     const line = ta.value.trimStart();
-    const mode = !commands || offline ? '' : line.startsWith('!') ? 'shell' : slashTarget && line.startsWith(`/${slashTarget.name}`) ? 'skill' : '';
+    // ! outside a conversation’s own composer would go to the agent as plain text: say so before it’s sent (#104).
+    const mode = offline
+      ? ''
+      : !commands
+        ? line.startsWith('!')
+          ? 'no-shell'
+          : ''
+        : line.startsWith('!')
+          ? 'shell'
+          : slashTarget && line.startsWith(`/${slashTarget.name}`)
+            ? 'skill'
+            : '';
     if (mode) hint.dataset.mode = mode;
     else delete hint.dataset.mode;
     const folder = mode === 'shell' ? commandFolder() : null;
@@ -2083,27 +2135,33 @@ export function mountComposer(threadId, { side = false } = {}) {
                 : 'This conversation has no folder to run commands in. ',
             'The agents read it and its output on their next turn.',
           )
-        : mode === 'skill'
+        : mode === 'no-shell'
           ? h(
               'span',
-              'Enter runs ',
-              h('span.mono', `/${slashTarget.name}`),
-              slashTarget.argumentHint ? [' ', h('span.mono.dim', slashTarget.argumentHint)] : null,
-              ' as ',
-              h('b', `@${slashTarget.handle}`),
-              '’s turn',
+              h('b', '! runs commands only in the conversation’s own composer.'),
+              ` Here, this goes to ${topic ? 'the agent' : 'the agents'} as a message. To run it, send it from the conversation.`,
             )
-          : offline
-            ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
-            : topic
-              ? h('span', 'Replies stay in this thread. @ brings in another agent from the conversation.')
-              : side
-                ? h('span', 'Anything you send here adds you to this side thread.')
-                : [
-                    members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), mockMarker(last), ' (last speaker)') : null,
-                    h('span', 'Enter to send · Shift+Enter for a new line'),
-                    h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
-                  ],
+          : mode === 'skill'
+            ? h(
+                'span',
+                'Enter runs ',
+                h('span.mono', `/${slashTarget.name}`),
+                slashTarget.argumentHint ? [' ', h('span.mono.dim', slashTarget.argumentHint)] : null,
+                ' as ',
+                h('b', `@${slashTarget.handle}`),
+                '’s turn',
+              )
+            : offline
+              ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
+              : topic
+                ? h('span', 'Replies stay in this thread. @ brings in another agent from the conversation.')
+                : side
+                  ? h('span', 'Anything you send here adds you to this side thread.')
+                  : [
+                      members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), mockMarker(last), ' (last speaker)') : null,
+                      h('span', 'Enter to send · Shift+Enter for a new line'),
+                      h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
+                    ],
     );
   }
   /**

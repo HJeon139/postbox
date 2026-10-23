@@ -249,6 +249,31 @@ await check('#150 a Codex approval for an MCP tool names the tool and shows its 
   assert.deepEqual(replies[0], { action: 'accept', content: {} });
 });
 
+await check('#104 an agent asks for a tool that’s off; the card says what turning it on does, and the button turns it on', async () => {
+  const asked = [];
+  script.push(async (ctx) => {
+    asked.push(ctx.tools.ask_for_tool({ tool: 'agents.outside', why: 'To schedule the nightly run with CronCreate.' }));
+  });
+  rt.sendMessage(thread.id, { text: 'Schedule the nightly run.' });
+  const ask = byText('.transcript .block', 'asks you to turn on “Message, schedule');
+  await page.waitFor(`!!(${ask})?.querySelector('.block-foot')`, { label: 'the card' });
+  assert.equal(asked[0].ok, true);
+  assert.equal(await text(`${ask}.querySelector('.title')`), '@coder asks you to turn on “Message, schedule or start agents outside Postbox”');
+  const body = await text(`${ask}.querySelector('.block-body')`);
+  assert.match(body, /It’s turned off for @coder in Postbox, so it can’t use it here\./);
+  // The id is the label beside the title, in its own case.
+  assert.equal(await text(`${ask}.querySelector('.kind .tool-name')`), 'agents.outside');
+  assert.match(body, /@coder: To schedule the nightly run with CronCreate\./);
+  assert.match(body, /in every conversation, from its next turn\. Its permission mode still decides each call\./);
+  await click(byText('.transcript .block-foot button', 'Turn on for @coder'));
+  await page.waitFor(`/Turned on./.test((${ask})?.innerText ?? '')`, { label: 'the answered card' });
+  assert.ok(store.state.personas[persona.id].tools.includes('agents.outside'), 'the persona has it ticked');
+  assert.equal(await focused(), 'composer-input', 'focus goes back to the composer');
+  await until(() => rt.turns.size === 0, 'the agent’s next turn');
+  // Leave the persona as the panel checks expect it.
+  rt.updatePersona(persona.id, { tools: ['shell'] });
+});
+
 // ── The panel ───────────────────────────────────────────────────────────────────────────
 
 const dialog = q('.dialog');

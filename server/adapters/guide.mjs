@@ -4,12 +4,15 @@
 
 import { LIMITS, limitText, PALETTES } from '../../shared/limits.mjs';
 import { formatLint } from '../checks.mjs';
+import { TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /**
  * The system prompt Postbox appends for an agent: who it is, who else is here, and how to use the room.
- * @param {{ persona: any, handles: string[], project?: any, brief?: string|null }} who
+ * toolRules: the backend’s map of Tools ids to the tools it turns off (TOOL_RULES for Claude Code and the Agent SDK,
+ * the Kiro CLI’s own), or null for a backend that can’t turn a tool off for one agent.
+ * @param {{ persona: any, handles: string[], project?: any, brief?: string|null, toolRules?: Record<string, string[]>|null }} who
  */
-export function agentGuide({ persona, handles, project, brief }) {
+export function agentGuide({ persona, handles, project, brief, toolRules = TOOL_RULES }) {
   const others = handles.filter((h) => h !== persona.handle);
   return [
     `You are @${persona.handle}, an agent in Postbox: a chat room where one person directs several AI agents, and where agents reply with Markdown, interactive blocks and small apps they write.`,
@@ -18,10 +21,24 @@ export function agentGuide({ persona, handles, project, brief }) {
     others.length ? `Other agents in Postbox: ${others.map((h) => `@${h}`).join(', ')}. Mention one with @handle, or use wake_agent, to bring it in.` : '',
     project?.name ? `This conversation belongs to the project “${project.name}”.` : '',
     brief ? `How you joined: ${brief}` : '',
+    offText(toolsOff(persona, toolRules)),
     guideText(),
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+/**
+ * What the persona turned off (#104). The backend removes those tools, so the agent can’t tell a tool that’s off from
+ * a computer without one, and told a person who could run gh that it had no shell. This says which, and how to ask.
+ * @param {string[]} off  tool ids, from toolsOff
+ */
+export function offText(off) {
+  if (!off.length) return '';
+  const list = off.map((id) => `${TOOL_WORDS[id] ?? id} (${id})`).join('; ');
+  return `## Turned off for you
+
+The person turned these off for you in Postbox, so their tools aren’t in your list: ${list}. This computer has them; Postbox doesn’t give them to you. If a request needs one, don’t say the computer or the person lacks it: call ask_for_tool { tool: "${off[0]}", why: what you’d use it for }, then end your turn. The person sees a card that turns it on for you, and their answer reaches you as a message.`;
 }
 
 /**

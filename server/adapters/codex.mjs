@@ -363,7 +363,8 @@ export class CodexAdapter {
       if (!id) throw new Error('Codex app-server did not return a thread id.');
       ctx.state.codexThreadId = id;
       ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
-      const guide = agentGuide({ persona: ctx.persona, handles: ctx.handles, project: ctx.project, brief: session?.brief });
+      // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
+      const guide = agentGuide({ persona: ctx.persona, handles: ctx.handles, project: ctx.project, brief: session?.brief, toolRules: null });
       const inputText = formatMessage(message, ctx.pathOf);
       const started = await request('turn/start', {
         threadId: id,
