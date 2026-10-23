@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.6.1 (2026-10-23)
+
+### Fixes
+
+- **uat:** run.json records the effort agents ran at, and reports' Agents line is read back
+
 ## 0.6.0 (2026-10-23)
 
 ### Features
