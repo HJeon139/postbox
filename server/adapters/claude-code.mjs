@@ -18,7 +18,8 @@
 // your terminal, with Postbox’s server added, except the output style, the servers the persona turned off, and
 // the tools that publish outside Postbox: see server/adapters/setup.mjs. An Isolated persona gets
 // --strict-mcp-config, so only Postbox’s server loads (#59).
-// The turn’s message goes in on stdin. Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit.
+// The turn’s message goes in on stdin. The CLI runs in its own process group: Stop sends it SIGINT, then SIGKILL if it
+// doesn’t exit, and to every tool shell it started (server/adapters/process-group.mjs, #126).
 // POSTBOX_CLAUDE_RECORD=<folder> saves each turn’s raw stream there, for test fixtures.
 
 import { spawn } from 'node:child_process';
@@ -31,6 +32,7 @@ import { createInterface } from 'node:readline';
 import { withAskRules } from '../permission-rules.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
+import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
@@ -136,11 +138,17 @@ export function forkPoint(state) {
 export class ClaudeCodeAdapter {
   name = 'claude-code';
 
-  /** @param {{ bin?: string, workRoot: string, spawnImpl?: typeof spawn }} opts */
-  constructor({ bin = findClaude(), workRoot, spawnImpl = spawn }) {
+  /**
+   * @param {{ bin?: string, workRoot: string, spawnImpl?: typeof spawn, kill?: import('./process-group.mjs').KillFn,
+   *           listProcesses?: () => Promise<import('./process-group.mjs').Proc[]> }} opts
+   *   kill and listProcesses: how Stop signals and finds processes; tests pass fakes
+   */
+  constructor({ bin = findClaude(), workRoot, spawnImpl = spawn, kill = process.kill, listProcesses: list = listProcesses }) {
     this.bin = bin;
     this.workRoot = workRoot;
     this.spawn = spawnImpl;
+    this.kill = kill;
+    this.list = list;
   }
 
   /**
@@ -201,20 +209,35 @@ export class ClaudeCodeAdapter {
     return new Promise((resolve, reject) => {
       let child;
       try {
-        child = this.spawn(this.bin, args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+        // Its own process group, so Stop reaches everything under a launcher too (#126).
+        child = this.spawn(this.bin, args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
       } catch (e) {
         reject(new Error(`Couldn’t start Claude Code (${this.bin}): ${e.message}`));
         return;
       }
       let stderr = '';
-      /** @type {NodeJS.Timeout|undefined} */
-      let killTimer;
+      let finished = false;
+      const exited = new Promise((r) => {
+        child.once('exit', r);
+        child.once('close', r);
+        child.once('error', r);
+      });
+      const procs = { kill: this.kill, list: this.list };
+      /** @type {Promise<{ gone: Promise<void> }>|null} */
+      let stopping = null;
+      // Stop: the background jobs the runtime asked to keep running (ctx.signal.reason.keepJobs) are kept, and
+      // reported with their process group so the person can stop them later.
       const onAbort = () => {
-        child.kill('SIGINT');
-        killTimer = setTimeout(() => child.kill('SIGKILL'), 3000);
+        const keep = Array.isArray(ctx.signal.reason?.keepJobs) ? ctx.signal.reason.keepJobs : [];
+        stopping = stopTurn(child, { keep, exited, ...procs }).then((r) => {
+          for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid });
+          return r;
+        });
       };
       if (ctx.signal.aborted) onAbort();
       else ctx.signal.addEventListener('abort', onAbort, { once: true });
+      // A background job’s own Stop, while the CLI waits for it.
+      ctx.control?.({ stopJob: (job) => stopJobUnder(child, job, procs) });
       child.on('error', (e) =>
         reject(
           new Error(
@@ -246,8 +269,9 @@ export class ClaudeCodeAdapter {
           ctx.saveState({ claudeSessionId: e.session_id });
         }
       });
-      child.on('close', (code) => {
-        clearTimeout(killTimer);
+      const done = (code) => {
+        if (finished) return;
+        finished = true;
         ctx.signal.removeEventListener('abort', onAbort);
         // A fork whose branch point is gone keeps nothing from this run: no session id, no checkpoint.
         if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr)) return resolve({ missingForkPoint: true });
@@ -263,6 +287,16 @@ export class ClaudeCodeAdapter {
           return reject(new Error(mapper.result ? failure : `Claude Code exited with code ${code}${why ? `: ${why}` : ''}.`));
         }
         resolve({});
+      };
+      // A stopped turn ends once its CLI’s whole group has exited, even if something it started still holds its output
+      // open, so the session’s next turn never runs beside it (#126).
+      const settle = (code) => {
+        if (ctx.signal.aborted && stopping) stopping.then((r) => r.gone).then(() => done(code));
+        else done(code);
+      };
+      child.on('close', settle);
+      child.on('exit', (code) => {
+        if (ctx.signal.aborted) settle(code);
       });
       child.stdin.on('error', () => {});
       child.stdin.end(prompt);

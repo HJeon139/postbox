@@ -1,5 +1,5 @@
 // The event builder: turns what you did in a block into the one event the agent receives,
-// { blockId, action, values }, plus the short line shown in your voice ("Chose: weekly · Monday 9:00").
+// { blockId, revision, action, values }, plus the short line shown in your voice ("Chose: weekly · Monday 9:00").
 // It also validates form input and returns messages that say what to fix.
 
 import { LIMITS, limitText } from './limits.mjs';
@@ -11,16 +11,17 @@ const fmtNum = (n) => Number(n).toLocaleString('en-US');
  * @param {{ type: string, id: string, [field: string]: any }} block   a block that passed validateBlock, or an app
  * @param {string} action
  * @param {object} values
- * @returns {{ ok: true, event: { blockId: string, action: string, values: object }, voice: string }
+ * @param {{ revision?: number }} [at]  the revision of the block that was answered (#123); apps have none
+ * @returns {{ ok: true, event: { blockId: string, revision?: number, action: string, values: object }, voice: string }
  *         | { ok: false, error: string, fieldErrors?: Record<string, string> }}
  */
-export function buildEvent(block, action, values = {}) {
+export function buildEvent(block, action, values = {}, { revision } = {}) {
   const build = BUILDERS[block?.type];
   if (!build) return { ok: false, error: `Blocks of type “${block?.type}” don’t take actions.` };
   if (values === null || typeof values !== 'object' || Array.isArray(values)) return { ok: false, error: 'Values must be an object.' };
   const r = build(block, action, values);
   if (!r.ok) return r;
-  return { ok: true, event: { blockId: block.id, action, values: r.values }, voice: r.voice };
+  return { ok: true, event: { blockId: block.id, ...(revision ? { revision } : {}), action, values: r.values }, voice: r.voice };
 }
 
 const quote = (s, max = 60) => {
