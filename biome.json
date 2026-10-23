@@ -138,6 +138,10 @@
       }
     },
     {
+      "includes": ["app/js/threads-page.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 57 } } } } }
+    },
+    {
       "includes": ["app/js/ui.mjs"],
       "linter": {
         "rules": {

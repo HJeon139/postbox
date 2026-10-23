@@ -12,132 +12,36 @@
 // PB_PORT and PB_CHROME_PORT move it; ONLY=<text> runs only the cases whose names include it.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
-import { finish, ports, record } from './harness.mjs';
-
-const { PORT, CHROME_PORT } = await ports(4890, 10090);
-
-process.env.POSTBOX_BACKENDS = 'mock';
-const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-side-'));
-const claudeHome = await mkdtemp(join(tmpdir(), 'pb-check-side-home-'));
-const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true, claudeHome });
-const page = await launch({ port: CHROME_PORT });
-const { rt, store } = app;
-
-// ── A backend that holds its turns ──────────────────────────────────────────────────────
-
-/** Every turn the fake was sent: who, where, and what came with it. */
-const turns = [];
-/** What the next turn of a session does, by session id; otherwise it holds until released or stopped. */
-const scripts = new Map();
-const releases = new Map();
-rt.adapters.register({
-  name: 'claude-code',
-  async folderFor() {
-    return dataDir;
-  },
-  fork() {},
-  async deliver(session, message, ctx) {
-    turns.push({ sessionId: session.id, thread: ctx.thread.id, text: message.text ?? '', context: message.context ?? [] });
-    const script = scripts.get(session.id);
-    scripts.delete(session.id);
-    if (script) return script(ctx);
-    ctx.status({ state: 'tool', currentStep: 'Reading the shelf' });
-    await new Promise((r) => {
-      releases.set(session.id, r);
-      ctx.signal.addEventListener('abort', r);
-    });
-    if (!ctx.signal.aborted) ctx.text('Done.');
-  },
-});
-const release = (id) => releases.get(id)?.();
-
-const personaNamed = (handle) => Object.values(store.state.personas).find((p) => p.handle === handle);
-for (const handle of ['indexer', 'researcher'])
-  store.emit('persona', { ...personaNamed(handle), backend: 'claude-code', model: 'claude-opus-5-5', version: (personaNamed(handle).version ?? 1) + 1 });
-const room = rt.createThread({
-  projectId: Object.keys(store.state.projects)[0],
-  title: 'Side checks',
-  personaIds: [personaNamed('indexer').id, personaNamed('researcher').id],
-});
-const sessionIn = (t, handle) => rt.sessionsIn(t.id).find((x) => x.handle === handle);
-const indexer = sessionIn(room, 'indexer');
-const researcher = sessionIn(room, 'researcher');
-const sideOf = () => Object.values(store.state.threads).find((t) => t.kind === 'side' && t.parentId === room.id);
-const busy = (id) => ['think', 'gen', 'tool', 'needs'].includes(store.state.sessions[id]?.state);
-/** An agent wakes another as if the person had just written: the wake limit (#108) isn’t what this checks. */
-const wake = (from, handle, text) => {
-  rt.putThread({ ...store.state.threads[room.id], hops: 0 });
-  return rt.agentWake(from, handle, text);
-};
-
-// ── Driving the page ────────────────────────────────────────────────────────────────────
-
-const KEYS = {
-  Enter: { code: 'Enter', keyCode: 13, text: '\r' },
-  Escape: { code: 'Escape', keyCode: 27 },
-  j: { code: 'KeyJ', keyCode: 74 },
-};
-/** Presses a key the way a keyboard does. ctrl: with Control held, as ⌃J is. */
-async function press(key, { ctrl = false } = {}) {
-  const k = KEYS[key];
-  const text = ctrl ? undefined : k.text;
-  const base = { key, code: k.code, windowsVirtualKeyCode: k.keyCode, nativeVirtualKeyCode: k.keyCode, modifiers: ctrl ? 2 : 0 };
-  await page.send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text, unmodifiedText: text } : {}) });
-  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  await settle();
-}
-/** Types into the focused field, as a keyboard’s text input does. */
-async function type(text) {
-  await page.send('Input.insertText', { text });
-  await settle();
-}
-const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
-async function until(test, label) {
-  for (let i = 0; i < 50; i++) {
-    if (test()) return;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`Timed out waiting for ${label}`);
-}
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
-/** An agent’s row in the sidebar, the li around its button. */
-const row = (handle) => `[...document.querySelectorAll('.rail .agent-row')].find((r) => r.querySelector('.agent-btn b')?.textContent === '@${handle}')`;
-const subs = (handle) => page.evaluate(`[...(${row(handle)}?.querySelectorAll('.agent-sub') ?? [])].map((n) => n.innerText.replace(/\\s+/g, ' ').trim())`);
-const sideLine = () =>
-  page.evaluate(`[...document.querySelectorAll('#main .pill')].find((p) => p.textContent.includes('asked'))?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
-
-async function check(name, fn) {
-  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
-  let timer;
-  try {
-    const late = new Promise((_, fail) => {
-      timer = setTimeout(() => fail(new Error('Timed out after 30 s')), 30000);
-    });
-    await Promise.race([fn(), late]);
-    record(true, name);
-  } catch (e) {
-    record(false, name, e.message);
-  } finally {
-    clearTimeout(timer);
-  }
-  for (let i = 0; i < 4 && (await page.evaluate(`!!document.querySelector('.backdrop, .menu')`)); i++) await press('Escape');
-}
-let loaded = false;
-async function open(hash) {
-  if (loaded) {
-    // What the check changed on the server must have reached the page first, or it shows what was there before.
-    await page.synced(store.state.seq);
-    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
-  } else await page.goto(`${app.origin}/${hash}`);
-  loaded = true;
-  await page.waitFor(`document.querySelector('header.topbar')`);
-  await settle();
-}
+import { rm } from 'node:fs/promises';
+import { finish, record } from './harness.mjs';
+import {
+  app,
+  busy,
+  check,
+  claudeHome,
+  dataDir,
+  indexer,
+  open,
+  page,
+  press,
+  q,
+  release,
+  researcher,
+  room,
+  row,
+  rt,
+  scripts,
+  sessionIn,
+  settle,
+  sideLine,
+  sideOf,
+  store,
+  subs,
+  turns,
+  type,
+  until,
+  wake,
+} from './side-threads-kit.mjs';
 
 await page.size(1280, 900);
 

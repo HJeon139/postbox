@@ -12,6 +12,7 @@ import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from 
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
+import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { announceStreaming, navigate, openMenu, openWork, paneHref, say, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -599,25 +600,8 @@ function renderItem(it, prev, ctx) {
       );
     case 'system':
       return systemLine(it, ctx);
-    case 'sidelink': {
-      // The agent at work in it, with the ring and state word the sidebar rows use (#121), so the conversation shows
-      // what’s running there without opening it.
-      const at = sideActive(it.sideThreadId);
-      return h(
-        'div.col.sys',
-        { dataset: { sideSig: sideSig(at) } },
-        h(
-          'a.pill',
-          { href: `#/t/${ctx.threadId}/side/${it.sideThreadId}`, style: { textDecoration: 'none', borderColor: 'var(--accent)' } },
-          at ? ringFor(at, 'xs') : icon('thread', 'i-sm'),
-          h('b', `@${it.from}`),
-          ' asked ',
-          h('b', `@${it.to}`),
-          at ? [' · ', h('b', `@${at.handle}`), `${at.forkOf?.busy ? ' (a fork)' : ''} ${doing(at)}`] : null,
-          ` · ${plural(it.count ?? 0, 'message')} · Open`,
-        ),
-      );
-    }
+    case 'sidelink':
+      return sideLine(it, ctx);
     case 'hop':
       return hopBlock(it, ctx);
     case 'permission':
@@ -638,16 +622,6 @@ function renderItem(it, prev, ctx) {
       return h('div.col.small.dim', `Unknown item “${it.kind}”.`);
   }
 }
-
-/** The session most worth showing in a side thread: one that needs you, else one at work there; null when none is. */
-function sideActive(sideId) {
-  const rank = { needs: 4, failed: 3, tool: 2, gen: 2, think: 2, stopping: 1 };
-  const here = sessionsAt(sideId).filter((se) => !se.archived && (!se.sideTurn || se.sideTurn.threadId === sideId) && rank[se.state]);
-  return here.sort((a, b) => rank[b.state] - rank[a.state])[0] ?? null;
-}
-const sideSig = (se) => (se ? `${se.id}:${se.state}` : '');
-/** “is calling tools”, “needs you”: what an agent is doing, after its name. */
-const doing = (se) => (se.state === 'needs' ? 'needs you' : se.state === 'failed' ? 'failed' : `is ${stateWord(se.state).toLowerCase()}`);
 
 /** A turn’s line from the work ledger (#132), which opens the conversation’s Work in the right pane, at that turn. */
 function workChip(it, ctx) {
