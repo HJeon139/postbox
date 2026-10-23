@@ -303,7 +303,7 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 | `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage |
 | `npm run format` | Applies Biome’s formatting and safe fixes |
 | `npm run test:coverage` | Runs the tests with coverage for `shared/`, `server/` and the lint rules |
-| `npm run release [-- --dry-run]` | Releases the next semantic version from the commits since the last tag: package.json, CHANGELOG.md, a release commit and a tag |
+| `npm run release [-- --dry-run]` | Releases the next semantic version from the commits since the last tag: package.json, CHANGELOG.md, a release commit and a tag. CI runs it after each merge to main (`.github/workflows/release.yml`) |
 | `npm run lint:commits [range]` | Checks commit messages against Conventional Commits |
 | `npm run hooks` | Checks each commit message as you write it (`.githooks/commit-msg`) |
 

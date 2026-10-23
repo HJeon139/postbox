@@ -25,6 +25,9 @@ export async function launch({ port = 9333 } = {}) {
     ],
     { stdio: 'ignore' },
   );
+  // A script that exits without close() (a check that throws, say) mustn’t leave its Chrome running.
+  const orphan = () => chrome.kill();
+  process.once('exit', orphan);
   let target;
   for (let i = 0; i < 60 && !target; i++) {
     await sleep(200);
@@ -158,6 +161,7 @@ export async function launch({ port = 9333 } = {}) {
     async close() {
       ws.close();
       chrome.kill();
+      process.off('exit', orphan);
       await rm(profile, { recursive: true, force: true }).catch(() => {});
     },
   };

@@ -10,24 +10,13 @@
 // PB_PORT and PB_CHROME_PORT move it (4420 and 9620 by default), so sessions working in parallel don’t collide.
 
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { launch, sleep } from './cdp.mjs';
+import { record as check, finish, ports } from './harness.mjs';
 
-const PORT = Number(process.env.PB_PORT ?? 4420);
-const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9620);
-
-/** Fails fast when something else already listens on a port this check needs. */
-const free = (port) =>
-  new Promise((ok, fail) => {
-    const s = createServer();
-    s.once('error', () => fail(new Error(`Port ${port} is in use. Stop whatever is on it, or set PB_PORT and PB_CHROME_PORT.`)));
-    s.listen(port, '127.0.0.1', () => s.close(() => ok(undefined)));
-  });
-await free(PORT);
-await free(CHROME_PORT);
+const { PORT, CHROME_PORT } = await ports(4420, 9620);
 
 // One click tries a hand-off of 1,258 pairs with their text (too large), then the same pairs by id.
 const HANDOFF = `<main style="padding:12px"><button id="go" class="btn" type="button" style="display:block;width:100%;height:96px">Send all pairs</button><p id="out">Ready</p></main>
@@ -46,11 +35,6 @@ process.env.POSTBOX_BACKENDS = 'mock';
 const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-contract-'));
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 let page = null;
-let failed = 0;
-const check = (ok, what, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${what}${!ok && detail ? ` (${detail})` : ''}`);
-};
 const until = async (fn, label, timeout = 15000) => {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
@@ -115,9 +99,9 @@ try {
   await until(() => page.evaluate(`!!${node}`), 'the confirm to show');
   rt.act(t.id, item.id, 'confirm', {});
   await until(() => page.evaluate(`!!${node}?.querySelector('.answered-note')`), 'the answer to show');
-  // An agent reports a result only after its turn has given it the answer: since #123, an outcome over an answer it
-  // hasn’t read is refused, as it should be.
-  await until(() => store.items(t.id).find((x) => x.id === item.id)?.answer?.read !== false, 'the agent to read the answer');
+  // An outcome reports on an answer the agent has read (#123): wait for its event to start a turn, as the agent
+  // would. On a busy computer the agent is still in its last turn, and the event waits in its queue.
+  await until(() => store.item(t.id, item.id)?.answer?.read, 'the answer to reach the agent');
   const said = tools.update_block({ block: { ...confirm, outcome: 'Done: **23 frames** deleted, `frames/` is empty' } });
   await until(() => page.evaluate(`!!${node}?.querySelector('.outcome')`), 'the outcome to show').catch(() => {});
   const shown = await page.evaluate(`(() => {
@@ -143,12 +127,10 @@ try {
   const needsGlyph = await page.evaluate(`!!${node}.querySelector('.g-needs')`);
   check(!needsGlyph, 'the block shows no needs-you mark');
 } catch (e) {
-  failed++;
-  console.log(`FAIL ${e.message}`);
+  check(false, 'the check ran to the end', e.message);
 } finally {
   await page?.close();
   await app.close();
   await rm(dataDir, { recursive: true, force: true });
 }
-console.log(failed ? `\n${failed} failed.` : '\nAll passed.');
-process.exit(failed ? 1 : 0);
+finish();

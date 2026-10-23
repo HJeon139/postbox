@@ -14,16 +14,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { launch, sleep } from './cdp.mjs';
+import { finish, ports, record } from './harness.mjs';
 
-const PORT = Number(process.env.PB_PORT ?? 4580);
-const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9780);
+const { PORT, CHROME_PORT } = await ports(4580, 9780);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-transcript-'));
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 const page = await launch({ port: CHROME_PORT });
 const { rt, store } = app;
-const failures = [];
 
 // ── Real input ──────────────────────────────────────────────────────────────────────────
 
@@ -66,10 +65,9 @@ async function check(name, fn) {
       timer = setTimeout(() => fail(new Error('Timed out after 45 s')), 45000);
     });
     await Promise.race([fn(), late]);
-    console.log(`  ok    ${name}`);
+    record(true, name);
   } catch (e) {
-    failures.push(name);
-    console.log(`  FAIL  ${name}\n        ${e.message.split('\n').join('\n        ')}`);
+    record(false, name, e.message);
   } finally {
     clearTimeout(timer);
   }
@@ -465,5 +463,4 @@ await page.close();
 await app.close();
 await rm(dataDir, { recursive: true, force: true });
 if (page.logs.length) console.log(`\nPage errors:\n  ${page.logs.join('\n  ')}`);
-console.log(failures.length ? `\n${failures.length} failed.` : '\nAll transcript checks passed.');
-process.exit(failures.length ? 1 : 0);
+finish();

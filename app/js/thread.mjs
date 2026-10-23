@@ -119,15 +119,23 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const n = s && gapOf(s) > PILL_ROOM ? unseen : 0;
     if (n !== shown) jump?.((shown = n));
   };
+  // The anchor is the message across the middle of the view, where you read, not the first one in view: that one
+  // usually starts above the view, and when a narrower column (the panel, a smaller window) rewraps it, everything
+  // under it moves. A wide font rewraps it where macOS’s doesn’t (#88, seen on Linux in #162).
   const findAnchor = () => {
     const s = box();
     if (!s) return null;
     const top = viewTop(s);
+    const mid = top + s.clientHeight / 2;
+    let last = null;
     for (const n of el.children) {
+      if (!(n instanceof HTMLElement && n.dataset.key)) continue;
       const r = n.getBoundingClientRect();
-      if (r.bottom > top && n instanceof HTMLElement && n.dataset.key) return { key: n.dataset.key, at: r.top - top };
+      if (r.bottom <= top) continue;
+      last = { key: n.dataset.key, at: r.top - top };
+      if (r.bottom > mid) return last;
     }
-    return null;
+    return last;
   };
   const holdAnchor = () => {
     const s = box();

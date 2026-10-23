@@ -22,7 +22,15 @@ It runs, in order:
 - `node tools/shoot-uat.mjs`: it refreshes the UAT doc screenshots.
 - The end-to-end UAT ([tests/uat/e2e](../tests/uat/e2e/README.md)), which runs real agents and costs real usage.
 
-A change that’s visible in the UI also gets a headless Chrome check (`tools/cdp.mjs`) from whoever writes it.
+The browser half of the gate:
+
+```bash
+npm run check:browser
+```
+
+It runs every headless Chrome check (`tools/check-*.mjs` and `tools/checks/*.mjs`, found by name) in parallel, 4 at a time. Each check gets its own free ports and a timeout that kills it and its Chrome. The run prints each check’s counts, time and first failure, and keeps each full log. CI runs it on every pull request. `node tools/check-all.mjs shell header` runs only the checks whose name has one of those in it.
+
+A change that’s visible in the UI also gets a headless Chrome check (`tools/cdp.mjs`) from whoever writes it. It reports through `tools/harness.mjs`: `ports()` for `PB_PORT` and `PB_CHROME_PORT`, `record()` for each case, and `finish()` at the end. That way the run reads its results, not its text.
 
 ## Node
 
@@ -195,8 +203,8 @@ Postbox follows [Conventional Commits](https://www.conventionalcommits.org/en/v1
 - Merge commits, `chore(release)` commits and git’s own `Revert "…"` pass.
 
 **A release after each merge to main:**
-- The integrator runs `npm run release`. It finds the commits since the last tag, takes the largest bump among them, and writes the version to package.json and package-lock.json. It adds a CHANGELOG.md section, commits `chore(release): vX.Y.Z` and tags `vX.Y.Z`.
-- Main takes changes only through a pull request, so the release commit goes up on a branch of its own, with the tag: `git push origin HEAD:refs/heads/release/vX.Y.Z vX.Y.Z`.
-- Open a pull request from `release/vX.Y.Z` to main, and merge it with a merge commit. That puts the tagged commit itself on main. A squash or a rebase would make a new commit and leave the tag off main.
-- CI fails on main when commits since the last tag change the version and aren’t released (`tools/release.mjs --check`).
+- CI releases it: [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on every push to main. It runs `npm run release`, which finds the commits since the last tag, takes the largest bump among them, and writes the version to package.json and package-lock.json. That adds a CHANGELOG.md section, commits `chore(release): vX.Y.Z` and tags `vX.Y.Z`. The workflow then pushes the commit and the tag to main together.
+- It pushes with the workflow’s own token (`contents: write`). The `protect-main` ruleset only keeps main from being deleted, so no other credential is needed. A push made with that token starts no other workflow, so check.yml doesn’t run again on a release commit, which changes only the version and the changelog.
+- A merge that moves no version (`docs`, `ci`, `test` and the rest) releases nothing. The run ends by checking that every change on main is released (`tools/release.mjs --check`).
+- By hand, if the workflow can’t run: run `npm run release` on main’s tip and push with `git push --atomic origin HEAD:main vX.Y.Z`.
 - The sidebar shows the build under Personas, as `vX.Y.Z · commit`, so a screenshot says which build it came from.

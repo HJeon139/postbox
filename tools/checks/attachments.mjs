@@ -11,38 +11,20 @@
 // then upload through the app’s own path (POST /api/files). CDP’s Input.dispatchDragEvent needs files on disk and
 // a drag started by the browser; the synthetic events exercise the same handlers without either.
 //
-// It starts its own Postbox on port 4430 and Chrome on port 9630 (PB_PORT and PB_CHROME_PORT move them), and fails fast if either port is taken.
+// It starts its own Postbox and Chrome. PB_PORT and PB_CHROME_PORT move them (4430 and 9630 by default), so sessions
+// working in parallel don’t collide. It reports through tools/harness.mjs: one line per assertion, and exit code 1 on
+// any failure.
 
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
 import { launch, sleep } from '../cdp.mjs';
 import { pageCookie } from '../demo.mjs';
+import { finish, ports, record } from '../harness.mjs';
 
-const PORT = Number(process.env.PB_PORT ?? 4430);
-const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9630);
-
-const portFree = (port) =>
-  new Promise((ok) => {
-    const s = createServer()
-      .once('error', () => ok(false))
-      .once('listening', () => s.close(() => ok(true)))
-      .listen(port, '127.0.0.1');
-  });
-
-let failed = 0;
-const check = (name, ok, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${!ok && detail ? ` (${detail})` : ''}`);
-};
-
-for (const p of [PORT, CHROME_PORT])
-  if (!(await portFree(p))) {
-    console.log(`FAIL port ${p} is in use; stop whatever is on it first`);
-    process.exit(1);
-  }
+const { PORT, CHROME_PORT } = await ports(4430, 9630);
+const check = (name, ok, detail = '') => record(ok, name, detail);
 
 const origin = `http://127.0.0.1:${PORT}`;
 const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-attachments-'));
@@ -196,4 +178,4 @@ try {
   await app.close();
   await rm(dataDir, { recursive: true, force: true });
 }
-process.exit(failed ? 1 : 0);
+finish();

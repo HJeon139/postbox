@@ -1,0 +1,48 @@
+# Releases what each merge to main brings (designs/engineering-practices.md, “Commits and versions”): npm run release
+# writes the release commit and its tag, and this pushes both to main with the workflow’s own token. The protect-main
+# ruleset only keeps main from being deleted, so that push needs no other credential.
+name: release
+
+on:
+  push:
+    branches: [main]
+
+# To push the release commit and its tag.
+permissions:
+  contents: write
+
+# One release at a time. A merge that lands while one runs is released by the next run, which starts from main’s tip.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release what’s merged
+    runs-on: ubuntu-latest
+    # A push made with the workflow’s token doesn’t start workflows, but a release pushed by hand would.
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # main’s tip, not the commit that started this run: a later merge may have landed meanwhile.
+          ref: main
+          # The whole history and its tags: the next version comes from the commits since the last tag.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # tools/release.mjs uses only Node’s own modules, so nothing is installed.
+      - name: Make the release commit and its tag
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          node tools/release.mjs
+      # --atomic: the commit and the tag go up together, or neither does.
+      - name: Push them to main
+        run: |
+          tag="$(git tag --points-at HEAD --list 'v[0-9]*.[0-9]*.[0-9]*')"
+          if [ -z "$tag" ]; then echo 'Nothing to release.'; exit 0; fi
+          git push --atomic origin HEAD:main "$tag"
+      - name: Every change on main is released
+        run: node tools/release.mjs --check
