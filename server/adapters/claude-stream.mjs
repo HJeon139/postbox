@@ -15,6 +15,13 @@ const DECLINED = /^The person didn’t allow/;
 const WINDOWS = /** @type {[RegExp, number][]} */ ([[/^claude-(?:opus|sonnet|fable)-5/, 1_000_000]]);
 export const windowFor = (model, fallback = 200_000) => WINDOWS.find(([re]) => re.test(String(model ?? '')))?.[1] ?? fallback;
 const SUBAGENT_TOOLS = new Set(['Task', 'Agent']);
+// A Bash call with run_in_background returns at once, and the job runs on (#129). Recorded on claude 2.1.296
+// (tests/fixtures/claude-code/background-*.jsonl): the result says “Command running in background with ID: <id>.
+// Output is being written to: <file>. …”, with tool_use_result.backgroundTaskId; a task_notification with the same
+// task_id says it completed, failed, or was stopped; and the CLI waits for its jobs before it exits.
+const BACKGROUND_ID = /running in background with ID: ([\w-]+)/;
+const BACKGROUND_FILE = /Output is being written to: (\S+?)\.?(?=\s|$)/;
+const JOB_STATES = { completed: 'done', failed: 'failed', stopped: 'stopped', killed: 'stopped' };
 
 const clip = (s, n) => {
   const t = String(s ?? '')
@@ -152,6 +159,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     subNames: new Map(), // Task tool_use id → its name, kept after it finishes (refusals can arrive later)
     tasks: new Map(), // subagent task id (a refusal’s agent_id) → its Task tool_use id
     denied: new Set(), // tool_use ids Claude Code refused
+    jobs: new Map(), // background job id → its Bash tool_use id, while it runs
     thoughts: 0,
     thoughtMessages: new Set(), // message ids whose thinking arrived as deltas
     said: '', // reply text so far this turn, for the glimpse
@@ -232,6 +240,39 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       st.subagents.delete(id);
       pushSubagents();
     }
+  };
+
+  // A background Bash call (#129): its result only says the job started, so its step stays running, and the runtime
+  // records the job. Returns whether the result was one.
+  const startJob = (id, text, structured) => {
+    const t = st.tools.get(id);
+    if (!t || t.done || t.name !== 'Bash') return false;
+    // The result’s own text names its job; tool_use_result is one per message, so it’s only the fallback.
+    const jobId = String(BACKGROUND_ID.exec(text)?.[1] ?? structured?.backgroundTaskId ?? '');
+    if (!jobId || (t.input?.run_in_background !== true && !BACKGROUND_ID.test(text))) return false;
+    t.job = jobId;
+    st.jobs.set(jobId, id);
+    if (!t.quiet) ctx.activity({ id, label: t.label, state: 'running', job: jobId, ...(t.who ? { who: t.who } : {}) });
+    ctx.job?.({
+      id: jobId,
+      toolUseId: id,
+      label: t.label,
+      command: String(t.input?.command ?? ''),
+      outputFile: BACKGROUND_FILE.exec(text)?.[1] ?? null,
+      state: 'running',
+    });
+    return true;
+  };
+  const endJob = (jobId, status, summary) => {
+    const id = st.jobs.get(jobId);
+    st.jobs.delete(jobId);
+    const t = st.tools.get(id);
+    const state = JOB_STATES[/** @type {keyof typeof JOB_STATES} */ (status)] ?? 'done';
+    if (t && !t.done) {
+      t.done = true;
+      if (!t.quiet) ctx.activity(stepOf(id, t, state, { job: jobId, ...(state === 'failed' && summary ? { detail: firstSentence(summary, 300) } : {}) }));
+    }
+    ctx.job?.({ id: jobId, state });
   };
 
   // Claude Code refused a call without asking: the auto-mode classifier, a deny rule, or the mode. Reported
@@ -322,6 +363,8 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         status({ currentStep: 'Summarizing the conversation' });
       } else if (e.subtype === 'permission_denied') {
         denial(e);
+      } else if (e.subtype === 'task_notification' && st.jobs.has(e.task_id)) {
+        endJob(e.task_id, e.status, e.summary);
       } else if (e.subtype === 'task_started' && e.task_id && e.tool_use_id) {
         st.tasks.set(e.task_id, e.tool_use_id);
       } else if (e.subtype === 'task_progress' && e.tool_use_id) {
@@ -419,7 +462,9 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
 
     if (e.type === 'user') {
       for (const b of e.message?.content ?? []) {
-        if (b.type === 'tool_result') endTool(b.tool_use_id, b.is_error === true, b.is_error ? resultText(b.content) : '');
+        if (b.type !== 'tool_result') continue;
+        if (!b.is_error && startJob(b.tool_use_id, resultText(b.content), e.tool_use_result)) continue;
+        endTool(b.tool_use_id, b.is_error === true, b.is_error ? resultText(b.content) : '');
       }
       if (!parent) status({ state: 'think', currentStep: 'Thinking' });
       return;
@@ -435,7 +480,11 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       }
       // Refusals the stream didn’t report as they happened.
       for (const d of e.permission_denials ?? []) denial(d, { fromResult: true });
-      for (const [id] of st.tools) endTool(id, e.is_error === true);
+      // A background job runs on after the reply: the CLI waits for it, then tells the agent how it went.
+      const running = new Set(st.jobs.values());
+      for (const [id] of st.tools) if (!running.has(id)) endTool(id, e.is_error === true);
+      if (running.size)
+        status({ state: 'tool', currentStep: running.size === 1 ? 'Waiting for a background job' : `Waiting for ${running.size} background jobs` });
       flushGlimpse();
     }
   }

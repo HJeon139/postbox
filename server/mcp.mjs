@@ -1,12 +1,16 @@
 // The MCP server: Postbox’s UI tools over JSON-RPC 2.0 (MCP’s Streamable HTTP transport, JSON responses).
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
-//   POST <origin>/mcp?session=<postbox session id>
+//   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, show_app, update_app, define_term, propose_agent, schedule_wake,
 // wake_agent and corpus_search. Every tool returns at once; when you answer a block, your answer reaches
 // the agent later as a new message carrying { blockId, action, values }.
 //
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
 // a risky tool call in “ask” mode, and it waits for your answer on a card in the conversation.
+//
+// Each turn Postbox starts gets its own token in the URL. A call with a token that isn’t the session’s running turn’s,
+// such as one from a turn you stopped whose process hadn’t exited yet, is refused, and nothing of it reaches the
+// conversation (#126). A call without one is from an agent you connected yourself (Settings shows the endpoint).
 
 import { limitText as n, PALETTES } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
@@ -129,17 +133,18 @@ export const TOOL_DEFS = [
 
 /**
  * Handles one JSON-RPC message (or a batch). Returns the response body, or null for notifications.
- * @param {import('./runtime.mjs').Runtime} rt
+ * @param {import('./runtime.mjs').Runtime} rt @param {string|null} sessionId @param {any} body
+ * @param {string|null} [turnToken]  the turn’s token from the URL, if it carried one
  */
-export async function handleMcp(rt, sessionId, body) {
+export async function handleMcp(rt, sessionId, body, turnToken = null) {
   if (Array.isArray(body)) {
-    const out = (await Promise.all(body.map((m) => one(rt, sessionId, m)))).filter(Boolean);
+    const out = (await Promise.all(body.map((m) => one(rt, sessionId, m, turnToken)))).filter(Boolean);
     return out.length ? out : null;
   }
-  return one(rt, sessionId, body);
+  return one(rt, sessionId, body, turnToken);
 }
 
-async function one(rt, sessionId, msg) {
+async function one(rt, sessionId, msg, turnToken) {
   if (msg?.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
     return { jsonrpc: '2.0', id: msg?.id ?? null, error: { code: -32600, message: 'Not a JSON-RPC 2.0 request.' } };
   }
@@ -164,6 +169,8 @@ async function one(rt, sessionId, msg) {
       return reply({ tools: TOOL_DEFS });
     case 'tools/call': {
       if (!rt.s.sessions[sessionId]) return fail(-32602, 'Unknown Postbox session. Connect with /mcp?session=<id>.');
+      if (turnToken !== null && rt.turns.get(sessionId)?.token !== turnToken)
+        return fail(-32001, 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.');
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
       const tools = rt.toolsFor(sessionId, rt.turns.get(sessionId) ?? null);

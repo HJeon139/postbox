@@ -78,6 +78,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Add menu (+)](conversation/composer/plus-menu.md)
     - [Mention menu](conversation/composer/mention-menu.md)
     - [Command menu (/)](conversation/composer/command-menu.md)
+    - [Stop, and background jobs](conversation/composer/stop-and-background-jobs.md)
   - **panels/**
     - [Topic thread panel](conversation/panels/topic-thread-panel.md)
     - [Side thread panel](conversation/panels/side-thread-panel.md)

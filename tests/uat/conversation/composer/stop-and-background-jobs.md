@@ -1,0 +1,38 @@
+# Stop, and background jobs
+
+**Where:** Above the composer (Stop’s ask), and under an agent’s reply (its background jobs).
+
+## Why it exists
+
+Stop has to end the agent’s turn for real. Before #126, Stop marked the turn stopped but left the CLI running, so the next turn ran beside the old one in the same session, and the old turn’s tool calls showed up as the new turn’s. Now the session reads “stopping” until its process has exited, its next turn waits for that, and a stopped turn’s tool calls are refused.
+
+An agent can start a command in the background (Bash with `run_in_background`), such as a 30-minute UAT run that spends money (#129). Its tool call returns at once, so its step used to read “done” while the command ran on, and nothing in the room showed it. Stopping the agent stops those jobs too, so Stop asks first: you may want the agent to stop and its job to finish.
+- **The job row** shows each background job that’s still running, outside the folded activity list, so you see it without opening anything. Its **Stop** stops that job alone.
+- **The ask** is a choice you make there and then, so it’s a quiet row above the composer, not a card. Only its first choice is amber.
+
+## Expected functionality
+
+- While a background job runs, its reply shows “Background job · <what it runs>” with a Stop button. The glyph holds still, in the quiet color. In the folded activity list, its step says “Running in the background”.
+- Stop, with a job running, asks “@developer has 1 background job running. Stop it too?” with **Stop it too**, **Keep running**, and an × (Don’t stop). Focus moves to Stop it too. Nothing stops until you answer.
+  - Escape, or ×, closes the ask; the agent carries on, and focus goes back to Stop.
+  - **Stop it too** stops the agent and its jobs. Their steps read “Stopped”.
+  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop. The agent’s next turn is told the job is still running and where its output is.
+- Stop with no background job running stops at once, without asking.
+- **Send now** (or a message sent with Send now from the queue) stops the agent without asking, and keeps its jobs running.
+- After Stop, the agent reads “· stopping” beside its name until its process has exited, usually within a second or two, then “Stopped by you”. A message you send meanwhile appears at once and the agent starts on it when the old process has gone.
+- A job’s own Stop stops it; its step reads “Stopped”, and the agent hears about it on its next turn.
+
+## Steps to reproduce
+
+Automated: `node tools/check-stop.mjs` (headless Chrome, a scripted agent, no real processes).
+
+With a real agent:
+1. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>.
+2. Give a Claude Code agent the Shell tool. Ask it: “Use the Bash tool with run_in_background set to true to run exactly: sleep 300; echo done. Then reply started.”
+3. Check the job row appears under its reply, with Stop.
+4. Press Stop in the composer. Check the ask, then press Escape: the agent is still working.
+5. Press Stop again and choose Keep running. Check the agent reads “stopping”, then “Stopped by you”, and the job row stays. In a terminal, `ps axo pid,ppid,pgid,command | grep 'sleep 300'` still lists it.
+6. Press the job row’s Stop. Check the row goes, the step reads “Stopped”, and `ps` no longer lists it.
+7. Repeat steps 2 to 4, and choose Stop it too. Check the job row goes, and `ps` lists neither the CLI nor the job.
+
+**Pass if:** every step behaves as described, and after each Stop no `claude -p` process of that agent is left running.

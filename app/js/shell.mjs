@@ -5,7 +5,7 @@ import { chipEffort, chipModel, factsText, installNote } from '/shared/agent-fac
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
-import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, liveSessions, needsYou, sessionsOf, stopSession, threadState, threadsOf, topicsOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -903,7 +903,19 @@ export function sessionMenu(anchor, se) {
         desc: factsText(factsOf(se)),
         run: () => openSettings('personas', se.personaId),
       },
-      ...(busy(se) ? [{ label: 'Stop', icon: 'x', run: () => api(`/api/sessions/${se.id}/stop`, {}) }] : []),
+      // With background jobs running, Stop asks in the conversation whether to stop them too (#129): go there for it.
+      ...(busy(se)
+        ? [
+            {
+              label: 'Stop',
+              icon: 'x',
+              run: () =>
+                stopSession(se)
+                  .then((r) => r?.ask && navigate(`#/t/${se.threadId}`))
+                  .catch((e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' })),
+            },
+          ]
+        : []),
       'hr',
       {
         label: 'Archive session',
