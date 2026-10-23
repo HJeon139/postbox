@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.7.0 (2026-10-23)
+
+### Features
+
+- **checks:** a reply that should have been a block comes back as a lint turn; a table rule
+- **permissions:** writes outside Postbox wait on a card that shows the draft before anything exists
+
+### Fixes
+
+- **agents:** agents learn which tools are off and can ask for one on a card; ! in a thread says so
+- **codex:** approval cards for MCP tool calls name the tool, in its own case, with its arguments
+
 ## 0.6.5 (2026-10-23)
 
 ### Fixes
