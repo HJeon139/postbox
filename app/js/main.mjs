@@ -9,7 +9,7 @@ import { paintStateWords, ringFor } from './ring.mjs';
 import { openPalette } from './sheets.mjs';
 import { mountEmptyProject, mountOverview, mountRail, mountThreads, nextNeedsYou, railHidden, toggleRail, topbar } from './shell.mjs';
 import { focusComposer, mountComposer, mountTranscript } from './thread.mjs';
-import { initHoverCards, mdNode, navigate, paneHref, rememberWork, route, say, setAttention, toast, workRemembered } from './ui.mjs';
+import { initHoverCards, mdNode, navigate, paneHref, refind, rememberWork, route, say, setAttention, toast, workRemembered } from './ui.mjs';
 
 const root = $('#root');
 let mounted = [];
@@ -226,6 +226,7 @@ function topbarChanged(se) {
 function refreshTop() {
   const old = root.querySelector('header.topbar');
   if (!old || !current) return;
+  let next;
   if (current.view === 'thread') {
     const t = client.state.threads[current.threadId];
     if (!t) return;
@@ -235,9 +236,14 @@ function refreshTop() {
       render({ rebuild: true });
       return;
     }
-    old.replaceWith(topbar({ title: t.title, threadId: t.id }));
-  } else if (current.projectId) old.replaceWith(topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId }));
-  else old.replaceWith(topbar({ title: location.hash === '#/archived' ? 'Archived' : '' }));
+    next = topbar({ title: t.title, threadId: t.id });
+  } else if (current.projectId) next = topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId });
+  else next = topbar({ title: location.hash === '#/archived' ? 'Archived' : '' });
+  // The keyboard stays where it was: focus on a control of the old bar moves to the same control in the new one.
+  // A rename’s dialog can close before its change arrives, and return focus to the bar this replaces (#26).
+  const back = document.activeElement && old.contains(document.activeElement) ? refind(document.activeElement) : null;
+  old.replaceWith(next);
+  back?.()?.focus();
 }
 
 function notify(d) {
