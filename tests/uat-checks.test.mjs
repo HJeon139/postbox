@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { toPlainText } from '../shared/markdown.mjs';
 import { kiroCredits, runChecks, waitingOnYou } from '../tools/uat/checks.mjs';
+import { JOBS_ANSWERS } from '../tools/uat/driver.mjs';
 import { readHistory } from '../tools/uat/history.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { SCHEMA, signInSettings, systemPrompt, unaddressed } from '../tools/uat/tester.mjs';
@@ -971,5 +972,29 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test('the P0 scenario: a room of two Claude Code agents, in three phases', () => {
+    const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/p0.md', import.meta.url), 'utf8'));
+    assert.deepEqual(s.agents, ['researcher', 'critic']);
+    assert.deepEqual(s.backends, {});
+    assert.equal(s.phases.length, 3);
+    assert.match(s.phases[0].text, /allow it/);
+    assert.match(s.phases[1].text, /Send now/);
+    assert.match(s.phases[2].text, /press Stop[\s\S]*keep it running[\s\S]*stop it too[\s\S]*Send now/);
+  });
+
+  test('the tester can stop a turn or send now while it runs, and answer the question about background jobs', () => {
+    const action = SCHEMA.properties.action.properties;
+    assert.ok(action.type.enum.includes('jobs'));
+    assert.deepEqual(action.answer.enum, ['stop', 'keep']);
+    assert.deepEqual(action.interrupt.properties.do.enum, ['stop', 'send_now']);
+    assert.deepEqual(action.interrupt.required, ['after', 'do']);
+    // The decision’s words for the two answers (#126).
+    assert.deepEqual(JOBS_ANSWERS, { stop: 'Stop it too', keep: 'Keep running' });
+    const prompt = systemPrompt({ scenario: parseScenario('# T\n'), issues: [] });
+    assert.match(prompt, /jobs \{answer\}/);
+    assert.match(prompt, /an interrupt \{after, do, jobs\?, text\?\}/);
+    assert.match(prompt, /A wake request \(“Let @a wake @b\?”\) is a card/);
   });
 });
