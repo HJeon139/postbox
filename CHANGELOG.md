@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.6.4 (2026-10-23)
+
+### Fixes
+
+- **work:** a background command says it was stopped or kept, from the job's own events
+
 ## 0.6.3 (2026-10-23)
 
 ### Fixes
