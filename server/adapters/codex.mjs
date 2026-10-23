@@ -3,7 +3,10 @@
 import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { hostPaths } from '../../shared/remote-protocol.mjs';
+import { remoteSpawn } from '../remote/process.mjs';
 import { draftOf } from '../write-guard.mjs';
+import { checkRemoteContext, shimArgs } from './adapter.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
@@ -27,6 +30,7 @@ export const findCodex = (env = process.env) => env.POSTBOX_CODEX_BIN || 'codex'
 function probe(bin, args, timeout = 8000) {
   return new Promise((resolve) => {
     let out = '';
+    /** @type {any} */
     let child;
     try {
       child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'ignore'] });
@@ -52,6 +56,7 @@ export async function codexVersion(bin = findCodex()) {
 export async function codexModels(bin = findCodex()) {
   // The documented app-server model/list method returns the local account's picker-visible catalog.
   return new Promise((resolve) => {
+    /** @type {any} */
     let child;
     try {
       child = spawn(bin, ['app-server', '--listen', 'stdio://'], { stdio: ['pipe', 'pipe', 'ignore'] });
@@ -117,6 +122,127 @@ export function codexConfigArgs(mcpUrl) {
     '-c',
     `mcp_servers.${POSTBOX_SERVER}.required=true`,
   ];
+}
+
+/**
+ * For a turn on a host (#120): Postbox’s server is the stdio shim there, `command` with `args`, never the laptop’s URL.
+ * The values are TOML: “The `value` portion is parsed as TOML” (codex-rs/utils/cli/src/config_override.rs, `-c`’s
+ * help, whose examples include `-c 'sandbox_permissions=["disk-full-read-access"]'`), and `args` is an
+ * `array<string>` (Codex’s configuration reference, `mcp_servers.<id>.args`). A JSON array of strings is a TOML inline
+ * array of basic strings, as a JSON string is a TOML basic string.
+ * @param {string} command @param {string[]} args
+ */
+export function codexRemoteConfigArgs(command, args) {
+  return [
+    '-c',
+    `mcp_servers.${POSTBOX_SERVER}.command=${JSON.stringify(command)}`,
+    '-c',
+    `mcp_servers.${POSTBOX_SERVER}.args=${JSON.stringify(args)}`,
+    '-c',
+    `mcp_servers.${POSTBOX_SERVER}.enabled=true`,
+    '-c',
+    `mcp_servers.${POSTBOX_SERVER}.required=true`,
+  ];
+}
+
+/** A remote turn that can’t go on from what the host kept: the runtime shows it as Interrupted (#120). @param {string} text */
+export function interruptedError(text) {
+  return Object.assign(new Error(text), { code: 'interrupted' });
+}
+
+/** A JSON-RPC ID as a key: Codex’s are integers or strings, so 1 and "1" stay apart. */
+const idKey = (id) => JSON.stringify(id);
+
+/** How long Stop on a remote Codex turn waits for its turn/interrupt to reach the host before the daemon’s stop (#120). */
+export const INTERRUPT_REACH_MS = 5000;
+
+/**
+ * Settles once a remote turn’s turn/interrupt request `id` is in in.jsonl (its 'stdin-line'), the turn has exited, or
+ * INTERRUPT_REACH_MS have passed. A held stdin’s lines reach the daemon one at a time (server/remote/process.mjs), so the
+ * daemon’s stop, sent as the turn ends, could otherwise pass the interrupt still queued behind another line.
+ * @param {any} child  server/remote/process.mjs’s @param {number} id
+ */
+function interruptReached(child, id) {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      child.off('stdin-line', seen);
+      child.off('exit', done);
+      resolve(undefined);
+    };
+    const seen = ({ text }) => {
+      try {
+        const m = JSON.parse(text);
+        if (m?.id === id && m.method === 'turn/interrupt') done();
+      } catch {}
+    };
+    const timer = setTimeout(done, INTERRUPT_REACH_MS);
+    if (child.ended) return done();
+    child.on('stdin-line', seen);
+    child.once('exit', done);
+  });
+}
+
+/**
+ * How far a Codex turn on a host had got, rebuilt after a Postbox restart (#120) from its two logs: out.jsonl, the
+ * app-server’s messages, and in.jsonl, what reached its stdin (Postbox’s requests and answers, and the daemon’s
+ * answers to approvals that expired). It gives the thread and turn IDs, the next request ID Postbox may use, and the
+ * approval requests nobody has answered yet. A request counts as settled once in.jsonl answers it, once Codex says
+ * so (`serverRequest/resolved`), once the item it asks about has completed, or once the turn has.
+ */
+export function createCodexRebuild() {
+  /** @type {string|null} */
+  let threadId = null;
+  /** @type {string|null} */
+  let turnId = null;
+  let maxId = 0;
+  let completed = false;
+  /** @type {Map<string, any>} */
+  const requests = new Map();
+  const answered = new Set();
+  const items = new Set();
+  const seeId = (id) => {
+    if (Number.isSafeInteger(id) && id > maxId) maxId = id;
+  };
+  return {
+    /** One out.jsonl message. @param {any} msg */
+    out(msg) {
+      const p = msg?.params ?? {};
+      if (msg?.id != null && msg.method) requests.set(idKey(msg.id), msg);
+      else if (msg?.id != null) {
+        seeId(msg.id);
+        threadId = msg.result?.thread?.id ?? threadId;
+        turnId = msg.result?.turn?.id ?? turnId;
+      } else if (msg?.method === 'thread/started') threadId = p.thread?.id ?? threadId;
+      else if (msg?.method === 'turn/started') {
+        turnId = p.turn?.id ?? turnId;
+        threadId = threadId ?? p.threadId ?? null;
+      } else if (msg?.method === 'turn/completed') completed = true;
+      else if (msg?.method === 'serverRequest/resolved' && p.requestId != null) answered.add(idKey(p.requestId));
+      else if (msg?.method === 'item/completed' && p.item?.id) items.add(p.item.id);
+    },
+    /** One in.jsonl message. @param {any} msg */
+    in(msg) {
+      if (msg?.id == null) return;
+      if (msg.method) seeId(msg.id);
+      else answered.add(idKey(msg.id));
+    },
+    get threadId() {
+      return threadId;
+    },
+    get turnId() {
+      return turnId;
+    },
+    get completed() {
+      return completed;
+    },
+    /** One past the largest request ID either log shows, so a new request can’t take a replayed response. */
+    nextRequestId: () => maxId + 1,
+    /** @param {unknown} id */
+    answered: (id) => answered.has(idKey(id)),
+    /** The approval requests still waiting for an answer, in the order Codex sent them. */
+    open: () => (completed ? [] : [...requests.values()].filter((m) => !answered.has(idKey(m.id)) && !(m.params?.itemId && items.has(m.params.itemId)))),
+  };
 }
 
 const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server failed.';
@@ -268,11 +394,40 @@ export class CodexAdapter {
   folderFor(persona, project) {
     return agentFolder(persona, project, this.workRoot);
   }
+  /**
+   * Runs one turn. With ctx.remote (#120), the app-server runs on that host through its daemon, in ctx.remote.folder,
+   * with the shim as Postbox’s server; with ctx.remote.attach, Postbox has restarted and the turn is already running
+   * there: it’s replayed from out.jsonl and rebuilt from both logs (createCodexRebuild), and `message` isn’t sent again.
+   * The host turn is the runtime’s (ctx.remote.turn), or the attached one: one deliver is one host turn.
+   * @param {any} session @param {any} message @param {any} ctx
+   */
   async deliver(session, message, ctx) {
-    const cwd = await this.folderFor(ctx.persona, ctx.project);
-    const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl)];
-    // Its own process group, so stopping the turn reaches everything the app-server started (#126).
-    const child = this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
+    /** @type {import('./adapter.mjs').RemoteContext | null} */
+    const remote = ctx.remote ?? null;
+    const attach = remote?.attach ?? null;
+    if (remote) checkRemoteContext(remote, { attach: Boolean(attach) });
+    const cwd = remote ? remote.folder : await this.folderFor(ctx.persona, ctx.project);
+    /** @type {any} */
+    let child;
+    if (remote) {
+      const turn = attach?.turn ?? /** @type {string} */ (remote.turn);
+      const shim = hostPaths(remote.welcome.home, remote.version).shim;
+      const args = ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs(remote.welcome.node.path, shimArgs(remote, shim, turn))];
+      // No variable of its own crosses (CODEX_CAPABILITIES.remote.env), and the laptop’s environment never does.
+      const spawnRemote = remoteSpawn({
+        connection: remote.link,
+        harness: 'codex',
+        folder: cwd,
+        stdin: 'held',
+        turn,
+        ...(attach ? { attach: { from: 0 } } : {}),
+      });
+      child = spawnRemote(this.bin, args);
+    } else {
+      const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl)];
+      // Its own process group, so stopping the turn reaches everything the app-server started (#126).
+      child = this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
+    }
     const exitedP = new Promise((r) => {
       child.once('exit', r);
       child.once('close', r);
@@ -290,6 +445,7 @@ export class CodexAdapter {
     });
     const rl = createInterface({ input: child.stdout });
     let requestId = 1;
+    /** @type {string|null} */
     let activeTurnId = null;
     const pending = new Map();
     let exited = false;
@@ -304,6 +460,14 @@ export class CodexAdapter {
     });
     ended.catch(() => {});
     const why = (text) => `${text}${reported ? `: ${reported}` : '.'}`;
+    /** How a remote turn ended, when that’s the reason it can’t finish (the connection gave up, or it was interrupted). */
+    /** @type {(Error & { code?: string }) | null} */
+    let endError = null;
+    // A remote turn after a Postbox restart: rebuilt until out.jsonl has been replayed as far as the welcome said it went.
+    const rebuild = attach ? createCodexRebuild() : null;
+    let rebuilding = Boolean(attach);
+    /** Approval IDs in.jsonl has answered: the daemon declines one that waited past permissionWaitMax (H4). */
+    const answeredOnHost = new Set();
     const send = (payload) => child.stdin.write(`${JSON.stringify(payload)}\n`);
     const request = (method, params) =>
       new Promise((resolve, reject) => {
@@ -316,6 +480,17 @@ export class CodexAdapter {
       for (const x of pending.values()) x.reject(err);
       pending.clear();
     };
+    /** Answers an app-server approval or elicitation request, unless the host already has (remote turns). */
+    const answer = async (msg) => {
+      let reply;
+      try {
+        reply = { id: msg.id, result: await codexApproval(ctx, msg) };
+      } catch (error) {
+        reply = { id: msg.id, error: { code: -32601, message: error.message } };
+      }
+      if (answeredOnHost.has(idKey(msg.id))) return;
+      send(reply);
+    };
     const onLine = async (line) => {
       let msg;
       try {
@@ -324,6 +499,7 @@ export class CodexAdapter {
         return;
       }
       if (recordFile) appendFileSync(recordFile, `${line}\n`);
+      if (rebuilding) rebuild?.out(msg);
       if (msg.id != null && pending.has(msg.id)) {
         const item = pending.get(msg.id);
         pending.delete(msg.id);
@@ -331,14 +507,12 @@ export class CodexAdapter {
         return;
       }
       if (msg.id != null && msg.method) {
-        // App-server initiated approval/elicitation request.
-        try {
-          send({ id: msg.id, result: await codexApproval(ctx, msg) });
-        } catch (error) {
-          send({ id: msg.id, error: { code: -32601, message: error.message } });
-        }
+        // App-server initiated approval/elicitation request. One replayed after a restart waits for the rebuild,
+        // which answers it then only if nobody has.
+        if (!rebuilding) await answer(msg);
         return;
       }
+      if (rebuilding && msg.id != null) return; // a response to the Postbox before the restart
       if (msg.method === 'turn/started') activeTurnId = msg.params?.turn?.id ?? activeTurnId;
       const result = mapper.push(msg);
       if (result?.completed) {
@@ -350,37 +524,116 @@ export class CodexAdapter {
         fail(new Error(result.error));
       }
     };
+    // The rebuild waits for the daemon’s caught-up on both logs: in.jsonl’s lines are taken as they come (stdin-line),
+    // so its caught-up is enough; out.jsonl’s go through stdout and readline, so it also waits until onLine has taken
+    // every byte its caught-up counted.
+    let replayed = 0;
+    /** @type {number | null} out.jsonl’s caught-up size, once it has come */
+    let outSize = null;
+    let inCaughtUp = false;
+    /** @type {(v?: unknown) => void} */
+    let caughtUp = () => {};
+    const replayDone = new Promise((resolve) => {
+      caughtUp = resolve;
+    });
+    const listed = attach ? (remote?.welcome?.turns ?? []).some((t) => t.turn === attach.turn) : true;
+    const checkReplay = () => {
+      if (rebuilding && inCaughtUp && outSize != null && replayed >= outSize) caughtUp(undefined);
+    };
     rl.on('line', (line) => {
+      if (rebuilding) {
+        replayed += Buffer.byteLength(line, 'utf8') + 1;
+        // After onLine has taken this line, so the rebuild has it.
+        void onLine(line).then(checkReplay, fail);
+        return;
+      }
       void onLine(line).catch(fail);
     });
+    if (remote) {
+      child.on('cut', ({ offset, next }) => {
+        replayed += next - offset;
+        checkReplay();
+      });
+      child.on('caught-up', ({ log, size }) => {
+        if (log === 'in') inCaughtUp = true;
+        else outSize = size;
+        checkReplay();
+      });
+      child.on('stdin-line', ({ text }) => {
+        let msg;
+        try {
+          msg = JSON.parse(text);
+        } catch {
+          return;
+        }
+        if (msg?.id != null && !msg.method) answeredOnHost.add(idKey(msg.id));
+        rebuild?.in(msg);
+      });
+    }
     child.on('error', (e) => {
+      if (child.remote) endError ??= e;
       const err = new Error(
         /** @type {any} */ (e).code === 'ENOENT'
           ? 'Codex CLI is not installed or not on PATH. Install it, or set POSTBOX_CODEX_BIN.'
-          : `Codex app-server could not start: ${e.message}`,
+          : child.remote
+            ? `Codex on the host stopped being reachable: ${e.message}`
+            : `Codex app-server could not start: ${e.message}`,
       );
       fail(err);
-      finish(err);
+      // A remote turn ends at its close, which comes next (server/remote/process.mjs) and fails it with endError.
+      if (!child.remote) finish(err);
     });
     child.on('close', (code) => {
       exited = true;
-      const err = new Error(
-        code !== 0
-          ? why(`Codex app-server exited with code ${code}${stderr ? ` (${stderr.trim().slice(-500)})` : ''}`)
-          : why('Codex app-server exited before the turn completed'),
-      );
+      // The daemon found no live runner and no exit.json: the app-server ended on the host without saying how.
+      if (child.remote && child.interrupted) endError ??= interruptedError('The Codex turn on the host ended without saying how, so it was interrupted.');
+      const err =
+        endError ??
+        new Error(
+          code !== 0
+            ? why(`Codex app-server exited with code ${code}${stderr ? ` (${stderr.trim().slice(-500)})` : ''}`)
+            : why('Codex app-server exited before the turn completed'),
+        );
       fail(err);
       finish(err);
     });
-    // Stop asks Codex to interrupt the turn; the app-server itself is stopped as the turn ends, below.
+    // Stop asks Codex to interrupt the turn; the app-server itself is stopped as the turn ends, below. A remote turn
+    // still being rebuilt uses what the rebuild has so far.
     const onAbort = () => {
-      const threadId = ctx.state.codexThreadId;
-      if (threadId && activeTurnId) send({ id: requestId++, method: 'turn/interrupt', params: { threadId, turnId: activeTurnId } });
-      finish();
+      const threadId = ctx.state.codexThreadId ?? rebuild?.threadId;
+      const turnId = activeTurnId ?? rebuild?.turnId;
+      if (rebuilding && rebuild) requestId = Math.max(requestId, rebuild.nextRequestId());
+      if (!threadId || !turnId) return finish();
+      const id = requestId++;
+      send({ id, method: 'turn/interrupt', params: { threadId, turnId } });
+      if (child.remote) interruptReached(child, id).then(() => finish());
+      else finish();
     };
     if (ctx.signal.aborted) onAbort();
     else ctx.signal.addEventListener('abort', onAbort, { once: true });
     try {
+      if (attach) {
+        if (!listed) throw interruptedError('The host no longer lists this Codex turn, so it can’t be picked up after the restart.');
+        // The replay goes through the mapper as it comes, so the reply is rebuilt too; a turn that completes during it
+        // is done. Approvals open only once both logs have caught up, so an answer in.jsonl holds is always seen first.
+        await Promise.race([replayDone, ended]);
+        if (!rebuild?.completed && !ctx.signal.aborted && !exited) {
+          const threadId = rebuild?.threadId ?? ctx.state.codexThreadId;
+          if (!threadId || !rebuild?.turnId)
+            throw interruptedError(
+              `Postbox restarted before Codex on the host had ${threadId ? 'started the turn' : 'opened a thread'}, so the turn can’t be picked up.`,
+            );
+          ctx.state.codexThreadId = threadId;
+          ctx.saveState({ codexThreadId: threadId });
+          activeTurnId = rebuild.turnId;
+          requestId = Math.max(requestId, rebuild.nextRequestId());
+          rebuilding = false;
+          for (const msg of rebuild.open()) void answer(msg).catch(fail);
+        }
+        rebuilding = false;
+        await ended;
+        return;
+      }
       await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
       send({ method: 'initialized', params: {} });
       const permissions = codexPermissions(ctx.persona, cwd);

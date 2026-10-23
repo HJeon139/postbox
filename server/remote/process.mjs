@@ -21,7 +21,11 @@
 // - 'none': `start` goes at once; anything written is dropped, with a note on stderr.
 // - 'held': `start` goes at once, and each complete line written is sent as `write`, in order, one at a time: the next
 //   goes once the daemon says `written`. stdin.end() sends a last line with no \n, if any; the runner holds the
-//   harness’s stdin open until the turn ends, so there’s nothing else to close.
+//   harness’s stdin open until the turn ends, so there’s nothing else to close. The child also reads in.jsonl (`read`
+//   with `log: 'in'`) beside out.jsonl, from 0, and emits each of its lines once as 'stdin-line' ({ offset, next,
+//   text }): what reached the harness, from Postbox or from the daemon (Codex approval expiry, H4). The Codex adapter
+//   rebuilds a turn from it after a Postbox restart, once the child has emitted 'caught-up' ({ log, size }) for both
+//   logs: the daemon’s word that a read’s first pass has sent every line the log had.
 //
 // Reading and acking: after `started`, the child sends `read { turn, from }` and keeps `next`, the offset just past the
 // last line it applied (pushed to stdout, or cut). A line’s offset is its identity, so one whose offset is below `next`
@@ -44,13 +48,23 @@
 // - 'error' (err): the connection has given up, and no more messages will come. The child emits it as its own
 //   'error', then exits with code null and signal null (not `interrupted`: the turn may still run on the host, for a
 //   later attach to replay).
-// A `write` sent just before a drop may or may not have reached the runner, and isn’t resent, so a JSON-RPC line is
-// never applied twice; the child says so on stderr. L4c’s rebuild from in.jsonl is what recovers from that.
+// A `write` sent just before a drop, whose `written` never came, may or may not have reached the runner. Sending it again
+// blindly could apply a JSON-RPC line twice (a second thread/start), and dropping it could leave the harness waiting
+// for it, so after the reconnect the child looks for it in in.jsonl and sends it again only if it isn’t there. Two
+// reads decide, handled in order on the channel: `base` is in.jsonl’s size when the line was sent (the larger of the
+// last `written` and the end of the in.jsonl lines seen), and `end` is base plus the line and its \n.
+// - `read { log: 'in', from: end }` fails with bad-offset unless end is the file’s size or a line’s start. A failure
+//   means the line isn’t there: it’s sent again.
+// - `read { log: 'in', from: base }` then reads in.jsonl again from base. The line itself means it arrived; a line
+//   ending at `end` that isn’t it means it didn’t (the first read passed only because another writer’s line, an
+//   expiry, ended there), and it’s sent again.
+// One of the two always decides, so the next line never waits for good. A write still under way from the dropped
+// channel when the reads arrive could still land twice; the window is the runner’s one append, against a reconnect.
 
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { Readable, Writable } from 'node:stream';
-import { MESSAGE_FILE, message } from '../../shared/remote-protocol.mjs';
+import { MESSAGE_FILE, message, utf8Bytes } from '../../shared/remote-protocol.mjs';
 
 /** Lines applied before an ack goes, at most. */
 export const ACK_LINES = 64;
@@ -61,23 +75,28 @@ export const ACK_MS = 250;
  * @typedef {{ send: (msg: object) => boolean } & import('node:events').EventEmitter} RemoteConnection
  * @typedef {'file' | 'none' | 'held'} StdinKind
  * @typedef {{ name: string, text: string }} TurnFile
+ * @typedef {{ name: string, text: string }} AgentFile
  */
 
 /**
  * A spawn function for one remote turn, to pass as an adapter’s spawnImpl. Each call starts a turn on the host; `turn`
  * names the first one (the caller keeps it, to attach after a restart), and a later call gets a fresh ID, read from
- * the child’s `turn`. With `attach`, each call reads an existing turn instead and sends no `start`.
+ * the child’s `turn`. With `attach`, each call reads an existing turn instead and sends no `start`. agentFile goes in
+ * `start` as it is (a Kiro CLI custom agent, which the daemon writes into the agents folder of the Kiro home the
+ * runner will use, from env’s KIRO_HOME, the host’s own, or ~/.kiro, rather than the turn folder).
  * @param {{ connection: RemoteConnection, harness: import('../../shared/remote-protocol.mjs').Harness, folder: string,
- *           stdin: StdinKind, env?: Record<string, string>, files?: TurnFile[], turn?: string, attach?: { from?: number } }} o
+ *           stdin: StdinKind, env?: Record<string, string>, files?: TurnFile[], agentFile?: AgentFile, turn?: string,
+ *           attach?: { from?: number } }} o
  * @returns {(bin: string, args?: readonly string[], opts?: object) => RemoteProcess}
  */
-export function remoteSpawn({ connection, harness, folder, stdin, env = {}, files = [], turn, attach }) {
+export function remoteSpawn({ connection, harness, folder, stdin, env = {}, files = [], agentFile, turn, attach }) {
   let first = turn;
   return (_bin, args = [], _opts) => {
     const id = first ?? randomUUID();
     first = undefined;
     if (attach) return attachRemote(connection, { turn: id, from: attach.from ?? 0, stdin });
-    return new RemoteProcess(connection, { turn: id, start: { harness, folder, argv: [...args], env: { ...env }, stdin, files: [...files] } });
+    const start = { harness, folder, argv: [...args], env: { ...env }, stdin, files: [...files], ...(agentFile ? { agentFile: { ...agentFile } } : {}) };
+    return new RemoteProcess(connection, { turn: id, start });
   };
 }
 
@@ -95,7 +114,8 @@ export class RemoteProcess extends EventEmitter {
   /**
    * @param {RemoteConnection} connection
    * @param {{ turn: string, start?: { harness: string, folder: string, argv: string[], env: Record<string, string>, stdin: StdinKind,
-   *           files: TurnFile[] }, from?: number, stdin?: StdinKind }} o  start for a new turn, or from to attach to one
+   *           files: TurnFile[], agentFile?: AgentFile }, from?: number, stdin?: StdinKind }} o  start for a new turn, or
+   *   from to attach to one
    */
   constructor(connection, { turn, start, from = 0, stdin }) {
     super();
@@ -134,8 +154,14 @@ export class RemoteProcess extends EventEmitter {
     this.stopPending = false;
     /** @type {string[]} */
     this.queue = [];
-    /** @type {{ line: string, sent: boolean } | null} */
+    /** @type {{ line: string, sent: boolean, base: number } | null} */
     this.inFlight = null;
+    /** For a held stdin: in.jsonl’s size at the last `written`, and the offset past the last in.jsonl line emitted. */
+    this.inUpTo = 0;
+    this.inNext = 0;
+    /** A line lost in a drop, being looked for in in.jsonl (the header), with where it would end. */
+    /** @type {{ line: string, base: number, end: number } | null} */
+    this.checking = null;
     this.stdin = this.makeStdin();
     this.onMessage = (m) => this.handle(m);
     this.onConnected = () => this.resume();
@@ -203,6 +229,12 @@ export class RemoteProcess extends EventEmitter {
 
   read() {
     if (this.ended) return;
+    // in.jsonl first: it’s small, and its reader then starts before out.jsonl’s (a rebuild wants it all early).
+    if (this.kind === 'held') {
+      const c = this.checking;
+      if (c) this.send('read', { turn: this.turn, from: c.end, log: 'in' });
+      this.send('read', { turn: this.turn, from: c ? Math.min(c.base, this.inNext) : this.inNext, log: 'in' });
+    }
     // Unsent, it goes at the next welcome.
     this.send('read', { turn: this.turn, from: this.next });
   }
@@ -225,7 +257,7 @@ export class RemoteProcess extends EventEmitter {
         this.note(`A line for the agent’s stdin couldn’t be sent, so it was dropped: ${e.message}`);
         continue;
       }
-      this.inFlight = { line, sent: this.conn.send(msg) === true };
+      this.inFlight = { line, sent: this.conn.send(msg) === true, base: Math.max(this.inUpTo, this.inNext) };
     }
   }
 
@@ -239,8 +271,9 @@ export class RemoteProcess extends EventEmitter {
       this.conn.send(this.build('start', this.startBody));
     }
     if (this.inFlight?.sent) {
-      this.note('The connection to the host dropped while a line for the agent’s stdin was on its way; it may not have arrived.');
-      this.inFlight = null;
+      // Kept in flight, so nothing passes it, until in.jsonl says whether it arrived (the header). read() asks.
+      const { line, base } = this.inFlight;
+      this.checking = { line, base, end: base + utf8Bytes(line) + 1 };
     } else if (this.inFlight) {
       this.queue.unshift(this.inFlight.line);
       this.inFlight = null;
@@ -261,10 +294,15 @@ export class RemoteProcess extends EventEmitter {
       case 'started':
         return this.onStarted();
       case 'line':
-        return m.log === 'in' ? undefined : this.apply(m);
+        return m.log === 'in' ? this.applyIn(m) : this.apply(m);
       case 'written':
         this.inFlight = null;
+        this.checking = null;
+        this.inUpTo = Math.max(this.inUpTo, m.upTo);
         return this.pump();
+      case 'caught-up':
+        // A read’s first pass has sent what the log had (the Codex rebuild waits for both logs’).
+        return void this.emit('caught-up', { log: m.log, size: m.size });
       case 'ended':
         this.ack();
         return this.finish(m.exit);
@@ -294,12 +332,38 @@ export class RemoteProcess extends EventEmitter {
     }
   }
 
+  /** An in.jsonl line: emitted once, and looked at for a line lost in a drop. @param {{ offset: number, next: number, text: string, cut?: boolean }} m */
+  applyIn(m) {
+    const c = this.checking;
+    if (c && m.offset >= c.base) {
+      if (!m.cut && m.text === c.line) this.settle(true);
+      else if (m.next === c.end) this.settle(false);
+    }
+    if (m.offset < this.inNext) return;
+    this.inNext = m.next;
+    if (!m.cut) this.emit('stdin-line', { offset: m.offset, next: m.next, text: m.text });
+  }
+
+  /** The lost line was found in in.jsonl, or found missing and is sent again. @param {boolean} arrived */
+  settle(arrived) {
+    const c = /** @type {NonNullable<typeof this.checking>} */ (this.checking);
+    this.checking = null;
+    this.inFlight = null;
+    if (!arrived) {
+      this.note('A line for the agent’s stdin was lost when the connection to the host dropped; it wasn’t on the host, so it was sent again.');
+      this.queue.unshift(c.line);
+    }
+    this.pump();
+  }
+
   /** @param {{ code: string, message: string, re?: string }} m */
   onDaemonError(m) {
     if (m.re === 'start') {
       if (m.code === 'turn-exists' && this.startResent) return this.onStarted();
       return this.fail(Object.assign(new Error(m.message), { code: m.code }));
     }
+    // Only the look for a lost line reads from an offset that may not be a line’s start: its end isn’t there.
+    if (m.re === 'read' && m.code === 'bad-offset' && this.checking) return this.settle(false);
     if (m.re === 'read') return this.fail(Object.assign(new Error(m.message), { code: m.code }));
     if (m.re === 'write') {
       this.note(`A line for the agent’s stdin wasn’t written on the host: ${m.message}`);

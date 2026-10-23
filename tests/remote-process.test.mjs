@@ -141,6 +141,23 @@ test('#120: a bad argv or env throws where spawn is called, as a local spawn doe
   assert.throws(() => remoteSpawn({ connection, harness: 'claude-code', folder: 'relative', stdin: 'none' })('claude', []), TypeError);
 });
 
+test('#120: an agentFile goes in start as it is, is checked where spawn is called, and is left out when not given', async () => {
+  const d = createFakeDaemon();
+  const connection = connectTo(d);
+  // Its name and text only: the daemon picks the folder, from the Kiro home the runner will use.
+  const agentFile = { name: 'postbox-kiro-1.json', text: '{"name":"postbox-kiro-1"}' };
+  const child = remoteSpawn({ connection, harness: 'kiro-cli', folder: FOLDER, stdin: 'none', agentFile, turn: 'k1' })('kiro-cli', ['chat']);
+  await watch(child).close;
+  assert.deepEqual(sent(d, 'start')[0].agentFile, agentFile);
+  const plain = remoteSpawn({ connection, harness: 'kiro-cli', folder: FOLDER, stdin: 'none', turn: 'k2' })('kiro-cli', ['chat']);
+  await watch(plain).close;
+  assert.ok(!('agentFile' in sent(d, 'start')[1]));
+  assert.throws(
+    () => remoteSpawn({ connection, harness: 'kiro-cli', folder: FOLDER, stdin: 'none', agentFile: { ...agentFile, name: '../x.json' } })('kiro-cli', []),
+    /agentFile\.name/,
+  );
+});
+
 test('#120: a held stdin sends each complete line as a write, in order, one after the daemon says written', async () => {
   const d = createFakeDaemon({ autoEnd: false, lines: [] });
   const connection = connectTo(d);
@@ -166,6 +183,73 @@ test('#120: a held stdin sends each complete line as a write, in order, one afte
   d.end('t2');
   assert.deepEqual(await w.exit, { code: 0, signal: null });
 });
+
+test('#120: a held stdin reads in.jsonl too, and emits each of its lines once as stdin-line, across a reconnect', async () => {
+  const d = createFakeDaemon({ autoEnd: false, lines: [] });
+  const connection = connectTo(d);
+  const child = remoteSpawn({ connection, harness: 'codex', folder: FOLDER, stdin: 'held', turn: 'tin' })('codex', []);
+  const w = watch(child);
+  const seen = [];
+  child.on('stdin-line', (l) => seen.push(l));
+  child.stdin.write('{"id":1,"method":"initialize"}\n');
+  await until(() => seen.length === 1, 'the line back from in.jsonl');
+  assert.deepEqual(
+    sent(d, 'read').find((m) => m.log === 'in'),
+    { type: 'read', turn: 'tin', from: 0, log: 'in' },
+  );
+  connection.drop();
+  connection.reconnect();
+  child.stdin.write('{"id":2,"method":"thread/start"}\n');
+  await until(() => seen.length === 2, 'the second line');
+  assert.deepEqual(
+    seen.map((l) => [l.offset, l.text]),
+    [
+      [0, '{"id":1,"method":"initialize"}'],
+      [31, '{"id":2,"method":"thread/start"}'],
+    ],
+  );
+  d.end('tin');
+  await w.close;
+});
+
+for (const arrived of [true, false]) {
+  test(`#120: a held-stdin line lost in a drop is ${arrived ? 'not sent again when in.jsonl has it' : 'sent again when in.jsonl doesn’t have it'}`, async () => {
+    const d = createFakeDaemon({ autoEnd: false, lines: [] });
+    const connection = connectTo(d);
+    const real = connection.send.bind(connection);
+    let lose = false;
+    connection.send = (msg) => {
+      if (lose && msg.type === 'write') {
+        lose = false;
+        // Arrived: the daemon has it and the drop takes its written. Not arrived: the drop takes the write itself.
+        const ok = arrived ? real(msg) : true;
+        connection.drop();
+        return ok;
+      }
+      return real(msg);
+    };
+    const child = remoteSpawn({ connection, harness: 'codex', folder: FOLDER, stdin: 'held', turn: arrived ? 'tl1' : 'tl2' })('codex', []);
+    const w = watch(child);
+    const t = () => d.turns.get(child.turn);
+    child.stdin.write('{"id":1,"method":"initialize"}\n');
+    await until(() => child.inUpTo > 0, 'the first written');
+    lose = true;
+    child.stdin.write('{"method":"initialized"}\n{"id":2,"method":"thread/start"}\n');
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(t().writes.length, arrived ? 2 : 1, 'the third line waits behind the lost one');
+    connection.reconnect();
+    await until(() => t().writes.length === 3, 'the line after it');
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(
+      t().writes,
+      ['{"id":1,"method":"initialize"}', '{"method":"initialized"}', '{"id":2,"method":"thread/start"}'],
+      'each line reached the harness once',
+    );
+    assert.equal(/sent again/.test(w.err), !arrived);
+    d.end(child.turn);
+    await w.close;
+  });
+}
 
 test('#120: acks advance with what was applied, batched, and the last one at ended is the log’s size', async () => {
   const many = Array.from({ length: ACK_LINES * 2 + 5 }, (_, i) => JSON.stringify({ type: 'n', i }));

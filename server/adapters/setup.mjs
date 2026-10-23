@@ -54,9 +54,27 @@ export const POSTBOX_SERVER = 'postbox';
  * at once, and the Agent SDK asks through canUseTool instead, so for them it changes nothing in practice.
  */
 export const POSTBOX_TIMEOUT_MS = 25 * 60 * 60 * 1000;
+/**
+ * The margin over the longest permission wait, in milliseconds: an hour. On a remote host (#120) the shim denies a prompt
+ * at the host’s permissionWaitMax, so Claude Code’s own limit on the call must come later, or the agent would get “The
+ * operation timed out” instead of the denial the card shows (C1).
+ */
+export const PERMISSION_WAIT_MARGIN_MS = 60 * 60 * 1000;
 /** Postbox’s own server, as `--mcp-config` and the SDK’s `mcpServers` take it. */
 export const postboxServer = (mcpUrl) => ({ [POSTBOX_SERVER]: { type: 'http', url: mcpUrl, alwaysLoad: true, timeout: POSTBOX_TIMEOUT_MS } });
 // alwaysLoad: Postbox’s tools are in the first prompt, so the agent doesn’t have to search for them.
+
+/**
+ * Postbox’s server for a turn on a remote host (#120): the host’s stdio shim, which the daemon ships, started by the
+ * host’s node with the turn’s ID. A stdio server has no per-request timer (the docs’ env-vars page, MCP_TOOL_TIMEOUT), and
+ * its `timeout` is the hard wall-clock limit on one call and, of at least 1000 ms, a floor under the 30-minute idle
+ * window (C1). The docs’ MCP page spells a stdio entry { type: 'stdio', command, args, env }; alwaysLoad is on every
+ * server type.
+ * @param {{ command: string, args: string[], timeout: number }} o
+ */
+export const shimServer = ({ command, args, timeout }) => ({
+  [POSTBOX_SERVER]: { type: 'stdio', command, args: [...args], alwaysLoad: true, timeout },
+});
 
 /**
  * The overlay for one persona. MCP servers it turned off go in `deniedMcpServers` ([{ serverName }]), the one

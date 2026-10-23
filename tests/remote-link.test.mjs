@@ -8,7 +8,7 @@ import test from 'node:test';
 import { createHostLink } from '../server/remote/link.mjs';
 import { remoteSpawn } from '../server/remote/process.mjs';
 import { SshFailure } from '../server/remote/ssh.mjs';
-import { MESSAGE_FILE, message } from '../shared/remote-protocol.mjs';
+import { MESSAGE_FILE, message, PROTOCOL_VERSION } from '../shared/remote-protocol.mjs';
 import { defaultHostSettings } from '../shared/remote-settings.mjs';
 import { createFakeDaemon, FAKE_TOKEN, fixtureLines } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
@@ -69,7 +69,7 @@ test('host link: connects when a send finds no session, says connected with the 
     await until(() => got.some((m) => m.type === 'error'), 'the daemon’s answer');
     assert.equal(got.find((m) => m.type === 'error').code, 'no-turn');
     // Never throws: hello is the session’s own, and a message the daemon would refuse is false.
-    assert.equal(link.send({ type: 'hello', version: 1, token: FAKE_TOKEN }), false);
+    assert.equal(link.send({ type: 'hello', version: PROTOCOL_VERSION, token: FAKE_TOKEN }), false);
     assert.equal(link.send({ type: 'read', turn: '../x', from: 0 }), false);
     assert.equal(link.send(/** @type {any} */ (null)), false);
   } finally {

@@ -177,7 +177,7 @@ test('messages after the welcome are emitted, validated; send checks each messag
   await ended;
   assert.deepEqual(
     got.map((m) => m.type),
-    ['line', 'line', 'ended'],
+    ['line', 'line', 'caught-up', 'ended'],
   );
   assert.deepEqual(
     got.slice(0, 2).map((m) => [m.offset, m.next, m.text]),
@@ -284,6 +284,25 @@ test('a token the daemon refuses, and a daemon of another protocol version, are 
   assert.match(v.next, /^Install this Postbox’s version on host\.example\.com/);
 });
 
+test('a host with no Node 22 or later is its own failure, with what to install, and isn’t retried on its own', async () => {
+  // As the `host` launcher (server/remote/host/host) says it: one error line, then exit 69.
+  const said = 'Postbox’s host program needs Node 22 or later, and found none on this host. It looked in: PATH (/usr/bin:/bin).';
+  const ssh = fakeSsh({
+    script(child) {
+      child.stdout.write(encode(message('daemon-to-postbox', 'error', { code: 'no-node', message: said })));
+      setImmediate(() => child.exit(69));
+    },
+  });
+  const e = await connection({ spawn: ssh.spawn })
+    .connect()
+    .catch((x) => x);
+  assert.ok(e instanceof SshFailure);
+  assert.equal(e.kind, 'no-node');
+  assert.equal(e.retry, false);
+  assert.ok(e.message.includes(said));
+  assert.equal(e.next, 'Install Node 22 or later on host.example.com, or set its Node path in Postbox’s host settings, then reconnect.');
+});
+
 // ── Failures ────────────────────────────────────────────────────────────────────────
 
 test('each recorded or documented ssh failure is classified, and says what the person can do next', async () => {
@@ -323,7 +342,7 @@ test('the failure classes’ words for the UI', () => {
 });
 
 test('only what Postbox can’t fix by waiting stops the retries', () => {
-  for (const kind of ['sign-in', 'host-key', 'not-installed', 'version', 'bad-token', 'busy']) assert.equal(retries(kind), false, kind);
+  for (const kind of ['sign-in', 'host-key', 'not-installed', 'version', 'bad-token', 'busy', 'no-node']) assert.equal(retries(kind), false, kind);
   for (const kind of ['unreachable', 'ended', 'failed']) assert.equal(retries(kind), true, kind);
 });
 

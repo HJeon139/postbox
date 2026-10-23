@@ -363,6 +363,28 @@ test('a prompt nobody answers is denied at permissionWaitMax, and the daemon get
   assert.equal(shim.out.filter((m) => m.id === id).length, 1);
 });
 
+test('a prompt the harness cancels gets no answer, and the daemon gets permission-canceled', async (t) => {
+  const { shim, daemon } = await setup(t);
+  const id = shim.tool('permission_prompt', REQUEST);
+  const asked = await daemon.next('permission');
+  const cancel = 'notifications/cancelled'; // lint-allow spelling: the MCP protocol’s method name.
+  shim.write({ jsonrpc: '2.0', method: cancel, params: { requestId: id, reason: 'The user stopped the turn.' } });
+  const canceled = await daemon.next('permission-canceled');
+  assert.equal(canceled.id, asked.id);
+  assert.equal(typeof canceled.at, 'number');
+  // The client gave up on it, so it gets no response, and a late answer changes nothing.
+  daemon.send('permission-answer', { id: asked.id, result: { behavior: 'allow', updatedInput: {} } });
+  await sleep(50);
+  assert.equal(shim.out.filter((m) => m.id === id).length, 0);
+  // A canceled asked tool, not a prompt, sends no notice.
+  const callId = shim.tool('corpus_search', { query: 'x' });
+  await daemon.next('call');
+  shim.write({ jsonrpc: '2.0', method: cancel, params: { requestId: callId } });
+  await sleep(50);
+  assert.equal(daemon.received.filter((m) => m.type === 'permission-canceled').length, 1);
+  assert.equal(daemon.errors.length, 0);
+});
+
 test('after a daemon restart, the waiting prompt is sent again with the same ID, and its answer arrives', async (t) => {
   const { shim, daemon } = await setup(t, { timings: { backoff: 20, backoffMax: 50 } });
   const id = shim.tool('permission_prompt', REQUEST);

@@ -108,7 +108,7 @@ It doesn’t depend on remote hosts, so it ships as its own fix, under its own i
 ### D1 and D2: decisions for the person
 
 - **D1:** intent.md describes Postbox as a local app on your own computer. Remote turns keep Postbox local and move only the agent’s process. Record that, or decline #120.
-- **D2:** the design’s open questions 1 (reconnect on wake) and 2 (auto-resume), and whether to offer `--permission-prompts none` and `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` (C10). Answered 23 October 2026: Postbox reconnects on wake on its own; it resumes on its own after Sign-in needed or Interrupted once the host is back; a resumed Claude Code turn continues the cut-off turn (`CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`); and a per-host `denyPrompts` setting (off by default) passes `--permission-prompts none`. L4a passes both flags; L5 builds the reconnect and resume policy; L6 shows the setting.
+- **D2:** the design’s open questions 1 (reconnect on wake) and 2 (auto-resume), and whether to offer `--permission-prompts none` and `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` (C10). Answered 23 October 2026: Postbox reconnects on wake on its own; it resumes on its own after Interrupted once the host is back, and after Sign-in needed only when the host’s `signInCheck` passes (with no `signInCheck`, the default, the turn waits for the person to resume it; changed 23 October 2026 from resuming on its own after either); a resumed Claude Code turn continues the cut-off turn (`CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`); and a per-host `denyPrompts` setting (off by default) passes `--permission-prompts none`. L4a passes both flags; L5 builds the reconnect and resume policy; L6 shows the setting.
 
 ### Probes (the person’s host, already running)
 

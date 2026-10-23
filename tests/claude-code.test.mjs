@@ -162,7 +162,8 @@ test('Claude Code says how it runs on a remote host; the Agent SDK and the mock 
   assert.deepEqual(CLAUDE_CODE_CAPABILITIES, {
     remote: {
       stdin: 'file',
-      env: [],
+      // The one variable it sets on a host: a resume after an interrupted turn goes on with it (D2).
+      env: ['CLAUDE_CODE_RESUME_INTERRUPTED_TURN'],
       server: 'mcp-config',
       work: 'events',
       signInError: { type: 'result', is_error: true, error: 'authentication_failed' },

@@ -16,10 +16,11 @@
 //   that says why if the daemon stays unreachable for TIMINGS.unreachable, or doesn’t answer in TIMINGS.askMax.
 // - permission_prompt sends `permission` and waits for `permission-answer`, however many times the daemon restarts.
 //   It never allows on its own: at the daemon’s permissionWaitMax it denies, and tells the daemon with
-//   `permission-expired` (kept until it’s sent, so the card can say so on reconnect). While it waits, it sends a
-//   progress notification every TIMINGS.progress if the call carried a progress token, with a value that goes up by
-//   one each time, as MCP requires (“Progress”). Claude Code’s per-server `timeout` is what lets the call last; the
-//   progress only backs up its idle window (the plan’s C1).
+//   `permission-expired` (kept until it’s sent, so the card can say so on reconnect). If the harness cancels the call
+//   (MCP’s cancel notification), it tells the daemon with `permission-canceled`, kept the same way. While it waits,
+//   it sends a progress notification every TIMINGS.progress if the call carried a progress token, with a value that
+//   goes up by one each time, as MCP requires (“Progress”). Claude Code’s per-server `timeout` is what lets the call
+//   last; the progress only backs up its idle window (the plan’s C1).
 // - IDs are a counter with a prefix for this process, so a shim the harness restarts within a turn can’t reuse an
 //   ID the daemon still holds for that turn: a prompt’s or call’s identity is (turn, ID).
 // - `server/discover` (Kiro CLI tries it first), like any method it doesn’t serve, gets “method not found”, so the
@@ -91,11 +92,11 @@ const textResult = (text, isError = false) => ({ content: [{ type: 'text', text 
 
 /**
  * A message for the daemon, kept until it’s settled and sent again, in order, after each reconnect.
- * @typedef {{ msg: Record<string, any>, kind: 'queue' | 'ask' | 'permission' | 'expired', rpcId?: any,
+ * @typedef {{ msg: Record<string, any>, kind: 'queue' | 'ask' | 'permission' | 'notice', rpcId?: any,
  *   started: number, timers: Set<ReturnType<typeof setTimeout>>, progress?: { token: string | number, value: number },
  *   tool?: string, down?: ReturnType<typeof setTimeout> | null }} Pending
  */
-/** @type {Map<string, Pending>} by the shim’s ID (an expiry notice by `expired:<id>`) */
+/** @type {Map<string, Pending>} by the shim’s ID (an expiry or cancel notice by `notice:<id>`) */
 const pending = new Map();
 /** The JSON-RPC request each pending ID answers, for a cancellation notification. @type {Map<string, string>} */
 const byRequest = new Map();
@@ -192,8 +193,8 @@ function reconnectLater() {
 function deliver(p, id) {
   if (!ready || !sock) return;
   sock.write(encode(p.msg));
-  // An expiry notice needs no answer: once it’s written to a welcomed link, it’s the daemon’s.
-  if (p.kind === 'expired') settle(id);
+  // A notice needs no answer: once it’s written to a welcomed link, it’s the daemon’s.
+  if (p.kind === 'notice') settle(id);
 }
 
 /** @param {{ type: string, [field: string]: any }} m */
@@ -401,9 +402,18 @@ function expire(id, limit) {
   if (!p) return;
   const message = `Nobody answered this permission request in Postbox within ${minutes(limit)}, so it was denied. Ask again if you still need it.`;
   respond(p.rpcId, textResult(JSON.stringify({ behavior: 'deny', message })));
-  const key = `expired:${id}`;
+  notify('permission-expired', id);
+}
+
+/**
+ * Tells the daemon a prompt ended without the person’s answer (`permission-expired` or `permission-canceled`), kept
+ * until it’s sent to a welcomed link, so the card can say so after a reconnect.
+ * @param {'permission-expired' | 'permission-canceled'} type @param {string} id
+ */
+function notify(type, id) {
+  const key = `notice:${id}`;
   /** @type {Pending} */
-  const notice = { msg: messageFor('permission-expired', { id, at: Date.now() }), kind: 'expired', started: Date.now(), timers: new Set() };
+  const notice = { msg: messageFor(type, { id, at: Date.now() }), kind: 'notice', started: Date.now(), timers: new Set() };
   pending.set(key, notice);
   deliver(notice, key);
 }
@@ -438,10 +448,11 @@ function fromHarness(text) {
     case 'notifications/initialized':
       return;
     case CANCEL: {
-      // The client gave up on the call, so it gets no answer. A prompt the daemon holds stays its to clear.
+      // The client gave up on the call, so it gets no answer. A prompt it gave up on is the daemon’s to clear, so it
+      // hears permission-canceled, and Postbox withdraws the card.
       const key = JSON.stringify(msg.params?.requestId);
       const id = byRequest.get(key);
-      if (id) settle(id);
+      if (id && settle(id)?.kind === 'permission') notify('permission-canceled', id);
       return;
     }
   }

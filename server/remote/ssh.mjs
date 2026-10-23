@@ -108,6 +108,8 @@ export const FAILURE_KINDS = Object.freeze({
   version: { retry: false },
   'bad-token': { retry: false },
   busy: { retry: false },
+  // No Node 22 or later on the host to run the daemon: waiting doesn’t install one.
+  'no-node': { retry: false },
   // The daemon closed the channel itself, such as after `remove`.
   ended: { retry: true },
   failed: { retry: true },
@@ -206,6 +208,10 @@ export function failure(kind, d, detail = {}) {
     ],
     'bad-token': [`The daemon on ${d} didn’t accept Postbox’s token.${quote}`, `Reinstall Postbox on ${d} from the host’s settings, then reconnect.`],
     busy: [`Another Postbox is using ${d}.${quote}`, `Take over ${d} to use it from here; the other Postbox is disconnected.`],
+    'no-node': [
+      `Postbox’s host program couldn’t start on ${d}: it needs Node 22 or later.${quote}`,
+      `Install Node 22 or later on ${d}, or set its Node path in Postbox’s host settings, then reconnect.`,
+    ],
     ended: [`The Postbox daemon on ${d} closed the connection.`, tryAgain],
     failed: [
       `The connection to ${d} failed${detail.code != null ? ` (ssh exited with ${detail.code})` : detail.signal ? ` (ssh ended on ${detail.signal})` : ''}.${quote}`,
@@ -250,7 +256,7 @@ function lastMatch(text) {
 
 /** The daemon’s `error` to hello, as a failure. @param {string} destination @param {{ code: string, message: string }} m */
 function classifyRefusal(destination, m) {
-  const kind = m.code === 'version' || m.code === 'bad-token' || m.code === 'busy' ? m.code : 'failed';
+  const kind = m.code === 'version' || m.code === 'bad-token' || m.code === 'busy' || m.code === 'no-node' ? m.code : 'failed';
   return failure(kind, destination, { why: `The host’s daemon said: “${m.message}”` });
 }
 

@@ -14,6 +14,8 @@
 //   d.addTurn(turn, opts)  a turn that was already on the host before Postbox connected
 //   d.append(turn, text)   a new out.jsonl line, sent to whoever follows the turn
 //   d.end(turn, exit?)     the harness exits: exit.json, then `ended` to followers
+//   d.appendIn(turn, text) a new in.jsonl line (a write the daemon made, or one a test plays late), sent to followers
+//   d.caughtUp(turn, log)  sends a `caught-up` held back by holdCaughtUp
 //   d.tool(turn, name, args, id?) / d.prompt(turn, request?, id?) / d.expire(turn, id)   queue the shim’s events; the
 //                          first two return the ID. A shim picks IDs per turn, so two turns may use the same one: the
 //                          fake keys what’s waiting by (turn, id), as the real daemon does.
@@ -49,10 +51,11 @@ export const FIXTURE_PROMPT = JSON.parse(readFileSync(new URL('permission-prompt
 /**
  * @param {{ token?: string, lines?: string[], autoEnd?: boolean, exit?: { code: number | null, signal: string | null },
  *           stopExit?: { code: number | null, signal: string | null }, home?: string, now?: () => number,
- *           harnesses?: string[], problems?: { code: string, message: string }[] }} [opts]
+ *           harnesses?: string[], problems?: { code: string, message: string }[], holdCaughtUp?: ('out' | 'in')[] }} [opts]
  *   lines: what each started turn’s out.jsonl holds (the fixture by default). autoEnd: a started turn has already
  *   exited with `exit` (true by default); false keeps it running until end() or a stop. stopExit: how a stopped turn
- *   ends (SIGINT, C5). harnesses: the ones the host has (all three by default).
+ *   ends (SIGINT, C5). harnesses: the ones the host has (all three by default). holdCaughtUp: logs whose `caught-up`
+ *   a read doesn’t send until the test calls caughtUp(), so lines can arrive between a read’s first pass and it.
  */
 export function createFakeDaemon({
   token = FAKE_TOKEN,
@@ -64,6 +67,7 @@ export function createFakeDaemon({
   now = () => 1_760_000_000_000,
   harnesses = [...HARNESSES],
   problems = [],
+  holdCaughtUp = [],
 } = {}) {
   /** @type {Map<string, FakeTurn>} */
   const turns = new Map();
@@ -91,7 +95,7 @@ export function createFakeDaemon({
   /** @type {Conn} */
   let current;
 
-  /** @typedef {{ stdin: PassThrough, stdout: PassThrough, ready: boolean, closed: boolean, follows: Map<string, true> }} Conn */
+  /** @typedef {{ stdin: PassThrough, stdout: PassThrough, ready: boolean, closed: boolean, follows: Map<string, true>, held?: { turn: string, log: string }[] }} Conn */
 
   const send = (c, type, body) => {
     if (c.closed) return;
@@ -166,6 +170,9 @@ export function createFakeDaemon({
       if (m.from !== size(all) && !all.some((l) => l.offset === m.from))
         return fail(c, 'bad-offset', `${m.from} isn’t the start of a line in ${m.turn}’s ${log} log.`, 'read', m.turn);
       for (const l of all) if (l.offset >= m.from) sendLine(c, t, log, l);
+      // As the real daemon does: once the first pass has sent what the log had (daemon.mjs’s follow).
+      if (holdCaughtUp.includes(log)) c.held = [...(c.held ?? []), { turn: t.turn, log }];
+      else send(c, 'caught-up', { turn: t.turn, log, size: size(all) });
       if (log === 'out' && (t.exit || t.interrupted)) sendEnded(c, t);
       else c.follows.set(`${t.turn}:${log}`, true);
     },
@@ -305,6 +312,22 @@ export function createFakeDaemon({
       const t = need(turn);
       const l = push(t.out, text);
       for (const c of followers(turn, 'out')) sendLine(c, t, 'out', l);
+    },
+    /** @param {string} turn @param {string} text */
+    appendIn(turn, text) {
+      const t = need(turn);
+      const l = push(t.in, text);
+      for (const c of followers(turn, 'in')) sendLine(c, t, 'in', l);
+    },
+    /** Sends the `caught-up` a read held back (holdCaughtUp), at the log’s size now. @param {string} turn @param {'out' | 'in'} log */
+    caughtUp(turn, log) {
+      const t = need(turn);
+      for (const c of conns) {
+        const i = (c.held ?? []).findIndex((h) => h.turn === turn && h.log === log);
+        if (i === -1) continue;
+        c.held.splice(i, 1);
+        send(c, 'caught-up', { turn, log, size: size(log === 'in' ? t.in : t.out) });
+      }
     },
     /** @param {string} turn @param {{ code: number | null, signal: string | null }} [how] */
     end(turn, how = exit) {

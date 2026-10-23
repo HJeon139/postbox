@@ -103,6 +103,51 @@ export function sameProcess(record, opts = {}) {
   return start !== null && start === record.startTime;
 }
 
+// ── The start lock’s owner ──
+//
+// A version’s start lock (~/.postbox-remote/locks/<version>.lock, a folder made with mkdir) holds its owner’s record,
+// LOCK_OWNER: { pid, bootId, startTime }, as daemon.pid does, written beside it and renamed in, so it’s read whole or
+// not at all. daemon.mjs’s attach, install.mjs’s script and cleanup.mjs’s retirement judge it the same way: the lock is
+// held while its owner is the same process (sameProcess here, `live` in the script), whatever its age. A lock with no
+// record is one just made, held for a grace period (daemon.mjs’s LOCK_STALE_MS), then stale. The script writes the PID
+// alone where there’s no /proc (macOS), as its `live` checks only the PID there; such a record is held while that PID
+// is alive.
+
+/** The owner record’s name in the start lock’s folder. */
+export const LOCK_OWNER = 'owner';
+
+/**
+ * A start lock owner record’s text, parsed: the whole record, the PID alone, or null for text that isn’t a record,
+ * which is a dead owner’s (it’s renamed in whole, so it isn’t one being written).
+ * @param {string} text @returns {{ pid: number, bootId?: string, startTime?: number } | null}
+ */
+export function parseLockOwner(text) {
+  try {
+    const r = JSON.parse(text);
+    if (!r || !Number.isSafeInteger(r.pid) || r.pid < 2) return null;
+    if (typeof r.bootId === 'string' && Number.isSafeInteger(r.startTime)) return { pid: r.pid, bootId: r.bootId, startTime: r.startTime };
+    if (r.bootId === undefined && r.startTime === undefined) return { pid: r.pid };
+  } catch {}
+  return null;
+}
+
+/**
+ * Whether a start lock’s owner is still running: sameProcess for a whole record, an alive PID for a PID alone.
+ * @param {{ pid: number, bootId?: string, startTime?: number } | null} owner
+ * @param {{ sameProcess?: (r: { pid: number, bootId: string, startTime: number }) => boolean | Promise<boolean>, kill?: (pid: number, signal: 0) => unknown }} [o]
+ * @returns {boolean | Promise<boolean>}
+ */
+export function lockOwnerLive(owner, { sameProcess: same = sameProcess, kill = process.kill } = {}) {
+  if (!owner) return false;
+  if (owner.bootId !== undefined && owner.startTime !== undefined) return same({ pid: owner.pid, bootId: owner.bootId, startTime: owner.startTime });
+  try {
+    kill(owner.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── A turn’s tool shells ──
 //
 // Claude Code runs each Bash call in a session of its own (setsid), so its tool shells aren’t in the turn’s process

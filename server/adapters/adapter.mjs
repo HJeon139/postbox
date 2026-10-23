@@ -27,6 +27,25 @@
 //   ctx.tools.*                             the same tools MCP exposes (see server/tools.mjs)
 //   ctx.signal                              aborted when you press Stop; stop work promptly
 //   ctx.mcpUrl                              where a real agent connects for the UI tools
+//   ctx.remote                              set when the turn runs on a remote host (#120), and then ctx.mcpUrl is
+//                                           never used: { link, welcome, settings, folder, version, turn, nextTurn,
+//                                           attach?, resumeInterrupted?, bring? } (RemoteContext below)
+//                                           link: server/remote/link.mjs’s createHostLink; welcome: the daemon’s
+//                                           latest (home, node.path, harnesses); settings: the host’s
+//                                           (shared/remote-settings.mjs); folder: the host folder it works in;
+//                                           version: Postbox’s package version (config.build.version), which names
+//                                           the host’s code folder, so the shim is hostPaths(welcome.home,
+//                                           version).shim (never welcome.version, the protocol’s).
+//                                           The runtime owns host turn IDs: turn is the one this deliver runs as,
+//                                           already persisted with the session as { hostId, turn, offset } (L5), so
+//                                           the runtime can send the snapshot before `start` and attach after a
+//                                           restart. An adapter that needs a second host turn in one deliver (a
+//                                           resume whose session the host lost, a fork point it can’t find) awaits
+//                                           nextTurn(), which persists the new one before it returns. The adapter
+//                                           spawns through server/remote/process.mjs’s remoteSpawn with that ID and
+//                                           makes none of its own. Codex also takes attach: { turn } (the turn to
+//                                           pick up after a restart, instead of turn), Claude Code
+//                                           resumeInterrupted.
 //
 // Throw (or reject) to fail the turn; the message is shown to you with Retry.
 //
@@ -65,6 +84,34 @@
  *   remote?: RemoteCapabilities },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
  */
+
+/**
+ * A turn’s remote context (#120), as the runtime passes it in ctx.remote.
+ * @typedef {{ link: any, welcome: any, settings: Record<string, any>, folder: string, version: string,
+ *   turn?: string, nextTurn: () => Promise<string>, attach?: { turn: string }, resumeInterrupted?: boolean, bring?: boolean }} RemoteContext
+ */
+
+/**
+ * The host’s shim’s arguments for host turn `turn`: its path, the turn, and --bring when the runtime says the turn may
+ * post to the conversation (ctx.remote.bring: one the person started in a side or topic thread), so the shim lists
+ * bring_to_conversation as the laptop’s server would (server/remote/host/shim.mjs).
+ * @param {RemoteContext} remote @param {string} shim @param {string} turn
+ */
+export const shimArgs = (remote, shim, turn) => [shim, turn, ...(remote.bring ? ['--bring'] : [])];
+
+/**
+ * Refuses a remote context the runtime didn’t fill in, before anything starts on the host: the turn ID it owns (an
+ * attach brings its own) and Postbox’s version, which names the shim’s folder there.
+ * @param {RemoteContext} remote @param {{ attach?: boolean }} [o]
+ */
+export function checkRemoteContext(remote, { attach = false } = {}) {
+  if (!attach && (typeof remote.turn !== 'string' || !remote.turn))
+    throw new Error('A remote turn needs its turn ID from the runtime (ctx.remote.turn), so it wasn’t started on the host.');
+  if (typeof remote.version !== 'string' || !remote.version)
+    throw new Error('A remote turn needs Postbox’s version (ctx.remote.version) to find the shim on the host, so it wasn’t started.');
+  if (!attach && typeof remote.nextTurn !== 'function')
+    throw new Error('A remote turn needs ctx.remote.nextTurn from the runtime, so it wasn’t started on the host.');
+}
 
 export class AdapterRegistry {
   constructor() {

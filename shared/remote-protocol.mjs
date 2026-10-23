@@ -26,8 +26,9 @@
 // - `argv` is the harness’s arguments without the program: the daemon runs the program it found for `harness` (or the
 //   path in `settings`’ claudePath, kiroPath or codexPath), so Postbox can only start a harness the daemon reported.
 // - `files` are text (UTF-8) and land in the turn folder, mode 0600; their names are plain names that aren’t one of the
-//   folder’s own files. A file that belongs elsewhere, such as a Kiro agent file in a Kiro home, needs a new field and a
-//   new PROTOCOL_VERSION (L4b). A `file` stdin is the turn’s message file, message.jsonl, which `files` must carry.
+//   folder’s own files. A `file` stdin is the turn’s message file, message.jsonl, which `files` must carry. The one file
+//   that belongs elsewhere is a Kiro agent file, `start.agentFile` (name and text only): the daemon puts it in the
+//   agents folder of the Kiro home the runner will use, from start.env’s KIRO_HOME, its own, or ~/.kiro.
 // - `env` names are checked for shape only. Which names may go is the adapter’s `capabilities.remote.env`, checked on
 //   the laptop; the token holder already runs any argv as the host’s user, so a list here would protect nothing.
 // - `welcome` gives the daemon’s home folder, so Postbox can build absolute paths (the default `~/postbox-work/<handle>`
@@ -40,6 +41,9 @@
 //   empty text, so the stream moves on and the adapter can say a line was lost.
 // - `ended` follows a turn’s last line on a `read` that’s following it, once per `read`; `exit` is null for an
 //   interrupted turn (no live runner and no exit.json).
+// - `caught-up` follows a `read`’s first pass, once per `read`: it has sent every line the log had when that pass
+//   reached the file’s end, and `size` is the offset past the last of them (the file’s size then, less a last line
+//   still without its \n). A peer rebuilding from both logs (Codex) knows from it when it has seen what was there.
 // - The conversation snapshot is `snapshot` (the whole thing, replacing any before) and `snapshot-items` (items added or
 //   changed, by ID, in one thread). Each item carries the line read_conversation shows and the full text read_message
 //   reads, both already worded by Postbox, so the daemon only pages them. Postbox sends `snapshot` before `start`, so
@@ -60,7 +64,7 @@ import { LIMITS, READING } from './limits.mjs';
 import { checkHostPath, checkHostSettings, defaultHostSettings, PATH_BYTES, RANGES } from './remote-settings.mjs';
 
 /** Bumped on any change a peer of the previous version would refuse or misread. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 const KiB = 1024;
 const MiB = 1024 * KiB;
@@ -174,6 +178,7 @@ export const ERROR_CODES = Object.freeze(
     'no-prompt', // an answer to a prompt that isn’t waiting
     'no-tool', // a reply to a tool that isn’t queued
     'disconnected', // to the shim: an asked tool while Postbox isn’t connected
+    'no-node', // the host has no Node 22 or later to run the daemon (the `host` launcher, or the daemon’s own check)
     'internal',
   ]),
 );
@@ -237,6 +242,11 @@ export function hostPaths(home, version) {
     shim: `${hostDir}/shim.mjs`,
     runner: `${hostDir}/runner.mjs`,
     socket: `${code}/daemon.sock`,
+    /**
+     * The version’s start lock, a folder made with mkdir: an attach holds it while it starts `host serve`, and the
+     * installer while it checks and replaces the version’s folder. It’s outside that folder, which the installer renames.
+     */
+    lock: `${root}/locks/${version}.lock`,
     token: `${root}/token`,
     turns: `${root}/turns`,
     /** @param {string} turn @param {string} [file]  one of TURN_FILES’ values, or MESSAGE_FILE */
@@ -323,9 +333,9 @@ const CHANNELS = {
       token(m.token, 'hello.token') ||
       opt(m.takeover, (v) => bool(v, 'hello.takeover')) ||
       opt(m.settings, (v) => checkSettings(v)),
-    /** { turn, harness, folder, argv, env, stdin, files } */
+    /** { turn, harness, folder, argv, env, stdin, files, agentFile? } */
     start: (m) =>
-      fields(m, 'start', ['turn', 'harness', 'folder', 'argv', 'env', 'stdin', 'files']) ||
+      fields(m, 'start', ['turn', 'harness', 'folder', 'argv', 'env', 'stdin', 'files'], ['agentFile']) ||
       turnId(m.turn, 'start.turn') ||
       oneOf(m.harness, 'start.harness', HARNESSES) ||
       hostPath(m.folder, 'start.folder') ||
@@ -335,7 +345,8 @@ const CHANNELS = {
       checkFiles(m.files) ||
       (m.stdin === 'file' && !m.files.some((f) => f.name === MESSAGE_FILE)
         ? `A turn that reads its stdin from a file must send ${MESSAGE_FILE} in start.files.`
-        : ''),
+        : '') ||
+      opt(m.agentFile, (v) => (m.harness === 'kiro-cli' ? checkAgentFile(v) : `start.agentFile is only for kiro-cli; this start is for ${m.harness}.`)),
     /** { turn, home, threads: [{ id, items: SnapshotItem[] }] }: the whole snapshot, replacing any before. */
     snapshot: (m) =>
       fields(m, 'snapshot', ['turn', 'home', 'threads']) ||
@@ -440,6 +451,12 @@ const CHANNELS = {
       (m.cut ? (m.next > m.offset ? '' : 'A cut line must move the offset on.') : lineSpan(m.offset, m.next, m.text)),
     /** { turn, upTo }: a `write` reached the held stdin; upTo is in.jsonl’s size after it. */
     written: (m) => fields(m, 'written', ['turn', 'upTo']) || turnId(m.turn, 'written.turn') || int(m.upTo, 'written.upTo', 1, Number.MAX_SAFE_INTEGER),
+    /** { turn, log, size }: a `read` has sent every line of that log up to `size`, its size when the first pass got there. */
+    'caught-up': (m) =>
+      fields(m, 'caught-up', ['turn', 'log', 'size']) ||
+      turnId(m.turn, 'caught-up.turn') ||
+      oneOf(m.log, 'caught-up.log', LOGS) ||
+      int(m.size, 'caught-up.size', 0, Number.MAX_SAFE_INTEGER),
     /** { turn, exit, size }: after the turn’s last line; exit is null for an interrupted turn. */
     ended: (m) =>
       fields(m, 'ended', ['turn', 'exit', 'size']) ||
@@ -456,12 +473,14 @@ const CHANNELS = {
     /** { id, turn, request }: a permission prompt waiting in the shim; id is the shim’s, unique only within the turn. */
     prompt: (m) =>
       fields(m, 'prompt', ['id', 'turn', 'request']) || id(m.id, 'prompt.id') || turnId(m.turn, 'prompt.turn') || checkRequest(m.request, 'prompt.request'),
-    /** { id, turn, at }: the host denied it at permissionWaitMax. */
+    /** { id, turn, at, reason? }: nobody can answer it any more: the host denied it at permissionWaitMax (`expired`,
+     * the default), or the harness canceled the call (`canceled`). */
     'prompt-expired': (m) =>
-      fields(m, 'prompt-expired', ['id', 'turn', 'at']) ||
+      fields(m, 'prompt-expired', ['id', 'turn', 'at'], ['reason']) ||
       id(m.id, 'prompt-expired.id') ||
       turnId(m.turn, 'prompt-expired.turn') ||
-      int(m.at, 'prompt-expired.at', 0, Number.MAX_SAFE_INTEGER),
+      int(m.at, 'prompt-expired.at', 0, Number.MAX_SAFE_INTEGER) ||
+      opt(m.reason, (v) => oneOf(v, 'prompt-expired.reason', ['expired', 'canceled'])),
     /** {}: everything is stopped and deleted; the daemon exits next. */
     removed: (m) => fields(m, 'removed', []),
     error: (m) => checkError(m),
@@ -499,6 +518,9 @@ const CHANNELS = {
     /** { id, at }: the shim denied it at permissionWaitMax. */
     'permission-expired': (m) =>
       fields(m, 'permission-expired', ['id', 'at']) || id(m.id, 'permission-expired.id') || int(m.at, 'permission-expired.at', 0, Number.MAX_SAFE_INTEGER),
+    /** { id, at }: the harness canceled the call (MCP’s cancel notification), so nobody waits on the answer. */
+    'permission-canceled': (m) =>
+      fields(m, 'permission-canceled', ['id', 'at']) || id(m.id, 'permission-canceled.id') || int(m.at, 'permission-canceled.at', 0, Number.MAX_SAFE_INTEGER),
   },
 
   /** daemon → shim. */
@@ -829,6 +851,24 @@ function checkEnv(v) {
     if (utf8Bytes(val) > REMOTE_LIMITS.envValueBytes) return `start.env.${k} is over ${REMOTE_LIMITS.envValueBytes} bytes.`;
   }
   return '';
+}
+
+/**
+ * start.agentFile: a Kiro CLI custom agent file, which Kiro reads from `<its home>/agents/`, not from the turn folder.
+ * Postbox sends only its name and text. The daemon picks the folder from the Kiro home the runner will use (start.env’s
+ * KIRO_HOME, which must be under ~/.postbox-remote, else its own KIRO_HOME, else ~/.kiro), writes the file there 0600,
+ * never over one already there, and removes it when the turn ends.
+ */
+function checkAgentFile(v) {
+  const e =
+    fields(v, 'start.agentFile', ['name', 'text']) ||
+    (typeof v.name === 'string' && FILE_RE.test(v.name) && !v.name.includes('..') && v.name.endsWith('.json')
+      ? ''
+      : `start.agentFile.name must be a plain file name ending in .json; got “${clip(v.name)}”.`) ||
+    str(v.text, 'start.agentFile.text', Number.MAX_SAFE_INTEGER);
+  if (e) return e;
+  const n = utf8Bytes(v.text);
+  return n > REMOTE_LIMITS.fileBytes ? `start.agentFile.text is ${n} bytes; the limit is ${REMOTE_LIMITS.fileBytes}.` : '';
 }
 
 function checkFiles(v) {

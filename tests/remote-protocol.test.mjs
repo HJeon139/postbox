@@ -9,6 +9,7 @@ import {
   CHANNEL_NAMES,
   createLineReader,
   createMessageReader,
+  ERROR_CODES,
   encode,
   HOST_DEFAULTS,
   HOST_ENFORCED,
@@ -69,20 +70,20 @@ const CASES = {
   'postbox-to-daemon': {
     hello: {
       ok: {
-        version: 1,
+        version: PROTOCOL_VERSION,
         token: TOKEN,
         takeover: true,
         settings: { permissionWaitMax: 60_000, claudePath: '/opt/claude', codexPath: null, detach: 'setsid', signInCheck: ['klist', '-s'] },
       },
       bad: [
         [{ version: '1', token: TOKEN }, /hello\.version must be a whole number/],
-        [{ version: 1, token: 'short' }, /hello\.token must be the host’s token/],
-        [{ version: 1 }, /hello needs “token”/],
-        [{ version: 1, token: TOKEN, settings: { permissionWaitMax: 10 } }, /hello\.settings: permissionWaitMax must be 1 min to 24 h/],
-        [{ version: 1, token: TOKEN, settings: { codexPath: 'codex' } }, /codexPath must be an absolute path/],
-        [{ version: 1, token: TOKEN, settings: { codexPath: '/opt/codex/' } }, /hello\.settings: codexPath can’t end with “\/”/],
-        [{ version: 1, token: TOKEN, settings: { stall: 1 } }, /“stall” isn’t a field of hello\.settings/],
-        [{ version: 1, token: TOKEN, settings: { stallTimeout: 600_000 } }, /“stallTimeout” isn’t a field of hello\.settings/],
+        [{ version: PROTOCOL_VERSION, token: 'short' }, /hello\.token must be the host’s token/],
+        [{ version: PROTOCOL_VERSION }, /hello needs “token”/],
+        [{ version: PROTOCOL_VERSION, token: TOKEN, settings: { permissionWaitMax: 10 } }, /hello\.settings: permissionWaitMax must be 1 min to 24 h/],
+        [{ version: PROTOCOL_VERSION, token: TOKEN, settings: { codexPath: 'codex' } }, /codexPath must be an absolute path/],
+        [{ version: PROTOCOL_VERSION, token: TOKEN, settings: { codexPath: '/opt/codex/' } }, /hello\.settings: codexPath can’t end with “\/”/],
+        [{ version: PROTOCOL_VERSION, token: TOKEN, settings: { stall: 1 } }, /“stall” isn’t a field of hello\.settings/],
+        [{ version: PROTOCOL_VERSION, token: TOKEN, settings: { stallTimeout: 600_000 } }, /“stallTimeout” isn’t a field of hello\.settings/],
       ],
     },
     start: {
@@ -189,6 +190,14 @@ const CASES = {
       ],
     },
     written: { ok: { turn: 't1', upTo: 40 }, bad: [[{ turn: 't1', upTo: 0 }, /written\.upTo must be from 1/]] },
+    'caught-up': {
+      ok: { turn: 't1', log: 'in', size: 0 },
+      bad: [
+        [{ turn: 't1', log: 'err', size: 10 }, /caught-up\.log must be one of out, in/],
+        [{ turn: 't1', log: 'out', size: -1 }, /caught-up\.size must be from 0/],
+        [{ turn: 't1', log: 'out' }, /caught-up needs “size”/],
+      ],
+    },
     ended: {
       ok: { turn: 't1', exit: null, size: 0 },
       bad: [
@@ -241,6 +250,7 @@ const CASES = {
     },
     permission: { ok: { id: 'p1', request }, bad: [[{ id: 'p1', request: { tool_name: '', input: {} } }, /tool_name can’t be empty/]] },
     'permission-expired': { ok: { id: 'p1', at: 1 }, bad: [[{ id: 'p1', at: 'now' }, /at must be a whole number/]] },
+    'permission-canceled': { ok: { id: 'p1', at: 1 }, bad: [[{ id: 'p1' }, /needs “at”/]] },
   },
   'daemon-to-shim': {
     welcome: {
@@ -339,6 +349,40 @@ test('exit.json has a code or a signal and a time; runner.json has the PID, boot
   assert.match(String(/** @type {any} */ (validateRunnerRecord({ ...runner, startTime: undefined })).error), /needs “startTime”/);
 });
 
+test('PROTOCOL_VERSION is 2: wave 3’s agentFile, permission-canceled, prompt-expired.reason and no-node are what a version 1 peer would refuse or misread', () => {
+  assert.equal(PROTOCOL_VERSION, 2);
+  assert.ok(ERROR_CODES.includes('no-node'));
+});
+
+test('start.agentFile is a Kiro agent file’s name and text, only for kiro-cli, measured in UTF-8 bytes; the daemon picks its folder', () => {
+  const start = { type: 'start', turn: 't1', harness: 'kiro-cli', folder: '/home/user/work', argv: ['chat'], env: {}, stdin: 'none', files: [] };
+  const file = { name: 'postbox-a1.json', text: '{}' };
+  assert.ok(validateMessage('postbox-to-daemon', { ...start, agentFile: file }).ok);
+  // Two bytes a character: under the limit in characters, over it in bytes.
+  const wide = 'é'.repeat(REMOTE_LIMITS.fileBytes / 2 + 1);
+  assert.ok(wide.length <= REMOTE_LIMITS.fileBytes && utf8Bytes(wide) > REMOTE_LIMITS.fileBytes);
+  for (const [bad, why] of [
+    [{ ...file, name: '../a.json' }, /plain file name ending in \.json/],
+    [{ ...file, name: 'a.txt' }, /ending in \.json/],
+    [{ ...file, dir: '/home/user/.kiro/agents' }, /“dir” isn’t a field of start\.agentFile/],
+    [{ ...file, text: wide }, new RegExp(`start\\.agentFile\\.text is ${utf8Bytes(wide)} bytes; the limit is ${REMOTE_LIMITS.fileBytes}`)],
+  ])
+    assert.match(String(/** @type {any} */ (validateMessage('postbox-to-daemon', { ...start, agentFile: bad })).error), why);
+  for (const harness of ['claude-code', 'codex'])
+    assert.match(
+      String(/** @type {any} */ (validateMessage('postbox-to-daemon', { ...start, harness, agentFile: file })).error),
+      /start\.agentFile is only for kiro-cli/,
+      harness,
+    );
+});
+
+test('prompt-expired says why', () => {
+  const expired = { type: 'prompt-expired', id: 'p1', turn: 't1', at: 1 };
+  assert.ok(validateMessage('daemon-to-postbox', expired).ok, 'reason defaults to expired');
+  assert.ok(validateMessage('daemon-to-postbox', { ...expired, reason: 'canceled' }).ok);
+  assert.match(String(/** @type {any} */ (validateMessage('daemon-to-postbox', { ...expired, reason: 'gone' })).error), /reason/);
+});
+
 test('start.json names the harness’s absolute program and the start message’s argv, env, stdin and folder', () => {
   const start = {
     turn: 't1',
@@ -360,6 +404,7 @@ test('host paths keep the repo’s layout under the version folder, and turns ar
   assert.equal(p.host, '/home/user/.postbox-remote/0.10.0/server/remote/host/host');
   assert.equal(p.shim, '/home/user/.postbox-remote/0.10.0/server/remote/host/shim.mjs');
   assert.equal(p.token, '/home/user/.postbox-remote/token');
+  assert.equal(p.lock, '/home/user/.postbox-remote/locks/0.10.0.lock', 'outside the version folder the installer renames');
   assert.equal(p.turn('t1', TURN_FILES.out), '/home/user/.postbox-remote/turns/t1/out.jsonl');
   assert.throws(() => p.turn('../x'), /isn’t a turn ID/);
   assert.throws(() => hostPaths('home/user', '0.10.0'), /must be an absolute path/);
@@ -379,7 +424,7 @@ test('hello.settings carries the host-enforced settings, with remote-settings.mj
   for (const k of HOST_ENFORCED) assert.ok(Object.hasOwn(defaults, k), `${k} is a host setting`);
   assert.deepEqual(Object.keys(HOST_DEFAULTS), [...HOST_ENFORCED]);
   for (const k of HOST_ENFORCED) assert.deepEqual(HOST_DEFAULTS[k], defaults[k], k);
-  const r = validateMessage('postbox-to-daemon', { type: 'hello', version: 1, token: TOKEN, settings: structuredClone(HOST_DEFAULTS) });
+  const r = validateMessage('postbox-to-daemon', { type: 'hello', version: PROTOCOL_VERSION, token: TOKEN, settings: structuredClone(HOST_DEFAULTS) });
   assert.ok(r.ok, r.ok ? '' : r.error);
 });
 
@@ -748,7 +793,7 @@ test('every path a host’s settings accept passes the protocol’s checks, and 
     accepted.push(path);
     const s = validateMessage('postbox-to-daemon', { type: 'start', ...start, folder: path });
     assert.ok(s.ok, `start.folder ${path.slice(0, 40)}: ${s.ok ? '' : s.error}`);
-    const h = validateMessage('postbox-to-daemon', { type: 'hello', version: 1, token: TOKEN, settings: { claudePath: path } });
+    const h = validateMessage('postbox-to-daemon', { type: 'hello', version: PROTOCOL_VERSION, token: TOKEN, settings: { claudePath: path } });
     assert.ok(h.ok, `hello.settings.claudePath ${path.slice(0, 40)}: ${h.ok ? '' : h.error}`);
   }
   assert.equal(accepted.length, 5, 'the plain paths, and the longest in bytes, pass');

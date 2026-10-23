@@ -34,6 +34,24 @@
 // The CLI runs in its own process group: Stop sends it SIGINT, then SIGKILL if it doesn’t exit, and to every shell it
 // started in a group of its own (server/adapters/process-group.mjs, #126). POSTBOX_KIRO_RECORD=<folder> saves each
 // turn’s raw stream.
+//
+// On a remote host (#120, ctx.remote; architecture.md “Remote hosts”), the turn runs through the host’s daemon
+// (server/remote/process.mjs’s remoteSpawn), and the arguments are the same but for where things are:
+// - The agent file goes in `start.agentFile` (its name and text), which the daemon writes into the agents folder of
+//   the Kiro home the runner will use and removes when the turn ends: with your setup, the host’s own (its KIRO_HOME,
+//   else ~/.kiro), which only the daemon knows; for an Isolated persona a Kiro home of Postbox’s own,
+//   `~/.postbox-remote/kiro-home/<handle>`, with KIRO_HOME set to it (the one variable that crosses). Postbox’s server
+//   in it is the host’s stdio shim, run by the daemon’s node, never the laptop’s MCP URL.
+// - The host turn is the runtime’s, ctx.remote.turn; the fresh start after a missing session is a second one, from
+//   ctx.remote.nextTurn(). The shim’s path is under ctx.remote.version, the Postbox code installed there.
+// - The working folder is ctx.remote.folder, and it’s the only folder the read and write rules name: the project’s
+//   folder and the extra folders are laptop paths, which mean nothing on the host, so they don’t cross. Kiro matches
+//   resolved paths, and a host path can’t be resolved from here, so it’s named as given.
+// - The message is still the last argument. Linux limits one argument to 128 KiB (MAX_ARG_STRLEN, 32 pages of 4 KiB;
+//   execve(2)), so a longer one is refused before the turn starts. And other users on the host can read a process’s
+//   arguments in /proc/<pid>/cmdline unless /proc is mounted with hidepid (proc(5)), so each remote turn says so, as a
+//   step in its activity.
+// - Stop goes through stopTurn’s remote branch: the daemon’s `stop`, never a local signal.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -42,6 +60,9 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { hostPaths, REMOTE_DIR, REMOTE_LIMITS, utf8Bytes } from '../../shared/remote-protocol.mjs';
+import { remoteSpawn } from '../remote/process.mjs';
+import { checkRemoteContext, shimArgs } from './adapter.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
@@ -154,12 +175,13 @@ const spellings = (dir) => {
 /**
  * The agent’s permission rules. Their order doesn’t matter: in Kiro, deny beats ask beats allow, whatever the scope
  * a rule comes from (kiro.dev/docs/permissions), so a deny here holds against an allow in your own rules.
- * @param {{ persona: any, folders: string[] }} turn  folders: where the agent works, and the folders it may also use
+ * @param {{ persona: any, folders: string[], resolve?: boolean }} turn  folders: where the agent works, and the folders
+ *   it may also use; resolve: also name each as resolved here (false for a host’s folders, which aren’t on this disk)
  */
-export function kiroRules({ persona, folders }) {
+export function kiroRules({ persona, folders, resolve = true }) {
   const { canPublish, usesHostSetup, mcpOff } = setupOf(persona);
   const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
-  const dirs = [...new Set(folders.filter(Boolean).flatMap(spellings))];
+  const dirs = [...new Set(folders.filter(Boolean).flatMap(resolve ? spellings : (d) => [d]))];
   const rules = [
     // Postbox’s own tools never need asking: they only show things in the thread.
     { capability: 'mcp', match: [`${POSTBOX_SERVER}/*`], effect: 'allow' },
@@ -192,9 +214,11 @@ const ISOLATED_NOTE =
 
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl: string, guide: string, folders: string[] }} turn
+ * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[] }} turn
+ *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
+ *   folders are then the host’s
  */
-export function kiroAgent({ name, persona, mcpUrl, guide, folders }) {
+export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) {
   const { usesHostSetup } = setupOf(persona);
   return {
     name,
@@ -203,8 +227,9 @@ export function kiroAgent({ name, persona, mcpUrl, guide, folders }) {
     tools: ['*'],
     // Your global and workspace mcp.json, unless the persona is Isolated.
     includeMcpJson: usesHostSetup,
-    mcpServers: { [POSTBOX_SERVER]: { type: 'http', url: mcpUrl } },
-    permissions: { rules: kiroRules({ persona, folders }) },
+    // A local server is a command and its arguments (kiro.dev/docs/custom-agents/configuration-reference).
+    mcpServers: { [POSTBOX_SERVER]: shim ? { command: shim.command, args: [...shim.args] } : { type: 'http', url: mcpUrl } },
+    permissions: { rules: kiroRules({ persona, folders, resolve: !shim }) },
   };
 }
 
@@ -240,6 +265,40 @@ export function kiroArgs({ persona, agent, sessionId = null, prompt }) {
 /** The Kiro home a persona runs with: yours (KIRO_HOME, else ~/.kiro), or Postbox’s own when Isolated. */
 export const kiroHomeFor = (persona, { isolatedHome, env = process.env, home = homedir() }) =>
   setupOf(persona).usesHostSetup ? env.KIRO_HOME || join(home, '.kiro') : isolatedHome;
+
+/**
+ * The variables that say which Kiro home a persona runs with on a remote host: none with your setup (the daemon finds
+ * the host’s own, from its KIRO_HOME or ~/.kiro, and puts the agent file there), or KIRO_HOME set to one of Postbox’s
+ * own per handle under ~/.postbox-remote when Isolated.
+ * @param {any} persona @param {string} home  welcome.home
+ * @returns {Record<string, string>}
+ */
+export function kiroRemoteEnv(persona, home) {
+  if (setupOf(persona).usesHostSetup) return {};
+  const handle = String(persona?.handle ?? '').replace(/[^a-z0-9_-]/gi, '') || 'agent';
+  return { KIRO_HOME: `${home === '/' ? '' : home}/${REMOTE_DIR}/kiro-home/${handle}` };
+}
+
+/**
+ * Refuses a message too long to be one argument on Linux, before a remote turn starts.
+ * @param {string} prompt  the last argument, as it would go
+ */
+export function checkRemoteMessage(prompt) {
+  const n = utf8Bytes(prompt);
+  if (n <= REMOTE_LIMITS.argBytes) return;
+  throw new Error(
+    `This message is ${Math.ceil(n / 1024)} KiB, too long for Kiro CLI on a remote host: Kiro takes its message as one command-line argument, and Linux limits one argument to 128 KiB. Shorten it, or put the long part in a file in the agent’s folder on the host and point to it.`,
+  );
+}
+
+/** The step a remote Kiro turn shows: its message is an argument, and arguments can be read on the host. */
+export const REMOTE_ARGV_NOTE = Object.freeze({
+  id: 'kiro-remote-argv',
+  label: 'Other users on the host can read this message',
+  state: 'done',
+  detail:
+    'Kiro CLI takes its message as a command-line argument, and other users on a Linux host can read a process’s arguments in /proc unless it’s mounted with hidepid. Don’t send a Kiro agent on a shared host anything they shouldn’t see.',
+});
 
 const clip = (s, n) => {
   const t = String(s ?? '')
@@ -523,37 +582,73 @@ export class KiroCliAdapter {
 
   async deliver(session, message, ctx) {
     const persona = ctx.persona;
-    const cwd = await this.folderFor(persona, ctx.project);
+    // On a host, its folder there; the laptop’s folders don’t cross (the header).
+    const cwd = ctx.remote ? ctx.remote.folder : await this.folderFor(persona, ctx.project);
     const prompt = formatMessage(message, ctx.pathOf);
     const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
-    const folders = [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
-    const first = await this.run({ ctx, cwd, folders, prompt, guide, sessionId: ctx.state.kiroSessionId ?? null });
+    const folders = ctx.remote ? [cwd] : [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
+    // Before anything starts on the host: the turn ID and version the runtime owns.
+    if (ctx.remote) checkRemoteContext(ctx.remote);
+    const first = await this.run({ ctx, cwd, folders, prompt, guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
     // A session Kiro no longer has (its history was cleared, or the persona moved between your setup and
     // Isolated, which keep sessions in different homes) starts over, once.
     if (first.missingSession) {
       ctx.saveState({ kiroSessionId: null });
       const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
-      await this.run({ ctx, cwd, folders, prompt: note + prompt, guide, sessionId: null });
+      // On a host, a second host turn, which the runtime persists before nextTurn returns.
+      const turn = ctx.remote ? await ctx.remote.nextTurn() : undefined;
+      await this.run({ ctx, cwd, folders, prompt: note + prompt, guide, sessionId: null, turn });
     }
   }
 
-  /** @param {{ ctx: any, cwd: string, folders: string[], prompt: string, guide: string, sessionId: string|null }} turn */
-  async run({ ctx, cwd, folders, prompt, guide, sessionId }) {
+  /**
+   * @param {{ ctx: any, cwd: string, folders: string[], prompt: string, guide: string, sessionId: string|null, turn?: string }} o
+   *   turn: on a remote host, the host turn this run starts as (the runtime’s)
+   */
+  async run({ ctx, cwd, folders, prompt, guide, sessionId, turn }) {
     const persona = ctx.persona;
-    const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
     const agent = `postbox-${String(persona.handle).replace(/[^a-z0-9_-]/gi, '')}-${randomUUID().slice(0, 8)}`;
-    const file = join(home, 'agents', `${agent}.json`);
-    await mkdir(join(home, 'agents'), { recursive: true });
-    await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders }), null, 2));
     const args = kiroArgs({ persona, agent, sessionId, prompt });
-    const env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
+    /** @type {string | null} the agent file on this computer, removed when the turn ends */
+    let file = null;
+    let spawnFn = this.spawn;
+    let env;
+    if (ctx.remote) {
+      checkRemoteMessage(prompt);
+      const { link, welcome, version } = ctx.remote;
+      const hostTurn = /** @type {string} */ (turn);
+      const shim = { command: welcome.node.path, args: shimArgs(ctx.remote, hostPaths(welcome.home, version).shim, hostTurn) };
+      const text = JSON.stringify(kiroAgent({ name: agent, persona, shim, guide, folders }), null, 2);
+      // Only the names capabilities.remote lists cross; bin, cwd and the laptop’s env don’t (remoteSpawn ignores them).
+      const allowed = new Set(KIRO_CAPABILITIES.remote.env);
+      const remoteEnv = Object.fromEntries(Object.entries(kiroRemoteEnv(persona, welcome.home)).filter(([k]) => allowed.has(k)));
+      spawnFn = /** @type {any} */ (
+        remoteSpawn({
+          connection: link,
+          harness: 'kiro-cli',
+          folder: cwd,
+          stdin: 'none',
+          env: remoteEnv,
+          agentFile: { name: `${agent}.json`, text },
+          turn: hostTurn,
+        })
+      );
+      env = {};
+      ctx.activity({ ...REMOTE_ARGV_NOTE });
+    } else {
+      const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
+      file = join(home, 'agents', `${agent}.json`);
+      await mkdir(join(home, 'agents'), { recursive: true });
+      await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders }), null, 2));
+      env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
+    }
     const mapper = createKiroMapper(ctx, { effort: effortOf(persona) });
     try {
       return await new Promise((resolve, reject) => {
         let child;
         try {
           // Its own process group, so Stop reaches everything it started (#126).
-          child = this.spawn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+          child = spawnFn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
         } catch (e) {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
@@ -628,7 +723,8 @@ export class KiroCliAdapter {
         });
       });
     } finally {
-      await rm(file, { force: true }).catch(() => {});
+      // A remote turn’s file is the daemon’s to remove.
+      if (file) await rm(file, { force: true }).catch(() => {});
     }
   }
 }

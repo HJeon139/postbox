@@ -7,15 +7,20 @@
 // one daemon needs coordination. The daemon is its own process, `host serve`, listening on paths().socket in the
 // version’s 0700 folder; `host attach` is only a relay that pipes its stdio (the SSH channel) to that socket:
 // 1. attach connects to the socket. If a daemon answers, it relays, and that’s all.
-// 2. Otherwise it takes the lock, a folder made with mkdir (atomic), connects once more (another attach may have just
-//    started one), and if nobody answers, starts `host serve` detached, waits for its socket to answer, drops the lock
-//    and relays. A lock older than LOCK_STALE_MS is from an attach that died holding it, and is removed.
+// 2. Otherwise it takes the version’s start lock (paths().lock, ~/.postbox-remote/locks/<version>.lock), a folder made
+//    with mkdir (atomic), connects once more (another attach may have just started one), and if nobody answers, makes
+//    the version’s folder if it’s missing (a checkout’s), starts `host serve` detached, waits for its socket to answer,
+//    drops the lock and relays. The installer holds the same lock while it checks and replaces the version’s folder
+//    (install.mjs), so the lock is outside that folder, and an attach makes nothing in it without the lock. The lock
+//    holds its owner’s record (proc.mjs, “The start lock’s owner”), and is broken only once that owner is gone, or
+//    once it has had no record for LOCK_STALE_MS; its age alone never breaks it, however long an install holds it.
+//    Each holder drops it only while the record in it is still its own.
 // 3. serve takes the daemon’s own lock for its whole life: daemon.pid, made with O_EXCL, holding its PID, boot ID and
 //    start time. One that names a live process (proc.mjs’s sameProcess) means a daemon is up or starting, and serve
 //    exits; one that doesn’t is from a daemon that died, and is removed (under daemon.pid.break, so two serves that
 //    both find it stale can’t remove a fresh one). Only while it holds daemon.pid does serve connect once more, remove
 //    a stale socket file (nothing answers: ENOENT or ECONNREFUSED; any other error is reported, and the file is left)
-//    and bind. So the attach lock going stale under a slow start can’t start a second daemon.
+//    and bind. So the start lock going stale under a slow start can’t start a second daemon.
 // The first attach doesn’t become the daemon itself, though that’s one process fewer: the daemon outlives the attach
 // that started it, and sshd ends a session only once the channel’s stdout and stderr close, so a daemon holding them
 // would keep that ssh open after Postbox dropped or was taken over. A relay closes them when its socket closes.
@@ -24,8 +29,9 @@
 //
 // The daemon’s socket also serves each turn’s shim (shim-to-daemon). A connection’s first line says which it is: a
 // Postbox hello has `version`, a shim’s has `turn`. Serving the shim (tool calls, permission prompts, the snapshot’s
-// reading tools) is H4’s broker; this file hands it the connection (`shim` option) and the Postbox messages it owns
-// (`broker` option), and refuses them clearly until it exists.
+// reading tools) and declining Codex’s approvals at permissionWaitMax is broker.mjs’s; this file hands it each shim
+// connection and the Postbox messages it owns (snapshot, snapshot-items, answer, reply), and tells it when a turn
+// starts, when Stop arrives, and before a line goes to a held stdin. Tests can pass their own (`broker`, `shim`).
 //
 // Its log is its stderr: the attach’s for the relay, daemon.log in the version’s folder for serve. stdout carries
 // protocol messages only.
@@ -44,12 +50,14 @@ import {
   readFileSync,
   renameSync,
   rmdirSync,
+  rmSync,
   statSync,
   unlinkSync,
   watch,
   writeFileSync,
 } from 'node:fs';
 import net from 'node:net';
+import { dirname, join, posix } from 'node:path';
 import {
   createLineReader,
   DIR_MODE,
@@ -69,8 +77,11 @@ import {
   validateRunnerRecord,
   validateStartRecord,
 } from '../../../shared/remote-protocol.mjs';
+import { createBroker } from './broker.mjs';
+import { createCleanup, SWEEP_MS } from './cleanup.mjs';
 import { hostVersion, PROGRAMS, paths } from './paths.mjs';
 import * as defaultProc from './proc.mjs';
+import { LOCK_OWNER, lockOwnerLive, parseLockOwner } from './proc.mjs';
 import { findPrograms as defaultFindPrograms, NODE_MAJOR } from './programs.mjs';
 import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, sendStdin } from './runner.mjs';
 
@@ -86,14 +97,20 @@ const RUNNER_START_POLL_MS = 50;
 /** How long an attach waits for the serve it started to answer. */
 export const SERVE_START_MS = 10_000;
 /**
- * An attach lock older than this is from an attach that died holding it. An attach holds it for up to SERVE_START_MS
- * while its serve starts, so this is three times that: a slow start is never taken for a dead one.
+ * A start lock with no owner record yet is one an attach or install has just made, and is held for this long; one
+ * still without a record after it is from one that died between making it and writing its record, and is broken. A
+ * lock with a record is judged by its owner alone. An attach waits for a held lock for up to SERVE_START_MS more than
+ * this. The install script’s own grace (find’s -mmin +1) counts whole minutes, so it’s a minute, and cleanup’s is this.
  */
 export const LOCK_STALE_MS = 3 * SERVE_START_MS;
+/** The start lock’s break lock (`<lock>.break`) is held for one removal; one older than this is from one that died. */
+const BREAK_STALE_MS = 5000;
 /** daemon.log is set aside as daemon.log.1 when it’s over this at serve’s start. */
 const LOG_KEEP_BYTES = 4 * 1024 * 1024;
-/** Snapshots sent for turns not yet started, kept at most. */
-const PENDING_SNAPSHOTS = 64;
+/** How long `remove` waits for the turns it stopped to end, past Stop’s grace period. */
+const REMOVE_WAIT_MS = 5000;
+/** The daemon’s entry point, which the `host` launcher (PROGRAMS.host, a shell script) runs with the Node it found. */
+export const HOST_ENTRY = join(dirname(PROGRAMS.host), 'host.mjs');
 /** Exit codes, from sysexits.h. */
 export const EXIT = Object.freeze({ ok: 0, usage: 64, unavailable: 69, software: 70, noperm: 77 });
 
@@ -117,10 +134,15 @@ const READ_CHUNK = 64 * 1024;
  * @typedef {{ stop: () => void, poke: () => void }} Follower
  * @typedef {{ turn: string, harness: string, state: 'running' | 'ended' | 'interrupted', size: number,
  *   exit: import('../../../shared/remote-protocol.mjs').ExitRecord | null }} TurnFound
- * @typedef {{ hello?: (send: (type: string, body: Record<string, unknown>) => void) => void,
- *   message?: (msg: any, reply: { send: (type: string, body: Record<string, unknown>) => void, fail: (code: string, text: string) => void }) => boolean | Promise<boolean> }} Broker
- *   H4’s seam: hello is called after each welcome (to resend what waits for Postbox); message gets snapshot-items,
- *   answer, reply and remove, and returns false for one it doesn’t take.
+ * @typedef {{ hello?: (send: (type: string, body: Record<string, unknown>) => void) => void | Promise<void>,
+ *   message?: (msg: any, reply: { send: (type: string, body: Record<string, unknown>) => void, fail: (code: string, text: string) => void }) => boolean | Promise<boolean>,
+ *   load?: (turns: TurnFound[]) => Promise<void>, starting?: (turn: string) => Promise<void>, started?: (turn: string) => unknown,
+ *   stopping?: (turn: string) => Promise<void>, checkWrite?: (turn: string, line: string) => { refused: string } | { done: (ok: boolean) => void },
+ *   shim?: ShimSeam, close?: () => void }} Broker
+ *   broker.mjs’s seam: hello is called after each welcome (to resend what waits for Postbox); message gets snapshot,
+ *   snapshot-items, answer and reply (remove is the daemon’s own: cleanup.mjs), and returns false for one it doesn’t
+ *   take; load replays the turn folders at start; starting and started bracket a turn’s runner launch; stopping comes
+ *   first in a Stop (and in the cap’s and remove’s); checkWrite before a held-stdin line goes.
  * @typedef {(conn: { first: string, write: (s: string) => boolean, end: () => void }) => { line: (text: string) => void, close: () => void }} ShimSeam
  */
 
@@ -131,8 +153,11 @@ const READ_CHUNK = 64 * 1024;
  *   launchRunner?: LaunchRunner, askRunner?: AskRunner, proc?: Proc, writeRunner?: WriteRunner,
  *   findPrograms?: (o: { home: string, settings: Record<string, any> }) => Promise<import('./programs.mjs').Programs>,
  *   kill?: (pid: number, signal: NodeJS.Signals) => void, log?: (line: string) => void, onIdle?: () => void,
- *   pollMs?: number, stopGraceMs?: number, runnerStartMs?: number, broker?: Broker, shim?: ShimSeam, uid?: number }} opts
- *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs)
+ *   onRemoved?: () => void, pollMs?: number, stopGraceMs?: number, runnerStartMs?: number, sweepMs?: number,
+ *   broker?: Broker, shim?: ShimSeam, uid?: number, env?: Record<string, string | undefined> }} opts
+ *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs). onRemoved: `remove` has
+ *   deleted ~/.postbox-remote and said `removed`, so the daemon exits. env: the daemon’s environment, which each runner
+ *   inherits (read at each start, for KIRO_HOME).
  */
 export function createDaemon({
   home,
@@ -149,12 +174,15 @@ export function createDaemon({
   kill = (pid, signal) => process.kill(pid, signal),
   log = (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
   onIdle = () => {},
+  onRemoved = onIdle,
   pollMs = POLL_MS,
   stopGraceMs = STOP_GRACE_MS,
   runnerStartMs = RUNNER_START_MS,
-  broker = {},
+  sweepMs = SWEEP_MS,
+  broker,
   shim,
   uid = process.getuid ? process.getuid() : -1,
+  env = process.env,
 }) {
   const p = hostPaths(home, version);
   /** @type {Record<string, any>} the settings the driver’s hello sent, over HOST_DEFAULTS */
@@ -166,10 +194,8 @@ export function createDaemon({
   /** @type {Conn | null} the one that drives the daemon */
   let driver = null;
   let ids = 0;
-  /** @type {Map<string, number>} per turn, how far Postbox has applied out.jsonl (H5 deletes logs past it) */
+  /** @type {Map<string, number>} per turn, how far Postbox has applied out.jsonl; cleanup.mjs keeps it in `.ack` */
   const acked = new Map();
-  /** @type {Map<string, object>} snapshots for turns not started yet */
-  const pendingSnapshots = new Map();
   /** Turns whose runner was found not to be the one runner.json names: interrupted, whatever a socket says. */
   const dead = new Set();
   /** @type {Map<string, any>} SIGKILL timers, per turn */
@@ -183,6 +209,24 @@ export function createDaemon({
   let idleTimer = null;
   let lastActive = now();
   let closed = false;
+  /** Set once `remove` starts: nothing new starts after it. */
+  let removing = false;
+  /** @type {any} */
+  let sweepTimer = null;
+  const cleanup = createCleanup({
+    home,
+    version,
+    paths: p,
+    now,
+    log,
+    settings: () => ({ logRetention: settings.logRetention, logMaxBytes: settings.logMaxBytes }),
+    sameProcess: (r) => proc.sameProcess(/** @type {any} */ (r)),
+    stopTurn: (turn) => stopTurn(turn),
+    onCap(turn, text) {
+      problems.set('log-cap', text);
+      if (driver && !driver.closed) fail(driver, 'internal', text, undefined, turn);
+    },
+  });
 
   // ── Files ──
 
@@ -233,35 +277,8 @@ export function createDaemon({
     return askRunner(p.turn(turn, TURN_FILES.socket), turn, { timeoutMs: ASK_TIMEOUT_MS, token }).catch(() => false);
   };
 
-  /**
-   * The host’s token, made if missing: 32 random bytes as hex, 0600, in a 0700 folder. An existing one that’s group-
-   * or other-accessible is set back to 0600, and said in the log, since the daemon can fix that itself; one that isn’t
-   * a regular file of this user’s is refused, since anyone who could replace it could choose the token.
-   */
-  function ensureToken() {
-    mkdirSync(p.root, { recursive: true, mode: DIR_MODE });
-    const st = statSync(p.root);
-    if ((st.mode & 0o777) !== DIR_MODE) {
-      log(`${p.root} was mode ${(st.mode & 0o777).toString(8)}; setting it to 700.`);
-      fsp.chmod(p.root, DIR_MODE).catch((e) => log(`Couldn’t set ${p.root} to 700: ${e.message}`));
-    }
-    try {
-      writeFileSync(p.token, randomBytes(32).toString('hex'), { mode: FILE_MODE, flag: 'wx' });
-      log(`Made the token at ${p.token}.`);
-      return;
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-    }
-    const tok = lstatSync(p.token);
-    if (!tok.isFile() || (uid >= 0 && tok.uid !== uid))
-      throw new Error(
-        `${p.token} isn’t a file of this user’s (${tok.isFile() ? `it’s owned by user ${tok.uid}` : 'it isn’t a regular file'}), so the daemon won’t trust it. Remove it and reinstall Postbox on the host to make a new one.`,
-      );
-    if (tok.mode & 0o077) {
-      log(`${p.token} was mode ${(tok.mode & 0o777).toString(8)}; setting it to 600.`);
-      chmodSync(p.token, FILE_MODE);
-    }
-  }
+  /** The host’s token, made if missing (ensureToken). */
+  const makeToken = () => ensureToken({ p, uid, log });
   /** Whether a token matches the file’s, in constant time. A missing or unreadable file matches nothing. */
   function tokenMatches(given) {
     let want;
@@ -310,7 +327,7 @@ export function createDaemon({
           turn,
           harness: start.msg.harness,
           state: exitNow ? 'ended' : state,
-          size: await sizeOf(`${dir}/${TURN_FILES.out}`),
+          size: (await cleanup.deletedSize(turn)) ?? (await sizeOf(`${dir}/${TURN_FILES.out}`)),
           exit: exitNow,
         });
       }),
@@ -338,6 +355,8 @@ export function createDaemon({
         lastActive = now();
         return checkIdle();
       }
+      await cleanup.sweep().catch((e) => log(`The cleanup before exiting failed: ${e.message}`));
+      if (closed || conns.size) return;
       log(`Idle for ${Math.round(settings.idleTimeout / 1000)} s with no turn running and nobody attached; exiting.`);
       onIdle();
     }, wait);
@@ -413,20 +432,21 @@ export function createDaemon({
   /** Each message after hello, by type. @type {Record<string, (c: Conn, m: any) => Promise<void> | void>} */
   const handlers = {
     start: (c, m) => start(c, m),
-    snapshot: (c, m) => snapshot(c, m),
     read: (c, m) => read(c, m),
     write: (c, m) => write(c, m),
     stop: (c, m) => stop(c, m),
     ack: (c, m) => ack(c, m),
+    remove: (c) => remove(c),
   };
 
   /** @param {Conn} c @param {any} m */
   async function dispatch(c, m) {
     if (m.type === 'hello') return hello(c, m);
     if (!c.ready) return fail(c, 'not-ready', 'Say hello with the host’s token first.', m.type, m.turn);
+    if (removing) return fail(c, 'internal', 'Postbox is being removed from this host.', m.type, m.turn);
     if (Object.hasOwn(handlers, m.type)) return handlers[m.type](c, m);
     const reply = { send: (type, body) => send(c, type, body), fail: (code, text) => fail(c, code, text, m.type, m.turn) };
-    if (broker.message && (await broker.message(m, reply))) return;
+    if (brk.message && (await brk.message(m, reply))) return;
     const code = { answer: 'no-prompt', reply: 'no-tool' }[m.type] ?? 'internal';
     fail(c, code, `This daemon doesn’t handle ${m.type} yet.`, m.type, m.turn);
   }
@@ -458,7 +478,50 @@ export function createDaemon({
     const allProblems = [...programs.problems, ...[...problems].map(([code, text]) => ({ code, message: text }))].slice(0, REMOTE_LIMITS.problems);
     await send(c, 'welcome', { version: PROTOCOL_VERSION, home, node: programs.node, harnesses: programs.harnesses, problems: allProblems, turns });
     checkIdle();
-    broker.hello?.((type, body) => send(c, type, body));
+    await brk.hello?.((type, body) => send(c, type, body));
+  }
+
+  /**
+   * Whether a path is under a folder, once symbolic links are followed: its nearest part that exists, real, is the
+   * real folder or under it, and the path isn’t the folder itself. A part that doesn’t exist yet is made later, under
+   * that one.
+   * @param {string} top @param {string} path  an absolute path with no “..” or “.” parts
+   */
+  async function inside(top, path) {
+    const real = (x) => fsp.realpath(x).catch(() => null);
+    const realTop = await real(top);
+    if (!realTop) return false;
+    let at = path;
+    let found = await real(at);
+    while (!found && at !== '/') {
+      at = dirname(at);
+      found = await real(at);
+    }
+    if (!found) return false;
+    // Under it, or the folder itself when the path’s own part doesn’t exist yet (so it’s made under it).
+    if (found === realTop) return at !== path;
+    return found.startsWith(realTop === '/' ? '/' : `${realTop}/`);
+  }
+
+  /**
+   * The agents folder of the Kiro home a turn’s runner will use, as Kiro finds it: start.env’s KIRO_HOME (an Isolated
+   * persona’s, which must be under ~/.postbox-remote), else the daemon’s own (the runner inherits it), else ~/.kiro.
+   * @param {Record<string, string>} startEnv @returns {Promise<{ dir: string } | { error: string }>}
+   */
+  async function kiroAgents(startEnv) {
+    const plain = (x) => x.startsWith('/') && x === posix.normalize(x) && (x === '/' || !x.endsWith('/'));
+    if (Object.hasOwn(startEnv, 'KIRO_HOME')) {
+      const kiro = startEnv.KIRO_HOME;
+      if (!plain(kiro) || !(await inside(p.root, kiro)))
+        return { error: `The turn’s KIRO_HOME ${kiro} isn’t under ${p.root}, so Postbox won’t write a Kiro agent file there.` };
+      return { dir: `${kiro}/agents` };
+    }
+    const own = env.KIRO_HOME;
+    if (own) {
+      if (!plain(own)) return { error: `This host’s KIRO_HOME, ${own}, isn’t an absolute path, so Postbox can’t tell where Kiro reads agents from.` };
+      return { dir: `${own === '/' ? '' : own}/agents` };
+    }
+    return { dir: `${home === '/' ? '' : home}/.kiro/agents` };
   }
 
   /** @param {Conn} c @param {any} m */
@@ -472,6 +535,9 @@ export function createDaemon({
     if (!socketPathFits(p.turn(m.turn, TURN_FILES.socket)))
       return failStart('start-failed', `The turn’s socket path, ${p.turn(m.turn, TURN_FILES.socket)}, is too long for a Unix socket on Linux.`);
     if (await exists(dir)) return failStart('turn-exists', `There’s already a turn ${m.turn} on this host.`);
+    // A Kiro agent file goes in the agents folder of the Kiro home the runner will use (kiroAgents).
+    const agents = m.agentFile ? await kiroAgents(m.env) : null;
+    if (agents && 'error' in agents) return failStart('start-failed', agents.error);
     // The working folder: the project’s own must exist; the default one under ~/postbox-work is made.
     try {
       if (!(await fsp.stat(m.folder)).isDirectory()) return failStart('start-failed', `${m.folder} isn’t a folder on this host.`);
@@ -493,9 +559,9 @@ export function createDaemon({
     }
     try {
       for (const f of m.files) await fsp.writeFile(`${dir}/${f.name}`, f.text, { mode: FILE_MODE, flag: 'wx' });
-      const snap = pendingSnapshots.get(m.turn);
-      pendingSnapshots.delete(m.turn);
-      if (snap) await writeAtomic(`${dir}/${TURN_FILES.snapshot}`, JSON.stringify(snap));
+      await brk.starting?.(m.turn);
+      // Outside the turn folder (a Kiro home’s agents folder), recorded in it, so it goes when the turn ends.
+      if (m.agentFile && agents && 'dir' in agents) await cleanup.writeAgentFile(m.turn, { dir: agents.dir, name: m.agentFile.name, text: m.agentFile.text });
       await writeAtomic(`${dir}/${TURN_FILES.start}`, JSON.stringify(record));
       const { pid, scoped, lingerOff } = await launchRunner({ node, turn: m.turn, paths: p, scope: settings.detach, spawn, logind });
       log(`Started turn ${m.turn} (${m.harness}), runner ${pid}${scoped ? ', in a systemd user scope' : ''}.`);
@@ -508,6 +574,7 @@ export function createDaemon({
         );
     } catch (e) {
       // Nothing ran, so the folder goes, and the same turn can be started again.
+      await cleanup.dropAgentFile(m.turn).catch(() => {});
       await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
       return failStart('start-failed', `Couldn’t start turn ${m.turn}: ${e.message}`);
     }
@@ -516,6 +583,7 @@ export function createDaemon({
     const up = await runnerUp(m.turn);
     if (up !== true) return failStart('start-failed', `Turn ${m.turn}’s runner didn’t start: ${up}`);
     send(c, 'started', { turn: m.turn });
+    brk.started?.(m.turn);
   }
 
   /**
@@ -540,15 +608,6 @@ export function createDaemon({
     return `its socket didn’t answer within ${Math.round(runnerStartMs / 1000)} s; see ${p.turn(turn, TURN_FILES.err)}.`;
   }
 
-  /** @param {Conn} _c @param {any} m */
-  async function snapshot(_c, m) {
-    const dir = p.turn(m.turn);
-    if (await exists(dir)) return writeAtomic(`${dir}/${TURN_FILES.snapshot}`, JSON.stringify(m));
-    pendingSnapshots.delete(m.turn);
-    pendingSnapshots.set(m.turn, m);
-    while (pendingSnapshots.size > PENDING_SNAPSHOTS) pendingSnapshots.delete(/** @type {string} */ (pendingSnapshots.keys().next().value));
-  }
-
   /** The turn’s folder, or an error to the connection. @param {Conn} c @param {string} turn @param {string} re */
   async function needTurn(c, turn, re) {
     if (await exists(p.turn(turn, TURN_FILES.start))) return true;
@@ -561,9 +620,15 @@ export function createDaemon({
     if (!(await needTurn(c, m.turn, 'read'))) return;
     const which = m.log ?? 'out';
     const path = p.turn(m.turn, which === 'in' ? TURN_FILES.in : TURN_FILES.out);
+    // Logs Postbox acked whole are gone once the turn ended: from 0 or their end, it hears only `ended`.
+    const gone = await cleanup.deletedSize(m.turn);
+    if (gone !== null && (m.from === 0 || m.from === gone)) {
+      follow(c, m.turn, which, m.from, true, true);
+      return;
+    }
     if (!(await atLineStart(path, m.from)))
       return fail(c, 'bad-offset', `${m.from} isn’t 0, the start of a line or the end of ${m.turn}’s ${which} log.`, 'read', m.turn);
-    follow(c, m.turn, which, m.from, false);
+    follow(c, m.turn, which, m.from, false, true);
   }
 
   /** Whether an offset is 0, just past a \n, or the file’s size. */
@@ -587,10 +652,12 @@ export function createDaemon({
 
   /**
    * Sends a log’s lines from an offset, then follows it while the turn runs, then (for out.jsonl) `ended`. A quiet
-   * follower sends only `ended`: the answer to a stop from a connection that isn’t reading the turn.
+   * follower sends only `ended`: the answer to a stop from a connection that isn’t reading the turn. A follower for a
+   * `read` (`caughtUp`) says `caught-up` once, when its first pass has sent every line the log had then.
    * @param {Conn} c @param {string} turn @param {'out' | 'in'} which @param {number} from @param {boolean} quiet
+   * @param {boolean} [caughtUp]
    */
-  function follow(c, turn, which, from, quiet) {
+  function follow(c, turn, which, from, quiet, caughtUp = false) {
     const key = `${turn}:${which}`;
     c.follows.get(key)?.stop();
     const dir = p.turn(turn);
@@ -730,13 +797,20 @@ export function createDaemon({
         }
         if (!quiet) await drain();
         if (stopped || c.closed) return;
+        // The last line may have no \n; it’s sent now that nothing more will come.
+        if (over && !quiet && (held || skipping)) {
+          await emit(lineStart, lineStart + held, skipping);
+          reset(lineStart + held);
+        }
+        if (caughtUp) {
+          // Every line the log had when this pass got to its end has gone: size is the file’s size then, less a last
+          // line still without its \n, which waits for more.
+          caughtUp = false;
+          await send(c, 'caught-up', { turn, log: which, size: quiet ? from : lineStart });
+        }
         if (over) {
-          // The last line may have no \n; it’s sent now that nothing more will come.
-          if (!quiet && (held || skipping)) {
-            await emit(lineStart, lineStart + held, skipping);
-            reset(lineStart + held);
-          }
-          if (which === 'out') await send(c, 'ended', { turn, exit, size: await sizeOf(path) });
+          if (which === 'out') await send(c, 'ended', { turn, exit, size: (await cleanup.deletedSize(turn)) ?? (await sizeOf(path)) });
+          if (exit) cleanup.turnEnded(turn).catch((e) => log(`Cleaning turn ${turn} failed: ${e.message}`));
           return;
         }
         await nap();
@@ -761,15 +835,29 @@ export function createDaemon({
     const start = validateStartRecord(await readJson(p.turn(m.turn, TURN_FILES.start)));
     if (!start.ok || start.msg.stdin !== 'held') return fail(c, 'not-held', `Turn ${m.turn}’s stdin isn’t held, so it takes no lines.`, 'write', m.turn);
     if (await readExit(m.turn)) return fail(c, 'turn-ended', `Turn ${m.turn} has ended.`, 'write', m.turn);
-    const token = readToken();
-    if (!token) return fail(c, 'internal', `Couldn’t read the host’s token at ${p.token}.`, 'write', m.turn);
+    // A Codex answer to a request the broker already declined would be a second answer to it.
+    const check = brk.checkWrite?.(m.turn, m.line) ?? { done: () => {} };
+    if ('refused' in check) return fail(c, 'no-prompt', check.refused, 'write', m.turn);
     let upTo;
     try {
-      upTo = await writeRunner({ socketPath: p.turn(m.turn, TURN_FILES.socket), turn: m.turn, line: m.line, token });
+      upTo = await writeHeld(m.turn, m.line);
     } catch (e) {
-      return fail(c, 'turn-ended', `Turn ${m.turn}’s runner didn’t take the line: ${e.message}`, 'write', m.turn);
+      check.done(false);
+      return fail(c, e.code === 'internal' ? 'internal' : 'turn-ended', e.message, 'write', m.turn);
     }
+    check.done(true);
     send(c, 'written', { turn: m.turn, upTo });
+  }
+
+  /** One line for a turn’s held stdin, through its runner; resolves with in.jsonl’s size after it. */
+  async function writeHeld(turn, line) {
+    const token = readToken();
+    if (!token) throw Object.assign(new Error(`Couldn’t read the host’s token at ${p.token}.`), { code: 'internal' });
+    try {
+      return await writeRunner({ socketPath: p.turn(turn, TURN_FILES.socket), turn, line, token });
+    } catch (e) {
+      throw new Error(`Turn ${turn}’s runner didn’t take the line: ${e.message}`);
+    }
   }
 
   /**
@@ -784,46 +872,53 @@ export function createDaemon({
    */
   async function stop(c, m) {
     if (!(await needTurn(c, m.turn, 'stop'))) return;
-    const answer = () => {
-      if (!c.follows.has(`${m.turn}:out`)) follow(c, m.turn, 'out', 0, true);
-    };
-    if (await readExit(m.turn)) return answer();
-    const rec = validateRunnerRecord(await readJson(p.turn(m.turn, TURN_FILES.runner)));
+    await stopTurn(m.turn);
+    if (!c.follows.has(`${m.turn}:out`)) follow(c, m.turn, 'out', 0, true);
+  }
+  /**
+   * Stop without a connection to answer (the cap and `remove` use it too): whether a runner was signaled.
+   * @param {string} turn @returns {Promise<boolean>}
+   */
+  async function stopTurn(turn) {
+    // First, so a shim call made from here on is refused, as on the laptop (#126).
+    await brk.stopping?.(turn);
+    if (await readExit(turn)) return false;
+    const rec = validateRunnerRecord(await readJson(p.turn(turn, TURN_FILES.runner)));
     if (!rec.ok || !(await proc.sameProcess(rec.msg))) {
       log(
-        `Stop for turn ${m.turn}: ${rec.ok ? `process ${rec.msg.pid} isn’t its runner any more` : 'no valid runner.json'}, so it’s interrupted; nothing was signaled.`,
+        `Stop for turn ${turn}: ${rec.ok ? `process ${rec.msg.pid} isn’t its runner any more` : 'no valid runner.json'}, so it’s interrupted; nothing was signaled.`,
       );
-      dead.add(m.turn);
-      pokeTurn(m.turn);
-      return answer();
+      dead.add(turn);
+      pokeTurn(turn);
+      return false;
     }
     const pid = rec.msg.pid;
-    recordShells(m.turn, pid);
-    signal(pid, 'SIGINT', m.turn);
-    if (!killTimers.has(m.turn))
+    recordShells(turn, pid);
+    signal(pid, 'SIGINT', turn);
+    if (!killTimers.has(turn))
       killTimers.set(
-        m.turn,
+        turn,
         timers.setTimeout(async () => {
-          killTimers.delete(m.turn);
+          killTimers.delete(turn);
           // The harness may have ended on SIGINT and left a shell running, so the recorded shell groups still
           // there are killed either way, as the laptop’s stopTurn does. liveGroups matches a group only by a member
           // with the start time it was recorded with, so a reused PID is never hit. Only the turn’s own group waits on
           // runner.json still naming a live runner.
-          const ended = (await readExit(m.turn)) || !(await proc.sameProcess(rec.msg));
-          if (!ended) recordShells(m.turn, pid);
-          const found = [...(shells.get(m.turn)?.values() ?? [])];
-          shells.delete(m.turn);
-          for (const g of await proc.liveGroups(found)) signal(g.pgid, 'SIGKILL', m.turn, 'tool shell group');
+          const ended = (await readExit(turn)) || !(await proc.sameProcess(rec.msg));
+          if (!ended) recordShells(turn, pid);
+          const found = [...(shells.get(turn)?.values() ?? [])];
+          shells.delete(turn);
+          for (const g of await proc.liveGroups(found)) signal(g.pgid, 'SIGKILL', turn, 'tool shell group');
           if (ended) return;
-          signal(pid, 'SIGKILL', m.turn);
+          signal(pid, 'SIGKILL', turn);
           // The runner went with its group, so nobody else will say how the harness ended.
           try {
-            await fsp.writeFile(p.turn(m.turn, TURN_FILES.exit), JSON.stringify({ code: null, signal: 'SIGKILL', at: now() }), { mode: FILE_MODE, flag: 'wx' });
+            await fsp.writeFile(p.turn(turn, TURN_FILES.exit), JSON.stringify({ code: null, signal: 'SIGKILL', at: now() }), { mode: FILE_MODE, flag: 'wx' });
           } catch {}
-          pokeTurn(m.turn);
+          pokeTurn(turn);
         }, stopGraceMs),
       );
-    answer();
+    return true;
   }
   /**
    * Adds the tool shells’ groups under a turn’s group, as they are now, to what Stop has recorded for it (a group seen
@@ -855,8 +950,65 @@ export function createDaemon({
   /** @param {Conn} c @param {any} m */
   async function ack(c, m) {
     if (!(await needTurn(c, m.turn, 'ack'))) return;
-    if (m.upTo > (await sizeOf(p.turn(m.turn, TURN_FILES.out)))) return fail(c, 'bad-offset', `${m.upTo} is past the end of ${m.turn}’s log.`, 'ack', m.turn);
-    acked.set(m.turn, Math.max(acked.get(m.turn) ?? 0, m.upTo));
+    const size = (await cleanup.deletedSize(m.turn)) ?? (await sizeOf(p.turn(m.turn, TURN_FILES.out)));
+    if (m.upTo > size) return fail(c, 'bad-offset', `${m.upTo} is past the end of ${m.turn}’s log.`, 'ack', m.turn);
+    // Kept in the turn folder, so a restarted daemon still knows; an ended turn’s logs may go now (cleanup.mjs).
+    acked.set(m.turn, await cleanup.ack(m.turn, m.upTo));
+  }
+
+  /**
+   * `remove`: stops every running turn, waits for them to end (Stop’s grace period, then REMOVE_WAIT_MS at most),
+   * deletes ~/.postbox-remote (cleanup.mjs refuses one that isn’t the home folder’s own), says `removed`, and exits.
+   * @param {Conn} c
+   */
+  async function remove(c) {
+    removing = true;
+    const bad = await cleanup.rootProblem();
+    if (bad) {
+      removing = false;
+      return fail(c, 'internal', bad, 'remove');
+    }
+    const records = [];
+    for (const t of (await scan()).filter((x) => x.state === 'running')) {
+      await stopTurn(t.turn);
+      const rec = validateRunnerRecord(await readJson(p.turn(t.turn, TURN_FILES.runner)));
+      if (rec.ok) records.push({ turn: t.turn, rec: rec.msg });
+    }
+    const live = async () => {
+      const still = [];
+      for (const r of records) if (!(await readExit(r.turn)) && (await proc.sameProcess(r.rec))) still.push(r.turn);
+      return still;
+    };
+    let still = await live();
+    for (let i = Math.ceil((stopGraceMs + REMOVE_WAIT_MS) / pollMs); still.length && i > 0; i--) {
+      await new Promise((resolve) => setTimeout(resolve, pollMs).unref());
+      still = await live();
+    }
+    if (still.length) log(`Turns ${still.join(', ')} hadn’t ended ${Math.round((stopGraceMs + REMOVE_WAIT_MS) / 1000)} s after Stop; removing anyway.`);
+    for (const x of conns) for (const f of x.follows.values()) f.stop();
+    try {
+      await cleanup.removeAll((pid) => kill(pid, 'SIGTERM'));
+    } catch (e) {
+      removing = false;
+      return fail(c, 'internal', `Couldn’t remove Postbox from this host: ${e.message}`, 'remove');
+    }
+    await send(c, 'removed', {});
+    for (const x of [...conns]) x.close();
+    closed = true;
+    if (idleTimer) timers.clearTimeout(idleTimer);
+    if (sweepTimer) timers.clearTimeout(sweepTimer);
+    onRemoved();
+  }
+
+  /** Sweeps every sweepMs (cleanup.mjs); the timer is unref’d, like the others. */
+  function armSweep() {
+    if (closed) return;
+    sweepTimer = timers.setTimeout(async () => {
+      sweepTimer = null;
+      if (closed) return;
+      await cleanup.sweep().catch((e) => log(`The cleanup sweep failed: ${e.message}`));
+      armSweep();
+    }, sweepMs);
   }
 
   /**
@@ -865,19 +1017,48 @@ export function createDaemon({
    */
   const lineReader = (onLine, onError) => createLineReader({ onLine, onError });
 
+  const attached = () => Boolean(driver && !driver.closed && driver.ready);
+  /** Sends a message to the driving Postbox, if one is attached. Returns whether it went. */
+  const toPostbox = (type, body) => {
+    if (!driver || !attached()) return false;
+    send(driver, type, body);
+    return true;
+  };
+  /** @type {Broker} */
+  const brk =
+    broker ??
+    createBroker({
+      paths: p,
+      now,
+      timers,
+      log,
+      tokenMatches,
+      settings: () => settings,
+      toPostbox,
+      attached,
+      interrupted: (turn) => dead.has(turn),
+      writeStdin: writeHeld,
+      codexPollMs: pollMs,
+    });
+  const shimSeam = shim ?? brk.shim;
+
   return {
     paths: p,
     /** Makes the token if it’s missing and arms the idle exit; call once, before any connection. */
     async start() {
-      ensureToken();
+      makeToken();
+      await cleanup.sweep().catch((e) => log(`The cleanup at start failed: ${e.message}`));
+      armSweep();
       const turns = await scan();
       log(`Daemon ${version} for ${home}: ${turns.length} turn folders (${turns.filter((t) => t.state === 'running').length} running).`);
+      await brk.load?.(turns);
       checkIdle();
       return turns;
     },
     scan,
-    /** How far Postbox has applied each turn’s out.jsonl. */
+    /** How far Postbox has applied each turn’s out.jsonl, in this daemon’s life; `.ack` keeps it on disk. */
     acked,
+    cleanup,
     /**
      * A Postbox channel over a pair of streams, such as an ssh child’s, or PassThroughs in a test.
      * @param {{ input: import('node:stream').Readable, output: Output & { end: () => void } }} io
@@ -906,12 +1087,12 @@ export function createDaemon({
           v = JSON.parse(text);
         } catch {}
         if (v && typeof v === 'object' && v.type === 'hello' && Object.hasOwn(v, 'turn') && !Object.hasOwn(v, 'version')) {
-          if (!shim) {
+          if (!shimSeam) {
             const r = validateMessage('daemon-to-shim', { type: 'error', code: 'internal', message: 'This daemon doesn’t serve the shim yet.' });
             if (r.ok) socket.end(encode(r.msg));
             return;
           }
-          h = shim({ first: text, write: (s) => socket.write(s), end: () => socket.end() });
+          h = shimSeam({ first: text, write: (s) => socket.write(s), end: () => socket.end() });
           return;
         }
         h = openConn(socket, () => socket.end());
@@ -933,19 +1114,19 @@ export function createDaemon({
       });
       socket.on('close', () => h?.close());
     },
-    /** Sends a message to the driving Postbox, if one is attached (H4’s queue). Returns whether it went. */
-    toPostbox(type, body) {
-      if (!driver || driver.closed) return false;
-      send(driver, type, body);
-      return true;
-    },
+    /** Sends a message to the driving Postbox, if one is attached (the broker’s queue). Returns whether it went. */
+    toPostbox,
+    /** The broker serving shims and Codex approvals. */
+    broker: brk,
     get settings() {
       return settings;
     },
     /** Stops followers and timers; the connections stay as they are. */
     close() {
       closed = true;
+      brk.close?.();
       if (idleTimer) timers.clearTimeout(idleTimer);
+      if (sweepTimer) timers.clearTimeout(sweepTimer);
       for (const t of killTimers.values()) timers.clearTimeout(t);
       killTimers.clear();
       shells.clear();
@@ -968,14 +1149,58 @@ export function defaultWriteRunner({ socketPath, turn, line, token }) {
 // ── The `host` program ──
 
 /**
+ * The host’s token, made if missing: 32 random bytes as hex, 0600, in a 0700 folder. An existing one that’s group-
+ * or other-accessible is set back to 0600, and said in the log, since the daemon can fix that itself; one that isn’t
+ * a regular file of this user’s is refused, since anyone who could replace it could choose the token. Used by the
+ * daemon at its start and by `host token`, install’s step that prints it for the laptop to keep.
+ * @param {{ p: ReturnType<typeof hostPaths>, uid: number, log: (line: string) => void }} o
+ *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs)
+ * @returns {string} the token
+ */
+export function ensureToken({ p, uid, log }) {
+  mkdirSync(p.root, { recursive: true, mode: DIR_MODE });
+  const st = statSync(p.root);
+  if ((st.mode & 0o777) !== DIR_MODE) {
+    log(`${p.root} was mode ${(st.mode & 0o777).toString(8)}; setting it to 700.`);
+    try {
+      chmodSync(p.root, DIR_MODE);
+    } catch (e) {
+      log(`Couldn’t set ${p.root} to 700: ${e.message}`);
+    }
+  }
+  try {
+    const made = randomBytes(32).toString('hex');
+    writeFileSync(p.token, made, { mode: FILE_MODE, flag: 'wx' });
+    log(`Made the token at ${p.token}.`);
+    return made;
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+  }
+  const tok = lstatSync(p.token);
+  if (!tok.isFile() || (uid >= 0 && tok.uid !== uid))
+    throw new Error(
+      `${p.token} isn’t a file of this user’s (${tok.isFile() ? `it’s owned by user ${tok.uid}` : 'it isn’t a regular file'}), so the daemon won’t trust it. Remove it and reinstall Postbox on the host to make a new one.`,
+    );
+  if (tok.mode & 0o077) {
+    log(`${p.token} was mode ${(tok.mode & 0o777).toString(8)}; setting it to 600.`);
+    chmodSync(p.token, FILE_MODE);
+  }
+  return readFileSync(p.token, 'utf8').trim();
+}
+
+/**
  * @typedef {{ argv: string[], getuid?: () => number, stdin?: NodeJS.ReadableStream, stdout?: NodeJS.WritableStream,
  *   stderr?: { write: (s: string) => any }, home?: string, connect?: (path: string) => import('node:net').Socket,
- *   spawn?: any, now?: () => number, sleep?: (ms: number) => Promise<void>, nodeVersion?: string }} MainOpts
+ *   spawn?: any, now?: () => number, sleep?: (ms: number) => Promise<void>, nodeVersion?: string,
+ *   umask?: (mask: number) => number, proc?: LockProc }} MainOpts
+ * @typedef {{ bootId: () => string | null, startTime: (pid: number) => number | null, sameProcess: (r: any) => boolean }} LockProc
+ *   proc.mjs’s, for the start lock’s and daemon.pid’s owner records
  */
 
 /**
- * `host attach` (the relay, starting the daemon if none answers) and `host serve` (the daemon). Resolves with the exit
- * code; `serve` resolves only when the daemon exits.
+ * `host attach` (the relay, starting the daemon if none answers), `host serve` (the daemon) and `host token` (makes the
+ * token if it’s missing and prints it, for install). Resolves with the exit code; `serve` resolves only when the
+ * daemon exits.
  * @param {MainOpts} o
  */
 export async function main({
@@ -990,6 +1215,8 @@ export async function main({
   now = Date.now,
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   nodeVersion = process.version,
+  umask = (mask) => process.umask(mask),
+  proc = defaultProc,
 }) {
   const say = (line) => stderr.write(`postbox host: ${line}\n`);
   const tell = (code, text) => {
@@ -999,7 +1226,7 @@ export async function main({
     } catch {}
   };
   const cmd = argv[0];
-  if (cmd !== 'attach' && cmd !== 'serve') {
+  if (cmd !== 'attach' && cmd !== 'serve' && cmd !== 'token') {
     say('Usage: host attach. Postbox runs it over ssh; it speaks JSON lines on stdin and stdout.');
     return EXIT.usage;
   }
@@ -1008,22 +1235,36 @@ export async function main({
     return EXIT.noperm;
   }
   if (Number(/^v?(\d+)/.exec(nodeVersion)?.[1] ?? 0) < NODE_MAJOR) {
-    tell('internal', `Postbox’s daemon needs Node ${NODE_MAJOR} or later, and this host’s node is ${nodeVersion}.`);
+    tell('no-node', `Postbox’s daemon needs Node ${NODE_MAJOR} or later, and this host’s node is ${nodeVersion}.`);
     return EXIT.unavailable;
   }
   const p = paths(home ? { home } : {});
+  if (cmd === 'token') {
+    // Install’s last step (server/remote/install.mjs): the token, made if it’s missing, on one line of its own.
+    umask(0o077);
+    try {
+      stdout.write(`${ensureToken({ p, uid: getuid(), log: say })}\n`);
+      return EXIT.ok;
+    } catch (e) {
+      tell('internal', `Couldn’t make or read the host’s token at ${p.token}: ${e.message}`);
+      return EXIT.software;
+    }
+  }
   if (!socketPathFits(p.socket)) {
     tell('internal', `The daemon’s socket path, ${p.socket}, is too long for a Unix socket on Linux.`);
     return EXIT.software;
   }
-  try {
-    mkdirSync(p.code, { recursive: true, mode: DIR_MODE });
-  } catch (e) {
-    tell('internal', `Couldn’t make ${p.code}: ${e.message}`);
-    return EXIT.software;
+  // An attach makes the version’s folder only while it holds the start lock (attach), never under an install.
+  if (cmd === 'serve') {
+    try {
+      mkdirSync(p.code, { recursive: true, mode: DIR_MODE });
+    } catch (e) {
+      tell('internal', `Couldn’t make ${p.code}: ${e.message}`);
+      return EXIT.software;
+    }
+    return serve({ p, home, say, connect, proc });
   }
-  if (cmd === 'serve') return serve({ p, home, say, connect });
-  return attach({ p, stdin, stdout, say, tell, connect, spawn, now, sleep });
+  return attach({ p, stdin, stdout, say, tell, connect, spawn, now, sleep, proc });
 }
 
 /**
@@ -1051,8 +1292,9 @@ export function tryConnect(connect, path) {
  * The relay: finds or starts the daemon (the header), then pipes stdin to its socket and the socket to stdout until
  * either side ends.
  */
-async function attach({ p, stdin, stdout, say, tell, connect, spawn, now, sleep }) {
-  const lock = `${p.code}/daemon.lock`;
+async function attach({ p, stdin, stdout, say, tell, connect, spawn, now, sleep, proc }) {
+  const lock = p.lock;
+  const me = ownerRecord(proc);
   /** @type {import('node:net').Socket | null} */
   let sock = null;
   try {
@@ -1060,15 +1302,18 @@ async function attach({ p, stdin, stdout, say, tell, connect, spawn, now, sleep 
     while (!sock && now() < deadline) {
       sock = await tryConnect(connect, p.socket);
       if (sock) break;
-      if (!takeLock(lock, now)) {
+      if (!takeLock(lock, me, now, proc)) {
         await sleep(50);
         continue;
       }
       try {
         sock = await tryConnect(connect, p.socket);
-        if (!sock) sock = await startServe({ p, connect, spawn, now, sleep, say });
+        if (!sock) {
+          mkdirSync(p.code, { recursive: true, mode: DIR_MODE });
+          sock = await startServe({ p, connect, spawn, now, sleep, say });
+        }
       } finally {
-        dropLock(lock);
+        dropLock(lock, me);
       }
     }
   } catch (e) {
@@ -1088,26 +1333,111 @@ async function attach({ p, stdin, stdout, say, tell, connect, spawn, now, sleep 
   });
 }
 
-/** Takes the attach lock, a folder, removing one left by an attach that died holding it. */
-function takeLock(lock, now) {
-  try {
-    mkdirSync(lock, { mode: DIR_MODE });
-    return true;
-  } catch (e) {
-    if (e.code !== 'EEXIST') throw e;
+/**
+ * This process’s start lock owner record (proc.mjs, “The start lock’s owner”): its PID, boot ID and start time, or its
+ * PID alone where those can’t be read, as the install script writes it without /proc.
+ * @param {LockProc} proc
+ */
+function ownerRecord(proc) {
+  const [bootId, startTime] = [proc.bootId(), proc.startTime(process.pid)];
+  return JSON.stringify(bootId === null || startTime === null ? { pid: process.pid } : { pid: process.pid, bootId, startTime });
+}
+
+/**
+ * Takes the start lock, a folder in ~/.postbox-remote/locks, with `me` as its owner record: true if it’s taken. One
+ * that’s held is broken if it’s stale (lockStale), and taken at once; one that isn’t is waited for (the caller tries
+ * again), whether an attach or an install (install.mjs) holds it.
+ * @param {string} lock @param {string} me @param {() => number} now @param {LockProc} proc
+ */
+function takeLock(lock, me, now, proc) {
+  mkdirSync(dirname(lock), { recursive: true, mode: DIR_MODE });
+  for (let tries = 0; tries < 2; tries++) {
     try {
-      if (now() - statSync(lock).mtimeMs > LOCK_STALE_MS) {
-        // Renamed first, so two attaches that both find it stale don’t both remove a fresh one.
-        const aside = `${lock}.stale.${process.pid}`;
-        renameSync(lock, aside);
-        fsRmdir(aside);
-      }
+      mkdirSync(lock, { mode: DIR_MODE });
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      if (lockStale(lock, now, proc) && breakLock(lock, now, proc)) continue;
+      return false;
+    }
+    // Written beside it and renamed in, so a reader never sees half a record.
+    const tmp = `${lock}/.${LOCK_OWNER}.${process.pid}`;
+    try {
+      writeFileSync(tmp, me, { mode: FILE_MODE });
+      renameSync(tmp, `${lock}/${LOCK_OWNER}`);
+    } catch (e) {
+      rmSync(lock, { recursive: true, force: true });
+      throw e;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a held start lock is stale: its owner is gone, or it has had no owner record for LOCK_STALE_MS. False if
+ * it’s gone meanwhile.
+ * @param {string} lock @param {() => number} now @param {LockProc} proc
+ */
+function lockStale(lock, now, proc) {
+  let text;
+  try {
+    text = readFileSync(`${lock}/${LOCK_OWNER}`, 'utf8');
+  } catch {
+    try {
+      return now() - statSync(lock).mtimeMs > LOCK_STALE_MS;
+    } catch {
+      return false;
+    }
+  }
+  return !(/** @type {boolean} */ (lockOwnerLive(parseLockOwner(text), { sameProcess: proc.sameProcess })));
+}
+
+/**
+ * Removes a stale start lock under `<lock>.break`, judging it once more there: of two attaches (or an install) that
+ * both found it stale, the second then finds the fresh lock the first made, and leaves it. A break lock is held for
+ * one removal, so one older than BREAK_STALE_MS is from one that died holding it. True if it removed the lock.
+ * @param {string} lock @param {() => number} now @param {LockProc} proc
+ */
+function breakLock(lock, now, proc) {
+  const brk = `${lock}.break`;
+  try {
+    mkdirSync(brk, { mode: DIR_MODE });
+  } catch {
+    try {
+      if (now() - statSync(brk).mtimeMs > BREAK_STALE_MS) rmdirSync(brk);
     } catch {}
     return false;
   }
+  try {
+    if (!lockStale(lock, now, proc)) return false;
+    const aside = `${lock}.stale.${process.pid}`;
+    rmSync(aside, { recursive: true, force: true });
+    renameSync(lock, aside);
+    rmSync(aside, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      rmdirSync(brk);
+    } catch {}
+  }
 }
-const fsRmdir = (path) => fsp.rmdir(path).catch(() => {});
-const dropLock = (lock) => fsRmdir(lock);
+
+/**
+ * Drops the start lock, only while its owner record is still `me`: one broken and taken by another (say, after this
+ * process was suspended past a check) is theirs, and stays. Renamed aside first, so it’s never seen without a record.
+ * @param {string} lock @param {string} me
+ */
+function dropLock(lock, me) {
+  try {
+    if (readFileSync(`${lock}/${LOCK_OWNER}`, 'utf8') !== me) return;
+    const aside = `${lock}.free.${process.pid}`;
+    rmSync(aside, { recursive: true, force: true });
+    renameSync(lock, aside);
+    rmSync(aside, { recursive: true, force: true });
+  } catch {}
+}
 
 /** Starts `host serve` detached, its stderr on daemon.log, and waits for its socket to answer. */
 async function startServe({ p, connect, spawn, now, sleep, say }) {
@@ -1119,7 +1449,7 @@ async function startServe({ p, connect, spawn, now, sleep, say }) {
   /** @type {string | null} */
   let exited = null;
   try {
-    const child = spawn(process.execPath, [PROGRAMS.host, 'serve'], { detached: true, stdio: ['ignore', 'ignore', fd], env: process.env });
+    const child = spawn(process.execPath, [HOST_ENTRY, 'serve'], { detached: true, stdio: ['ignore', 'ignore', fd], env: process.env });
     child.on('error', (e) => {
       exited = `it couldn’t start: ${e.message}`;
     });
@@ -1145,9 +1475,9 @@ async function startServe({ p, connect, spawn, now, sleep, say }) {
 /**
  * The daemon: takes daemon.pid, binds the socket and serves until it’s idle or told to stop.
  * @param {{ p: ReturnType<typeof paths>, home?: string, say: (line: string) => void, connect: (path: string) => import('node:net').Socket,
- *   proc?: { bootId: () => string | null, startTime: (pid: number) => number | null, sameProcess: (r: any) => boolean } }} o
+ *   proc: LockProc }} o
  */
-async function serve({ p, home, say, connect, proc = defaultProc }) {
+async function serve({ p, home, say, connect, proc }) {
   process.umask(0o077);
   // An ssh session that ends can send SIGHUP; turns and the next attach don’t need this one to go.
   process.on('SIGHUP', () => {});
@@ -1182,6 +1512,7 @@ async function serve({ p, home, say, connect, proc = defaultProc }) {
     home: home ?? process.env.POSTBOX_REMOTE_HOME ?? (await import('node:os')).homedir(),
     log: (line) => say(line),
     onIdle: () => shutdown(EXIT.ok),
+    onRemoved: () => shutdown(EXIT.ok),
   });
   const shutdown = async (code) => {
     daemon.close();
@@ -1191,14 +1522,15 @@ async function serve({ p, home, say, connect, proc = defaultProc }) {
     exit(code);
   };
   server.on('connection', (sock) => daemon.accept(sock));
+  // Before the socket answers, so a SIGTERM from someone who has seen it answer always gets the clean shutdown.
+  process.on('SIGTERM', () => shutdown(EXIT.ok));
+  process.on('SIGINT', () => shutdown(EXIT.ok));
   try {
     await new Promise((resolve, reject) => {
       server.once('error', reject);
       server.listen(p.socket, () => resolve(undefined));
     });
     await fsp.chmod(p.socket, FILE_MODE);
-    process.on('SIGTERM', () => shutdown(EXIT.ok));
-    process.on('SIGINT', () => shutdown(EXIT.ok));
     await daemon.start();
   } catch (e) {
     await shutdown(EXIT.software);

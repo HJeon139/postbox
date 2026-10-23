@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect, createServer } from 'node:net';
 import { test } from 'node:test';
-import { PROGRAMS } from '../../server/remote/host/paths.mjs';
+import { HOST_ENTRY } from '../../server/remote/host/daemon.mjs';
 import { bootId, startTime } from '../../server/remote/host/proc.mjs';
 import { gone, HARNESS, makeHost, NO_UNIX, read, realDaemon, sleep, TURN, until } from './host.mjs';
 
@@ -111,7 +111,7 @@ test('stop: a tool shell the harness leaves behind when SIGINT ends it goes too,
 
 /** `host serve` as attach starts it, with its stderr kept. */
 function serve(h) {
-  const child = spawn(process.execPath, [PROGRAMS.host, 'serve'], { env: h.env, stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = spawn(process.execPath, [HOST_ENTRY, 'serve'], { env: h.env, stdio: ['ignore', 'ignore', 'pipe'] });
   let err = '';
   child.stderr.on('data', (b) => (err += b));
   /** @type {Promise<number | null>} */

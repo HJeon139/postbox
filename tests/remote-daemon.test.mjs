@@ -4,17 +4,21 @@
 // runner.json a real one would; a test plays the harness by appending to out.jsonl and writing exit.json.
 
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Duplex, PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { createDaemon, EXIT, main, takeDaemonLock } from '../server/remote/host/daemon.mjs';
-import { hostVersion, PROGRAMS } from '../server/remote/host/paths.mjs';
+import { LOCK_FRESH_MS } from '../server/remote/host/cleanup.mjs';
+import { createDaemon, EXIT, HOST_ENTRY, LOCK_STALE_MS, main, SERVE_START_MS, takeDaemonLock } from '../server/remote/host/daemon.mjs';
+import { hostVersion } from '../server/remote/host/paths.mjs';
 import { findPrograms, parseVersion } from '../server/remote/host/programs.mjs';
+import { createSshConnection } from '../server/remote/ssh.mjs';
 import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, REMOTE_LIMITS, TURN_FILES, validateStartRecord } from '../shared/remote-protocol.mjs';
+import { defaultHostSettings } from '../shared/remote-settings.mjs';
 import { readMessages } from './fake-daemon.mjs';
+import { fakeSsh } from './fake-ssh.mjs';
 
 const TOKEN = 'a'.repeat(64);
 const BOOT = '0f1e2d3c-4b5a-4968-8776-655443322110';
@@ -210,6 +214,58 @@ test('hello: a wrong version or token is refused, nothing is served before hello
     // A line that isn’t a message is refused, and the channel carries on.
     c.input.write('{"type":"nope"}\n');
     assert.equal((await c.msgs.next('error')).code, 'bad-message');
+  } finally {
+    s.done();
+  }
+});
+
+test('handshake: a version 1 Postbox’s hello is refused with `version` before any turn starts, and ssh.mjs calls it kind version', async () => {
+  const s = setup();
+  try {
+    let daemonSaid;
+    // ssh.mjs’s own connection, through a fake ssh to this daemon, with its hello changed to the version a wave 2
+    // Postbox sends, and a start straight after it, as a peer that took the hello for granted would.
+    const bridge = {
+      connect() {
+        const stdin = new PassThrough();
+        const input = new PassThrough();
+        const stdout = new PassThrough();
+        stdout.on('error', () => {});
+        // The daemon’s own output, read here and passed on to ssh.mjs: the fake ssh ends its stdout once ssh.mjs
+        // kills it on the refusal, and what the daemon says after that should still be seen.
+        const output = new PassThrough();
+        output.pipe(stdout);
+        s.daemon.connect({ input, output });
+        daemonSaid = readMessages(output);
+        stdin.once('data', (b) => {
+          const hello = JSON.parse(String(b));
+          assert.equal(hello.version, PROTOCOL_VERSION);
+          input.write(`${JSON.stringify({ ...hello, version: 1 })}\n`);
+          input.write(encode(message('postbox-to-daemon', 'start', startMsg('t1'))));
+        });
+        return { stdin, stdout };
+      },
+    };
+    const conn = createSshConnection({
+      destination: 'host.example.com',
+      settings: defaultHostSettings(),
+      version: VERSION,
+      token: TOKEN,
+      spawn: fakeSsh({ daemon: /** @type {any} */ (bridge) }).spawn,
+    });
+    const f = await conn.connect().then(
+      () => assert.fail('a version 1 hello was welcomed'),
+      (e) => e,
+    );
+    assert.equal(f.kind, 'version');
+    assert.equal(f.retry, false);
+    assert.match(f.message, new RegExp(`speaks protocol ${PROTOCOL_VERSION}, and Postbox sent 1`));
+    const refused = await daemonSaid.next('error');
+    assert.deepEqual([refused.code, refused.re], ['version', 'hello']);
+    assert.equal((await daemonSaid.next('error')).code, 'not-ready', 'the start after it is refused');
+    assert.ok(!daemonSaid.messages.some((m) => m.type === 'welcome' || m.type === 'started'));
+    assert.deepEqual(s.launches, [], 'no runner was launched');
+    assert.ok(!existsSync(s.p.turn('t1')), 'no turn folder was made');
   } finally {
     s.done();
   }
@@ -719,7 +775,7 @@ test('idle: exits after idleTimeout with nobody attached and no turn running, an
   }
 });
 
-test('the socket: a relayed Postbox is served, and a shim is refused until the broker exists', async () => {
+test('the socket: a relayed Postbox is served, and a shim goes to the broker, which refuses a turn it didn’t start', async () => {
   const s = setup();
   try {
     const pair = () => {
@@ -738,7 +794,7 @@ test('the socket: a relayed Postbox is served, and a shim is refused until the b
     b.fromDaemon.on('data', (d) => got.push(String(d)));
     b.toDaemon.write(`${JSON.stringify({ type: 'hello', token: TOKEN, turn: 't1' })}\n`);
     await new Promise((r) => b.fromDaemon.on('end', r));
-    assert.match(got.join(''), /"type":"error".*doesn’t serve the shim/);
+    assert.match(got.join(''), /"type":"error","code":"no-turn".*There’s no turn t1/);
   } finally {
     s.done();
   }
@@ -755,59 +811,194 @@ test('host attach refuses root, with a clear message on stderr and a protocol er
   assert.equal(await main({ argv: ['nope'], getuid: () => 1000, stderr: { write: () => {} } }), EXIT.usage);
 });
 
+test('host attach on a Node older than 22 says no-node, so Postbox can say what to install, and exits 69', async () => {
+  const stdout = new PassThrough();
+  const msgs = readMessages(stdout);
+  let err = '';
+  const code = await main({ argv: ['attach'], getuid: () => 1000, stdout, stderr: { write: (s) => (err += s) }, home: '/home/user', nodeVersion: 'v20.1.0' });
+  assert.equal(code, EXIT.unavailable);
+  assert.match(err, /needs Node 22 or later, and this host’s node is v20\.1\.0/);
+  assert.equal((await msgs.next('error')).code, 'no-node');
+});
+
+test('host token makes the token with umask 077 if it’s missing and prints it, and prints the same one after', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pbt-'));
+  try {
+    const masks = [];
+    const run = async () => {
+      let out = '';
+      const code = await main({
+        argv: ['token'],
+        getuid: () => process.getuid?.() ?? -1,
+        stdout: /** @type {any} */ ({ write: (s) => (out += s) }),
+        stderr: { write: () => {} },
+        home,
+        umask: (m) => masks.push(m),
+      });
+      return { code, out };
+    };
+    const first = await run();
+    assert.equal(first.code, EXIT.ok);
+    assert.match(first.out, /^[0-9a-f]{64}\n$/);
+    const p = hostPaths(home, VERSION);
+    assert.equal(readFileSync(p.token, 'utf8'), first.out.trim());
+    assert.equal(statSync(p.token).mode & 0o777, 0o600);
+    assert.equal(statSync(p.root).mode & 0o777, 0o700);
+    assert.deepEqual(await run(), first);
+    assert.deepEqual(masks, [0o077, 0o077]);
+    rmSync(p.token);
+    symlinkSync('/etc/hosts', p.token);
+    const refused = await run();
+    assert.equal(refused.code, EXIT.software);
+    const m = JSON.parse(refused.out);
+    assert.equal(m.code, 'internal');
+    assert.match(m.message, /isn’t a file of this user’s/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Runs `host attach` with a fake socket that answers once something is spawned, through one hello and welcome.
+ * @param {string} home @param {(ms: number) => Promise<void>} sleep @param {object} [opts]  more of main’s options
+ */
+async function attachOnce(home, sleep, opts = {}) {
+  let served = false;
+  const spawned = [];
+  const toDaemon = [];
+  const fromDaemon = new PassThrough();
+  const connect = () => {
+    const sock = new Duplex({
+      read() {},
+      write(chunk, _enc, cb) {
+        toDaemon.push(String(chunk));
+        cb();
+      },
+    });
+    process.nextTick(() => {
+      if (!served) return sock.emit('error', Object.assign(new Error('no socket'), { code: 'ENOENT' }));
+      fromDaemon.on('data', (d) => sock.push(d));
+      fromDaemon.on('end', () => {
+        sock.push(null);
+        sock.destroy();
+      });
+      sock.emit('connect');
+    });
+    return /** @type {any} */ (sock);
+  };
+  const spawn = (cmd, args, opts) => {
+    spawned.push({ cmd, args, opts });
+    served = true;
+    return { on() {}, unref() {} };
+  };
+  const stdin = new PassThrough();
+  const stdout = new PassThrough();
+  const out = [];
+  stdout.on('data', (d) => out.push(String(d)));
+  const running = main({ argv: ['attach'], getuid: () => 1000, stdin, stdout, stderr: { write: () => {} }, home, connect, spawn, sleep, ...opts });
+  stdin.write('{"type":"hello"}\n');
+  await waitFor(() => toDaemon.length > 0);
+  fromDaemon.write('{"type":"welcome"}\n');
+  await waitFor(() => out.length > 0);
+  fromDaemon.end();
+  return { code: await running, spawned, toDaemon, out };
+}
+
 test('host attach starts the daemon when none answers, then relays its stdio to the socket', async () => {
   const home = mkdtempSync(join(tmpdir(), 'pba-'));
   try {
-    let served = false;
-    const spawned = [];
-    const toDaemon = [];
-    const fromDaemon = new PassThrough();
-    const connect = () => {
-      const sock = new Duplex({
-        read() {},
-        write(chunk, _enc, cb) {
-          toDaemon.push(String(chunk));
-          cb();
-        },
-      });
-      process.nextTick(() => {
-        if (!served) return sock.emit('error', Object.assign(new Error('no socket'), { code: 'ENOENT' }));
-        fromDaemon.on('data', (d) => sock.push(d));
-        fromDaemon.on('end', () => {
-          sock.push(null);
-          sock.destroy();
-        });
-        sock.emit('connect');
-      });
-      return /** @type {any} */ (sock);
-    };
-    const spawn = (cmd, args, opts) => {
-      spawned.push({ cmd, args, opts });
-      served = true;
-      return { on() {}, unref() {} };
-    };
-    const stdin = new PassThrough();
-    const stdout = new PassThrough();
-    const out = [];
-    stdout.on('data', (d) => out.push(String(d)));
-    const running = main({ argv: ['attach'], getuid: () => 1000, stdin, stdout, stderr: { write: () => {} }, home, connect, spawn, sleep: async () => {} });
-    stdin.write('{"type":"hello"}\n');
-    await waitFor(() => toDaemon.length > 0);
-    fromDaemon.write('{"type":"welcome"}\n');
-    await waitFor(() => out.length > 0);
-    fromDaemon.end();
-    assert.equal(await running, EXIT.ok);
+    const { code, spawned, toDaemon, out } = await attachOnce(home, async () => {});
+    assert.equal(code, EXIT.ok);
     assert.equal(spawned.length, 1);
-    assert.deepEqual(spawned[0].args, [PROGRAMS.host, 'serve']);
+    assert.deepEqual(spawned[0].args, [HOST_ENTRY, 'serve']);
     assert.equal(spawned[0].opts.detached, true);
     assert.deepEqual(toDaemon, ['{"type":"hello"}\n']);
     assert.deepEqual(out, ['{"type":"welcome"}\n']);
     const p = hostPaths(home, VERSION);
-    assert.throws(() => statSync(`${p.code}/daemon.lock`), /ENOENT/, 'the lock is dropped');
+    await waitFor(() => !existsSync(p.lock)); // dropped without waiting for it
+    assert.equal(statSync(dirname(p.lock)).mode & 0o777, 0o700, 'in a 0700 locks folder');
     assert.equal(statSync(`${p.code}/daemon.log`).mode & 0o777, 0o600);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+test('host attach waits while an install holds the start lock, making nothing in the version’s folder until it’s dropped', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pba-'));
+  try {
+    const p = hostPaths(home, VERSION);
+    // The install’s lock, outside the version’s folder, which the install may be renaming.
+    mkdirSync(p.lock, { recursive: true, mode: 0o700 });
+    let waits = 0;
+    const { code, spawned } = await attachOnce(home, async () => {
+      waits++;
+      assert.equal(existsSync(p.code), false, 'no version folder made without the lock');
+      if (waits === 3) rmSync(p.lock, { recursive: true });
+    });
+    assert.equal(code, EXIT.ok);
+    assert.equal(waits, 3, 'it waited for the lock, then took it');
+    assert.equal(spawned.length, 1);
+    await waitFor(() => !existsSync(p.lock));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('host attach judges the start lock by its owner: a live one is waited for however old, a dead or garbled one or one long without a record is broken', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pba-'));
+  try {
+    const p = hostPaths(home, VERSION);
+    // Every lock looks long past LOCK_STALE_MS to this clock; only PID 4242 is alive, as its record says.
+    let clock = Date.now() + 10 * LOCK_STALE_MS;
+    const proc = { bootId: () => BOOT, startTime: () => 5, sameProcess: (r) => r.pid === 4242 && r.bootId === BOOT && r.startTime === 5 };
+    /** A lock with `text` as its owner record, or none. @param {string | null} text */
+    const held = (text) => {
+      mkdirSync(p.lock, { recursive: true, mode: 0o700 });
+      if (text !== null) writeFileSync(`${p.lock}/owner`, text);
+    };
+    /** An attach over that lock: how often it waited before it took it. */
+    const run = async (/** @type {number} */ until) => {
+      let waits = 0;
+      const { code, spawned } = await attachOnce(
+        home,
+        async () => {
+          waits++;
+          assert.equal(existsSync(p.code), false, 'no version folder made without the lock');
+          if (waits === until) rmSync(p.lock, { recursive: true });
+        },
+        { proc, now: () => clock },
+      );
+      assert.equal(code, EXIT.ok);
+      assert.equal(spawned.length, 1);
+      await waitFor(() => !existsSync(p.lock));
+      rmSync(p.code, { recursive: true });
+      return waits;
+    };
+    held(JSON.stringify({ pid: 4242, bootId: BOOT, startTime: 5 }));
+    assert.equal(await run(3), 3, 'a live owner’s lock is waited for until it’s dropped, however old');
+    for (const text of [
+      JSON.stringify({ pid: 4242, bootId: BOOT, startTime: 6 }),
+      JSON.stringify({ pid: 4243, bootId: BOOT, startTime: 5 }),
+      '{"pid":',
+      null,
+    ]) {
+      held(text);
+      assert.equal(await run(-1), 0, `broken at once: ${text}`);
+      assert.deepEqual(readdirSync(dirname(p.lock)), [], 'nothing set aside is left');
+    }
+    // One with no record yet, as one just made, is waited for while it’s fresh.
+    clock = Date.now();
+    held(null);
+    assert.equal(await run(2), 2);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the start lock goes stale before an install’s minute-granular test would take it, and cleanup agrees', () => {
+  assert.ok(LOCK_STALE_MS > SERVE_START_MS, 'an attach holds it for up to SERVE_START_MS');
+  assert.ok(LOCK_STALE_MS <= 60_000, 'install.mjs’s script takes a lock for stale after find -mmin +1, a minute');
+  assert.equal(LOCK_FRESH_MS, LOCK_STALE_MS);
 });
 
 test('findPrograms: configured paths, then the PATH and install folders; versions from --version; problems named', async () => {
