@@ -44,8 +44,18 @@ export const effortOf = (persona) => (EFFORT_LEVELS.includes(persona?.effort) ? 
 
 /** Postbox’s own MCP server’s name. It always loads, and a persona can’t turn it off. */
 export const POSTBOX_SERVER = 'postbox';
+/**
+ * How long Claude Code waits on one call to Postbox’s server, in ms: 25 hours, a day’s wait plus a margin (#217).
+ * permission_prompt answers only when the person answers the card, often minutes later. With no `timeout`, Claude
+ * Code gives an HTTP server’s request 60 s to its first byte, so a card left for a minute failed the call with “The
+ * operation timed out” (claude 2.1.308, cut at 60.0 s twice); with `timeout: 900000` it was still waiting at 8 min
+ * 44 s. The per-server timeout raises that timer to itself, and sets a floor under the 5-minute idle window for calls
+ * that send nothing (code.claude.com/docs/en/mcp, “Time limits on MCP tool calls”). Every other Postbox tool returns
+ * at once, and the Agent SDK asks through canUseTool instead, so for them it changes nothing in practice.
+ */
+export const POSTBOX_TIMEOUT_MS = 25 * 60 * 60 * 1000;
 /** Postbox’s own server, as `--mcp-config` and the SDK’s `mcpServers` take it. */
-export const postboxServer = (mcpUrl) => ({ [POSTBOX_SERVER]: { type: 'http', url: mcpUrl, alwaysLoad: true } });
+export const postboxServer = (mcpUrl) => ({ [POSTBOX_SERVER]: { type: 'http', url: mcpUrl, alwaysLoad: true, timeout: POSTBOX_TIMEOUT_MS } });
 // alwaysLoad: Postbox’s tools are in the first prompt, so the agent doesn’t have to search for them.
 
 /**
