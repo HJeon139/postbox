@@ -6,15 +6,19 @@
 //   state,           Postbox’s /api/state at the time
 //   threads,         ids of the conversations and topic threads under test
 //   startPersonas,   the personas a fresh install had
-//   streams,         [{ handle, events }]: each real turn’s raw stream (POSTBOX_CLAUDE_RECORD)
+//   streams,         [{ handle, events, started, ended }]: each real turn’s raw stream (POSTBOX_CLAUDE_RECORD), with
+//                    when its file was started (its name) and last written, in ms
+//   events,          Postbox’s events for items and sessions, in order (tools/uat/history.mjs), for the checks that
+//                    need what happened, not only the state now
 //   kiroStreams,     [{ handle, events }]: each Kiro CLI turn’s raw stream (POSTBOX_KIRO_RECORD), kept apart: its
 //                    lines are { type, data } around ACP session updates, which the Claude Code checks don’t read
 //   transcripts,     [{ handle, lines }]: each agent’s Claude Code transcript, as text lines
 //   console,         the page’s console errors and exceptions
 //   apps,            { [itemId]: { text, marks, tinyMarks, svgText, tinyText, fonts } } read from inside each app
-//   probes,          { fullScreen: [{ key, before, after, viewport }], attachments: [{ key, images, attachments }] }
+//   probes,          { fullScreen: [{ key, before, after, viewport }], attachments: [{ key, images, attachments }],
+//                    answers: [{ key, revision, at }]: the revision of a block the runner read just before answering it }
 //   samples,         [{ busy: [handles thinking or calling tools], rows: number }]: the working row while agents worked
-//   ui,              { headerText (the sidebar’s Agents section, #105), reviewRawRows: { [itemId]: rows of a review block shown as raw “| … |” text } }
+//   ui,              { headerText, reviewRawRows: { [itemId]: rows of a review block shown as raw “| … |” text } }
 //   userMcpServers,  names of MCP servers in the person’s own Claude Code config
 //   userRulesMarker, a line from the person’s global CLAUDE.md. Since #57, agents load the person’s setup on
 //                    purpose, so it reaching them isn’t a finding; no check uses it now.
@@ -24,6 +28,7 @@ import { REFUSED, toolOf } from '../../server/adapters/kiro-cli.mjs';
 import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from '../../server/adapters/setup.mjs';
 import { freshInstall } from '../../server/seed.mjs';
 import { ASKING } from '../../shared/catalog.mjs';
+import { toPlainText } from '../../shared/markdown.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
 const clip = (s, n = 240) => {
@@ -253,6 +258,253 @@ export function waitingOnYou(state, threads) {
     }
   return [...out.values()];
 }
+
+// ── The P0 hotfixes (#108, #123, #125, #126) ───────────────────────────────────────────────────────────
+// Read from what main already records: the items in Postbox’s state, the event history (facts.events), each turn’s
+// raw stream with its file’s times, and what the runner saw when it answered a block (facts.probes.answers). Where a
+// fix adds a field that says it outright (a hop’s full text, the revision an answer was for, a background job’s
+// record), the check reads it when it’s there.
+
+const BUSY = new Set(['think', 'tool', 'gen']);
+// Clocks and file times differ by a few milliseconds; a second is far below the defects’ own scale (90 s, #126).
+const SLACK_MS = 1000;
+const secs = (ms) => `${Math.round(ms / 1000)} s`;
+const timeOf = (ts) => {
+  const n = typeof ts === 'string' ? Date.parse(ts) : Number.NaN;
+  return Number.isFinite(n) ? n : null;
+};
+// A wake request’s preview, made the way Postbox makes it (server/runtime.mjs, clip): plain text, 200 characters.
+const clip200 = (s) => {
+  const t = toPlainText(s);
+  return t.length > 200 ? `${t.slice(0, 199)}…` : t;
+};
+const clock = (ms) => `${new Date(ms).toISOString().slice(11, 19)} UTC`;
+/** The Claude Code session a turn’s stream ran in, from its init. */
+const claudeSessionOf = (events) => events.find((e) => e?.type === 'system' && e.subtype === 'init')?.session_id ?? null;
+/**
+ * When a turn’s process started (its stream file is named for it), and the last time it did anything: its newest
+ * message, or the file’s last write when no message carries a time.
+ * @param {{ events: any[], started?: number, ended?: number }} s
+ */
+function streamSpan(s) {
+  let last = null;
+  let first = null;
+  for (const e of s.events) {
+    if (e?.type !== 'assistant' && e?.type !== 'user') continue;
+    const t = timeOf(e.timestamp);
+    if (t === null) continue;
+    if (last === null || t > last) last = t;
+    if (first === null || t < first) first = t;
+  }
+  return {
+    start: Number.isFinite(s.started) ? /** @type {number} */ (s.started) : first,
+    last: last ?? (Number.isFinite(s.ended) ? /** @type {number} */ (s.ended) : null),
+  };
+}
+/** Tool results by call id, so a call Postbox refused (an error result) can be told from one it applied. */
+const resultsOf = (events) =>
+  new Map(
+    events
+      .filter((e) => e?.type === 'user')
+      .flatMap((e) => (Array.isArray(e.message?.content) ? e.message.content : []))
+      .filter((b) => b?.type === 'tool_result')
+      .map((b) => [b.tool_use_id, b]),
+  );
+/** The Postbox tool calls a stream made after a moment, that Postbox didn’t refuse. */
+function postboxCallsAfter(events, after) {
+  const results = resultsOf(events);
+  return (
+    events
+      .filter((e) => e?.type === 'assistant' && (timeOf(e.timestamp) ?? 0) > after)
+      .flatMap((e) => (Array.isArray(e.message?.content) ? e.message.content : []).map((b) => ({ b, at: timeOf(e.timestamp) })))
+      // A call with no result never got an answer from Postbox (the process was killed first), so it counts only with one.
+      .filter(
+        ({ b }) =>
+          b?.type === 'tool_use' && String(b.name ?? '').startsWith(`mcp__${POSTBOX_SERVER}__`) && results.has(b.id) && results.get(b.id).is_error !== true,
+      )
+      .map(({ b, at }) => ({ name: String(b.name).slice(`mcp__${POSTBOX_SERVER}__`.length), at: /** @type {number} */ (at) }))
+  );
+}
+
+/**
+ * Each block’s history from the event log (#123): every answer, with the revision it landed on, and every update that
+ * reopened an answered block before the agent had read the answer. An answer reaches an agent at the start of a turn:
+ * one given while its turn runs waits for that turn to end. So an update with no new turn of that session since the
+ * answer was written without it. A turn starts when the session starts thinking with finishedAt cleared, and ends when
+ * finishedAt is set: a permission card mid-turn sets the state to needs, not finishedAt. A fix that marks the answer
+ * read (answer.read, #123) is read too. A block shown before the history begins (a log that lost its first segment) is
+ * skipped.
+ * @param {any[]} events
+ */
+export function blockHistory(events) {
+  /** @type {Map<string, boolean>} */
+  const inTurn = new Map();
+  /** @type {Map<string, number[]>} */
+  const turnStarts = new Map();
+  /** @type {Map<string, any>} */
+  const blocks = new Map();
+  const answers = [];
+  const reopened = [];
+  for (const e of events ?? []) {
+    const d = e?.data;
+    if (!d) continue;
+    if (e.type === 'session') {
+      const was = inTurn.get(d.id) ?? false;
+      // A history without finishedAt (none on main lacks it) falls back to the state alone.
+      const now = d.finishedAt === undefined ? BUSY.has(d.state) : d.finishedAt === null && (was || d.state === 'think');
+      if (now && !was) turnStarts.set(d.id, [...(turnStarts.get(d.id) ?? []), e.seq]);
+      inTurn.set(d.id, now);
+    } else if (e.type === 'item.add' && d.item?.kind === 'block' && d.item.valid) {
+      const it = d.item;
+      blocks.set(it.id, {
+        itemId: it.id,
+        threadId: d.threadId,
+        sessionId: it.sessionId,
+        handle: it.handle,
+        blockId: it.block?.id,
+        title: it.block?.title ?? it.block?.prompt ?? it.block?.id ?? '',
+        revision: it.revision ?? 1,
+        answer: null,
+      });
+    } else if (e.type === 'item.patch') {
+      const b = blocks.get(d.id);
+      const p = d.patch ?? {};
+      if (!b) continue;
+      if (p.answered === true && p.answer) {
+        // A fix that records the revision the person saw puts it on the answer (#123).
+        const saw = Number.isFinite(p.answer.revision) ? p.answer.revision : null;
+        b.answer = { seq: e.seq, at: p.answer.at ?? null, action: p.answer.action ?? 'answer', revision: b.revision, saw, read: p.answer.read === true };
+        answers.push({ ...b.answer, itemId: b.itemId, threadId: b.threadId, handle: b.handle, title: b.title });
+      } else if (p.answer?.read === true && b.answer) b.answer.read = true;
+      if (Number.isFinite(p.revision)) {
+        if (p.answered === false && b.answer) {
+          const read = b.answer.read || (turnStarts.get(b.sessionId) ?? []).some((s) => s > b.answer.seq && s < e.seq);
+          if (!read)
+            reopened.push({
+              itemId: b.itemId,
+              threadId: b.threadId,
+              handle: b.handle,
+              title: b.title,
+              revision: p.revision,
+              answer: b.answer,
+              ms: Number.isFinite(p.updatedAt) && Number.isFinite(b.answer.at) ? p.updatedAt - b.answer.at : null,
+            });
+        }
+        if (p.answered === false) b.answer = null;
+        b.revision = p.revision;
+      }
+    }
+  }
+  return { answers, reopened };
+}
+
+/**
+ * The messages agents sent other agents, as they wrote them: each wake_agent call in their streams, and each turn’s
+ * reply (an @-mention in it wakes the agent it names).
+ * @param {any} f
+ */
+function wakesSent(f) {
+  const calls = (f.streams ?? []).flatMap(({ handle, events }) =>
+    events
+      .filter((e) => e?.type === 'assistant')
+      .flatMap((e) => (Array.isArray(e.message?.content) ? e.message.content : []))
+      .filter((b) => b?.type === 'tool_use' && b.name === `mcp__${POSTBOX_SERVER}__wake_agent`)
+      .map((b) => ({ from: handle, to: String(b.input?.handle ?? '').replace(/^@/, ''), text: String(b.input?.message ?? '') })),
+  );
+  /** @type {Map<string, { from: string, to: null, text: string }>} */
+  const turns = new Map();
+  for (const it of itemsOf(f))
+    if (it.kind === 'agent' && it.turnId && it.text) {
+      const t = turns.get(it.turnId);
+      turns.set(it.turnId, { from: it.handle, to: null, text: t ? `${t.text}\n\n${it.text}` : it.text });
+    }
+  return [...calls, ...turns.values()];
+}
+
+// A background job’s end, as Claude Code’s stream reports it (task_updated’s patch.status, task_notification).
+const JOB_ENDED = /^(completed|failed|killed|stopped|cancelled|canceled|done|exited|error)$/i;
+/**
+ * The background Bash calls a turn’s stream made, by tool call id, and whether the stream says each one ended: a call
+ * with run_in_background, or a command Claude Code moved to the background (task_updated is_backgrounded, or a result
+ * that names a backgroundTaskId). Monitors and subagents aren’t background commands.
+ * @param {any[]} events
+ */
+export function backgroundJobs(events) {
+  /** @type {Map<string, string>} */
+  const toolOfTask = new Map();
+  /** @type {Map<string, { id: string, task: string|null, command: string, ended: boolean }>} */
+  const jobs = new Map();
+  const job = (id) => {
+    if (!jobs.has(id)) jobs.set(id, { id, task: null, command: '', ended: false });
+    return /** @type {{ id: string, task: string|null, command: string, ended: boolean }} */ (jobs.get(id));
+  };
+  /** @type {Map<string, string>} */
+  const commands = new Map();
+  const ended = new Set();
+  /** @type {Set<string>} */
+  let listed = new Set();
+  for (const e of events) {
+    if (e?.type === 'assistant')
+      for (const b of Array.isArray(e.message?.content) ? e.message.content : [])
+        if (b?.type === 'tool_use' && b.name === 'Bash') {
+          commands.set(b.id, String(b.input?.command ?? b.input?.description ?? ''));
+          if (b.input?.run_in_background === true) job(b.id);
+        }
+    if (e?.type === 'user') {
+      const r = e.tool_use_result;
+      const ids = (Array.isArray(e.message?.content) ? e.message.content : []).filter((b) => b?.type === 'tool_result').map((b) => b.tool_use_id);
+      if (r && typeof r === 'object' && typeof r.backgroundTaskId === 'string' && ids.length === 1 && commands.has(ids[0])) {
+        job(ids[0]).task = r.backgroundTaskId;
+        toolOfTask.set(r.backgroundTaskId, ids[0]);
+      }
+    }
+    if (e?.type !== 'system') continue;
+    if (e.subtype === 'task_started' && e.task_id && e.tool_use_id && (e.task_type ?? 'local_bash') === 'local_bash') {
+      toolOfTask.set(e.task_id, e.tool_use_id);
+      if (e.is_backgrounded === true) job(e.tool_use_id).task = e.task_id;
+    } else if (e.subtype === 'task_updated' && e.task_id) {
+      const id = toolOfTask.get(e.task_id);
+      if (id && e.patch?.is_backgrounded === true) job(id).task = e.task_id;
+      if (id && (JOB_ENDED.test(String(e.patch?.status ?? '')) || Number.isFinite(e.patch?.end_time))) ended.add(id);
+    } else if (e.subtype === 'task_notification') {
+      const id = e.tool_use_id ?? toolOfTask.get(e.task_id);
+      if (id) ended.add(id);
+    } else if (e.subtype === 'background_tasks_changed' && Array.isArray(e.tasks)) {
+      // A job listed before and gone from the list now has ended.
+      const now = new Set(e.tasks.map((t) => t?.task_id).filter(Boolean));
+      for (const t of listed) if (!now.has(t) && toolOfTask.has(t)) ended.add(/** @type {string} */ (toolOfTask.get(t)));
+      listed = now;
+    }
+  }
+  for (const j of jobs.values()) {
+    j.command = commands.get(j.id) ?? '';
+    j.ended = ended.has(j.id);
+  }
+  return [...jobs.values()];
+}
+/**
+ * A fix’s own record of a background job (#126 tracks each one with its id, command and output file), matched by the
+ * tool call id or the background id, wherever it keeps them: the state’s jobs, or a session’s. Null when there’s none.
+ * @param {any} state  @param {{ id: string, task: string|null }} j
+ * @returns {{ ended: boolean } | null}
+ */
+function jobRecord(state, j) {
+  const lists = [state?.jobs, state?.backgroundJobs, ...Object.values(state?.sessions ?? {}).flatMap((se) => [se?.jobs, se?.backgroundJobs])];
+  for (const list of lists) {
+    const all = Array.isArray(list) ? list : list && typeof list === 'object' ? Object.values(list) : [];
+    for (const r of all) {
+      if (!r || typeof r !== 'object') continue;
+      const ids = [r.id, r.toolUseId, r.tool_use_id, r.callId, r.taskId, r.task_id, r.backgroundId, r.backgroundTaskId];
+      if (!ids.includes(j.id) && !(j.task && ids.includes(j.task))) continue;
+      const status = String(r.status ?? r.state ?? '');
+      return { ended: JOB_ENDED.test(status) || Number.isFinite(r.endedAt) || Number.isFinite(r.exitedAt) || Number.isFinite(r.end_time) };
+    }
+  }
+  return null;
+}
+
+/** The checks the runner also runs while agents work, since what they catch can be gone by the time the turn ends. */
+export const MID_TURN = ['background-step-closed', 'two-processes-one-session'];
 
 export const CHECKS = [
   {
@@ -685,7 +937,7 @@ export const CHECKS = [
       f.ui?.headerText &&
       !/opus|sonnet|haiku|fable/i.test(f.ui.headerText) &&
       !Object.values(f.state?.personas ?? {}).some((p) => p.model && p.model !== 'mock' && f.ui.headerText.includes(p.model))
-        ? [{ title: 'The UI doesn’t show which model an agent runs', evidence: `The sidebar’s Agents section: “${clip(f.ui.headerText, 120)}”.` }]
+        ? [{ title: 'The UI doesn’t show which model an agent runs', evidence: `Top bar: “${clip(f.ui.headerText, 120)}”.` }]
         : [],
   },
   {
@@ -787,6 +1039,194 @@ export const CHECKS = [
     },
   },
   {
+    // Two processes in one Claude Code session (#126): a turn that started while the session’s previous turn was still
+    // making requests, or a stopped turn whose process went on calling Postbox’s tools after Stop. Claude Code turns
+    // only; the Kiro CLI adapter stops a turn the same way, and isn’t judged here.
+    id: 'two-processes-one-session',
+    issue: 126,
+    run: (f) => {
+      const out = [];
+      /** @type {Map<string, { s: any, start: number|null, last: number|null }[]>} */
+      const byClaude = new Map();
+      for (const s of f.streams ?? []) {
+        const id = claudeSessionOf(s.events);
+        if (!id) continue;
+        byClaude.set(id, [...(byClaude.get(id) ?? []), { s, ...streamSpan(s) }]);
+      }
+      for (const [id, list] of byClaude) {
+        const timed = list.filter((x) => x.start !== null).sort((a, b) => /** @type {number} */ (a.start) - /** @type {number} */ (b.start));
+        for (let i = 1; i < timed.length; i++) {
+          const b = timed[i];
+          const a = timed.slice(0, i).find((x) => x.last !== null && /** @type {number} */ (x.last) > /** @type {number} */ (b.start) + SLACK_MS);
+          if (!a) continue;
+          const start = /** @type {number} */ (b.start);
+          const last = /** @type {number} */ (a.last);
+          out.push({
+            key: `overlap:${id}:${start}`,
+            title: 'Two turns of one agent session ran at the same time',
+            evidence: `@${b.s.handle}’s turn started at ${clock(start)} while the session’s previous turn (Claude Code session ${id.slice(0, 8)}) went on until ${clock(last)}, ${secs(last - start)} later.`,
+          });
+        }
+      }
+      // A stopped turn’s Postbox calls after Stop. The stopped item names the session; the session names its Claude
+      // Code session, and so the streams that are its turns.
+      for (const it of itemsOf(f)) {
+        if (it.kind !== 'agent' || it.status !== 'stopped' || !Number.isFinite(it.stoppedAt)) continue;
+        const claudeId = f.state.sessions?.[it.sessionId]?.backendState?.claudeSessionId;
+        if (!claudeId) continue;
+        for (const s of f.streams ?? []) {
+          const span = streamSpan(s);
+          if (claudeSessionOf(s.events) !== claudeId || span.start === null || span.start > it.stoppedAt) continue;
+          const calls = postboxCallsAfter(s.events, it.stoppedAt + SLACK_MS);
+          if (!calls.length) continue;
+          const names = [...new Set(calls.map((c) => c.name))];
+          out.push({
+            key: `after-stop:${it.id}`,
+            title: 'A stopped turn went on calling Postbox’s tools',
+            evidence: `@${it.handle} was stopped at ${clock(it.stoppedAt)}, and its process then made ${calls.length} Postbox call${calls.length === 1 ? '' : 's'} (${names.slice(0, 4).join(', ')}), the last ${secs(Math.max(...calls.map((c) => c.at)) - it.stoppedAt)} after Stop.`,
+          });
+          break;
+        }
+      }
+      return out;
+    },
+  },
+  {
+    // A background command whose step says done while it runs (#126, which takes this part of #129). Running is read
+    // from the stream: it started in the background and the stream hasn’t reported its end. A fix’s own job record,
+    // when there is one, says whether it ended.
+    id: 'background-step-closed',
+    issue: 126,
+    run: (f) => {
+      /** @type {Map<string, { step: any, it: any }>} */
+      const steps = new Map();
+      for (const it of itemsOf(f)) for (const st of it.activity?.steps ?? []) if (st?.id) steps.set(st.id, { step: st, it });
+      return (f.streams ?? []).flatMap(({ handle, events }) =>
+        backgroundJobs(events).flatMap((j) => {
+          const shown = steps.get(j.id);
+          if (shown?.step.state !== 'done') return [];
+          const record = jobRecord(f.state, j);
+          // A fix keeps the job’s record while it runs, and its step running until it ends: a step it closed (one that
+          // names its job) with no record left has ended, whatever the stream, whose CLI Keep running ends, says.
+          if (record ? record.ended : j.ended || shown.step.job) return [];
+          return [
+            {
+              key: j.id,
+              title: 'A background command’s step reads done while the command still runs',
+              evidence: `@${handle}’s step “${clip(shown.step.label, 100)}” says done, but ${record ? 'Postbox’s record of the job' : 'the stream'} hasn’t seen it end${j.task ? ` (background id ${j.task})` : ''}: ${clip(j.command, 120) || 'a background command'}.`,
+            },
+          ];
+        }),
+      );
+    },
+  },
+  {
+    // One session showing two blocks with one id in a conversation (#125): an answer, an update and an outcome all
+    // name a block by id, so they can’t tell the two apart. A block that failed to validate isn’t shown as one.
+    id: 'duplicate-block-id',
+    issue: 125,
+    run: (f) => {
+      /** @type {Map<string, any[]>} */
+      const groups = new Map();
+      for (const it of itemsOf(f)) {
+        if (it.kind !== 'block' || !it.valid || !it.block?.id) continue;
+        const k = `${it.threadId}\n${it.sessionId}\n${it.block.id}`;
+        groups.set(k, [...(groups.get(k) ?? []), it]);
+      }
+      return [...groups.values()]
+        .filter((list) => list.length > 1)
+        .map((list) => {
+          const times = list.map((it) => it.at).filter((n) => Number.isFinite(n));
+          return {
+            key: `${list[0].threadId}:${list[0].sessionId}:${list[0].block.id}`,
+            title: 'An agent showed two blocks with the same id in one conversation',
+            evidence: `@${list[0].handle} showed “${clip(list[0].block.id, 80)}” ${list.length} times in “${f.state.threads?.[list[0].threadId]?.title ?? list[0].threadId}”: ${list
+              .map((it) => `${it.id} (“${clip(it.block.title ?? it.block.prompt ?? it.block.type, 60)}”)`)
+              .join(', ')}${times.length > 1 ? `, ${secs(Math.max(...times) - Math.min(...times))} apart` : ''}.`,
+          };
+        });
+    },
+  },
+  {
+    // An answer and the revision it was for (#123). Two ways it goes wrong, read from the history: an answer applied to
+    // a revision other than the one the person was answering (what the runner read just before it answered, or the
+    // revision a fix records on the answer), and an update that reopened an answered block before the agent read the
+    // answer, which erases it unread.
+    id: 'approval-for-other-revision',
+    issue: 123,
+    run: (f) => {
+      const out = [];
+      const { answers, reopened } = blockHistory(f.events ?? []);
+      for (const r of reopened)
+        out.push({
+          key: `reopened:${r.itemId}:${r.revision}`,
+          title: 'An agent’s update reopened a block the person had answered, before the agent read the answer',
+          evidence: `@${r.handle}’s update made revision ${r.revision} of “${clip(r.title, 80)}”${r.ms !== null ? ` ${secs(r.ms)}` : ''} after the person’s ${r.answer.action} on revision ${r.answer.revision}, with no turn in between to read it, so the answer was erased unread.`,
+        });
+      const probes = f.probes?.answers ?? [];
+      for (const a of answers) {
+        // The runner’s note for this answer: its latest one on the block before the answer landed.
+        const probe = Number.isFinite(a.at)
+          ? probes.filter((p) => p.key === a.itemId && Number.isFinite(p.at) && p.at <= a.at + SLACK_MS).sort((x, y) => y.at - x.at)[0]
+          : undefined;
+        const saw = a.saw ?? probe?.revision ?? null;
+        if (saw === null || saw === a.revision) continue;
+        out.push({
+          key: `answer:${a.itemId}:${a.seq}`,
+          title: 'An answer was applied to a revision the person didn’t answer',
+          evidence: `The person answered revision ${saw} of @${a.handle}’s “${clip(a.title, 80)}”, and Postbox applied their ${a.action} to revision ${a.revision}.`,
+        });
+      }
+      return out;
+    },
+  },
+  {
+    // An allowed wake that delivered less than the agent sent (#108): the request kept a 200-character preview, and
+    // allowing it delivered the preview. The delivered message is the sender’s item in the side thread; what it sent
+    // is the request’s full text (a fix keeps it), or else its wake_agent call or reply.
+    id: 'wake-text-clipped',
+    issue: 108,
+    run: (f) => {
+      const items = itemsOf(f);
+      const sent = wakesSent(f);
+      return items
+        .filter((it) => it.kind === 'hop' && it.status === 'allowed' && typeof it.reason === 'string')
+        .flatMap((hop) => {
+          const full = typeof hop.text === 'string' ? hop.text : null;
+          const side = items.filter(
+            (x) =>
+              x.kind === 'agent' &&
+              !x.turnId &&
+              x.sessionId === hop.fromSessionId &&
+              (x.at ?? 0) >= (hop.at ?? 0) &&
+              f.state.threads?.[x.threadId]?.kind === 'side',
+          );
+          const delivered = (full !== null ? side.find((x) => x.text === full) : null) ?? side.find((x) => x.text === hop.reason);
+          if (!delivered) return [];
+          const original =
+            full ??
+            sent.find(
+              (m) => m.from === hop.from && (m.to === null || m.to === hop.to) && m.text.length > delivered.text.length && clip200(m.text) === hop.reason,
+            )?.text ??
+            null;
+          // Clipped, not only made plain: a message of 200 characters or fewer was never cut.
+          const short =
+            original !== null ? original.length > 200 && delivered.text.length < original.length : /…$/.test(hop.reason) && hop.reason.length >= 200;
+          if (!short) return [];
+          return [
+            {
+              key: hop.id,
+              title: 'An allowed agent wake delivered less than the agent sent',
+              evidence:
+                original !== null
+                  ? `@${hop.from} sent @${hop.to} ${original.length.toLocaleString('en-US')} characters; once the wake was allowed, @${hop.to} got ${delivered.text.length.toLocaleString('en-US')}, ending “${clip(delivered.text.slice(-60), 60)}”.`
+                  : `Once the wake was allowed, @${hop.to} got only the request’s ${delivered.text.length}-character preview, ending “${clip(delivered.text.slice(-60), 60)}”.`,
+            },
+          ];
+        });
+    },
+  },
+  {
     id: 'page-errors',
     issue: null,
     run: (f) => {
@@ -806,9 +1246,12 @@ export const CHECKS = [
   },
 ];
 
-/** Runs every check; each finding carries its check id and issue number. */
-export function runChecks(facts) {
-  return CHECKS.flatMap((c) => {
+/**
+ * Runs every check, or only those named; each finding carries its check id and issue number.
+ * @param {any} facts  @param {{ only?: string[] | null }} [opts]
+ */
+export function runChecks(facts, { only = null } = {}) {
+  return CHECKS.filter((c) => !only || only.includes(c.id)).flatMap((c) => {
     try {
       // A finding can set its own issue (null for information), and carry a verdict, a note and counts for the
       // report: the block counts for M1’s exit check do.

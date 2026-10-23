@@ -623,6 +623,14 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .att-image .att-cap .dim { flex: none; white-space: pre; }
 .queued { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; }
 .queued .q-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Stop’s ask about background jobs (#129): a question you answer now, so a solid edge, and its words wrap. */
+.queued.stop-ask { border-style: solid; flex-wrap: wrap; }
+.queued.stop-ask .q-text { white-space: normal; }
+/* A reply’s background jobs still running (#129): calm, so the glyph holds still in the quiet color. */
+.bg-jobs { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.bg-jobs li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bg-jobs .grow { min-width: 0; overflow-wrap: anywhere; }
+.bg-jobs .g-running { animation: none; color: var(--dim); }
 /* Floats above the composer, taking no room, so showing or hiding it never moves the page. It shows only while
    the end is further below than this (mountTranscript), so it never covers the last message or the working rows. */
 .jump { position: absolute; left: 50%; transform: translateX(-50%); top: -42px; }

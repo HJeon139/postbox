@@ -1,0 +1,235 @@
+// A headless Chrome check of Stop with background jobs (#126, #129), driven with real key presses and clicks:
+// - a background job the agent started shows under its reply, running, with its own Stop;
+// - Stop asks “@developer has 1 background job running. Stop it too?”, focus on its first choice, and Escape leaves
+//   the agent running, with focus back on Stop;
+// - Keep running stops the agent (it reads “stopping” until its process exits) and the job stays listed; its own Stop
+//   then stops it;
+// - Stop it too stops both; the ask’s colors are the tokens’, with amber only on its first choice; at 375 px it fits.
+//
+//   node tools/check-stop.mjs
+//
+// It starts its own Postbox on a fresh data folder in the temp directory, with a scripted Claude Code agent (no real
+// turns or processes: the job’s process group is a fake). PB_PORT and PB_CHROME_PORT move it (5037 and 10237 by
+// default), so sessions working in parallel don’t collide.
+
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { start } from '../server/index.mjs';
+import { launch } from './cdp.mjs';
+
+const PORT = Number(process.env.PB_PORT ?? 5037);
+const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 10237);
+const free = (port) =>
+  new Promise((ok, fail) => {
+    const s = createServer();
+    s.once('error', () => fail(new Error(`Port ${port} is in use. Stop whatever is on it, or set PB_PORT and PB_CHROME_PORT.`)));
+    s.listen(port, '127.0.0.1', () => s.close(ok));
+  });
+await free(PORT);
+await free(CHROME_PORT);
+
+process.env.POSTBOX_BACKENDS = 'mock';
+const root = await mkdtemp(join(tmpdir(), 'pb-check-stop-'));
+const app = await start({ port: PORT, dataDir: join(root, 'data'), fresh: true, demo: true, quiet: true, claudeHome: root });
+const { rt, store } = app;
+// The job’s process group: signals are recorded, nothing is sent.
+const signals = [];
+rt.signalProcess = (pid, sig) => {
+  if (sig !== 0) signals.push([pid, sig]);
+  return true;
+};
+// …and ps shows the kept job’s shell, so Postbox knows the group is still the job’s.
+rt.listProcesses = async () => [{ pid: 4242, ppid: 1, pgid: 4242, command: "/bin/zsh -c source snapshot.sh && eval 'node tools/uat-run.mjs' < /dev/null" }];
+
+// A Claude Code agent that starts a background job, then works until it’s stopped, and takes a moment to exit.
+let n = 0;
+rt.adapters.register({
+  name: 'claude-code',
+  async folderFor() {
+    return root;
+  },
+  async deliver(_session, message, ctx) {
+    if (!/job/.test(message.text ?? '')) return ctx.text('Done.');
+    n += 1;
+    const id = `bgjob${n}`;
+    ctx.text('Starting the UAT run in the background.');
+    ctx.activity({ id: `tu_${n}`, label: 'Run the mixed-room UAT scenario live', state: 'running', job: id });
+    ctx.job({
+      id,
+      toolUseId: `tu_${n}`,
+      label: 'Run the mixed-room UAT scenario live',
+      command: 'node tools/uat-run.mjs',
+      outputFile: '/tmp/out.txt',
+      state: 'running',
+    });
+    await new Promise((r) => ctx.signal.addEventListener('abort', r));
+    if (ctx.signal.reason?.keepJobs?.length) ctx.job({ id, kept: true, pgid: 4242 });
+    else ctx.job({ id, state: 'stopped' });
+    await new Promise((r) => setTimeout(r, 400));
+  },
+});
+store.emit('project', { id: 'pr_stop', name: 'Stop', folder: root });
+const dev = rt.createPersona({ handle: 'developer', backend: 'claude-code', permissionMode: 'auto' });
+const room = rt.createThread({ projectId: 'pr_stop', title: 'Stop check', personaIds: [dev.id] });
+const [se] = rt.sessionsIn(room.id);
+
+const page = await launch({ port: CHROME_PORT });
+const failures = [];
+const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
+const KEYS = { Enter: { code: 'Enter', keyCode: 13, text: '\r' }, Escape: { code: 'Escape', keyCode: 27 }, Tab: { code: 'Tab', keyCode: 9 } };
+async function press(key) {
+  const k = KEYS[key];
+  const base = { key, code: k.code, windowsVirtualKeyCode: k.keyCode, nativeVirtualKeyCode: k.keyCode };
+  await page.send('Input.dispatchKeyEvent', { type: k.text ? 'keyDown' : 'rawKeyDown', ...base, ...(k.text ? { text: k.text, unmodifiedText: k.text } : {}) });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  await settle();
+}
+async function click(expr) {
+  const r = await page.evaluate(
+    `(() => { const el = ${expr}; if (!el) return null; el.scrollIntoView({ block: 'center' }); const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`,
+  );
+  assert.ok(r, `Nothing to click: ${expr}`);
+  for (const t of ['mouseMoved', 'mousePressed', 'mouseReleased'])
+    await page.send('Input.dispatchMouseEvent', { type: t, x: r.x, y: r.y, button: t === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
+  await settle();
+}
+const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+const text = (expr) => page.evaluate(`(${expr})?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
+const focused = () => page.evaluate('document.activeElement?.textContent?.trim() || document.activeElement?.getAttribute("aria-label") || ""');
+const until = async (fn, label) => {
+  for (let i = 0; i < 200; i++) {
+    const v = fn();
+    if (v) return v;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+};
+const state = () => store.state.sessions[se.id].state;
+const step = () =>
+  store
+    .items(room.id)
+    .filter((i) => i.kind === 'agent' && i.activity?.steps?.length)
+    .at(-1)?.activity.steps[0];
+
+async function check(name, fn) {
+  let timer;
+  try {
+    const late = new Promise((_, fail) => {
+      timer = setTimeout(() => fail(new Error('Timed out after 30 s')), 30000);
+    });
+    await Promise.race([fn(), late]);
+    console.log(`  ok    ${name}`);
+  } catch (e) {
+    failures.push(name);
+    console.log(`  FAIL  ${name}\n        ${e.message.split('\n').join('\n        ')}`);
+  } finally {
+    clearTimeout(timer);
+  }
+  await page.send('Page.bringToFront');
+}
+async function startJob() {
+  rt.sendMessage(room.id, { text: 'Run the UAT job, please.' });
+  await until(() => state() === 'tool' || state() === 'gen' || state() === 'think', 'the turn');
+  await page.waitFor(`!!${q('.bg-jobs li')}`, { label: 'the background job row' });
+}
+
+await page.size(1280, 900);
+await page.goto(`${app.origin}/#/t/${room.id}`);
+await page.waitFor(`!!${q('#composer-input')}`, { label: 'the composer' });
+
+await check('#129 a background job shows under its reply, running, with its own Stop', async () => {
+  await startJob();
+  assert.match(await text(q('.bg-jobs li')), /^Background job · Run the mixed-room UAT scenario live Stop$/);
+  assert.equal(await page.evaluate(`!!${q('.bg-jobs li button[aria-label^="Stop the background job"]')}`), true);
+  // Calm: the glyph holds still, in the quiet color, not amber.
+  const g = await page.evaluate(`(() => { const s = getComputedStyle(${q('.bg-jobs .g-running')}); return { anim: s.animationName, color: s.color }; })()`);
+  assert.equal(g.anim, 'none');
+  const dim = await page.evaluate(
+    `(() => { const p = document.createElement('span'); p.style.color = 'var(--dim)'; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; })()`,
+  );
+  assert.equal(g.color, dim);
+});
+
+await check('#129 Stop asks first, with focus on its first choice; Escape leaves the agent running, focus back on Stop', async () => {
+  await click(q('.composer .btn.stop'));
+  await page.waitFor(`!!${q('.stop-ask')}`, { label: 'the ask' });
+  assert.match(await text(q('.stop-ask')), /^@developer has 1 background job running\. Stop it too\? Stop it too Keep running$/);
+  assert.equal(await focused(), 'Stop it too');
+  assert.equal(rt.turns.has(se.id), true, 'nothing stopped yet');
+  // Amber only on the interactive control: the row’s edge is a token line, the first choice’s the accent.
+  const colors = await page.evaluate(
+    `(() => { const probe = (v) => { const p = document.createElement('span'); p.style.color = v; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; }; const row = getComputedStyle(${q('.stop-ask')}); const first = getComputedStyle(${q('.stop-ask .btn.send')}); return { row: row.borderTopColor, first: first.borderTopColor, accent: probe('var(--accent)'), line: probe('var(--line)'), bg: row.backgroundColor }; })()`,
+  );
+  assert.equal(colors.first, colors.accent);
+  assert.equal(colors.row, colors.line);
+  assert.notEqual(colors.row, colors.accent);
+  await press('Escape');
+  assert.equal(await page.evaluate(`!!${q('.stop-ask')}`), false);
+  assert.equal(await page.evaluate(`document.activeElement === ${q('.composer .btn.stop')}`), true, 'focus back on Stop');
+  assert.equal(rt.turns.has(se.id), true, 'the agent carries on');
+  assert.equal(store.state.sessions[se.id].stopAsk, null);
+});
+
+await check('#126 #129 Keep running, by keyboard: the agent reads stopping until it exits, and the job stays listed with its Stop', async () => {
+  await click(q('.composer .btn.stop'));
+  await page.waitFor(`!!${q('.stop-ask')}`, { label: 'the ask' });
+  await press('Tab');
+  assert.equal(await focused(), 'Keep running');
+  await press('Enter');
+  await until(() => state() === 'stopping', 'stopping');
+  await page.waitFor(`[...document.querySelectorAll('.who-state')].some((n) => /stopping/.test(n.textContent))`, { label: '“· stopping” beside the name' });
+  await until(() => state() === 'idle', 'the process to exit');
+  await page.waitFor(`!${q('.stop-ask')} && !!${q('.composer .btn.send')}`, { label: 'Send back' });
+  assert.equal(step().state, 'running');
+  assert.equal(await page.evaluate(`!!${q('.bg-jobs li button')}`), true, 'still listed, with its own Stop');
+  assert.match(store.state.sessions[se.id].context.join('\n'), /bgjob1 .* is still running/);
+});
+
+await check('#129 the kept job’s own Stop stops its process group, and its step reads stopped', async () => {
+  await click(q('.bg-jobs li button'));
+  await page.waitFor(`!${q('.bg-jobs li')}`, { label: 'the row to go' });
+  assert.deepEqual(signals.at(-1), [-4242, 'SIGINT']);
+  assert.equal(step().state, 'stopped');
+  await page.evaluate(`${q('details.activity')}.open = true`);
+  await settle();
+  assert.match(await text(q('details.activity .steps li')), /Run the mixed-room UAT scenario live Stopped/);
+});
+
+await check('#129 Stop it too stops the agent and its job', async () => {
+  await startJob();
+  await click(q('.composer .btn.stop'));
+  await page.waitFor(`!!${q('.stop-ask')}`, { label: 'the ask' });
+  await click(q('.stop-ask .btn.send'));
+  await until(() => state() === 'idle', 'the process to exit');
+  await page.waitFor(`!${q('.bg-jobs li')} && !${q('.stop-ask')}`, { label: 'no job row, no ask' });
+  assert.equal(step().state, 'stopped');
+  assert.deepEqual(store.state.sessions[se.id].jobs, []);
+});
+
+await check('#129 at 375 px the ask and the job row fit without scrolling sideways', async () => {
+  await page.size(375, 800);
+  await startJob();
+  await click(q('.composer .btn.stop'));
+  await page.waitFor(`!!${q('.stop-ask')}`, { label: 'the ask' });
+  const over = await page.evaluate(
+    `[...document.querySelectorAll('.stop-ask, .stop-ask button, .bg-jobs li')].filter((n) => { const b = n.getBoundingClientRect(); return b.right > innerWidth + 1 || b.left < -1; }).map((n) => n.className || n.textContent)`,
+  );
+  assert.deepEqual(over, []);
+  await click(q('.stop-ask .btn.send'));
+  await until(() => state() === 'idle', 'the process to exit');
+});
+
+const errors = page.logs.filter((l) => l.startsWith('exception'));
+for (const e of errors) console.log(`  page ${e}`);
+await page.close();
+await app.close();
+await rm(root, { recursive: true, force: true });
+if (failures.length || errors.length) {
+  console.log(`\n${failures.length} Stop check(s) failed${errors.length ? `, and the page threw ${errors.length} time(s)` : ''}.`);
+  process.exit(1);
+}
+console.log('\nAll Stop checks passed.');
+process.exit(0);

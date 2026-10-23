@@ -7,12 +7,15 @@
 //   node tools/uat-run.mjs --scenario hotpotqa --steps 30 --budget 6 --tester-model claude-opus-5-5
 //
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. A scenario
-// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in.
+// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
+// the scenario is a compatibility run, which needs --compat:
+//
+//   node tools/uat-run.mjs --scenario mixedroom --compat
 // Everything a run makes goes in uat-runs/<time>-<scenario>/ (ignored by git): report.md, findings.json,
 // screenshots, each agent turn’s raw stream, and Postbox’s data.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
@@ -21,9 +24,10 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
-import { kiroCredits, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { kiroCredits, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver } from './uat/driver.mjs';
-import { parseScenario } from './uat/scenario.mjs';
+import { followEvents, readHistory } from './uat/history.mjs';
+import { compatBackends, parseScenario } from './uat/scenario.mjs';
 import { askOnce, createTester, systemPrompt, unaddressed, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -41,6 +45,8 @@ const { values: opt } = parseArgs({
     recheck: { type: 'string' },
     // After a run, verify new findings and file the confirmed ones that no open issue covers. --file no skips it.
     file: { type: 'string', default: 'yes' },
+    // Run a compatibility scenario: one with agents on a backend other than Claude’s, such as the Kiro CLI.
+    compat: { type: 'boolean', default: false },
   },
 });
 
@@ -71,13 +77,16 @@ const portFree = (port) =>
   });
 
 /** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), or by the Kiro CLI
- * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/. */
+ * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/. A file is named for when its turn’s process started, and its last
+ * write is when that process last said anything (#126). */
 function readStreams(folder) {
   if (!existsSync(folder)) return [];
   return readdirSync(folder)
     .filter((f) => f.endsWith('.jsonl'))
     .map((f) => ({
       handle: f.replace(/^\d+-/, '').replace(/\.jsonl$/, ''),
+      started: Number(/^(\d+)-/.exec(f)?.[1]) || undefined,
+      ended: statSync(join(folder, f)).mtimeMs,
       events: readFileSync(join(folder, f), 'utf8')
         .split('\n')
         .filter(Boolean)
@@ -109,6 +118,11 @@ const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.rep
 async function main() {
   const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
   const scenario = parseScenario(readFileSync(scenarioFile, 'utf8'));
+  const other = compatBackends(scenario);
+  if (other.length && !opt.compat)
+    throw new Error(
+      `This scenario puts agents on ${other.join(' and ')}, so it’s a compatibility run, which runs only when asked: it uses that harness’s credits, and a regular pass is Claude only. Pass --compat to run it.`,
+    );
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
   const dir = join(ROOT, 'uat-runs', `${stamp}-${name}`);
@@ -185,6 +199,8 @@ async function main() {
       await sleep(250);
     }
   }
+  // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
+  const history = followEvents(origin);
   const page = await launch({ port: Number(opt['chrome-port']) });
   const findings = new Map(); // key → finding
   const timeline = [];
@@ -194,10 +210,11 @@ async function main() {
     startPersonas: [],
     streams: [],
     kiroStreams: [],
+    events: [],
     transcripts: [],
     console: page.logs,
     apps: {},
-    probes: { fullScreen: [], attachments: [] },
+    probes: { fullScreen: [], attachments: [], answers: [] },
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
@@ -237,15 +254,16 @@ async function main() {
       facts.threads = threadsUnderTest(facts.state);
       facts.streams = readStreams(paths.streams);
       facts.kiroStreams = readStreams(paths.kiroStreams);
+      facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
-      facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
+      facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
       facts.ui.reviewRawRows = await page.evaluate(
         `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
       );
     };
-    const newFindings = () => {
+    const newFindings = (only = null) => {
       const fresh = [];
-      for (const f of runChecks(facts)) {
+      for (const f of runChecks(facts, { only })) {
         const k = `${f.check}:${f.key}`;
         if (findings.has(k)) continue;
         const x = { ...f, source: 'check', step: timeline.length, phase: scenario.phases[phase]?.title };
@@ -254,6 +272,21 @@ async function main() {
         log(`check ${f.check}${f.issue ? ` (#${f.issue})` : ''}: ${f.title}`);
       }
       return fresh;
+    };
+
+    // Some defects show only while a turn runs: a background command’s step reads done while the command runs, and the
+    // turn ends only when the command does (#126). Those checks also run every 15 s while agents work, and what they
+    // find goes to the tester with the next step.
+    const midTurn = [];
+    let lastMidTurn = 0;
+    const midTurnChecks = async (st = null) => {
+      if (Date.now() - lastMidTurn < 15_000) return;
+      lastMidTurn = Date.now();
+      facts.state = st ?? (await api('/api/state')).state;
+      facts.threads = threadsUnderTest(facts.state);
+      facts.streams = readStreams(paths.streams);
+      facts.events = history.events();
+      midTurn.push(...newFindings(MID_TURN));
     };
 
     /** Waits until no agent under test is working, sampling what the screen says meanwhile. */
@@ -272,6 +305,7 @@ async function main() {
         const checking = Object.values(st.apps).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
         const thinking = working.filter((se) => se.state !== 'gen').map((se) => se.handle);
         if (thinking.length) facts.samples.push({ busy: thinking, rows: (await d.working()).length });
+        if (working.length) await midTurnChecks(st);
         calm = working.length || checking ? 0 : calm + 1;
         if (calm >= 2) return null;
       }
@@ -325,7 +359,9 @@ async function main() {
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
       const obs = await observe();
-      const fresh = newFindings();
+      const fresh = [...midTurn.splice(0), ...newFindings()];
+      // Stop’s question about background jobs (#126) can be a dialog, which isn’t an item: say it’s there.
+      const jobsAsk = await d.jobsAsk();
       const ph = scenario.phases[phase];
       // What “needs you” counts, every step, whether or not it changed: an old review draft stays on the list.
       const waiting = waitingOnYou(facts.state, facts.threads).map((w) => {
@@ -348,6 +384,7 @@ async function main() {
         obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
         `Agents: ${obs.states.join('; ') || 'none yet'}`,
         waiting.length ? `Waiting on you:\n${waiting.map((w) => `- ${w}`).join('\n')}` : 'Nothing is waiting on you.',
+        jobsAsk ? `Postbox is asking about background jobs: “${jobsAsk}” Answer it with jobs.` : '',
         fresh.length ? `The automatic checks found:\n${fresh.map((f) => `- ${f.title}${f.issue ? ` (#${f.issue})` : ''}: ${f.evidence}`).join('\n')}` : '',
       ]
         .filter(Boolean)
@@ -401,8 +438,24 @@ async function main() {
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
         } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
-        else if (a.type === 'act') await d.act(key, a);
-        else if (a.type === 'review') await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
+        else if (a.type === 'act' || a.type === 'review') {
+          // An answer is for the revision the tester read. If the block changed while it decided, a person would see
+          // it change: say so instead of answering text it didn’t read. Otherwise note the revision it answers, so a
+          // check can tell whether Postbox applied the answer to that one (#123).
+          const itemIn = (st) =>
+            Object.values(st?.items ?? {})
+              .flatMap((list) => list ?? [])
+              .find((x) => x?.id === key);
+          const shown = itemIn(facts.state);
+          const now = shown?.kind === 'block' ? itemIn((await api('/api/state')).state) : null;
+          if (now && (now.revision ?? 1) !== (shown.revision ?? 1))
+            throw new Error(
+              `That block changed while you were deciding: you read revision ${shown.revision ?? 1}, and it’s now at revision ${now.revision ?? 1}. Read it again before you answer.`,
+            );
+          if (now) facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
+          if (a.type === 'act') await d.act(key, a);
+          else await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
+        } else if (a.type === 'jobs') await d.answerJobs(a.answer);
         else if (a.type === 'settings') {
           const r = await d.personaSettings(a.target ?? '', {
             permissions: a.permissions === true,
@@ -437,6 +490,13 @@ async function main() {
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
         } else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
+        // Stop or Send now while the turn this action started is running (#126).
+        if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
+          // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
+          const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
+          const said = await d.interrupt(a.interrupt, { panel, onWait: () => midTurnChecks() });
+          actionResult = actionResult ? `${actionResult} ${said}` : said;
+        }
       } catch (e) {
         actionError = e.message;
         log(`action failed: ${e.message}`);
@@ -446,6 +506,8 @@ async function main() {
     await settle();
     await refreshFacts();
     newFindings();
+    // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
+    await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
     if (opt.file !== 'no') {
@@ -453,6 +515,7 @@ async function main() {
       await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
     }
   } finally {
+    history.close();
     await page.close().catch(() => {});
     server.kill();
   }
@@ -674,16 +737,17 @@ async function recheck(dir) {
       startPersonas: [],
       streams: readStreams(join(dir, 'streams')),
       kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
+      events: readHistory(dir),
       console: page.logs,
       apps: {},
-      probes: saved.probes ?? { fullScreen: [], attachments: [] },
+      probes: { fullScreen: [], attachments: [], answers: [], ...(saved.probes ?? {}) },
       samples: saved.samples ?? [],
       ui: {},
       ...userSetup(join(dir, 'workspace')),
     };
     facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
-    facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
+    facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
     facts.ui.reviewRawRows = await page.evaluate(
       `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
     );

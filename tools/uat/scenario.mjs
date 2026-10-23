@@ -3,6 +3,19 @@
 //
 // `- backends: critic=kiro-cli:gpt-5.6-terra, researcher=claude-code` puts agents on a backend other than the one a
 // fresh install picks, with a model if one follows the colon (#117). Agents it doesn’t name keep the default.
+//
+// A scenario that puts an agent on a backend other than Claude’s (the Kiro CLI today; agy and Codex as they come) is a
+// compatibility run. It checks that a harness still works with Postbox, and it costs that harness’s credits, so it runs
+// only when asked (--compat), never as part of a regular pass.
+
+/** The backends that run Claude. Every other one makes a scenario a compatibility run. */
+export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
+
+/**
+ * The backends other than Claude’s that a scenario puts agents on: empty for a regular scenario.
+ * @param {{ backends: Record<string, { backend: string }> }} scenario
+ */
+export const compatBackends = (scenario) => [...new Set(Object.values(scenario.backends).map((b) => b.backend))].filter((b) => !CLAUDE_BACKENDS.has(b));
 
 /** @returns {Record<string, { backend: string, model: string|null }>} */
 function backendsOf(spec) {

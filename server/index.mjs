@@ -112,7 +112,8 @@ export async function start({
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
   for (const se of Object.values(store.state.sessions))
-    if (['think', 'gen', 'tool'].includes(se.state)) rt.updateSession(se.id, { state: 'idle', subagents: [], currentStep: 'Interrupted by a restart' });
+    if (['think', 'gen', 'tool', 'stopping'].includes(se.state))
+      rt.updateSession(se.id, { state: 'idle', subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
   for (const [threadId, list] of Object.entries(store.state.items))
     for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
   rt.rearmSchedules();
@@ -120,6 +121,7 @@ export async function start({
   rt.expireStalePermissions();
   rt.expireStaleCommands();
   rt.ledger.expireStale();
+  rt.expireStaleJobs();
   rt.rearmMirrors();
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
@@ -246,7 +248,7 @@ export async function start({
 
     if (path === '/mcp') {
       if (req.method !== 'POST') return raw(res, 405, 'Use POST for MCP requests.', { allow: 'POST' });
-      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req));
+      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req), url.searchParams.get('turn'));
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
@@ -324,7 +326,7 @@ export async function start({
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)\/send$/)) && req.method === 'POST') return send(res, 200, rt.sendQueuedNow(m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/act$/)) && req.method === 'POST')
-      return send(res, 200, await rt.act(m[1], m[2], body.action, body.values ?? {}));
+      return send(res, 200, await rt.act(m[1], m[2], body.action, body.values ?? {}, body.revision));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/topic$/)) && req.method === 'POST') return send(res, 201, rt.startTopic(m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/share$/)) && req.method === 'POST')
       return send(res, 201, rt.shareToConversation(m[1], m[2]));
@@ -336,13 +338,23 @@ export async function start({
       return send(res, 200, { ok: true });
     }
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/(stop|archive|restore|undo-delete)$/)) && req.method === 'POST') {
-      const action = { stop: () => rt.stop(m[1]), archive: () => rt.archive(m[1]), restore: () => rt.restore(m[1]), 'undo-delete': () => rt.undoDelete(m[1]) }[
-        m[2]
-      ];
+      const action = {
+        stop: () => rt.requestStop(m[1], { jobs: body.jobs ?? null, turnId: body.turnId ?? null }),
+        archive: () => rt.archive(m[1]),
+        restore: () => rt.restore(m[1]),
+        'undo-delete': () => rt.undoDelete(m[1]),
+      }[m[2]];
       rt.session(m[1]);
       return send(res, 200, { ok: true, result: action() ?? null });
     }
     if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteSession(m[1]));
+    // Stop’s ask about background jobs, dismissed, and a background job’s own Stop (#129).
+    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/stop-ask$/)) && req.method === 'DELETE') {
+      rt.dismissStopAsk(m[1]);
+      return send(res, 200, { ok: true });
+    }
+    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/jobs\/([^/]+)\/stop$/)) && req.method === 'POST')
+      return send(res, 200, await rt.stopJob(m[1], decodeURIComponent(m[2])));
     // The composer’s commands (#67): /model and /effort for this conversation, an agent’s skill as its turn, and !.
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/run$/)) && req.method === 'POST') return send(res, 200, await rt.setSessionRun(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
@@ -517,8 +529,10 @@ export async function start({
       for (const r of streams) r.destroy();
       for (const t of rt.timers.values()) clearTimeout(t);
       rt.stopMirrors();
-      // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67).
+      // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67). So do the
+      // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
       await rt.stopShellCommands();
+      await rt.stopTurns();
       narrator?.stop();
       if (listen) await new Promise((ok) => server.close(ok));
       await store.flush();

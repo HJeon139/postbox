@@ -101,7 +101,9 @@ export const SCHEMA = {
     action: {
       type: 'object',
       properties: {
-        type: { enum: ['send', 'thread', 'act', 'review', 'settings', 'app_click', 'attach_screenshot', 'full_screen', 'wait', 'next_phase', 'done'] },
+        type: {
+          enum: ['send', 'thread', 'act', 'review', 'settings', 'app_click', 'attach_screenshot', 'full_screen', 'jobs', 'wait', 'next_phase', 'done'],
+        },
         text: { type: 'string', description: 'send, thread, attach_screenshot: the message to write.' },
         item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
@@ -115,6 +117,18 @@ export const SCHEMA = {
           type: 'array',
           description: 'review: comments on lines, by the line number shown beside each line.',
           items: { type: 'object', properties: { line: { type: 'string' }, text: { type: 'string' } }, required: ['line', 'text'] },
+        },
+        answer: { enum: ['stop', 'keep'], description: 'jobs: stop the background jobs too, or keep them running.' },
+        interrupt: {
+          type: 'object',
+          description: 'send, thread, act, review: act while the turn this starts is running.',
+          properties: {
+            after: { type: 'integer', description: 'Seconds to let the agent work first.' },
+            do: { enum: ['stop', 'send_now'] },
+            jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
+            text: { type: 'string', description: 'send_now: the message to send.' },
+          },
+          required: ['after', 'do'],
         },
       },
       required: ['type'],
@@ -141,17 +155,20 @@ ${issues.map((i) => `#${i.number} ${i.title}`).join('\n') || '(none listed)'}
 Then choose one action:
 - send {text}: a message in the conversation. To talk to an agent, write its handle with the @, as in “@critic, what’s your biggest concern?”. “critic: …” or the bare name isn’t addressing: a message that @-mentions no agent goes to whichever agent spoke last.
 - thread {item, text}: reply in a topic thread on that message.
-- act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text.
+- act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text. A wake request (“Let @a wake @b?”) is a card: allow it or not with its button.
 - review {item, verdict, comments}: answer a review block. Approve only what you’d sign off as it is. Otherwise request changes, with at least one comment on a line saying what to change; comment, with comments, when you only have questions.
 - settings {target, permissions?}: open Settings › Personas and edit that agent (target is its handle), to see what it runs on, its model, permissions and setup; with permissions, also open its permissions panel. You get what they say and their screenshots; they close after.
 - app_click {item, target}: click something inside that app by its visible text.
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.
 - full_screen {item}: press that app’s Expand button.
+- jobs {answer}: answer Postbox’s question about an agent’s background jobs, when it’s on screen: stop (“Stop it too”) or keep (“Keep running”).
 - wait {seconds}: when an agent is still working.
 - next_phase: when this phase’s goal is met, or blocked after two honest tries.
 - done: after the last phase.
 
 Each step also lists what’s waiting on you: blocks that ask you something, review drafts, wake requests, permission cards, failed turns to retry. Answer them before you move to the next phase or finish, as a person clearing “needs you” would: an agent that asked is stuck until you do. If one isn’t on screen, open the thread it’s in.
+
+The run waits for the agents to finish before each step. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep), or send_now, to write text and press Send now on it.
 
 Scenario: ${scenario.title}
 ${scenario.summary}`;
@@ -190,7 +207,7 @@ export const VERIFY_SCHEMA = {
 export function verifyPrompt({ scenario, findings, timeline, issues }) {
   return `You are reviewing findings from an automated end-to-end test of Postbox, before they are filed as GitHub issues. Be skeptical: a false issue costs more than a missed one.
 
-The scenario was “${scenario.title}”. A tester model played the person, driving the UI through a runner. The runner itself can be wrong: its screenshots, its reading of the page, or its own actions (it presses Stop on a turn that runs too long). Open screenshots with the Read tool when a finding names one.
+The scenario was “${scenario.title}”. A tester model played the person, driving the UI through a runner. The runner itself can be wrong: its screenshots, its reading of the page, or its own actions (it presses Stop on a turn that runs too long, and Stop or Send now when the tester’s action asks it to). Open screenshots with the Read tool when a finding names one.
 
 For each finding, give a verdict:
 - confirmed: a real defect or UX problem in Postbox, supported by the evidence.
