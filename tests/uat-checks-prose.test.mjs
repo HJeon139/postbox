@@ -84,3 +84,17 @@ test('a draft is something the reply asks the person to approve, not a report th
   assert.equal(asksInProse(`${lines(10, 'Changed item')}\nOnce you approve the block, I’ll write CHECKLIST.md.`), null);
   assert.equal(asksInProse(`${lines(10, 'Changed item')}\nThe review block above has it. If you approve the design, I’ll start.`), null);
 });
+
+test('a draft that asks to be approved or changed before it goes out, and a list put to the person, are #63 (#221’s review)', () => {
+  const draft = lines(10, 'The 2.0 announcement, paragraph');
+  for (const end of [
+    'Let me know if you want any changes before I send it.',
+    'Shall I post it?',
+    'Approve it and I’ll post it.',
+    'Does this look right to you?',
+  ])
+    assert.equal(asksInProse(`${draft}\n\n${end}`), 'draft', end);
+  assert.equal(asksInProse('Two ways to go:\n- Rename every entity\n- Rename only the answers\n\nWhat do you think?'), 'options');
+  // A report of what already went out isn’t asking.
+  assert.equal(asksInProse(`${draft}\n\nI checked the numbers before I posted it, and it went out at noon.`), null);
+});

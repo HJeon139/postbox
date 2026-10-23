@@ -62,16 +62,31 @@ function askingLines(text) {
 // - questions: three or more questions, each the end of a sentence, or two in lines that speak to the person (you,
 //   your): “Why lower? I haven’t tested this…” answers itself. Code, tables, quotes, a dataset’s own questions
 //   (“Question: …”), exercises and answers inside <details> ask the person nothing, and neither does a URL’s “?”.
-// - options: two or more list items, and a question that asks the person to pick (which, choose, prefer, or…).
-// - a draft: eight or more lines whose last three ask the person to approve them (“If you approve the design…”),
-//   with no block to point at. A report isn’t one, however long, nor one that mentions an approval in passing
-//   (“I wrote CHECKLIST.md from the approved revision”).
-const PICKS = /\b(which|pick|choose|prefer|rather|or)\b/i;
+// - options: two or more list items, and a question that asks the person to pick or to weigh in (which, choose,
+//   prefer, or, what do you think…).
+// - a draft: eight or more lines whose last three ask the person to approve them or to change them before they go
+//   out (“If you approve the design…”, “Shall I post it?”, “Does this look right to you?”), with no block to point
+//   at. A report isn’t one, however long, nor one that mentions an approval in passing (“I wrote CHECKLIST.md from
+//   the approved revision”).
+const PICKS = /\b(which|pick|choose|prefer|rather|or|what do you think|your (?:thoughts|call|view))\b/i;
 const QUESTION = /[^.!?]*\?(?=[*_"”’)\]]*(?:\s|$))/g;
 const FENCE = /^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm;
 const QUOTED = /^\s*(?:[|>]|(?:\*\*)?(?:question|q\d*)(?:\*\*)?\s*:)/i;
-const APPROVE_IT =
-  /\b(?:if|once|when) you approve\b(?! the (?:block|review))|\byour (?:approval|sign[- ]?off)\b|\b(?:do|would|can) you approve\b|\blooks? good to you\b|\bready to (?:send|post|publish|go out)\b/i;
+const GOES_OUT = '(?:send|post|publish|file|submit|share|merge)';
+const APPROVE_IT = new RegExp(
+  [
+    String.raw`\b(?:if|once|when) you approve\b(?! the (?:block|review))`,
+    String.raw`\byour (?:approval|sign[- ]?off)\b`,
+    String.raw`\b(?:do|would|can) you approve\b`,
+    String.raw`\bapprove (?:it|this)\b`,
+    String.raw`\b(?:looks?|reads?|sounds?) (?:good|right|ok|okay|fine) to you\b`,
+    String.raw`\b(?:does|do) (?:this|it|that|these) (?:look|read|sound) (?:good|right|ok|okay|fine)\b`,
+    String.raw`\bready to (?:send|post|publish|go out)\b`,
+    String.raw`\bbefore I ${GOES_OUT}\b`,
+    String.raw`\b(?:shall|should|can|may) I ${GOES_OUT} (?:it|this|them)\b`,
+  ].join('|'),
+  'i',
+);
 
 /**
  * What a reply asks of the person in prose, by the rules above: 'questions', 'options', 'draft', or null.
