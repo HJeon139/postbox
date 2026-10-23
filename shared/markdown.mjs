@@ -12,6 +12,7 @@
 // right after it, closed by its </details>, folds its Markdown away (agents use it to hide an exercise's
 // answer). The tags must be exactly these, with no attributes; anything else, or an unclosed tag, is text.
 
+import { findMathEnd } from './math.mjs';
 import { isSafeUrl } from './urls.mjs';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -353,21 +354,6 @@ function inline(s, ctx) {
   }
   flush();
   return out;
-}
-
-function findMathEnd(s, from) {
-  for (let j = from; j < s.length; j++) {
-    if (s[j] === '\\') {
-      j++;
-      continue;
-    }
-    if (s[j] === '$') {
-      // "$5 and $6" isn't math: the closing $ must follow a non-space and not be followed by a digit.
-      if (/\s/.test(s[j - 1]) || /\d/.test(s[j + 1] ?? '')) return -1;
-      return j;
-    }
-  }
-  return -1;
 }
 
 function matchParen(s, open) {
