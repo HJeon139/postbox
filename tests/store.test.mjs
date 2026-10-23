@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { Blobs } from '../server/blobs.mjs';
 import { Store } from '../server/store.mjs';
+import { apply, emptyState } from '../shared/state.mjs';
 
 const tmp = () => mkdtemp(join(tmpdir(), 'pb-store-'));
 
@@ -77,6 +78,19 @@ test('since() gives the backlog for a reconnecting browser, or null when it’s 
   assert.deepEqual(s.since(3), []);
   s.events.splice(0, 2);
   assert.equal(s.since(0), null);
+});
+
+test('a reconnecting browser gets each event as it was emitted, so a streamed reply isn’t doubled', () => {
+  const s = new Store(null);
+  s.emit('item.add', { threadId: 't', item: { id: 'i1', kind: 'agent', text: '' } });
+  s.emit('item.text', { threadId: 't', id: 'i1', text: 'Hello ' });
+  s.emit('item.text', { threadId: 't', id: 'i1', text: 'world' });
+  s.emit('item.patch', { threadId: 't', id: 'i1', patch: { status: 'done' } });
+  const browser = emptyState();
+  for (const ev of s.since(0)) apply(browser, ev.type, JSON.parse(JSON.stringify(ev.data)));
+  assert.equal(s.state.items.t[0].text, 'Hello world');
+  assert.deepEqual(browser.items.t, s.state.items.t);
+  assert.deepEqual(s.since(0)[0].data.item, { id: 'i1', kind: 'agent', text: '' });
 });
 
 test('blobs are stored by content, kept once, and checked on read', async () => {
