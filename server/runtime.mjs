@@ -2,7 +2,7 @@
 // limit, queues messages sent mid-reply, handles Stop, tracks what "needs you", and implements the UI
 // tools that agents call (over MCP, or in-process for the mock).
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, resolve, sep } from 'node:path';
@@ -12,6 +12,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
+import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
@@ -33,7 +34,13 @@ const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-f
  * freely, ask before commands. bypass: never ask.
  */
 export const PERMISSION_MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
-const STEP_STATES = new Set(['running', 'done', 'failed', 'denied']);
+const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
+/** How often Postbox checks whether a background job it kept running has ended (#129). */
+const KEPT_POLL_MS = 5000;
+/** The background jobs Postbox keeps on a session, at most. */
+const MAX_JOBS = 50;
+/** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
+const STOP_WATCHDOG_MS = 15000;
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
@@ -49,10 +56,12 @@ export class Runtime {
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
    *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
-   *           spawnShell?: typeof import('node:child_process').spawn }} deps
-   *   spawnShell: how `!command` starts a process (#67); tests pass a fake
+   *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
+   *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]> }} deps
+   *   spawnShell: how `!command` starts a process (#67); signalProcess and listProcesses: how a background job Postbox
+   *   kept running is signaled, and found to check it’s still the same process (#129). Tests pass fakes.
    */
-  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell }) {
+  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list }) {
     this.store = store;
     this.adapters = adapters;
     this.corpus = corpus;
@@ -67,6 +76,13 @@ export class Runtime {
     this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId }
     this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
     this.turns = new Map(); // sessionId → live turn
+    // sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126)
+    this.exiting = new Map();
+    this.signalProcess = signalProcess ?? process.kill;
+    this.listProcesses = list ?? listProcesses;
+    this.closing = false; // Postbox is shutting down: no new turn starts (#126)
+    /** @type {NodeJS.Timeout|null} */
+    this.keptPoll = null; // checks on the background jobs Postbox kept running (#129)
     this.viewing = new Map(); // threadId → last time a browser said it was open
     this.timers = new Map(); // scheduleId or deletion → timeout
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
@@ -260,7 +276,8 @@ export class Runtime {
       this.putThread({ ...this.s.threads[threadId], queue: [...(this.s.threads[threadId].queue ?? []), q] });
       return { queued: q };
     }
-    for (const { se } of busy) this.stop(se.id, { silent: true });
+    // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
+    for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep' });
     return this.postAndDeliver(threadId, { text, attachments }, targets);
   }
 
@@ -291,7 +308,7 @@ export class Runtime {
     const q = (t.queue ?? []).find((x) => x.id === queueId);
     if (!q) throw httpError(404, 'That queued message was already sent or removed.');
     this.putThread({ ...t, queue: t.queue.filter((x) => x.id !== queueId) });
-    for (const id of q.sessionIds) this.stop(id, { silent: true });
+    for (const id of q.sessionIds) this.stop(id, { silent: true, jobs: 'keep' });
     return this.postAndDeliver(
       threadId,
       q,
@@ -324,6 +341,16 @@ export class Runtime {
       t.pending.push({ message, replyTo, summarizeTo });
       return;
     }
+    // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
+    // held here isn’t read yet: it’s read when the turn it starts begins.
+    const exiting = this.exiting.get(sessionId);
+    if (exiting) {
+      exiting.held.push({ message, replyTo, summarizeTo });
+      return;
+    }
+    // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
+    if (this.closing) return;
+    this.answerDelivered(se.threadId, message);
     // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
     // the context below waits for the agent’s next turn instead.
     const slash = message.slash === true;
@@ -363,6 +390,12 @@ export class Runtime {
       pending: [],
       said: '',
       startedAt: Date.now(),
+      // This turn’s own MCP token: a call that carries another turn’s, such as a stopped one’s, is refused (#126).
+      token: randomUUID(),
+      /** @type {Promise<void>} resolves once the adapter is done, which for a real backend is when its process has exited */
+      exited: Promise.resolve(),
+      /** @type {Set<string>} background jobs Stop was asked to keep running (#129) */
+      keepJobs: new Set(),
     };
     this.turns.set(sessionId, turn);
     // Rules the person allowed once (from a refusal card) apply to this turn only.
@@ -376,12 +409,16 @@ export class Runtime {
       finishedAt: null,
     });
     const ctx = this.turnContext(se, turn);
-    Promise.resolve()
-      .then(() => adapter.deliver(this.s.sessions[sessionId], message, ctx))
-      .then(
-        () => this.endTurn(turn, null),
-        (err) => this.endTurn(turn, err),
-      );
+    const run = Promise.resolve().then(() => adapter.deliver(this.s.sessions[sessionId], message, ctx));
+    turn.exited = run.then(
+      () => {},
+      () => {},
+    );
+    run.then(
+      () => this.endTurn(turn, null),
+      (err) => this.endTurn(turn, err),
+    );
+    turn.exited.then(() => this.turnExited(turn));
   }
 
   turnContext(se0, turn) {
@@ -417,7 +454,7 @@ export class Runtime {
     const persona = rt.personaFor(se0);
     return {
       signal: turn.abort.signal,
-      mcpUrl: `${this.config.origin}/mcp?session=${encodeURIComponent(turn.sessionId)}`,
+      mcpUrl: `${this.config.origin}/mcp?session=${encodeURIComponent(turn.sessionId)}&turn=${turn.token}`,
       persona,
       project: rt.s.projects[thread?.projectId] ?? null,
       thread: { id: turn.threadId, title: thread?.title ?? '' },
@@ -456,6 +493,14 @@ export class Runtime {
       commands(list) {
         if (live()) rt.recordCommands(turn.sessionId, list);
       },
+      /**
+       * A background job the agent started (#129): { id, toolUseId, label, command, outputFile, state: 'running' }, then
+       * { id, state: 'done' | 'failed' | 'stopped' } when it ends, or { id, kept: true, pgid } when Stop kept it running.
+       * Taken after the turn ends too, since a job outlives its turn.
+       */
+      job(j) {
+        rt.recordJob(turn, j);
+      },
       /** The backend refused a tool call without asking: { toolUseId, tool, input, label, reason, reasonType, who }. */
       denied(d) {
         if (!live()) return;
@@ -475,8 +520,9 @@ export class Runtime {
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
-      // who: the subagent that took the step; detail: why it failed, or the whole thought; kind: 'thought'.
-      activity({ id, label, state = 'running', ms = null, who = null, detail = null, kind = null }) {
+      // who: the subagent that took the step; detail: why it failed, or the whole thought; kind: 'thought'; job: the
+      // id of the background job it started (#129).
+      activity({ id, label, state = 'running', ms = null, who = null, detail = null, kind = null, job = /** @type {string|null} */ (null) }) {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
@@ -489,6 +535,7 @@ export class Runtime {
           ...(who ? { who: String(who).slice(0, 40) } : {}),
           ...(detail ? { detail: String(detail).slice(0, 1200) } : {}),
           ...(kind === 'thought' ? { kind } : {}),
+          ...(typeof job === 'string' && job ? { job: job.slice(0, 60) } : {}),
         };
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
@@ -608,6 +655,8 @@ export class Runtime {
     // one a restart left behind, too.
     this.clearSummaryPending(turn.threadId);
     if (err && err.name !== 'AbortError') {
+      // Its progress steps still running show as stalled, as at any turn’s end (#98).
+      this.stallLeftRunning(turn, se, 'failed');
       const message = err.userMessage ?? err.message ?? 'The agent stopped unexpectedly.';
       const target =
         turn.segment ??
@@ -628,6 +677,7 @@ export class Runtime {
         subagents: [],
         currentStep: 'Failed',
         finishedAt: Date.now(),
+        stopAsk: null,
       });
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message);
       return;
@@ -669,6 +719,7 @@ export class Runtime {
       lastMessage: last ? clip(last.text) : se.lastMessage,
       finishedAt: Date.now(),
       unread: viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
+      stopAsk: null,
     });
     if (needs && (needs.kind === 'block' || needs.kind === 'denial')) this.notify('blocking', se, `@${se.handle} needs you`, needs.text);
     else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120));
@@ -706,11 +757,22 @@ export class Runtime {
     } else this.drainQueue(turn.threadId);
   }
 
-  /** Stop ends this agent’s turn and its subagents. Agents it woke keep running. */
-  stop(sessionId, { silent = false } = {}) {
+  /**
+   * Stop ends this agent’s turn and its subagents. Agents it woke keep running. Its process gets SIGINT, then SIGKILL,
+   * and the session shows as stopping until it has exited: its next turn waits for that (#126).
+   * jobs: what happens to the background jobs the turn started (#129): 'stop' them with it, or 'keep' them running,
+   * each with its own Stop.
+   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words.
+   * @param {string} sessionId @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' }} [opts]
+   */
+  stop(sessionId, { silent = false, jobs = 'stop', by = 'you' } = {}) {
     const turn = this.turns.get(sessionId);
     if (!turn) return false;
-    turn.abort.abort();
+    const keep = jobs === 'keep' ? this.runningJobs(sessionId, turn.id) : [];
+    turn.keepJobs = new Set(keep.map((j) => j.id));
+    this.exiting.set(sessionId, { turn, held: [], silent });
+    // The adapter reads which jobs to keep from the reason; anything else only sees that the turn was aborted.
+    turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
     turn.closed = true;
     this.turns.delete(sessionId);
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
@@ -731,11 +793,258 @@ export class Runtime {
         stoppedAt: Date.now(),
       });
     }
-    this.updateSession(sessionId, { state: 'idle', subagents: [], currentStep: 'Stopped by you', finishedAt: Date.now() });
+    this.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
+    // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
+    const se = this.s.sessions[sessionId];
+    if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : 'stopped');
+    // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
+    setTimeout(() => {
+      if (this.exiting.get(sessionId)?.turn !== turn) return;
+      console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
+      this.turnExited(turn);
+    }, STOP_WATCHDOG_MS).unref?.();
     // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93).
     this.clearSummaryPending(turn.threadId);
-    if (!silent) this.drainQueue(turn.threadId);
     return true;
+  }
+
+  /**
+   * A turn’s adapter is done, which for a real backend means its process has exited. Its background jobs that nothing
+   * reported the end of went with it, and a stopped session takes what waited for it: the messages sent meanwhile,
+   * then the queue.
+   */
+  turnExited(turn) {
+    this.settleJobs(turn);
+    const ex = this.exiting.get(turn.sessionId);
+    if (ex?.turn !== turn) return;
+    this.exiting.delete(turn.sessionId);
+    const se = this.s.sessions[turn.sessionId];
+    if (!se) return;
+    // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
+    if (se.state === 'stopping' || se.currentStep === 'Stopping')
+      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: 'Stopped by you', finishedAt: Date.now() });
+    const held = se.archived || se.deleting ? [] : ex.held;
+    // Shutting down: your messages wait in the conversation’s queue, which a restart keeps, rather than starting a CLI.
+    if (this.closing) {
+      const t = this.s.threads[se.threadId];
+      const waiting = held
+        .filter((h) => h.message.kind === 'user')
+        .map((h) => ({ id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now() }));
+      if (t && waiting.length) this.putThread({ ...t, queue: [...(t.queue ?? []), ...waiting] });
+      return;
+    }
+    for (const h of held) this.deliver(se.id, h.message, { replyTo: h.replyTo, summarizeTo: h.summarizeTo });
+    if (!held.length && !ex.silent) this.drainQueue(turn.threadId);
+  }
+
+  /**
+   * Stop from the page (#129): with background jobs running, it asks first whether to stop them too, and the ask
+   * shows in the conversation (se.stopAsk) until you answer, dismiss it, or the turn ends.
+   * turnId: the turn the ask was about. An answer to an ask about a turn that has ended since stops nothing.
+   * @param {string} sessionId @param {{ jobs?: 'stop' | 'keep' | null, turnId?: string | null }} [choice]
+   */
+  requestStop(sessionId, { jobs = null, turnId = null } = {}) {
+    const se = this.session(sessionId);
+    const turn = this.turns.get(sessionId);
+    if (!turn) return { stopped: false };
+    if (turnId && turnId !== turn.id) return { stopped: false, ended: true };
+    const running = this.runningJobs(sessionId, turn.id);
+    if (running.length && jobs !== 'stop' && jobs !== 'keep') {
+      const ask = { jobs: running.length, text: stopAskText(se.handle, running.length), turnId: turn.id };
+      this.updateSession(sessionId, { stopAsk: { ...ask, at: Date.now() } });
+      return { ask };
+    }
+    return { stopped: this.stop(sessionId, { jobs: jobs === 'keep' ? 'keep' : 'stop' }) };
+  }
+
+  /** You chose not to stop after all: the ask goes away, and the agent carries on. */
+  dismissStopAsk(sessionId) {
+    this.session(sessionId);
+    this.updateSession(sessionId, { stopAsk: null });
+  }
+
+  // ── Background jobs (#129) ─────────────────────────────────────────────────────────
+
+  /** A turn’s background jobs still running under its CLI (not those Postbox kept running after an earlier Stop). */
+  runningJobs(sessionId, turnId) {
+    return (this.s.sessions[sessionId]?.jobs ?? []).filter((j) => j.turnId === turnId && j.state === 'running' && !j.kept);
+  }
+
+  /** What the adapter reports about a background job (ctx.job), bounded. */
+  recordJob(turn, j) {
+    const se = this.s.sessions[turn.sessionId];
+    if (!se || !j || typeof j.id !== 'string' || !j.id) return;
+    const id = j.id.slice(0, 60);
+    const jobs = se.jobs ?? [];
+    const old = jobs.find((x) => x.id === id);
+    if (!old) {
+      if (j.state !== 'running') return;
+      const job = {
+        id,
+        sessionId: se.id,
+        turnId: turn.id,
+        threadId: turn.threadId,
+        itemId: turn.first,
+        toolUseId: String(j.toolUseId ?? '').slice(0, 100),
+        label: clipText(String(j.label ?? 'Background job'), 200),
+        // Whole, up to a bound: Postbox finds the job’s process by its command.
+        command: String(j.command ?? '').slice(0, 8000),
+        outputFile: typeof j.outputFile === 'string' && j.outputFile ? j.outputFile.slice(0, 1000) : null,
+        startedAt: Date.now(),
+        state: 'running',
+      };
+      // At the bound, the oldest job Postbox didn’t keep goes first: a kept one has no other record.
+      const all = [...jobs, job];
+      const drop = all.length > MAX_JOBS ? all.find((x) => !x.kept) : null;
+      this.updateSession(se.id, { jobs: drop ? all.filter((x) => x !== drop) : all });
+      return;
+    }
+    if (j.kept === true && Number.isInteger(j.pgid) && j.pgid > 1) {
+      this.updateSession(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: j.pgid } : x)) });
+      // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running.
+      this.tellAgent(
+        se.id,
+        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: the person kept it running when your last turn was stopped.${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation.`,
+      );
+      this.watchKept();
+      return;
+    }
+    if (typeof j.state === 'string' && j.state !== 'running') {
+      const lost = turn.keepJobs.has(id) && !old.kept;
+      this.endJob(se.id, id, old.stopping || lost ? 'stopped' : j.state, lost ? KEEP_LOST : null);
+    }
+  }
+
+  /**
+   * A job ended: it leaves the session’s list, and its step shows how.
+   * @param {string} sessionId @param {string} jobId @param {string} state @param {string|null} [detail]
+   * @param {{ by?: 'you' | null }} [opts]
+   */
+  endJob(sessionId, jobId, state, detail = null, { by = null } = {}) {
+    const se = this.s.sessions[sessionId];
+    const job = se?.jobs?.find((j) => j.id === jobId);
+    if (!se || !job) return;
+    this.updateSession(sessionId, { jobs: se.jobs.filter((j) => j.id !== jobId) });
+    if (this.keptPoll && !this.keptJobs().length) {
+      clearInterval(this.keptPoll);
+      this.keptPoll = null;
+    }
+    this.setJobStep(job, { state: STEP_STATES.has(state) ? state : 'done', ms: Date.now() - job.startedAt, ...(detail ? { detail } : {}) });
+    // A job Postbox kept running ended after its CLI had gone, so the agent hears it on its next turn.
+    if (job.kept)
+      this.tellAgent(
+        sessionId,
+        `Your background job ${job.id} (\`${clipText(job.command, 200)}\`) ${by === 'you' ? 'was stopped by the person' : 'has ended'}.${job.outputFile ? ` Its output is in ${job.outputFile}.` : ''}`,
+      );
+  }
+
+  /** Changes a job’s step: in its turn while that runs, else in the reply it’s on. */
+  setJobStep(job, patch) {
+    const live = this.turns.get(job.sessionId);
+    const turn = live?.id === job.turnId ? live : null;
+    const steps = turn ? turn.steps : this.store.item(job.threadId, job.itemId)?.activity?.steps;
+    if (!Array.isArray(steps)) return;
+    const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
+    if (turn) turn.steps = next;
+    if (job.itemId) this.patchItem(job.threadId, job.itemId, { activity: { steps: next } });
+  }
+
+  /** Jobs nothing reported the end of went with their CLI (SIGKILL, or a crash), unless Postbox kept them running. */
+  settleJobs(turn) {
+    for (const j of [...(this.s.sessions[turn.sessionId]?.jobs ?? [])])
+      if (j.turnId === turn.id && j.state === 'running' && !j.kept) this.endJob(turn.sessionId, j.id, 'stopped', turn.keepJobs.has(j.id) ? KEEP_LOST : null);
+  }
+
+  /** Context the agent reads at the start of its next turn, as a Postbox notice. */
+  tellAgent(sessionId, text) {
+    const se = this.s.sessions[sessionId];
+    if (se) this.updateSession(sessionId, { context: [...(se.context ?? []), `[Postbox] ${text}`].slice(-20) });
+  }
+
+  /** The kept jobs, everywhere. */
+  keptJobs() {
+    return Object.values(this.s.sessions).flatMap((se) => (se.jobs ?? []).filter((j) => j.kept && j.pgid));
+  }
+
+  /** Checks on the jobs Postbox kept running, until none is left: one whose process group is gone has ended. */
+  watchKept() {
+    if (this.keptPoll) return;
+    this.keptPoll = setInterval(() => this.pollKept(), KEPT_POLL_MS);
+    this.keptPoll.unref?.();
+  }
+  async pollKept() {
+    if (!this.keptJobs().length) return;
+    const procs = await this.listProcesses().catch(() => null);
+    if (!procs) return;
+    for (const j of this.keptJobs()) if (!keptAlive(j, procs)) this.endJob(j.sessionId, j.id, 'done');
+    if (!this.keptJobs().length && this.keptPoll) {
+      clearInterval(this.keptPoll);
+      this.keptPoll = null;
+    }
+  }
+
+  /** Stops a session’s kept jobs, when it’s deleted for good or Postbox shuts down: nothing else would know of them. */
+  async stopKeptJobs(sessionIds, why) {
+    const jobs = this.keptJobs().filter((j) => sessionIds.includes(j.sessionId));
+    if (!jobs.length) return;
+    const procs = await this.listProcesses().catch(() => []);
+    for (const j of jobs) {
+      if (keptAlive(j, procs)) stopPgid(j.pgid, { kill: this.signalProcess });
+      this.endJob(j.sessionId, j.id, 'stopped', why);
+    }
+  }
+
+  /**
+   * A background job’s own Stop (#129). One Postbox kept running is signaled by its process group; one still under its
+   * agent’s CLI is found there by the adapter, and the CLI reports how it ended.
+   */
+  async stopJob(sessionId, jobId) {
+    const se = this.session(sessionId);
+    const job = (se.jobs ?? []).find((j) => j.id === jobId);
+    if (!job) throw httpError(409, 'That background job already ended.');
+    if (job.kept) {
+      // Only if its group is still the job’s: one that ended may have left its id to another process.
+      if (keptAlive(job, await this.listProcesses().catch(() => []))) stopPgid(job.pgid, { kill: this.signalProcess });
+      this.endJob(sessionId, jobId, 'stopped', null, { by: 'you' });
+      return { ok: true };
+    }
+    const turn = this.turns.get(sessionId);
+    const stopJob = turn?.id === job.turnId ? turn.control?.stopJob : null;
+    if (typeof stopJob !== 'function') throw httpError(409, `Postbox can’t reach that job’s process. Stop @${se.handle} to stop it.`);
+    const mark = (stopping) =>
+      this.updateSession(sessionId, { jobs: (this.s.sessions[sessionId]?.jobs ?? []).map((j) => (j.id === jobId ? { ...j, stopping } : j)) });
+    mark(true);
+    const pgid = await stopJob({ id: job.id, command: job.command });
+    if (!pgid) {
+      mark(false);
+      throw httpError(409, `Postbox couldn’t find that job’s process. Stop @${se.handle} to stop it.`);
+    }
+    return { ok: true };
+  }
+
+  /**
+   * When Postbox shuts down: every turn’s CLI runs in its own process group, and so do the jobs Postbox kept running,
+   * so they’d outlive it. Each is stopped, jobs too, and this waits for the turns’ processes to exit, up to graceMs.
+   * @param {{ graceMs?: number }} [opts]
+   */
+  async stopTurns({ graceMs = 4000 } = {}) {
+    this.closing = true;
+    for (const id of [...this.turns.keys()]) this.stop(id, { silent: true, by: 'shutdown' });
+    await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.');
+    /** @type {NodeJS.Timeout|undefined} */
+    let timer;
+    const late = new Promise((r) => {
+      timer = setTimeout(r, graceMs);
+    });
+    await Promise.race([Promise.all([...this.exiting.values()].map((x) => x.turn.exited)), late]);
+    clearTimeout(timer);
+  }
+
+  /** After a restart, no background job Postbox knew of is its to track any more. */
+  expireStaleJobs() {
+    for (const se of Object.values(this.s.sessions))
+      for (const j of se.jobs ?? [])
+        this.endJob(se.id, j.id, 'stopped', 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.');
   }
 
   /** Retry a failed reply: sends the same message again. */
@@ -766,7 +1075,9 @@ export class Runtime {
         fromSessionId,
         from: from.handle,
         to: p.handle,
+        // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
         reason: clip(text, 200),
+        text,
         status: 'open',
         n: (parent.hops ?? 0) + 1,
       });
@@ -817,7 +1128,8 @@ export class Runtime {
     const from = this.s.sessions[it.fromSessionId];
     if (from) this.updateSession(from.id, { needs: null, state: this.turns.has(from.id) ? from.state : 'idle' });
     this.putThread({ ...this.s.threads[threadId], hops: 0 });
-    if (allow) this.agentWake(it.fromSessionId, it.to, it.reason, { confirmed: true });
+    // A request stored before #108 kept only the preview.
+    if (allow) this.agentWake(it.fromSessionId, it.to, it.text ?? it.reason, { confirmed: true });
     else if (from) this.deliver(from.id, { kind: 'notice', text: `The person chose not to let you wake @${it.to}. Carry on without it.` });
   }
 
@@ -836,7 +1148,8 @@ export class Runtime {
 
   // ── Acting in blocks ───────────────────────────────────────────────────────────────
 
-  act(threadId, itemId, action, values) {
+  /** @param {number} [revision]  the revision of the block the person answered, as their page showed it (#123) */
+  act(threadId, itemId, action, values, revision) {
     const it = this.store.item(threadId, itemId);
     if (!it) throw httpError(404, 'That block doesn’t exist any more.');
     if (it.kind === 'hop') return this.resolveHop(threadId, itemId, action === 'confirm');
@@ -846,16 +1159,68 @@ export class Runtime {
     if (it.kind === 'appsend') return this.resolveAppSend(threadId, itemId, action);
     if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
     if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
-    const r = buildEvent(it.block, action, values);
-    if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
     // Progress, image and code never ask; a card or table action doesn’t lock the block.
     const locks = ASKING.has(it.block.type);
-    if (locks) this.patchItem(threadId, itemId, { answered: true, answer: { action, values: r.event.values, voice: r.voice, at: Date.now() } });
+    const current = it.revision ?? 1;
+    // An answer is for the revision the person saw. One the agent replaced while they were answering is refused,
+    // so an approval never lands on text they didn’t see; their page keeps the draft and shows what changed.
+    if (revision !== undefined && !Number.isInteger(revision)) throw httpError(422, 'The revision you answered must be a whole number.');
+    if (locks && revision !== undefined && revision !== current)
+      throw Object.assign(
+        httpError(
+          409,
+          `This changed while you were answering: you answered revision ${revision}, and it’s now revision ${current}. Look it over, then answer again.`,
+        ),
+        { code: 'stale' },
+      );
+    const r = buildEvent(it.block, action, values, { revision: current });
+    if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
+    // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
+    if (locks)
+      this.patchItem(threadId, itemId, {
+        answered: true,
+        answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false },
+      });
     this.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
     const se = this.s.sessions[it.sessionId];
     if (se?.needs?.itemId === itemId) this.updateSession(se.id, { needs: null, state: this.turns.has(se.id) ? se.state : 'idle' });
-    if (se) this.deliver(se.id, { kind: 'event', event: r.event });
+    if (se) this.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId });
     return { ok: true, voice: r.voice };
+  }
+
+  /**
+   * An answer is read once its event starts one of the agent’s turns (#123). While the agent works, the event waits
+   * in its turn’s queue, and until it’s delivered, update_block can’t reopen the block over it.
+   * @param {string} threadId @param {any} message  a message starting a turn
+   */
+  answerDelivered(threadId, message) {
+    if (message.kind !== 'event' || !message.blockItemId) return;
+    const it = this.store.item(threadId, message.blockItemId);
+    if (it?.answer?.read === false && it.answer.revision === message.event.revision) this.patchItem(threadId, it.id, { answer: { ...it.answer, read: true } });
+  }
+
+  /**
+   * update_block’s refusal over an answer the agent hasn’t read: the answer stays on screen, and the reply says what
+   * it was. If its event is no longer waiting for the agent (a stopped or failed turn, or a restart, dropped it), the
+   * reply carries the whole answer and counts as reading it, so the block isn’t stuck.
+   * @param {string} sessionId @param {string} threadId @param {any} it  the answered block item
+   * @param {boolean} [outcome]  the update set outcome: it reports on an answer the agent can’t know yet
+   */
+  unreadAnswer(sessionId, threadId, it, outcome = false) {
+    const a = it.answer;
+    const at = new Date(a.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const n = Array.isArray(a.values?.comments) ? a.values.comments.length : 0;
+    const full = JSON.stringify(a.values ?? {});
+    const what = it.block.type === 'review' ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}` : `${a.action} ${clipText(full, 300)}`;
+    const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
+    const waiting = this.turns.get(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
+    const then = outcome ? 'then record the outcome' : 'then update';
+    if (waiting) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
+    this.patchItem(threadId, it.id, { answer: { ...a, read: true } });
+    return {
+      ok: false,
+      message: `${said} It didn’t reach you in a turn, so ${it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`}. Read it, ${then}.`,
+    };
   }
 
   resolveProposal(threadId, itemId, action) {
@@ -1004,7 +1369,11 @@ export class Runtime {
 
   /** Whether a summarize turn is running or queued in a topic thread. */
   summarizing(topicId) {
-    return [...this.turns.values()].some((x) => x.threadId === topicId && (x.summarizeTo || x.pending.some((p) => p.summarizeTo)));
+    return (
+      [...this.turns.values()].some((x) => x.threadId === topicId && (x.summarizeTo || x.pending.some((p) => p.summarizeTo))) ||
+      // One waiting for a stopped turn’s process to exit (#126).
+      [...this.exiting.values()].some((x) => x.turn.threadId === topicId && x.held.some((h) => h.summarizeTo))
+    );
   }
 
   clearSummaryPending(topicId) {
@@ -1191,6 +1560,21 @@ export class Runtime {
       );
     problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
     return problems;
+  }
+
+  /**
+   * A turn that was stopped or failed starts no lint turn, but its progress steps still running show as stalled, as
+   * at a normal end (#58), and the agent hears which at the start of its next turn (#98).
+   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown'} how
+   */
+  stallLeftRunning(turn, se, how) {
+    const problems = this.stallSteps(turn, se);
+    if (!problems.length) return;
+    const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
+    this.tellAgent(
+      se.id,
+      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
+    );
   }
 
   /** Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them. */
@@ -2350,6 +2734,11 @@ export class Runtime {
         .filter((x) => x.parentId === threadId)
         .map((x) => x.id),
     ];
+    // Background jobs Postbox kept running for them would run on with no record (#129).
+    this.stopKeptJobs(
+      ids.flatMap((id) => this.s.threads[id]?.members ?? []),
+      'Its conversation was deleted.',
+    );
     for (const id of ids) {
       for (const sid of this.s.threads[id]?.members ?? []) {
         this.stopMirrorFor(sid);
@@ -2386,6 +2775,8 @@ export class Runtime {
     this.timers.delete(`del:${sessionId}`);
     const se = this.s.sessions[sessionId];
     if (!se?.deleting) return;
+    // Background jobs Postbox kept running for it would run on with no record (#129).
+    this.stopKeptJobs([sessionId], 'Its session was deleted.');
     const t = this.s.threads[se.threadId];
     const others = (t?.members ?? []).filter((id) => id !== sessionId && this.s.sessions[id]);
     if (t && !others.length) {
@@ -2629,6 +3020,17 @@ export class Runtime {
           renamed = newId(String(id).slice(0, 40));
           v.block = { ...v.block, id: renamed };
         }
+        // Any other id names one block of this session in this conversation, answered or not, so an answer to it,
+        // and an update or outcome by it, always means that block (#125). Showing it again is refused, not turned
+        // into an update: an update can reopen a block the person answered.
+        if (v.ok && v.block.type !== 'app') {
+          const id = v.block.id;
+          const shown = rt.store.items(threadId()).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
+          // An app’s id can’t take a block’s update, so that case only asks for a new id.
+          if (shown?.block.type === 'app')
+            return { ok: false, message: `${id} is the id of your app “${shown.block.title ?? id}”. Pick a new id for this block.` };
+          if (shown) return { ok: false, message: `Block ${id} is already shown. Use update_block to change it, or pick a new id.` };
+        }
         endSegment();
         const it = rt.addItem(
           threadId(),
@@ -2668,6 +3070,9 @@ export class Runtime {
               ok: false,
               message: OUTCOME_LATER(v.block.id, 'The update wasn’t applied.'),
             };
+          // Nor over an answer the agent hasn’t read (#123): it can’t know what came of an answer it hasn’t seen, and
+          // “Deleted.” could land under a Cancel.
+          if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, threadId(), existing, true);
           const { outcome, ...asked } = v.block;
           const keys = new Set([...Object.keys(asked), ...Object.keys(existing.block)].filter((k) => k !== 'outcome'));
           const changed = [...keys].some((k) => JSON.stringify(asked[k]) !== JSON.stringify(existing.block[k]));
@@ -2677,7 +3082,9 @@ export class Runtime {
             message: `Recorded the outcome under the person’s answer to ${v.block.id}; it stays answered.${changed ? ' Your other changes weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.' : ''}`,
           };
         }
-        // Any other update asks again, so it reopens a block you already answered.
+        // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
+        // read (#123): the person would see it vanish, and the agent would never learn what it erased.
+        if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, threadId(), existing);
         /** @type {Record<string, any>} */
         const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
         if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
@@ -2849,6 +3256,23 @@ function stampSteps(item, block, now) {
     return finished && !s.duration && t.startedAt && t.endedAt ? { ...s, duration: formatDuration(t.endedAt - t.startedAt) } : s;
   });
   return { block: { ...block, steps }, stepTimes: times };
+}
+
+/** What Postbox asks when you stop an agent whose background jobs are running (#129). */
+export function stopAskText(handle, n) {
+  return `@${handle} has ${n === 1 ? '1 background job' : `${n} background jobs`} running. Stop ${n === 1 ? 'it' : 'them'} too?`;
+}
+const KEEP_LOST = 'Postbox couldn’t find its process to keep it running, so it stopped with the agent.';
+
+/**
+ * Whether a kept job’s process group is still the job’s: something is in it, and its leader, if still there, runs the
+ * job’s command. A group can’t lose its id while anything is in it, but once it’s empty the id can go to another.
+ * @param {{ pgid: number, command: string }} job @param {import('./adapters/process-group.mjs').Proc[]} procs
+ */
+function keptAlive(job, procs) {
+  const members = procs.filter((p) => p.pgid === job.pgid);
+  const leader = members.find((p) => p.pid === job.pgid);
+  return members.length > 0 && (!leader || runsCommand(leader, job.command));
 }
 
 export function httpError(status, message) {

@@ -119,7 +119,8 @@ export async function api(path, body, method = 'POST') {
     throw Object.assign(new Error('You’re offline, so that didn’t go through. It will work again once the connection is back.'), { offline: true });
   }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(data.error ?? `The server answered ${r.status}.`), { status: r.status, fieldErrors: data.fieldErrors });
+  if (!r.ok)
+    throw Object.assign(new Error(data.error ?? `The server answered ${r.status}.`), { status: r.status, fieldErrors: data.fieldErrors, code: data.code });
   return data;
 }
 
@@ -150,6 +151,13 @@ export const sessionsOf = (threadId) => (S().threads[threadId]?.members ?? []).m
 export const itemsOf = (threadId) => S().items[threadId] ?? [];
 export const persona = (id) => S().personas[id];
 export const busy = (se) => ['think', 'gen', 'tool'].includes(se?.state);
+/**
+ * Stops an agent’s turn (#126). With background jobs running, the server asks first (#129): it resolves to { ask }, and
+ * the ask shows in the agent’s conversation (se.stopAsk). jobs answers it, 'stop' or 'keep', for the turn it asked about.
+ * @param {{ id: string }} se @param {'stop' | 'keep' | null} [jobs] @param {string | null} [turnId]
+ */
+export const stopSession = (se, jobs = null, turnId = null) =>
+  api(`/api/sessions/${se.id}/stop`, jobs ? { jobs, ...(turnId ? { turnId } : {}) } : {}).then((r) => r?.result ?? null);
 export const liveSessions = () =>
   Object.values(S().sessions).filter(
     (se) => !se.archived && !se.deleting && S().threads[se.threadId] && S().threads[se.threadId].kind !== 'side' && !S().threads[se.threadId].deleting,
@@ -159,6 +167,6 @@ export const needsYou = () => liveSessions().filter((se) => se.needs && ['block'
 /** The thread’s main state for its rail row: the most urgent of its agents. */
 export function threadState(t) {
   const ses = sessionsOf(t.id).filter((x) => !x.archived);
-  const rank = { needs: 5, failed: 4, tool: 3, gen: 3, think: 3, idle: 0 };
+  const rank = { needs: 5, failed: 4, tool: 3, gen: 3, think: 3, stopping: 1, idle: 0 };
   return ses.sort((a, b) => (rank[b.state] ?? 0) - (rank[a.state] ?? 0))[0];
 }

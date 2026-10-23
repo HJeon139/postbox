@@ -6,7 +6,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
-import { api, busy, client, hrefOf, itemsOf, sessionsOf, uploadFile } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession, uploadFile } from './client.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -466,6 +466,7 @@ function renderItem(it, prev, ctx) {
               h('ul.steps', steps.map(stepRow)),
             )
           : null,
+        jobRows(it, steps),
         it.text || it.status === 'streaming' ? h('div.md') : null,
         it.status === 'stopped' ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
         it.status === 'failed'
@@ -526,8 +527,9 @@ function renderItem(it, prev, ctx) {
         // made each version.
         return h('div.wide', showWho ? h('div.col', who(it)) : null, renderAppItem(it, ctx));
       }
-      const act = async (action, values) => {
-        const r = await api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action, values });
+      // revision: the one the person answered (#123); a card’s or table’s action doesn’t say.
+      const act = async (action, values, revision) => {
+        const r = await api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action, values, revision });
         focusComposer();
         return r;
       };
@@ -606,7 +608,7 @@ function activityLabel(all) {
 // One step in an agent’s activity list: a tool call (the agent’s or a subagent’s), or a thought, which opens
 // to its whole text. A failed step says why; a refused one says why too when its backend does (the Kiro and
 // Antigravity CLIs refuse headless, with no card: #152), and otherwise points to its card.
-const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done' };
+const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done', stopped: 'stalled' };
 function stepRow(s) {
   const dur = h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : '');
   if (s.kind === 'thought')
@@ -616,13 +618,60 @@ function stepRow(s) {
       h('details.step-text', h('summary', s.label), s.detail && s.detail !== s.label ? h('p', s.detail) : null),
       dur,
     );
-  const note = s.state === 'denied' ? s.detail || 'Refused: see the card below.' : s.state === 'failed' ? s.detail : null;
+  const note =
+    s.state === 'denied'
+      ? s.detail || 'Refused: see the card below.'
+      : s.state === 'failed'
+        ? s.detail
+        : s.state === 'stopped'
+          ? `Stopped${s.detail ? `: ${s.detail}` : ''}`
+          : s.job && s.state === 'running'
+            ? 'Running in the background'
+            : null;
   return h(
     'li',
     { class: s.state === 'denied' ? 'denied' : '' },
     h(`span.g.g-${GLYPH[s.state] ?? 'done'}`, { role: 'img', 'aria-label': s.state === 'denied' ? 'refused' : s.state }),
     h('span.step-text', s.who ? h('span.step-who', `${s.who} ·`) : null, h('span.mono', s.label), note ? h('span.step-note', note) : null),
     dur,
+  );
+}
+
+/**
+ * The background jobs a reply started that are still running (#129), outside the folded steps so you can see them, each
+ * with its own Stop. The call returned at once, so without this the step would read done while the job runs on.
+ */
+function jobRows(it, steps) {
+  const jobs = steps.filter((s) => s.job && s.state === 'running');
+  if (!jobs.length || !it.sessionId) return null;
+  return h(
+    'ul.bg-jobs',
+    { 'aria-label': 'Background jobs' },
+    jobs.map((s) =>
+      h(
+        'li',
+        h('span.g.g-running', { role: 'img', 'aria-label': 'running' }),
+        h('span.grow', h('span.dim', 'Background job · '), h('span.mono', s.label)),
+        h(
+          'button.btn.sm',
+          {
+            type: 'button',
+            'aria-label': `Stop the background job “${s.label}”`,
+            onclick: (e) => {
+              const b = e.currentTarget;
+              b.disabled = true;
+              api(`/api/sessions/${it.sessionId}/jobs/${encodeURIComponent(s.job)}/stop`, {})
+                .then(() => say(`Stopped the background job “${s.label}”.`))
+                .catch((err) => {
+                  b.disabled = false;
+                  toast({ title: 'Couldn’t stop the job', text: err.message, level: 'blocking' });
+                });
+            },
+          },
+          'Stop',
+        ),
+      ),
+    ),
   );
 }
 
@@ -1045,6 +1094,7 @@ const BACKEND_NAMES = {
   'agent-sdk': 'Agent SDK',
   'kiro-cli': 'Kiro CLI',
   'antigravity-cli': 'Antigravity CLI',
+  codex: 'Codex',
   mock: 'Mock agent',
 };
 
@@ -1242,6 +1292,10 @@ export function mountComposer(threadId, { side = false } = {}) {
   const action = h('button.btn', { type: 'button' });
   const att = h('div.attachments', { role: 'group', 'aria-label': 'Attachments' });
   const queue = h('div.outbox');
+  // Stop’s ask about background jobs (#129), one row per agent, until you answer it.
+  const asks = h('div.outbox');
+  /** @type {Map<string, { jobs: number, text: string, turnId?: string }>} asks the server returned before its session event arrives */
+  const asked = new Map();
   const status = h('div');
   const hint = h('div.hint');
   const menuBox = h('div', { style: { position: 'relative' } });
@@ -1424,8 +1478,8 @@ export function mountComposer(threadId, { side = false } = {}) {
     const working = sessionsOf(threadId).filter(busy);
     if (!working.length) return say('Nothing is running here.');
     for (const se of working)
-      api(`/api/sessions/${se.id}/stop`, {}).then(
-        () => say(`Stopped @${se.handle}.`),
+      stopSession(se).then(
+        (r) => (r?.ask ? askStop(se, r.ask) : say(`Stopped @${se.handle}.`)),
         (e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }),
       );
   }
@@ -1782,7 +1836,10 @@ export function mountComposer(threadId, { side = false } = {}) {
     }
   });
 
-  const el = h('div.composer', h('div.col', status, queue, menuBox, att, h('div.composer-box', plus, commandsButton, ta, action), hint, file, corpusFile));
+  const el = h(
+    'div.composer',
+    h('div.col', status, asks, queue, menuBox, att, h('div.composer-box', plus, commandsButton, ta, action), hint, file, corpusFile),
+  );
 
   // Drop files: the main composer takes drops anywhere in the window. A side or topic composer takes drops on
   // its own panel (see dropZone below), and stops them there so the main composer doesn’t take them too.
@@ -1818,8 +1875,8 @@ export function mountComposer(threadId, { side = false } = {}) {
     action.textContent = b ? 'Stop' : 'Send';
     action.onclick = b
       ? () =>
-          api(`/api/sessions/${b.id}/stop`, {})
-            .then(() => say(`Stopped @${b.handle}.`))
+          stopSession(b)
+            .then((r) => (r?.ask ? askStop(b, r.ask) : say(`Stopped @${b.handle}.`)))
             .catch((e) => toast({ title: 'Couldn’t stop', text: e.message }))
       : () => submit();
     action.setAttribute('aria-label', b ? `Stop @${b.handle}’s reply` : 'Send');
@@ -1844,6 +1901,14 @@ export function mountComposer(threadId, { side = false } = {}) {
         const fresh = queuedRow(q);
         node.replaceChildren(...fresh.childNodes);
       },
+    );
+    // An ask about a turn that has since ended goes with it.
+    for (const id of [...asked.keys()]) if (!busy(S().sessions[id])) asked.delete(id);
+    syncList(
+      asks,
+      sessionsOf(threadId).filter((se) => busy(se) && (se.stopAsk || asked.has(se.id))),
+      (se) => se.id,
+      (se) => stopAskRow(se),
     );
     for (const m of outbox.filter((x) => x.threadId === threadId))
       queue.append(h('div.queued', icon('clock', 'dim'), h('span.q-text', h('span.small.dim', 'Waiting for the connection'), h('br'), m.text)));
@@ -1933,6 +1998,61 @@ export function mountComposer(threadId, { side = false } = {}) {
     const se = target();
     const p = se ? S().personas[se.personaId] : null;
     return se?.personaSnapshot?.folder || p?.folder || S().projects[thread()?.projectId]?.folder || null;
+  }
+  /** Stop found background jobs running: the ask shows above the composer, and its first choice takes focus. */
+  function askStop(se, ask) {
+    asked.set(se.id, ask);
+    paint();
+    asks.querySelector(`[data-key="${se.id}"] button`)?.focus();
+  }
+  /**
+   * “@developer has 1 background job running. Stop it too?” A choice you make there and then, so it’s a quiet row, not
+   * a card: Stop it too, Keep running (the agent stops, its jobs run on), or Escape and the agent carries on.
+   */
+  function stopAskRow(se) {
+    const ask = se.stopAsk ?? asked.get(se.id);
+    const one = (ask?.jobs ?? 1) === 1;
+    const done = () => {
+      asked.delete(se.id);
+      paint();
+      (action.isConnected ? action : ta).focus();
+    };
+    const choose = (jobs) => {
+      asked.delete(se.id);
+      stopSession(se, jobs, ask?.turnId ?? null)
+        .then((r) =>
+          say(
+            r?.ended
+              ? `@${se.handle}’s reply had already ended.`
+              : jobs === 'keep'
+                ? `Stopped @${se.handle}. ${one ? 'Its background job keeps' : 'Its background jobs keep'} running.`
+                : `Stopped @${se.handle} and ${one ? 'its background job' : 'its background jobs'}.`,
+          ),
+        )
+        .catch((e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }))
+        .finally(done);
+    };
+    const dismiss = () => {
+      api(`/api/sessions/${se.id}/stop-ask`, undefined, 'DELETE').catch(() => {});
+      done();
+    };
+    return h(
+      'div.queued.stop-ask',
+      {
+        role: 'group',
+        'aria-label': `Stop @${se.handle}`,
+        onkeydown: (e) => {
+          if (e.key !== 'Escape') return;
+          e.preventDefault();
+          e.stopPropagation();
+          dismiss();
+        },
+      },
+      h('span.q-text', ask?.text ?? `@${se.handle} has background jobs running. Stop them too?`),
+      h('button.btn.sm.send', { type: 'button', onclick: () => choose('stop') }, one ? 'Stop it too' : 'Stop them too'),
+      h('button.btn.sm', { type: 'button', onclick: () => choose('keep') }, 'Keep running'),
+      h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Don’t stop @${se.handle}`, onclick: dismiss }, icon('x', 'i-sm')),
+    );
   }
   function queuedRow(q) {
     const names = q.sessionIds

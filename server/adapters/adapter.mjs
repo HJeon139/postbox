@@ -6,7 +6,8 @@
 // through the UI tools, which a real agent reaches over MCP and the mock reaches through ctx.tools.
 //
 //   message: { kind: 'user',     text, attachments? }            you wrote to the agent
-//            { kind: 'event',    event: { blockId, action, values } }   you acted in a block or app
+//            { kind: 'event',    event: { blockId, revision?, action, values }, blockItemId? }   you acted in a block
+//                                    (revision: the one you answered; blockItemId: Postbox’s own) or an app
 //            { kind: 'agent',    from: '@handle', text }        another agent woke this one
 //            { kind: 'wake',     note }                          a wake-up the agent scheduled
 //            { kind: 'app-check', appId, problems[] }            the app it wrote failed a check

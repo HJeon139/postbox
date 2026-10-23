@@ -85,7 +85,7 @@ A block is JSON naming one component. Agents send it with the `show_block` tool.
 
 | Field | Required | Notes |
 |---|---|---|
-| `id` | Yes | Letters, digits and `- _ . :`. Sending the same id with `update_block` replaces the block in place. |
+| `id` | Yes | Letters, digits and `- _ . :`. Sending the same id with `update_block` replaces the block in place. An id names one block of its agent’s in a conversation, so `show_block` refuses an id that agent already showed there. |
 | `type` | Yes | One of the components below. |
 | `version` | Yes | The component version. This app reads version 1 of each. |
 | `title` | No | Up to 200 characters. |
@@ -108,7 +108,7 @@ Every block is validated before it’s shown ([`shared/catalog.mjs`](shared/cata
 
 Long text fields (`prompt`, `body`, `statement`, review content) are Markdown. Short labels are plain text.
 
-**Answering.** A `choice`, `form`, `confirm` or `review` turns read-only once you answer, and shows what you chose. Only a new block, or an update to the same id, can ask again. An update that sets `outcome` (Markdown, up to 500 characters) on an answered `choice`, `form` or `confirm` doesn’t ask: it reports the result as a line under your answer, the block stays answered, and its agent doesn’t need you. Your action also appears in the transcript as a short line in your voice, such as “Chose: weekly · Monday 9:00”. An open asking block makes its agent **need you**: its ring pulses and you get a notification.
+**Answering.** A `choice`, `form`, `confirm` or `review` turns read-only once you answer, and shows what you chose. Only a new block, or an update to the same id, can ask again. An update that sets `outcome` (Markdown, up to 500 characters) on an answered `choice`, `form` or `confirm` doesn’t ask: it reports the result as a line under your answer, the block stays answered, and its agent doesn’t need you. Your action also appears in the transcript as a short line in your voice, such as “Chose: weekly · Monday 9:00”. Your answer is for the revision you saw: if the agent changed the block while you were answering, Postbox refuses the answer, keeps what you entered, and shows what changed, so you answer again. And an update over an answer the agent hasn’t read yet (it waits while the agent works), whether it asks again or sets `outcome`, is refused, so your answer stays and no result lands under it unread. An open asking block makes its agent **need you**: its ring pulses and you get a notification.
 
 **Safety.** Markdown is rendered by [`shared/markdown.mjs`](shared/markdown.mjs), which escapes everything. Raw HTML is shown as text, links are checked and open in a new tab with `rel="noopener noreferrer"`, and nothing an agent sends becomes a tag, an attribute name or a style.
 
@@ -117,15 +117,15 @@ Long text fields (`prompt`, `body`, `statement`, review content) are Markdown. S
 When you act in a block or an app, the agent receives one message:
 
 ```json
-{ "kind": "event", "event": { "blockId": "start-book", "action": "choose", "values": { "selected": ["walden"] } } }
+{ "kind": "event", "event": { "blockId": "start-book", "revision": 1, "action": "choose", "values": { "selected": ["walden"] } } }
 ```
 
-The event is built and checked by [`shared/events.mjs`](shared/events.mjs) before it’s sent. A form with mistakes doesn’t produce an event: you see a message under each field instead (“Enter a number from 5 to 200.”). These are all the messages an agent can receive:
+The event is built and checked by [`shared/events.mjs`](shared/events.mjs) before it’s sent. `revision` is the revision of the block you answered: 1 when it’s shown, and one more with each `update_block`. Apps’ events have none. A form with mistakes doesn’t produce an event: you see a message under each field instead (“Enter a number from 5 to 200.”). These are all the messages an agent can receive:
 
 | `kind` | When | Fields |
 |---|---|---|
 | `user` | You wrote to the agent | `text`, `attachments` |
-| `event` | You acted in a block or an app | `event: { blockId, action, values }` |
+| `event` | You acted in a block or an app | `event: { blockId, revision, action, values }` |
 | `agent` | Another agent woke it | `from: "@handle"`, `text` |
 | `wake` | A wake-up it scheduled | `note` |
 | `app-check` | An app it wrote failed the pre-display check | `appId`, `problems: [{ code, message }]` |
@@ -175,6 +175,7 @@ A persona runs on one of five backends. Pick one in the new-agent sheet, under *
 | Agent SDK | `query()` from `@anthropic-ai/claude-agent-sdk`, inside Postbox’s server | `npm install` |
 | Kiro CLI | The `kiro-cli` you’re signed in to, headless (`kiro-cli chat --agent-engine v3 --output-format stream-json`). Each thread is one Kiro session, resumed every turn. | Kiro CLI installed (`kiro-cli --version` works), or `POSTBOX_KIRO_BIN` pointing at it |
 | Antigravity CLI | The `agy` CLI you’re signed in to, headless (`agy --output-format stream-json --print`), with Gemini models. Each thread is one conversation, resumed every turn. | Antigravity CLI installed (`agy --version` works), or `POSTBOX_AGY_BIN` pointing at it |
+| Codex | The `codex app-server` you’re signed in to. Postbox starts and resumes an app-server thread for each conversation. | Codex CLI installed (`codex --version` works) and signed in, or `POSTBOX_CODEX_BIN` pointing at it |
 | Mock agent | The scripted agent the demo uses | Nothing |
 
 Postbox never reads, stores or asks for an API key. The Claude backends use Claude Code’s own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it; the Kiro CLI uses its own sign-in, or `KIRO_API_KEY`; the Antigravity CLI uses its own sign-in. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
@@ -207,6 +208,10 @@ Postbox always passes the mode explicitly, so a default from your own Claude Cod
 - **Always your setup.** agy reads its config from `~/.gemini` and has no setting to move it, so there’s no Isolated mode: your rules, skills, plugins and MCP servers load, as in your terminal.
 - **Topic threads start fresh**, as on the Kiro CLI.
 - **Models** are agy’s (`agy models`): Gemini’s, and others such as Claude and GPT-OSS. A persona that names no model runs `gemini-3.8-flash-high`. Effort is part of some model ids (`gemini-3.8-flash-low`), so it’s passed only to a model that takes it, such as `gemini-3.8-flash` (up to High).
+
+**Codex.** Postbox uses the local `codex app-server` JSON-RPC protocol, with Codex’s own sign-in and configuration; it does not ask for an API key. It adds Postbox’s session-specific MCP endpoint to the Codex server, streams Codex text and tool activity, resumes each saved thread on the next turn, and forks topic threads from a completed-turn checkpoint. Stop sends `turn/interrupt` and then stops the child process if needed. Model suggestions come from app-server’s `model/list` catalog.
+
+Codex permission modes map to its sandbox and approval policy: **Ask me** uses read-only, **Auto** and **Accept edits** use workspace-write with network access off and approvals on request, and **Run everything** uses full access with approvals disabled. Codex cannot distinguish Auto from Accept edits in this integration, so the UI says so. Its approval requests appear as Postbox permission cards. The Codex app-server does not honor Postbox’s per-agent Tools checklist or Claude Code permission rules; those controls are marked unavailable. Codex reads its usual local configuration, including any MCP servers already configured there.
 
 **Attach a Claude Code session.** Choose **+**, then **Attach a Claude Code session**, to bring in one you started in a terminal. It joins as an agent working in that session’s folder, with its recent history. When you write to it, Postbox resumes that same session. When you type in the terminal, your turn and the agent’s reply appear in the thread, marked “from terminal”. Let a terminal turn finish before you write to it from Postbox.
 

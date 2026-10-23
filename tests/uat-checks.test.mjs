@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
+import { toPlainText } from '../shared/markdown.mjs';
 import { agyTokens, kiroCredits, runChecks, waitingOnYou } from '../tools/uat/checks.mjs';
+import { JOBS_ANSWERS } from '../tools/uat/driver.mjs';
+import { readHistory } from '../tools/uat/history.mjs';
 import { CLAUDE_BACKENDS, compatBackends, parseScenario, RELEASE_ONLY, releaseGate } from '../tools/uat/scenario.mjs';
 import { SCHEMA, signInSettings, systemPrompt, unaddressed } from '../tools/uat/tester.mjs';
 
@@ -286,18 +291,23 @@ test('the scenarios parse into phases the tester works through', () => {
     .filter((n) => n.endsWith('.md'))
     .map((n) => n.slice(0, -3));
   const personas = JSON.parse(readFileSync(new URL('uat/e2e/personas.json', import.meta.url), 'utf8')).map((p) => p.handle);
-  for (const name of ['scifact', 'hotpotqa', ...EXIT]) assert.ok(names.includes(name), name);
+  for (const name of ['scifact', 'hotpotqa', 'codex', ...EXIT]) assert.ok(names.includes(name), name);
   for (const name of names) {
     // uat-run.mjs --recheck reads a scenario’s name back from its run folder as word characters.
     assert.match(name, /^\w+$/, name);
     const s = parseScenario(readFileSync(new URL(`${name}.md`, dir), 'utf8'));
-    assert.ok(s.phases.length >= 2 && s.phases.length <= 3, name);
+    assert.ok(s.phases.length >= 2 && s.phases.length <= (name === 'codex' ? 4 : 3), name);
     assert.ok(
       s.agents.every((h) => personas.includes(h)),
       name,
     );
     assert.ok(s.persona.length > 40 && s.project && s.conversation && s.summary, name);
   }
+  const codex = parseScenario(readFileSync(new URL('codex.md', dir), 'utf8'));
+  assert.deepEqual(codex.backends.critic, { backend: 'codex', model: null });
+  assert.deepEqual(codex.permissionModes, { critic: 'ask' });
+  assert.ok(codex.phases.some((p) => /resume/i.test(p.title)));
+  assert.ok(codex.phases.some((p) => /fork/i.test(p.title)));
 });
 
 test('the M1 exit scenarios never name a block', () => {
@@ -534,6 +544,24 @@ test('Kiro credits are added up from each turn’s completion; Claude streams ad
   assert.equal(kiroCredits([{ handle: 'researcher', events: [{ type: 'result', total_cost_usd: 1 }] }]), 0);
 });
 
+test('a scenario with agents on a backend other than Claude’s is a compatibility run; Claude’s own backends aren’t', () => {
+  const mixed = parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8'));
+  assert.deepEqual(compatBackends(mixed), ['kiro-cli']);
+  assert.deepEqual(compatBackends(parseScenario('# T\n- backends: a=codex, b=agy:m1, c=codex\n')), ['codex', 'agy']);
+  assert.deepEqual(compatBackends(parseScenario('# T\n- backends: a=claude-code:claude-opus-5-5, b=agent-sdk\n')), []);
+  assert.deepEqual(compatBackends(parseScenario('# T\n')), []);
+  // The README lists each scenario where it belongs: compatibility runs under their own heading, regular ones above it.
+  const readme = readFileSync(new URL('uat/e2e/README.md', import.meta.url), 'utf8');
+  const [regular, compat] = readme.split('### Compatibility scenarios');
+  assert.ok(compat, 'the README has a Compatibility scenarios section');
+  const dir = new URL('uat/e2e/scenarios/', import.meta.url);
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.md'))) {
+    const isCompat = compatBackends(parseScenario(readFileSync(new URL(f, dir), 'utf8'))).length > 0;
+    assert.equal(compat.split('\n### ')[0].includes(`(scenarios/${f})`), isCompat, `${f} is listed under compatibility: ${isCompat}`);
+    assert.equal(regular.includes(`(scenarios/${f})`), !isCompat, `${f} is listed as a regular scenario: ${!isCompat}`);
+  }
+});
+
 test('a scenario can put agents on another backend, with a model', () => {
   const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8'));
   assert.deepEqual(s.backends, { critic: { backend: 'kiro-cli', model: 'gpt-5.6-terra' } });
@@ -543,6 +571,7 @@ test('a scenario can put agents on another backend, with a model', () => {
     b: { backend: 'claude-code', model: 'claude-opus-5-5' },
   });
   assert.deepEqual(parseScenario('# T\n').backends, {});
+  assert.deepEqual(parseScenario('# T\n- permission_modes: @critic=ask, reviewer=bypass\n').permissionModes, { critic: 'ask', reviewer: 'bypass' });
 });
 
 test('the Antigravity CLI runs only in a release run: refused in a scenario, and off for the tester, otherwise (#143)', () => {
@@ -631,12 +660,14 @@ test('the tester can answer a review, and is told to clear what waits on it befo
   assert.deepEqual(action.comments.items.required, ['line', 'text']);
   // And open a persona’s settings, and its permissions panel, which the mixed-room run couldn’t reach.
   assert.ok(action.type.enum.includes('settings'));
+  assert.ok(action.type.enum.includes('send_then_stop'));
   assert.equal(action.permissions.type, 'boolean');
   const prompt = systemPrompt({ scenario: parseScenario('# T\n- persona: someone\n\n## Phase 1: x\n\ny\n'), issues: [] });
   assert.match(prompt, /review \{item, verdict, comments\}/);
   assert.match(prompt, /request changes, with at least one comment on a line/);
   assert.match(prompt, /Answer them before you move to the next phase or finish/);
   assert.match(prompt, /settings \{target, permissions\?\}/);
+  assert.match(prompt, /send_then_stop \{text, seconds\?\}/);
 });
 
 test('a message that addresses an agent by name without its @ is flagged: it goes to whoever spoke last', () => {
@@ -657,4 +688,511 @@ test('a message that addresses an agent by name without its @ is flagged: it goe
   assert.match(prompt, /write its handle with the @/);
   // The actions stay one list: the waiting-on-you paragraph comes after done.
   assert.match(prompt, /- next_phase: [^\n]*\n- done: [^\n]*\n\nEach step also lists what’s waiting on you/);
+});
+
+describe('the P0 hotfixes’ checks fire on the defect as it was reported, and stay quiet once it’s fixed', () => {
+  const T0 = Date.parse('2026-10-22T17:22:52.000Z');
+  const iso = (ms) => new Date(ms).toISOString();
+  const found = (facts, check) => runChecks(facts).filter((x) => x.check === check);
+  const room = (over = {}) =>
+    base({
+      state: {
+        threads: {
+          t1: { id: 't1', title: 'The 2.0 release checklist', kind: 'thread', members: ['s1', 's2'] },
+          t2: { id: 't2', title: '@critic ↔ @researcher', kind: 'side', parentId: 't1', members: ['s3'] },
+        },
+        items: { t1: [], t2: [] },
+        sessions: {
+          s1: { id: 's1', handle: 'researcher', state: 'idle', backendState: { claudeSessionId: 'aaaa1111-0000-4000-8000-000000000000' } },
+          s2: { id: 's2', handle: 'critic', state: 'idle', backendState: { claudeSessionId: '35d8a8ea-0000-4000-8000-000000000000' } },
+          s3: { id: 's3', handle: 'researcher', state: 'idle' },
+        },
+        apps: {},
+        glossary: {},
+      },
+      threads: ['t1', 't2'],
+      ...over,
+    });
+
+  test('duplicate-block-id (#125): two drafts shown under one id by one session, 27 s apart', () => {
+    const block = (id, title, at, over = {}) => ({
+      id,
+      kind: 'block',
+      sessionId: 's2',
+      handle: 'critic',
+      valid: true,
+      at,
+      block: { id: 'issue-review-revision-race', type: 'review', title, format: 'markdown', content: title },
+      ...over,
+    });
+    const f = room();
+    f.state.items.t1 = [block('it_WY8KwH8g', 'Draft: revision race', T0), block('it_AIMlKOi', 'Draft: answers lose their revision', T0 + 27_000)];
+    const [hit, ...rest] = found(f, 'duplicate-block-id');
+    assert.equal(rest.length, 0);
+    assert.equal(hit.issue, 125);
+    assert.equal(
+      hit.evidence,
+      '@critic showed “issue-review-revision-race” 2 times in “The 2.0 release checklist”: it_WY8KwH8g (“Draft: revision race”), it_AIMlKOi (“Draft: answers lose their revision”), 27 s apart.',
+    );
+    // Fixed: the second show_block is refused, so there’s one block. Another agent may use the same id, and a block
+    // that failed to validate, shown again once fixed, isn’t two blocks.
+    f.state.items.t1 = [block('it_WY8KwH8g', 'Draft: revision race', T0)];
+    assert.deepEqual(found(f, 'duplicate-block-id'), []);
+    f.state.items.t1.push(block('it_other', 'Same id, other agent', T0 + 5000, { sessionId: 's1', handle: 'researcher' }));
+    f.state.items.t1.push(block('it_bad', 'Invalid first try', T0 - 5000, { valid: false }));
+    assert.deepEqual(found(f, 'duplicate-block-id'), []);
+  });
+
+  // The request kept a 200-character preview (server/runtime.mjs at 74090ef), clipped the way Postbox clips it.
+  const preview = (text) => {
+    const t = toPlainText(text);
+    return t.length > 200 ? `${t.slice(0, 199)}…` : t;
+  };
+  const fixes = Array.from({ length: 60 }, (_, i) => `Must fix ${i + 1}: Acceptance bar, the item that needs its own test before 2.0 ships.`)
+    .join(' ')
+    .slice(0, 3500)
+    .padEnd(3500, '.');
+  const wakeRoom = ({ hopText = undefined, delivered, streams = [] }) => {
+    const f = room({ streams });
+    const hop = { id: 'it_hop4', at: T0, kind: 'hop', fromSessionId: 's2', from: 'critic', to: 'researcher', reason: preview(fixes), status: 'allowed', n: 4 };
+    f.state.items.t1 = [hopText === undefined ? hop : { ...hop, text: hopText }];
+    f.state.items.t2 = [{ id: 'it_said', at: T0 + 30_000, kind: 'agent', sessionId: 's2', handle: 'critic', text: delivered, status: 'done' }];
+    return f;
+  };
+  const wakeCall = [
+    { type: 'system', subtype: 'init', session_id: '35d8a8ea-0000-4000-8000-000000000000' },
+    {
+      type: 'assistant',
+      timestamp: iso(T0 - 1000),
+      message: { content: [{ type: 'tool_use', id: 'toolu_wake', name: 'mcp__postbox__wake_agent', input: { handle: '@researcher', message: fixes } }] },
+    },
+  ];
+
+  test('wake-text-clipped (#108): the fourth wake, allowed, delivered 200 of the 3,500 characters sent', () => {
+    assert.equal(fixes.length, 3500);
+    assert.equal(preview(fixes).length, 200);
+    let hits = found(wakeRoom({ delivered: preview(fixes), streams: [{ handle: 'critic', events: wakeCall }] }), 'wake-text-clipped');
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].issue, 108);
+    assert.match(hits[0].evidence, /^@critic sent @researcher 3,500 characters; once the wake was allowed, @researcher got 200, ending “/);
+    // Without the stream, the preview delivered as the message still gives it away.
+    hits = found(wakeRoom({ delivered: preview(fixes) }), 'wake-text-clipped');
+    assert.match(hits[0]?.evidence ?? '', /got only the request’s 200-character preview/);
+    // Fixed: the request keeps the whole message, and allowing it delivers all of it.
+    assert.deepEqual(found(wakeRoom({ hopText: fixes, delivered: fixes, streams: [{ handle: 'critic', events: wakeCall }] }), 'wake-text-clipped'), []);
+    // A fix that kept the text but still delivered the preview is caught by the text it kept.
+    assert.match(found(wakeRoom({ hopText: fixes, delivered: preview(fixes) }), 'wake-text-clipped')[0]?.evidence ?? '', /3,500 characters/);
+    // A short message was never clipped.
+    const short = room();
+    short.state.items.t1 = [{ id: 'h', at: T0, kind: 'hop', fromSessionId: 's2', from: 'critic', to: 'researcher', reason: 'Two fixes.', status: 'allowed' }];
+    short.state.items.t2 = [{ id: 'w', at: T0 + 1, kind: 'agent', sessionId: 's2', handle: 'critic', text: 'Two fixes.', status: 'done' }];
+    assert.deepEqual(found(short, 'wake-text-clipped'), []);
+    // Nor was one under 200 characters whose preview is only plainer, with its Markdown gone.
+    const md = 'Fix [the docs](https://example.com/docs) and `setup.py` first.';
+    const plain = room({
+      streams: [
+        {
+          handle: 'critic',
+          events: [{ ...wakeCall[1], message: { content: [{ ...wakeCall[1].message.content[0], input: { handle: 'researcher', message: md } }] } }],
+        },
+      ],
+    });
+    plain.state.items.t1 = [{ id: 'h', at: T0, kind: 'hop', fromSessionId: 's2', from: 'critic', to: 'researcher', reason: preview(md), status: 'allowed' }];
+    plain.state.items.t2 = [{ id: 'w', at: T0 + 1, kind: 'agent', sessionId: 's2', handle: 'critic', text: preview(md), status: 'done' }];
+    assert.ok(preview(md).length < md.length);
+    assert.deepEqual(found(plain, 'wake-text-clipped'), []);
+  });
+
+  // Two turns of @critic’s one Claude Code session, as in #126: the person sent a message at 17:22:52, Postbox showed
+  // the turn stopped and started the next, and the old process went on until about 17:24:20.
+  const CLAUDE = '35d8a8ea-0000-4000-8000-000000000000';
+  const turn = (started, until, calls = []) => ({
+    handle: 'critic',
+    started,
+    ended: until,
+    events: [
+      { type: 'system', subtype: 'init', session_id: CLAUDE },
+      { type: 'assistant', timestamp: iso(started + 200), message: { content: [{ type: 'text', text: 'Looking into it.' }] } },
+      ...calls.flatMap(({ at, name, error = false }, i) => [
+        { type: 'assistant', timestamp: iso(at), message: { content: [{ type: 'tool_use', id: `toolu_${i}`, name, input: {} }] } },
+        {
+          type: 'user',
+          timestamp: iso(at + 200),
+          message: { content: [{ type: 'tool_result', tool_use_id: `toolu_${i}`, content: 'ok', ...(error ? { is_error: true } : {}) }] },
+        },
+      ]),
+      { type: 'assistant', timestamp: iso(until), message: { content: [{ type: 'text', text: 'Done.' }] } },
+    ],
+  });
+  const stopped = {
+    id: 'it_stop',
+    kind: 'agent',
+    sessionId: 's2',
+    handle: 'critic',
+    turnId: 'turn_zCrGu5np',
+    text: '',
+    status: 'stopped',
+    stoppedAt: T0,
+    at: T0 - 60_000,
+  };
+
+  test('two-processes-one-session (#126): the stopped turn ran on for 88 s beside the next, calling Postbox’s tools', () => {
+    const old = turn(T0 - 60_000, T0 + 88_000, [
+      { at: T0 + 40_000, name: 'mcp__postbox__show_block' },
+      { at: T0 + 70_000, name: 'mcp__postbox__update_block' },
+    ]);
+    const f = room({ streams: [old, turn(T0 + 50, T0 + 30_000)] });
+    f.state.items.t1 = [stopped];
+    const hits = found(f, 'two-processes-one-session');
+    assert.deepEqual(
+      hits.map((h) => [h.issue, h.title]),
+      [
+        [126, 'Two turns of one agent session ran at the same time'],
+        [126, 'A stopped turn went on calling Postbox’s tools'],
+      ],
+    );
+    assert.equal(
+      hits[0].evidence,
+      '@critic’s turn started at 17:22:52 UTC while the session’s previous turn (Claude Code session 35d8a8ea) went on until 17:24:20 UTC, 88 s later.',
+    );
+    assert.equal(
+      hits[1].evidence,
+      '@critic was stopped at 17:22:52 UTC, and its process then made 2 Postbox calls (show_block, update_block), the last 70 s after Stop.',
+    );
+  });
+
+  test('two-processes-one-session stays quiet when the next turn waits for the old process, and on refused calls', () => {
+    // Fixed: the old process exited a moment after Stop, and the next turn started after it.
+    let f = room({ streams: [turn(T0 - 60_000, T0 + 400), turn(T0 + 1500, T0 + 30_000)] });
+    f.state.items.t1 = [stopped];
+    assert.deepEqual(found(f, 'two-processes-one-session'), []);
+    // A call in the moment after Stop that Postbox refused (a stopped turn’s token) wasn’t applied.
+    f = room({
+      streams: [turn(T0 - 60_000, T0 + 2900, [{ at: T0 + 2500, name: 'mcp__postbox__show_block', error: true }]), turn(T0 + 4000, T0 + 9000)],
+    });
+    f.state.items.t1 = [stopped];
+    assert.deepEqual(found(f, 'two-processes-one-session'), []);
+    // A call the process made just before it was killed, with no result, never reached Postbox.
+    const cut = turn(T0 - 60_000, T0 + 1000);
+    cut.events.push({
+      type: 'assistant',
+      timestamp: iso(T0 + 1500),
+      message: { content: [{ type: 'tool_use', id: 'toolu_cut', name: 'mcp__postbox__show_block', input: {} }] },
+    });
+    f = room({ streams: [cut, turn(T0 + 4000, T0 + 9000)] });
+    f.state.items.t1 = [stopped];
+    assert.deepEqual(found(f, 'two-processes-one-session'), []);
+    // Turns of different sessions (a topic thread’s fork has its own id) may run side by side.
+    const fork = turn(T0, T0 + 60_000);
+    fork.events[0] = { ...fork.events[0], session_id: 'fork-0000' };
+    assert.deepEqual(found(room({ streams: [turn(T0 - 60_000, T0 + 30_000), fork] }), 'two-processes-one-session'), []);
+  });
+
+  // @developer’s background command in #129: its step closed as done in 2.6 s while the command ran on.
+  const bgStream = (extra = []) => ({
+    handle: 'researcher',
+    events: [
+      { type: 'system', subtype: 'init', session_id: 'aaaa1111-0000-4000-8000-000000000000' },
+      {
+        type: 'assistant',
+        timestamp: iso(T0),
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_bg',
+              name: 'Bash',
+              input: {
+                command: 'for i in $(seq 36); do date >> heartbeat-1.log; sleep 5; done',
+                description: 'Append the time every 5 s',
+                run_in_background: true,
+              },
+            },
+          ],
+        },
+      },
+      {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'bgxwt3pqu',
+        tool_use_id: 'toolu_bg',
+        description: 'Append the time every 5 s',
+        task_type: 'local_bash',
+      },
+      {
+        type: 'user',
+        timestamp: iso(T0 + 2600),
+        message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_bg', content: 'Command running in background with ID: bgxwt3pqu.' }] },
+        tool_use_result: { stdout: '', stderr: '', backgroundTaskId: 'bgxwt3pqu' },
+      },
+      ...extra,
+    ],
+  });
+  const bgRoom = (state, streams, sessionFields = {}) => {
+    const f = room({ streams });
+    f.state.items.t1 = [
+      {
+        id: 'it_a',
+        kind: 'agent',
+        sessionId: 's1',
+        handle: 'researcher',
+        turnId: 'u1',
+        text: 'Started.',
+        activity: { steps: [{ id: 'toolu_bg', label: 'Append the time every 5 s', state, ms: 2600 }] },
+      },
+    ];
+    Object.assign(f.state.sessions.s1, sessionFields);
+    return f;
+  };
+
+  test('background-step-closed (#126, #129): a background command’s step says done while the stream hasn’t seen it end', () => {
+    const [hit, ...rest] = found(bgRoom('done', [bgStream()]), 'background-step-closed');
+    assert.equal(rest.length, 0);
+    assert.equal(hit.issue, 126);
+    assert.match(
+      hit.evidence,
+      /^@researcher’s step “Append the time every 5 s” says done, but the stream hasn’t seen it end \(background id bgxwt3pqu\): for i in/,
+    );
+    // Fixed: the step stays running while the job runs; or it closes once the job’s end is reported.
+    assert.deepEqual(found(bgRoom('running', [bgStream()]), 'background-step-closed'), []);
+    const end = {
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'bgxwt3pqu',
+      tool_use_id: 'toolu_bg',
+      status: 'completed',
+      output_file: '/tmp/x.output',
+    };
+    assert.deepEqual(found(bgRoom('done', [bgStream([end])]), 'background-step-closed'), []);
+    // A fix’s own record of the job decides, when there is one. Without one, a step that names its job was closed by a
+    // fix that tracks it (fix/p0-stop removes the record when the job ends), even when Keep running left the stream
+    // without the end.
+    const tracked = bgRoom('done', [bgStream()]);
+    tracked.state.items.t1[0].activity.steps[0].job = 'bgxwt3pqu';
+    assert.deepEqual(found(tracked, 'background-step-closed'), []);
+    tracked.state.sessions.s1.jobs = [{ id: 'bgxwt3pqu', toolUseId: 'toolu_bg', state: 'running', kept: true }];
+    assert.equal(found(tracked, 'background-step-closed').length, 1);
+    assert.deepEqual(
+      found(bgRoom('done', [bgStream()], { jobs: [{ id: 'bgxwt3pqu', toolUseId: 'toolu_bg', status: 'stopped' }] }), 'background-step-closed'),
+      [],
+    );
+    assert.equal(
+      found(bgRoom('done', [bgStream([end])], { jobs: [{ id: 'bgxwt3pqu', toolUseId: 'toolu_bg', status: 'running' }] }), 'background-step-closed').length,
+      1,
+    );
+  });
+
+  test('background-step-closed reads a command Claude Code moved to the background, as a wave 2 run recorded it', () => {
+    // From uat-runs/2026-10-22T01-02-09-hotpotqa: a command past its 120 s timeout, moved to the background, later
+    // killed. A command that stays in the foreground isn’t a background job, and a monitor isn’t a command.
+    const events = [
+      {
+        type: 'assistant',
+        timestamp: iso(T0),
+        message: { content: [{ type: 'tool_use', id: 'toolu_find', name: 'Bash', input: { command: 'find / -name "*.ner.pkl"' } }] },
+      },
+      { type: 'system', subtype: 'task_started', task_id: 'b3tvckkvo', tool_use_id: 'toolu_find', is_backgrounded: false, task_type: 'local_bash' },
+      { type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'b3tvckkvo', task_type: 'local_bash' }] },
+      { type: 'system', subtype: 'task_updated', task_id: 'b3tvckkvo', patch: { is_backgrounded: true } },
+      {
+        type: 'assistant',
+        timestamp: iso(T0),
+        message: { content: [{ type: 'tool_use', id: 'toolu_fg', name: 'Bash', input: { command: 'python3 probe.py' } }] },
+      },
+      { type: 'system', subtype: 'task_started', task_id: 'bfg', tool_use_id: 'toolu_fg', is_backgrounded: false, task_type: 'local_bash' },
+      { type: 'system', subtype: 'task_started', task_id: 'smzuayiss', tool_use_id: 'toolu_mon', task_type: 'monitor_ws', ambient: true },
+    ];
+    const withSteps = (extra) => {
+      const f = room({ streams: [{ handle: 'critic', events: [...events, ...extra] }] });
+      f.state.items.t1 = [
+        {
+          id: 'it_c',
+          kind: 'agent',
+          sessionId: 's2',
+          handle: 'critic',
+          turnId: 'u1',
+          text: '',
+          activity: {
+            steps: [
+              { id: 'toolu_find', label: 'find', state: 'done' },
+              { id: 'toolu_fg', label: 'probe', state: 'done' },
+              { id: 'toolu_mon', label: 'monitor', state: 'done' },
+            ],
+          },
+        },
+      ];
+      return f;
+    };
+    assert.deepEqual(
+      found(withSteps([]), 'background-step-closed').map((h) => h.key),
+      ['toolu_find'],
+    );
+    const killed = [
+      { type: 'system', subtype: 'task_updated', task_id: 'b3tvckkvo', patch: { status: 'killed', end_time: T0 + 700_000 } },
+      { type: 'system', subtype: 'background_tasks_changed', tasks: [] },
+    ];
+    assert.deepEqual(found(withSteps(killed), 'background-step-closed'), []);
+    // Gone from the list of background tasks is ended too.
+    assert.deepEqual(found(withSteps([killed[1]]), 'background-step-closed'), []);
+  });
+
+  // #123’s timeline, from the event log of block it_QhzCNay: @critic’s update at +4 s was written before it read the
+  // request for changes, and its update at +70 s before it read the approval of revision 2.
+  // A turn clears finishedAt as it starts and sets it as it ends; a permission card mid-turn sets needs, not finishedAt.
+  const session = (seq, state, finishedAt = state === 'idle' ? T0 : null) => ({ seq, type: 'session', data: { id: 's2', state, finishedAt } });
+  const added = {
+    seq: 2,
+    type: 'item.add',
+    data: {
+      threadId: 't1',
+      item: {
+        id: 'it_QhzCNay',
+        kind: 'block',
+        sessionId: 's2',
+        handle: 'critic',
+        valid: true,
+        at: T0,
+        block: { id: 'issue-draft', type: 'review', title: 'Draft issue' },
+      },
+    },
+  };
+  const answer = (seq, action, at, extra = {}) => ({
+    seq,
+    type: 'item.patch',
+    data: { threadId: 't1', id: 'it_QhzCNay', patch: { answered: true, answer: { action, values: {}, at, ...extra } } },
+  });
+  const update = (seq, revision, at) => ({
+    seq,
+    type: 'item.patch',
+    data: { threadId: 't1', id: 'it_QhzCNay', patch: { block: {}, answered: false, answer: null, revision, updatedAt: at } },
+  });
+
+  test('approval-for-other-revision (#123): updates that reopened answers the agent hadn’t read', () => {
+    const events = [
+      session(1, 'think'),
+      added,
+      answer(3, 'request_changes', T0),
+      update(4, 2, T0 + 4000),
+      session(5, 'idle'),
+      session(6, 'think'),
+      session(7, 'tool'),
+      answer(8, 'approve', T0 + 35_000),
+      // A permission card in the same turn: the state goes to needs and back, and the turn goes on.
+      session(9, 'needs'),
+      session(10, 'think'),
+      update(11, 3, T0 + 70_000),
+    ];
+    const hits = found(room({ events }), 'approval-for-other-revision');
+    assert.deepEqual(
+      hits.map((h) => h.evidence),
+      [
+        '@critic’s update made revision 2 of “Draft issue” 4 s after the person’s request_changes on revision 1, with no turn in between to read it, so the answer was erased unread.',
+        '@critic’s update made revision 3 of “Draft issue” 35 s after the person’s approve on revision 2, with no turn in between to read it, so the answer was erased unread.',
+      ],
+    );
+    assert.ok(hits.every((h) => h.issue === 123));
+  });
+
+  test('approval-for-other-revision stays quiet when the agent read the answer first, or the update was refused', () => {
+    // The person answered while @critic was idle: the answer started its turn, which then revised the draft.
+    const read = [session(1, 'idle'), added, answer(3, 'request_changes', T0), session(4, 'think'), update(5, 2, T0 + 20_000)];
+    assert.deepEqual(found(room({ events: read }), 'approval-for-other-revision'), []);
+    // Fixed: the update over an unread answer is refused, so the answer stays and nothing reopens.
+    const refused = [session(1, 'think'), added, answer(3, 'request_changes', T0), session(4, 'idle')];
+    assert.deepEqual(found(room({ events: refused }), 'approval-for-other-revision'), []);
+    // An outcome under an answer reports a result; it doesn’t reopen the block (#94).
+    // A fix marks the answer read when it reaches the agent, or when update_block’s refusal gives it: an update after
+    // that, in the same turn, was written with it.
+    const told = [
+      session(1, 'think'),
+      added,
+      answer(3, 'request_changes', T0, { revision: 1, read: false }),
+      {
+        seq: 4,
+        type: 'item.patch',
+        data: { threadId: 't1', id: 'it_QhzCNay', patch: { answer: { action: 'request_changes', at: T0, revision: 1, read: true } } },
+      },
+      update(5, 2, T0 + 9000),
+    ];
+    assert.deepEqual(found(room({ events: told }), 'approval-for-other-revision'), []);
+    const outcome = [
+      session(1, 'think'),
+      added,
+      answer(3, 'approve', T0),
+      { seq: 4, type: 'item.patch', data: { threadId: 't1', id: 'it_QhzCNay', patch: { block: {}, revision: 2, updatedAt: T0 + 9000 } } },
+    ];
+    assert.deepEqual(found(room({ events: outcome }), 'approval-for-other-revision'), []);
+  });
+
+  test('approval-for-other-revision: an answer that landed on a revision other than the one answered', () => {
+    // The runner read revision 2 just before it approved; the agent’s update to revision 3 landed first.
+    const events = [session(1, 'idle'), added, update(3, 2, T0), session(4, 'think'), update(5, 3, T0 + 34_500), answer(6, 'approve', T0 + 35_000)];
+    const probes = { fullScreen: [], attachments: [], answers: [{ key: 'it_QhzCNay', revision: 2, at: T0 + 34_000 }] };
+    const [hit] = found(room({ events, probes }), 'approval-for-other-revision');
+    assert.equal(hit?.evidence, 'The person answered revision 2 of @critic’s “Draft issue”, and Postbox applied their approve to revision 3.');
+    // A fix records the revision the person saw on the answer: that decides, with or without the runner’s note.
+    const saw = (revision) => [...events.slice(0, 5), answer(6, 'approve', T0 + 35_000, { revision })];
+    assert.equal(found(room({ events: saw(2) }), 'approval-for-other-revision').length, 1);
+    assert.deepEqual(found(room({ events: saw(3) }), 'approval-for-other-revision'), []);
+    // Answered the revision it read: quiet, whatever an earlier answer to the same block read.
+    assert.deepEqual(
+      found(
+        room({
+          events,
+          probes: {
+            ...probes,
+            answers: [
+              { key: 'it_QhzCNay', revision: 1, at: T0 - 9000 },
+              { key: 'it_QhzCNay', revision: 3, at: T0 + 34_800 },
+            ],
+          },
+        }),
+        'approval-for-other-revision',
+      ),
+      [],
+    );
+  });
+
+  test('the history: a run’s saved events, else what’s left of Postbox’s log, cut to what the checks read', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'postbox-history-'));
+    try {
+      mkdirSync(join(dir, 'data'));
+      const log = [
+        { seq: 1, type: 'session', data: { id: 's2', state: 'think', personaSnapshot: { instructions: 'long' } } },
+        { seq: 2, type: 'item.text', data: { threadId: 't1', id: 'x', text: 'Try' } },
+        added,
+      ];
+      // The last line was still being written.
+      writeFileSync(join(dir, 'data', 'events-1.jsonl'), `${log.map((e) => JSON.stringify(e)).join('\n')}\n{"seq":4,"type":"item.pa`);
+      assert.deepEqual(readHistory(dir), [{ seq: 1, type: 'session', data: { id: 's2', state: 'think', finishedAt: null, updatedAt: null } }, added]);
+      writeFileSync(join(dir, 'events.jsonl'), `${JSON.stringify(session(9, 'idle'))}\n`);
+      assert.deepEqual(readHistory(dir), [session(9, 'idle')]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('the P0 scenario: a room of two Claude Code agents, in three phases', () => {
+    const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/p0.md', import.meta.url), 'utf8'));
+    assert.deepEqual(s.agents, ['researcher', 'critic']);
+    assert.deepEqual(s.backends, {});
+    assert.equal(s.phases.length, 3);
+    assert.match(s.phases[0].text, /allow it/);
+    assert.match(s.phases[1].text, /Send now/);
+    assert.match(s.phases[2].text, /press Stop[\s\S]*keep it running[\s\S]*stop it too[\s\S]*Send now/);
+  });
+
+  test('the tester can stop a turn or send now while it runs, and answer the question about background jobs', () => {
+    const action = SCHEMA.properties.action.properties;
+    assert.ok(action.type.enum.includes('jobs'));
+    assert.deepEqual(action.answer.enum, ['stop', 'keep']);
+    assert.deepEqual(action.interrupt.properties.do.enum, ['stop', 'send_now']);
+    assert.deepEqual(action.interrupt.required, ['after', 'do']);
+    // The decision’s words for the two answers (#126).
+    assert.deepEqual(JOBS_ANSWERS, { stop: ['Stop it too', 'Stop them too'], keep: ['Keep running'] });
+    const prompt = systemPrompt({ scenario: parseScenario('# T\n'), issues: [] });
+    assert.match(prompt, /jobs \{answer\}/);
+    assert.match(prompt, /an interrupt \{after, do, jobs\?, text\?\}/);
+    assert.match(prompt, /A wake request \(“Let @a wake @b\?”\) is a card/);
+  });
 });

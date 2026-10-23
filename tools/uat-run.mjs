@@ -7,13 +7,16 @@
 //   node tools/uat-run.mjs --scenario hotpotqa --steps 30 --budget 6 --tester-model claude-opus-5-5
 //
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. A scenario
-// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in.
-// The Antigravity CLI is on a free tier, so it runs only for a version release: pass --release (releaseGate).
+// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
+// the scenario is a compatibility run, which needs --compat. The Antigravity CLI is on a free tier, so it runs only
+// for a version release: --release (releaseGate), which also counts as --compat:
+//
+//   node tools/uat-run.mjs --scenario mixedroom --compat
 // Everything a run makes goes in uat-runs/<time>-<scenario>/ (ignored by git): report.md, findings.json,
 // screenshots, each agent turn’s raw stream, and Postbox’s data.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
@@ -21,11 +24,13 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { agyVersion, findAgy } from '../server/adapters/antigravity-cli.mjs';
+import { codexModels, codexVersion, findCodex } from '../server/adapters/codex.mjs';
 import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
-import { agyTokens, kiroCredits, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { agyTokens, kiroCredits, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver } from './uat/driver.mjs';
-import { parseScenario, releaseGate } from './uat/scenario.mjs';
+import { followEvents, readHistory } from './uat/history.mjs';
+import { compatBackends, parseScenario, releaseGate } from './uat/scenario.mjs';
 import { askOnce, createTester, systemPrompt, unaddressed, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -45,6 +50,8 @@ const { values: opt } = parseArgs({
     file: { type: 'string', default: 'yes' },
     // The run for a version release: only it may use the release-only backends (tools/uat/scenario.mjs, RELEASE_ONLY).
     release: { type: 'boolean', default: false },
+    // Run a compatibility scenario: one with agents on a backend other than Claude’s, such as the Kiro CLI.
+    compat: { type: 'boolean', default: false },
   },
 });
 
@@ -75,13 +82,16 @@ const portFree = (port) =>
   });
 
 /** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), by the Kiro CLI
- * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, or by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/. */
+ * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, or by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/.
+ * A file is named for when its turn’s process started, and its last write is when that process last said anything (#126). */
 function readStreams(folder) {
   if (!existsSync(folder)) return [];
   return readdirSync(folder)
     .filter((f) => f.endsWith('.jsonl'))
     .map((f) => ({
       handle: f.replace(/^\d+-/, '').replace(/\.jsonl$/, ''),
+      started: Number(/^(\d+)-/.exec(f)?.[1]) || undefined,
+      ended: statSync(join(folder, f)).mtimeMs,
       events: readFileSync(join(folder, f), 'utf8')
         .split('\n')
         .filter(Boolean)
@@ -113,6 +123,11 @@ const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.rep
 async function main() {
   const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
   const scenario = parseScenario(readFileSync(scenarioFile, 'utf8'));
+  const other = compatBackends(scenario);
+  if (other.length && !opt.compat && !opt.release)
+    throw new Error(
+      `This scenario puts agents on ${other.join(' and ')}, so it’s a compatibility run, which runs only when asked: it uses that harness’s credits, and a regular pass is Claude only. Pass --compat to run it.`,
+    );
   // A release-only backend (the Antigravity CLI, on a free tier) runs only in a release run; otherwise Postbox starts
   // without it, so the tester can’t put an agent on it from a sheet either.
   const gate = releaseGate(scenario, { release: opt.release });
@@ -126,6 +141,7 @@ async function main() {
     streams: join(dir, 'streams'),
     kiroStreams: join(dir, 'streams', 'kiro'),
     agyStreams: join(dir, 'streams', 'agy'),
+    codexStreams: join(dir, 'streams', 'codex'),
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
@@ -150,12 +166,27 @@ async function main() {
   // A fresh install has one generic agent, so the scenario's agents are seeded from agents.json: every
   // persona in personas.json, since scenarios bring more agents (@critic) into topic threads than they start with.
   const personas = JSON.parse(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
+  let codexDefaultModel = null;
+  if (Object.values(scenario.backends).some((b) => b.backend === 'codex')) {
+    const v = await codexVersion(findCodex());
+    if (!v) throw new Error('This scenario puts agents on Codex, and the Codex CLI is not installed here (or set POSTBOX_CODEX_BIN).');
+    codexDefaultModel = (await codexModels(findCodex()))[0] ?? null;
+    log(`Codex ${v}${codexDefaultModel ? ` · default model ${codexDefaultModel}` : ''}.`);
+  }
   // An agent the scenario puts on another backend runs there with the model it names. A Kiro agent is Isolated: it
   // runs with Postbox’s own Kiro home, so the run never writes into the person’s ~/.kiro, and the Kiro checks can
   // tell the person’s steering and servers from Postbox’s (#57).
   const onBackend = (p) => {
     const b = scenario.backends[p.handle];
-    return b ? { ...p, backend: b.backend, ...(b.model ? { model: b.model } : {}), ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}) } : p;
+    return b
+      ? {
+          ...p,
+          backend: b.backend,
+          ...(scenario.permissionModes[p.handle] ? { permissionMode: scenario.permissionModes[p.handle] } : {}),
+          ...(b.model ? { model: b.model } : b.backend === 'codex' && codexDefaultModel ? { model: codexDefaultModel } : {}),
+          ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}),
+        }
+      : p;
   };
   const agents = [
     ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
@@ -182,7 +213,14 @@ async function main() {
   await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,
-    env: { ...process.env, ...gate.env, POSTBOX_CLAUDE_RECORD: paths.streams, POSTBOX_KIRO_RECORD: paths.kiroStreams, POSTBOX_AGY_RECORD: paths.agyStreams },
+    env: {
+      ...process.env,
+      ...gate.env,
+      POSTBOX_CLAUDE_RECORD: paths.streams,
+      POSTBOX_KIRO_RECORD: paths.kiroStreams,
+      POSTBOX_AGY_RECORD: paths.agyStreams,
+      POSTBOX_CODEX_RECORD: paths.codexStreams,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (d) => log(`postbox: ${String(d).trim()}`));
@@ -202,6 +240,8 @@ async function main() {
       await sleep(250);
     }
   }
+  // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
+  const history = followEvents(origin);
   const page = await launch({ port: Number(opt['chrome-port']) });
   const findings = new Map(); // key → finding
   const timeline = [];
@@ -212,10 +252,12 @@ async function main() {
     streams: [],
     kiroStreams: [],
     agyStreams: [],
+    codexStreams: [],
+    events: [],
     transcripts: [],
     console: page.logs,
     apps: {},
-    probes: { fullScreen: [], attachments: [] },
+    probes: { fullScreen: [], attachments: [], answers: [] },
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
@@ -256,15 +298,17 @@ async function main() {
       facts.streams = readStreams(paths.streams);
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.agyStreams = readStreams(paths.agyStreams);
+      facts.codexStreams = readStreams(paths.codexStreams);
+      facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
       facts.ui.reviewRawRows = await page.evaluate(
         `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
       );
     };
-    const newFindings = () => {
+    const newFindings = (only = null) => {
       const fresh = [];
-      for (const f of runChecks(facts)) {
+      for (const f of runChecks(facts, { only })) {
         const k = `${f.check}:${f.key}`;
         if (findings.has(k)) continue;
         const x = { ...f, source: 'check', step: timeline.length, phase: scenario.phases[phase]?.title };
@@ -273,6 +317,21 @@ async function main() {
         log(`check ${f.check}${f.issue ? ` (#${f.issue})` : ''}: ${f.title}`);
       }
       return fresh;
+    };
+
+    // Some defects show only while a turn runs: a background command’s step reads done while the command runs, and the
+    // turn ends only when the command does (#126). Those checks also run every 15 s while agents work, and what they
+    // find goes to the tester with the next step.
+    const midTurn = [];
+    let lastMidTurn = 0;
+    const midTurnChecks = async (st = null) => {
+      if (Date.now() - lastMidTurn < 15_000) return;
+      lastMidTurn = Date.now();
+      facts.state = st ?? (await api('/api/state')).state;
+      facts.threads = threadsUnderTest(facts.state);
+      facts.streams = readStreams(paths.streams);
+      facts.events = history.events();
+      midTurn.push(...newFindings(MID_TURN));
     };
 
     /** Waits until no agent under test is working, sampling what the screen says meanwhile. */
@@ -291,6 +350,7 @@ async function main() {
         const checking = Object.values(st.apps).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
         const thinking = working.filter((se) => se.state !== 'gen').map((se) => se.handle);
         if (thinking.length) facts.samples.push({ busy: thinking, rows: (await d.working()).length });
+        if (working.length) await midTurnChecks(st);
         calm = working.length || checking ? 0 : calm + 1;
         if (calm >= 2) return null;
       }
@@ -344,7 +404,9 @@ async function main() {
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
       const obs = await observe();
-      const fresh = newFindings();
+      const fresh = [...midTurn.splice(0), ...newFindings()];
+      // Stop’s question about background jobs (#126) can be a dialog, which isn’t an item: say it’s there.
+      const jobsAsk = await d.jobsAsk();
       const ph = scenario.phases[phase];
       // What “needs you” counts, every step, whether or not it changed: an old review draft stays on the list.
       const waiting = waitingOnYou(facts.state, facts.threads).map((w) => {
@@ -367,6 +429,7 @@ async function main() {
         obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
         `Agents: ${obs.states.join('; ') || 'none yet'}`,
         waiting.length ? `Waiting on you:\n${waiting.map((w) => `- ${w}`).join('\n')}` : 'Nothing is waiting on you.',
+        jobsAsk ? `Postbox is asking about background jobs: “${jobsAsk}” Answer it with jobs.` : '',
         fresh.length ? `The automatic checks found:\n${fresh.map((f) => `- ${f.title}${f.issue ? ` (#${f.issue})` : ''}: ${f.evidence}`).join('\n')}` : '',
       ]
         .filter(Boolean)
@@ -419,9 +482,30 @@ async function main() {
           );
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
+        } else if (a.type === 'send_then_stop') {
+          await d.send(a.text ?? '');
+          await sleep(Math.max(1, Math.min(10, a.seconds ?? 2)) * 1000);
+          await d.stopAll();
+          actionResult = 'Pressed Stop on the active reply.';
         } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
-        else if (a.type === 'act') await d.act(key, a);
-        else if (a.type === 'review') await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
+        else if (a.type === 'act' || a.type === 'review') {
+          // An answer is for the revision the tester read. If the block changed while it decided, a person would see
+          // it change: say so instead of answering text it didn’t read. Otherwise note the revision it answers, so a
+          // check can tell whether Postbox applied the answer to that one (#123).
+          const itemIn = (st) =>
+            Object.values(st?.items ?? {})
+              .flatMap((list) => list ?? [])
+              .find((x) => x?.id === key);
+          const shown = itemIn(facts.state);
+          const now = shown?.kind === 'block' ? itemIn((await api('/api/state')).state) : null;
+          if (now && (now.revision ?? 1) !== (shown.revision ?? 1))
+            throw new Error(
+              `That block changed while you were deciding: you read revision ${shown.revision ?? 1}, and it’s now at revision ${now.revision ?? 1}. Read it again before you answer.`,
+            );
+          if (now) facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
+          if (a.type === 'act') await d.act(key, a);
+          else await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
+        } else if (a.type === 'jobs') await d.answerJobs(a.answer);
         else if (a.type === 'settings') {
           const r = await d.personaSettings(a.target ?? '', {
             permissions: a.permissions === true,
@@ -456,6 +540,14 @@ async function main() {
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
         } else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
+        else if (a.type === 'stop') await d.stopAll();
+        // Stop or Send now while the turn this action started is running (#126).
+        if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
+          // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
+          const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
+          const said = await d.interrupt(a.interrupt, { panel, onWait: () => midTurnChecks() });
+          actionResult = actionResult ? `${actionResult} ${said}` : said;
+        }
       } catch (e) {
         actionError = e.message;
         log(`action failed: ${e.message}`);
@@ -465,6 +557,8 @@ async function main() {
     await settle();
     await refreshFacts();
     newFindings();
+    // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
+    await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
     if (opt.file !== 'no') {
@@ -472,6 +566,7 @@ async function main() {
       await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
     }
   } finally {
+    history.close();
     await page.close().catch(() => {});
     server.kill();
   }
@@ -696,9 +791,11 @@ async function recheck(dir) {
       streams: readStreams(join(dir, 'streams')),
       kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
       agyStreams: readStreams(join(dir, 'streams', 'agy')),
+      codexStreams: readStreams(join(dir, 'streams', 'codex')),
+      events: readHistory(dir),
       console: page.logs,
       apps: {},
-      probes: saved.probes ?? { fullScreen: [], attachments: [] },
+      probes: { fullScreen: [], attachments: [], answers: [], ...(saved.probes ?? {}) },
       samples: saved.samples ?? [],
       ui: {},
       ...userSetup(join(dir, 'workspace')),

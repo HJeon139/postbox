@@ -140,7 +140,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       view.real && !view.readsRules
         ? h(
             'p.help',
-            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. ${capsOf(p.backend).tools === 'none' ? 'Its mode decides what it may do.' : 'Its mode and its Tools decide what it may do.'}`,
+            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. ${p.backend === 'codex' ? 'Ask me uses read-only; Auto and Accept edits share workspace-write with network off; Run everything has full access and no approval prompts. The per-agent Tools checklist is unavailable.' : capsOf(p.backend).tools === 'none' ? 'Its mode decides what it may do.' : 'Its mode and its Tools decide what it may do.'}`,
           )
         : null,
       view.real ? modeSection(p) : null,
@@ -180,7 +180,8 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           ),
         ),
       ),
-      // The Kiro and Antigravity CLIs can’t ask, so their modes read as the persona sheet says (#117).
+      // Some backends read the modes their own way (the Kiro and Antigravity CLIs can’t ask; Codex maps them to its
+      // sandbox), so the modes read as the persona sheet says (#117).
       h('span.help', `${modeHelp(p.backend, mode)} The mode is @${p.handle}’s, in every conversation.`),
     );
   }

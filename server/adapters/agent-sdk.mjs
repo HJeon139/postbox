@@ -5,13 +5,19 @@
 // The SDK streams the same messages as `claude -p --output-format stream-json`, so the Claude Code stream
 // mapper turns them into Postbox’s turn context here too. Permission prompts arrive through canUseTool and
 // become the same card in the thread.
+//
+// Postbox spawns the CLI for the SDK (its spawnClaudeCodeProcess option, sdk.d.ts) in a process group of its own, so
+// Stop reaches everything it started, as for the Claude Code backend, and a turn ends only once the CLI has exited
+// (#126): server/adapters/process-group.mjs.
 
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { withAskRules } from '../permission-rules.mjs';
 import { commandsOf, createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
+import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
 
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
@@ -161,10 +167,17 @@ export function sdkForkPoint(state) {
 export class AgentSdkAdapter {
   name = 'agent-sdk';
 
-  /** @param {{ sdk: { query: Function }, workRoot: string }} opts */
-  constructor({ sdk, workRoot }) {
+  /**
+   * @param {{ sdk: { query: Function }, workRoot: string, spawnImpl?: typeof spawn, kill?: import('./process-group.mjs').KillFn,
+   *           listProcesses?: () => Promise<import('./process-group.mjs').Proc[]> }} opts
+   *   spawnImpl, kill and listProcesses: how the CLI starts, and how Stop signals and finds processes; tests pass fakes
+   */
+  constructor({ sdk, workRoot, spawnImpl = spawn, kill = process.kill, listProcesses: list = listProcesses }) {
     this.sdk = sdk;
     this.workRoot = workRoot;
+    this.spawn = spawnImpl;
+    this.kill = kill;
+    this.list = list;
   }
 
   /** Same folder rule as the Claude Code backend: the persona’s, the project’s, or a workspace of its own. */
@@ -186,8 +199,39 @@ export class AgentSdkAdapter {
     const sessionId = ctx.state.sdkSessionId ?? randomUUID();
     if (!resume && !fork) ctx.saveState({ sdkSessionId: sessionId });
 
+    let stderr = '';
+    /** @type {any} */
+    let child = null;
+    /** @type {Promise<any>|null} */
+    let exited = null;
+    const procs = { kill: this.kill, list: this.list };
+    // The CLI, spawned as the SDK would (sdk.mjs, spawnLocalProcess), but in its own process group. The SDK doesn’t read
+    // stderr from a process it didn’t spawn, so it’s read here.
+    const spawnClaudeCodeProcess = (/** @type {any} */ o) => {
+      child = this.spawn(o.command, o.args, { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], signal: o.signal, windowsHide: true, detached: true });
+      const c = child;
+      exited = new Promise((r) => {
+        c.once('exit', r);
+        c.once('error', r);
+      });
+      c.stderr?.on('data', (d) => {
+        stderr = (stderr + d).slice(-4000);
+      });
+      return c;
+    };
     const abortController = new AbortController();
-    const onAbort = () => abortController.abort();
+    /** @type {Promise<{ gone: Promise<void> }>|null} */
+    let stopping = null;
+    const onAbort = () => {
+      abortController.abort();
+      if (!child || !exited) return;
+      // The background jobs the runtime asked to keep running, as for the Claude Code backend.
+      const keep = Array.isArray(ctx.signal.reason?.keepJobs) ? ctx.signal.reason.keepJobs : [];
+      stopping = stopTurn(child, { keep, exited, ...procs }).then((r) => {
+        for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid });
+        return r;
+      });
+    };
     if (ctx.signal.aborted) onAbort();
     else ctx.signal.addEventListener('abort', onAbort, { once: true });
 
@@ -218,7 +262,6 @@ export class AgentSdkAdapter {
 
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model), effort: effortOf(persona) });
     ctx.subagentNames?.((ids) => mapper.who(ids));
-    let stderr = '';
     const options = {
       ...sdkOptions({
         persona,
@@ -234,15 +277,14 @@ export class AgentSdkAdapter {
         allowOnce: ctx.allowOnce ?? [],
         rules: ctx.rules ?? {},
       }),
-      stderr: (d) => {
-        stderr = (stderr + d).slice(-4000);
-      },
+      spawnClaudeCodeProcess,
     };
     /** @type {any} */
     let thrown = null;
     try {
       const q = this.sdk.query({ prompt, options });
-      ctx.control?.(liveControl(q));
+      // A background job’s own Stop, while the CLI waits for it.
+      ctx.control?.({ ...liveControl(q), stopJob: (job) => stopJobUnder(child, job, procs) });
       for await (const m of q) {
         mapper.push(m);
         // The skills and commands with their descriptions and argument hints (#67), once the session is up; init’s
@@ -259,6 +301,9 @@ export class AgentSdkAdapter {
     } finally {
       ctx.signal.removeEventListener('abort', onAbort);
       ctx.saveState({ contextWindow: mapper.contextWindow, model: mapper.model ?? undefined });
+      // A stopped turn ends once its CLI’s whole group has exited, so the session’s next turn never runs beside it (#126).
+      const stopped = /** @type {Promise<{ gone: Promise<void> }>|null} */ (stopping); // set in onAbort
+      if (ctx.signal.aborted && stopped) await stopped.then((r) => r.gone);
     }
     // A branch point the SDK can no longer find (#61): fork from the conversation’s latest point instead, once.
     // The failed fork’s session is never resumed, and the fork is saved without its uuid, so a later turn never
@@ -288,8 +333,10 @@ export class AgentSdkAdapter {
           ctx,
         );
       }
-      // The result says why, when there was one; the SDK’s own error (“process exited with code 1”) doesn’t.
-      throw new Error(mapper.result?.is_error ? (resultError(mapper.result) ?? '') : `The Agent SDK stopped: ${thrown.message}`);
+      // The result says why, when there was one; the SDK’s own error (“process exited with code 1”) doesn’t, and the SDK
+      // adds no stderr to it for a process it didn’t spawn, so the last lines of the CLI’s stderr go with it (#61).
+      const why = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);
+      throw new Error(mapper.result?.is_error ? (resultError(mapper.result) ?? '') : `The Agent SDK stopped: ${thrown.message}${why ? `: ${why}` : ''}`);
     }
     const current = mapper.sessionId ?? ctx.state.sdkSessionId;
     if (mapper.lastUuid && current) ctx.checkpoint?.({ sdkSessionId: current, uuid: mapper.lastUuid });

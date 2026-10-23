@@ -9,6 +9,7 @@ export const BACKEND_NAMES = {
   'agent-sdk': 'Agent SDK',
   'kiro-cli': 'Kiro CLI',
   'antigravity-cli': 'Antigravity CLI',
+  codex: 'Codex',
   mock: 'Mock agent',
 };
 const EFFORT_WORDS = { low: 'low', medium: 'medium', high: 'high', xhigh: 'extra high', max: 'max' };

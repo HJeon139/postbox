@@ -173,6 +173,11 @@ test('messages are written to the agent as plain text it can act on', () => {
     formatMessage({ kind: 'event', event: { blockId: 'b1', action: 'choose', values: { selected: ['tea'] } } }),
     '[Postbox] The person acted in block “b1”: choose\n{"selected":["tea"]}',
   );
+  // The revision answered (#123), so an approval of revision 2 doesn’t read like one of revision 4.
+  assert.equal(
+    formatMessage({ kind: 'event', event: { blockId: 'b1', revision: 2, action: 'submit', values: { verdict: 'approve', comments: [] } } }),
+    '[Postbox] The person acted in block “b1” (revision 2): submit\n{"verdict":"approve","comments":[]}',
+  );
   assert.match(
     formatMessage({ kind: 'user', text: 'Look', attachments: [{ kind: 'file', name: 'a.png', type: 'image/png' }] }, () => '/blobs/ab/abc'),
     /- a\.png \(image\/png\): \/blobs\/ab\/abc/,
