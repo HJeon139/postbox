@@ -237,6 +237,7 @@ Plain English and sentence case, with curly quotes and American spelling everywh
 |---|---|
 | The first flow to polish is the corpus explorer: an agent writes an app, it runs inline, queries your corpus through the bridge, and sends picks back | It proves the core idea end to end. |
 | The demo corpus is a few bundled public-domain books, with real BM25 search in plain Node and a stub semantic search that your own index replaces later | The demo runs offline and still searches for real. |
+| Agents add their own data to the corpus while Postbox runs, with `add_dataset`: a JSON Lines file in the project’s `.postbox/datasets/`, Postbox’s own folder in the project. A dataset is searched only when a search names it, and it’s loaded again after a restart | Decided 21 and 23 October 2026 (#47). The corpus loaded only at startup, so an agent’s data-backed app stayed broken until the person restarted Postbox, which ends every agent’s session. Named-only search keeps one agent’s data out of the others’ results. Postbox’s per-project files go under `.postbox/` in the project, and the person’s own Postbox settings under their home folder. |
 | A demo script plays every block type and every error state | It’s the source of the screenshots once the app is real. |
 
 ## Not in scope, for now

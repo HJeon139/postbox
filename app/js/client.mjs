@@ -14,6 +14,7 @@ const EVENT_TYPES = [
   'session',
   'app',
   'file',
+  'dataset',
   'schedule',
   'glossary',
   'item.add',

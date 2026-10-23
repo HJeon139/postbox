@@ -2,7 +2,7 @@
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, show_app, update_app, define_term, propose_agent, schedule_wake,
-// wake_agent, ask_for_tool and corpus_search. Every tool returns at once; when you answer a block, your answer reaches
+// wake_agent, ask_for_tool, corpus_search and add_dataset. Every tool returns at once; when you answer a block, your answer reaches
 // the agent later as a new message carrying { blockId, action, values }.
 //
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
@@ -160,11 +160,30 @@ export const TOOL_DEFS = [
   },
   {
     name: 'corpus_search',
-    description: 'Search the project’s corpus by exact words (BM25) and by meaning (a stub until a real index is connected).',
+    description:
+      'Search the project’s corpus by exact words (BM25) and by meaning (a stub until a real index is connected). books limits it to those book or dataset ids; a dataset is searched only when books names it.',
     inputSchema: {
       type: 'object',
-      properties: { query: { type: 'string' }, mode: { type: 'string', enum: ['both', 'lexical', 'semantic'] }, k: { type: 'number' } },
+      properties: {
+        query: { type: 'string' },
+        mode: { type: 'string', enum: ['both', 'lexical', 'semantic'] },
+        k: { type: 'number' },
+        books: { type: 'array', items: { type: 'string' } },
+      },
       required: ['query'],
+    },
+  },
+  {
+    name: 'add_dataset',
+    description: `Load a dataset into the corpus now, with no restart: a JSON Lines file of records { id?, text, title? }, one per line, up to ${n('datasetBytes')}, in the project’s .postbox/datasets/ folder (write it there first). Each record becomes a passage, read with corpus.read { id: "<dataset id>:<record id>" }. It’s searched only when a search names it in books, so it doesn’t mix into other agents’ results. Loading the same id again replaces it, and it’s loaded again after a restart.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The dataset’s id: letters, digits, - and _, such as scifact-abstracts.' },
+        path: { type: 'string', description: 'The file, relative to the project’s .postbox/datasets/.' },
+        title: { type: 'string' },
+      },
+      required: ['id', 'path'],
     },
   },
 ];

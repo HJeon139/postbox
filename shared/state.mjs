@@ -15,6 +15,8 @@ export function emptyState() {
     glossary: {},
     apps: {},
     files: {},
+    // Datasets agents loaded into the corpus (#47), so they’re loaded again after a restart.
+    datasets: {},
     schedules: {},
     // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
     work: {},
@@ -47,6 +49,9 @@ export function apply(s, type, d) {
       break;
     case 'file':
       s.files[d.id] = d;
+      break;
+    case 'dataset':
+      (s.datasets ??= {})[d.id] = d;
       break;
     case 'schedule':
       if (d.removed) delete s.schedules[d.id];

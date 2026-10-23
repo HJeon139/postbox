@@ -57,7 +57,8 @@ test('the write rules catch tools and gh commands that create, change or delete 
   // Ask beats allow, and Claude Code’s globs can’t leave a server out, so a rule that matches one of Postbox’s own
   // tools makes each call a permission_prompt round trip (Postbox allows it, with no card). A new clash fails here: add
   // the tool to ROUND_TRIP only if that cost is accepted (#173’s add_dataset matches mcp__*__add_*).
-  const ROUND_TRIP = [];
+  // add_dataset (#47): one permission_prompt round trip per call, which Postbox allows at once, with no card.
+  const ROUND_TRIP = ['add_dataset'];
   assert.deepEqual(
     TOOL_DEFS.map((t) => t.name).filter((n) => isWriteCall(`mcp__postbox__${n}`, {})),
     ROUND_TRIP,

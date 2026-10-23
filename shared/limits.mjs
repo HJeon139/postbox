@@ -13,6 +13,8 @@ export const LIMITS = Object.freeze({
   appFiles: 8,
   /** One of those data files, in bytes. */
   appFileBytes: 20 * 1024 * 1024,
+  /** A dataset file an agent loads into the corpus with add_dataset (#47), in bytes. */
+  datasetBytes: 50 * 1024 * 1024,
   /** Every block’s plain-text fallback. */
   fallback: 4000,
   /** A choice’s or form’s prompt, and a confirm’s statement. */

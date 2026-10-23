@@ -1,7 +1,8 @@
-// Checks #54 in headless Chrome: a large app goes by file, not by side channel. An app shown from codePath, with a
-// data file from the agent’s folder, reads the file in its sandbox with postbox.file(name) and shows it; a raw POST
-// to /mcp with only the session id, as a script would send, is refused and shows nothing; and Settings offers no
-// session-id-only endpoint.
+// Checks #54 and #47 in headless Chrome: a large app and its data go by file, not by side channel. An app shown from
+// codePath, with a data file from the agent’s folder, reads the file in its sandbox with postbox.file(name); a raw
+// POST to /mcp with only the session id, as a script would send, is refused and shows nothing; a dataset the agent
+// loads from the project’s .postbox/datasets/ shows a line and reaches an app with no restart, but not a search that
+// doesn’t name it; and Settings offers no session-id-only endpoint.
 //
 //   node tools/checks/app-files.mjs
 //
@@ -97,7 +98,43 @@ try {
   await sleep(500);
   check(store.items(t.id).length === before && !rt.s.apps.side, 'and nothing of it reaches the conversation');
 
-  // 3. Settings no longer offers an endpoint to connect with a session id alone.
+  // 3. #47: the agent loads a dataset from the project’s .postbox/datasets/, and an app reads it with no restart.
+  await mkdir(join(folder, '.postbox', 'datasets'), { recursive: true });
+  await writeFile(
+    join(folder, '.postbox', 'datasets', 'scifact.jsonl'),
+    Array.from({ length: 50 }, (_, i) => JSON.stringify({ id: `c${i}`, text: `Claim ${i} about vitamin D and fractures.` })).join('\n'),
+  );
+  const loaded = await rt.toolsFor(se.id).add_dataset({ id: 'scifact', path: 'scifact.jsonl', title: 'SciFact claims' });
+  check(loaded.ok, 'add_dataset loads a file from the project’s .postbox/datasets/', loaded.message);
+  await until(
+    () =>
+      page.evaluate(
+        `[...document.querySelectorAll('.sys-line')].some((n) => /loaded the dataset scifact · 50 records, searched only when named/.test(n.textContent))`,
+      ),
+    'the line',
+  ).catch(() => {});
+  check(
+    await page.evaluate(
+      `[...document.querySelectorAll('.sys-line')].some((n) => /@librarian loaded the dataset scifact · 50 records, searched only when named/.test(n.textContent))`,
+    ),
+    'the conversation says the agent loaded it, and that it’s searched only when named',
+  );
+  const READER = `<p id="out">…</p><script>
+postbox.ready.then(async () => {
+  const one = await postbox.query('corpus.read', { id: 'scifact:c7' });
+  const named = await postbox.query('corpus.search', { query: 'vitamin', books: ['scifact'] });
+  const plain = await postbox.query('corpus.search', { query: 'vitamin' });
+  document.getElementById('out').textContent = one.text;
+  if (!postbox.check) postbox.saveState({ text: one.text, named: named.length, plain: plain.filter((h) => h.book === 'scifact').length });
+});
+</script>`;
+  rt.toolsFor(se.id).show_app({ id: 'reader', title: 'Reader', code: READER, permissions: ['corpus.read', 'corpus.search'] });
+  await until(() => rt.s.apps.reader?.state?.text, 'the app to read the dataset').catch(() => {});
+  const rd = rt.s.apps.reader?.state ?? {};
+  check(rd.text === 'Claim 7 about vitamin D and fractures.' && rd.named > 0, 'an app reads the dataset at once, with no restart', JSON.stringify(rd));
+  check(rd.plain === 0, 'a search that doesn’t name the dataset doesn’t get it', JSON.stringify(rd));
+
+  // 4. Settings no longer offers an endpoint to connect with a session id alone.
   await page.evaluate(`document.querySelector('[aria-label="Settings"]').click()`);
   await sleep(300);
   await page.evaluate(`[...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Backends')?.click()`);

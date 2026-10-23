@@ -136,6 +136,8 @@ export async function start({
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
+  // Datasets agents loaded (#47) come back from their projects’ .postbox/datasets/.
+  await rt.reloadDatasets();
 
   // The page’s token (#74): a secret made at each launch, which a browser gets in a cookie when it loads `/`. Every
   // write needs it, so an agent that uses Postbox’s API with curl, casually or because something told it to, can’t

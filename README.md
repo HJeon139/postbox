@@ -155,6 +155,7 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](app/kit/kit.js)) provides:
 |---|---|
 | `postbox.ready` | Resolves to `{ state, theme, appId }` once Postbox says hello |
 | `postbox.query(tool, args)` | Asks the host for data. It works only for tools in the app’s `permissions` that its agent also holds, such as `corpus.search`, `corpus.read` and `corpus.stats`. |
+| `postbox.file(name)` | A data file the agent attached to this version with `files`, as text (#54). |
 | `postbox.send(action, values, summary)` | Sends one event to the agent. `summary` is the line you see in your voice. |
 | `postbox.saveState(obj)`, `postbox.restoreState()` | Saved state survives unloading, reloading and new versions |
 | `postbox.anchors({ name: element })` | Parts you can pin review comments to |
@@ -255,7 +256,7 @@ The two real adapters share a system prompt that teaches the catalog, the kit an
 - `propose_agent`
 - `schedule_wake`, `wake_agent`
 - `ask_for_tool`, which asks you on a card to turn on a tool that’s turned off for the agent
-- `corpus_search`
+- `corpus_search`, and `add_dataset`, which loads a JSON Lines file from the project’s `.postbox/datasets/` folder into the corpus with no restart. A dataset is searched only when a search names it in `books`, and it’s loaded again after a restart (#47).
 - `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one). A block comes with what it holds: a review, card or code block’s content, a choice or form’s prompt, options or fields and your answer, an app’s title. Both cut an item at 2,000 characters, saying how much they kept and giving its id.
 - `read_message`, one item in full by that id or a block’s id, 40,000 characters at a time
 - `permission_prompt`, which Claude Code calls before a tool that needs your OK

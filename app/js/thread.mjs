@@ -871,6 +871,16 @@ function systemLine(it, _ctx) {
             ]
           : null,
       );
+    case 'dataset':
+      // An agent loaded a dataset into the corpus (#47): searched only when a search names it.
+      return h(
+        'div.col.sys-line',
+        icon('books', 'i-sm'),
+        h('b', `@${it.handle}`),
+        ' loaded the dataset ',
+        h('span.mono', it.dataset),
+        ` · ${plural(it.records, 'record')}, searched only when named`,
+      );
     case 'joined':
       return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', `@${it.to}`), ' joined');
     case 'left':
