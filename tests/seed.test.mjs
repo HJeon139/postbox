@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { deniedTools, OUTSIDE_TOOLS } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
-import { DEMO_PERSONAS, freshInstall, seed } from '../server/seed.mjs';
+import { BOILERPLATES, DEMO_PERSONAS, freshInstall, seed } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
 
 async function seeded({ demo = false, agents = null } = {}) {
@@ -30,22 +30,44 @@ async function seeded({ demo = false, agents = null } = {}) {
   };
 }
 
-test('a fresh install seeds one generic agent, and no projects or conversations', async () => {
+test('a fresh install seeds three generic agents, and no projects or conversations', async () => {
   const fresh = freshInstall();
   assert.deepEqual(
     fresh.personas.map((p) => p.handle),
-    ['assistant'],
+    ['researcher', 'developer', 'critic'],
   );
   assert.deepEqual(fresh.projects, []);
   assert.doesNotMatch(JSON.stringify(fresh), /corpus|book|gutenberg|index/i);
-  assert.deepEqual(await seeded(), { agents: ['@assistant on claude-code'], projects: [], threads: 0 });
+  assert.deepEqual(await seeded(), {
+    agents: ['@researcher on claude-code', '@developer on claude-code', '@critic on claude-code'],
+    projects: [],
+    threads: 0,
+  });
 });
 
-test('#5: the fresh-install agent can run commands and read the web, but not reach agents outside Postbox', () => {
-  const [assistant] = freshInstall().personas;
-  const denied = deniedTools({ backend: 'claude-code', ...assistant });
-  for (const tool of ['Bash', 'Monitor', 'WebFetch', 'WebSearch']) assert.ok(!denied.includes(tool), `${tool} is denied`);
-  for (const tool of OUTSIDE_TOOLS) assert.ok(denied.includes(tool), `${tool} isn’t denied`);
+test('the developer and critic agents and boilerplates carry their prompts from server/personas', () => {
+  const { personas } = freshInstall();
+  const of = (handle) => personas.find((p) => p.handle === handle)?.instructions;
+  const bp = (id) => BOILERPLATES.find((b) => b.id === id)?.instructions;
+  assert.match(of('developer'), /^# Developer standards\n/);
+  assert.match(of('critic'), /^# Critic standards\n/);
+  assert.equal(bp('bp-developer'), of('developer'));
+  assert.equal(bp('bp-critic'), of('critic'));
+});
+
+test('#5: the fresh-install developer and critic can run commands and read the web, but not reach agents outside Postbox', () => {
+  for (const persona of freshInstall().personas.filter((p) => p.handle !== 'researcher')) {
+    const denied = deniedTools({ backend: 'claude-code', ...persona });
+    for (const tool of ['Bash', 'Monitor', 'WebFetch', 'WebSearch']) assert.ok(!denied.includes(tool), `@${persona.handle}: ${tool} is denied`);
+    for (const tool of OUTSIDE_TOOLS) assert.ok(denied.includes(tool), `@${persona.handle}: ${tool} isn’t denied`);
+  }
+});
+
+test('#5: the fresh-install researcher reads the web, and runs no commands', () => {
+  const researcher = freshInstall().personas.find((p) => p.handle === 'researcher');
+  const denied = deniedTools({ backend: 'claude-code', ...researcher });
+  for (const tool of ['WebFetch', 'WebSearch']) assert.ok(!denied.includes(tool), `${tool} is denied`);
+  assert.ok(denied.includes('Bash'), 'Bash isn’t denied');
 });
 
 test('--demo seeds the book-corpus agents, their projects and conversations', async () => {
