@@ -11,7 +11,7 @@
 // then upload through the app’s own path (POST /api/files). CDP’s Input.dispatchDragEvent needs files on disk and
 // a drag started by the browser; the synthetic events exercise the same handlers without either.
 //
-// It starts its own Postbox on port 4430 and Chrome on port 9630, and fails fast if either port is taken.
+// It starts its own Postbox on port 4430 and Chrome on port 9630 (PB_PORT and PB_CHROME_PORT move them), and fails fast if either port is taken.
 
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -21,8 +21,8 @@ import { start } from '../../server/index.mjs';
 import { launch, sleep } from '../cdp.mjs';
 import { pageCookie } from '../demo.mjs';
 
-const PORT = 4430;
-const CHROME_PORT = 9630;
+const PORT = Number(process.env.PB_PORT ?? 4430);
+const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9630);
 
 const portFree = (port) =>
   new Promise((ok) => {

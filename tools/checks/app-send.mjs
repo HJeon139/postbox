@@ -19,8 +19,8 @@ import { start } from '../../server/index.mjs';
 import { Runtime } from '../../server/runtime.mjs';
 import { launch, sleep } from '../cdp.mjs';
 
-const PORT = 4411;
-const CHROME_PORT = 9611;
+const PORT = Number(process.env.PB_PORT ?? 4411);
+const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9611);
 const LIMIT = Runtime.APP_SEND_LIMIT;
 
 /** Fails fast when something else already listens on a port this check needs. */

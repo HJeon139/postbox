@@ -14,8 +14,8 @@ import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
 import { launch, sleep } from '../cdp.mjs';
 
-const PORT = 4413;
-const CHROME_PORT = 9613;
+const PORT = Number(process.env.PB_PORT ?? 4413);
+const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9613);
 
 const free = (port) =>
   new Promise((ok, fail) => {
