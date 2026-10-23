@@ -12,13 +12,35 @@ A chat room for directing several AI agents at once. You message them, wake them
 
 ## Run it
 
-Postbox needs Node 22 or later. It runs with no dependencies at all:
+Postbox needs Node 22 or later. It runs with no dependencies at all. From a clone:
 
 ```bash
-node server/index.mjs
+npm start
 ```
 
-Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `data/` as an event log, so they survive a restart. Add `--fresh` to start over.
+**As a package.** Postbox isn’t published to npm yet, so pack it from a clone and install the file it makes, which gives you a `postbox` command:
+
+```bash
+npm pack
+```
+
+```bash
+npm install -g ./postbox-<version>.tgz
+```
+
+```bash
+postbox
+```
+
+A global install brings the optional packages too (the Agent SDK and Kokoro, several hundred MB); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo` and `--move-data`. The package holds only what runs (`bin/`, `app/`, `server/` and `shared/`), and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
+
+Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `~/.postbox` as an event log, so they survive a restart and an upgrade. Set `POSTBOX_HOME` to keep them somewhere else, or pass `--data <folder>` for one run. Add `--fresh` to start over.
+
+**A clone that ran an earlier version.** Earlier versions kept everything in the clone’s `data/` folder. A clone whose `data/` has conversations keeps using it, unless `POSTBOX_HOME` is set, and says so when it starts. To move it to `~/.postbox`, stop Postbox and run `npm start -- --move-data`: it moves the folder and leaves a link in its place, so paths your conversations recorded still work. An agent that works in its own workspace folder starts a new Claude Code session on its next turn, since its folder moved; its conversation in Postbox stays. Postbox never moves it without being asked.
+
+One Postbox runs on a data folder at a time: a second one on the same folder refuses to start, and says which process has it.
+
+A project’s own Postbox data, such as the datasets agents load, goes in the project, under `<project>/.postbox/`.
 
 A fresh install starts with three general-purpose agents and no projects or conversations: @researcher finds and cites sources, @developer changes code and verifies it, and @critic reviews code and documents. Their instructions are in [`server/personas/`](server/personas/). Make a project for a folder you work in, start a conversation with any of them, and add agents of your own from **New agent**. They run on Claude Code if it’s installed and signed in (`claude --version` works), and on the mock otherwise. Agents from an earlier run keep their backend; change it under **Personas**, in **Runs on**.
 
@@ -73,7 +95,7 @@ It opens in the right pane, beside a thread if one is open, in a compact form: w
 ```mermaid
 flowchart LR
   B[Browser: Postbox UI] <-->|HTTP and server-sent events| S[Node server]
-  S --> ST[(data/: event log, snapshots, blobs)]
+  S --> ST[(~/.postbox: event log, snapshots, blobs, media)]
   S --> RT[Runtime: threads, sessions, wakes, queue, permissions]
   RT --> AD[Adapters]
   AD --> MOCK[Mock agent]
@@ -167,6 +189,8 @@ Inside the sandbox, the kit ([`app/kit/kit.js`](app/kit/kit.js)) provides:
 
 The stylesheet is preloaded, so apps use the same classes and tokens as Postbox, on the cool app stage.
 
+**Images.** An app loads images from `data:` URLs, or from `/media/<name>`. That serves the media bundled with Postbox, then the `media/` folder in your data folder (`~/.postbox/media/`), where agents copy the images their apps show (PNG, JPEG, GIF, WebP, AVIF or SVG). Agents find it in `$POSTBOX_MEDIA`. Nothing an agent adds goes into Postbox’s own folder, which an upgrade replaces.
+
 **The pre-display check.** Before you see an app, your browser loads it in two hidden frames, at 375 and 1280 px. It checks for:
 - sideways overflow
 - fields and buttons without labels
@@ -207,12 +231,12 @@ Postbox never reads, stores or asks for an API key. The Claude backends use Clau
 
 Postbox always passes the mode explicitly, so a default from your own Claude Code settings never changes it. A change to a persona’s mode, or to where it runs, reaches its conversations from their next turn.
 
-**Folders.** An agent works in its project’s root folder, or in the folder its persona names, or, if neither is set, in `data/workspaces/<name>`. If its persona names a folder, it can also read the project’s. Its permission mode decides what it may change. Postbox’s own tools (show_block and the rest) never ask; they only show things in the thread.
+**Folders.** An agent works in its project’s root folder, or in the folder its persona names, or, if neither is set, in `workspaces/<name>` in the data folder. If its persona names a folder, it can also read the project’s. Its permission mode decides what it may change. Postbox’s own tools (show_block and the rest) never ask; they only show things in the thread.
 
 **The Kiro CLI.** Each turn, Postbox writes a Kiro custom agent with the guide as its prompt, Postbox’s MCP server and the persona’s rules, and removes it when the turn ends ([`server/adapters/kiro-cli.mjs`](server/adapters/kiro-cli.mjs)). What differs from Claude Code:
 - **It can’t ask you.** A headless Kiro run treats every ask as a refusal, so there’s no permission card: a call that would need asking shows as a denied step. Ask me and Auto both mean Kiro’s defaults plus reads in the agent’s folders; Accept edits adds writes there; Run everything is `--trust-all-tools`, and unticked Tools stay denied. Claude Code rules (the permissions panel, Allow once) don’t apply.
 - **Topic threads start fresh.** Kiro can’t fork a session, so an agent in a topic thread starts with the message the thread is about.
-- **Your setup.** With **Uses your Kiro setup**, it runs with your Kiro home (`KIRO_HOME`, else `~/.kiro`): your steering, skills, settings and MCP servers load, and the turn’s agent file is written to its `agents` folder for the turn. Off, it runs with `data/kiro-home`, and a deny rule turns off every MCP server but Postbox’s, including one a managed install adds to Kiro’s agent files by itself. A `.kiro` folder in the agent’s working folder loads either way.
+- **Your setup.** With **Uses your Kiro setup**, it runs with your Kiro home (`KIRO_HOME`, else `~/.kiro`): your steering, skills, settings and MCP servers load, and the turn’s agent file is written to its `agents` folder for the turn. Off, it runs with `kiro-home` in the data folder, and a deny rule turns off every MCP server but Postbox’s, including one a managed install adds to Kiro’s agent files by itself. A `.kiro` folder in the agent’s working folder loads either way.
 - **Models** are Kiro’s (`kiro-cli chat --list-models`), and the model field suggests the ones your sign-in offers, Claude’s and others such as GPT and DeepSeek. Postbox’s names become Kiro’s: `claude-opus-5-5` runs as `claude-opus-5.5`.
 
 **The Antigravity CLI.** agy has no flag for an MCP server or a system prompt, so each turn writes a plugin into the agent’s folder, `.agents/plugins/postbox/`, with Postbox’s MCP server and the guide as its rules, and removes it when the turn ends ([`server/adapters/antigravity-cli.mjs`](server/adapters/antigravity-cli.mjs)). In a git repository, that path goes in `.git/info/exclude`. Two Antigravity agents that share a folder take turns, since each turn’s plugin holds its own conversation. What differs from Claude Code:
@@ -267,7 +291,7 @@ Every tool except `permission_prompt` returns at once. When you answer a block, 
 
 Agent apps can read text aloud with `postbox.narration(el, passages)`, a player whose transcript follows the voice, or `postbox.narrate(text)` for one clip. The app needs the `narrate.speak` permission, and its agent the tool.
 
-The voice is [Kokoro](https://github.com/hexgrad/kokoro) (via `kokoro-js`). It runs on this computer in a child process, so its native packages stay out of the server. The model, about 100 MB, downloads into `data/models/` the first time anything is read aloud. After that, a passage takes a second or two, and the same text is never synthesized twice. See the narrated walkthrough in [designs/recipes.md](designs/recipes.md).
+The voice is [Kokoro](https://github.com/hexgrad/kokoro) (via `kokoro-js`). It runs on this computer in a child process, so its native packages stay out of the server. The model, about 100 MB, downloads into `models/` in the data folder the first time anything is read aloud. After that, a passage takes a second or two, and the same text is never synthesized twice. See the narrated walkthrough in [designs/recipes.md](designs/recipes.md).
 
 ## Tests and tools
 
@@ -299,7 +323,7 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 
 | Command | What it does |
 |---|---|
-| `node server/index.mjs [--port 4173] [--data ./data] [--fresh] [--demo]` | Runs Postbox. A fresh install seeds three agents: @researcher, @developer and @critic. `--demo` seeds the demo’s agents, projects and conversations instead, enables the demo controls and uses the mock only. |
+| `postbox [--port 4173] [--data <folder>] [--fresh] [--demo]` | The same as `npm start` or `node server/index.mjs` in a clone. Runs Postbox, with its data in `~/.postbox` unless `POSTBOX_HOME` or `--data` says otherwise. A fresh install seeds three agents: @researcher, @developer and @critic. `--demo` seeds the demo’s agents, projects and conversations instead, enables the demo controls and uses the mock only. |
 | `node tools/demo.mjs [--port] [--speed]` | Plays every block and error state on a fresh Postbox |
 | `node tools/shoot-app.mjs [--baseline]` | Plays the demo in headless Chrome, screenshots every scene at 375 and 1280 px in both modes, and checks each with axe-core (`AXE=0` skips it) |
 | `node tools/shoot.mjs [--baseline]` | Screenshots the static mockups |

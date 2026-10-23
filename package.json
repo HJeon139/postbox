@@ -5,11 +5,21 @@
   "license": "Apache-2.0",
   "type": "module",
   "private": true,
+  "bin": {
+    "postbox": "bin/postbox.mjs"
+  },
+  "files": [
+    "bin/",
+    "app/",
+    "server/",
+    "shared/",
+    "CHANGELOG.md"
+  ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "start": "node server/index.mjs",
+    "start": "node bin/postbox.mjs",
     "demo": "node tools/demo.mjs",
     "test": "node --test --import ./tests/guard.mjs tests/*.test.mjs",
     "test:coverage": "node --test --import ./tests/guard.mjs --experimental-test-coverage --test-coverage-include=shared/** --test-coverage-include=server/** --test-coverage-include=tools/lint-*.mjs tests/*.test.mjs",
@@ -25,7 +35,9 @@
     "uat": "node tools/uat-run.mjs",
     "lint:commits": "node tools/lint-commits.mjs",
     "release": "node tools/release.mjs",
-    "hooks": "git config core.hooksPath .githooks"
+    "hooks": "git config core.hooksPath .githooks",
+    "prepack": "node server/build-info.mjs pack",
+    "postpack": "node server/build-info.mjs unpack"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.2",

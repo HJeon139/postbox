@@ -7,3 +7,4 @@ screenshots/latest/
 data/
 .claude/
 uat-runs/
+server/build-commit.txt

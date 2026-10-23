@@ -81,7 +81,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 **Install the way CI does.** CI runs Node 22 and `npm ci --ignore-scripts`, so the optional packages never download their models or binaries. A result from a machine with `kokoro-js` or the Agent SDK installed, and CI without them, are two different environments, and a change that touches either path says which one it ran in.
 
-**Use only your own ports and your own data.** Start a server with `--port` and `--data` of your own, and give headless Chrome `PB_PORT` and `PB_CHROME_PORT` from `ports()` in `tools/harness.mjs`. Never touch the preview on 4173, another tool’s server on 4320, or `data/`. A check that talked to a server it didn’t start reports on someone else’s Postbox.
+**Use only your own ports and your own data.** Start a server with `--port` and `--data` of your own, and give headless Chrome `PB_PORT` and `PB_CHROME_PORT` from `ports()` in `tools/harness.mjs`. Never touch the preview on 4173, another tool’s server on 4320, or the person’s data: `~/.postbox`, which every run without `--data` shares, and a clone’s `data/`. Postbox refuses to start on a folder another Postbox is using, but `--fresh` without `--data` would still empty the person’s store. A check that talked to a server it didn’t start reports on someone else’s Postbox.
 
 **The screenshot tools and the end-to-end UAT belong to the reviewing session** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`). It runs them once per wave on the merged UI, as [prompts/README.md](prompts/README.md), “Rules for every session”, says.
 
@@ -104,7 +104,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 
 **An empty `catch {}` is a decision, and its line says so.** There are about thirty in the repo, and each is defensible only where failure is the expected answer: `localStorage` unavailable, an optional file missing, a best-effort cleanup. Catching everything to make an error disappear is the swallowed reason engineering-practices.md forbids. When you can name the expected error, check for it and rethrow the rest.
 
-**A library function throws; only an entry point calls `process.exit`.** The entry points are `server/index.mjs` and the scripts in `tools/` (`finish()` in `harness.mjs` is one). An exit code is a process-level decision, and a module that makes it can’t be tested.
+**A library function throws; only an entry point calls `process.exit`.** The entry points are `bin/postbox.mjs` (the `postbox` command, which `node server/index.mjs` hands its flags to) and the scripts in `tools/` (`finish()` in `harness.mjs` is one). An exit code is a process-level decision, and a module that makes it can’t be tested.
 
 **Give a shape a type.** When data has a known shape (an event, a block, a persona, a ledger entry), describe it with a `@typedef`, as `server/adapters/process-group.mjs` does for `Proc`, rather than passing `object` and probing it with `?.` in every caller.
 
@@ -220,7 +220,7 @@ engineering-practices.md, “Tests”, covers speed, recorded fixtures, a failin
 
 ## What ships is what to optimize for
 
-Postbox ships as the repository: `npm start` runs `server/index.mjs`, and whatever that loads is the product. **A convenience that exists for a test or for the demo must not change what a real run does.**
+Postbox ships as the npm package that `files` in package.json lists: the `postbox` command runs `bin/postbox.mjs` (`npm start` in a clone), and whatever that loads is the product. **A convenience that exists for a test or for the demo must not change what a real run does.**
 
 Ask two questions of any test-only affordance:
 1. **Does it ship?** A command-line flag, an environment variable and a default all ship. A fake under `tests/`, a dev dependency and a fixture don’t. `--demo`, `POSTBOX_BACKENDS=mock` and `POSTBOX_CLAUDE_RECORD` all ship.
