@@ -4,8 +4,8 @@
 import { factsText, installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
-import { agentsSection, openAgentPanel, openAsks, openAsksEl } from './agents.mjs';
-import { api, busy, client, hrefOf, liveSessions, needsYou, sessionsOf, stopSession, threadState, threadsOf, topicsOf } from './client.mjs';
+import { agentsSection, joinedWhy, openAgentPanel, openAsks, openAsksEl } from './agents.mjs';
+import { api, busy, client, hrefOf, liveSessions, needsYou, sessionsOf, stopSession, threadState, threadsOf, topicsOf, whereOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -36,9 +36,17 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
         { role: 'group', 'aria-label': 'Agents here' },
         here.map((se) => {
           // The ring’s own label is the button’s name: the agent’s name and state, kept up to date in place.
+          // One the person didn’t add says why it’s here on hover (#110); its row in the sidebar says it in words.
           const b = h(
             'button.ring-btn',
-            { type: 'button', id: `top-ring-${se.id}`, 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: () => openAgentPanel(se.id, b) },
+            {
+              type: 'button',
+              id: `top-ring-${se.id}`,
+              'aria-haspopup': 'dialog',
+              'aria-expanded': 'false',
+              title: joinedWhy(se),
+              onclick: () => openAgentPanel(se.id, b),
+            },
             ring(se),
           );
           return b;
@@ -275,9 +283,11 @@ export function nextNeedsYou() {
     return;
   }
   const cur = route();
-  const i = list.findIndex((se) => se.threadId === cur.threadId);
+  // One in a side thread opens there, in the panel beside its conversation (#121).
+  const at = (se) => whereOf(se);
+  const i = list.findIndex((se) => at(se) === (cur.sideId ?? cur.threadId));
   const se = list[(i + 1) % list.length];
-  navigate(`#/t/${se.threadId}`);
+  navigate(hrefOf(at(se)));
   setTimeout(() => {
     const node = document.querySelector(`[data-key="${CSS.escape(se.needs.itemId ?? '')}"]`);
     if (node) {
@@ -449,6 +459,8 @@ function rings(t) {
       : h('span');
 }
 
+const busyOrNeeds = (se) => busy(se) || se.state === 'needs' || se.state === 'stopping';
+
 function row(t, active) {
   const n = h('a.row', { href: `#/t/${t.id}`, dataset: { thread: t.id } });
   updateRow(n, t, active, true);
@@ -457,13 +469,17 @@ function row(t, active) {
 
 function updateRow(n, t, active, fresh = false) {
   const ses = sessionsOf(t.id).filter((x) => !x.archived);
-  const main = threadState(t) ?? ses[0];
+  // Its state counts its side threads (#121): an agent at work in one shows here, and says where.
+  const lead = threadState(t);
+  const main = lead && ses.includes(lead) ? lead : (ses[0] ?? lead);
+  const away = lead && (lead.sideTurn || !ses.includes(lead)) && busyOrNeeds(lead) ? ' in a side thread' : '';
   const unread = ses.reduce((a, x) => a + (x.unread ?? 0), 0);
   if (t.id === active) n.setAttribute('aria-current', 'page');
   else n.removeAttribute('aria-current');
   const named = t.kind === 'room' ? ses : main ? [main] : [];
   const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', `@${x.handle}`, mockMarker(x)]) : '@—';
-  const sig = JSON.stringify([t.title, named.map((x) => [x.handle, isMock(x)]), main?.state, unread, ses.map((x) => x.id)]);
+  const word = lead ? ` · ${stateWord(lead.state).toLowerCase()}${away}` : '';
+  const sig = JSON.stringify([t.title, named.map((x) => [x.handle, isMock(x)]), word, unread, ses.map((x) => x.id)]);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
   const oldRings = n.querySelector('.ring-slot');
@@ -472,7 +488,7 @@ function updateRow(n, t, active, fresh = false) {
   fill(
     n,
     slot,
-    h('span.name', h('span', t.title), h('span.sub', who, h('span.state-word', main ? ` · ${stateWord(main.state).toLowerCase()}` : ''))),
+    h('span.name', h('span', t.title), h('span.sub', who, h('span.state-word', word))),
     unread ? h('span.badge', { 'aria-label': `${unread} unread` }, String(unread)) : null,
   );
 }
@@ -501,9 +517,9 @@ export function mountOverview({ archived = false } = {}) {
   el.append(...[headEl, archived ? null : installLine(), grid, archive].filter((x) => x !== null));
   const order = (se) => (se.needs ? 0 : busy(se) ? 1 : 2);
   const paint = () => {
-    // A topic thread’s agent gets a column only while it’s working or waiting for you.
+    // A topic or side thread’s agent gets a column only while it’s working or waiting for you (#121).
     const live = liveSessions()
-      .filter((se) => S().threads[se.threadId]?.kind !== 'topic' || busy(se) || se.needs)
+      .filter((se) => !['topic', 'side'].includes(S().threads[se.threadId]?.kind) || busy(se) || se.needs)
       .sort((a, b) => order(a) - order(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
     const n = needsYou().length;
     const finished = live.filter((se) => se.unread && !se.needs).length;
@@ -737,7 +753,7 @@ function updateCard(node, se, fresh = false) {
       ? sec(
           se.needs.kind === 'failed' ? 'Failed' : 'Needs you',
           h('p', se.needs.text),
-          quick ?? h('a.btn.sm', { href: `#/t/${se.threadId}`, style: { alignSelf: 'flex-start' } }, 'Open conversation'),
+          quick ?? h('a.btn.sm', { href: hrefOf(whereOf(se)), style: { alignSelf: 'flex-start' } }, 'Open conversation'),
         )
       : null,
     sec('Current step', h('p', { class: busy(se) ? '' : 'dim' }, se.currentStep || '—'), busy(se) && se.glimpse ? h('p.glimpse', se.glimpse) : null),
@@ -807,13 +823,13 @@ function agentMessages(se) {
 /** Answer a permission request, a refusal, an app’s waiting sends, or a simple choice or confirm right on the card. */
 function quickAnswer(se) {
   const kind = se.needs?.kind;
+  // Its ask may be in a side thread (#121).
+  const where = whereOf(se);
   if (kind === 'permission' || kind === 'denial' || kind === 'appsend') {
-    const it = (S().items[se.threadId] ?? []).find((x) => x.id === se.needs.itemId);
+    const it = (S().items[where] ?? []).find((x) => x.id === se.needs.itemId);
     if (it?.status !== 'open') return null;
     const act = (action) =>
-      api(`/api/threads/${se.threadId}/items/${it.id}/act`, { action }).catch((e) =>
-        toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }),
-      );
+      api(`/api/threads/${where}/items/${it.id}/act`, { action }).catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
     const buttons =
       kind === 'permission' || kind === 'appsend'
         ? [
@@ -827,17 +843,17 @@ function quickAnswer(se) {
     return h(
       'div.col',
       it.detail ? h('pre.md-code.perm-detail', h('code', it.detail.slice(0, 400))) : null,
-      h('div.row-flex.wrap', ...buttons, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation')),
+      h('div.row-flex.wrap', ...buttons, h('a.btn.sm.ghost', { href: hrefOf(where) }, 'Open conversation')),
     );
   }
   if (kind !== 'block') return null;
-  const it = (S().items[se.threadId] ?? []).find((x) => x.id === se.needs.itemId);
+  const it = (S().items[where] ?? []).find((x) => x.id === se.needs.itemId);
   if (!it?.valid) return null;
   const b = it.block;
   // The revision this card shows: if the agent changes the block first, the answer is refused, not taken (#123).
   const revision = it.revision ?? 1;
   const act = (action, values) =>
-    api(`/api/threads/${se.threadId}/items/${it.id}/act`, { action, values, revision }).catch((e) =>
+    api(`/api/threads/${where}/items/${it.id}/act`, { action, values, revision }).catch((e) =>
       toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }),
     );
   if (b.type === 'confirm')
@@ -845,7 +861,7 @@ function quickAnswer(se) {
       'div.row-flex.wrap',
       h('button.btn.sm', { type: 'button', onclick: () => act('confirm', {}) }, b.confirmLabel),
       h('button.btn.sm', { type: 'button', onclick: () => act('cancel', {}) }, b.cancelLabel ?? 'Cancel'),
-      h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation'),
+      h('a.btn.sm.ghost', { href: hrefOf(where) }, 'Open conversation'),
     );
   if (b.type === 'choice' && !b.other) {
     const picked = new Set();
@@ -888,7 +904,7 @@ function quickAnswer(se) {
         return c;
       }),
     );
-    return [chips, h('div.row-flex', send, h('a.btn.sm.ghost', { href: `#/t/${se.threadId}` }, 'Open conversation'))];
+    return [chips, h('div.row-flex', send, h('a.btn.sm.ghost', { href: hrefOf(where) }, 'Open conversation'))];
   }
   return null;
 }

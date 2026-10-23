@@ -24,6 +24,8 @@ One agent’s settings were in four places: `/model`, `/effort` and `/mode` in t
 - A mock agent says it has no model, effort or permission mode to change; its tools still show.
 - By keyboard: each group of choices is one Tab stop; the arrow keys move within it, and Enter or Space picks. Space or Enter flips a switch. Escape closes the panel and returns focus to the row or ring it came from.
 - Model and effort changed elsewhere (`/model`, another tab) show in the open panel at once.
+- An agent the person never added, which joined because another agent woke it in a side thread, says so under its row (“Joined when @indexer woke it”) and on its ring in the top bar; the wake’s line in the conversation ends “joined the conversation” (#110).
+- **The agent tree** (#121, #110). Under an agent’s row, one line each: its turn when it answers in a side thread (“Calling tools with @indexer”), and each fork of it that answered there while its session was busy elsewhere (“Fork · calling tools with @indexer”), each with a Stop while it works. Each entry opens its side thread; hovering it shows which thread and who woke it. A persona running in two sessions shows two entries, and one of them waiting for you counts in “needs you”, ⌃J and the tab title.
 
 ## Steps to reproduce
 
@@ -33,9 +35,10 @@ One agent’s settings were in four places: `/model`, `/effort` and `/mode` in t
 4. Tab to a row, press Enter, Tab through the panel, flip a switch with Space, and press Escape.
 5. Under an agent reply, choose Reply in thread. In the thread’s panel, open its agent’s quick panel and change its model; the conversation’s agent keeps its own.
 6. Narrow the window to 375 px. Open the panel from a ring in the top bar (in a room, from the stack of rings’ menu), and from a topic thread’s panel.
-7. Run `node tools/check-agents.mjs`.
+7. In a room, ask @indexer to wake @researcher with a long task, and while @researcher works in the side thread, have @indexer wake it again. Check the tree under @researcher, the side-thread line, and `/stop` in the conversation.
+8. Run `node tools/check-agents.mjs` and `node tools/check-side-threads.mjs`.
 
-**Pass if:** Each change takes two clicks from the sidebar, with no command, in a conversation and in a topic thread; every control says whether it’s for this conversation or for the persona everywhere; the panel works by keyboard and fits at 375 and 1280 px; and the check passes.
+**Pass if:** Each change takes two clicks from the sidebar, with no command, in a conversation and in a topic thread; every control says whether it’s for this conversation or for the persona everywhere; the panel works by keyboard and fits at 375 and 1280 px; an agent at work in a side thread, and each fork of it, shows under its row with a Stop; and the checks pass.
 
 ## Related
 

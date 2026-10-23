@@ -266,8 +266,9 @@ export class Runtime {
     if (!se) return;
     this.putSession({ ...se, ...patch, updatedAt: Date.now() });
   }
-  notify(level, se, title, text) {
-    this.store.emit('notify', { level, sessionId: se.id, threadId: se.threadId, handle: se.handle, title, text });
+  /** threadId: where it happened, when that isn’t the session’s own thread (a turn in a side thread, #110). */
+  notify(level, se, title, text, threadId = null) {
+    this.store.emit('notify', { level, sessionId: se.id, threadId: threadId ?? se.threadId, handle: se.handle, title, text });
   }
 
   // ── Projects, threads, sessions ────────────────────────────────────────────────────
@@ -293,8 +294,12 @@ export class Runtime {
   }
 
   /** One session per persona per thread. Adding a second agent turns a thread into a room. */
-  /** @param {string} threadId @param {string} personaId @param {{ brief?: string|null }} [opts] */
-  ensureSession(threadId, personaId, { brief } = {}) {
+  /**
+   * @param {string} threadId @param {string} personaId
+   * @param {{ brief?: string|null, joined?: { by: string, in: string } | null }} [opts]
+   *   joined: it joins to answer in a side thread, woken by `by` (a handle, or 'you') in thread `in` (#110)
+   */
+  ensureSession(threadId, personaId, { brief, joined = null } = {}) {
     const t = this.thread(threadId);
     const existing = this.sessionsIn(threadId).find((x) => x.personaId === personaId);
     if (existing) return existing;
@@ -324,6 +329,8 @@ export class Runtime {
       finishedAt: null,
       archived: false,
       brief: brief ?? null,
+      // The person never added it, so its row says why it’s here (decided by the person, 23 October 2026).
+      ...(joined ? { joinedBy: joined.by, joinedIn: joined.in } : {}),
       // Nothing given yet: its first turn starts with the conversation so far (see catchUp).
       seenItem: null,
     });
@@ -344,10 +351,23 @@ export class Runtime {
       .map((h) => this.personaByHandle(h))
       .filter(Boolean);
     const targets = [];
+    // A side thread is a channel between the conversation’s own sessions (#110, #128): an agent you @-mention there,
+    // or the one you reply to, answers from its session in the conversation, and the exchange shows here.
+    if (t.kind === 'side') {
+      for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you'), woke: true });
+      if (!targets.length) {
+        // The last speaker replies, as in a conversation; before anyone has, the agent that was woken.
+        const last = this.s.sessions[t.lastSpeaker];
+        const p = last && !last.archived && !last.deleting ? null : this.personaByHandle(t.woke ?? t.pair?.split('|')[1] ?? '');
+        const se = p ? this.sideSession(t, p.id, 'you') : last;
+        if (!se) throw httpError(409, 'No agent is in this side thread. @-mention one to bring it in.');
+        targets.push({ se, woke: false });
+      }
+    }
     // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
     const archived = mentioned.map((p) => this.sessionsIn(threadId).find((x) => x.personaId === p.id)).find((x) => x?.archived);
-    if (archived) throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
-    for (const p of mentioned) {
+    if (archived && t.kind !== 'side') throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
+    for (const p of t.kind === 'side' ? [] : mentioned) {
       const joined = !this.sessionsIn(threadId).some((x) => x.personaId === p.id);
       // In a topic thread, an agent from the conversation joins as a fork of its session there.
       const from = joined && t.kind === 'topic' ? this.sessionsIn(t.parentId).find((x) => x.personaId === p.id) : null;
@@ -377,11 +397,31 @@ export class Runtime {
   postAndDeliver(threadId, { text, attachments }, targets) {
     const item = this.addItem(threadId, { kind: 'user', text, attachments });
     this.putThread({ ...this.s.threads[threadId], hops: 0 });
+    const refs = this.threadRefs(threadId, text);
     for (const { se, woke } of targets) {
       if (woke) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
-      this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id });
+      this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id, ...(refs.length ? { context: refs } : {}) }, { threadId });
     }
     return { item };
+  }
+
+  /**
+   * The threads a message of yours links to (#121), as Copy link or the composer’s # gives them, each with its id and
+   * title so the agent can read it. Only threads of the same conversation: read_conversation reads no others.
+   * @param {string} threadId @param {string} text
+   */
+  threadRefs(threadId, text) {
+    const root = (x) => this.lineage(x).at(-1);
+    const ids = new Set();
+    for (const m of String(text).matchAll(/#\/t\/(th_[A-Za-z0-9]+)(?:\/side\/(th_[A-Za-z0-9]+))?/g)) ids.add(m[2] ?? m[1]);
+    const out = [];
+    for (const id of [...ids].slice(0, 10)) {
+      const t = this.s.threads[id];
+      if (!t || t.deleting || id === threadId || root(id) !== root(threadId)) continue;
+      const what = t.kind === 'side' ? 'side thread' : t.kind === 'topic' ? 'topic thread' : 'conversation';
+      out.push(`[Postbox] The person’s message links to the ${what} “${t.title}” (thread ${id}). Read it with read_conversation with thread: "${id}".`);
+    }
+    return out;
   }
 
   editQueued(threadId, queueId, text) {
@@ -424,32 +464,41 @@ export class Runtime {
 
   // ── Turns ──────────────────────────────────────────────────────────────────────────
 
-  /** Runs one agent turn through its adapter. */
-  deliver(sessionId, message, { replyTo = null, summarizeTo = null } = {}) {
+  /**
+   * Runs one agent turn through its adapter.
+   * threadId: where the turn speaks, when that isn’t the session’s own thread: a conversation session answers in a side
+   * thread (#110), so one persona has one memory per conversation.
+   * @param {string} sessionId @param {any} message
+   * @param {{ replyTo?: string|null, summarizeTo?: string|null, threadId?: string|null }} [opts]
+   */
+  deliver(sessionId, message, { replyTo = null, summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
+    // As it was asked, for a fork that starts again fresh (forkRetry).
+    const asked = { message, replyTo, summarizeTo, threadId };
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
-      t.pending.push({ message, replyTo, summarizeTo });
+      t.pending.push({ message, replyTo, summarizeTo, threadId });
       return;
     }
     // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
     // held here isn’t read yet: it’s read when the turn it starts begins.
     const exiting = this.exiting.get(sessionId);
     if (exiting) {
-      exiting.held.push({ message, replyTo, summarizeTo });
+      exiting.held.push({ message, replyTo, summarizeTo, threadId });
       return;
     }
     // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
     if (this.closing) return;
-    this.answerDelivered(se.threadId, message);
+    const where = threadId && threadId !== se.threadId && this.s.threads[threadId] ? threadId : se.threadId;
+    this.answerDelivered(where, message);
     // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
     // the context below waits for the agent’s next turn instead.
     const slash = message.slash === true;
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
-      message = { ...message, context: se.context };
+      message = { ...message, context: [...se.context, ...(message.context ?? [])] };
       this.updateSession(sessionId, { context: [] });
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
@@ -471,7 +520,7 @@ export class Runtime {
               .toLowerCase()
           : null,
       sessionId,
-      threadId: se.threadId,
+      threadId: where,
       segment: null,
       first: null,
       steps: [],
@@ -489,6 +538,7 @@ export class Runtime {
       exited: Promise.resolve(),
       /** @type {Set<string>} background jobs Stop was asked to keep running (#129) */
       keepJobs: new Set(),
+      asked,
     };
     this.turns.set(sessionId, turn);
     // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
@@ -504,6 +554,8 @@ export class Runtime {
     this.updateSession(sessionId, {
       allowOnce: [],
       glimpse: '',
+      // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
+      sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
       state: 'think',
       needs: message.kind === 'event' || message.kind === 'user' ? null : se.needs,
       currentStep: 'Thinking',
@@ -782,6 +834,8 @@ export class Runtime {
     // Posted or not, the summary isn’t pending any more, so Summarize back works again. Any turn ending clears
     // one a restart left behind, too.
     this.clearSummaryPending(turn.threadId);
+    if (err && err.name !== 'AbortError' && this.forkRetry(se, turn, err)) return;
+    if (!err && se.forkOf?.first) this.updateSession(se.id, { forkOf: { ...se.forkOf, first: false } });
     if (err && err.name !== 'AbortError') {
       // Its progress steps still running show as stalled, as at any turn’s end (#98).
       this.stallLeftRunning(turn, se, 'failed');
@@ -801,13 +855,15 @@ export class Runtime {
       this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null });
       this.updateSession(se.id, {
         state: 'failed',
-        needs: { kind: 'failed', itemId: target, text: message },
+        needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
+        sideTurn: null,
         subagents: [],
         currentStep: 'Failed',
         finishedAt: Date.now(),
         stopAsk: null,
       });
-      this.notify('blocking', se, `@${se.handle}’s reply failed`, message);
+      this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+      this.forkDone(se, turn);
       return;
     }
     // An app-check turn that ended without a new version: show the app with a note instead of waiting forever.
@@ -827,12 +883,18 @@ export class Runtime {
     const viewing = this.isViewing(turn.threadId);
     const refused = items.filter((it) => it.kind === 'denial' && it.turnId === turn.id && it.status === 'open');
     const needs = open.length
-      ? { kind: 'block', itemId: open.at(-1).id, text: open.at(-1).block.title ?? clip(open.at(-1).block.prompt ?? open.at(-1).block.fallback, 120) }
+      ? {
+          kind: 'block',
+          itemId: open.at(-1).id,
+          text: open.at(-1).block.title ?? clip(open.at(-1).block.prompt ?? open.at(-1).block.fallback, 120),
+          ...(open.at(-1) === waiting ? { threadId: se.needs?.threadId } : this.awayFrom(se, turn.threadId)),
+        }
       : refused.length
         ? {
             kind: 'denial',
             itemId: refused.at(-1).id,
             text: `${refused.length === 1 ? 'A step was' : `${refused.length} steps were`} refused: ${refused.at(-1).summary}`,
+            ...this.awayFrom(se, turn.threadId),
           }
         : se.needs?.kind === 'hop'
           ? se.needs
@@ -841,6 +903,7 @@ export class Runtime {
     this.updateSession(se.id, {
       state: needs ? 'needs' : 'idle',
       needs,
+      sideTurn: null,
       glimpse: '',
       subagents: [],
       currentStep: needs ? 'Waiting for you' : `Idle since ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
@@ -849,9 +912,9 @@ export class Runtime {
       unread: viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
       stopAsk: null,
     });
-    if (needs && (needs.kind === 'block' || needs.kind === 'denial')) this.notify('blocking', se, `@${se.handle} needs you`, needs.text);
-    else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120));
-    else if (turn.said && !viewing) this.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120));
+    if (needs && (needs.kind === 'block' || needs.kind === 'denial')) this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
+    else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
+    else if (turn.said && !viewing) this.notify('info', se, `@${se.handle} finished`, clip(turn.said, 120), turn.threadId);
 
     // The checks: what this turn sent, as problems, which go back to the agent in one lint turn. A lint turn is
     // never linted again, so this can’t loop; one that only called tools ends as a note instead of a reply.
@@ -879,10 +942,32 @@ export class Runtime {
     }
     const next = turn.pending.shift();
     if (next) {
-      this.deliver(se.id, next.message, { replyTo: next.replyTo, summarizeTo: next.summarizeTo });
+      this.deliver(se.id, next.message, { replyTo: next.replyTo, summarizeTo: next.summarizeTo, threadId: next.threadId });
       const t = this.turns.get(se.id);
       if (t) t.pending.push(...turn.pending);
-    } else this.drainQueue(turn.threadId);
+    } else {
+      this.forkDone(se, turn);
+      this.drainQueues(se.id, turn.threadId);
+    }
+  }
+
+  /**
+   * The thread a session’s ask is in, when that isn’t its own: { threadId } to spread into its needs, so the overview
+   * and ⌃J go to the side thread where the card is (#121).
+   * @param {any} se @param {string} threadId
+   */
+  awayFrom(se, threadId) {
+    return threadId && threadId !== se.threadId ? { threadId } : {};
+  }
+
+  /**
+   * The queues waiting on this session: the thread its turn was in, and any other (its conversation, a side thread)
+   * whose next message is for it. A session answers in more than one thread now (#110).
+   */
+  drainQueues(sessionId, threadId) {
+    const ids = new Set([threadId]);
+    for (const t of Object.values(this.s.threads)) if (t.queue?.[0]?.sessionIds.includes(sessionId)) ids.add(t.id);
+    for (const id of ids) this.drainQueue(id);
   }
 
   /**
@@ -951,19 +1036,20 @@ export class Runtime {
     if (!se) return;
     // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
     if (se.state === 'stopping' || se.currentStep === 'Stopping')
-      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: 'Stopped by you', finishedAt: Date.now() });
+      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: 'Stopped by you', finishedAt: Date.now(), sideTurn: null });
+    else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
     const held = se.archived || se.deleting ? [] : ex.held;
-    // Shutting down: your messages wait in the conversation’s queue, which a restart keeps, rather than starting a CLI.
+    // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
     if (this.closing) {
-      const t = this.s.threads[se.threadId];
-      const waiting = held
-        .filter((h) => h.message.kind === 'user')
-        .map((h) => ({ id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now() }));
-      if (t && waiting.length) this.putThread({ ...t, queue: [...(t.queue ?? []), ...waiting] });
+      for (const h of held.filter((x) => x.message.kind === 'user')) {
+        const t = this.s.threads[h.threadId ?? se.threadId];
+        const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now() };
+        if (t) this.putThread({ ...t, queue: [...(t.queue ?? []), q] });
+      }
       return;
     }
-    for (const h of held) this.deliver(se.id, h.message, { replyTo: h.replyTo, summarizeTo: h.summarizeTo });
-    if (!held.length && !ex.silent) this.drainQueue(turn.threadId);
+    for (const h of held) this.deliver(se.id, h.message, { replyTo: h.replyTo, summarizeTo: h.summarizeTo, threadId: h.threadId });
+    if (!held.length && !ex.silent) this.drainQueues(se.id, turn.threadId);
   }
 
   /**
@@ -1191,7 +1277,7 @@ export class Runtime {
     const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
     this.patchItem(threadId, itemId, { status: 'retried' });
     this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-    this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true });
+    this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
   }
 
   // ── Agents waking agents ───────────────────────────────────────────────────────────
@@ -1219,7 +1305,8 @@ export class Runtime {
         n: (parent.hops ?? 0) + 1,
       });
       this.updateSession(fromSessionId, {
-        needs: { kind: 'hop', itemId: it.id, text: `@${from.handle} wants to wake @${p.handle}` },
+        // The card is in the conversation, even when the agent asking is a fork in a side thread (#121).
+        needs: { kind: 'hop', itemId: it.id, text: `@${from.handle} wants to wake @${p.handle}`, ...this.awayFrom(from, parent.id) },
         state: this.turns.has(fromSessionId) ? from.state : 'needs',
       });
       this.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${(parent.hops ?? 0) + 1} since your last message.`);
@@ -1227,7 +1314,17 @@ export class Runtime {
     }
     const hops = (parent.hops ?? 0) + 1;
     this.putThread({ ...this.s.threads[parent.id], hops });
-    this.addItem(parent.id, { kind: 'system', variant: 'wake', from: from.handle, to: p.handle, n: hops, limit: HOP_LIMIT });
+    // A persona with no session here joins the conversation (sideSession), and the line says so.
+    const joins = !this.sessionsIn(parent.id).some((x) => x.personaId === p.id);
+    this.addItem(parent.id, {
+      kind: 'system',
+      variant: 'wake',
+      from: from.handle,
+      to: p.handle,
+      n: hops,
+      limit: HOP_LIMIT,
+      ...(joins ? { joined: true } : {}),
+    });
     // The exchange happens in a side thread; your thread shows one line that links to it.
     const pair = [from.handle, p.handle].sort().join('|');
     let side = Object.values(this.s.threads).find((x) => x.kind === 'side' && x.parentId === parent.id && x.pair === pair);
@@ -1239,6 +1336,8 @@ export class Runtime {
         kind: 'side',
         parentId: parent.id,
         pair,
+        // Who answers in it before anyone has spoken there (sendMessage).
+        woke: p.handle,
         members: [],
         lastSpeaker: null,
         hops: 0,
@@ -1250,11 +1349,126 @@ export class Runtime {
     }
     const said = this.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done' });
     this.recordAgentMessage(from.id, 'to', p.handle, text);
-    const target = this.ensureSession(side.id, p.id);
+    // The woken agent answers from its session in the conversation, so it remembers the exchange (#110); a fork of it
+    // answers only while that session is busy.
+    const target = this.sideSession(side, p.id, from.handle);
     this.recordAgentMessage(target.id, 'from', from.handle, text);
     this.bumpSideLink(side.id);
-    this.deliver(target.id, { kind: 'agent', from: `@${from.handle}`, text, itemId: said.id }, { replyTo: from.id });
-    return { ok: true, message: `Woke @${p.handle}.` };
+    this.deliver(target.id, { kind: 'agent', from: `@${from.handle}`, text, itemId: said.id }, { replyTo: from.id, threadId: side.id });
+    return { ok: true, message: target.forkOf?.busy ? `Woke @${p.handle}: its session was busy, so a fork of it answers.` : `Woke @${p.handle}.` };
+  }
+
+  /**
+   * Who answers for a persona in a side thread (#110): one session per persona per conversation. That’s its session in
+   * the conversation, which joins it if it isn’t there yet. Only while that session is mid-turn (or archived) does a fork
+   * of it, taken at its latest point, answer instead: one per side thread, reused, and shown nested under the persona.
+   * @param {any} side @param {string} personaId @param {string} by  the handle that woke it, or 'you'
+   */
+  sideSession(side, personaId, by) {
+    const parent = this.thread(side.parentId);
+    const home =
+      this.sessionsIn(parent.id).find((x) => x.personaId === personaId) ??
+      this.ensureSession(parent.id, personaId, {
+        brief: by === 'you' ? 'You were @-mentioned in a side thread of this conversation.' : `@${by} woke you in a side thread of this conversation.`,
+        joined: { by, in: side.id },
+      });
+    if (!home.archived && !this.turns.has(home.id) && !this.exiting.has(home.id)) return home;
+    // Busy in this side thread already: the message waits for that turn, as any message to a busy agent does. A fork
+    // here would be a second session doing the same work, which is #121 again.
+    const busyIn = this.turns.get(home.id)?.threadId ?? this.exiting.get(home.id)?.turn.threadId;
+    if (!home.archived && busyIn === side.id) return home;
+    const fork = this.sessionsIn(side.id).find((x) => x.personaId === personaId && !x.archived);
+    return fork ?? this.forkBusy(home, side, by);
+  }
+
+  /**
+   * A fork of a busy session into a side thread, at the session’s latest point: it starts with its memory, answers the
+   * wake, and when it’s done the session hears where to read what it did (forkDone).
+   * @param {any} src @param {any} side @param {string} by
+   */
+  forkBusy(src, side, by) {
+    const se = this.ensureSession(side.id, src.personaId);
+    const adapter = this.adapters.get(this.persona(src.personaId)?.backend ?? 'mock');
+    // first: its first turn hasn’t ended yet. If that turn fails before it does anything, the fork starts again fresh.
+    this.updateSession(se.id, { personaSnapshot: src.personaSnapshot, forkOf: { sessionId: src.id, itemId: null, busy: true, by, first: true }, wokenBy: by });
+    if (adapter.capabilities?.fork === false) return this.forkFresh(se, src, side);
+    this.updateSession(se.id, {
+      backendState: { fork: null, forkFrom: src.backendState ?? null, contextWindow: src.backendState?.contextWindow },
+      ctx: src.ctx,
+      compactions: src.compactions,
+      // Its catch-up is this side thread’s, from the start.
+      seenItem: null,
+      context: [this.forkNote(src, side, null)],
+    });
+    try {
+      adapter.fork?.(src, this.s.sessions[se.id]);
+    } catch (e) {
+      return this.forkFresh(se, src, side, e);
+    }
+    return this.s.sessions[se.id];
+  }
+
+  /**
+   * A fork that can’t start from its session’s memory: the backend can’t fork (Kiro), or forking failed. It’s a new
+   * session of the agent, and its note says so, and why.
+   * @param {any} se @param {any} src @param {any} side @param {any} [err]
+   */
+  forkFresh(se, src, side, err = null) {
+    if (err) console.error(`A fork of @${src.handle}’s session couldn’t start from its memory, so it starts fresh: ${err.message ?? err}`);
+    this.updateSession(se.id, {
+      backendState: {},
+      ctx: 2,
+      compactions: 0,
+      seenItem: null,
+      forkOf: { ...this.s.sessions[se.id].forkOf, fresh: true },
+      context: [this.forkNote(src, side, err)],
+    });
+    return this.s.sessions[se.id];
+  }
+
+  /**
+   * What a fork reads first. fresh: null when it starts from its session’s memory; otherwise why it doesn’t (true for
+   * a backend that can’t fork, or the error).
+   * @param {any} src @param {any} side @param {any} fresh
+   */
+  forkNote(src, side, fresh) {
+    const conv = this.s.threads[src.threadId]?.title ?? '';
+    const why = fresh && fresh !== true ? ` (starting from its memory failed: ${clipText(String(fresh.message ?? fresh), 200)})` : '';
+    return `[Postbox] You’re answering in the side thread “${side.title}” as a fork of your session in the conversation “${conv}”: that session was busy${src.archived ? ' (archived)' : ''}, so ${fresh ? `this is a new session of you, and it doesn’t remember the conversation${why}` : 'this one starts from what it remembered then'}. Your session there doesn’t see what you do here; when you’re done, it’s told where to read it.`;
+  }
+
+  /**
+   * A fork’s first turn failed before it said or did anything, which is how a backend’s fork of a session mid-turn
+   * fails: it starts again, once, as a fresh session, with the same message. Returns whether it did.
+   * @param {any} se @param {any} turn @param {any} err
+   */
+  forkRetry(se, turn, err) {
+    if (!se.forkOf?.busy || !se.forkOf.first || se.forkOf.fresh || turn.first || turn.steps.length || turn.said) return false;
+    const src = this.s.sessions[se.forkOf.sessionId];
+    const side = this.s.threads[se.threadId];
+    if (!src || !side) return false;
+    this.forkFresh(se, src, side, err);
+    this.updateSession(se.id, { state: 'idle', needs: null, currentStep: '' });
+    const { message, replyTo, summarizeTo, threadId } = turn.asked;
+    this.deliver(se.id, message, { replyTo, summarizeTo, threadId });
+    this.turns.get(se.id)?.pending.push(...turn.pending);
+    return true;
+  }
+
+  /**
+   * A fork made because its session was busy finished a turn: its session’s next turn gets a pointer to it, with the
+   * thread id. The agent decides whether to bring it in: the fork’s summary (its last reply) or its full messages, both
+   * with read_conversation. Postbox sends neither. The pointer replaces an older one for the same thread.
+   * @param {any} se @param {any} turn
+   */
+  forkDone(se, turn) {
+    if (!se.forkOf?.busy) return;
+    const main = this.s.sessions[se.forkOf.sessionId];
+    const side = this.s.threads[turn.threadId];
+    if (!main || !side) return;
+    const tag = `(thread ${side.id})`;
+    const text = `[Postbox] A fork of you answered in the side thread “${side.title}” ${tag} while you were busy, starting from what you remembered then. You don’t remember what it did. Its summary is its last reply: read_conversation with thread: "${side.id}" and limit: 1. Its full messages: read_conversation with thread: "${side.id}". Read either only if it matters to your work.`;
+    this.updateSession(main.id, { context: [...(main.context ?? []).filter((x) => !x.includes(tag)), text].slice(-20) });
   }
 
   resolveHop(threadId, itemId, allow) {
@@ -1321,7 +1535,7 @@ export class Runtime {
     this.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
     const se = this.s.sessions[it.sessionId];
     if (se?.needs?.itemId === itemId) this.updateSession(se.id, { needs: null, state: this.turns.has(se.id) ? se.state : 'idle' });
-    if (se) this.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId });
+    if (se) this.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId }, { threadId });
     return { ok: true, voice: r.voice };
   }
 
@@ -1628,7 +1842,7 @@ export class Runtime {
         if (i.variant === 'left') return `@${i.to} left`;
         return null;
       case 'sidelink':
-        return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages)`;
+        return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages; read_conversation with thread: "${i.sideThreadId}" reads it)`;
       case 'command': {
         // A `!command` the person ran (#67), with its output, as Claude Code’s bash mode passes it on.
         const how =
@@ -1650,9 +1864,17 @@ export class Runtime {
     }
   }
 
-  /** read_conversation: the conversation’s items, newest last, as text. */
-  readConversation(se, { limit = 50, skip = 0 } = {}) {
-    const items = this.store.items(se.threadId).filter((i) => i.kind !== 'system' || i.variant === 'wake');
+  /**
+   * read_conversation: the conversation’s items, newest last, as text. thread: another thread of the same conversation
+   * to read instead, such as a side thread or a topic thread (#121): its id from a catch-up line, a pointer to a fork, or
+   * a link the person shared. Threads of other conversations are refused.
+   */
+  /** @param {any} se @param {{ limit?: number, skip?: number, thread?: unknown }} [args] */
+  readConversation(se, { limit = 50, skip = 0, thread = null } = {}) {
+    const id = typeof thread === 'string' && thread.trim() ? thread.trim().slice(0, 100) : se.threadId;
+    if (!this.conversationThreads(se.threadId).includes(id))
+      throw httpError(404, `There’s no thread ${id} in this conversation. Read one of its own threads: the id is in the catch-up line or the link.`);
+    const items = this.store.items(id).filter((i) => i.kind !== 'system' || i.variant === 'wake');
     const n = Math.max(1, Math.min(200, Number(limit) || 50));
     const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
     const slice = items.slice(Math.max(0, end - n), end);
@@ -1671,13 +1893,15 @@ export class Runtime {
 
   /**
    * read_message: one item in full, by its id (the history and read_conversation give it where they cut one) or by
-   * a block’s id, from this thread or the conversation it branched from. Long text comes in parts (#109).
+   * a block’s id, from any thread of this conversation: read_conversation { thread } reads its side and topic threads,
+   * a fork’s among them (#110), so the ids it gives must work here too. Its own thread and the conversation it
+   * branched from come first. Long text comes in parts (#109).
    * @param {any} se @param {{ id?: string, from?: number }} [args]
    */
   readMessage(se, { id, from = 0 } = {}) {
     const key = String(id ?? '').trim();
     if (!key) return { ok: false, message: 'Name the item: read_message { id }, with an id from your history or read_conversation.' };
-    const threads = this.lineage(se.threadId);
+    const threads = this.conversationThreads(se.threadId);
     let it = threads.map((th) => this.store.item(th, key)).find(Boolean);
     if (!it) {
       const blocks = threads.flatMap((th) => this.store.items(th).filter((i) => i.kind === 'block' && i.valid && i.block?.id === key));
@@ -1709,6 +1933,20 @@ export class Runtime {
   // it measures (diagrams, the app check) as the reply renders, so the lint turn waits a moment for those. There’s
   // at most one lint turn per agent turn, a lint turn is never linted, and problems from a turn that failed or was
   // stopped are dropped.
+
+  /**
+   * Every thread of a thread’s conversation: its lineage first, then the conversation’s other side and topic threads.
+   * What read_conversation { thread } and read_message may read.
+   * @param {string} threadId
+   */
+  conversationThreads(threadId) {
+    const own = this.lineage(threadId);
+    const root = own.at(-1);
+    const rest = Object.values(this.s.threads)
+      .filter((t) => !t.deleting && !own.includes(t.id) && this.lineage(t.id).at(-1) === root)
+      .map((t) => t.id);
+    return [...own, ...rest];
+  }
 
   /** A thread, then the conversation it branched from, following parentId (a topic or side thread’s is one level). */
   lineage(threadId) {
@@ -1785,7 +2023,7 @@ export class Runtime {
   lintEntry(sessionId, turnId) {
     let e = this.lints.get(turnId);
     if (!e) {
-      e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null };
+      e = { sessionId, kind: null, ended: false, sent: false, problems: [], timer: null, threadId: null };
       this.lints.set(turnId, e);
       // Only recent turns can still get a lint turn.
       for (const [k, old] of this.lints) {
@@ -1801,6 +2039,8 @@ export class Runtime {
   endLint(turn, problems) {
     const e = this.lintEntry(turn.sessionId, turn.id);
     e.kind = turn.kind;
+    // The lint turn answers where the reply was.
+    e.threadId = turn.threadId;
     e.ended = true;
     e.problems.push(...problems);
     if (e.problems.length) this.sendLint(turn.id);
@@ -1840,7 +2080,7 @@ export class Runtime {
       }
       e.sent = true;
       const se = this.s.sessions[e.sessionId];
-      if (se && !se.deleting && !se.archived) this.deliver(e.sessionId, lintMessage(e.problems));
+      if (se && !se.deleting && !se.archived) this.deliver(e.sessionId, lintMessage(e.problems), { threadId: e.threadId });
     };
     if (wait <= 0) return send();
     e.timer = setTimeout(send, wait);
@@ -1950,7 +2190,7 @@ export class Runtime {
     const turn = this.turns.get(sessionId);
     if (!se || !turn) return Promise.resolve({ allow: false, message: 'The turn has ended.' });
     const json = input && typeof input === 'object' && !Array.isArray(input) ? JSON.stringify(input) : null;
-    const it = this.addItem(se.threadId, {
+    const it = this.addItem(turn.threadId, {
       kind: 'permission',
       sessionId,
       handle: se.handle,
@@ -1968,12 +2208,15 @@ export class Runtime {
       status: 'open',
     });
     // The text so far is finished; the reply continues below the card.
-    if (turn.segment) this.patchItem(se.threadId, turn.segment, { status: 'done' });
+    if (turn.segment) this.patchItem(turn.threadId, turn.segment, { status: 'done' });
     turn.segment = null;
-    this.updateSession(sessionId, { state: 'needs', needs: { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}` } });
-    this.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`);
+    this.updateSession(sessionId, {
+      state: 'needs',
+      needs: { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...this.awayFrom(se, turn.threadId) },
+    });
+    this.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
     return new Promise((resolve) => {
-      this.permissionWaits.set(it.id, { resolve, threadId: se.threadId, sessionId });
+      this.permissionWaits.set(it.id, { resolve, threadId: turn.threadId, sessionId });
     });
   }
 
@@ -2114,7 +2357,7 @@ export class Runtime {
       status: 'open',
     });
     // The text so far is finished; the reply continues below the card.
-    if (turn.segment) this.patchItem(se.threadId, turn.segment, { status: 'done' });
+    if (turn.segment) this.patchItem(turn.threadId, turn.segment, { status: 'done' });
     turn.segment = null;
   }
 
@@ -2148,7 +2391,7 @@ export class Runtime {
         state: this.turns.has(se.id) ? se.state : next ? 'needs' : 'idle',
       });
     }
-    if (note && se && !se.archived) this.deliver(se.id, { kind: 'notice', text: note });
+    if (note && se && !se.archived) this.deliver(se.id, { kind: 'notice', text: note }, { threadId });
     return { ok: true };
   }
 
@@ -3083,7 +3326,7 @@ export class Runtime {
     const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
     if (app.check.attempt === 0 && blocking.length && this.s.sessions[app.sessionId]) {
       this.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable } });
-      this.deliver(app.sessionId, { kind: 'app-check', appId, problems: fixable });
+      this.deliver(app.sessionId, { kind: 'app-check', appId, problems: fixable }, { threadId: app.threadId });
       return { status: 'fixing' };
     }
     const notes = clean.every((p) => APP_WARNINGS.has(p.code));
@@ -3146,7 +3389,7 @@ export class Runtime {
       };
     }
     this.addItem(app.threadId, { kind: 'voice', text: r.voice, appId, sentAt: now });
-    if (this.s.sessions[app.sessionId]) this.deliver(app.sessionId, { kind: 'event', event: r.event });
+    if (this.s.sessions[app.sessionId]) this.deliver(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId });
     return { ok: true, voice: r.voice };
   }
 
@@ -3176,7 +3419,7 @@ export class Runtime {
     const se = this.s.sessions[it.sessionId];
     for (const ev of it.events) {
       this.addItem(threadId, { kind: 'voice', text: ev.voice, appId: it.appId, sentAt: now, approved: true });
-      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event: { blockId: it.appId, action: ev.action, values: ev.values } });
+      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event: { blockId: it.appId, action: ev.action, values: ev.values } }, { threadId });
     }
     return { ok: true };
   }
@@ -3222,7 +3465,8 @@ export class Runtime {
     const endSegment = () => {
       if (turn) turn.segment = null;
     };
-    const threadId = () => se().threadId;
+    // Where the turn speaks: its session’s thread, or the side thread it answers in (#110).
+    const threadId = () => turn?.threadId ?? se().threadId;
     return {
       show_block({ block }) {
         // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
@@ -3268,7 +3512,7 @@ export class Runtime {
                 fallback: v.fallback,
               },
         );
-        if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id);
+        if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId());
         return v.ok
           ? { ok: true, message: renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown block ${v.block.id}.` }
           : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
@@ -3276,9 +3520,12 @@ export class Runtime {
       update_block({ block }) {
         const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
         if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
-        const existing = [...rt.store.items(threadId())]
-          .reverse()
-          .find((x) => x.kind === 'block' && x.valid && x.block.id === v.block.id && x.sessionId === sessionId);
+        // In the thread the turn is in, else the session’s own: a block it showed in the conversation can be updated
+        // from a turn in a side thread (#110).
+        const mine = (id) =>
+          [...rt.store.items(id)].reverse().find((x) => x.kind === 'block' && x.valid && x.block.id === v.block.id && x.sessionId === sessionId);
+        const where = mine(threadId()) ? threadId() : se().threadId;
+        const existing = mine(where);
         if (!existing) return { ok: false, message: `There’s no block with id ${v.block.id} to update. Use show_block to add it.` };
         if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
         const now = Date.now();
@@ -3292,11 +3539,11 @@ export class Runtime {
             };
           // Nor over an answer the agent hasn’t read (#123): it can’t know what came of an answer it hasn’t seen, and
           // “Deleted.” could land under a Cancel.
-          if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, threadId(), existing, true);
+          if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing, true);
           const { outcome, ...asked } = v.block;
           const keys = new Set([...Object.keys(asked), ...Object.keys(existing.block)].filter((k) => k !== 'outcome'));
           const changed = [...keys].some((k) => JSON.stringify(asked[k]) !== JSON.stringify(existing.block[k]));
-          rt.patchItem(threadId(), existing.id, { block: { ...existing.block, outcome }, revision: (existing.revision ?? 1) + 1, updatedAt: now });
+          rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, revision: (existing.revision ?? 1) + 1, updatedAt: now });
           return {
             ok: true,
             message: `Recorded the outcome under the person’s answer to ${v.block.id}; it stays answered.${changed ? ' Your other changes weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.' : ''}`,
@@ -3304,13 +3551,13 @@ export class Runtime {
         }
         // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
         // read (#123): the person would see it vanish, and the agent would never learn what it erased.
-        if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, threadId(), existing);
+        if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
         /** @type {Record<string, any>} */
         const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
         if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
         // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
         if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
-        rt.patchItem(threadId(), existing.id, patch);
+        rt.patchItem(where, existing.id, patch);
         return { ok: true, message: `Updated block ${v.block.id}.` };
       },
       show_app({ id, title, code, permissions = [], fallback }) {
@@ -3402,7 +3649,11 @@ export class Runtime {
         return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
       },
       read_conversation(args = {}) {
-        return { ok: true, message: rt.readConversation(se(), args) };
+        try {
+          return { ok: true, message: rt.readConversation(se(), args) };
+        } catch (e) {
+          return { ok: false, message: e.message };
+        }
       },
       read_message(args = {}) {
         return rt.readMessage(se(), args);
@@ -3413,11 +3664,10 @@ export class Runtime {
     };
   }
 
-  registerApp(sessionId, block, itemId) {
-    const se = this.s.sessions[sessionId];
+  registerApp(sessionId, block, itemId, threadId = this.s.sessions[sessionId]?.threadId) {
     this.store.emit('app', {
       id: block.id,
-      threadId: se.threadId,
+      threadId,
       sessionId,
       itemId,
       title: block.title ?? 'App',

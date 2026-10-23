@@ -149,6 +149,8 @@ export const hrefOf = (threadId) => {
   const t = S().threads[threadId];
   return t && (t.kind === 'side' || t.kind === 'topic') ? `#/t/${t.parentId}/side/${t.id}` : `#/t/${threadId}`;
 };
+/** A thread’s whole address, to share (#121): Copy link and the composer’s # give it, and an agent reads its id. */
+export const threadLink = (threadId) => new URL(hrefOf(threadId), location.href).href;
 export const sessionsOf = (threadId) => (S().threads[threadId]?.members ?? []).map((id) => S().sessions[id]).filter((x) => x && !x.deleting);
 export const itemsOf = (threadId) => S().items[threadId] ?? [];
 export const persona = (id) => S().personas[id];
@@ -160,15 +162,32 @@ export const busy = (se) => ['think', 'gen', 'tool'].includes(se?.state);
  */
 export const stopSession = (se, jobs = null, turnId = null) =>
   api(`/api/sessions/${se.id}/stop`, jobs ? { jobs, ...(turnId ? { turnId } : {}) } : {}).then((r) => r?.result ?? null);
+/**
+ * The sessions of a conversation’s side threads (#121): forks that answered while their session was busy, and from
+ * before #110, the sessions each wake started there. Topic threads aren’t in it: the person forked those.
+ */
+export const sideSessionsOf = (threadId) =>
+  Object.values(S().threads)
+    .filter((t) => t.kind === 'side' && t.parentId === threadId)
+    .flatMap((t) => sessionsOf(t.id));
+/** The sessions speaking in a thread: its own, and any session whose turn is in it now (a side thread’s, #110). */
+export const sessionsAt = (threadId) => [
+  ...sessionsOf(threadId),
+  ...Object.values(S().sessions).filter((se) => se.sideTurn?.threadId === threadId && !se.deleting && !sessionsOf(threadId).includes(se)),
+];
+/** Where a session needs you, or is at work: the side thread its ask or turn is in, else its own thread. */
+export const whereOf = (se) => (se.needs?.threadId && S().threads[se.needs.threadId] ? se.needs.threadId : null) ?? se.sideTurn?.threadId ?? se.threadId;
+// Side-thread sessions count with the rest (#121): one waiting on a permission prompt needs you as much as any.
 export const liveSessions = () =>
-  Object.values(S().sessions).filter(
-    (se) => !se.archived && !se.deleting && S().threads[se.threadId] && S().threads[se.threadId].kind !== 'side' && !S().threads[se.threadId].deleting,
-  );
+  Object.values(S().sessions).filter((se) => {
+    const t = S().threads[se.threadId];
+    return !se.archived && !se.deleting && t && !t.deleting && !(t.kind === 'side' && (!S().threads[t.parentId] || S().threads[t.parentId].deleting));
+  });
 export const needsYou = () => liveSessions().filter((se) => se.needs && ['block', 'failed', 'hop', 'permission', 'appsend'].includes(se.needs.kind));
 
-/** The thread’s main state for its rail row: the most urgent of its agents. */
+/** The thread’s main state for its rail row: the most urgent of its agents, its side threads’ included (#121). */
 export function threadState(t) {
-  const ses = sessionsOf(t.id).filter((x) => !x.archived);
+  const ses = [...sessionsOf(t.id), ...sideSessionsOf(t.id)].filter((x) => !x.archived);
   const rank = { needs: 5, failed: 4, tool: 3, gen: 3, think: 3, stopping: 1, idle: 0 };
   return ses.sort((a, b) => (rank[b.state] ?? 0) - (rank[a.state] ?? 0))[0];
 }

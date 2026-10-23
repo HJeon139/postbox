@@ -7,7 +7,7 @@ import { mockMarker } from './agent-facts.mjs';
 import { agentsSection } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
-import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession, uploadFile } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -51,7 +51,11 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   // the message column, like the messages (#83).
   const working = h('div.working.col', { 'aria-hidden': 'true' });
   const paintWorking = () => {
-    const busy = sessionsOf(threadId).filter((se) => !se.archived && (se.state === 'think' || se.state === 'tool'));
+    // The agents whose turn is here: a conversation’s, unless its turn is in a side thread, and in a side thread, any
+    // session answering in it (#110).
+    const busy = sessionsAt(threadId).filter(
+      (se) => !se.archived && (se.state === 'think' || se.state === 'tool') && (!se.sideTurn || se.sideTurn.threadId === threadId),
+    );
     syncList(
       working,
       busy,
@@ -273,7 +277,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       el.querySelectorAll(`pb-ring[data-session="${CSS.escape(d.id)}"]`).forEach((r) => {
         ringFor(d, r.getAttribute('size'), r);
       });
-      if (d.threadId === threadId) paintWorking();
+      // An agent at work here may not be one of this thread’s own (#110): its turn is in it.
+      paintWorking();
+      for (const it of itemsOf(threadId))
+        if (it.kind === 'sidelink' && nodes.get(it.id)?.dataset.sideSig !== sideSig(sideActive(it.sideThreadId))) rerender(it.id);
     } else if (ch.type === 'app') {
       for (const it of itemsOf(threadId))
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
@@ -567,19 +574,25 @@ function renderItem(it, prev, ctx) {
       );
     case 'system':
       return systemLine(it, ctx);
-    case 'sidelink':
+    case 'sidelink': {
+      // The agent at work in it, with the ring and state word the sidebar rows use (#121), so the conversation shows
+      // what’s running there without opening it.
+      const at = sideActive(it.sideThreadId);
       return h(
         'div.col.sys',
+        { dataset: { sideSig: sideSig(at) } },
         h(
           'a.pill',
           { href: `#/t/${ctx.threadId}/side/${it.sideThreadId}`, style: { textDecoration: 'none', borderColor: 'var(--accent)' } },
-          icon('thread', 'i-sm'),
+          at ? ringFor(at, 'xs') : icon('thread', 'i-sm'),
           h('b', `@${it.from}`),
           ' asked ',
           h('b', `@${it.to}`),
+          at ? [' · ', h('b', `@${at.handle}`), `${at.forkOf?.busy ? ' (a fork)' : ''} ${doing(at)}`] : null,
           ` · ${plural(it.count ?? 0, 'message')} · Open`,
         ),
       );
+    }
     case 'hop':
       return hopBlock(it, ctx);
     case 'permission':
@@ -596,6 +609,16 @@ function renderItem(it, prev, ctx) {
       return h('div.col.small.dim', `Unknown item “${it.kind}”.`);
   }
 }
+
+/** The session most worth showing in a side thread: one that needs you, else one at work there; null when none is. */
+function sideActive(sideId) {
+  const rank = { needs: 4, failed: 3, tool: 2, gen: 2, think: 2, stopping: 1 };
+  const here = sessionsAt(sideId).filter((se) => !se.archived && (!se.sideTurn || se.sideTurn.threadId === sideId) && rank[se.state]);
+  return here.sort((a, b) => rank[b.state] - rank[a.state])[0] ?? null;
+}
+const sideSig = (se) => (se ? `${se.id}:${se.state}` : '');
+/** “is calling tools”, “needs you”: what an agent is doing, after its name. */
+const doing = (se) => (se.state === 'needs' ? 'needs you' : se.state === 'failed' ? 'failed' : `is ${stateWord(se.state).toLowerCase()}`);
 
 /** A turn’s line from the work ledger (#132), which opens the conversation’s Work in the right pane, at that turn. */
 function workChip(it, ctx) {
@@ -751,7 +774,14 @@ function systemLine(it, _ctx) {
         icon('agent', 'i-sm'),
         it.from === 'you'
           ? ['You woke ', h('b', `@${it.to}`)]
-          : [h('b', `@${it.from}`), ' woke ', h('b', `@${it.to}`), it.n ? ` · agent wake ${it.n} of ${it.limit ?? 3}` : ''],
+          : [
+              h('b', `@${it.from}`),
+              ' woke ',
+              h('b', `@${it.to}`),
+              // It had no session here, so it joined the conversation to answer (#110).
+              it.joined ? ' · joined the conversation' : '',
+              it.n ? ` · agent wake ${it.n} of ${it.limit ?? 3}` : '',
+            ],
       );
     case 'compaction': {
       const sum = h(
@@ -1368,9 +1398,10 @@ export function mountComposer(threadId, { side = false } = {}) {
     } catch {}
   };
   const thread = () => S().threads[threadId];
+  // The composer’s Stop: an agent whose turn is here, the last speaker first.
   const busyOne = () =>
-    sessionsOf(threadId)
-      .filter(busy)
+    sessionsAt(threadId)
+      .filter((se) => busy(se) && (!se.sideTurn || se.sideTurn.threadId === threadId))
       .sort((a, _b) => (a.id === thread()?.lastSpeaker ? -1 : 1))[0];
 
   async function addFiles(files) {
@@ -1507,7 +1538,10 @@ export function mountComposer(threadId, { side = false } = {}) {
     runAgentCommand(se, '/compact');
   }
   function stopAll() {
-    const working = sessionsOf(threadId).filter(busy);
+    // In a conversation, Stop reaches its side threads too (#121): its agents wherever their turn is, and the forks
+    // answering there. Topic threads keep running: you forked them, and each has its own Stop.
+    const t = thread();
+    const working = (t?.kind === 'side' || t?.kind === 'topic' ? sessionsAt(threadId) : [...sessionsOf(threadId), ...sideSessionsOf(threadId)]).filter(busy);
     if (!working.length) return say('Nothing is running here.');
     for (const se of working)
       stopSession(se).then(
@@ -1696,19 +1730,33 @@ export function mountComposer(threadId, { side = false } = {}) {
     }
   }
 
-  // @-mention autocomplete
+  // @-mention autocomplete, and # for a side or topic thread of this conversation (#121)
   function updateMention() {
     const upto = ta.value.slice(0, ta.selectionStart);
-    const m = upto.match(/(^|[\s(])@([A-Za-z0-9_-]*)$/);
-    if (!m) {
+    const m = upto.match(/(^|[\s(])([@#])([^\s@#()]*)$/);
+    if (!m || (m[2] === '@' && !/^[A-Za-z0-9_-]*$/.test(m[3])) || (m[2] === '#' && !threadsHere().length)) {
       mention = null;
       paintMention();
       return;
     }
-    mention = { start: upto.length - m[2].length - 1, query: m[2].toLowerCase(), index: mention?.query === m[2].toLowerCase() ? mention.index : 0 };
+    const query = m[3].toLowerCase();
+    mention = { kind: m[2], start: upto.length - m[3].length - 1, query, index: mention?.query === query && mention.kind === m[2] ? mention.index : 0 };
     paintMention();
   }
+  /** The conversation’s side and topic threads, newest first, other than this one. */
+  function threadsHere() {
+    const t = thread();
+    const conv = t?.kind === 'side' || t?.kind === 'topic' ? t.parentId : threadId;
+    return Object.values(S().threads)
+      .filter((x) => x.parentId === conv && (x.kind === 'side' || x.kind === 'topic') && x.id !== threadId && !x.deleting)
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  }
   function candidates() {
+    if (mention.kind === '#')
+      return threadsHere()
+        .filter((x) => x.title.toLowerCase().includes(mention.query))
+        .slice(0, 6)
+        .map((x) => ({ thread: x }));
     const members = new Set(sessionsOf(threadId).map((x) => x.personaId));
     return Object.values(S().personas)
       .filter((p) => !p.retired && p.handle.toLowerCase().startsWith(mention.query))
@@ -1726,13 +1774,54 @@ export function mountComposer(threadId, { side = false } = {}) {
     const list = candidates();
     if (!list.length) return;
     mention.index = Math.min(mention.index, list.length - 1);
-    const box = h(
+    const box =
+      mention.kind === '#'
+        ? threadMenu(list)
+        : h(
+            'div.menu.mention-menu',
+            { role: 'listbox', id: 'mention-list', 'aria-label': 'Agents' },
+            h('div.label', 'Wake an agent'),
+            list.map(({ p, se }, i) => {
+              const ring = se ? ringFor(se, 'sm') : h('pb-ring', { name: `@${p.handle}`, state: 'idle', ctx: '0', size: 'sm' });
+              return h(
+                'div.mi',
+                {
+                  role: 'option',
+                  id: `mention-${i}`,
+                  'aria-selected': String(i === mention.index),
+                  class: i === mention.index ? 'active' : '',
+                  onmousedown: (e) => {
+                    e.preventDefault();
+                    pick({ p });
+                  },
+                },
+                ring,
+                h(
+                  'span.grow',
+                  `@${p.handle}`,
+                  mockMarker(se ?? p),
+                  h(
+                    'span.d',
+                    se?.archived ? 'Archived · restore it to wake it' : se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken',
+                  ),
+                ),
+                i === mention.index ? h('span.k', 'Enter') : null,
+              );
+            }),
+          );
+    menuBox.append(box);
+    // A textarea can’t be a combobox; the active option is announced through aria-activedescendant.
+    ta.setAttribute('aria-controls', 'mention-list');
+    ta.setAttribute('aria-activedescendant', `mention-${mention.index}`);
+  }
+  /** Threads to link, as the menu for #. The link is what Copy link gives, so an agent reads it the same way. */
+  function threadMenu(list) {
+    return h(
       'div.menu.mention-menu',
-      { role: 'listbox', id: 'mention-list', 'aria-label': 'Agents' },
-      h('div.label', 'Wake an agent'),
-      list.map(({ p, se }, i) => {
-        const ring = se ? ringFor(se, 'sm') : h('pb-ring', { name: `@${p.handle}`, state: 'idle', ctx: '0', size: 'sm' });
-        return h(
+      { role: 'listbox', id: 'mention-list', 'aria-label': 'Threads' },
+      h('div.label', 'Link a thread'),
+      list.map(({ thread: x }, i) =>
+        h(
           'div.mi',
           {
             role: 'option',
@@ -1741,30 +1830,25 @@ export function mountComposer(threadId, { side = false } = {}) {
             class: i === mention.index ? 'active' : '',
             onmousedown: (e) => {
               e.preventDefault();
-              insertMention(p.handle);
+              pick({ thread: x });
             },
           },
-          ring,
-          h(
-            'span.grow',
-            `@${p.handle}`,
-            mockMarker(se ?? p),
-            h('span.d', se?.archived ? 'Archived · restore it to wake it' : se ? `Here · ${stateWord(se.state).toLowerCase()}` : 'Not here · joins when woken'),
-          ),
+          icon('thread', 'i-sm'),
+          h('span.grow', x.title, h('span.d', x.kind === 'side' ? 'Side thread' : 'Topic thread')),
           i === mention.index ? h('span.k', 'Enter') : null,
-        );
-      }),
+        ),
+      ),
     );
-    menuBox.append(box);
-    // A textarea can’t be a combobox; the active option is announced through aria-activedescendant.
-    ta.setAttribute('aria-controls', 'mention-list');
-    ta.setAttribute('aria-activedescendant', `mention-${mention.index}`);
   }
-  function insertMention(handle) {
+  function pick(c) {
+    if (c.thread) insertText(`[${c.thread.title.replace(/[[\]]/g, '')}](${threadLink(c.thread.id)})`);
+    else insertText(`@${c.p.handle}`);
+  }
+  function insertText(text) {
     const before = ta.value.slice(0, mention.start);
     const after = ta.value.slice(ta.selectionStart);
-    ta.value = `${before}@${handle} ${after}`;
-    const pos = before.length + handle.length + 2;
+    ta.value = `${before}${text} ${after}`;
+    const pos = before.length + text.length + 1;
     ta.setSelectionRange(pos, pos);
     mention = null;
     paintMention();
@@ -1840,7 +1924,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insertMention(candidates()[mention.index].p.handle);
+        pick(candidates()[mention.index]);
         return;
       }
       if (e.key === 'Escape') {
@@ -2236,6 +2320,7 @@ export function mountSidePanel(parentId, sideId) {
         h('div.small.dim', topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`),
       ),
       summarize,
+      copyLink(sideId, topic),
       h(
         'button.btn.icon.sm.ghost',
         { type: 'button', 'aria-label': topic ? 'Close thread' : 'Close side thread', onclick: () => navigate(`#/t/${parentId}`) },
@@ -2258,6 +2343,34 @@ export function mountSidePanel(parentId, sideId) {
       comp.destroy();
     },
   };
+}
+
+/**
+ * Copy link (#121): the thread’s address, to paste in a message. An agent that gets it can read the thread with
+ * read_conversation, and the composer’s # inserts the same link.
+ */
+function copyLink(threadId, topic) {
+  const b = h(
+    'button.btn.sm.ghost',
+    {
+      type: 'button',
+      onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(threadLink(threadId));
+          say('Link copied. Paste it in a message, and the agent can read this thread.');
+          b.textContent = 'Copied';
+        } catch {
+          toast({ title: 'Couldn’t copy the link', text: threadLink(threadId) });
+        }
+        setTimeout(() => {
+          b.textContent = 'Copy link';
+        }, 2000);
+      },
+      'aria-label': topic ? 'Copy link to this topic thread' : 'Copy link to this side thread',
+    },
+    'Copy link',
+  );
+  return b;
 }
 
 /** The message a topic thread branched from, at its top, and what the forked agent remembers. */
