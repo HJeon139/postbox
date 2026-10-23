@@ -133,7 +133,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 - A `lint-allow` or `lint-allow-file` without a reason. The tools require one, so an empty reason means the reason is being dodged.
 - Turning a rule off in `biome.json`, or loosening `jsconfig.json`, in the same change that tripped it.
 - Removing a path from Biome’s `includes` or `jsconfig.json`’s `include`, or adding one to an exclude, so the file stops being read.
-- Raising a file’s ceiling in `biome.json`’s overrides, or adding one for a file that wasn’t over the limit (architecture.md, “Module and function size”).
+- Raising a file’s ceiling in `biome.json`’s overrides, or adding one for a file that wasn’t over the limit (architecture.md, “Module and function size”). The one exception is code moved out of a file at its ceiling, by the rewrite architecture.md allows (`this` becomes `rt`): its ceilings move with it, and the old file’s drop to its new sizes.
 
 **A real exception is narrow and says why.** `shared/urls.mjs` is the model: `// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters in a URL are exactly what this rejects`. It names the rule, sits on the one line, and tells the next reader whether it still applies. A rule turned off project-wide goes in `biome.json` with the reason in the commit (engineering-practices.md, “Biome”).
 
