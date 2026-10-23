@@ -811,7 +811,7 @@ export function renderAppSendCard(it, ctx) {
         : null,
       h(
         'ul.appsend-list',
-        it.events.map((ev) => h('li', ev.voice)),
+        it.events.map((ev) => h('li', ev.voice, ev.quote ? h('span.app-says', 'The app’s summary: ', h('q', ev.quote)) : null)),
       ),
       !open
         ? h(

@@ -1,6 +1,7 @@
 // The event builder: turns what you did in a block into the one event the agent receives,
 // { blockId, revision, action, values }, plus the short line shown in your voice ("Chose: weekly · Monday 9:00").
-// It also validates form input and returns messages that say what to fix.
+// It also validates form input and returns messages that say what to fix. Postbox writes every line in your voice
+// from what was actually sent: an app’s own summary is kept apart, as a quote from the app (#51).
 
 import { LIMITS, limitText } from './limits.mjs';
 
@@ -12,8 +13,11 @@ const fmtNum = (n) => Number(n).toLocaleString('en-US');
  * @param {string} action
  * @param {object} values
  * @param {{ revision?: number }} [at]  the revision of the block that was answered (#123); apps have none
- * @returns {{ ok: true, event: { blockId: string, revision?: number, action: string, values: object }, voice: string }
+ * @returns {{ ok: true, event: { blockId: string, revision?: number, action: string, values: object, sent?: string, appSummary?: string },
+ *           voice: string, quote?: string }
  *         | { ok: false, error: string, fieldErrors?: Record<string, string> }}
+ *   For an app, sent is what Postbox counted in the values, and quote (appSummary in the event) is the app’s own
+ *   summary, which is never the person’s words.
  */
 export function buildEvent(block, action, values = {}, { revision } = {}) {
   const build = BUILDERS[block?.type];
@@ -21,7 +25,31 @@ export function buildEvent(block, action, values = {}, { revision } = {}) {
   if (values === null || typeof values !== 'object' || Array.isArray(values)) return { ok: false, error: 'Values must be an object.' };
   const r = build(block, action, values);
   if (!r.ok) return r;
-  return { ok: true, event: { blockId: block.id, ...(revision ? { revision } : {}), action, values: r.values }, voice: r.voice };
+  const app = r.sent ? { sent: r.sent, ...(r.quote ? { appSummary: r.quote } : {}) } : {};
+  return {
+    ok: true,
+    event: { blockId: block.id, ...(revision ? { revision } : {}), action, values: r.values, ...app },
+    voice: r.voice,
+    ...(r.quote ? { quote: r.quote } : {}),
+  };
+}
+
+/** A size as people read it: “320 bytes”, “14 KB”, “1.2 MB”. @param {number} n */
+export const sizeText = (n) =>
+  n < 1024 ? `${fmtNum(n)} ${n === 1 ? 'byte' : 'bytes'}` : n < 1024 * 1024 ? `${fmtNum(Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+
+/**
+ * What an app sent, as Postbox counts it (#51): the action, how many items each list holds, and the size. The app
+ * can’t change it, so a summary that says 1,258 beside “pairs: 200 items” shows the difference.
+ * @param {string} action @param {Record<string, unknown>} values
+ */
+export function sentFacts(action, values) {
+  const lists = Object.entries(values).filter(([, v]) => Array.isArray(v));
+  const shown = lists
+    .slice(0, 4)
+    .map(([k, v]) => `${k}: ${fmtNum(/** @type {unknown[]} */ (v).length)} ${/** @type {unknown[]} */ (v).length === 1 ? 'item' : 'items'}`);
+  if (lists.length > 4) shown.push(`${lists.length - 4} more lists`);
+  return [action, ...shown, sizeText(JSON.stringify(values).length)].join(' · ');
 }
 
 const quote = (s, max = 60) => {
@@ -118,8 +146,15 @@ const BUILDERS = {
     }
     if (size > LIMITS.eventBytes) return { ok: false, error: `App values are larger than ${limitText('eventBytes')}.` };
     const { summary, ...values } = v;
-    const what = typeof summary === 'string' && summary.trim() ? summary.trim().slice(0, 160) : action;
-    return { ok: true, values, voice: `Sent from ${b.title ?? 'the app'}: ${what}` };
+    const said = typeof summary === 'string' ? summary.replace(/\s+/g, ' ').trim() : '';
+    const sent = sentFacts(action, values);
+    return {
+      ok: true,
+      values,
+      voice: `Sent from ${b.title ?? 'the app'}: ${sent}`,
+      sent,
+      ...(said ? { quote: said.length > 160 ? `${said.slice(0, 159)}…` : said } : {}),
+    };
   },
 };
 

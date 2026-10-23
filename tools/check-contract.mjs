@@ -81,9 +81,9 @@ try {
   check(/Send ids instead/.test(st.full), 'the error says to send ids instead', st.full);
   check(st.ids === 'sent', 'the same hand-off by id goes through', st.ids);
   check(
-    sent.length === 1 && sent[0].text === 'Sent from Hand-off: Sent 1,258 pair ids',
+    sent.length === 1 && sent[0].quote === 'Sent 1,258 pair ids' && /^Sent from Hand-off: \S+ · \w+: 1,258 items · \d+ KB$/.test(sent[0].text),
     'only the hand-off by id reaches the conversation',
-    JSON.stringify(sent.map((x) => x.text)),
+    JSON.stringify(sent.map((x) => [x.text, x.quote])),
   );
 
   // ── #94: a result reported on an answered confirm ─────────────────────────────────────

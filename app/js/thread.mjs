@@ -573,7 +573,13 @@ function renderItem(it, prev, ctx) {
       return node;
     }
     case 'voice':
-      return h('div.col.turn.me', h('span.voice', icon('thread', 'i-sm'), it.text));
+      // An app’s summary is its own wording, so it shows beside your line as a quote from the app, never in your
+      // voice (#51).
+      return h(
+        'div.col.turn.me',
+        h('span.voice', icon('thread', 'i-sm'), it.text),
+        it.quote ? h('span.app-says', 'The app’s summary: ', h('q', it.quote)) : null,
+      );
     case 'shared':
       // A reply or a summary sent back from a topic thread. Its agents read it at the start of their next turn.
       return h(

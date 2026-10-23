@@ -1865,7 +1865,9 @@ export class Runtime {
       case 'voice': {
         // The agent hears about its own blocks as events already.
         const block = i.blockItemId && this.store.item(se?.threadId, i.blockItemId);
-        return block && block.sessionId === se?.id ? null : `You: ${text(i.text)}`;
+        if (block && block.sessionId === se?.id) return null;
+        // An app’s summary is its own wording, never the person’s (#51).
+        return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
         return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
@@ -3418,7 +3420,7 @@ export class Runtime {
     const recent = items.filter((x) => x.kind === 'voice' && x.appId === appId && !x.approved && now - (x.sentAt ?? x.at) < Runtime.APP_SEND_WINDOW_MS).length;
     // Once some sends wait, later ones wait behind them, so the agent gets them in order.
     if (card || hold || recent >= Runtime.APP_SEND_LIMIT) {
-      const held = { action: r.event.action, values: r.event.values, voice: r.voice };
+      const held = { action: r.event.action, values: r.event.values, voice: r.voice, sent: r.event.sent, ...(r.quote ? { quote: r.quote } : {}) };
       const waiting = (card?.events.length ?? 0) + 1;
       if (card) {
         if (card.events.length >= Runtime.APP_HOLD_MAX)
@@ -3435,7 +3437,7 @@ export class Runtime {
         message: `Held for the person to allow: an app sends up to ${Runtime.APP_SEND_LIMIT} messages a minute. ${waiting === 1 ? '1 message is' : `${waiting} messages are`} waiting.`,
       };
     }
-    this.addItem(app.threadId, { kind: 'voice', text: r.voice, appId, sentAt: now });
+    this.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
     if (this.s.sessions[app.sessionId]) this.deliver(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId });
     return { ok: true, voice: r.voice };
   }
@@ -3465,8 +3467,15 @@ export class Runtime {
     }
     const se = this.s.sessions[it.sessionId];
     for (const ev of it.events) {
-      this.addItem(threadId, { kind: 'voice', text: ev.voice, appId: it.appId, sentAt: now, approved: true });
-      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event: { blockId: it.appId, action: ev.action, values: ev.values } }, { threadId });
+      this.addItem(threadId, { kind: 'voice', text: ev.voice, ...(ev.quote ? { quote: ev.quote } : {}), appId: it.appId, sentAt: now, approved: true });
+      const event = {
+        blockId: it.appId,
+        action: ev.action,
+        values: ev.values,
+        ...(ev.sent ? { sent: ev.sent } : {}),
+        ...(ev.quote ? { appSummary: ev.quote } : {}),
+      };
+      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event }, { threadId });
     }
     return { ok: true };
   }

@@ -1,7 +1,8 @@
 // The app kit, preloaded in every agent-app sandbox. It gives agent code:
 //   postbox.ready                 → Promise<{ state, theme, appId }>, resolves once Postbox says hello
 //   postbox.query(tool, args)     → Promise<result>; only tools the app and its agent were granted
-//   postbox.send(action, values, summary)  sends one event to the agent; summary is the line you see. Only
+//   postbox.send(action, values, summary)  sends one event to the agent. Postbox writes the line in your voice from
+//                                 what was sent; summary shows beside it as the app’s own words (#51). Only
 //                                 right after the person clicks or presses a key in the app (it rejects
 //                                 otherwise), up to 5 a minute; more resolve { held: true, waiting } and wait
 //                                 for the person to allow them on a card. Don’t focus anything on load: an

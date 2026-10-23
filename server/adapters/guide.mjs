@@ -91,7 +91,7 @@ The global postbox object gives you:
   - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
   - "corpus.read" with { id } returns { id, book, title, author, year, chapter, text }
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
-- postbox.send(action, values, summary) sends you one event; summary is the line the person sees in their voice. Call it only from the person’s click or key press in the app. Up to 5 a minute reach you; more wait for the person to allow them. One event carries up to ${n('eventBytes')} of JSON: a larger send rejects inside the app, so hand over many items by id.
+- postbox.send(action, values, summary) sends you one event; summary shows as the app’s words, not the person’s. Call it only from the person’s click or key press in the app. Up to 5 a minute reach you; more wait for the person to allow them. One event carries up to ${n('eventBytes')} of JSON: a larger send rejects inside the app, so hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state across reloads and versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
@@ -141,7 +141,14 @@ function formatBody(message, pathOf) {
       return [message.text, files.length ? `Attached:\n${files.join('\n')}` : ''].filter(Boolean).join('\n\n') || '(The person sent an empty message.)';
     }
     case 'event':
-      return `[Postbox] The person acted in block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`;
+      return [
+        `[Postbox] The person acted in block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`,
+        // From an app (#51): what Postbox counted, and the app’s own summary, which the person didn’t write.
+        message.event.sent ? `What Postbox counted in it: ${message.event.sent}` : '',
+        message.event.appSummary ? `The app’s own summary, not the person’s words: “${message.event.appSummary}”` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
     case 'agent':
       return `[Postbox] ${message.from} wrote to you:\n\n${message.text}`;
     case 'wake':

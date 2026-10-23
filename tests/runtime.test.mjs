@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { formatMessage } from '../server/adapters/guide.mjs';
 import { DEFAULT_MODEL as ADAPTERS_DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { DEFAULT_MODEL, HOP_LIMIT, Runtime } from '../server/runtime.mjs';
@@ -377,9 +378,13 @@ test(`#38: an app sends up to ${LIMIT} events a minute in your voice; more wait 
   assert.equal(rt.appEvent('spam', 'ok', { i: 99, summary: 'Later' }, { now: now + 120_000 }).waiting, 2);
   const cards = store.items(t.id).filter((x) => x.kind === 'appsend');
   assert.equal(cards.length, 1);
+  // Each waits with the line Postbox wrote from what it sent, and the app’s own words apart (#51).
   assert.deepEqual(
-    cards[0].events.map((e) => e.voice),
-    ['Sent from Spam: One too many', 'Sent from Spam: Later'],
+    cards[0].events.map((e) => [e.voice, e.quote]),
+    [
+      ['Sent from Spam: ok · 7 bytes', 'One too many'],
+      ['Sent from Spam: ok · 8 bytes', 'Later'],
+    ],
   );
   assert.equal(cards[0].status, 'open');
   await settle(rt);
@@ -391,11 +396,12 @@ test(`#38: an app sends up to ${LIMIT} events a minute in your voice; more wait 
   assert.deepEqual(
     voices()
       .slice(-2)
-      .map((x) => x.text),
-    ['Sent from Spam: One too many', 'Sent from Spam: Later'],
+      .map((x) => x.quote),
+    ['One too many', 'Later'],
   );
-  const events = adapter.calls.filter((c) => c.message.kind === 'event').length - delivered;
-  assert.ok(events >= 1, 'the allowed events reach the agent');
+  const events = adapter.calls.filter((c) => c.message.kind === 'event').slice(delivered);
+  assert.ok(events.length >= 1, 'the allowed events reach the agent');
+  assert.deepEqual([events[0].message.event.sent, events[0].message.event.appSummary], ['ok · 7 bytes', 'One too many']);
   assert.throws(() => rt.act(t.id, cards[0].id, 'allow'), /already answered/);
 });
 
@@ -422,7 +428,7 @@ test('#38: Don’t allow drops the waiting sends; the browser can ask for a hold
   const card = store.items(t.id).find((x) => x.kind === 'appsend');
   rt.act(t.id, card.id, 'deny');
   assert.equal(store.item(t.id, card.id).status, 'declined');
-  assert.ok(!store.items(t.id).some((x) => x.kind === 'voice' && x.text === 'Sent from Spam: Held by the browser'));
+  assert.ok(!store.items(t.id).some((x) => x.kind === 'voice' && x.quote === 'Held by the browser'));
   assert.ok(store.items(t.id).some((x) => x.kind === 'voice' && x.text === 'Didn’t allow Spam to send 1 message'));
   // A send after the answer is counted afresh.
   assert.equal(rt.appEvent('spam', 'ok', {}, { now: 2 }).held, undefined);
@@ -446,8 +452,48 @@ test('#38: an app’s waiting sends survive a restart, and Allow still sends the
   assert.equal(card.events.length, 1);
   rt.act(first.t.id, card.id, 'allow');
   await settle(rt);
-  assert.ok(store.items(first.t.id).some((x) => x.kind === 'voice' && x.text === `Sent from Spam: #${LIMIT}` && x.approved));
+  assert.ok(store.items(first.t.id).some((x) => x.kind === 'voice' && x.quote === `#${LIMIT}` && x.approved));
   assert.ok(adapter.calls.some((c) => c.message.kind === 'event' && c.message.event.blockId === 'spam'));
+});
+
+test('#51: agents read an app’s send as what Postbox counted, with the app’s summary apart from the person’s words', async () => {
+  const { rt, store, t, adapter, b } = withApp();
+  const other = rt.ensureSession(t.id, b.id === undefined ? rt.createPersona({ handle: 'beta' }).id : rt.createPersona({ handle: 'gamma' }).id);
+  rt.appEvent('spam', 'send_pairs', { pairs: [1, 2], summary: 'Sending 1,258 pairs' }, { now: 1 });
+  await settle(rt);
+  const voice = store.items(t.id).find((x) => x.kind === 'voice');
+  assert.equal(voice.text, 'Sent from Spam: send_pairs · pairs: 2 items · 15 bytes');
+  assert.equal(voice.quote, 'Sending 1,258 pairs');
+  // The app’s agent gets the event, with the facts and the app’s words as their own fields.
+  const ev = adapter.calls.find((c) => c.message.kind === 'event').message.event;
+  assert.deepEqual([ev.sent, ev.appSummary], ['send_pairs · pairs: 2 items · 15 bytes', 'Sending 1,258 pairs']);
+  // Another agent reads the line, and the summary marked as the app’s.
+  assert.match(
+    rt.catchUp(store.state.sessions[other.id]),
+    /You: Sent from Spam: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”/,
+  );
+});
+
+test('#51: agents read an app’s send as what Postbox counted, with the app’s summary apart from the person’s words', async () => {
+  const { rt, store, t, adapter, b } = withApp();
+  const other = rt.ensureSession(t.id, b.id);
+  rt.appEvent('spam', 'send_pairs', { pairs: [1, 2], summary: 'Sending 1,258 pairs' }, { now: 1 });
+  await settle(rt);
+  const voice = store.items(t.id).find((x) => x.kind === 'voice');
+  assert.equal(voice.text, 'Sent from Spam: send_pairs · pairs: 2 items · 15 bytes');
+  assert.equal(voice.quote, 'Sending 1,258 pairs');
+  // The app’s agent gets the event, with the facts and the app’s words as their own fields.
+  const ev = adapter.calls.find((c) => c.message.kind === 'event').message.event;
+  assert.deepEqual([ev.sent, ev.appSummary], ['send_pairs · pairs: 2 items · 15 bytes', 'Sending 1,258 pairs']);
+  assert.match(
+    formatMessage({ kind: 'event', event: ev }),
+    /What Postbox counted in it: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”$/,
+  );
+  // Another agent reads the line, and the summary marked as the app’s.
+  assert.match(
+    rt.catchUp(store.state.sessions[other.id]),
+    /You: Sent from Spam: send_pairs · pairs: 2 items · 15 bytes\nThe app’s own summary, not the person’s words: “Sending 1,258 pairs”/,
+  );
 });
 
 test('MCP: initialize, list tools, and a tool call that returns at once', async () => {

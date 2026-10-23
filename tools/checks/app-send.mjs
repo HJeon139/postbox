@@ -146,17 +146,22 @@ try {
   // 2. A real click in the app.
   await clickSpam();
   await until(() => voices('spam').length >= 1, 'the clicked send').catch(() => {});
+  check(voices('spam')[0]?.quote === 'Clicked #1', 'a send right after a real click in the app is accepted', JSON.stringify(rt.s.apps.spam.state));
+  // #51: Postbox writes your line from what the app sent; the app’s summary shows beside it, as the app’s words.
+  const line = await page.evaluate(
+    `(() => { const n = document.querySelector('[data-key="${voices('spam')[0]?.id}"]'); return n ? [n.querySelector('.voice')?.textContent, n.querySelector('.app-says')?.textContent] : null; })()`,
+  );
   check(
-    voices('spam')[0]?.text === 'Sent from Spam: Clicked #1',
-    'a send right after a real click in the app is accepted',
-    JSON.stringify(rt.s.apps.spam.state),
+    line?.[0] === 'Sent from Spam: clicked · 7 bytes' && line?.[1] === 'The app’s summary: Clicked #1',
+    'your line says what the app sent, and its summary shows apart, as the app’s (#51)',
+    JSON.stringify(line),
   );
 
   // 3. A key press in the app: focus is on its button after the click, so Enter presses it.
   for (const type of ['keyDown', 'keyUp'])
     await page.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
   await until(() => voices('spam').length >= 2, 'the key-press send').catch(() => {});
-  check(voices('spam')[1]?.text === 'Sent from Spam: Clicked #2', 'a send right after a key press in the app is accepted');
+  check(voices('spam')[1]?.quote === 'Clicked #2', 'a send right after a key press in the app is accepted');
 
   // 3b. Keyboard only: Tab from the app’s full-screen button into the app, then Enter.
   await page.evaluate(`[...document.querySelectorAll('.appframe')].find((n) => n.contains(${frameOf('Spam')}))?.querySelector('.app-bar button.icon').focus()`);
@@ -165,7 +170,7 @@ try {
   const tabbedIn = await page.evaluate(`document.activeElement === ${frameOf('Spam')}`);
   await key('Enter', 13, '\r');
   await until(() => voices('spam').length >= 3, 'the Tab-and-Enter send').catch(() => {});
-  check(tabbedIn && voices('spam')[2]?.text === 'Sent from Spam: Clicked #3', 'Tab into an app, then Enter, sends', `in the frame: ${tabbedIn}`);
+  check(tabbedIn && voices('spam')[2]?.quote === 'Clicked #3', 'Tab into an app, then Enter, sends', `in the frame: ${tabbedIn}`);
 
   // 4. Past the limit, the rest wait on a card.
   for (let i = 4; i <= LIMIT + 1; i++) await clickSpam();
@@ -198,9 +203,9 @@ try {
   const toasts = await page.evaluate(`[...document.querySelectorAll('.toast')].map((x) => x.innerText).join(' | ')`);
   check(!/didn’t go through/.test(toasts), 'clicking Allow twice doesn’t show an error', toasts);
   check(!rt.s.sessions[se.id].needs || rt.s.sessions[se.id].needs.kind !== 'appsend', 'answering the card clears needs-you');
-  await until(() => voices('spam').some((x) => x.text === 'Sent from Spam: Clicked #6'), 'the allowed send').catch(() => {});
+  await until(() => voices('spam').some((x) => x.quote === 'Clicked #6'), 'the allowed send').catch(() => {});
   check(
-    voices('spam').some((x) => x.text === 'Sent from Spam: Clicked #6' && x.approved),
+    voices('spam').some((x) => x.quote === 'Clicked #6' && x.approved),
     'Allow sends what was waiting, and the card is answered',
   );
   await until(() => page.evaluate(`/Allowed/.test(document.querySelector('.appsend')?.innerText ?? '')`), 'the card to show the answer').catch(() => {});

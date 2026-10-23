@@ -10,7 +10,7 @@ Each message an app sends shows in your voice (“Sent from Spam: …”) and st
 
 ## Expected functionality
 
-- Says “<app> wants to send N messages for you”, and lists each line as it would appear in your voice.
+- Says “<app> wants to send N messages for you”, and lists each line as it would appear in your voice: what the app sends, as Postbox counts it, with the app’s own summary under it as “The app’s summary: …” (#51).
 - **Allow** sends them, in order: each becomes a line in your voice and reaches the agent, as if it had gone straight through.
 - **Don’t allow** drops them, and adds “Didn’t allow <app> to send N messages”. The agent isn’t woken.
 - More sends from the same app while the card is open join it, in order. One card holds up to 20; past that, the app’s send is refused with a reason.

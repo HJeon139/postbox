@@ -324,6 +324,9 @@ pb-ring .dot.still { animation: none; }
 .voice { align-self: flex-end; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim);
   padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; }
 .voice b { color: var(--text); font-weight: 500; }
+/* An app’s own summary beside the line Postbox wrote in your voice: the app’s words, set apart from yours (#51). */
+.app-says { align-self: flex-end; max-width: 100%; font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+.appsend-list .app-says { display: block; }
 
 .sys { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--dim); }
 .sys::before, .sys::after { content: ""; flex: 1; height: 1px; background: var(--line); }
