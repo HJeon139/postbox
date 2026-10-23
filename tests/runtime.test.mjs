@@ -1296,6 +1296,51 @@ test('#58: steps left running when the turn ends are marked stalled, and the age
   assert.equal(it.stepTimes.a.startedAt, it.at, 'resuming a stalled step keeps its start');
 });
 
+test('#98: Stop leaves running progress steps stalled, starts no lint turn, and the next turn hears which', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: progress([
+        { id: 'a', label: 'Read A', state: 'done' },
+        { id: 'b', label: 'Read B', state: 'running' },
+      ]),
+    });
+    await new Promise((_res, rej) => c.signal.addEventListener('abort', () => rej(Object.assign(new Error('x'), { name: 'AbortError' }))));
+  });
+  rt.sendMessage(t.id, { text: 'read' });
+  await sleep(10);
+  rt.stop(rt.sessionsIn(t.id)[0].id);
+  await settle(rt);
+  await sleep(20);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  assert.deepEqual(
+    it.block.steps.map((s) => s.state),
+    ['done', 'stalled'],
+  );
+  assert.ok(it.stalledAt);
+  assert.equal(lints(adapter).length, 0, 'you stopped it: no lint turn');
+  rt.sendMessage(t.id, { text: 'carry on' });
+  await settle(rt);
+  assert.match(
+    adapter.calls.at(-1).message.context.join('\n'),
+    /The person stopped your last turn while progress steps were running:\n- Block “Reading” \(id job\): Step “Read B”/,
+  );
+});
+
+test('#98: a failed turn leaves running progress steps stalled too', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.show_block({ block: progress([{ id: 'a', label: 'Read A', state: 'running' }]) });
+    throw new Error('The model didn’t respond.');
+  });
+  rt.sendMessage(t.id, { text: 'read' });
+  await settle(rt);
+  const it = store.items(t.id).find((i) => i.kind === 'block');
+  assert.equal(it.block.steps[0].state, 'stalled');
+  assert.ok(it.stalledAt);
+  assert.match(store.state.sessions[rt.sessionsIn(t.id)[0].id].context.join('\n'), /Your last turn failed while progress steps were running/);
+});
+
 test('#69: an asking block asked again with update_block belongs to the turn that asked', async () => {
   const { rt, store, t, adapter } = setup();
   const form = (label) => ({ id: 'q', type: 'form', version: 1, fallback: 'Questions', fields: [{ id: 'f', label, kind: 'text' }] });
