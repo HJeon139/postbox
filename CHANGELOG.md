@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.12.0 (2026-10-23)
+
+### Features
+
+- **overview:** archive a whole conversation, and idle ones after 7 days
+- **overview:** lead with what needs you, and list idle conversations as rows
+
 ## 0.11.0 (2026-10-23)
 
 ### Features
