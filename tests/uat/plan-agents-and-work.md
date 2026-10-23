@@ -11,19 +11,19 @@ These changes move the controls you use most. Agent settings leave the top bar f
 
 ## What’s new, and how each part is covered
 
-| Feature                                                                   | Issue              | Headless check            | UAT doc and screenshot                                 | Real-agent check (`workroom.md`)                     |
-| ------------------------------------------------------------------------- | ------------------ | ------------------------- | ------------------------------------------------------ | ---------------------------------------------------- |
-| The Agents section: one row per agent, with its ring, state and open asks | #105               | `check-agents.mjs`        | `shell/rail/agents-section.md`; scene `agents-section` | `agents-section-members`                             |
-| The quick panel: model, effort, mode and tools, each with its scope       | #105               | `check-agents.mjs`        | scene `agent-quick-panel`                              | `quick-panel-takes-effect`; phase 2                  |
-| A slimmer top bar: the title and project in full                          | #105               | `check-header.mjs`        | `overview.png`, `rail.png`                             | `topbar-title-cut`                                   |
-| A turned-off tool is refused visibly                                      | #104, with #105    | —                         | —                                                      | `shell-off-silent`; phase 2                          |
-| The Work ledger: files, commands, version control, outside writes, effort | #132, #138         | `tests/work.test.mjs`     | `conversation/work-view.md`                            | `work-files-match-git`, `work-commands-match-stream` |
-| Restore and Remove, refused if the file changed since                     | #138               | `tests/work.test.mjs`     | `work-view.md`                                         | phase 3                                              |
-| Work in the right pane: compact, with an expand to full screen            | Work-pane PR       | `check-work-pane.mjs`     | `work-view.md`; scenes `work-pane`, `work-fullscreen`  | phase 1                                              |
-| The right pane split: a thread and Work, one above the other              | Work-pane PR       | `check-work-pane.mjs`     | scene `pane-split`                                     | `pane-split`; phase 3                                |
-| Thread full screen keeps the draft, the scroll and streaming              | Work-pane PR       | `check-work-pane.mjs`     | scene `thread-fullscreen`                              | `fullscreen-keeps-draft`; phase 3                    |
-| Each reply’s work line opens Work at that turn                            | #138, Work-pane PR | `check-work-pane.mjs`     | `work-chip.png`                                        | phase 3                                              |
-| A Kiro CLI agent in a room                                                | #117, #127         | `tests/kiro-cli.test.mjs` | `sheets/new-agent.md`                                  | compatibility runs only (`--compat`)                 |
+| Feature                                                                   | Issue              | Headless check            | UAT doc and screenshot                                 | Real-agent check (`workroom.md`)                        |
+| ------------------------------------------------------------------------- | ------------------ | ------------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
+| The Agents section: one row per agent, with its ring, state and open asks | #105               | `check-agents.mjs`        | `shell/rail/agents-section.md`; scene `agents-section` | `agents-section-members`                                |
+| The quick panel: model, effort, mode and tools, each with its scope       | #105               | `check-agents.mjs`        | scene `agent-quick-panel`                              | `quick-panel-takes-effect`; phase 2                     |
+| A slimmer top bar: the title and project in full                          | #105               | `check-header.mjs`        | `overview.png`, `rail.png`                             | `topbar-title-cut`                                      |
+| A turned-off tool is refused visibly                                      | #104, with #105    | —                         | —                                                      | `shell-off-silent`; phase 2                             |
+| The Work ledger: files, commands, version control, outside writes, effort | #132, #138         | `tests/work.test.mjs`     | `conversation/work-view.md`                            | `work-files-match-stream`, `work-commands-match-stream` |
+| Restore and Remove, refused if the file changed since                     | #138               | `tests/work.test.mjs`     | `work-view.md`                                         | phase 3                                                 |
+| Work in the right pane: compact, with an expand to full screen            | Work-pane PR       | `check-work-pane.mjs`     | `work-view.md`; scenes `work-pane`, `work-fullscreen`  | phase 1                                                 |
+| The right pane split: a thread and Work, one above the other              | Work-pane PR       | `check-work-pane.mjs`     | scene `pane-split`                                     | `pane-split`; phase 3                                   |
+| Thread full screen keeps the draft, the scroll and streaming              | Work-pane PR       | `check-work-pane.mjs`     | scene `thread-fullscreen`                              | `fullscreen-keeps-draft`; phase 3                       |
+| Each reply’s work line opens Work at that turn                            | #138, Work-pane PR | `check-work-pane.mjs`     | `work-chip.png`                                        | phase 3                                                 |
+| A Kiro CLI agent in a room                                                | #117, #127         | `tests/kiro-cli.test.mjs` | `sheets/new-agent.md`                                  | compatibility runs only (`--compat`)                    |
 
 ## What already worked: the regression set
 
@@ -39,16 +39,16 @@ These changes move the controls you use most. Agent settings leave the top bar f
 
 ## Harness work before the run
 
-The reviewing session builds these on the integration branch once the Work-pane PR lands, when the selectors are final. Each check gets a test in `tests/uat-checks.test.mjs`.
+Built on the integration branch, once the Work-pane PR landed. Each check has a test in `tests/uat-checks.test.mjs`, and the driver actions were smoke-tested against the demo. The mock agent has no model, effort or mode choices, so those are only exercised with real agents.
 
 **Driver and tester actions** (`tools/uat/driver.mjs`, `tools/uat/tester.mjs`):
 - `agent_panel {target, model?, effort?, mode?, shell?}`: opens the agent’s row in the Agents section and sets those, by clicks.
-- `pane {open: 'work' | 'thread', item?}`, `fullscreen {pane}`, `exit_fullscreen`.
+- `pane {open: 'work' | 'thread', item?}` and `fullscreen {pane}`, which closes it again with Escape. `thread_reply {text}` answers in the thread open in the pane.
 - `restore {file}`: in the full Work view, Restore or Remove, then confirm.
-- `type_draft {text}`: types into the open composer without sending, for the draft check.
+- `fullscreen_draft {text}`: opens the thread full screen, types without sending, and leaves full screen, for the draft check.
 
 **Checks** (`tools/uat/checks.mjs`):
-- `work-files-match-git`: every file an agent changed with Edit or Write, per the turn streams, is in the ledger. Its counts match `git diff --numstat` against the file before the agents’ first change. A file that git shows changed but no agent tool touched (a Bash-made change) is reported as a known limit, not a defect.
+- `work-files-match-stream`: every file an agent changed with Edit or Write, per the turn streams, is in the ledger. The ledger’s line counts are covered by `tests/work.test.mjs`, which replays recorded turns; a Bash-made change isn’t seen, which the Work view says.
 - `work-commands-match-stream`: every Bash call in the streams appears as a command, with the exit code and the agent the stream gives.
 - `agents-section-members`: the section lists the conversation’s members, and a topic thread’s section lists the thread’s.
 - `quick-panel-takes-effect`: after the panel changes a model or effort, the agent’s next turn runs with it, per its `init` and its arguments.

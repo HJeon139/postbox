@@ -578,6 +578,27 @@ function jobRecord(state, j) {
 /** The checks the runner also runs while agents work, since what they catch can be gone by the time the turn ends. */
 export const MID_TURN = ['background-step-closed', 'two-processes-one-session'];
 
+// ── The Agents section, the Work ledger and the right pane (#105, #132, #146) ──────────────────────────────
+
+/** Every tool call in a turn’s stream, with its result when the stream has it. */
+const toolCalls = (events) => {
+  const results = new Map();
+  for (const e of events) if (e.type === 'user') for (const c of e.message?.content ?? []) if (c?.type === 'tool_result') results.set(c.tool_use_id, c);
+  const denied = new Set(events.filter((e) => e.type === 'result').flatMap((e) => (e.permission_denials ?? []).map((d) => d.tool_use_id)));
+  return events
+    .filter((e) => e.type === 'assistant')
+    .flatMap((e) => (e.message?.content ?? []).filter((c) => c?.type === 'tool_use'))
+    .map((c) => ({ id: c.id, name: c.name, input: c.input ?? {}, result: results.get(c.id) ?? null, denied: denied.has(c.id) }));
+};
+const ledgerEntries = (f) => Object.values(f.state?.work ?? {}).flat();
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+/** A model as the panel names it (“Opus 5.5”) and as a stream names it (“claude-opus-5-5”), reduced to compare. */
+const modelKey = (m) =>
+  String(m ?? '')
+    .toLowerCase()
+    .replace(/^claude-/, '')
+    .replace(/[^a-z0-9]/g, '');
+
 export const CHECKS = [
   {
     id: 'fresh-install-agents',
@@ -1009,7 +1030,7 @@ export const CHECKS = [
       f.ui?.headerText &&
       !/opus|sonnet|haiku|fable/i.test(f.ui.headerText) &&
       !Object.values(f.state?.personas ?? {}).some((p) => p.model && p.model !== 'mock' && f.ui.headerText.includes(p.model))
-        ? [{ title: 'The UI doesn’t show which model an agent runs', evidence: `Top bar: “${clip(f.ui.headerText, 120)}”.` }]
+        ? [{ title: 'The UI doesn’t show which model an agent runs', evidence: `Agents section: “${clip(f.ui.headerText, 120)}”.` }]
         : [],
   },
   {
@@ -1379,6 +1400,157 @@ export const CHECKS = [
           ]
         : [];
     },
+  },
+  {
+    id: 'agents-section-members',
+    issue: 105,
+    run: (f) => {
+      if (!Array.isArray(f.ui?.agentRows) || !f.threads.length) return [];
+      const main = f.state.threads[f.threads[0]];
+      const members = (main?.members ?? [])
+        .map((id) => f.state.sessions[id])
+        .filter((se) => se && !se.archived)
+        .map((se) => se.handle);
+      const missing = members.filter((h) => !f.ui.agentRows.includes(h));
+      return missing.length
+        ? [
+            {
+              title: 'An agent in the conversation has no row in the Agents section',
+              evidence: `Missing: @${missing.join(', @')}. Rows: ${f.ui.agentRows.map((h) => `@${h}`).join(', ') || 'none'}.`,
+            },
+          ]
+        : [];
+    },
+  },
+  {
+    id: 'topbar-title-cut',
+    issue: 105,
+    run: (f) =>
+      f.ui?.topbarCut
+        ? [
+            {
+              title: 'The top bar cuts the conversation’s title or project at a wide window',
+              evidence: 'A title or crumb in the top bar is narrower than its text at 1200 px or wider.',
+            },
+          ]
+        : [],
+  },
+  {
+    id: 'work-files-match-stream',
+    issue: 132,
+    run: (f) => {
+      const ledger = new Set(
+        ledgerEntries(f)
+          .filter((e) => e.kind === 'file')
+          .map((e) => e.path),
+      );
+      const edited = new Set(
+        (f.streams ?? []).flatMap((s) =>
+          toolCalls(s.events)
+            .filter((c) => EDIT_TOOLS.has(c.name) && !c.denied && c.result && !c.result.is_error)
+            .map((c) => c.input.file_path ?? c.input.notebook_path),
+        ),
+      );
+      const missing = [...edited].filter((p) => p && !ledger.has(p));
+      return missing.length
+        ? [
+            {
+              title: 'A file an agent changed isn’t in the Work view',
+              evidence: `Changed by an Edit or Write call, but not in the ledger: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` and ${missing.length - 5} more` : ''}.`,
+            },
+          ]
+        : [];
+    },
+  },
+  {
+    id: 'work-commands-match-stream',
+    issue: 132,
+    run: (f) => {
+      const ledger = new Set(
+        ledgerEntries(f)
+          .filter((e) => e.kind === 'command')
+          .map((e) => e.toolUseId),
+      );
+      const ran = (f.streams ?? []).flatMap((s) =>
+        toolCalls(s.events)
+          .filter((c) => c.name === 'Bash')
+          .map((c) => ({ ...c, handle: s.handle })),
+      );
+      const missing = ran.filter((c) => !ledger.has(c.id));
+      return missing.length
+        ? [
+            {
+              title: 'A command an agent ran isn’t in the Work view',
+              evidence: `${missing.length} of ${ran.length} Bash calls aren’t in the ledger, such as @${missing[0].handle}’s \`${String(missing[0].input.command ?? '').slice(0, 80)}\`.`,
+            },
+          ]
+        : [];
+    },
+  },
+  {
+    id: 'quick-panel-takes-effect',
+    issue: 105,
+    run: (f) =>
+      (f.probes?.panels ?? []).flatMap((p) => {
+        if (!p.set?.model) return [];
+        const next = (f.streams ?? []).filter((s) => s.handle === p.handle && (s.started ?? 0) > p.at).sort((a, b) => (a.started ?? 0) - (b.started ?? 0))[0];
+        const model = next?.events.find((e) => e.type === 'system' && e.subtype === 'init')?.model;
+        if (!model || modelKey(model).includes(modelKey(p.set.model))) return [];
+        return [
+          {
+            title: 'A model picked in the quick panel didn’t reach the agent’s next turn',
+            evidence: `Picked “${p.set.model}” for @${p.handle}; its next turn ran ${model}.`,
+          },
+        ];
+      }),
+  },
+  {
+    id: 'shell-off-silent',
+    issue: 104,
+    run: (f) =>
+      (f.probes?.panels ?? []).flatMap((p) => {
+        if (p.set?.shell !== false) return [];
+        const after = (f.streams ?? []).filter((s) => s.handle === p.handle && (s.started ?? 0) > p.at);
+        const refused = after.flatMap((s) => toolCalls(s.events).filter((c) => c.name === 'Bash' && (c.denied || c.result?.is_error)));
+        if (!refused.length) return [];
+        const shown = itemsOf(f).some((it) => it.kind === 'denial' && it.handle === p.handle && it.at > p.at);
+        return shown
+          ? []
+          : [
+              {
+                title: 'A command refused because Shell is off didn’t show as refused',
+                evidence: `@${p.handle} tried ${refused.length} command(s) after Shell was turned off, and no refused step or card shows.`,
+              },
+            ];
+      }),
+  },
+  {
+    id: 'pane-split',
+    issue: 146,
+    run: (f) =>
+      (f.probes?.panes ?? [])
+        .filter((p) => p.work && p.thread && Math.min(p.work.h, p.thread.h) < 120)
+        .map((p) => ({
+          title: 'With a thread and Work open, one of them is too short to use',
+          evidence: `Work ${p.work.w}×${p.work.h}, thread ${p.thread.w}×${p.thread.h}.`,
+        })),
+  },
+  {
+    id: 'fullscreen-keeps-draft',
+    issue: 146,
+    run: (f) =>
+      (f.probes?.drafts ?? [])
+        .filter((d) => {
+          // A thread at its end stays at its end; anywhere else, it stays where it was.
+          const at = (x) => (typeof x === 'object' && x ? x : { top: x ?? 0, gap: Number.POSITIVE_INFINITY });
+          const [b, a] = [at(d.before), at(d.after)];
+          const moved = b.gap <= 2 ? a.gap > 2 : Math.abs(a.top - b.top) > 2;
+          return !d.kept || !d.exited || moved;
+        })
+        .map((d) => ({
+          title: 'A thread lost its place going full screen and back',
+          evidence: `${d.kept ? 'The draft was kept' : `The draft became ${JSON.stringify(d.draft)}`}; ${d.exited ? 'full screen closed' : 'full screen didn’t close'}; scrolled ${JSON.stringify(d.before)} → ${JSON.stringify(d.after)}.`,
+        })),
   },
 ];
 

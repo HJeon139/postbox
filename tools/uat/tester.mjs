@@ -115,6 +115,11 @@ export const SCHEMA = {
             'jobs',
             'wait',
             'stop',
+            'agent_panel',
+            'pane',
+            'fullscreen',
+            'fullscreen_draft',
+            'restore',
             'next_phase',
             'done',
           ],
@@ -124,7 +129,16 @@ export const SCHEMA = {
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
         choose: { type: 'array', items: { type: 'string' } },
         button: { type: 'string' },
-        target: { type: 'string', description: 'app_click: the visible text to click inside the app. settings: the agent’s handle.' },
+        target: {
+          type: 'string',
+          description: 'app_click: the visible text to click inside the app. settings, agent_panel: the agent’s handle. restore: the file’s name.',
+        },
+        model: { type: 'string', description: 'agent_panel: the model to pick, as the panel names it.' },
+        effort: { type: 'string', description: 'agent_panel: the effort to pick.' },
+        mode: { type: 'string', description: 'agent_panel: the permission mode to pick.' },
+        shell: { type: 'boolean', description: 'agent_panel: turn the Shell switch on or off.' },
+        open: { enum: ['work', 'thread'], description: 'pane: the view to open in the right pane.' },
+        pane: { enum: ['work', 'thread'], description: 'fullscreen: the view to open full screen.' },
         permissions: { type: 'boolean', description: 'settings: also open its permissions panel.' },
         seconds: { type: 'integer' },
         verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'review: your verdict.' },
@@ -183,6 +197,11 @@ Then choose one action:
 - act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text. A wake request (“Let @a wake @b?”) is a card: allow it or not with its button.
 - review {item, verdict, comments}: answer a review block. Approve only what you’d sign off as it is. Otherwise request changes, with at least one comment on a line saying what to change; comment, with comments, when you only have questions.
 - settings {target, permissions?}: open Settings › Personas and edit that agent (target is its handle), to see what it runs on, its model, permissions and setup; with permissions, also open its permissions panel. You get what they say and their screenshots; they close after.
+- agent_panel {target, model?, effort?, mode?, shell?}: open that agent’s row in the sidebar’s Agents section, set what you give, and close it. You get what the panel says, including each setting’s scope.
+- pane {open: work|thread, item?}: open Work (its top-bar button) or a thread in the right pane. You get each view’s size.
+- fullscreen {pane: work|thread}: open that view full screen, read it, and close it with Escape.
+- fullscreen_draft {text}: open the thread full screen, type text into its reply box without sending, and leave full screen. You get whether the draft and the scroll survived.
+- restore {target}: in Work full screen, restore (or remove) that file, and confirm.
 - app_click {item, target}: click something inside that app by its visible text.
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.
 - full_screen {item}: press that app’s Expand button.

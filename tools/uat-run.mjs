@@ -270,8 +270,9 @@ async function main() {
     console: page.logs,
     apps: {},
     // stale: the page’s notices that Postbox refused an answer as stale (#123); interrupts: how the runner answered
-    // Stop’s question about background jobs (#126). The triggers read both.
-    probes: { fullScreen: [], attachments: [], answers: [], stale: [], interrupts: [] },
+    // Stop’s question about background jobs (#126). The triggers read both. panels, panes and drafts: what the Agents
+    // section, the right pane and full screen showed (#105, #146).
+    probes: { fullScreen: [], attachments: [], answers: [], stale: [], interrupts: [], panels: [], panes: [], drafts: [] },
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
@@ -350,7 +351,14 @@ async function main() {
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
-      facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
+      facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
+      // The Agents section and the top bar (#105): who has a row, and whether the title or project is cut.
+      facts.ui.agentRows = await page.evaluate(
+        `[...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => (/@([\\w-]+)/.exec(b.textContent) ?? [])[1]).filter(Boolean)`,
+      );
+      facts.ui.topbarCut = await page.evaluate(
+        `innerWidth >= 1200 && [...document.querySelectorAll('header.topbar .title, header.topbar .crumb')].some((n) => n.scrollWidth > n.clientWidth + 1)`,
+      );
       facts.ui.reviewRawRows = await page.evaluate(
         `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
       );
@@ -587,6 +595,25 @@ async function main() {
           ]
             .filter(Boolean)
             .join('\n\n');
+        } else if (a.type === 'agent_panel') {
+          const handle = String(a.target ?? '').replace(/^@/, '');
+          const set = { model: a.model, effort: a.effort, mode: a.mode, shell: a.shell };
+          const r = await d.agentPanel(handle, set);
+          facts.probes.panels.push({ handle, set, left: r.left, at: Date.now() });
+          actionResult = `@${handle}’s quick panel says:\n${r.said}\n\nIt was left at: ${JSON.stringify(r.left)}`;
+        } else if (a.type === 'pane') {
+          const r = await d.openPane(a.open === 'thread' ? 'thread' : 'work', key);
+          facts.probes.panes.push({ open: a.open, ...r });
+          actionResult = `The right pane: Work ${r.work ? `${r.work.w}×${r.work.h}` : 'not open'}, thread ${r.thread ? `${r.thread.w}×${r.thread.h}` : 'not open'}, in a ${r.viewport.w}×${r.viewport.h} window.`;
+        } else if (a.type === 'fullscreen') {
+          const shown = await d.fullscreen(a.pane === 'thread' ? 'thread' : 'work');
+          actionResult = `Full screen showed:\n${shown || '(nothing)'}\n\nIt’s closed again.`;
+        } else if (a.type === 'fullscreen_draft') {
+          const r = await d.fullscreenDraft(a.text ?? 'A draft I haven’t sent');
+          facts.probes.drafts.push(r);
+          actionResult = `Full screen: ${r.full ? 'opened' : 'didn’t open'}. After leaving it, the draft ${r.kept ? 'was still there' : `was ${JSON.stringify(r.draft)}`}, and the thread ended ${r.after.gap} px from its end (it was ${r.before.gap} px).`;
+        } else if (a.type === 'restore') {
+          actionResult = `Restore said: ${(await d.restoreFile(a.target ?? '')) || '(nothing)'}`;
         } else if (a.type === 'app_click') {
           // The transcript doesn’t change when an app does, so say what the click did inside the app.
           const before = (await d.appInside(key))?.text;
@@ -859,7 +886,14 @@ async function reviewFindings({ dir, scenario, findings, timeline, log, verify, 
 // Runs the checks again over a finished run’s saved data (no agents, no tester), for when the checks or the
 // driver improved. Tester findings and the timeline are kept; check findings are recomputed.
 
-const LIVE_ONLY = new Set(['fresh-install-agents', 'full-screen-noop', 'image-not-shown', 'silent-while-working']);
+const LIVE_ONLY = new Set([
+  'fresh-install-agents',
+  'full-screen-noop',
+  'image-not-shown',
+  'silent-while-working',
+  'agents-section-members',
+  'topbar-title-cut',
+]);
 
 async function recheck(dir) {
   // A run folder, or a run’s name in the runs folder.
@@ -917,7 +951,7 @@ async function recheck(dir) {
     };
     facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
-    facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
+    facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
     facts.ui.reviewRawRows = await page.evaluate(
       `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
     );

@@ -1196,3 +1196,79 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     assert.match(prompt, /A wake request \(“Let @a wake @b\?”\) is a card/);
   });
 });
+
+describe('the Agents section, the Work ledger and the right pane (#105, #132, #146)', () => {
+  const ids = (facts) => runChecks(facts).map((f) => f.check);
+  const call = (id, name, input, extra = {}) => [
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: false, content: 'ok', ...extra }] } },
+  ];
+
+  test('agents-section-members: every member has a row', () => {
+    const f = base({ ui: { agentRows: ['researcher'] } });
+    f.state.threads.t1.members = ['s1', 's2'];
+    f.state.sessions.s2 = { id: 's2', handle: 'critic', state: 'idle' };
+    assert.ok(ids(f).includes('agents-section-members'));
+    f.ui.agentRows = ['researcher', 'critic'];
+    assert.ok(!ids(f).includes('agents-section-members'));
+  });
+
+  test('topbar-title-cut: only when the page measured a cut', () => {
+    assert.ok(ids(base({ ui: { topbarCut: true } })).includes('topbar-title-cut'));
+    assert.ok(!ids(base({ ui: { topbarCut: false } })).includes('topbar-title-cut'));
+  });
+
+  test('work-files-match-stream and work-commands-match-stream compare the ledger with the turns’ tool calls', () => {
+    const events = [...call('e1', 'Write', { file_path: '/w/conv.py' }), ...call('b1', 'Bash', { command: 'pytest' })];
+    const f = base({ streams: [{ handle: 'researcher', started: 1, events }] });
+    f.state.work = { t1: [] };
+    assert.ok(ids(f).includes('work-files-match-stream'));
+    assert.ok(ids(f).includes('work-commands-match-stream'));
+    f.state.work.t1 = [
+      { kind: 'file', path: '/w/conv.py' },
+      { kind: 'command', toolUseId: 'b1' },
+    ];
+    assert.ok(!ids(f).includes('work-files-match-stream'));
+    assert.ok(!ids(f).includes('work-commands-match-stream'));
+  });
+
+  test('quick-panel-takes-effect: the next turn runs the model picked', () => {
+    const turn = (model) => ({ handle: 'critic', started: 20, events: [{ type: 'system', subtype: 'init', model }] });
+    const panels = [{ handle: 'critic', set: { model: 'Sonnet 5.5' }, at: 10 }];
+    assert.ok(ids(base({ probes: { fullScreen: [], attachments: [], panels }, streams: [turn('claude-opus-5-5')] })).includes('quick-panel-takes-effect'));
+    assert.ok(!ids(base({ probes: { fullScreen: [], attachments: [], panels }, streams: [turn('claude-sonnet-5-5')] })).includes('quick-panel-takes-effect'));
+  });
+
+  test('shell-off-silent: a refused command after Shell went off must show as refused', () => {
+    const events = call('b2', 'Bash', { command: 'pytest' }, { is_error: true, content: 'Permission denied' });
+    const panels = [{ handle: 'critic', set: { shell: false }, at: 10 }];
+    const f = base({ probes: { fullScreen: [], attachments: [], panels }, streams: [{ handle: 'critic', started: 20, events }] });
+    assert.ok(ids(f).includes('shell-off-silent'));
+    f.state.items.t1 = [{ id: 'd1', kind: 'denial', handle: 'critic', at: 25 }];
+    assert.ok(!ids(f).includes('shell-off-silent'));
+  });
+
+  test('pane-split and fullscreen-keeps-draft read the probes the run took', () => {
+    const probes = (panes, drafts) => ({ fullScreen: [], attachments: [], panes, drafts });
+    assert.ok(ids(base({ probes: probes([{ work: { w: 440, h: 60 }, thread: { w: 440, h: 800 } }], []) })).includes('pane-split'));
+    assert.ok(!ids(base({ probes: probes([{ work: { w: 440, h: 400 }, thread: { w: 440, h: 460 } }], []) })).includes('pane-split'));
+    assert.ok(ids(base({ probes: probes([], [{ kept: false, draft: '', exited: true, before: 0, after: 0 }]) })).includes('fullscreen-keeps-draft'));
+    assert.ok(
+      !ids(base({ probes: probes([], [{ kept: true, exited: true, before: { top: 120, gap: 300 }, after: { top: 120, gap: 300 } }]) })).includes(
+        'fullscreen-keeps-draft',
+      ),
+    );
+    // At its end before and after, though the text re-wrapped: not moved.
+    assert.ok(
+      !ids(base({ probes: probes([], [{ kept: true, exited: true, before: { top: 481, gap: 0 }, after: { top: 276, gap: 0 } }]) })).includes(
+        'fullscreen-keeps-draft',
+      ),
+    );
+    // Read further up, and put back somewhere else: moved.
+    assert.ok(
+      ids(base({ probes: probes([], [{ kept: true, exited: true, before: { top: 120, gap: 300 }, after: { top: 40, gap: 380 } }]) })).includes(
+        'fullscreen-keeps-draft',
+      ),
+    );
+  });
+});
