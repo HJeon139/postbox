@@ -23,7 +23,7 @@ These changes move the controls you use most. Agent settings leave the top bar f
 | The right pane split: a thread and Work, one above the other              | Work-pane PR       | `check-work-pane.mjs`     | scene `pane-split`                                     | `pane-split`; phase 3                                |
 | Thread full screen keeps the draft, the scroll and streaming              | Work-pane PR       | `check-work-pane.mjs`     | scene `thread-fullscreen`                              | `fullscreen-keeps-draft`; phase 3                    |
 | Each reply’s work line opens Work at that turn                            | #138, Work-pane PR | `check-work-pane.mjs`     | `work-chip.png`                                        | phase 3                                              |
-| A Kiro CLI agent in a room                                                | #117, #127         | `tests/kiro-cli.test.mjs` | `sheets/new-agent.md`                                  | `mixedroom.md` (needs `kiro-cli`)                    |
+| A Kiro CLI agent in a room                                                | #117, #127         | `tests/kiro-cli.test.mjs` | `sheets/new-agent.md`                                  | compatibility runs only (`--compat`)                 |
 
 ## What already worked: the regression set
 
