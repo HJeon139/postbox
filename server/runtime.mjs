@@ -58,6 +58,84 @@ const clipItem = (s, n, id) => {
   const t = String(s ?? '');
   return t.length > n ? `${t.slice(0, n)}… (${count(n)} of ${count(t.length)} characters; read_message { id: "${id}" } has the rest)` : t;
 };
+/** Code in a fence longer than any run of backticks in it. */
+const fenced = (code, language = '') => {
+  const ticks = '`'.repeat(Math.max(3, ...[...String(code).matchAll(/`+/g)].map((m) => m[0].length + 1)));
+  return `${ticks}${language}\n${code}\n${ticks}`;
+};
+/** Where a review comment points: a line, a part of an app, or a thread it answers. */
+const commentAt = (c) => (c.line != null ? `line ${c.line}` : c.anchor != null ? `“${c.anchor}”` : c.threadId != null ? `thread ${c.threadId}` : 'the draft');
+
+/**
+ * What a block holds, as text an agent can read and quote (#153): a review, card or code block’s content, a choice
+ * or form’s prompt and options or fields, any other block’s fallback, and the person’s answer if there is one. An
+ * app is its title alone, which its agent’s line names.
+ * @param {any} it  a block item
+ */
+function blockContent(it) {
+  const b = it.block ?? {};
+  const out = [];
+  const lines = (list) => list.map((x) => `- ${x}`).join('\n');
+  switch (b.type) {
+    case 'review':
+      if (b.format === 'app') out.push(`It reviews the app ${b.appId}.`);
+      else out.push(b.format === 'code' ? `${b.filename ? `${b.filename}:\n` : ''}${fenced(b.content ?? '', b.language)}` : String(b.content ?? ''));
+      for (const th of b.threads ?? []) out.push(`Comments on ${commentAt(th)} (${th.status}):\n${lines(th.comments.map((c) => `${c.author}: ${c.text}`))}`);
+      break;
+    case 'card':
+      if (b.body) out.push(b.body);
+      if (b.facts?.length) out.push(lines(b.facts.map((f) => `${f.label}: ${f.value}`)));
+      if (b.actions?.length) out.push(`Buttons: ${b.actions.map((x) => x.label).join(' · ')}`);
+      break;
+    case 'code':
+      out.push(`${b.filename ? `${b.filename}:\n` : ''}${fenced(b.code ?? '', b.language)}`);
+      break;
+    case 'choice':
+      if (b.prompt) out.push(b.prompt);
+      out.push(
+        `Options${b.multiple ? ' (any of them)' : ''}: ${b.options.map((o) => o.label).join(' · ')}${b.other ? `, or their own (${b.other.label})` : ''}`,
+      );
+      break;
+    case 'form':
+      if (b.prompt) out.push(b.prompt);
+      out.push(
+        `Fields:\n${lines(b.fields.map((f) => `${f.label} (${f.kind}${f.required ? ', required' : ''})${f.options ? `: ${f.options.map((o) => o.label).join(' · ')}` : ''}`))}`,
+      );
+      break;
+    case 'confirm':
+      out.push(b.statement);
+      break;
+    case 'app':
+      return '';
+    default:
+      out.push(String(b.fallback ?? ''));
+  }
+  const a = it.answered ? it.answer : null;
+  if (a) {
+    const v = a.values ?? {};
+    if (b.type === 'review') {
+      const comments = Array.isArray(v.comments) ? v.comments : [];
+      out.push(
+        `Your review: ${String(a.voice ?? '').replace(/^Submitted review: /, '')}${comments.length ? `\n${lines(comments.map((c) => `${commentAt(c)}: ${c.text}`))}` : ''}`,
+      );
+    } else if (b.type === 'form') {
+      const shown = (f) => {
+        const x = v[f.id];
+        if (f.kind === 'toggle') return x ? 'on' : 'off';
+        if (f.kind === 'select') return f.options?.find((o) => o.id === x)?.label ?? x;
+        return String(x);
+      };
+      out.push(
+        `Your answer:\n${lines(b.fields.filter((f) => v[f.id] !== undefined && v[f.id] !== '').map((f) => `${f.label}: ${shown(f)}`)) || '- (nothing filled in)'}`,
+      );
+    } else if (b.type === 'choice') {
+      const picked = (v.selected ?? []).map((id) => b.options.find((o) => o.id === id)?.label ?? id);
+      out.push(`Your answer: ${[...picked, ...(v.other ? [`“${v.other}”`] : [])].join(' · ')}`);
+    } else out.push(`Your answer: ${a.voice ?? a.action}`);
+  }
+  if (b.outcome) out.push(`Outcome: ${b.outcome}`);
+  return out.filter(Boolean).join('\n\n');
+}
 const clip = (s, n = 200) => {
   const t = toPlainText(s);
   return t.length > n ? t.slice(0, n - 1) + '…' : t;
@@ -1499,10 +1577,11 @@ export class Runtime {
       case 'agent':
         return `${from} @${root.handle}’s message: ${text(root.text)}`;
       case 'block': {
-        // The title names it; the fallback is the plain text an agent can quote (a table’s rows, say).
+        // The title names it; what it holds is the text an agent can quote (a draft, or a table’s rows) (#153).
         const b = root.block ?? {};
         const what = b.type === 'app' ? 'app' : b.type ? `${b.type} block` : 'block';
-        return `${from} @${root.handle}’s ${what}${b.title ? ` “${clipText(String(b.title), 200)}”` : ''}: ${text(b.fallback ?? root.fallback)}`;
+        const body = (root.valid && blockContent(root)) || String(b.fallback ?? root.fallback ?? '');
+        return `${from} @${root.handle}’s ${what}${b.title ? ` “${clipText(String(b.title), 200)}”` : ''}: ${text(body)}`;
       }
       default: {
         const line = this.describeItem(root, se);
@@ -1523,10 +1602,16 @@ export class Runtime {
         return `You: ${text(i.text)}${i.attachments?.length ? ` [attached: ${i.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
       case 'agent':
         return i.text && i.status !== 'failed' ? `@${i.handle}: ${text(i.text)}` : null;
-      case 'block':
-        return i.valid
-          ? `@${i.handle} showed ${i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`} “${text(i.block.title ?? i.block.fallback)}”`
-          : null;
+      case 'block': {
+        if (!i.valid) return null;
+        // What it holds comes with it, so another agent can review it (#153).
+        const body = blockContent(i);
+        const what = i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`;
+        const title = i.block.title ?? (i.block.type === 'app' ? i.block.fallback : null);
+        return text(
+          `@${i.handle} showed ${what}${title ? ` “${clipText(String(title), 200)}”` : ''}${body ? `${body.includes('\n') ? ':\n' : ': '}${body}` : ''}`,
+        );
+      }
       case 'voice': {
         // The agent hears about its own blocks as events already.
         const block = i.blockItemId && this.store.item(se?.threadId, i.blockItemId);

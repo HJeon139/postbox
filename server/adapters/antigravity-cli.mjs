@@ -243,7 +243,7 @@ const HEADLESS_NOTE =
 // its turn ended with no reply. agy’s file tools read its folders without asking (every read_file in that run went
 // through), so it’s pointed at them. Run everything allows commands, so it isn’t told this.
 const LOOKING_NOTE =
-  '## Looking at files\n\nUse list_dir, find_by_name, grep_search and view_file to look at files: in your folders they don’t need approval. Don’t use run_command to look around (ls, find, cat): a command needs approval here, so it’s refused, and your turn ends with nothing said. What another agent showed in a block that read_conversation doesn’t give you, ask that agent for.';
+  '## Looking at files\n\nUse list_dir, find_by_name, grep_search and view_file to look at files: in your folders they don’t need approval. Don’t use run_command to look around (ls, find, cat): a command needs approval here, so it’s refused, and your turn ends with nothing said. What another agent wrote or showed in a block is in your history and read_conversation, and read_message { id } gives one item in full: it isn’t on disk.';
 
 /**
  * Where agy keeps each Postbox tool’s input schema, which the model reads before a call (recorded: read_file of

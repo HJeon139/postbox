@@ -94,7 +94,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_conversation',
-    description: `Read this conversation’s history: what the person and every agent in it said, newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes.`,
+    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -105,7 +105,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_message',
-    description: `Read one message of this conversation in full, where your history or read_conversation cut it at ${count(READING.item)} characters: they say how much they kept and give its id. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
+    description: `Read one message or block of this conversation in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
     inputSchema: {
       type: 'object',
       properties: {

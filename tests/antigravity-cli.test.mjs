@@ -308,6 +308,8 @@ test('the rules file: the guide, the note on refusals, and what the persona turn
   assert.match(off, /A refusal ends your turn there, before you can reply/);
   // Pointed at agy’s file tools, unless commands are allowed.
   assert.match(off, /Use list_dir, find_by_name, grep_search and view_file/);
+  // And at read_message for what another agent showed, which its @critic went looking for on disk (#153).
+  assert.match(off, /in a block is in your history and read_conversation, and read_message \{ id \} gives one item in full: it isn’t on disk/);
   assert.doesNotMatch(agyRules({ persona: { permissionMode: 'bypass' }, guide: 'G' }), /Looking at files/);
 });
 
