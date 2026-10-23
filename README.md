@@ -269,7 +269,7 @@ They cover:
 - the diagram linter, against text sizes measured in Chrome
 - attaching and mirroring Claude Code sessions, narration, and the lint rules themselves
 
-Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs the same check on every pull request, then plays the demo in headless Chrome and runs axe-core on every scene.
+Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs the same check on every pull request, then plays the demo in headless Chrome and runs axe-core on every scene. It also checks that a pull request’s commit messages follow Conventional Commits, and that every change on main is released.
 
 | Command | What it does |
 |---|---|
@@ -280,8 +280,15 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 | `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage |
 | `npm run format` | Applies Biome’s formatting and safe fixes |
 | `npm run test:coverage` | Runs the tests with coverage for `shared/`, `server/` and the lint rules |
+| `npm run release [-- --dry-run]` | Releases the next semantic version from the commits since the last tag: package.json, CHANGELOG.md, a release commit and a tag |
+| `npm run lint:commits [range]` | Checks commit messages against Conventional Commits |
+| `npm run hooks` | Checks each commit message as you write it (`.githooks/commit-msg`) |
 
 Approved screenshots live in `screenshots/` and `screenshots/app/`. Working retakes go to `screenshots/latest/`, which git ignores.
+
+## Versions
+
+Postbox uses [semantic versioning](https://semver.org/), from [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): a breaking change moves the major version, a feature the minor version, and a fix the patch version. The sidebar shows the running build under Personas, as `vX.Y.Z · commit`. Each release is in [CHANGELOG.md](CHANGELOG.md), and the rules are in [designs/engineering-practices.md](designs/engineering-practices.md), “Commits and versions”.
 
 ## Known limits
 

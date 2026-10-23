@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The whole history and its tags: commit messages are checked against the base, and versions against tags.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -23,6 +26,13 @@ jobs:
       # packages would otherwise download models and binaries they don't use here.
       - run: npm ci --ignore-scripts
       - run: npm run check
+      # Conventional Commits, from v0.2.0 on: older commits on long-running branches keep their plain messages.
+      - name: Commit messages follow Conventional Commits
+        if: github.event_name == 'pull_request'
+        run: node tools/lint-commits.mjs "origin/${{ github.base_ref }}..HEAD" --since "$(git log -1 --format=%cI v0.2.0)"
+      - name: Every change on main is released
+        if: github.event_name == 'push'
+        run: node tools/release.mjs --check
 
   end-to-end:
     name: Demo in Chrome, with accessibility checks

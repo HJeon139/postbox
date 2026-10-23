@@ -21,7 +21,10 @@
     "check": "npm run lint && npm run typecheck && npm run lint:project && npm run check:contrast && npm test",
     "shoot:mockups": "node tools/shoot.mjs",
     "shoot:app": "node tools/shoot-app.mjs",
-    "uat": "node tools/uat-run.mjs"
+    "uat": "node tools/uat-run.mjs",
+    "lint:commits": "node tools/lint-commits.mjs",
+    "release": "node tools/release.mjs",
+    "hooks": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.2",

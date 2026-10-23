@@ -1,0 +1,3 @@
+#!/bin/sh
+# Checks each commit message as it's written (Conventional Commits). Turn it on with: npm run hooks
+exec node tools/lint-commits.mjs --message-file "$1"

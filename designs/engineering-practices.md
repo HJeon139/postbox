@@ -171,9 +171,31 @@ The target is WCAG 2.1 AA, with zero axe violations in every demo scene.
 **Do**
 - Write all user-facing text and docs in plain American English, with curly quotes and sentence case. `lint-copy` checks spelling and quotes.
 - Draw diagrams in Mermaid, never ASCII art.
-- Write commit messages that say what changed for the person and why, and reference the issue (`Fixes #NN`, one per line, so each closes). Add the co-author line when an agent wrote the change.
+- Write commit messages as [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope): what changed`, then a body that says why, and the issue (`Fixes #NN`, one per line, so each closes). Add the co-author line when an agent wrote the change. See “Commits and versions” below.
 - Make one commit per fix, so each can be reviewed and reverted on its own.
 
 **Don’t**
 - Don’t push to `main` without the gate passing.
 - Don’t commit `data/`, `uat-runs/` or anything with a secret.
+
+## Commits and versions
+
+Postbox follows [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and [semantic versioning](https://semver.org/), so a version says what changed since the last one, and the changelog writes itself.
+
+**A commit message:**
+- `feat(scope): …` for a feature: the minor version goes up.
+- `fix(scope): …` (or `perf`) for a bug fix: the patch version goes up.
+- `type!: …`, or a `BREAKING CHANGE:` footer, for a change that isn’t backward compatible: the major version goes up, even before 1.0.0.
+- `refactor`, `docs`, `test`, `build`, `ci`, `chore`, `style` and `revert` don’t change the version on their own.
+- The scope is optional, and names the area (`rail`, `blocks`, `adapters`, `uat`). The subject is lowercase, says what changed for the person, and the whole header fits in 100 characters.
+
+**Enforced:**
+- `tools/lint-commits.mjs` checks a pull request’s commits in CI, from v0.2.0 on.
+- `npm run hooks` turns on `.githooks/commit-msg`, which checks each message as you commit.
+- Merge commits, `chore(release)` commits and git’s own `Revert "…"` pass.
+
+**A release after each merge to main:**
+- The integrator runs `npm run release`. It finds the commits since the last tag, takes the largest bump among them, and writes the version to package.json and package-lock.json. It adds a CHANGELOG.md section, commits `chore(release): vX.Y.Z` and tags `vX.Y.Z`.
+- Push the merge, the release commit and the tag together.
+- CI fails on main when commits since the last tag change the version and aren’t released (`tools/release.mjs --check`).
+- The sidebar shows the build under Personas, as `vX.Y.Z · commit`, so a screenshot says which build it came from.
