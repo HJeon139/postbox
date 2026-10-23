@@ -10,7 +10,8 @@
 // - Commands: each Bash call exactly as it ran, with its exit, duration and all the output it returned. One run
 //   in the background ends with a task notification, which gives its exit and its output file.
 // - Version control: commits and pushes Claude Code reports on the command’s result (gitOperation), with the
-//   commit’s files and lines from git itself; branches from the command line.
+//   commit’s files and lines from git itself; branches from the command line. Commits and branches it doesn’t
+//   report, such as a commit inside `… && git commit`, from git before and after the command (#156).
 // - Outside Postbox: gh commands and MCP tools that write (create_pull_request, add_issue_comment…), with links.
 // - Effort: each turn’s wall time, tool calls, tokens and spend (the result’s total_cost_usd).
 // Whether a file is uncommitted, committed or pushed is asked of git when the Work view opens: read-only commands,
@@ -37,7 +38,20 @@ import {
   urlsIn,
 } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
-import { clip, gitState, pushed, recordCommit, rootOf, runGit, tracked } from './ledger-git.mjs';
+import {
+  clip,
+  commandSeen,
+  commandStarted,
+  folderWatch,
+  gitState,
+  pushed,
+  recordCommit,
+  rootOf,
+  runGit,
+  tracked,
+  turnEnded,
+  turnStarted,
+} from './ledger-git.mjs';
 import { newId } from './store.mjs';
 
 /**
@@ -132,6 +146,7 @@ export class Ledger {
     this.roots = new Map(); // folder → its repository’s top folder, or null
     this.pushedCache = new Set(); // root:sha known to be on a remote
     this.pending = new Set(); // work that hasn’t finished writing, so tests can wait for it
+    this.folders = folderWatch(); // git folders, to see what a command did there (#156)
   }
 
   get s() {
@@ -201,6 +216,7 @@ export class Ledger {
         () => {},
       ),
     );
+    w.pending.push(this.track(turnStarted(this, w, w.pending[0])));
     this.add(convId, {
       kind: 'turn',
       id: turn.id,
@@ -262,6 +278,7 @@ export class Ledger {
         }),
       );
       w.commands.set(id, e.id);
+      commandStarted(this, turn, e.id, who);
       return;
     }
     const ext = externalTool(name);
@@ -319,7 +336,7 @@ export class Ledger {
     }
     const cmdId = w.commands.get(id);
     if (cmdId) {
-      w.pending.push(this.track(this.commandEnded(turn, cmdId, { isError, text, r, vcsCwd })));
+      w.pending.push(this.track(this.commandEnded(turn, cmdId, { isError, text, r, vcsCwd }).then(() => commandSeen(this, turn, cmdId, vcsCwd))));
       return;
     }
     const extId = w.externals.get(id);
@@ -424,6 +441,7 @@ export class Ledger {
             if (tail) output = { ...(await this.keepOutput(tail.bytes)), cut: tail.cut };
           }
           this.patch(w.convId, cmdId, { state, exit: code, ms: this.now() - e.startedAt, output, endedInBackground: true });
+          await commandSeen(this, turn, cmdId);
         })(),
       ),
     );
@@ -466,6 +484,7 @@ export class Ledger {
     w.ended = true;
     const run = (async () => {
       await Promise.allSettled(w.pending);
+      turnEnded(this, w);
       for (const f of w.files.values()) {
         const before = await f.before;
         const after = await this.capture(await this.io.read(f.path));

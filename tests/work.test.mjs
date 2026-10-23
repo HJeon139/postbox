@@ -255,7 +255,7 @@ test('git says whether each change is uncommitted, committed or pushed, with rea
   assert.deepEqual(by, { 'notes.txt': 'uncommitted', 'hello.md': 'pushed', 'untracked.txt': 'committed' });
   assert.deepEqual(g.repos, [{ root: '/workspace/rec', branch: 'feature', upstream: 'origin/feature' }]);
   assert.ok(
-    git.calls.every((c) => / git (rev-parse|ls-files|show|status|log|branch -r|check-ignore)\b/.test(c)),
+    git.calls.every((c) => / git (rev-parse|ls-files|show|status|log|branch -r|check-ignore|symbolic-ref|for-each-ref|rev-list)\b/.test(c)),
     'nothing but reads',
   );
   assert.ok(
