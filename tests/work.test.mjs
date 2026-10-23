@@ -255,7 +255,7 @@ test('git says whether each change is uncommitted, committed or pushed, with rea
   assert.deepEqual(by, { 'notes.txt': 'uncommitted', 'hello.md': 'pushed', 'untracked.txt': 'committed' });
   assert.deepEqual(g.repos, [{ root: '/workspace/rec', branch: 'feature', upstream: 'origin/feature' }]);
   assert.ok(
-    git.calls.every((c) => / git (rev-parse|ls-files|show|status|log|branch -r|check-ignore|symbolic-ref|for-each-ref|rev-list)\b/.test(c)),
+    git.calls.every((c) => / git (rev-parse|ls-files|show|status|log|branch -r|check-ignore|symbolic-ref|for-each-ref|rev-list|diff)\b/.test(c)),
     'nothing but reads',
   );
   assert.ok(
@@ -303,15 +303,15 @@ test('effort that left nothing lasting is listed apart', () => {
     },
     { kind: 'change', id: 'c1', turnId: 't1', fileId: 'f1', handle: 'dev', added: 8, deleted: 1, before: { sha256: 'x' }, after: { sha256: 'z' } },
     { kind: 'change', id: 'c2', turnId: 't2', fileId: 'f2', handle: 'dev', added: 3, deleted: 3, before: { sha256: 'p' }, after: { sha256: 'q' } },
-    { kind: 'command', id: 'k1', turnId: 't2', handle: 'dev', state: 'failed' },
+    { kind: 'command', id: 'k1', turnId: 't3', handle: 'critic', state: 'failed' },
   ];
   const s = summarize(entries);
   assert.deepEqual(
     s.idle.list.map((t) => t.id),
-    ['t2'],
-    'the turn whose edit was put back and whose command failed; t3 only talked',
+    ['t3'],
+    'the turn whose only command failed; t2’s edit was put back since, but it’s in t2’s list, so it counts (#195)',
   );
-  assert.equal(s.idle.costUsd, 0.5);
+  assert.equal(s.idle.costUsd, 0.1);
   assert.equal(s.effort.written, 11, 'lines written along the way');
   assert.equal(s.effort.kept, 5, 'and kept');
   assert.equal(fileState(entries[4], null), 'unchanged');

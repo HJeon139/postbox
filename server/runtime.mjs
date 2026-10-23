@@ -10,7 +10,7 @@ import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
-import { turnLine } from '../shared/work.mjs';
+import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
@@ -342,8 +342,8 @@ export class Runtime {
       return false;
     }
     const now = Date.now();
-    const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub };
-    this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, at: now, movedAt: now } });
+    const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub, ...carriedList(items[i]).stub };
+    this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, ...carriedList(items[i]).item, at: now, movedAt: now } });
     // A session whose catch-up marker was the item now reads on from the stub, where the item was, so what came
     // after it isn’t skipped.
     for (const se of this.sessionsIn(threadId)) if (se.seenItem === id) this.updateSession(se.id, { seenItem: st.id });
@@ -910,12 +910,12 @@ export class Runtime {
     };
   }
 
-  /** The turn’s work is recorded (#132), then its first reply gets the line that leads to it. */
+  /** The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195). */
   endWork(turn, status) {
-    const first = turn.first;
     return this.ledger.endTurn(turn, { status }).then(() => {
       const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-      if (line && first && this.store.item(turn.threadId, first)) this.patchItem(turn.threadId, first, { work: line });
+      const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
+      if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
     });
   }
 

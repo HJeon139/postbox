@@ -1005,6 +1005,23 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 .work-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); text-decoration: none; padding: 2px 8px 2px 6px; border: 1px solid var(--line); border-radius: 6px; }
 .work-chip:hover { color: var(--text); border-color: var(--line-strong); }
 .work-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The turn’s list under its last reply (#195): its line, then a row per item, each a link into Work. */
+.work-list-turn { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 6px; max-width: 100%; }
+.wl-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; width: 100%; max-width: 640px; }
+.wl-row { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 6px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 13px; min-width: 0; }
+.wl-row:hover { background: var(--sunk); }
+.wl-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wl-row > .i, .wl-row > .g { flex: none; color: var(--dim); }
+.wl-path { display: flex; min-width: 0; white-space: nowrap; }
+.wl-dir { overflow: hidden; text-overflow: ellipsis; color: var(--dim); min-width: 1ch; }
+.wl-name { flex: none; font-weight: 600; }
+.wl-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+code.wl-label { font-size: 12px; }
+.wl-url, .wl-state { flex: none; white-space: nowrap; }
+.wl-state.bad { color: var(--alert-ink); }
+.wl-more { background: none; border: 0; padding: 2px 6px; color: var(--dim); font: inherit; font-size: 12px; cursor: pointer; border-radius: 6px; }
+.wl-more:hover { color: var(--text); background: var(--sunk); }
+.wl-more:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .work-view { max-width: 980px; width: 100%; margin: 0 auto; padding: 4px 0 32px; display: flex; flex-direction: column; gap: 20px; }
 .work-view:focus { outline: none; }

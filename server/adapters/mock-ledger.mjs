@@ -45,6 +45,8 @@ export async function citationFix(a) {
   await writeFile(at('cite.mjs'), CITE_V1);
   await writeFile(at('refs.bib'), REFS);
   for (const p of [at('cite.test.mjs'), notes]) await rm(p, { force: true });
+  await a.read(at('cite.mjs'));
+  await a.read(at('refs.bib'));
   await a.thinkAloud('The citation script drops the year, and one entry spells the field wrong. I’ll reproduce it, fix the formatter, then fix the entry.');
   await a.run('node cite.mjs refs.bib', {
     exit: 1,
@@ -67,6 +69,13 @@ export async function citationFix(a) {
   await a.run('gh issue create --title "Citations drop the year" --body "Fixed in cite.mjs; refs.bib had a typo."', {
     output: 'https://github.com/example/agent-research/issues/12',
     label: 'Filed an issue',
+  });
+  // Something shown in the conversation, so the turn’s list has an app row (#195).
+  a.t.show_app({
+    id: 'cite-preview',
+    title: 'Citation preview',
+    code: '<div class="pad" style="padding:14px"><p>Yao and Zhao (2023), ReAct</p><p>Shinn and Cassano (2023), Reflexion</p></div>',
+    fallback: 'The two entries, formatted. Open Postbox to see them.',
   });
   await a.say(
     'Fixed. `cite.mjs` now keeps the year and handles any number of authors, with a test for the two-author case, and `refs.bib` had `yeer` for `year` in one entry. I filed the issue, and left a note for myself about the other bibliographies. **Work** shows every file, with what it looked like before.',

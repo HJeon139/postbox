@@ -9,10 +9,11 @@
 // its output, and effort by agent.
 
 import { fileEffort, fileState, flagged, formatBytes, formatCost, formatTokens, signed, summarize, turnLine } from '/shared/work.mjs';
+import { commandLabel } from '/shared/work-list.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
 import { closeWork, keepFocus, openDialog, openWork, toast } from './ui.mjs';
-import { dur, effortSection, externalSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
+import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
 
 const S = () => client.state;
 const STATE_WORDS = {
@@ -127,9 +128,11 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         summary(s),
         filesSection(s, entries),
         vcsSection(s, git),
+        publishSection(s, threadId, S().apps),
         externalSection(s),
         commandsSection(s),
         effortSection(s, entries, threadId),
+        readsSection(s),
       );
     });
 
@@ -316,7 +319,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
             '. A file’s lines count toward the agent that changed it last.',
           )
         : null,
-      h('p.small.dim', 'Changes a command makes (a formatter, a script) aren’t listed: Postbox sees the files an agent edits with its file tools.'),
+      h('p.small.dim', 'Changes a command makes (a formatter, a script) aren’t listed yet: Postbox sees the files an agent edits with its file tools.'),
     );
   }
 
@@ -463,7 +466,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
                 `cmd-${c.state}`,
                 [
                   h(`span.g.g-${GLYPH[c.state] ?? 'done'}`, { role: 'img', 'aria-label': COMMAND_WORDS[c.state] ?? c.state }),
-                  h('code.work-cmd-line', `$ ${c.command.split('\n')[0]}`),
+                  c.description ? h('span.work-cmd-line', c.description) : h('code.work-cmd-line', `$ ${commandLabel(c, folders(c))}`),
                   h(
                     'span.small.work-exit',
                     { class: c.state === 'failed' || c.state === 'denied' ? 'bad' : '' },
@@ -481,12 +484,13 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
     );
   }
 
+  /** Folders a command’s leading `cd` may name: the project’s and its agent’s, as the turn’s list leaves out. */
+  const folders = (c) => [S().projects?.[S().threads[threadId]?.projectId]?.folder, S().personas?.[S().sessions?.[c.sessionId]?.personaId]?.folder];
   function commandBody(c) {
     const key = `out:${c.id}`;
     if (c.state !== 'running' && c.output?.sha256) load(`${key}:${c.output.sha256}`, `/api/threads/${threadId}/work/commands/${c.id}/output`, 'text');
     const out = c.output?.sha256 ? loaded.get(`${key}:${c.output.sha256}`) : '';
     return [
-      c.description ? h('p.small.dim', c.description) : null,
       h('pre.md-code.work-cmd-full', h('code', c.command)),
       h('p.small.dim', `Started ${timeOf(c.startedAt)}${c.who ? ` by the subagent ${c.who}` : ''}.`),
       c.keptRunning

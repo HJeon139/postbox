@@ -116,6 +116,15 @@ function kit(ctx, session, mem) {
       ctx.toolResult?.({ id, text: 'ok', result: who ? null : { type: before === null ? 'create' : 'update', originalFile: before } });
       ctx.activity({ id, label, state: 'done', ms, who });
     },
+    /** A file read, reported as Claude Code reports a Read call, so the work ledger lists it (#195). */
+    async read(path, { label = `Read ${path.replace(/^.*\//, '')}`, who = null, ms = 200 } = {}) {
+      const id = `t${++n}`;
+      ctx.activity({ id, label, state: 'running', who });
+      ctx.toolUse?.({ id, name: 'Read', input: { file_path: path }, who });
+      await sleep(ms);
+      ctx.toolResult?.({ id, text: 'ok' });
+      ctx.activity({ id, label, state: 'done', ms, who });
+    },
     /** A command, as Claude Code reports one. Nothing runs: the output is the script’s. */
     async run(command, { output = '', exit = 0, ms = 500, background = false, label = null, who = null } = {}) {
       const id = `t${++n}`;

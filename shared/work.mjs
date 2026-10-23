@@ -2,6 +2,8 @@
 // the pure parts the server (server/ledger.mjs) and the Work view (app/js/work.mjs) share: line counts from a
 // diff, what a command line did to version control and to services outside Postbox, and the totals.
 
+import { formatDuration } from './text.mjs';
+
 /** Files larger than this are listed with their sizes, but not copied, diffed or restored. */
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 /** A command’s output is kept up to this, its end when longer. */
@@ -18,6 +20,14 @@ export const EDIT_TOOLS = /** @type {Record<string, string>} */ ({
 });
 /** The tools that run a command line. */
 export const COMMAND_TOOLS = new Set(['Bash']);
+/** The tools that read a file or the web (#195), and the input field that says what. */
+export const READ_TOOLS = /** @type {Record<string, string>} */ ({
+  Read: 'file_path',
+  Grep: 'pattern',
+  Glob: 'pattern',
+  WebFetch: 'url',
+  WebSearch: 'query',
+});
 
 export { diffCount, diffRows, hunks, isBinary, splitLines } from './diff.mjs';
 
@@ -147,11 +157,7 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
     if (turnId || st !== 'unchanged') add(total, f);
   }
   const of = (kind) => list.filter((e) => e.kind === kind && inScope(e));
-  const commands = of('command');
-  const external = of('external');
-  const commits = of('commit');
-  const pushes = of('push');
-  const branches = of('branch');
+  const [commands, external, commits, pushes, branches, publishes, reads] = ['command', 'external', 'commit', 'push', 'branch', 'publish', 'read'].map(of);
 
   // Effort, per agent and in all. Lines a file keeps count toward the agent whose turn changed it last, so the
   // agents’ kept lines add up to the conversation’s.
@@ -181,12 +187,9 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
     if (c.state === 'failed') a.failed += 1;
   }
 
-  // Turns that tried something (changed a file or ran a command) and left nothing lasting: no change that
-  // survives, no commit, push or write outside Postbox.
-  const lastingTurn = new Set();
-  for (const c of changes)
-    if (lasting(fileById.get(c.fileId) ?? {}) && (c.added || c.deleted || c.before?.sha256 !== c.after?.sha256)) lastingTurn.add(c.turnId);
-  for (const e of [...commits, ...pushes, ...external]) lastingTurn.add(e.turnId);
+  // Turns that tried something (changed a file or ran a command) and left nothing lasting: no change, publish, commit,
+  // push or write outside Postbox. A turn whose change a later one put back still has it in its list (#195).
+  const lastingTurn = new Set([...changes, ...commits, ...pushes, ...external, ...publishes].map((e) => e.turnId));
   const tried = new Set([...changes, ...commands].map((e) => e.turnId));
   const idle = turns.filter((t) => tried.has(t.id) && !lastingTurn.has(t.id));
 
@@ -208,6 +211,8 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
     commits,
     pushes,
     branches,
+    publishes,
+    reads,
     turns,
     effort: { ...sum(turns), written: changes.reduce((n, c) => n + (c.added ?? 0), 0), kept: total.added },
     idle: { ...sum(idle), list: idle },
@@ -227,23 +232,50 @@ export function fileEffort(entries, fileId) {
   };
 }
 
+/**
+ * An item carrying a turn’s list that moves to the newest point (an app a later turn updates, #49): the stub left in
+ * its place keeps the list, where that turn ended, and the item carries none (#195).
+ */
+export function carriedList(it) {
+  if (!it?.work) return { stub: {}, item: {} };
+  return { stub: { work: it.work, workTurn: it.workTurn ?? it.turnId }, item: { work: null, workTurn: null } };
+}
+
 /** One turn’s line for the transcript (“3 files +40 −12 · 2 commands · $0.31”), or null when it did no work. */
 export function turnLine(entries, turnId) {
   const s = summarize(entries, { turnId });
-  if (!s.files.length && !s.commands.length && !s.external.length && !s.commits.length) return null;
+  if (!s.files.length && !s.commands.length && !s.external.length && !s.commits.length && !s.publishes.length && !s.reads.length) return null;
   const parts = [];
   if (s.files.length) parts.push(`${s.files.length === 1 ? '1 file' : `${s.files.length} files`} ${signed(s.total.added, s.total.deleted)}`);
   if (s.commands.length) {
     const failed = s.commands.filter((c) => c.state === 'failed').length;
     parts.push(`${s.commands.length === 1 ? '1 command' : `${s.commands.length} commands`}${failed ? ` (${failed} failed)` : ''}`);
   }
+  const apps = s.publishes.filter((p) => p.what === 'app').length;
+  if (apps) parts.push(apps === 1 ? '1 app' : `${apps} apps`);
+  if (s.publishes.length > apps) parts.push(s.publishes.length - apps === 1 ? '1 block' : `${s.publishes.length - apps} blocks`);
   if (s.commits.length) parts.push(s.commits.length === 1 ? '1 commit' : `${s.commits.length} commits`);
   if (s.external.length) parts.push(`${s.external.length} outside Postbox`);
+  if (s.reads.length && parts.length === 0) parts.push(readsLine(s.reads));
   if (s.effort.priced) parts.push(formatCost(s.effort.costUsd));
   return parts.join(' · ');
 }
 
 // ── Words ───────────────────────────────────────────────────────────────────────────────
+
+/** “Read 15 files · fetched 3 pages · 2 searches” (#195). */
+export function readsLine(reads) {
+  const n = (...tools) => reads.filter((r) => tools.includes(r.tool)).length;
+  const [files, pages, searches] = [n('Read'), n('WebFetch'), n('Grep', 'Glob', 'WebSearch')];
+  const text = [
+    files ? `read ${files === 1 ? '1 file' : `${files} files`}` : '',
+    pages ? `fetched ${pages === 1 ? '1 page' : `${pages} pages`}` : '',
+    searches ? (searches === 1 ? '1 search' : `${searches} searches`) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 const num = (n) => Math.round(n).toLocaleString('en-US');
 /** “+612 −0”, with a real minus sign. */

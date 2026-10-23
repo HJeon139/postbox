@@ -3,8 +3,9 @@
 
 import { formatDuration } from '/shared/text.mjs';
 import { formatCost, formatTokens, signed } from '/shared/work.mjs';
+import { retiredApp } from '/shared/work-list.mjs';
 import { h, icon, plural, timeOf } from './dom.mjs';
-import { openWork, paneHref, route } from './ui.mjs';
+import { navigate, openWork, paneHref, route, setPaneFull } from './ui.mjs';
 
 export const dur = (ms) => (ms ? formatDuration(ms) : '');
 export const who = (e) => `@${e.handle}${e.who ? ` · ${e.who}` : ''}`;
@@ -51,10 +52,13 @@ export function vcsSection(s, git) {
         at: c.at,
         el: h(
           'li',
+          { id: c.id, tabindex: '-1' },
           h('span.mono.dim', c.sha.slice(0, 7)),
           ' ',
           h('b', c.message || '(no message)'),
           c.branch ? h('span.small.dim', ` on ${c.branch}`) : null,
+          c.left ? h('span.small.dim', ' · no longer on a branch') : null,
+          c.overlap ? h('span.small.dim', ' · or a command beside it') : null,
           ' · ',
           c.files.length ? [plural(c.files.length, 'file'), ' ', signedEl(c.added, c.deleted)] : 'files unknown',
           ' ',
@@ -67,6 +71,7 @@ export function vcsSection(s, git) {
       at: p.at,
       el: h(
         'li',
+        { id: p.id, tabindex: '-1' },
         icon('upload', 'i-sm'),
         ' Pushed ',
         h('b.mono', p.branch || 'a branch'),
@@ -100,6 +105,7 @@ export function externalSection(s) {
           s.external.map((x) =>
             h(
               'li',
+              { id: x.id, tabindex: '-1' },
               h('b', x.what),
               x.via === 'mcp' ? h('span.small.dim', ` (${x.server})`) : null,
               x.state === 'failed' || x.state === 'denied' ? [' ', h('span.status-tag.ws-failed', x.state === 'denied' ? 'Refused' : 'Failed')] : null,
@@ -191,4 +197,72 @@ export function effortSection(s, entries, threadId) {
         ]
       : null,
   );
+}
+
+/** Leaves full-screen Work for the conversation, at an item there, with focus on it. */
+function showItem(conv, p) {
+  if (route().full) setPaneFull(null);
+  if (p.threadId !== conv) navigate(paneHref(conv, { side: p.threadId, work: route().work }), { replace: true });
+  requestAnimationFrame(() => {
+    const el = /** @type {HTMLElement|null} */ (document.querySelector(`.transcript [data-key="${CSS.escape(p.itemId)}"]`));
+    el?.setAttribute('tabindex', '-1');
+    el?.scrollIntoView({ block: 'center' });
+    el?.focus({ preventScroll: true });
+  });
+}
+
+/** What the agents showed in the conversation (#195): apps at their version, and blocks, each leading back to it. */
+export function publishSection(s, conv, apps = {}) {
+  return section(
+    'work-shown',
+    'Shown in the conversation',
+    s.publishes.length,
+    s.publishes.length
+      ? h(
+          'ul.work-list',
+          s.publishes.map((p) => {
+            const app = p.what === 'app' ? apps[p.blockId] : null;
+            return h(
+              'li',
+              { id: p.id, tabindex: '-1' },
+              icon(p.what === 'app' ? 'spark' : 'list', 'i-sm'),
+              ' ',
+              h('b', p.title),
+              h('span.small.dim', ` · ${p.what === 'app' ? `app v${p.version ?? 1}` : `${p.type} block`}`),
+              retiredApp(app) ? [' ', h('span.status-tag', 'Retired')] : null,
+              h('span.small.dim', ` · ${who(p)} · ${timeOf(p.at)} · `),
+              h('button.btn.sm', { type: 'button', onclick: () => showItem(conv, p) }, 'Show in the conversation'),
+            );
+          }),
+        )
+      : h('p.empty-note', 'No apps or blocks shown yet.'),
+  );
+}
+
+const READ_WORDS = { Read: 'Read', Grep: 'Searched files for', Glob: 'Listed files matching', WebFetch: 'Fetched', WebSearch: 'Searched the web for' };
+/** Each file the agents read and each page they fetched or searched for (#195), by agent, with when. */
+export function readsSection(s) {
+  // The list’s Reads row opens Work at this section, so it takes focus, and keeps it across repaints.
+  const el = section(
+    'work-reads',
+    'Reads',
+    s.reads.length,
+    s.reads.length
+      ? h(
+          'ul.work-list',
+          s.reads.map((r) =>
+            h(
+              'li',
+              { id: r.id, tabindex: '-1' },
+              `${READ_WORDS[r.tool] ?? r.tool} `,
+              h(r.tool === 'WebSearch' || r.tool === 'Grep' || r.tool === 'Glob' ? 'b' : 'b.mono', r.what),
+              r.where ? h('span.small.dim', ` in ${r.where}`) : null,
+              h('span.small.dim', ` · ${who(r)} · ${timeOf(r.at)}`),
+            ),
+          ),
+        )
+      : h('p.empty-note', 'Nothing read yet. Each file an agent reads and each page it fetches or searches for shows here.'),
+  );
+  el.tabIndex = -1;
+  return el;
 }

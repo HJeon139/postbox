@@ -35,23 +35,12 @@ import {
   MAX_DIFF_ROWS,
   MAX_FILE_BYTES,
   MAX_OUTPUT_BYTES,
+  READ_TOOLS,
   urlsIn,
 } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
-import {
-  clip,
-  commandSeen,
-  commandStarted,
-  folderWatch,
-  gitState,
-  pushed,
-  recordCommit,
-  rootOf,
-  runGit,
-  tracked,
-  turnEnded,
-  turnStarted,
-} from './ledger-git.mjs';
+import { commandSeen, commandStarted, folderWatch, turnEnded } from './ledger-commands.mjs';
+import { clip, gitState, pushed, recordCommit, rootOf, runGit, tracked } from './ledger-git.mjs';
 import { newId } from './store.mjs';
 
 /**
@@ -216,7 +205,6 @@ export class Ledger {
         () => {},
       ),
     );
-    w.pending.push(this.track(turnStarted(this, w, w.pending[0])));
     this.add(convId, {
       kind: 'turn',
       id: turn.id,
@@ -262,6 +250,7 @@ export class Ledger {
       f.tools += 1;
       return;
     }
+    if (READ_TOOLS[name]) return this.recordRead(turn, { id, name, input, who });
     if (COMMAND_TOOLS.has(name) && typeof input?.command === 'string') {
       const e = this.add(
         w.convId,
@@ -278,7 +267,7 @@ export class Ledger {
         }),
       );
       w.commands.set(id, e.id);
-      commandStarted(this, turn, e.id, who);
+      commandStarted(this, turn, e.id);
       return;
     }
     const ext = externalTool(name);
@@ -301,6 +290,49 @@ export class Ledger {
       );
       w.externals.set(id, e.id);
     }
+  }
+
+  /** A file read or searched, or a page fetched or searched for (#195): its path, pattern, URL or query. */
+  recordRead(turn, { id, name, input, who }) {
+    const w = turn.work;
+    const what = input?.[READ_TOOLS[name]];
+    if (typeof what !== 'string' || !what.trim()) return;
+    const path = name === 'Read' ? this.abs(w, what) : null;
+    const where = typeof input.path === 'string' && input.path ? this.display(this.abs(w, input.path), w) : null;
+    this.add(
+      w.convId,
+      this.base(turn, { kind: 'read', id: newId('wg'), toolUseId: id, who, tool: name, what: clip(path ? this.display(path, w) : what, 500), where }),
+    );
+  }
+
+  /**
+   * What the turn showed in the conversation (#195): each app it showed or updated, at its version, and each block it
+   * showed or asked again with. A block that came out invalid showed only its fallback, so it isn’t listed.
+   */
+  recordPublishes(turn) {
+    const w = turn.work;
+    const threads = [...new Set([turn.threadId, w.convId])];
+    for (const threadId of threads)
+      for (const it of this.store.items(threadId)) {
+        if (it.kind !== 'block' || it.turnId !== turn.id || !it.valid) continue;
+        const b = it.block;
+        const app = b.type === 'app' ? this.s.apps?.[b.id] : null;
+        const title = app?.title ?? b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id;
+        this.add(
+          w.convId,
+          this.base(turn, {
+            kind: 'publish',
+            id: newId('wu'),
+            threadId,
+            itemId: it.id,
+            what: app ? 'app' : 'block',
+            type: b.type,
+            blockId: b.id,
+            title: clip(String(title).replace(/\s+/g, ' '), 200),
+            version: app ? app.current : null,
+          }),
+        );
+      }
   }
 
   /** The backend refused a call without running it. */
@@ -336,7 +368,7 @@ export class Ledger {
     }
     const cmdId = w.commands.get(id);
     if (cmdId) {
-      w.pending.push(this.track(this.commandEnded(turn, cmdId, { isError, text, r, vcsCwd }).then(() => commandSeen(this, turn, cmdId, vcsCwd))));
+      w.pending.push(this.track(this.commandEnded(turn, cmdId, { isError, text, r, vcsCwd }).then(() => commandSeen(this, turn, cmdId))));
       return;
     }
     const extId = w.externals.get(id);
@@ -460,13 +492,15 @@ export class Ledger {
     const e = this.entries(convId).find((x) => x.kind === 'command' && x.toolUseId === job.toolUseId);
     if (!e) return;
     if (kept) this.patch(convId, e.id, { keptRunning: true, ...(e.state === 'unknown' ? { state: 'background' } : {}) });
-    else if (state && ['running', 'background', 'unknown'].includes(e.state))
+    else if (state && ['running', 'background', 'unknown'].includes(e.state)) {
+      this.folders.live.delete(e.id); // it ended: a commit made after it isn’t its (#156)
       this.patch(convId, e.id, {
         state: state === 'stopped' || state === 'failed' ? state : 'unknown',
         ms: this.now() - (e.startedAt ?? this.now()),
         leftRunning: false,
         ...(by === 'you' ? { stoppedBy: 'you' } : {}),
       });
+    }
   }
 
   /** What the backend reports the turn’s process has spent so far (its totals run for the process). */
@@ -485,6 +519,7 @@ export class Ledger {
     const run = (async () => {
       await Promise.allSettled(w.pending);
       turnEnded(this, w);
+      this.recordPublishes(turn);
       for (const f of w.files.values()) {
         const before = await f.before;
         const after = await this.capture(await this.io.read(f.path));

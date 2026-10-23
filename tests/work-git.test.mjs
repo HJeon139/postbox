@@ -1,36 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Ledger } from '../server/ledger.mjs';
-import { Store } from '../server/store.mjs';
-import { fakeRepo } from './fake-repo.mjs';
+import { fakeRepo, ledgerIn } from './fake-repo.mjs';
 
 const ROOT = '/work/proj';
-
-/** A ledger over a repository in memory, with one turn of @dev's running in it, its folder's snapshot taken. */
-export async function ledgerIn(repo) {
-  const store = new Store(null);
-  let t = 0;
-  const ledger = new Ledger({ store, io: repo.io, git: repo.git, home: '/home/me', now: () => (t += 100) });
-  store.emit('thread', { id: 'th_1', kind: 'thread', projectId: 'p1', members: [] });
-  const turn = { id: 'turn_1', threadId: 'th_1', startedAt: 0 };
-  ledger.startTurn(turn, { se: { id: 'se_1', handle: 'dev' }, folder: ROOT, projectFolder: ROOT });
-  await ledger.idle();
-  let n = 0;
-  /** A Bash call as Claude Code reports it: `does` changes the repository while it runs. */
-  const run = async (command, does = () => {}, { output = '', result = {} } = {}) => {
-    const id = `tu_${++n}`;
-    ledger.toolUse(turn, { id, name: 'Bash', input: { command } });
-    does();
-    ledger.toolResult(turn, { id, text: output, result: { stdout: output, stderr: '', interrupted: false, ...result } });
-    await ledger.idle();
-  };
-  const end = async () => {
-    await ledger.endTurn(turn, { status: 'done' });
-    await ledger.idle();
-  };
-  const of = (kind) => (store.state.work?.th_1 ?? []).filter((e) => e.kind === kind);
-  return { store, ledger, turn, run, end, of };
-}
 
 test('a commit made inside a compound command is recorded, with its files, though Claude Code didn’t report it (#156)', async () => {
   const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
@@ -89,8 +61,137 @@ test('a commit Claude Code reports (gitOperation) is recorded once, and a branch
 
 test('a command outside git records nothing from git', async () => {
   const repo = fakeRepo('/elsewhere', {});
-  const { run, end, of } = await ledgerIn(repo);
+  const { run, end, of } = await ledgerIn(repo, ROOT);
   await run('make');
   await end();
   assert.deepEqual([of('commit').length, of('branch').length], [0, 0]);
+  assert.ok(!repo.git.calls.some((c) => / (for-each-ref|status|log) /.test(c)), 'no snapshot was asked for a folder outside git');
+});
+
+test('a pull’s commits aren’t the agent’s, but commits it pushed are (#156)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  repo.commit('Start');
+  const { run, end, of } = await ledgerIn(repo);
+  const theirs = repo.fetched('Someone else’s change', { 'b.txt': 'b\n' });
+  await run('git pull --ff-only', () => repo.fastForward(theirs));
+  await run('git commit -qam "Mine" && git push', () => {
+    repo.write('a.txt', 'two\n');
+    const mine = repo.commit('Mine');
+    repo.pushed(mine);
+  });
+  await end();
+  assert.deepEqual(
+    of('commit').map((c) => c.message),
+    ['Mine'],
+  );
+});
+
+test('a command the backend refused records nothing from git (#156)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  repo.commit('Start');
+  const { ledger, turn, end, of } = await ledgerIn(repo);
+  ledger.toolUse(turn, { id: 'no', name: 'Bash', input: { command: 'make clean' } });
+  ledger.denied(turn, 'no');
+  repo.write('a.txt', 'changed by the person\n');
+  repo.commit('By the person');
+  ledger.toolResult(turn, { id: 'no', isError: true, text: 'Permission denied' });
+  await end();
+  assert.deepEqual(of('commit'), []);
+});
+
+test('a repository a command made, and its first commits, are recorded (#156’s own case)', async () => {
+  const repo = fakeRepo(ROOT, { 'README.md': '# Converter\n' });
+  repo.unborn();
+  const { run, end, of } = await ledgerIn(repo);
+  await run('git init -q . && git add README.md && git commit -q -m "First"', () => {
+    repo.init();
+    repo.commit('First');
+  });
+  await run('git add README.md && git commit -q -m "Second"', () => {
+    repo.write('README.md', '# Converter\n\nTwo.\n');
+    repo.commit('Second');
+  });
+  await end();
+  assert.deepEqual(
+    of('commit').map((c) => c.message),
+    ['First', 'Second'],
+  );
+});
+
+test('an amended or reset commit is marked as no longer on the branch, and only the new one is recorded (#156)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  const base = repo.commit('Start');
+  const { run, end, of } = await ledgerIn(repo);
+  await run('git commit -qam "Typo"', () => {
+    repo.write('a.txt', 'two\n');
+    repo.commit('Typo');
+  });
+  await run('git commit -q --amend -am "Fixed"', () => {
+    repo.reset(base);
+    repo.commit('Fixed');
+  });
+  await end();
+  assert.deepEqual(
+    of('commit').map((c) => [c.message, Boolean(c.left)]),
+    [
+      ['Typo', true],
+      ['Fixed', false],
+    ],
+  );
+});
+
+test('a commit made while commands overlapped in one folder is listed in each conversation, but never under a command that started after it (#156)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  repo.commit('Start');
+  const { ledger, store, turn, end, of } = await ledgerIn(repo);
+  store.emit('thread', { id: 'th_2', kind: 'thread', projectId: 'p1', members: [] });
+  store.emit('thread', { id: 'th_3', kind: 'thread', projectId: 'p1', members: [] });
+  const bob = { id: 'turn_b', threadId: 'th_2', startedAt: 0 };
+  const carol = { id: 'turn_c', threadId: 'th_3', startedAt: 0 };
+  ledger.startTurn(bob, { se: { id: 'se_b', handle: 'bob' }, folder: ROOT, projectFolder: ROOT });
+  ledger.startTurn(carol, { se: { id: 'se_c', handle: 'carol' }, folder: ROOT, projectFolder: ROOT });
+  ledger.toolUse(bob, { id: 'test', name: 'Bash', input: { command: 'npm test' } });
+  ledger.toolUse(turn, { id: 'mine', name: 'Bash', input: { command: 'git commit -qam ByDev' } });
+  await ledger.idle();
+  repo.write('a.txt', 'two\n');
+  repo.commit('ByDev');
+  // Carol’s command starts after the commit, so its own start already has it.
+  ledger.toolUse(carol, { id: 'lint', name: 'Bash', input: { command: 'npm run lint' } });
+  await ledger.idle();
+  for (const [t, id] of [
+    [turn, 'mine'],
+    [bob, 'test'],
+    [carol, 'lint'],
+  ]) {
+    ledger.toolResult(t, { id, text: '', result: { stdout: '', stderr: '' } });
+    await ledger.idle();
+  }
+  for (const t of [bob, carol]) await ledger.endTurn(t, { status: 'done' });
+  await end();
+  const in_ = (th) => (store.state.work[th] ?? []).filter((e) => e.kind === 'commit').map((c) => [c.message, c.handle, Boolean(c.overlap)]);
+  assert.deepEqual(
+    of('commit').map((c) => [c.message, c.handle, Boolean(c.overlap)]),
+    [['ByDev', 'dev', true]],
+  );
+  assert.deepEqual(in_('th_2'), [['ByDev', 'bob', true]], 'once in Bob’s, under his own command');
+  assert.deepEqual(in_('th_3'), [], 'not Carol’s: her start already had it');
+});
+
+test('a folder Claude Code says it ran git in, left over from another repository, doesn’t move the comparison (#156)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  repo.commit('Start');
+  const { run, end, of } = await ledgerIn(repo);
+  await run(
+    'git commit -qam Here',
+    () => {
+      repo.write('a.txt', 'two\n');
+      repo.commit('Here');
+    },
+    { vcsCwd: '/work/other' },
+  );
+  await end();
+  assert.deepEqual(
+    of('commit').map((c) => [c.message, c.cwd]),
+    [['Here', ROOT]],
+  );
 });
