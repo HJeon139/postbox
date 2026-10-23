@@ -2,53 +2,67 @@
 
 Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139/postbox/issues/64), in waves of sessions that run in parallel, each in its own worktree. Every session follows [engineering-practices.md](../engineering-practices.md) and the rules on this page. Prompts for issues that are still blocked get written when the wave before them merges.
 
-The plan follows the triage of 22 October 2026 (#64’s last two comments). Two sessions integrate and merge, each owning its own pieces:
-- **The triage session:** the P0 hotfixes, and then the side-thread sessions.
-- **The reviewing session:** #138 with #105, then waves 3 and 4. It's the only writer of this page.
+The plan follows the triage of 22 October 2026 (#64’s last two comments), and the wave 4 plan the two integrating sessions agreed on 23 October 2026. Two sessions integrate and merge, and each reviews the other’s pull requests before they merge:
+- **The triage session:** wave 4’s side threads and blocks sessions.
+- **The reviewing session:** wave 4’s supervision, install and agent activity sessions. It’s the only writer of this page.
 
-Whichever of the P0 pull request and #105 lands on main second rebases onto the other. #92 changes code the P0 hotfixes also change (`update_block`’s reopen path), so its session starts from `main` after the P0 pull request merges. #98 (Stop leaves progress steps running) is part of the P0 Stop fix.
+A pull request merges once it’s approved and green. A CI failure that’s one of the known flaky checks, in a check the pull request doesn’t touch, doesn’t block it when its own checks pass locally (the person’s rule, 23 October 2026).
 
 ```mermaid
 flowchart LR
-  subgraph now["Now"]
-    p0["P0 hotfixes (triage)"]
-    w105["#105 with #138 (reviewing)"]
+  subgraph w3["Wave 3 (merged)"]
+    m1["M1: tools and outside writes (#172)"]
+    f["M2: apps follow the conversation, files and real data (#173)"]
+    r["Reading history (#170)"]
+    s["Side-thread sessions (#171)"]
   end
-  subgraph next["Next"]
-    side["Side-thread sessions: #121 + #110 (triage)"]
+  subgraph w4["Wave 4 (now)"]
+    a["1. Supervision: #3, #101"]
+    b["2. Side threads: #124, #128, #151, #130"]
+    c["3. Blocks: #106, #180, #147, #137"]
+    d["4. Install: #90, #157"]
+    e["5. Agent activity: #73, #129"]
   end
-  subgraph w3["Wave 3 (reviewing)"]
-    m1["M1: tools and outside writes"]
-    f["M2: apps follow the conversation"]
-    l["M2: files and real data"]
-    j["M3: checks"]
-    i["#73: subagent tree"]
-    m["#87: measure the explainer guide"]
+  subgraph w5["Wave 5 (next)"]
+    v["Visual consistency: #8 + #181, #183, #116, #182"]
+    rv["Review block: #179"]
+    ap["Apps: #36, #7 + #86 + #122, #44, #37, #87"]
+    ck["Checks: #89, #95, #102"]
+    be["Backends: #118, #136, #117, #167"]
+    at["#85: agent attachments"]
   end
-  subgraph w4["Wave 4"]
-    g["M4: supervision and side threads"]
-    h["#9: worktrees"]
-  end
-  w105 --> side
-  p0 --> w3
-  w105 --> w3
   w3 --> w4
+  a --> v
+  c --> rv
+  b --> e
 ```
 
-| When | Session | Issues | Integrates |
-|---|---|---|---|
-| Now | P0 hotfixes | #108, #123, #125, #126 (with #129’s background-job tracking), #98, on `fix/p0-hotfixes` | triage |
-| Now | #105 with #138 | #105 (agents in the sidebar), #138 (the Work ledger, #132) | reviewing |
-| After #105 | Side-thread sessions (P0) | #121 (all six proposals), #110, with the part of #128 where a side thread starts copies | triage |
-| 3 | M1: tools and outside writes | #63’s remaining fixes (the guide’s table rule, a review before outside writes), #104, #112 | reviewing |
-| 3 | M2: apps follow the conversation | #49 with #92 (after the P0 merge), #36, #7 with #86 and #122 | reviewing |
-| 3 | M2: files and real data | #90, then #85 (agent attachments), #54, #47, #51, #44, #37 | reviewing |
-| 3 | M3: checks | #89, #102, #63’s block check and a long research exit scenario, #95 once decided | reviewing |
-| 3 | #73 | subagent narration, thinking and tree, in #105’s Agents section beside #121’s tree | reviewing |
-| 3 | #87 | measure, then calibrate, the explainer guide | reviewing |
-| 4 | M4: supervision and side threads | #3 and #101 (reviewed again once P0, the P1s and wave 3 have merged), #6, #8, #11, #13, #14, #16; #85’s Files view and room menu; P1: #109, #124, #128, #106, #129’s rest; P2: #99, #107, #114, #117’s rest (Codex, OpenCode), #118, #119, #130, #133–#137; P3: #111 | reviewing |
-| 4 | #9 | worktree per conversation | reviewing |
-| — | Backlog | #84 (needs a decision), #15, #21, #28, #41, #76, #100, #103, #113, #115, #116, #120 (needs an intent decision), #131 | — |
+| Wave | Session | Prompt | Issues | Ports (server, Chrome) | Integrates |
+|---|---|---|---|---|---|
+| 4 | Supervision | [w4-supervision.md](w4-supervision.md) | #3, #101 (a proposal and the person’s decision first) | 4600–4649, 9800–9849 | reviewing |
+| 4 | Side threads | [w4-side-threads.md](w4-side-threads.md) | #124, #128’s rest, #151, #130; then #135, #114 | 4650–4699, 9850–9899 | triage |
+| 4 | Blocks | [w4-blocks.md](w4-blocks.md) | #106, #180, #147, #137 | 4700–4749, 9900–9949 | triage |
+| 4 | Install | [w4-install.md](w4-install.md) | #90, #157 (release blockers) | 4750–4799, 9950–9999 | reviewing |
+| 4 | Agent activity | [w4-agent-activity.md](w4-agent-activity.md) | #73 (elements 1–3 and 7), #129’s rest | 4800–4849, 10100–10149 | reviewing |
+| 5 | Visual consistency | to write | #8 with #181 (what amber means), #183, #116; #182 if time allows | — | — |
+| 5 | Review block | to write | #179, with selection comments | — | — |
+| 5 | Apps | to write | #36, #7 with #86 and #122, #44, #37, #87 | — | — |
+| 5 | Checks | to write | #89, #95, #102 | — | — |
+| 5 | Backends | to write | #118, #136, #117’s rest (Codex, OpenCode), #167 | — | — |
+| 5 | Attachments | to write | #85 | — | — |
+| — | Needs a decision first | — | #9 (a worktree per conversation), #84, #120 | — | — |
+| — | Backlog | — | #11, #13, #14, #15, #16, #21, #28, #41, #76, #99, #100, #103, #107, #111, #113, #115, #131, #133, #134, #177 | — | — |
+
+**Wave 4’s overlaps:**
+- **Blocks and supervision:** #106 clears `needs` through the existing paths, and the supervision session owns how the overview and the sidebar draw needs-you.
+- **Side threads and agent activity:** both change `app/js/agents.mjs`. #73 adds subagents as children in #171’s tree, and rebases on the side-threads session.
+- **Blocks and install:** the blocks session owns `server/index.mjs`’s CSP line, and the install session owns its startup and paths.
+- **Closed or held:** #6 is closed, since #105 shipped its recommendation. #150 stays open for the person’s `--compat` Codex run.
+
+**End of wave 4:** a Claude-only UAT pass on Haiku, which the person approves with its estimated cost:
+- `longresearch`, which confirms #63 live;
+- `workroom`, for #178’s personas and the room roster;
+- a `p0` recheck.
 
 ## Wave 2 (merged)
 
@@ -84,6 +98,7 @@ Merge order: M1 core, then transcript and threads.
 **Gate.** Before you hand off, these pass in your worktree:
 - `npm run check`
 - `npm run check:browser`, which runs every headless Chrome check in parallel, with ports of its own. A change you can see in the UI adds or extends a check (`tools/check-*.mjs`, reporting through `tools/harness.mjs`), and the run picks it up.
+- `node tools/check-all.mjs <your checks> --lag 300` for each check you add or change. It holds the server’s events back 300 ms, so a check that reads the page before it has heard a change fails here rather than now and then on main (#174). Wait with `page.synced(store.state.seq)`, never a fixed time. Both arrive with #174: until it’s on `main`, merge `main` into your branch once it lands, then run this.
 
 Then an adversarial review subagent goes through your diff against the practices doc, and you fix what it confirms, under the scope rule below.
 
@@ -113,7 +128,7 @@ It reports findings per pull request, including accessibility violations, and co
 **Hand off.**
 1. Push your branch and open a pull request against `main` with `gh pr create`. Don’t merge it.
 2. In the body, give each issue’s change, its tests and evidence, and what’s left. Add the practices checklist and the review findings. End the body with “🤖 Generated with [Claude Code](https://claude.com/claude-code)”.
-3. Message the reviewing session with `SendMessage`. `ListAgents` lists it as “Agentic chat room web app” (session id `local_48b46372-79f5-4077-82d6-946342d2f22e`). Send it the pull request’s URL, its head commit, and one line per issue on how it was verified. If that fails, comment “Ready for UAT review” on the pull request.
+3. Message the session that integrates you (the table’s last column) with `SendMessage`. `ListAgents` lists the reviewing session as “Agentic chat room web app” (`local_48b46372-79f5-4077-82d6-946342d2f22e`) and the triage session as “Postbox issues triage” (`local_b5a731da-1fb6-4ded-ae1c-3f3b60551e3c`). Send it the pull request’s URL, its head commit, and one line per issue on how it was verified. If that fails, comment “Ready for review” on the pull request.
 4. Fix what the review reports on the same branch, and message it again.
 
 **When this page or a prompt is wrong** (a file name, a function, a flag), follow the code, and say so in the pull request.
