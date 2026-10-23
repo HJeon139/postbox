@@ -317,7 +317,7 @@ export async function start({
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)\/send$/)) && req.method === 'POST') return send(res, 200, rt.sendQueuedNow(m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/act$/)) && req.method === 'POST')
-      return send(res, 200, await rt.act(m[1], m[2], body.action, body.values ?? {}));
+      return send(res, 200, await rt.act(m[1], m[2], body.action, body.values ?? {}, body.revision));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/topic$/)) && req.method === 'POST') return send(res, 201, rt.startTopic(m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/share$/)) && req.method === 'POST')
       return send(res, 201, rt.shareToConversation(m[1], m[2]));

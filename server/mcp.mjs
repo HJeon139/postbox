@@ -27,7 +27,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'update_block',
-    description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form or confirm (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, keeps the block answered, and changes nothing else. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
+    description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form or confirm (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, keeps the block answered, and changes nothing else. Each update makes the block’s next revision, and the person’s answer names the revision it’s for. An update over an answer you haven’t read yet (it waits until your turn ends), whether it asks again or sets outcome, is refused, and the reply says what they answered: read it, then update. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {

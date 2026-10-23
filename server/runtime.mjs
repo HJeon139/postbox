@@ -324,6 +324,7 @@ export class Runtime {
       t.pending.push({ message, replyTo, summarizeTo });
       return;
     }
+    this.answerDelivered(se.threadId, message);
     // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
     // the context below waits for the agent’s next turn instead.
     const slash = message.slash === true;
@@ -836,7 +837,8 @@ export class Runtime {
 
   // ── Acting in blocks ───────────────────────────────────────────────────────────────
 
-  act(threadId, itemId, action, values) {
+  /** @param {number} [revision]  the revision of the block the person answered, as their page showed it (#123) */
+  act(threadId, itemId, action, values, revision) {
     const it = this.store.item(threadId, itemId);
     if (!it) throw httpError(404, 'That block doesn’t exist any more.');
     if (it.kind === 'hop') return this.resolveHop(threadId, itemId, action === 'confirm');
@@ -846,16 +848,68 @@ export class Runtime {
     if (it.kind === 'appsend') return this.resolveAppSend(threadId, itemId, action);
     if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
     if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
-    const r = buildEvent(it.block, action, values);
-    if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
     // Progress, image and code never ask; a card or table action doesn’t lock the block.
     const locks = ASKING.has(it.block.type);
-    if (locks) this.patchItem(threadId, itemId, { answered: true, answer: { action, values: r.event.values, voice: r.voice, at: Date.now() } });
+    const current = it.revision ?? 1;
+    // An answer is for the revision the person saw. One the agent replaced while they were answering is refused,
+    // so an approval never lands on text they didn’t see; their page keeps the draft and shows what changed.
+    if (revision !== undefined && !Number.isInteger(revision)) throw httpError(422, 'The revision you answered must be a whole number.');
+    if (locks && revision !== undefined && revision !== current)
+      throw Object.assign(
+        httpError(
+          409,
+          `This changed while you were answering: you answered revision ${revision}, and it’s now revision ${current}. Look it over, then answer again.`,
+        ),
+        { code: 'stale' },
+      );
+    const r = buildEvent(it.block, action, values, { revision: current });
+    if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
+    // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
+    if (locks)
+      this.patchItem(threadId, itemId, {
+        answered: true,
+        answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false },
+      });
     this.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
     const se = this.s.sessions[it.sessionId];
     if (se?.needs?.itemId === itemId) this.updateSession(se.id, { needs: null, state: this.turns.has(se.id) ? se.state : 'idle' });
-    if (se) this.deliver(se.id, { kind: 'event', event: r.event });
+    if (se) this.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId });
     return { ok: true, voice: r.voice };
+  }
+
+  /**
+   * An answer is read once its event starts one of the agent’s turns (#123). While the agent works, the event waits
+   * in its turn’s queue, and until it’s delivered, update_block can’t reopen the block over it.
+   * @param {string} threadId @param {any} message  a message starting a turn
+   */
+  answerDelivered(threadId, message) {
+    if (message.kind !== 'event' || !message.blockItemId) return;
+    const it = this.store.item(threadId, message.blockItemId);
+    if (it?.answer?.read === false && it.answer.revision === message.event.revision) this.patchItem(threadId, it.id, { answer: { ...it.answer, read: true } });
+  }
+
+  /**
+   * update_block’s refusal over an answer the agent hasn’t read: the answer stays on screen, and the reply says what
+   * it was. If its event is no longer waiting for the agent (a stopped or failed turn, or a restart, dropped it), the
+   * reply carries the whole answer and counts as reading it, so the block isn’t stuck.
+   * @param {string} sessionId @param {string} threadId @param {any} it  the answered block item
+   * @param {boolean} [outcome]  the update set outcome: it reports on an answer the agent can’t know yet
+   */
+  unreadAnswer(sessionId, threadId, it, outcome = false) {
+    const a = it.answer;
+    const at = new Date(a.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const n = Array.isArray(a.values?.comments) ? a.values.comments.length : 0;
+    const full = JSON.stringify(a.values ?? {});
+    const what = it.block.type === 'review' ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}` : `${a.action} ${clipText(full, 300)}`;
+    const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
+    const waiting = this.turns.get(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
+    const then = outcome ? 'then record the outcome' : 'then update';
+    if (waiting) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
+    this.patchItem(threadId, it.id, { answer: { ...a, read: true } });
+    return {
+      ok: false,
+      message: `${said} It didn’t reach you in a turn, so ${it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`}. Read it, ${then}.`,
+    };
   }
 
   resolveProposal(threadId, itemId, action) {
@@ -2679,6 +2733,9 @@ export class Runtime {
               ok: false,
               message: OUTCOME_LATER(v.block.id, 'The update wasn’t applied.'),
             };
+          // Nor over an answer the agent hasn’t read (#123): it can’t know what came of an answer it hasn’t seen, and
+          // “Deleted.” could land under a Cancel.
+          if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, threadId(), existing, true);
           const { outcome, ...asked } = v.block;
           const keys = new Set([...Object.keys(asked), ...Object.keys(existing.block)].filter((k) => k !== 'outcome'));
           const changed = [...keys].some((k) => JSON.stringify(asked[k]) !== JSON.stringify(existing.block[k]));
@@ -2688,7 +2745,9 @@ export class Runtime {
             message: `Recorded the outcome under the person’s answer to ${v.block.id}; it stays answered.${changed ? ' Your other changes weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.' : ''}`,
           };
         }
-        // Any other update asks again, so it reopens a block you already answered.
+        // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
+        // read (#123): the person would see it vanish, and the agent would never learn what it erased.
+        if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, threadId(), existing);
         /** @type {Record<string, any>} */
         const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
         if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));

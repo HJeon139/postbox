@@ -831,8 +831,10 @@ function quickAnswer(se) {
   const it = (S().items[se.threadId] ?? []).find((x) => x.id === se.needs.itemId);
   if (!it?.valid) return null;
   const b = it.block;
+  // The revision this card shows: if the agent changes the block first, the answer is refused, not taken (#123).
+  const revision = it.revision ?? 1;
   const act = (action, values) =>
-    api(`/api/threads/${se.threadId}/items/${it.id}/act`, { action, values }).catch((e) =>
+    api(`/api/threads/${se.threadId}/items/${it.id}/act`, { action, values, revision }).catch((e) =>
       toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }),
     );
   if (b.type === 'confirm')
