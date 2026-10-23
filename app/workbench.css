@@ -658,7 +658,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .menu .label { padding: 6px 8px 3px; }
 /* An app’s versions (#36): each summary is clipped to one line, so a long one doesn’t make the menu tall or wide. */
 .menu.versions { max-width: min(420px, calc(100vw - 16px)); }
-.menu.versions .mi .grow { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu.versions .mi .grow, .menu.versions .mi .d { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .toasts { position: fixed; z-index: 60; right: 16px; top: 60px; display: flex; flex-direction: column; gap: 8px; width: 340px; }
 .toasts.bottom { top: auto; bottom: 16px; left: 50%; right: auto; transform: translateX(-50%); width: auto; }
