@@ -136,10 +136,13 @@ try {
   const LAST = 'Last, the conclusion holds only for adults over 60.';
   const long = `${Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}: the claim in section ${i + 1} rests on one study, and its sample is small. `.repeat(3)).join('\n\n')}\n\n${LAST}`;
   rt.addItem(room.id, { kind: 'agent', sessionId: researcher.id, handle: 'researcher', text: long, status: 'done' });
+  // A conversation made a moment ago must have reached the page first: one it hasn’t heard of opens the overview.
+  await page.synced(store.state.seq);
   await page.evaluate(`location.hash = '#/t/${room.id}'`);
   rt.sendMessage(room.id, { text: '@critic review what researcher wrote' });
   const replied = () => store.items(room.id).find((x) => x.kind === 'agent' && x.handle === 'critic' && x.status === 'done');
   await until(replied, '@critic to reply');
+  await page.synced(store.state.seq);
   const reply = replied();
   const said109 = await page.evaluate(
     `new Promise((ok) => { const read = () => document.querySelector('[data-item="${reply.id}"]')?.closest('.turn')?.querySelector('.md')?.innerText ?? ''; const t = setInterval(() => { if (read().includes('It ends')) { clearInterval(t); ok(read()); } }, 100); setTimeout(() => { clearInterval(t); ok(read()); }, 5000); })`,
@@ -155,10 +158,12 @@ try {
   const shownPlan = rt.toolsFor(author.id).show_block({
     block: { id: 'dedup-plan', type: 'review', version: 1, title: 'Dedup plan', format: 'markdown', content: draft, fallback: 'The dedup plan.' },
   });
+  await page.synced(store.state.seq);
   await page.evaluate(`location.hash = '#/t/${room2.id}'`);
   rt.sendMessage(room2.id, { text: '@critic review the draft researcher showed' });
   const replied2 = () => store.items(room2.id).find((x) => x.kind === 'agent' && x.handle === 'critic' && x.status === 'done');
   await until(replied2, '@critic to reply about the draft');
+  await page.synced(store.state.seq);
   const said153 = await page.evaluate(
     `new Promise((ok) => { const read = () => document.querySelector('[data-item="${replied2().id}"]')?.closest('.turn')?.querySelector('.md')?.innerText ?? ''; const t = setInterval(() => { if (read().includes('It ends')) { clearInterval(t); ok(read()); } }, 100); setTimeout(() => { clearInterval(t); ok(read()); }, 5000); })`,
   );
