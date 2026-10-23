@@ -129,8 +129,11 @@ async function check(name, fn) {
 }
 let loaded = false;
 async function open(hash) {
-  if (loaded) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
-  else await page.goto(`${app.origin}/${hash}`);
+  if (loaded) {
+    // What the check changed on the server must have reached the page first, or it shows what was there before.
+    await page.synced(store.state.seq);
+    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+  } else await page.goto(`${app.origin}/${hash}`);
   loaded = true;
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();
@@ -186,6 +189,9 @@ await check('a wake while that session is busy in the conversation goes to a for
   const fork = () => Object.values(store.state.sessions).find((x) => x.forkOf?.sessionId === researcher.id && x.forkOf.busy);
   await until(() => fork() && busy(fork().id), 'the fork’s turn');
   await page.waitFor(`${row('researcher')}?.querySelectorAll('.agent-sub').length === 1`, { label: 'the fork’s entry' });
+  // The entry can show before the event that names it a fork reaches the page.
+  await page.synced(store.state.seq);
+  await settle();
   assert.deepEqual(await subs('researcher'), ['Fork · calling tools with @indexer Stop']);
   assert.ok(
     await page.evaluate(`(() => { const n = ${row('researcher')}.querySelector('.agent-sub .name'); return n.scrollWidth <= n.clientWidth; })()`),

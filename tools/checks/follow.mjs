@@ -86,13 +86,11 @@ function room(title, appId, after = 14) {
 const APP = (label) =>
   `<main style="padding:12px"><button class="btn" type="button" style="display:block;width:100%;height:200px">Explorer ${label}</button></main>`;
 async function open(t) {
-  // The page sends you to the overview while the new conversation hasn’t reached it yet, so try until it has.
-  const has = `!!document.querySelector('.transcript[data-thread="${t.id}"] .item')`;
-  for (let i = 0; i < 20 && !(await page.evaluate(has)); i++) {
-    await page.evaluate(`location.hash = '#/t/${t.id}'`);
-    await settle(300);
-  }
-  await page.waitFor(has, { label: 'the transcript' });
+  // The page sends you to the overview while the new conversation hasn’t reached it yet, and shows only what has,
+  // so wait until it has heard everything the server has.
+  await page.synced(store.state.seq);
+  await page.evaluate(`location.hash = '#/t/${t.id}'`);
+  await page.waitFor(`!!document.querySelector('.transcript[data-thread="${t.id}"] .item')`, { label: 'the transcript' });
   await settle(400);
 }
 /** Waits for the stub of an item to be on the page, and returns its key. */
@@ -177,10 +175,8 @@ await check('#49 in the side panel: an app in a topic thread moves there, and th
     rt.addItem(threadId, { kind: 'agent', sessionId: fork.id, personaId: fork.personaId, handle: fork.handle, text: LONG(300 + i), status: 'done' });
   const hash = `#/t/${t.id}/side/${threadId}`;
   const inPanel = `document.querySelector('.sidepanel .transcript[data-thread="${threadId}"]')`;
-  for (let i = 0; i < 20 && !(await page.evaluate(`!!${inPanel}?.querySelector('.item')`)); i++) {
-    await page.evaluate(`location.hash = '${hash}'`);
-    await settle(300);
-  }
+  await page.synced(store.state.seq);
+  await page.evaluate(`location.hash = '${hash}'`);
   await page.waitFor(`!!${inPanel}?.querySelector('.item')`, { label: 'the panel’s transcript' });
   await settle(400);
   const body = `${inPanel}.parentElement`;

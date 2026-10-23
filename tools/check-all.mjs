@@ -4,6 +4,7 @@
 //   npm run check:browser                          every check, 4 at a time
 //   node tools/check-all.mjs header shell          only the checks whose name has one of these in it
 //   node tools/check-all.mjs --jobs 2 --timeout 300 --logs check-logs
+//   node tools/check-all.mjs --lag 300                every server holds its events back 300 ms, as a busy runner can
 //
 // Each check runs in its own process, spawned with an argument array (no shell) and in its own process group,
 // with a Postbox port pair (PB_PORT and the port after it) and a Chrome port (PB_CHROME_PORT), picked at random
@@ -88,7 +89,7 @@ function signalGroup(child, sig) {
 
 const running = new Set();
 
-async function run(name, { logs, timeout }) {
+async function run(name, { logs, timeout, lag }) {
   const { port, chrome } = await portsFor();
   const file = name.replace('/', '-');
   const resultsFile = join(logs, `${file}.json`);
@@ -101,7 +102,13 @@ async function run(name, { logs, timeout }) {
     cwd: resolve(TOOLS, '..'),
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PB_PORT: String(port), PB_CHROME_PORT: String(chrome), PB_CHECK_RESULTS: resultsFile },
+    env: {
+      ...process.env,
+      PB_PORT: String(port),
+      PB_CHROME_PORT: String(chrome),
+      PB_CHECK_RESULTS: resultsFile,
+      ...(lag ? { POSTBOX_STREAM_LAG: String(lag) } : {}),
+    },
   });
   running.add(child);
   let tail = '';
@@ -155,6 +162,7 @@ async function main(argv) {
   const args = [...argv];
   const jobs = option(args, '--jobs', 4);
   const timeout = option(args, '--timeout', 600);
+  const lag = option(args, '--lag', 0);
   const logsArg = option(args, '--logs', null, { number: false });
   const names = await discover(TOOLS, args);
   if (!names.length) {
@@ -163,7 +171,7 @@ async function main(argv) {
   }
   const logs = logsArg ? resolve(logsArg) : await mkdtemp(join(tmpdir(), 'pb-checks-'));
   await mkdir(logs, { recursive: true });
-  console.log(`${names.length} headless checks, ${jobs} at a time, ${timeout} s each at most.\n`);
+  console.log(`${names.length} headless checks, ${jobs} at a time, ${timeout} s each at most${lag ? `, events held back ${lag} ms` : ''}.\n`);
 
   // Ctrl-C reaches only this process (the checks have their own groups), so pass it on before leaving.
   process.once('SIGINT', () => {
@@ -175,7 +183,7 @@ async function main(argv) {
   const done = [];
   const worker = async () => {
     for (let name = queue.shift(); name; name = queue.shift()) {
-      const r = await run(name, { logs, timeout });
+      const r = await run(name, { logs, timeout, lag });
       done.push(r);
       const counts = `${r.passed} passed${r.failed ? `, ${r.failed} failed` : ''}, ${r.seconds} s`;
       console.log(r.ok ? `  ok    ${name} (${counts})` : `  FAIL  ${name} (${counts})\n        ${r.first}`);

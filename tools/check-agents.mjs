@@ -148,8 +148,11 @@ async function check(name, fn) {
 let loaded = false;
 /** Opens a view: the first time by loading the page, then by changing the hash, as the app’s links do. */
 async function open(hash) {
-  if (loaded) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
-  else await page.goto(`${app.origin}/${hash}`);
+  if (loaded) {
+    // What the check changed on the server must have reached the page first, or it shows what was there before.
+    await page.synced(store.state.seq);
+    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+  } else await page.goto(`${app.origin}/${hash}`);
   loaded = true;
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();
@@ -228,6 +231,9 @@ await check('from the sidebar, two clicks change the model, for this conversatio
   await click(row('indexer'));
   await click(radio('Model', 'Sonnet 5.5'));
   await page.waitFor(`${q('.qp .perm-status')}?.textContent.includes('Sonnet 5.5')`, { label: 'the status line' });
+  // The panel says it as soon as the server answers; what follows reads the change the server sends after.
+  await page.synced(store.state.seq);
+  await settle();
   assert.equal(store.state.sessions[indexer.id].personaSnapshot.model, 'claude-sonnet-5-5');
   assert.equal(personaNamed('indexer').model, 'claude-opus-5-5', 'The persona’s model changed too');
   assert.equal(await page.evaluate(`${q('.qp .perm-status')}.textContent`), 'Model: Sonnet 5.5 for @indexer in this conversation, from its next turn.');

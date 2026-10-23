@@ -81,7 +81,11 @@ async function check(name, fn) {
 }
 let loaded = false;
 async function open(hash) {
-  if (loaded) await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+  if (loaded) {
+    // What the check changed on the server must have reached the page first, or it shows what was there before.
+    await page.synced(store.state.seq);
+    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+  }
   // Not page.goto(): it waits for an animation frame, which headless Chrome can hold back.
   else await page.send('Page.navigate', { url: `${app.origin}/${hash}` });
   loaded = true;

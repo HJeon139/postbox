@@ -134,16 +134,33 @@ await page.waitFor(`!!document.getElementById('composer-input')`, { label: 'the 
 // ── Cards ───────────────────────────────────────────────────────────────────────────────
 
 const card = (summary) => byText('.transcript .block', summary);
+/**
+ * Waits for a card to show its buttons, and then for the page to have heard everything the server sent so far: a
+ * later event about the card redraws it, and a click that lands while it does is lost.
+ */
+async function ready(expr, label) {
+  await page.waitFor(`!!(${expr})?.querySelector('.block-foot')`, { label });
+  await page.synced(store.state.seq);
+  await settle();
+}
+/** Waits for the card’s editor (the command, or the input as JSON) to have focus, and selects what’s in it. */
+async function selectEditor(label = 'focus in the editor') {
+  await page.waitFor(`/-edit$/.test(document.activeElement?.id ?? '')`, { label });
+  await page.evaluate(`document.activeElement.select()`);
+}
 /** Starts a turn whose agent asks once, and waits for the card. */
 async function asking(req) {
   script.push(async (ctx) => {
     answers.push(await ctx.askPermission(req));
   });
   rt.sendMessage(thread.id, { text: `Please ${req.summary}.` });
-  await page.waitFor(`!!(${card(req.summary)})?.querySelector('.block-foot')`, { label: `the card to ${req.summary}` });
+  await ready(card(req.summary), `the card to ${req.summary}`);
 }
+/** Waits for the agent to have the nth answer, and for the page to show what the server made of it. */
 const answered = async (n) => {
   await until(() => answers.length >= n && rt.turns.size === 0, 'the answer to reach the agent');
+  await page.synced(store.state.seq);
+  await settle();
   return answers[n - 1];
 };
 
@@ -173,8 +190,7 @@ await check('#66 without suggestions (as the CLI asks), Always allow saves Postb
 await check('#10 Edit changes the command by keyboard, and the changed command is what runs', async () => {
   await asking({ tool: 'Bash', summary: 'clean the build', detail: 'rm -rf build', input: { command: 'rm -rf build' } });
   await click(byText('.transcript .block-foot button', 'Edit…'));
-  assert.match(await focused(), /-edit$/, 'focus moves to the command');
-  await page.evaluate(`document.activeElement.select()`);
+  await selectEditor('focus to move to the command');
   await type('rm -rf build/tmp');
   await click(byText('.transcript .perm-form button', 'Allow with this edit'));
   const a = await answered(3);
@@ -185,12 +201,12 @@ await check('#10 Edit changes the command by keyboard, and the changed command i
 await check('#10 Edit of a JSON input that doesn’t parse says so, and nothing is sent', async () => {
   await asking({ tool: 'WebFetch', summary: 'fetch the docs', detail: 'https://a.example/', input: { url: 'https://a.example/', prompt: 'p' } });
   await click(byText('.transcript .block-foot button', 'Edit…'));
-  await page.evaluate(`document.activeElement.select()`);
+  await selectEditor();
   await type('{ "url": ');
   await click(byText('.transcript .perm-form button', 'Allow with this edit'));
   assert.match(await text(`${card('fetch the docs')}.querySelector('.perm-form .err')`), /doesn’t parse/);
   assert.equal(answers.length, 3);
-  await page.evaluate(`document.activeElement.select()`);
+  await selectEditor();
   await type('{ "url": "https://b.example/", "prompt": "p" }');
   await click(byText('.transcript .perm-form button', 'Allow with this edit'));
   assert.deepEqual((await answered(4)).updatedInput, { url: 'https://b.example/', prompt: 'p' });
@@ -213,7 +229,7 @@ await check('#66 a subagent’s prompt names the subagent', async () => {
     answers.push(await ctx.askPermission({ tool: 'Bash', summary: 'list the files', detail: 'ls', input: { command: 'ls' }, toolUseId: 'toolu_sub' }));
   });
   rt.sendMessage(thread.id, { text: 'Look around.' });
-  await page.waitFor(`!!(${card('list the files')})?.querySelector('.block-foot')`, { label: 'the subagent’s card' });
+  await ready(card('list the files'), 'the subagent’s card');
   assert.match(await text(`${card('list the files')}.querySelector('.title')`), /Let @coder’s subagent \(Explore\) list the files\?/);
   await click(byText('.transcript .block-foot button', 'Allow'));
   assert.equal((await answered(6)).allow, true);
@@ -236,7 +252,7 @@ await check('#150 a Codex approval for an MCP tool names the tool and shows its 
   });
   rt.sendMessage(thread.id, { text: 'File the issue.' });
   const summary = 'use github tool create_issue';
-  await page.waitFor(`!!(${card(summary)})?.querySelector('.block-foot')`, { label: 'the Codex MCP card' });
+  await ready(card(summary), 'the Codex MCP card');
   assert.equal(await text(`${card(summary)}.querySelector('.title')`), 'Let @coder use github tool create_issue?');
   // The tool’s name keeps its case: the label around it is uppercase.
   assert.equal(await text(`${card(summary)}.querySelector('.kind .tool-name')`), 'mcp__github__create_issue');
@@ -262,7 +278,7 @@ await check('#112 a write outside Postbox waits on a card with its draft as it w
   });
   rt.sendMessage(thread.id, { text: 'Define the use case document in the team folder.' });
   const write = card('use create document from docs');
-  await page.waitFor(`!!(${write})?.querySelector('.block-foot')`, { label: 'the write card' });
+  await ready(write, 'the write card');
   assert.match(await text(write), /This writes outside Postbox, to docs \(folder “Use cases”\)\. Nothing is created, sent or changed until you allow it\./);
   // The draft is rendered, not shown as JSON, and the arguments point up at it.
   const draft = `${write}.querySelector('.perm-draft')`;
@@ -293,7 +309,7 @@ await check('#104 an agent asks for a tool that’s off; the card says what turn
   });
   rt.sendMessage(thread.id, { text: 'Schedule the nightly run.' });
   const ask = byText('.transcript .block', 'asks you to turn on “Message, schedule');
-  await page.waitFor(`!!(${ask})?.querySelector('.block-foot')`, { label: 'the card' });
+  await ready(ask, 'the card');
   assert.equal(asked[0].ok, true);
   assert.equal(await text(`${ask}.querySelector('.title')`), '@coder asks you to turn on “Message, schedule or start agents outside Postbox”');
   const body = await text(`${ask}.querySelector('.block-body')`);

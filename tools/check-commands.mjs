@@ -236,6 +236,8 @@ await check('#67 the next turn reads what ran, with its output', async () => {
 await check('#104 ! in a topic thread says before sending that it won’t run there, and goes as a message', async () => {
   const root = store.items(room.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(room.id, root.id);
+  // A thread made a moment ago must have reached the page first, or the page doesn’t know it.
+  await page.synced(store.state.seq);
   await page.evaluate(`location.hash = '#/t/${room.id}/side/${threadId}'`);
   await page.waitFor(`!!${q('#side-input')}`, { label: 'the topic thread’s composer' });
   await click(q('#side-input'));
@@ -247,6 +249,7 @@ await check('#104 ! in a topic thread says before sending that it won’t run th
   await settle();
   assert.doesNotMatch(await text(`${q('#side-input')}.closest('.composer').querySelector('.hint')`), /runs commands only/);
   assert.equal(store.items(threadId).filter((i) => i.kind === 'command').length, 0, 'nothing ran in the thread');
+  await page.synced(store.state.seq);
   await page.evaluate(`location.hash = '#/t/${room.id}'`);
   await page.waitFor(`!${q('#side-input')}`, { label: 'the panel to close' });
 });

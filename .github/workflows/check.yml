@@ -52,9 +52,16 @@ jobs:
           retention-days: 14
       # Every headless check (tools/check-*.mjs, tools/checks/*.mjs), in parallel, so a pull request’s own
       # checks run before review. It runs even when the screenshots fail, so a run shows both.
+      # 4 at a time, measured on this runner (4 cores, 15 GB, PR #174): 1 at a time took 190 s, 2 took 100 s,
+      # 4 took 72 s with the CPU still over half idle, and 6 or 8 saved under 5 s more.
       - name: Headless Chrome checks
         if: success() || failure()
-        run: CHROME="$(command -v google-chrome)" npm run check:browser -- --logs check-logs
+        run: CHROME="$(command -v google-chrome)" npm run check:browser -- --jobs 4 --logs check-logs
+      # The same checks with every event held back 300 ms, as a busy runner can, so a check that reads the page
+      # before it has heard a change fails on the pull request that adds it, not now and then on main.
+      - name: Headless Chrome checks, with the server’s events late
+        if: success() || failure()
+        run: CHROME="$(command -v google-chrome)" npm run check:browser -- --jobs 4 --lag 300 --logs check-logs/lag
       - if: always()
         uses: actions/upload-artifact@v4
         with:

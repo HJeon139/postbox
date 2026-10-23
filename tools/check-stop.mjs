@@ -163,6 +163,10 @@ await check('#129 Stop asks first, with focus on its first choice; Escape leaves
   assert.equal(colors.row, colors.line);
   assert.notEqual(colors.row, colors.accent);
   await press('Escape');
+  // The ask goes once the server has cleared it and the page has heard so.
+  await until(() => store.state.sessions[se.id].stopAsk === null, 'the server to clear the ask');
+  await page.synced(store.state.seq);
+  await settle();
   assert.equal(await page.evaluate(`!!${q('.stop-ask')}`), false);
   assert.equal(await page.evaluate(`document.activeElement === ${q('.composer .btn.stop')}`), true, 'focus back on Stop');
   assert.equal(rt.turns.has(se.id), true, 'the agent carries on');
