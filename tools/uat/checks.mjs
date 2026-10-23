@@ -770,9 +770,9 @@ export const CHECKS = [
         })),
   },
   {
-    // Since #49’s fix, a new version brings the app to the newest point, and every later message pushes it up again.
-    // So only the items that were already after the app when its last version landed count (#213). A version with no
-    // time counts every item after the app.
+    // Since #49’s fix, a new version brings the app to the newest point (item.move sets movedAt), and every later
+    // message pushes it up again: no finding (#213). An app its last version didn’t move, with anything from before
+    // that version under it, is the defect. A version with no time counts every item after the app, as before.
     id: 'updated-app-far-up',
     issue: 49,
     run: (f) =>
@@ -782,13 +782,15 @@ export const CHECKS = [
           const list = f.state.items[app.threadId] ?? [];
           const at = list.findIndex((it) => it.id === app.itemId);
           const landed = app.versions.at(-1)?.at;
-          const up = at < 0 ? 0 : list.slice(at + 1).filter((it) => !Number.isFinite(landed) || !(it.at > landed)).length;
-          if (up < 6) return [];
+          const timed = Number.isFinite(landed);
+          if (at < 0 || (timed && Number.isFinite(list[at].movedAt) && list[at].movedAt >= landed - SLACK_MS)) return [];
+          const up = list.slice(at + 1).filter((it) => !timed || !(it.at > landed)).length;
+          if (up < (timed ? 1 : 6)) return [];
           return [
             {
               key: app.id,
               title: 'An updated app stays where it was first shown, far above the conversation',
-              evidence: `“${app.title}” is v${app.versions.length}, ${up} messages up when that version landed.`,
+              evidence: `“${app.title}” is v${app.versions.length}, ${up} message${up === 1 ? '' : 's'} up when that version landed, and that version didn’t move it.`,
             },
           ];
         }),

@@ -135,40 +135,42 @@ describe('approval-for-other-revision follows a block that moved (#123, #213)', 
 describe('updated-app-far-up measures from the app’s last version (#49, #213)', () => {
   const msg = (i, at) => ({ id: `m${i}`, kind: 'agent', handle: 'researcher', text: `message ${i}`, at });
   const app = (versions) => ({ id: 'scifact-explorer', title: 'SciFact explorer', threadId: 't1', itemId: 'it_app', current: versions.length, versions });
-  const appItem = (at) => ({ id: 'it_app', kind: 'block', valid: true, at, block: { id: 'scifact-explorer', type: 'app' } });
+  const appItem = (at, movedAt) => ({
+    id: 'it_app',
+    kind: 'block',
+    valid: true,
+    at,
+    ...(movedAt ? { movedAt } : {}),
+    block: { id: 'scifact-explorer', type: 'app' },
+  });
   const run = (items, versions) =>
     found(facts({ state: { ...facts().state, items: { t1: items }, apps: { 'scifact-explorer': app(versions) } } }), 'updated-app-far-up');
+  const v = (...ats) => ats.map((at, i) => ({ v: i + 1, at }));
 
   test('an app brought to the newest point by its update, with later messages under it, is no finding', () => {
-    // scifact at 7fa3a6d: v2 moved the app to the newest point, and seven messages came after it.
-    const items = [msg(0, T0), { id: 'stub', kind: 'moved', at: T0 + 60_000, itemId: 'it_app' }, appItem(T0 + 60_000)];
+    // scifact at 7fa3a6d: v2 moved the app to the newest point (item.move), and seven messages came after it.
+    const items = [msg(0, T0), { id: 'stub', kind: 'moved', at: T0 + 60_000, itemId: 'it_app' }, appItem(T0 + 60_000, T0 + 60_000)];
     for (let i = 1; i <= 7; i++) items.push(msg(i, T0 + 60_000 + i * 1000));
-    assert.deepEqual(
-      run(items, [
-        { v: 1, at: T0 },
-        { v: 2, at: T0 + 60_000 },
-      ]),
-      [],
-    );
+    assert.deepEqual(run(items, v(T0, T0 + 60_000)), []);
   });
 
-  test('an app that stayed where it was first shown, with messages under it when its update landed, still fires', () => {
+  test('an app its last version didn’t move, with anything from before that version under it, fires', () => {
     const items = [appItem(T0)];
     for (let i = 1; i <= 8; i++) items.push(msg(i, T0 + i * 1000));
-    const [hit] = run(items, [
-      { v: 1, at: T0 },
-      { v: 2, at: T0 + 6500 },
-    ]);
-    assert.equal(hit?.evidence, '“SciFact explorer” is v2, 6 messages up when that version landed.');
+    const [hit] = run(items, v(T0, T0 + 6500));
+    assert.equal(hit?.evidence, '“SciFact explorer” is v2, 6 messages up when that version landed, and that version didn’t move it.');
     assert.equal(hit?.issue, 49);
-    // Five under it when it landed: not far up.
-    assert.deepEqual(
-      run(items, [
-        { v: 1, at: T0 },
-        { v: 2, at: T0 + 5500 },
-      ]),
-      [],
+    // scifact on 22 October (5 under it) and at the wave 4 integration (2): main caught these, and they’re still caught.
+    assert.equal(run(items, v(T0, T0 + 5500)).length, 1);
+    assert.equal(
+      run(items, v(T0, T0 + 2500))[0]?.evidence,
+      '“SciFact explorer” is v2, 2 messages up when that version landed, and that version didn’t move it.',
     );
+    // Nothing under it when it landed: it was already the newest.
+    assert.deepEqual(run(items, v(T0, T0 + 500)), []);
+    // Moved by v2, and then v3 landed without moving it.
+    const moved = [{ id: 'stub', kind: 'moved', at: T0, itemId: 'it_app' }, appItem(T0, T0), ...items.slice(1)];
+    assert.equal(run(moved, v(T0 - 9000, T0, T0 + 3500)).length, 1);
     // A version with no time counts every item after the app, as the check did before.
     assert.equal(run(items, [{ v: 1 }, { v: 2 }]).length, 1);
   });
