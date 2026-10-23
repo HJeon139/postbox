@@ -4,6 +4,7 @@
 //   the agent running, with focus back on Stop;
 // - Keep running stops the agent (it reads “stopping” until its process exits) and the job stays listed; its own Stop
 //   then stops it;
+// - a kept job Postbox couldn’t tell apart from another process (#164) says so under its row, and its Stop stops both;
 // - Stop it too stops both; the ask’s colors are the tokens’, with amber only on its first choice; at 375 px it fits.
 //
 //   node tools/check-stop.mjs
@@ -13,7 +14,7 @@
 // default), so sessions working in parallel don’t collide.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
@@ -32,8 +33,12 @@ rt.signalProcess = (pid, sig) => {
   if (sig !== 0) signals.push([pid, sig]);
   return true;
 };
-// …and ps shows the kept job’s shell, so Postbox knows the group is still the job’s.
-rt.listProcesses = async () => [{ pid: 4242, ppid: 1, pgid: 4242, command: "/bin/zsh -c source snapshot.sh && eval 'node tools/uat-run.mjs' < /dev/null" }];
+// …and ps shows the kept job’s shell, so Postbox knows the group is still the job’s, and a foreground call’s (#164).
+const PROCS = [
+  { pid: 4242, ppid: 1, pgid: 4242, command: "/bin/zsh -c source snapshot.sh && eval 'node tools/uat-run.mjs' < /dev/null" },
+  { pid: 4343, ppid: 1, pgid: 4343, command: "/bin/zsh -c source snapshot.sh && eval 'sleep 600' < /dev/null" },
+];
+rt.listProcesses = async () => PROCS;
 
 // A Claude Code agent that starts a background job, then works until it’s stopped, and takes a moment to exit.
 let n = 0;
@@ -57,7 +62,9 @@ rt.adapters.register({
       state: 'running',
     });
     await new Promise((r) => ctx.signal.addEventListener('abort', r));
-    if (ctx.signal.reason?.keepJobs?.length) ctx.job({ id, kept: true, pgid: 4242 });
+    // Asked to say it’s unsure, it keeps both shells, as for a job Postbox couldn’t tell apart (#164).
+    const groups = /unsure/.test(message.text ?? '') ? PROCS.map((p) => ({ pgid: p.pgid, command: p.command })) : undefined;
+    if (ctx.signal.reason?.keepJobs?.length) ctx.job({ id, kept: true, pgid: 4242, groups });
     else ctx.job({ id, state: 'stopped' });
     await new Promise((r) => setTimeout(r, 400));
   },
@@ -119,8 +126,8 @@ async function check(name, fn) {
   }
   await page.send('Page.bringToFront');
 }
-async function startJob() {
-  rt.sendMessage(room.id, { text: 'Run the UAT job, please.' });
+async function startJob(text = 'Run the UAT job, please.') {
+  rt.sendMessage(room.id, { text });
   await until(() => state() === 'tool' || state() === 'gen' || state() === 'think', 'the turn');
   await page.waitFor(`!!${q('.bg-jobs li')}`, { label: 'the background job row' });
 }
@@ -196,6 +203,37 @@ await check('#129 Stop it too stops the agent and its job', async () => {
   await page.waitFor(`!${q('.bg-jobs li')} && !${q('.stop-ask')}`, { label: 'no job row, no ask' });
   assert.equal(step().state, 'stopped');
   assert.deepEqual(store.state.sessions[se.id].jobs, []);
+});
+
+await check('#164 a kept job Postbox couldn’t tell apart says so under its row, and its own Stop stops every process it kept', async () => {
+  await startJob('Run the UAT job, unsure which shell.');
+  await click(q('.composer .btn.stop'));
+  await page.waitFor(`!!${q('.stop-ask')}`, { label: 'the ask' });
+  await click(q('.stop-ask .btn:not(.send):not(.ghost)'));
+  await until(() => state() === 'idle', 'the process to exit');
+  await page.waitFor(`!!${q('.bg-jobs .job-note')}`, { label: 'the note under the job' });
+  assert.match(
+    await text(q('.bg-jobs li')),
+    /^Background job · Run the mixed-room UAT scenario live Postbox couldn’t tell which of 2 processes is this job, so it kept them all running; stopping the job stops them all\. Stop$/,
+  );
+  // PB_SHOT=<file.png> saves the reply with its job row, in light mode as the UAT docs’ screenshots are.
+  if (process.env.PB_SHOT) {
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+    await settle();
+    const clip = await page.evaluate(
+      `(() => { const r = ${q('.bg-jobs')}.parentElement.getBoundingClientRect(); return { x: Math.max(0, r.left - 8), y: Math.max(0, r.top - 8 + scrollY), width: Math.min(r.width + 16, innerWidth), height: r.height + 16, scale: 1 }; })()`,
+    );
+    const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip, captureBeyondViewport: true });
+    await writeFile(process.env.PB_SHOT, Buffer.from(data, 'base64'));
+  }
+  const before = signals.length;
+  await click(q('.bg-jobs li button'));
+  await page.waitFor(`!${q('.bg-jobs li')}`, { label: 'the row to go' });
+  assert.deepEqual(signals.slice(before), [
+    [-4242, 'SIGINT'],
+    [-4343, 'SIGINT'],
+  ]);
+  assert.equal(step().state, 'stopped');
 });
 
 await check('#129 at 375 px the ask and the job row fit without scrolling sideways', async () => {

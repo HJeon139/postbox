@@ -629,6 +629,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .bg-jobs li { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .bg-jobs .grow { min-width: 0; overflow-wrap: anywhere; }
 .bg-jobs .g-running { animation: none; color: var(--dim); }
+.bg-jobs .job-note { display: block; color: var(--dim); }
 /* Floats above the composer, taking no room, so showing or hiding it never moves the page. It shows only while
    the end is further below than this (mountTranscript), so it never covers the last message or the working rows. */
 .jump { position: absolute; left: 50%; transform: translateX(-50%); top: -42px; }

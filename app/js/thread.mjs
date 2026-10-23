@@ -634,7 +634,7 @@ function stepRow(s) {
         : s.state === 'stopped'
           ? `Stopped${s.detail ? `: ${s.detail}` : ''}`
           : s.job && s.state === 'running'
-            ? 'Running in the background'
+            ? s.detail || 'Running in the background'
             : null;
   return h(
     'li',
@@ -659,7 +659,8 @@ function jobRows(it, steps) {
       h(
         'li',
         h('span.g.g-running', { role: 'img', 'aria-label': 'running' }),
-        h('span.grow', h('span.dim', 'Background job · '), h('span.mono', s.label)),
+        // What Postbox kept running for it, when it couldn’t tell which process was the job (#164).
+        h('span.grow', h('span.dim', 'Background job · '), h('span.mono', s.label), s.detail ? h('span.job-note', s.detail) : null),
         h(
           'button.btn.sm',
           {
