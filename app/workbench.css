@@ -731,7 +731,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .ov { padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 22px; max-width: 1400px; margin: 0 auto; width: 100%; }
 .ov-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ov-proj { display: flex; flex-direction: column; gap: 10px; }
-.ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+.ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
 .ov-col { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; position: relative; }
 .ov-col.needs { border-color: var(--accent); }
 .ov-col .oc-head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 12px 14px; border-bottom: 1px solid var(--line); }
@@ -741,6 +741,22 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .ov-col .oc-sec:last-child { border-bottom: 0; }
 .ov-col .oc-sec .label { display: flex; align-items: center; justify-content: space-between; }
 .ov-col .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+/* Cards in a row are as tall as the tallest, with their stats along the bottom, so the rows line up (#3). */
+.ov-col .stats { margin-top: auto; border-top: 1px solid var(--line); }
+.ov-col .oc-sec:has(+ .stats), .ov-col .oc-head:has(+ .stats) { border-bottom: 0; }
+.ov-col .oc-where { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Idle conversations: one row each, under the cards (#3). */
+.ov-idle { display: flex; flex-direction: column; gap: 8px; }
+.ov-idle h2.label { margin: 0; }
+.ov-rows { list-style: none; margin: 0; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.ov-row { display: grid; grid-template-columns: 30px minmax(0, 18rem) minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px;
+  min-height: 44px; padding: 6px 10px 6px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.ov-row:last-child { border-bottom: 0; }
+.ov-row:hover { background: var(--sunk); }
+.ov-row a.ov-row-link { color: inherit; text-decoration: none; display: flex; flex-direction: column; min-width: 0; }
+.ov-row a.ov-row-link:hover b, .ov-row a.ov-row-link:focus-visible b { text-decoration: underline; text-underline-offset: 2px; }
+.ov-row .ov-row-who, .ov-row .ov-row-where, .ov-row .ov-row-last { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-row .ov-row-when { display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 .ov-col .stats div { display: flex; flex-direction: column; }
 .ov-col .stats b { font-size: 16px; font-weight: 600; }
 .mini-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -812,6 +828,8 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   .has-panel .main { margin-right: 0; }
   .ov { padding: 14px 12px 32px; }
   .ov-grid { grid-template-columns: 1fr; }
+  .ov-row { grid-template-columns: 30px minmax(0, 1fr) auto auto; }
+  .ov-row .ov-row-last { grid-column: 2 / -1; grid-row: 2; }
   .toasts { left: 12px; right: 12px; width: auto; top: 108px; }
   .toasts.bottom { left: 12px; right: 12px; transform: none; }
   .hovercard { width: calc(100vw - 24px); left: 12px !important; }

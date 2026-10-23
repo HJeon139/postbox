@@ -79,6 +79,20 @@ async function check(name, fn) {
   }
   await closeAll();
 }
+/**
+ * Only an agent that needs you or is working has a card on the overview (#3), so these agents work while fn looks at
+ * their cards, and are idle again, as the page sees them, before the next case.
+ */
+async function withCards(handles, fn) {
+  const ids = handles.map((x) => sessionOf(x).id);
+  for (const id of ids) rt.updateSession(id, { state: 'think' });
+  try {
+    await fn();
+  } finally {
+    for (const id of ids) rt.updateSession(id, { state: 'idle' });
+    await page.synced(store.state.seq);
+  }
+}
 let loaded = false;
 async function open(hash) {
   if (loaded) {
@@ -118,16 +132,19 @@ await check('#60 a new last model reaches the row without a reload', async () =>
 });
 
 await check('#60 the card and the menus say it with full model ids', async () => {
-  await open('#/');
-  const card = (handle) => `document.querySelector('.ov-col[data-key="${sessionOf(handle).id}"] .oc-runs')`;
-  await page.waitFor(card('indexer'));
-  assert.equal(await seen(card('indexer')), 'Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort');
-  assert.equal(await seen(card('researcher')), 'Agent SDK · claude-opus-5-5 · high effort');
-  assert.equal(await seen(card('critic')), 'Mock agent · scripted replies, not a model');
-  // The card’s ⋯ menu.
-  await page.evaluate(`document.querySelector('.ov-col[data-key="${sessionOf('indexer').id}"] button[aria-haspopup=menu]').click()`);
-  await page.waitFor(`document.querySelector('.menu')`);
-  assert.match(await seen(`document.querySelector('.menu')`), /not the model you set: claude-opus-5-5/);
+  await withCards(['indexer', 'researcher', 'critic'], async () => {
+    await open('#/');
+    const card = (handle) => `document.querySelector('.ov-col[data-key="${sessionOf(handle).id}"] .oc-runs')`;
+    await page.waitFor(`${card('indexer')} && ${card('researcher')} && ${card('critic')}`);
+    assert.equal(await seen(card('indexer')), 'Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort');
+    assert.equal(await seen(card('researcher')), 'Agent SDK · claude-opus-5-5 · high effort');
+    assert.equal(await seen(card('critic')), 'Mock agent · scripted replies, not a model');
+    // The card’s ⋯ menu.
+    await page.evaluate(`document.querySelector('.ov-col[data-key="${sessionOf('indexer').id}"] button[aria-haspopup=menu]').click()`);
+    await page.waitFor(`document.querySelector('.menu')`);
+    assert.match(await seen(`document.querySelector('.menu')`), /not the model you set: claude-opus-5-5/);
+    await closeAll();
+  });
   // The conversation’s ⋯ menu lists every agent with its backend, model, effort and state.
   await open(`#/t/${room.id}`);
   await page.evaluate(`document.querySelector('header.topbar #conversation-actions').click()`);
@@ -165,12 +182,14 @@ await check('#12 a mock agent is marked in its agent row, rail row, card and spe
   assert.equal(await visibleMarker(`${speaker('critic')}.querySelector('.mock-tag')`), true, 'The speaker line has no visible “mock”');
   assert.equal(await page.evaluate(`!!${speaker('indexer')}.querySelector('.mock-tag')`), false);
   // Cards.
-  await open('#/');
-  const card = (handle) => `document.querySelector('.ov-col[data-key="${sessionOf(handle).id}"]')`;
-  await page.waitFor(card('critic'));
-  assert.equal(await visibleMarker(`${card('critic')}.querySelector('.oc-name .mock-tag')`), true, 'The card has no visible “mock”');
-  assert.equal(await page.evaluate(`${card('critic')}.getAttribute('aria-label')`), '@critic, mock, idle');
-  assert.equal(await page.evaluate(`!!${card('indexer')}.querySelector('.mock-tag')`), false);
+  await withCards(['critic', 'indexer'], async () => {
+    await open('#/');
+    const card = (handle) => `document.querySelector('.ov-col[data-key="${sessionOf(handle).id}"]')`;
+    await page.waitFor(`${card('critic')} && ${card('indexer')}`);
+    assert.equal(await visibleMarker(`${card('critic')}.querySelector('.oc-name .mock-tag')`), true, 'The card has no visible “mock”');
+    assert.equal(await page.evaluate(`${card('critic')}.getAttribute('aria-label')`), '@critic, mock, thinking');
+    assert.equal(await page.evaluate(`!!${card('indexer')}.querySelector('.mock-tag')`), false);
+  });
 });
 
 await check('#12 the marker follows the persona: moved to Claude Code, the agent row and the rail row lose it without a reload', async () => {
@@ -194,16 +213,20 @@ await check('#12 the menus and the Personas list mark mock agents', async () => 
   );
   assert.deepEqual(marked, ['@librarian', '@critic']);
   await closeAll();
-  await open('#/');
-  await page.evaluate(`document.querySelector('.ov-col[data-key="${sessionOf('critic').id}"] button[aria-haspopup=menu]').click()`);
-  await page.waitFor(`document.querySelector('.menu')`);
-  assert.equal(
-    await page.evaluate(
-      `!![...document.querySelectorAll('.menu button.mi')].find((b) => b.innerText.includes('Edit @critic persona'))?.querySelector('.mock-tag')`,
-    ),
-    true,
-  );
-  await closeAll();
+  await withCards(['critic'], async () => {
+    await open('#/');
+    const more = `document.querySelector('.ov-col[data-key="${sessionOf('critic').id}"] button[aria-haspopup=menu]')`;
+    await page.waitFor(more);
+    await page.evaluate(`${more}.click()`);
+    await page.waitFor(`document.querySelector('.menu')`);
+    assert.equal(
+      await page.evaluate(
+        `!![...document.querySelectorAll('.menu button.mi')].find((b) => b.innerText.includes('Edit @critic persona'))?.querySelector('.mock-tag')`,
+      ),
+      true,
+    );
+    await closeAll();
+  });
   await page.evaluate(`document.querySelector('header.topbar button[aria-label="Settings"]').click()`);
   const tab = `[...document.querySelectorAll('[role=tab]')].find((t) => t.textContent === 'Personas')`;
   await page.waitFor(tab);
@@ -403,15 +426,17 @@ for (const theme of ['light', 'dark'])
           assert.match((await seen(line)) ?? '', /^@indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle/);
           assert.ok(await page.evaluate(`${line}.offsetWidth > 0 && ${line}.getBoundingClientRect().right <= innerWidth`), 'The menu line is off screen');
           await closeAll();
-          await open('#/');
-          const card = `document.querySelector('.ov-col[data-key="${sessionOf('indexer').id}"]')`;
-          await page.waitFor(card);
-          assert.equal(
-            await seen(`${card}.querySelector('.oc-runs')`),
-            'Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort',
-          );
-          assert.match((await seen(`${card}.querySelector('.who-name')`)) ?? '', /Idle/);
-          assert.equal((await measure()).overflow, 0, 'The overview’s top bar overflows');
+          await withCards(['indexer'], async () => {
+            await open('#/');
+            const card = `document.querySelector('.ov-col[data-key="${sessionOf('indexer').id}"]')`;
+            await page.waitFor(card);
+            assert.equal(
+              await seen(`${card}.querySelector('.oc-runs')`),
+              'Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort',
+            );
+            assert.match((await seen(`${card}.querySelector('.who-name')`)) ?? '', /Thinking/);
+            assert.equal((await measure()).overflow, 0, 'The overview’s top bar overflows');
+          });
         } finally {
           await page.size(1280, 900);
         }

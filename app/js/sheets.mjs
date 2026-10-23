@@ -874,6 +874,8 @@ export function confirmDelete(se) {
 
 export function openSettings(tab = 'appearance', personaId = null) {
   let cur = tab;
+  // What the server answered for Archive idle conversations: the page may not have heard the change yet (#101).
+  let archiveDays = null;
   const tabs = h('div.tabs', { role: 'tablist' });
   const panel = h('div', { role: 'tabpanel', style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // The tabs and the panel repaint together; focus stays on the tab or control you used (#26).
@@ -1128,6 +1130,46 @@ export function openSettings(tab = 'appearance', personaId = null) {
         ),
       ),
       h('p.small.dim', 'The folder bounds the file picker and is where Claude Code sessions start.'),
+      // A conversation where nothing has happened for this long archives itself, in every project (#101).
+      h(
+        'div.field',
+        h('span.label', { id: 'pj-archive' }, 'Archive idle conversations'),
+        h(
+          'div.seg',
+          { role: 'radiogroup', 'aria-labelledby': 'pj-archive' },
+          [
+            [1, 'After 1 day'],
+            [3, '3 days'],
+            [7, '7 days'],
+            [30, '30 days'],
+            [0, 'Never'],
+          ].map(([v, l]) =>
+            h(
+              'button',
+              {
+                type: 'button',
+                role: 'radio',
+                'aria-checked': String((archiveDays ?? S().settings.archiveAfterDays ?? 7) === v),
+                // Marked in place, not repainted: that would clear a project you’re typing in the form above.
+                onclick: (e) => {
+                  const picked = e.currentTarget;
+                  api('/api/settings', { archiveAfterDays: v }, 'PUT')
+                    .then((r) => {
+                      archiveDays = r.archiveAfterDays;
+                      for (const b of picked.parentElement.children) b.setAttribute('aria-checked', String(b === picked));
+                    })
+                    .catch((err) => toast({ title: 'Couldn’t change it', text: err.message, level: 'blocking' }));
+                },
+              },
+              l,
+            ),
+          ),
+        ),
+      ),
+      h(
+        'p.small.dim',
+        'When nothing has happened in a conversation for that long, and nothing waits on you there, it moves to Archived with its agents. Nothing is deleted, and Restore brings it back.',
+      ),
     ];
   };
   const connect = () => [

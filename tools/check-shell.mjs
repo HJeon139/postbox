@@ -119,8 +119,9 @@ await check('#69 an older open block shows “1 open confirmation”, not needs-
   await click(label);
   assert.match(await focused(), /Rename/);
   await open('#/');
-  const onCard = `document.querySelector('.ov-col[data-key="${se.id}"] [data-open-asks]')`;
-  await page.waitFor(`${onCard}?.textContent === '1 open confirmation'`, { label: 'the card’s open-blocks line' });
+  // An idle agent’s conversation is a row on the overview (#3), and the line is there.
+  const onCard = `document.querySelector('main.ov [data-open-asks="${se.id}"]')`;
+  await page.waitFor(`${onCard}?.textContent === '1 open confirmation'`, { label: 'the overview’s open-blocks line' });
   // Answering it clears the line.
   const block = store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'old-ask');
   rt.act(t.id, block.id, 'confirm', {});
@@ -217,7 +218,11 @@ const MENUS = [
   ['the conversation’s ⋯', 'conversation', 'header.topbar button[aria-label^="Actions for"]'],
   ['the composer’s +', 'conversation', 'button[aria-label="Add a file or a new agent"]'],
   ['a session card’s ⋯', 'overview', 'main.ov button[aria-label^="Session actions for"]'],
+  ['an idle conversation’s ⋯', 'overview', 'main.ov .ov-row button[aria-haspopup=menu]'],
 ];
+// Only an agent that needs you or is working has a card (#3), so @indexer works through these.
+const indexer = rt.sessionsIn(threadNamed('Corpus planning').id).find((x) => x.handle === 'indexer');
+rt.updateSession(indexer.id, { state: 'tool', currentStep: 'Reading the shelf' });
 for (const [name, view, sel] of MENUS)
   await check(`#29 a second click on ${name} closes its menu`, async () => {
     await open(view === 'overview' ? '#/' : `#/t/${threadNamed('Corpus planning').id}`);
@@ -238,11 +243,12 @@ await check('#29 a second click closes a card’s menu even after the card repai
   await click(sel);
   await page.evaluate(`window.__first = ${sel}`);
   // A working agent’s card repaints as it goes, which rebuilds its ⋯ button.
-  rt.updateSession(se.id, { currentStep: 'Reading the shelf' });
+  rt.updateSession(se.id, { currentStep: 'Reading the index' });
   await page.waitFor(`${sel} !== window.__first`, { label: 'the card to repaint' });
   await click(sel);
   assert.equal(await page.evaluate(`document.querySelectorAll('.menu').length`), 0);
 });
+rt.updateSession(indexer.id, { state: 'idle', currentStep: '' });
 
 await check('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the top bar repaints with the new name', async () => {
   const t = threadNamed('Index the shelf');
