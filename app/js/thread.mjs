@@ -606,7 +606,8 @@ function activityLabel(all) {
 }
 
 // One step in an agent’s activity list: a tool call (the agent’s or a subagent’s), or a thought, which opens
-// to its whole text. A failed step says why; a refused one points to its card.
+// to its whole text. A failed step says why; a refused one says why too when its backend does (the Kiro and
+// Antigravity CLIs refuse headless, with no card: #152), and otherwise points to its card.
 const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done', stopped: 'stalled' };
 function stepRow(s) {
   const dur = h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : '');
@@ -619,7 +620,7 @@ function stepRow(s) {
     );
   const note =
     s.state === 'denied'
-      ? 'Refused: see the card below.'
+      ? s.detail || 'Refused: see the card below.'
       : s.state === 'failed'
         ? s.detail
         : s.state === 'stopped'
@@ -1088,7 +1089,14 @@ function denialBlock(it, ctx) {
   );
 }
 
-const BACKEND_NAMES = { 'claude-code': 'Claude Code', 'agent-sdk': 'Agent SDK', 'kiro-cli': 'Kiro CLI', codex: 'Codex', mock: 'Mock agent' };
+const BACKEND_NAMES = {
+  'claude-code': 'Claude Code',
+  'agent-sdk': 'Agent SDK',
+  'kiro-cli': 'Kiro CLI',
+  'antigravity-cli': 'Antigravity CLI',
+  codex: 'Codex',
+  mock: 'Mock agent',
+};
 
 function proposalBlock(it, ctx, showWho) {
   const p = it.proposal;

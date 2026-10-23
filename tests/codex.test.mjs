@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { CODEX_CAPABILITIES, CodexAdapter, codexApproval, codexConfigArgs, codexPermissions, createCodexMapper } from '../server/adapters/codex.mjs';
 
 test('Codex reports the capabilities its app-server implements', () => {
-  assert.deepEqual(CODEX_CAPABILITIES, { resume: true, fork: true, permissions: 'none', tools: 'none' });
+  assert.deepEqual(CODEX_CAPABILITIES, { resume: true, fork: true, permissions: 'none', tools: 'none', isolation: false });
   assert.deepEqual(codexPermissions({ permissionMode: 'ask' }, '/work'), {
     sandboxPolicy: { type: 'readOnly' },
     approvalPolicy: 'on-request',

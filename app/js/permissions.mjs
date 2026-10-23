@@ -12,7 +12,7 @@ import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
 import { decide } from '/shared/permission-match.mjs';
 import { api, busy, client, sessionsOf } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
-import { CODEX_PERMISSIONS, EFFORT_NAMES, KIRO_PERMISSIONS, MCP_SCOPE, MCP_STATUS, modelsFor, openFolderPicker } from './sheets.mjs';
+import { capsOf, EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, modeHelp, modelsFor, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -140,7 +140,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       view.real && !view.readsRules
         ? h(
             'p.help',
-            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. ${p.backend === 'codex' ? 'Ask me uses read-only; Auto and Accept edits share workspace-write with network off; Run everything has full access and no approval prompts. The per-agent Tools checklist is unavailable.' : 'Its mode and its Tools decide what it may do.'}`,
+            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. ${p.backend === 'codex' ? 'Ask me uses read-only; Auto and Accept edits share workspace-write with network off; Run everything has full access and no approval prompts. The per-agent Tools checklist is unavailable.' : capsOf(p.backend).tools === 'none' ? 'Its mode decides what it may do.' : 'Its mode and its Tools decide what it may do.'}`,
           )
         : null,
       view.real ? modeSection(p) : null,
@@ -180,11 +180,9 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           ),
         ),
       ),
-      // The Kiro CLI can’t ask, so its modes read as the persona sheet says (#117).
-      h(
-        'span.help',
-        `${(p.backend === 'kiro-cli' && KIRO_PERMISSIONS[mode[0]]) || (p.backend === 'codex' && CODEX_PERMISSIONS[mode[0]]) || mode[2]} The mode is @${p.handle}’s, in every conversation.`,
-      ),
+      // Some backends read the modes their own way (the Kiro and Antigravity CLIs can’t ask; Codex maps them to its
+      // sandbox), so the modes read as the persona sheet says (#117).
+      h('span.help', `${modeHelp(p.backend, mode)} The mode is @${p.handle}’s, in every conversation.`),
     );
   }
 

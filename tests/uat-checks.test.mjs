@@ -3,11 +3,12 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
+import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
-import { kiroCredits, runChecks, waitingOnYou } from '../tools/uat/checks.mjs';
+import { agyTokens, kiroCredits, runChecks, waitingOnYou } from '../tools/uat/checks.mjs';
 import { JOBS_ANSWERS } from '../tools/uat/driver.mjs';
 import { readHistory } from '../tools/uat/history.mjs';
-import { compatBackends, parseScenario } from '../tools/uat/scenario.mjs';
+import { CLAUDE_BACKENDS, compatBackends, parseScenario, RELEASE_ONLY, releaseGate } from '../tools/uat/scenario.mjs';
 import { SCHEMA, signInSettings, systemPrompt, unaddressed } from '../tools/uat/tester.mjs';
 
 const stream = (name) =>
@@ -427,6 +428,107 @@ test('Kiro streams don’t trip the Claude Code checks, and the recorded Kiro tu
   for (const name of ['block', 'first', 'missing-session', 'agent-missing']) assert.deepEqual(kiroChecks(kiroFacts(name)), [], name);
 });
 
+// ── Antigravity CLI agents (#143), in release runs: the checks read agy’s recorded turns (tests/fixtures/antigravity-cli).
+const agyFixture = (name) =>
+  readFileSync(new URL(`fixtures/antigravity-cli/${name}.jsonl`, import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
+/** A run with one recorded agy turn; `shown` puts in the conversation the steps the adapter makes of it. */
+const agyFacts = (name, { persona = {}, shown = false } = {}) => {
+  const events = agyFixture(name);
+  const f = base({ agyStreams: [{ handle: 'critic', events }] });
+  f.state.personas = { p1: { id: 'p1', handle: 'critic', backend: 'antigravity-cli', tools: ['shell', 'web.fetch'], ...persona } };
+  if (shown) {
+    const steps = new Map();
+    const ctx = { text: () => {}, status: () => {}, reported: () => {}, activity: (a) => steps.set(a.id, { ...steps.get(a.id), ...a }) };
+    const m = createAgyMapper(ctx);
+    for (const e of events) m.push(e);
+    f.state.items.t1 = [{ id: 'i1', kind: 'agent', text: '', activity: { steps: [...steps.values()] } }];
+  }
+  return f;
+};
+const agyChecks = (facts) => runChecks(facts).filter((x) => x.check.startsWith('agy-'));
+
+test('agy-refusal-not-shown: each refused call needs a denied step under the id the adapter gives it', () => {
+  // Refused on the step (ERROR), and refused only in the result’s denied_actions (the step said DONE).
+  for (const name of ['refused', 'auto-unavailable']) {
+    const hidden = agyChecks(agyFacts(name)).filter((x) => x.check === 'agy-refusal-not-shown');
+    assert.equal(hidden.length, 1, name);
+    assert.match(hidden[0].evidence, /1 refused without a step: @critic: run_command echo hi > out\.txt/);
+    // What the adapter shows for the same stream satisfies the check: the ids agree.
+    assert.ok(!agyChecks(agyFacts(name, { shown: true })).some((x) => x.check === 'agy-refusal-not-shown'), name);
+  }
+});
+
+test('agy-postbox-refused: Postbox’s own tool refused means the allow rule is missing', () => {
+  const found = agyChecks(agyFacts('postbox-refused', { shown: true }));
+  assert.deepEqual(
+    found.map((x) => x.check),
+    ['agy-postbox-refused'],
+  );
+  assert.match(found[0].evidence, /show_block \(postbox_postbox\).*allow rule/);
+  assert.ok(!agyChecks(agyFacts('block')).some((x) => x.check === 'agy-postbox-refused'));
+});
+
+test('agy-tool-not-allowed: a command that ran when the persona doesn’t tick shell; a refused one didn’t run', () => {
+  const ran = agyFacts('first', { persona: { tools: ['web.fetch'] } });
+  ran.agyStreams[0].events.push(
+    {
+      event: 'step_update',
+      step_update: {
+        conversation_id: 'c',
+        step_index: 7,
+        state: 'ACTIVE',
+        step_type: 'tool',
+        tool_name: 'run_command',
+        tool_info: { parameters: { CommandLine: 'ls' } },
+      },
+    },
+    {
+      event: 'step_update',
+      step_update: {
+        conversation_id: 'c',
+        step_index: 7,
+        state: 'DONE',
+        step_type: 'tool',
+        tool_name: 'run_command',
+        tool_info: { parameters: { CommandLine: 'ls' }, output: 'a.txt' },
+      },
+    },
+  );
+  const hit = agyChecks(ran).filter((x) => x.check === 'agy-tool-not-allowed');
+  assert.equal(hit.length, 1);
+  assert.match(hit[0].evidence, /@critic: run_command ls \(shell\)/);
+  assert.ok(!agyChecks(agyFacts('refused', { persona: { tools: [] }, shown: true })).some((x) => x.check === 'agy-tool-not-allowed'));
+  assert.ok(!agyChecks(agyFacts('auto-unavailable', { persona: { tools: [] }, shown: true })).some((x) => x.check === 'agy-tool-not-allowed'));
+});
+
+test('agy streams don’t trip the other checks; the clean recorded turns pass the agy ones; a Claude persona’s aren’t read', () => {
+  for (const name of ['block', 'refused', 'resume'])
+    assert.deepEqual(
+      runChecks(agyFacts(name, { shown: true }))
+        .filter((x) => !x.check.startsWith('agy-'))
+        .map((x) => x.check),
+      runChecks(base()).map((x) => x.check),
+      name,
+    );
+  for (const name of ['block', 'first', 'resume', 'missing-session', 'bad-model']) assert.deepEqual(agyChecks(agyFacts(name)), [], name);
+  assert.deepEqual(agyChecks(agyFacts('refused', { persona: { backend: 'claude-code' } })), []);
+});
+
+test('Antigravity tokens are added up per model call, not from results, which count the whole conversation', () => {
+  // resume.jsonl: one call of 7,822 tokens; its result says 15,427, both turns so far.
+  assert.equal(agyTokens([{ handle: 'critic', events: agyFixture('resume') }]), 7822);
+  assert.equal(
+    agyTokens([
+      { handle: 'x', events: agyFixture('first') },
+      { handle: 'y', events: [{ type: 'result', total_cost_usd: 1 }] },
+    ]),
+    6870,
+  );
+});
+
 test('model-not-shown accepts a model a persona names, such as a Kiro agent’s GPT', () => {
   const f = (header, model) => {
     const x = base({ ui: { headerText: header } });
@@ -470,6 +572,27 @@ test('a scenario can put agents on another backend, with a model', () => {
   });
   assert.deepEqual(parseScenario('# T\n').backends, {});
   assert.deepEqual(parseScenario('# T\n- permission_modes: @critic=ask, reviewer=bypass\n').permissionModes, { critic: 'ask', reviewer: 'bypass' });
+});
+
+test('the Antigravity CLI runs only in a release run: refused in a scenario, and off for the tester, otherwise (#143)', () => {
+  const gem = parseScenario('# T\n- backends: critic=antigravity-cli:gemini-3.8-flash-high, researcher=kiro-cli\n');
+  const refused = releaseGate(gem);
+  assert.match(String(refused.error), /@critic on the Antigravity CLI, which runs only for a version release.*--release/);
+  assert.doesNotMatch(String(refused.error), /@researcher/);
+  assert.deepEqual(releaseGate(gem, { release: true }), { error: null, env: {} });
+  // Any other scenario runs, with Postbox started without the Antigravity CLI.
+  const plain = releaseGate(parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8')));
+  assert.equal(plain.error, null);
+  assert.deepEqual(Object.keys(plain.env), ['POSTBOX_AGY_BIN']);
+  assert.ok(Object.hasOwn(RELEASE_ONLY, 'antigravity-cli'));
+  // A release-only backend is a compatibility backend first: it’s never one of Claude’s.
+  for (const b of Object.keys(RELEASE_ONLY)) assert.ok(!CLAUDE_BACKENDS.has(b), b);
+  // The Gemini room is the release run’s scenario.
+  const gemini = parseScenario(readFileSync(new URL('uat/e2e/scenarios/geminiroom.md', import.meta.url), 'utf8'));
+  assert.deepEqual(gemini.backends, { critic: { backend: 'antigravity-cli', model: 'gemini-3.8-flash-high' } });
+  assert.deepEqual(compatBackends(gemini), ['antigravity-cli']);
+  assert.match(String(releaseGate(gemini).error), /@critic on the Antigravity CLI/);
+  assert.equal(releaseGate(gemini, { release: true }).error, null);
 });
 
 test('the tester keeps how your Claude Code signs in, and nothing else of your settings', () => {

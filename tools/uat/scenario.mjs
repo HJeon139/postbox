@@ -7,6 +7,10 @@
 // A scenario that puts an agent on a backend other than Claude’s (the Kiro CLI today; agy and Codex as they come) is a
 // compatibility run. It checks that a harness still works with Postbox, and it costs that harness’s credits, so it runs
 // only when asked (--compat), never as part of a regular pass.
+//
+// Some of those also run only for a version release (RELEASE_ONLY): `--release`. The Antigravity CLI (#143) is on a
+// free tier, and even an occasional compatibility run would use up its quota. Outside a release run, a scenario that
+// puts an agent on one is refused, and Postbox starts without it, so the tester can’t pick it in a sheet either.
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
 export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
@@ -62,4 +66,29 @@ export function parseScenario(md) {
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- \w+: /.test(l)).join('\n'),
     phases: phases.map((p) => ({ title: p.split('\n')[0].replace(/^##\s*/, ''), text: p.split('\n').slice(1).join('\n').trim() })),
   };
+}
+
+/** Compatibility backends that run only for a version release, and the variable that names each one’s binary. */
+export const RELEASE_ONLY = /** @type {Record<string, { name: string, bin: string }>} */ ({
+  'antigravity-cli': { name: 'the Antigravity CLI', bin: 'POSTBOX_AGY_BIN' },
+});
+// A binary that isn’t there, so Postbox doesn’t register the backend.
+const NO_BIN = '/nonexistent/postbox-release-only';
+
+/**
+ * What a run may use. A release run uses everything. Otherwise a scenario that puts an agent on a release-only
+ * backend is an error, and the environment points each one’s binary at nothing.
+ * @param {{ backends: Record<string, { backend: string }> }} scenario @param {{ release?: boolean }} [opts]
+ * @returns {{ error: string|null, env: Record<string, string> }}
+ */
+export function releaseGate(scenario, { release = false } = {}) {
+  if (release) return { error: null, env: {} };
+  const gated = new Set(compatBackends(scenario).filter((b) => Object.hasOwn(RELEASE_ONLY, b)));
+  const on = Object.entries(scenario.backends).filter(([, b]) => gated.has(b.backend));
+  if (on.length)
+    return {
+      error: `This scenario puts ${on.map(([h, b]) => `@${h} on ${RELEASE_ONLY[b.backend].name}`).join(', ')}, which runs only for a version release: its quota is a free tier. Pass --release for the release’s run.`,
+      env: {},
+    };
+  return { error: null, env: Object.fromEntries(Object.values(RELEASE_ONLY).map((b) => [b.bin, NO_BIN])) };
 }
