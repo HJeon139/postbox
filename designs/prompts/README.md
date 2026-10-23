@@ -46,7 +46,7 @@ flowchart LR
 | 3 | M3: checks | #89, #102, #63’s block check and a long research exit scenario, #95 once decided | reviewing |
 | 3 | #73 | subagent narration, thinking and tree, in #105’s Agents section beside #121’s tree | reviewing |
 | 3 | #87 | measure, then calibrate, the explainer guide | reviewing |
-| 4 | M4: supervision and side threads | #3, #6, #8, #11, #13, #14, #16; #85’s Files view and room menu; P1: #109, #124, #128, #106, #129’s rest; P2: #99, #101, #107, #114, #117’s rest (Codex, OpenCode), #118, #119, #130, #133–#137; P3: #111 | reviewing |
+| 4 | M4: supervision and side threads | #3 and #101 (reviewed again once P0, the P1s and wave 3 have merged), #6, #8, #11, #13, #14, #16; #85’s Files view and room menu; P1: #109, #124, #128, #106, #129’s rest; P2: #99, #101, #107, #114, #117’s rest (Codex, OpenCode), #118, #119, #130, #133–#137; P3: #111 | reviewing |
 | 4 | #9 | worktree per conversation | reviewing |
 | — | Backlog | #84 (needs a decision), #15, #21, #28, #41, #76, #100, #103, #113, #115, #116, #120 (needs an intent decision), #131 | — |
 
