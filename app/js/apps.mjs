@@ -3,9 +3,12 @@
 // Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
+import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client } from './client.mjs';
-import { $$, ago, h, icon, plural } from './dom.mjs';
+import { $$, ago, h, icon } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
+
+export { renderAppSendCard };
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
 const checks = new Map(); // `${appId}:${v}` → { results: Map(width → problems), frames }
@@ -286,7 +289,6 @@ function activated(e, rec) {
 // At most SEND_LIMIT sends a minute per app go straight to the agent; past that, the server holds them on a card
 // for you to allow. The server keeps the same limit (Runtime.APP_SEND_LIMIT) for anything calling its API.
 // Only sends the server took straight through count, so a refused or held send doesn’t use up the minute.
-const SEND_LIMIT = 5;
 const SEND_WINDOW_MS = 60_000;
 const sent = new Map(); // appId → times of sends that went straight through
 function overLimit(appId, now = Date.now()) {
@@ -777,71 +779,6 @@ addEventListener('focusin', (e) => {
   if (to instanceof HTMLIFrameElement) tabbing = { frame: to, at: Date.now() };
   to?.focus();
 });
-
-// ── An app’s sends waiting for you ───────────────────────────────────────────────────────
-// Past the limit, an app’s sends wait on this card (the server’s appsend item). Postbox draws it, like the
-// permission and refusal cards: Allow sends them to the agent as they were sent, Don’t allow drops them.
-export function renderAppSendCard(it, ctx) {
-  const open = it.status === 'open';
-  const n = it.events.length;
-  // One answer: the buttons turn off at the first press (a double click would answer twice), and back on if it
-  // didn’t go through. Then focus goes to the composer of the thread the card is in, a panel’s or the main one.
-  /** @param {string} action @param {MouseEvent} e */
-  const act = (action, e) => {
-    const card = /** @type {HTMLElement} */ (e.currentTarget).closest('.appsend');
-    const buttons = [...(card?.querySelectorAll('button') ?? [])];
-    for (const b of buttons) b.disabled = true;
-    const composer = card?.closest('.sidepanel') ? document.getElementById('side-input') : document.getElementById('composer-input');
-    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
-      .then(() => composer?.focus())
-      .catch((err) => {
-        for (const b of buttons) b.disabled = false;
-        toast({ title: 'That didn’t go through', text: err.message, level: 'blocking' });
-      });
-  };
-  const titleId = `as-${it.id}`;
-  return h(
-    'div.col.block.appsend',
-    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
-    h(
-      'div.block-head',
-      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h(
-        'span.title.grow',
-        { id: titleId },
-        open ? `${it.title} wants to send ${plural(n, 'message')} for you` : `${it.title} asked to send ${plural(n, 'message')} for you`,
-      ),
-      h('span.kind', 'Approve · from Postbox'),
-    ),
-    h(
-      'div.block-body',
-      open
-        ? h(
-            'p.small',
-            `An app can send up to ${SEND_LIMIT} messages a minute in your voice. These came after that, so they wait for you. Each one starts a turn for the agent.`,
-          )
-        : null,
-      h(
-        'ul.appsend-list',
-        it.events.map((ev) => h('li', ev.voice, ev.quote ? h('span.app-says', 'The app’s summary: ', h('q', ev.quote)) : null)),
-      ),
-      !open
-        ? h(
-            'span.answered-note',
-            icon(it.status === 'allowed' ? 'check' : 'x', 'i-sm'),
-            it.status === 'allowed' ? `Allowed. ${n === 1 ? 'It was' : 'They were'} sent.` : `Not allowed. ${n === 1 ? 'It wasn’t' : 'They weren’t'} sent.`,
-          )
-        : null,
-    ),
-    open
-      ? h(
-          'div.block-foot',
-          h('button.btn', { type: 'button', onclick: (e) => act('allow', e) }, 'Allow'),
-          h('button.btn', { type: 'button', onclick: (e) => act('deny', e) }, 'Don’t allow'),
-        )
-      : null,
-  );
-}
 
 // ── Diagrams and math in messages ────────────────────────────────────────────────────────
 

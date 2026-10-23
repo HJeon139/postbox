@@ -71,6 +71,10 @@
       }
     },
     {
+      "includes": ["app/js/app-send-card.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 55 } } } } }
+    },
+    {
       "includes": ["app/js/apps.mjs"],
       "linter": {
         "rules": {
