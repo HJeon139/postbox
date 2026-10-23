@@ -34,11 +34,13 @@
 //   capabilities.permissions: 'none'  it doesn’t read Claude Code’s permission rules or MCP config, so the panel and
 //                                     the persona sheet hide them
 //   capabilities.models: [ids]        the models it offers, suggested in the model field instead of Claude’s
+//   capabilities.tools: 'none'        it can’t turn a tool off for one agent, so the Tools help says so (#143)
+//   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
 // Left out, an adapter is taken to fork and read rules, with Claude’s models, as the Claude backends do. The page
 // gets every adapter’s capabilities in /api/state (config.backends).
 
 /**
- * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', models?: string[] },
+ * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, models?: string[] },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
  */
 

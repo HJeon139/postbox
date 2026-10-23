@@ -1039,7 +1039,13 @@ function denialBlock(it, ctx) {
   );
 }
 
-const BACKEND_NAMES = { 'claude-code': 'Claude Code', 'agent-sdk': 'Agent SDK', 'kiro-cli': 'Kiro CLI', mock: 'Mock agent' };
+const BACKEND_NAMES = {
+  'claude-code': 'Claude Code',
+  'agent-sdk': 'Agent SDK',
+  'kiro-cli': 'Kiro CLI',
+  'antigravity-cli': 'Antigravity CLI',
+  mock: 'Mock agent',
+};
 
 function proposalBlock(it, ctx, showWho) {
   const p = it.proposal;

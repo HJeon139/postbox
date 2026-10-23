@@ -66,6 +66,9 @@ sequenceDiagram
 | kiro-mcp-leak                | #57   | An Isolated Kiro agent’s call to an MCP server other than Postbox’s that completed, such as one a managed install adds by itself                                                              |
 | kiro-refusal-not-shown       | #65   | A call Kiro refused (an ask no one could answer headless, or a deny rule) with no refused step under its id in the conversation                                                               |
 | kiro-tool-not-allowed        | #5    | A Kiro command or fetch that ran when the persona doesn’t tick `shell` or `web.fetch`                                                                                                         |
+| agy-refusal-not-shown        | #65   | A call Antigravity refused (on its step, or only in the result’s `denied_actions`) with no refused step under its id. Release runs only                                                       |
+| agy-postbox-refused          | #143  | A call to Postbox’s own tools that Antigravity refused: the allow rule is missing from the agy settings. Release runs only                                                                    |
+| agy-tool-not-allowed         | #5    | An Antigravity command or fetch that ran when the persona doesn’t tick `shell` or `web.fetch`: agy can’t turn them off, so the agent ignored being told. Release runs only                    |
 | failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                                                                                                     |
 
 When a defect is filed from a run, add a check for it here if it can be caught deterministically, so later runs keep watching for it.
@@ -75,6 +78,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 - [SciFact: claims, abstracts and retrieval](scenarios/scifact.md)
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
 - [Mixed room: a Claude Code agent and a Kiro CLI agent](scenarios/mixedroom.md) ([#117](https://github.com/HJeon139/postbox/issues/117)): the researcher on Claude Code, the critic on the Kiro CLI with a GPT model; options, a second opinion, wakes both ways, and a topic thread where the Kiro agent is refused a command
+- [Gemini room: a Claude Code agent and an Antigravity CLI agent](scenarios/geminiroom.md) ([#143](https://github.com/HJeon139/postbox/issues/143)), **release runs only** (`--release`): the same shape as the mixed room, with the critic on Gemini; it also checks that the critic remembers across turns, and that its settings say it always uses your agy setup and that unticked tools are only a request
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)
@@ -83,7 +87,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 A scenario is Markdown:
 - a title
 - settings: the persona the tester plays, the agents, the project and the conversation’s name. A fresh install has only @assistant, so the runner seeds the scenario’s agents from [`personas.json`](personas.json), through `agents.json` in the run’s data folder. Since #5, a real agent can use only the tools its persona ticks, so both personas tick `shell` and `web.fetch`: they keep the commands and web access they had before, and a run on this branch differs from `main` only in what agents are told.
-- optionally, `backends`: agents to run on another backend, with a model, such as `critic=kiro-cli:gpt-5.6-terra`. Agents it doesn’t name run on the default backend, Claude Code. A Kiro agent is Isolated, with Postbox’s own Kiro home, so a run never writes into your `~/.kiro`
+- optionally, `backends`: agents to run on another backend, with a model, such as `critic=kiro-cli:gpt-5.6-terra`. An agent on `antigravity-cli` makes the scenario a release-only one (`--release`, below). Agents it doesn’t name run on the default backend, Claude Code. A Kiro agent is Isolated, with Postbox’s own Kiro home, so a run never writes into your `~/.kiro`
 - a summary
 - one `## Phase` section per phase, in the person’s words
 
@@ -127,15 +131,16 @@ Options:
 - `--tester-model`
 - `--port`, `--chrome-port`, for two runs at once
 - `--phase` (start at that phase, to rerun a later one; the tester sets up what it needs first)
+- `--release`: the run for a version release, the only one that may use the Antigravity CLI. Its quota is a free tier, and a run for every merge would use it up. Without `--release`, a scenario that puts an agent on `antigravity-cli` is refused, and Postbox starts without the Antigravity CLI, so the tester can’t pick it in a sheet either. A merge’s validation pass leaves it off; the Antigravity adapter’s recorded streams (`tests/antigravity-cli.test.mjs`) cover it there, at no cost.
 
-A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. A scenario with Kiro agents also needs the Kiro CLI, signed in; their turns use Kiro credits, which the report lists beside the agents’ cost. It uses real usage: a data-heavy agent turn can cost a few dollars.
+A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. A scenario with Kiro agents also needs the Kiro CLI, signed in; their turns use Kiro credits, which the report lists beside the agents’ cost. A scenario with Antigravity agents needs the Antigravity CLI, signed in, and `--release`; the report lists the Antigravity tokens it used. It uses real usage: a data-heavy agent turn can cost a few dollars.
 
 Each run writes to `uat-runs/<time>-<scenario>/`, which git ignores:
 - `report.md`: the issues caught again, new findings, and the timeline
 - `findings.json`
 - `run.log`
 - `shots/`: screenshots of every block and app the tester saw
-- `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/`
+- `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/` and Antigravity turns in `streams/agy/` (release runs)
 - `data/`: Postbox’s data, so a run can be reopened with `node server/index.mjs --data uat-runs/<run>/data`
 
 File what a run finds with the bug template in the [UAT README](../README.md), after checking each finding against its screenshot.

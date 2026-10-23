@@ -8,6 +8,7 @@
 //
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. A scenario
 // can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in.
+// The Antigravity CLI is on a free tier, so it runs only for a version release: pass --release (releaseGate).
 // Everything a run makes goes in uat-runs/<time>-<scenario>/ (ignored by git): report.md, findings.json,
 // screenshots, each agent turn’s raw stream, and Postbox’s data.
 
@@ -19,11 +20,12 @@ import { homedir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { agyVersion, findAgy } from '../server/adapters/antigravity-cli.mjs';
 import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
-import { kiroCredits, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { agyTokens, kiroCredits, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver } from './uat/driver.mjs';
-import { parseScenario } from './uat/scenario.mjs';
+import { parseScenario, releaseGate } from './uat/scenario.mjs';
 import { askOnce, createTester, systemPrompt, unaddressed, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -41,6 +43,8 @@ const { values: opt } = parseArgs({
     recheck: { type: 'string' },
     // After a run, verify new findings and file the confirmed ones that no open issue covers. --file no skips it.
     file: { type: 'string', default: 'yes' },
+    // The run for a version release: only it may use the release-only backends (tools/uat/scenario.mjs, RELEASE_ONLY).
+    release: { type: 'boolean', default: false },
   },
 });
 
@@ -70,8 +74,8 @@ const portFree = (port) =>
       .listen(port, '127.0.0.1');
   });
 
-/** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), or by the Kiro CLI
- * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/. */
+/** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), by the Kiro CLI
+ * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, or by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/. */
 function readStreams(folder) {
   if (!existsSync(folder)) return [];
   return readdirSync(folder)
@@ -109,6 +113,10 @@ const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.rep
 async function main() {
   const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
   const scenario = parseScenario(readFileSync(scenarioFile, 'utf8'));
+  // A release-only backend (the Antigravity CLI, on a free tier) runs only in a release run; otherwise Postbox starts
+  // without it, so the tester can’t put an agent on it from a sheet either.
+  const gate = releaseGate(scenario, { release: opt.release });
+  if (gate.error) throw new Error(gate.error);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
   const dir = join(ROOT, 'uat-runs', `${stamp}-${name}`);
@@ -117,6 +125,7 @@ async function main() {
     workspace: join(dir, 'workspace'),
     streams: join(dir, 'streams'),
     kiroStreams: join(dir, 'streams', 'kiro'),
+    agyStreams: join(dir, 'streams', 'agy'),
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
@@ -152,7 +161,15 @@ async function main() {
     ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
     ...personas.filter((p) => !scenario.agents.includes(p.handle)),
   ].map(onBackend);
+  if (opt.release) log('A release run: the release-only backends are on.');
   // Postbox registers the Kiro CLI only when it can run it, and seeding an agent on a backend it doesn’t have fails.
+  // The same for the Antigravity CLI, which a release run alone may use (releaseGate). It always runs with the
+  // person’s own agy setup: it has no Isolated mode (server/adapters/antigravity-cli.mjs).
+  if (Object.values(scenario.backends).some((b) => b.backend === 'antigravity-cli')) {
+    const v = await agyVersion(findAgy());
+    if (!v) throw new Error('This scenario puts agents on the Antigravity CLI, and agy isn’t installed here (or set POSTBOX_AGY_BIN).');
+    log(`Antigravity CLI ${v}, on a free tier: this run uses its quota.`);
+  }
   if (Object.values(scenario.backends).some((b) => b.backend === 'kiro-cli')) {
     const v = await kiroVersion(findKiro());
     if (!v) throw new Error('This scenario puts agents on the Kiro CLI, and kiro-cli isn’t installed here (or set POSTBOX_KIRO_BIN).');
@@ -165,7 +182,7 @@ async function main() {
   await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,
-    env: { ...process.env, POSTBOX_CLAUDE_RECORD: paths.streams, POSTBOX_KIRO_RECORD: paths.kiroStreams },
+    env: { ...process.env, ...gate.env, POSTBOX_CLAUDE_RECORD: paths.streams, POSTBOX_KIRO_RECORD: paths.kiroStreams, POSTBOX_AGY_RECORD: paths.agyStreams },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (d) => log(`postbox: ${String(d).trim()}`));
@@ -194,6 +211,7 @@ async function main() {
     startPersonas: [],
     streams: [],
     kiroStreams: [],
+    agyStreams: [],
     transcripts: [],
     console: page.logs,
     apps: {},
@@ -237,6 +255,7 @@ async function main() {
       facts.threads = threadsUnderTest(facts.state);
       facts.streams = readStreams(paths.streams);
       facts.kiroStreams = readStreams(paths.kiroStreams);
+      facts.agyStreams = readStreams(paths.agyStreams);
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
       facts.ui.reviewRawRows = await page.evaluate(
@@ -465,7 +484,9 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
   const agentCost = facts.streams.flatMap((s) => s.events.filter((e) => e.type === 'result')).reduce((a, e) => a + (e.total_cost_usd ?? 0), 0);
   // Kiro reports credits, not dollars: they’re listed beside the agents’ cost when a run had Kiro turns.
   const credits = kiroCredits(facts.kiroStreams ?? []);
-  const usage = `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}, tester $${tester.spent.toFixed(2)}.`;
+  // Antigravity reports tokens, and its free tier is what a release run spends (#143).
+  const tokens = agyTokens(facts.agyStreams ?? []);
+  const usage = `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.`;
   const caught = new Map();
   for (const f of findings) if (f.issue) caught.set(f.issue, [...(caught.get(f.issue) ?? []), f]);
   const { CHECKS } = await import('./uat/checks.mjs');
@@ -674,6 +695,7 @@ async function recheck(dir) {
       startPersonas: [],
       streams: readStreams(join(dir, 'streams')),
       kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
+      agyStreams: readStreams(join(dir, 'streams', 'agy')),
       console: page.logs,
       apps: {},
       probes: saved.probes ?? { fullScreen: [], attachments: [] },
