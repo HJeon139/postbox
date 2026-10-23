@@ -6,7 +6,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, resolve, sep } from 'node:path';
-import { ASKING, validateBlock } from '../shared/catalog.mjs';
+import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { READING } from '../shared/limits.mjs';
@@ -3604,8 +3604,15 @@ export class Runtime {
         if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
         // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
         if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
-        rt.patchItem(where, existing.id, patch);
-        return { ok: true, message: `Updated block ${v.block.id}.` };
+        if (!followsConversation(v.block)) {
+          rt.patchItem(where, existing.id, patch);
+          return { ok: true, message: `Updated block ${v.block.id}.` };
+        }
+        // It asks again, so it comes to the newest point, where the person will look for it (#92). Text the turn writes
+        // next goes after it, when it’s in the turn’s own thread.
+        if (where === threadId()) endSegment();
+        const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
+        return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
       },
       show_app({ id, title, code, permissions = [], fallback }) {
         const blockId = id ?? newId('app');
@@ -3641,8 +3648,11 @@ export class Runtime {
         };
         rt.store.emit('app', next);
         // A new version always comes to the newest point, where the agent says what changed (#49).
-        endSegment();
-        const moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
+        let moved = false;
+        if (followsConversation({ type: 'app' })) {
+          if (app.threadId === threadId()) endSegment();
+          moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
+        }
         return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
       },
       define_term({ term, definition, key, source }) {
@@ -3732,6 +3742,9 @@ export class Runtime {
     });
   }
 }
+
+/** What a block’s stub calls it once it moved (#92): its title, or the start of what it asks. @param {any} b */
+const blockTitle = (b) => clip(String(b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id).replace(/\s+/g, ' '), 80);
 
 /** Why an outcome was refused on a block nobody has answered yet (#94). @param {string} id @param {string} what */
 const OUTCOME_LATER = (id, what) =>

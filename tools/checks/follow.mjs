@@ -1,7 +1,7 @@
-// A headless Chrome check that apps follow the conversation (#49): a new version shows at the newest point, in
-// view without scrolling, with a one-line stub where it was that leads to it, one running copy, and the
-// transcript’s anchoring intact: what you were reading stays put, and if you were reading the app, its stub holds
-// its place.
+// A headless Chrome check that apps and asking blocks follow the conversation (#49, #92): a new version, or a block
+// that asks again, shows at the newest point, in view without scrolling, with a one-line stub where it was that
+// leads to it, one live copy, and the transcript’s anchoring intact: what you were reading stays put, and if you
+// were reading the item, its stub holds its place. ⌃J reaches a block that moved.
 //
 //   node tools/checks/follow.mjs            (ONLY=#49 runs the cases whose name has that in it)
 //
@@ -86,8 +86,13 @@ function room(title, appId, after = 14) {
 const APP = (label) =>
   `<main style="padding:12px"><button class="btn" type="button" style="display:block;width:100%;height:200px">Explorer ${label}</button></main>`;
 async function open(t) {
-  await page.evaluate(`location.hash = '#/t/${t.id}'`);
-  await page.waitFor(`document.querySelector('.transcript[data-thread="${t.id}"] .item')`, { label: 'the transcript' });
+  // The page sends you to the overview while the new conversation hasn’t reached it yet, so try until it has.
+  const has = `!!document.querySelector('.transcript[data-thread="${t.id}"] .item')`;
+  for (let i = 0; i < 20 && !(await page.evaluate(has)); i++) {
+    await page.evaluate(`location.hash = '#/t/${t.id}'`);
+    await settle(300);
+  }
+  await page.waitFor(has, { label: 'the transcript' });
   await settle(400);
 }
 /** Waits for the stub of an item to be on the page, and returns its key. */
@@ -159,6 +164,108 @@ await check('#49 reading the app: its stub holds the place, and Go to it leads t
   await settle(600);
   assert.ok(await inView(item.id), 'Go to it brings the app into view');
   assert.ok(await page.evaluate(`!!document.activeElement?.closest('[data-key="${item.id}"]')`), 'and focuses it');
+});
+
+await check('#49 in the side panel: an app in a topic thread moves there, and the panel keeps what you read still', async () => {
+  const { t } = room('Follows in a panel', 'follow-panel-root', 2);
+  const root = store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId } = rt.startTopic(t.id, root.id);
+  const fork = rt.sessionsIn(threadId)[0];
+  rt.toolsFor(fork.id).show_app({ id: 'follow-panel', title: 'Panel explorer', code: APP('v1'), permissions: [] });
+  const item = store.items(threadId).find((i) => i.kind === 'block' && i.block.id === 'follow-panel');
+  for (let i = 0; i < 16; i++)
+    rt.addItem(threadId, { kind: 'agent', sessionId: fork.id, personaId: fork.personaId, handle: fork.handle, text: LONG(300 + i), status: 'done' });
+  const hash = `#/t/${t.id}/side/${threadId}`;
+  const inPanel = `document.querySelector('.sidepanel .transcript[data-thread="${threadId}"]')`;
+  for (let i = 0; i < 20 && !(await page.evaluate(`!!${inPanel}?.querySelector('.item')`)); i++) {
+    await page.evaluate(`location.hash = '${hash}'`);
+    await settle(300);
+  }
+  await page.waitFor(`!!${inPanel}?.querySelector('.item')`, { label: 'the panel’s transcript' });
+  await settle(400);
+  const body = `${inPanel}.parentElement`;
+  const panelGap = () => page.evaluate(`(() => { const b = ${body}; return Math.round(b.scrollHeight - b.scrollTop - b.clientHeight); })()`);
+  const box = await page.evaluate(`(() => { const r = ${body}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  const readingPanel = () =>
+    page.evaluate(
+      `(() => { const n = document.elementFromPoint(${box.x}, ${box.y})?.closest('.item'); return n ? { key: n.dataset.key, top: Math.round(n.getBoundingClientRect().top) } : null; })()`,
+    );
+  // Scrolled up in the panel, reading a message under the app.
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: box.x, y: box.y, deltaX: 0, deltaY: -500 });
+  await settle();
+  const at = await readingPanel();
+  assert.ok(at && at.key !== item.id, 'reading a message in the panel');
+  assert.ok((await panelGap()) > 200, 'the panel is scrolled up');
+  rt.toolsFor(fork.id).update_app({ id: 'follow-panel', code: APP('v2') });
+  const stubIn = (n) => store.items(threadId).filter((i) => i.kind === 'moved' && i.itemId === item.id)[n]?.id;
+  const lastIs = `[...${inPanel}.children].filter((n) => n.dataset.key).at(-1)?.dataset.key === '${item.id}'`;
+  await page.waitFor(`!!${inPanel}.querySelector('[data-key="${stubIn(0)}"]') && ${lastIs}`, { label: 'the stub and the app in the panel' });
+  await settle(400);
+  const moved = Math.abs((await topOf(at.key)) - at.top);
+  assert.ok(moved <= 1, `the message you were reading in the panel moved ${moved} px`);
+  assert.ok((await panelGap()) > 200, 'the panel is still scrolled up');
+  // At the bottom of the panel, after more messages, the next version shows there, in view.
+  for (let i = 0; i < 6; i++)
+    rt.addItem(threadId, { kind: 'agent', sessionId: fork.id, personaId: fork.personaId, handle: fork.handle, text: LONG(400 + i), status: 'done' });
+  await settle(400);
+  await page.evaluate(`(() => { const b = ${body}; b.scrollTop = b.scrollHeight; })()`);
+  await settle();
+  rt.toolsFor(fork.id).update_app({ id: 'follow-panel', code: APP('v3') });
+  await page.waitFor(`!!${inPanel}.querySelector('[data-key="${stubIn(1)}"]') && ${lastIs}`, { label: 'the second move in the panel' });
+  await settle(400);
+  assert.ok((await panelGap()) <= 2, `the panel stays at its bottom (gap ${await panelGap()})`);
+  const shown = await page.evaluate(
+    `(() => { const n = ${inPanel}.querySelector('[data-key="${item.id}"]').getBoundingClientRect(); const b = ${body}.getBoundingClientRect(); return n.top >= b.top - 1 && n.bottom <= b.bottom + 1; })()`,
+  );
+  assert.ok(shown, 'the app is in view in the panel');
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'moved').length, 0, 'the conversation itself has no stub');
+});
+
+await check('#92 a confirm that asks again shows at the bottom with a stub, ⌃J goes to it, and answering it records one answer', async () => {
+  const { t, critic, say } = room('A block asks again', 'follow-block-app', 2);
+  const tools = rt.toolsFor(critic.id);
+  const block = (extra = {}) => ({
+    id: 'frames',
+    type: 'confirm',
+    version: 1,
+    fallback: 'Delete the frames?',
+    statement: 'Delete the 23 video frames in app/media?',
+    confirmLabel: 'Delete them',
+    ...extra,
+  });
+  tools.show_block({ block: block() });
+  const item = store.items(t.id).at(-1);
+  rt.act(t.id, item.id, 'confirm', {}, 1);
+  // The answer wakes critic, a mock agent: let that turn end first, so its reply lands before the update.
+  await settle(100);
+  for (let i = 0; i < 100 && rt.turns.has(critic.id); i++) await settle(100);
+  rt.patchItem(t.id, item.id, { answer: { ...store.item(t.id, item.id).answer, read: true } });
+  for (let i = 0; i < 14; i++) say(critic, LONG(200 + i));
+  await open(t);
+  assert.ok(!(await inView(item.id)), 'the answered confirm is out of view, above');
+  tools.update_block({ block: block({ title: 'Video frames deleted', statement: 'Deleted. Anything else to clear?', confirmLabel: 'OK' }) });
+  // Once updated, it’s the one agent that needs you, as #69 leaves it when a turn ends on a block that asks again.
+  // ⌃J goes to the next agent that needs you, so none other does.
+  for (const se of Object.values(store.state.sessions)) if (se.needs && se.id !== critic.id) rt.updateSession(se.id, { needs: null, state: 'idle' });
+  rt.updateSession(critic.id, { state: 'needs', needs: { kind: 'block', itemId: item.id, text: 'Video frames deleted' } });
+  const stub = await stubOf(t, item.id);
+  assert.ok((await gap()) <= 2, 'the view stays at the bottom');
+  assert.ok(await inView(item.id), 'the confirm is in view without scrolling');
+  assert.match(await page.evaluate(`document.querySelector('[data-key="${stub}"]').textContent`), /Video frames deleted · asked again below/);
+  // ⌃J goes to the moved block, from anywhere in the conversation, and focuses its button.
+  await wheel(-2000);
+  assert.ok(!(await inView(item.id)), 'scrolled away from it');
+  for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: 'j', code: 'KeyJ', windowsVirtualKeyCode: 74, modifiers: 2 });
+  // ⌃J scrolls on a short timer, which headless Chrome can hold back while nothing on screen changes.
+  await page.waitFor(`!!document.activeElement?.closest('[data-key="${item.id}"]')`, { label: '⌃J to reach the moved confirm', timeout: 5000 }).catch(() => {});
+  await settle();
+  assert.ok(await inView(item.id), '⌃J brings the moved confirm into view');
+  assert.ok(await page.evaluate(`!!document.activeElement?.closest('[data-key="${item.id}"]')`), 'and focuses it');
+  await click(`[...document.querySelectorAll('[data-key="${item.id}"] button')].find((b) => b.textContent.trim() === 'OK')`);
+  await page.waitFor(`document.querySelectorAll('.voice').length >= 2`, { label: 'your answer’s line' });
+  const answered = store.item(t.id, item.id);
+  assert.equal(answered.answer?.revision, 2, 'the answer is for the revision you saw');
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'voice').length, 2, 'one line for each answer');
 });
 
 await page.send('Page.navigate', { url: 'about:blank' });

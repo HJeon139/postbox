@@ -104,3 +104,68 @@ test('#49: the browser’s reducer moves the item exactly as the server’s does
   apply(s, 'item.move', { threadId: tid, id: 'nope', stub: { id: 's2' }, patch: {} });
   assert.equal(s.items[tid].length, 3);
 });
+
+const confirm = (extra = {}) => ({
+  id: 'frames',
+  type: 'confirm',
+  version: 1,
+  fallback: 'Delete the frames?',
+  statement: 'Delete the 23 video frames?',
+  confirmLabel: 'Delete them',
+  ...extra,
+});
+
+test('#92: a block that asks again comes to the newest point, with one live copy, one answer and one event', () => {
+  const { store, rt, t, se, tools } = setup();
+  const delivered = [];
+  rt.deliver = (id, m) => delivered.push({ id, m });
+  tools.show_block({ block: confirm() });
+  const item = store.items(t.id).at(-1);
+  rt.act(t.id, item.id, 'confirm', {}, 1);
+  rt.patchItem(t.id, item.id, { answer: { ...store.item(t.id, item.id).answer, read: true } });
+  say(rt, t, se, 'Deleted the frames. Four new app versions follow.');
+  const r = tools.update_block({ block: confirm({ title: 'Video frames deleted', statement: 'Deleted. OK?', confirmLabel: 'OK' }) });
+  assert.match(r.message, /asks again at the newest point/);
+  assert.deepEqual(kinds(store, t).slice(-2), ['agent', 'block:frames']);
+  const stub = store.items(t.id).find((i) => i.kind === 'moved');
+  assert.deepEqual({ what: stub.what, title: stub.title, itemId: stub.itemId }, { what: 'block', title: 'Video frames deleted', itemId: item.id });
+  // The same item, open again, and the only block with that id.
+  const live = store.items(t.id).at(-1);
+  assert.equal(live.id, item.id);
+  assert.equal(live.answered, false);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'block' && i.block.id === 'frames').length, 1);
+  // Answering it records one answer, and the agent gets one event, for the new revision.
+  const before = delivered.length;
+  rt.act(t.id, item.id, 'confirm', {}, 2);
+  assert.equal(store.item(t.id, item.id).answer.revision, 2);
+  assert.equal(delivered.length - before, 1);
+  assert.equal(delivered.at(-1).m.event.revision, 2);
+});
+
+test('#92: needs-you names the moved block', async () => {
+  const { store, rt, t, se } = setup();
+  const turn = { id: 'tu1', sessionId: se.id, threadId: t.id, segment: null };
+  const tools = rt.toolsFor(se.id, turn);
+  tools.show_block({ block: confirm() });
+  const item = store.items(t.id).at(-1);
+  say(rt, t, se, 'Later.');
+  tools.update_block({ block: confirm({ statement: 'Delete them now?' }) });
+  assert.equal(store.items(t.id).at(-1).id, item.id);
+  assert.equal(store.items(t.id).at(-1).turnId, 'tu1', 'asking again belongs to this turn (#69)');
+});
+
+test('#92: progress, an outcome and blocks that don’t ask keep their place', () => {
+  const { store, rt, t, se, tools } = setup();
+  tools.show_block({ block: { id: 'job', type: 'progress', version: 1, fallback: 'Working', steps: [{ id: 'a', label: 'Read', state: 'running' }] } });
+  tools.show_block({ block: { id: 'note', type: 'card', version: 1, fallback: 'Note', body: 'First' } });
+  tools.show_block({ block: confirm() });
+  const frames = store.items(t.id).at(-1);
+  say(rt, t, se, 'Working on it.');
+  tools.update_block({ block: { id: 'job', type: 'progress', version: 1, fallback: 'Working', steps: [{ id: 'a', label: 'Read', state: 'done' }] } });
+  tools.update_block({ block: { id: 'note', type: 'card', version: 1, fallback: 'Note', body: 'Second' } });
+  rt.act(t.id, frames.id, 'confirm', {}, 1);
+  rt.patchItem(t.id, frames.id, { answer: { ...store.item(t.id, frames.id).answer, read: true } });
+  tools.update_block({ block: confirm({ outcome: 'Deleted 23 frames.' }) });
+  assert.deepEqual(kinds(store, t), ['block:job', 'block:note', 'block:frames', 'agent', 'voice']);
+  assert.equal(store.item(t.id, frames.id).answered, true);
+});

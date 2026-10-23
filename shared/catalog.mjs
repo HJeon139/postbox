@@ -26,6 +26,16 @@ export const CATALOG = Object.freeze({
 export const ASKING = new Set(['choice', 'form', 'confirm', 'review']);
 
 /**
+ * Whether an update brings its block to the newest point in the conversation, with a stub where it was (#49, #92).
+ * One rule for apps and blocks: an update the person has to act on, beside the agent’s note about it. That’s every
+ * new version of an app, and an update that leaves a choice, form, confirm or review waiting on the person. An
+ * outcome reports on an answer and asks nothing, and progress, cards, tables, code and images don’t wait on the
+ * person, so they keep their place: a progress block moving on every step would be noise.
+ * @param {{ type: string, outcome?: unknown }} block  the block as updated
+ */
+export const followsConversation = (block) => block.type === 'app' || (ASKING.has(block.type) && typeof block.outcome !== 'string');
+
+/**
  * A block as the agent sent it, once it has passed validateBlock.
  * @typedef {{ id: string, type: string, version: number, title?: string, fallback: string, [field: string]: any }} Block
  */
