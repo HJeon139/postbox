@@ -12,6 +12,7 @@ Collects structured input in one step, checked before it’s sent.
 
 - Text, long text, number, select, toggle and date fields with labels and help.
 - Invalid input shows a message under the field and doesn’t send; valid input sends numbers as numbers and dates as YYYY-MM-DD.
+- While it waits on you, it can be dismissed, and its agent can withdraw it, as a [choice](choice.md) can (#106). A result the agent reports shows under your answer.
 
 ## Steps to reproduce
 

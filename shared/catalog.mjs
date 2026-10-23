@@ -44,7 +44,7 @@ export const followsConversation = (block) => block.type === 'app' || (ASKING.ha
 const LANG = /^[A-Za-z0-9_+#.-]{1,32}$/;
 
 const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }) }, ['id', 'label']);
-// A result reported on an answered block (#94), shown under the answer. Markdown.
+// A result reported on an answered block (#94), or an approved review (#106), shown under the answer. Markdown.
 const outcome = () => str({ min: 1, max: LIMITS.outcome });
 
 // ── Component schemas ───────────────────────────────────────────────────────────────────
@@ -222,6 +222,7 @@ const SCHEMAS = {
         ),
         { max: 200, unique: 'id' },
       ),
+      outcome: outcome(),
     },
     required: ['format'],
     check(b, errs) {

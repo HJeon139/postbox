@@ -25,7 +25,7 @@ test('the guide starts from what a reply contains, not from what the person aske
 
 test('the guide tells agents to report results, and to update an answered block only to ask again (#94)', () => {
   const g = guideText();
-  assert.match(g, /Report what you did in your reply, or with update_block on the answered choice, form or confirm with outcome set/);
+  assert.match(g, /Report what you did in your reply, or with update_block on the answered block with outcome set/);
   assert.match(g, /Update an answered block without outcome only to ask again/);
 });
 

@@ -4,6 +4,7 @@
 
 import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
@@ -21,6 +22,8 @@ export function act(rt, threadId, itemId, action, values, revision) {
   if (it.kind === 'appsend') return rt.resolveAppSend(threadId, itemId, action);
   if (it.kind === 'toolask') return resolveToolAsk(rt, threadId, itemId, action);
   if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
+  if (it.closed?.by === 'agent')
+    throw httpError(409, `@${it.closed.handle} withdrew this, so it no longer asks. Only a new block, or an update to it, can ask again.`);
   if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
   // Progress, image and code never ask; a card or table action doesn’t lock the block.
   const locks = ASKING.has(it.block.type);
@@ -36,13 +39,16 @@ export function act(rt, threadId, itemId, action, values, revision) {
       ),
       { code: 'stale' },
     );
-  const r = buildEvent(it.block, action, values, { revision: current });
+  // Dismiss closes a block that asks without answering it (#106), and the agent hears it as the person’s answer.
+  const dismissed = locks && action === 'dismiss';
+  const r = dismissed ? dismissal(it.block, current) : buildEvent(it.block, action, values, { revision: current });
   if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
   // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
   if (locks)
     rt.patchItem(threadId, itemId, {
       answered: true,
       answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false },
+      ...(dismissed ? { closed: { by: 'person', at: Date.now() } } : {}),
     });
   rt.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
   const se = rt.s.sessions[it.sessionId];
@@ -74,7 +80,12 @@ export function unreadAnswer(rt, sessionId, threadId, it, outcome = false) {
   const at = new Date(a.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   const n = Array.isArray(a.values?.comments) ? a.values.comments.length : 0;
   const full = JSON.stringify(a.values ?? {});
-  const what = it.block.type === 'review' ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}` : `${a.action} ${clipText(full, 300)}`;
+  const what =
+    a.action === 'dismiss'
+      ? 'they dismissed it'
+      : it.block.type === 'review'
+        ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}`
+        : `${a.action} ${clipText(full, 300)}`;
   const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
   const waiting = rt.turns.get(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
   const then = outcome ? 'then record the outcome' : 'then update';
@@ -91,20 +102,20 @@ export function unreadAnswer(rt, sessionId, threadId, it, outcome = false) {
  * endSegment(), so they come as parameters.
  */
 export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endSegment }) {
+  if (block && typeof block === 'object' && Object.hasOwn(block, 'withdraw')) return withdraw(rt, sessionId, block, { se, threadId });
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
-  // In the thread the turn is in, else the session’s own: a block it showed in the conversation can be updated
-  // from a turn in a side thread (#110).
-  const mine = (id) => [...rt.store.items(id)].reverse().find((x) => x.kind === 'block' && x.valid && x.block.id === v.block.id && x.sessionId === sessionId);
-  const where = mine(threadId()) ? threadId() : se().threadId;
-  const existing = mine(where);
-  if (!existing) return { ok: false, message: `There’s no block with id ${v.block.id} to update. Use show_block to add it.` };
+  const { where, existing } = shownBy(rt, sessionId, v.block.id, threadId(), se());
+  if (!existing) return notShown(rt, sessionId, v.block.id);
   if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
   const now = Date.now();
   // An update that sets outcome reports a result, not a question (#94): it goes under the person’s answer, the
   // block stays answered, and nobody is asked again. The question they answered stays as they saw it.
   if (typeof v.block.outcome === 'string') {
-    if (!existing.answered)
+    // Nor under a dismissal: the person said the block isn’t needed, so there’s no answer to report on.
+    if (existing.closed?.by === 'person' || (existing.closed && !existing.answer))
+      return { ok: false, message: `${existing.answer ? 'The person dismissed' : 'You withdrew'} ${v.block.id}, so it has no answer to report on.` };
+    if (!existing.answer)
       return {
         ok: false,
         message: OUTCOME_LATER(v.block.id, 'The update wasn’t applied.'),
@@ -125,7 +136,7 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   // read (#123): the person would see it vanish, and the agent would never learn what it erased.
   if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
   /** @type {Record<string, any>} */
-  const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
+  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
   // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
   if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
@@ -139,6 +150,62 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
   return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
 }
+
+/**
+ * The newest valid block with this id that the session showed: in the thread the turn is in, else in the session’s
+ * own, so a block it showed in the conversation can be updated from a turn in a side thread (#110).
+ * @param {any} rt @param {string} sessionId @param {string} id @param {string} threadId  where the turn speaks @param {any} se
+ */
+function shownBy(rt, sessionId, id, threadId, se) {
+  const mine = (t) => [...rt.store.items(t)].reverse().find((x) => x.kind === 'block' && x.valid && x.block.id === id && x.sessionId === sessionId);
+  const where = mine(threadId) ? threadId : se.threadId;
+  return { where, existing: mine(where) };
+}
+
+/** Why there’s no block of the session’s with that id. @param {any} _rt @param {string} _sessionId @param {string} id */
+function notShown(_rt, _sessionId, id) {
+  return { ok: false, message: `There’s no block with id ${id} to update. Use show_block to add it.` };
+}
+
+/**
+ * update_block { block: { id, withdraw } }: the agent closes a block that asks, answered or not, and says why (#106).
+ * It stops waiting on the person and reads as closed, with who closed it and why. Nothing is deleted: the block keeps
+ * what it asked, and any answer.
+ * @param {any} rt @param {string} sessionId @param {any} block @param {{ se: () => any, threadId: () => string }} at
+ */
+function withdraw(rt, sessionId, block, { se, threadId }) {
+  const id = String(block.id ?? '');
+  const reason = typeof block.withdraw === 'string' ? block.withdraw.trim() : '';
+  if (!reason || reason.length > LIMITS.outcome)
+    return { ok: false, message: `withdraw is why you’re closing the block, as text up to ${LIMITS.outcome} characters: the person reads it on the block.` };
+  const { where, existing } = shownBy(rt, sessionId, id, threadId(), se());
+  if (!existing) return notShown(rt, sessionId, id);
+  if (!ASKING.has(existing.block.type)) return { ok: false, message: `${id} doesn’t ask anything, so there’s nothing to withdraw. Update it instead.` };
+  if (existing.closed)
+    return { ok: false, message: `${id} is already closed: ${existing.closed.by === 'person' ? 'the person dismissed it' : 'you withdrew it'}.` };
+  // Not over an answer the agent hasn’t read (#123): it would close a block without knowing what the person said.
+  if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
+  const s = se();
+  rt.patchItem(where, existing.id, { answered: true, closed: { by: 'agent', handle: s.handle, reason, at: Date.now() } });
+  if (s.needs?.itemId === existing.id) rt.updateSession(s.id, { needs: null, state: rt.turns.has(s.id) ? s.state : 'idle' });
+  return { ok: true, message: `Withdrew block ${id}. The person sees it closed, with your reason, and it no longer waits on them.` };
+}
+
+/**
+ * The person’s dismissal of a block that asks (#106): an answer with no values.
+ * @param {any} block @param {number} revision @returns {{ ok: true, event: any, voice: string }}
+ */
+const dismissal = (block, revision) => ({
+  ok: true,
+  event: { blockId: block.id, revision, action: 'dismiss', values: {} },
+  voice: `Dismissed: ${blockTitle(block)}`,
+});
+
+/** How an agent’s history tells a closed block (#106): who closed it, and why. @param {any} it */
+export const closedText = (it) =>
+  it.closed.by === 'person'
+    ? 'The person dismissed it.'
+    : `${it.answer ? `The person answered: ${it.answer.voice}. ` : ''}@${it.closed.handle} withdrew it: ${it.closed.reason}`;
 
 /** What a block’s stub calls it once it moved (#92): its title, or the start of what it asks. @param {any} b */
 const blockTitle = (b) => clip(String(b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id).replace(/\s+/g, ' '), 80);

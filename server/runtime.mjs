@@ -16,7 +16,7 @@ import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
-import { act, answerDelivered, CATCH_UP_CHARS, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
+import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { parseDataset } from './corpus.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
@@ -139,7 +139,8 @@ function blockContent(it) {
       out.push(String(b.fallback ?? ''));
   }
   const a = it.answered ? it.answer : null;
-  if (a) {
+  if (it.closed) out.push(closedText(it));
+  else if (a) {
     const v = a.values ?? {};
     if (b.type === 'review') {
       const comments = Array.isArray(v.comments) ? v.comments : [];

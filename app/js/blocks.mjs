@@ -6,6 +6,7 @@ import { ASKING } from '/shared/catalog.mjs';
 import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { mountApp } from './apps.mjs';
+import { asDrawn, closing } from './block-close.mjs';
 import { client } from './client.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
@@ -61,7 +62,8 @@ export function renderBlock(item, ctx) {
   const b = item.block;
   track(item);
   const r = RENDER[b.type];
-  const node = r(b, item, ctx);
+  const node = r(b, asDrawn(item), ctx);
+  closing(node, item, (setError) => submit(item, ctx, 'dismiss', {}, setError));
   node.classList.add('block');
   node.setAttribute('role', 'group');
   node.dataset.blockItem = item.id;
@@ -74,7 +76,7 @@ function head(b, extra = [], kind = KIND[b.type]) {
 }
 const answeredNote = (item) =>
   h('span.answered-note', icon('check', 'i-sm'), `Answered at ${timeOf(item.answer.at)} · only a new block, or an update to it, can ask again`);
-// A result the agent reported on an answered choice, form or confirm (#94), under your answer.
+// A result the agent reported on an answered choice, form, confirm or review (#94, #106), under your answer.
 const outcomeLine = (item) => (item.answered && item.block.outcome ? h('div.outcome', icon('check', 'i-sm'), md(item.block.outcome)) : null);
 const errLine = (msg) => (msg ? h('span.err', { role: 'alert' }, icon('warn'), msg) : null);
 
@@ -992,7 +994,7 @@ function renderReview(b, item, ctx) {
   }
 
   if (done) {
-    node.append(h('div.block-foot', h('span.answered-note', icon('check', 'i-sm'), `${item.answer.voice} · ${timeOf(item.answer.at)}`)));
+    node.append(h('div.block-foot', h('span.answered-note', icon('check', 'i-sm'), `${item.answer.voice} · ${timeOf(item.answer.at)}`), outcomeLine(item)));
   } else {
     const resolved = (b.threads ?? []).filter((t) => t.status === 'resolved').length;
     const verdicts = [

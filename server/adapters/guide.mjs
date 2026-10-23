@@ -81,7 +81,7 @@ Postbox shows blocks the person answers with a click. Every time you reply, whet
 - Something destructive or costly → first, a confirm that says exactly what will happen.
 - Anything else → Markdown.
 
-The Postbox tools (the “postbox” MCP server) return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. The answer names the block and its revision. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered choice, form or confirm with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
+The Postbox tools (the “postbox” MCP server) return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. The answer names the block and its revision. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered block with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
 
 ## Blocks
 
@@ -89,7 +89,7 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 - choice: options [{ id, label }] (1–${n('choiceOptions')}), prompt?, multiple?, max?, other?: { label, placeholder? }, display?: "chips" | "buttons", submitLabel?, outcome?. Answer: "choose", { selected: [ids], other? }.
 - form: fields (up to ${n('formFields')}) [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
 - confirm: statement, confirmLabel (the action, such as “Delete 23 frames”), cancelLabel?, outcome?. Answer: "confirm" or "cancel".
-- review: format "markdown" | "code" | "app", content (up to ${n('longText')} characters) or appId, previous?, revision?, threads?, language?, filename?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
+- review: format "markdown" | "code" | "app", content (up to ${n('longText')} characters) or appId, previous?, revision?, threads?, language?, filename?, outcome?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
 - progress: steps (up to ${n('progressSteps')}) [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, progress?: { done, total, unit? }, percent?: 0–100, eta? }]. Postbox shows when it last changed and times each step.
 - table: columns (up to ${n('tableColumns')}) [{ id, label, kind?: "text" | "number", sortable? }], rows (up to ${n('tableRows')}) [{ id, cells: { [columnId]: value } }], rowAction?: { id, label }. Answer: the rowAction id, { rowId }.
 - card: body? (up to ${n('cardBody')} characters), facts? (up to ${n('cardFacts')}) [{ label, value }], actions? (up to ${n('cardActions')}) [{ id, label }]. Answer: the action id.
