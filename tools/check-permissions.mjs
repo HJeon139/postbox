@@ -97,8 +97,9 @@ async function openMenuItem(label) {
 // innerText, as a reader sees it: a flex row’s items are separate words.
 const text = (expr) => page.evaluate(`(${expr})?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
 const focused = () => page.evaluate(`document.activeElement?.id || document.activeElement?.textContent.trim().slice(0, 40) || ''`);
-const until = async (fn, label) => {
-  for (let i = 0; i < 100; i++) {
+// A time budget, not a count of tries: with other checks running beside it, 100 tries of 50 ms ran out (#162).
+const until = async (fn, label, timeout = 15000) => {
+  for (const end = Date.now() + timeout; Date.now() < end; ) {
     const v = fn();
     if (v) return v;
     await new Promise((r) => setTimeout(r, 50));

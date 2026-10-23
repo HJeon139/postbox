@@ -6,10 +6,11 @@
 //   node tools/check-all.mjs --jobs 2 --timeout 300 --logs check-logs
 //
 // Each check runs in its own process, spawned with an argument array (no shell) and in its own process group,
-// with a Postbox port pair (PB_PORT and the port after it) and a Chrome port (PB_CHROME_PORT) that the system
-// handed out as free, so two runs at once don’t collide. A check still running at its timeout (600 s by default)
-// is killed with everything it started. Each check reports through tools/harness.mjs, and its full output is kept
-// in the logs folder (a new one in the temp directory, unless --logs names one). Exits 1 when any check failed.
+// with a Postbox port pair (PB_PORT and the port after it) and a Chrome port (PB_CHROME_PORT), picked at random
+// from 20000–32000 and checked free first, so two runs at once don’t collide. A check still running at its
+// timeout (600 s by default) is killed with everything it started. Each check reports through tools/harness.mjs,
+// and its full output is kept in the logs folder (a new one in the temp directory, unless --logs names one).
+// Exits 1 when any check failed.
 
 import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
