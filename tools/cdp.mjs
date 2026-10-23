@@ -9,6 +9,10 @@ import { join } from 'node:path';
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// How long Chrome may take to open its DevTools port. A fresh CI runner’s first launch, with nothing cached, took
+// longer than the 12 s this used to allow (run 39977434749).
+const START_MS = 45000;
+
 export async function launch({ port = 9333 } = {}) {
   const profile = join(tmpdir(), `pb-cdp-${process.pid}-${port}`);
   const chrome = spawn(
@@ -23,13 +27,26 @@ export async function launch({ port = 9333 } = {}) {
       '--force-color-profile=srgb',
       'about:blank',
     ],
-    { stdio: 'ignore' },
+    { stdio: ['ignore', 'ignore', 'pipe'] },
   );
+  // What Chrome last said, and whether it ended, to say why when it doesn’t start.
+  let said = '';
+  chrome.stderr.on('data', (d) => {
+    said = (said + d).slice(-2000);
+  });
+  /** @type {string | null} */
+  let ended = null;
+  chrome.once('error', (e) => {
+    ended = `it couldn’t be run: ${e.message}`;
+  });
+  chrome.once('exit', (code, signal) => {
+    ended ??= `it exited (${signal ?? `code ${code}`})`;
+  });
   // A script that exits without close() (a check that throws, say) mustn’t leave its Chrome running.
   const orphan = () => chrome.kill();
   process.once('exit', orphan);
   let target;
-  for (let i = 0; i < 60 && !target; i++) {
+  for (const end = Date.now() + START_MS; !target && !ended && Date.now() < end; ) {
     await sleep(200);
     try {
       target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === 'page');
@@ -37,7 +54,9 @@ export async function launch({ port = 9333 } = {}) {
   }
   if (!target) {
     chrome.kill();
-    throw new Error('Chrome didn’t start. Set CHROME to its path if it isn’t in the default macOS location.');
+    const why = ended ?? `its DevTools port, ${port}, didn’t answer within ${START_MS / 1000} s`;
+    const last = said.trim() ? `\nChrome’s last output:\n${said.trim()}` : '';
+    throw new Error(`Chrome didn’t start: ${why}. It ran ${CHROME}; set CHROME to Chrome’s path if that’s wrong.${last}`);
   }
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((ok) => ws.addEventListener('open', ok, { once: true }));
