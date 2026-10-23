@@ -142,17 +142,19 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       'div.top-actions',
       demoNote(),
       // The conversation’s Work in the right pane (#132), opened and closed here: the first of its side views’ buttons.
+      // It says Work in words beside its icon, as Jump to does (#183).
       t
         ? h(
-            'button.btn.icon.sm.ghost',
+            'button.btn.sm',
             {
               type: 'button',
               id: 'work-button',
-              'aria-label': 'Work',
               'aria-pressed': String(route().work),
               onclick: () => (route().work ? closeWork(t.id) : openWork(t.id)),
             },
-            icon('file'),
+            icon('file', 'i-sm'),
+            // The visible word is its name; on a phone it’s hidden from sight but still read, and the icon stays.
+            h('span.sr-sm', 'Work'),
           )
         : null,
       h('button.btn.sm.hide-sm', { type: 'button', onclick: openPalette }, icon('search', 'i-sm'), 'Jump to… ', h('kbd', '⌘K')),

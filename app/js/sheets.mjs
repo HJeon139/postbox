@@ -1247,10 +1247,14 @@ export function openPalette() {
 export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
   const listEl = h('ul.list-rows');
   const where = h('p.small.dim.mono');
+  // A folder that won’t open says why here, and the list and Up stay as they were (#28).
+  const problem = h('p.err', { role: 'alert', hidden: true });
   const load = async (path) => {
     try {
       const r = await fetch(`/api/projects/${projectId}/files?path=${encodeURIComponent(path)}`).then((x) => x.json());
       if (r.error) throw new Error(r.error);
+      problem.hidden = true;
+      problem.replaceChildren();
       where.textContent = `${r.root}${r.path ? '/' + r.path : ''}`;
       const pick = (path) => {
         dlg.close();
@@ -1274,22 +1278,25 @@ export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
           .map((e) =>
             h(
               'li',
-              icon(e.dir ? 'folder' : 'file', 'dim'),
+              icon(e.outside ? 'link' : e.dir ? 'folder' : 'file', 'dim'),
               h('span.grow', e.name),
-              e.dir
-                ? [
-                    h('button.btn.sm', { type: 'button', 'aria-label': `Open ${e.name}`, onclick: () => load(e.path) }, 'Open'),
-                    folders ? h('button.btn.sm', { type: 'button', 'aria-label': `Add ${e.name}`, onclick: () => pick(e.path) }, 'Add') : null,
-                  ]
-                : h(
-                    'button.btn.sm',
-                    {
-                      type: 'button',
-                      'aria-label': `Attach ${e.name}`,
-                      onclick: () => pick(e.path),
-                    },
-                    'Attach',
-                  ),
+              // A link out of the project’s folder can’t be opened or picked, and says so (#28).
+              e.outside
+                ? h('span.small.dim', 'Link to outside the project')
+                : e.dir
+                  ? [
+                      h('button.btn.sm', { type: 'button', 'aria-label': `Open ${e.name}`, onclick: () => load(e.path) }, 'Open'),
+                      folders ? h('button.btn.sm', { type: 'button', 'aria-label': `Add ${e.name}`, onclick: () => pick(e.path) }, 'Add') : null,
+                    ]
+                  : h(
+                      'button.btn.sm',
+                      {
+                        type: 'button',
+                        'aria-label': `Attach ${e.name}`,
+                        onclick: () => pick(e.path),
+                      },
+                      'Attach',
+                    ),
             ),
           ),
         r.entries.some((e) => !folders || e.dir) ? null : h('li.empty-note', folders ? 'No folders in here.' : 'This folder is empty.'),
@@ -1298,14 +1305,19 @@ export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
       const buttons = listEl.querySelectorAll('button');
       if (dlg?.dialog.isConnected) /** @type {HTMLElement | undefined} */ (buttons[r.path && buttons.length > 1 ? 1 : 0])?.focus();
     } catch (e) {
-      listEl.replaceChildren(h('li.err', e.message));
+      // Nothing listed yet: the error takes the list’s place. Otherwise the list you were in stays.
+      if (!listEl.childElementCount) listEl.replaceChildren(h('li.err', e.message));
+      else {
+        problem.replaceChildren(icon('warn'), e.message);
+        problem.hidden = false;
+      }
     }
   };
   load('');
   const dlg = openDialog({
     title: folders ? 'Add a folder' : 'Attach from the project folder',
     sub: folders ? 'The agent may work in it from its next turn.' : 'Postbox attaches a reference; nothing is copied.',
-    body: [where, listEl],
+    body: [where, problem, listEl],
     size: 'lg',
   });
 }

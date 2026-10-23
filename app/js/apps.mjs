@@ -665,6 +665,8 @@ export function renderAppItem(item, ctx) {
               label: `v${ver.v}${ver.summary ? ` · ${ver.summary}` : ver.v === 1 ? ' · first version' : ''}`,
               desc: `${ago(ver.at)}${ver.v === app.current ? ' · current' + (app.state ? ' · your state carried over' : '') : ' · view read-only'}`,
               icon: ver.v === v ? 'check' : null,
+              // Opens on the version shown, scrolled into view among many (#36).
+              current: ver.v === v,
               run: () => {
                 if (ver.v === app.current) viewing.delete(app.id);
                 else viewing.set(app.id, ver.v);
@@ -672,7 +674,7 @@ export function renderAppItem(item, ctx) {
               },
             })),
           ],
-          { label: 'Versions' },
+          { label: 'Versions', className: 'versions' },
         ),
     },
     `v${app.current} · updated ${ago(last.at)}`,

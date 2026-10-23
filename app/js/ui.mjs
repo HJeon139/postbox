@@ -352,7 +352,8 @@ export function closeMenu() {
   openAnchor = null;
 }
 /**
- * A popover menu anchored to a button. items: [{ label, icon?, desc?, kbd?, danger?, run }] or 'hr' or { heading }.
+ * A popover menu anchored to a button. items: [{ label, icon?, desc?, kbd?, danger?, current?, run }] or 'hr' or
+ * { heading }. Focus starts on the item marked current, else on the first.
  */
 export function openMenu(anchor, items, { className = '', placement = 'below', label = 'Menu' } = {}) {
   // Clicking the menu’s own button again closes it, rather than closing and reopening it (#29).
@@ -397,10 +398,13 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
   document.body.append(menu);
   const r = anchor.getBoundingClientRect();
   const mw = Math.min(menu.offsetWidth, innerWidth - 16);
+  // It’s never taller than the window (its CSS max height) and scrolls inside, so it always fits (#36): it moves up
+  // or down as far as it must, and never starts above the window.
+  const mh = Math.min(menu.offsetHeight, innerHeight - 16);
   menu.style.position = 'fixed';
   menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - mw - 8))}px`;
-  if (placement === 'above') menu.style.bottom = `${innerHeight - r.top + 6}px`;
-  else menu.style.top = `${Math.min(r.bottom + 6, innerHeight - menu.offsetHeight - 8)}px`;
+  if (placement === 'above') menu.style.bottom = `${Math.max(8, Math.min(innerHeight - r.top + 6, innerHeight - mh - 8))}px`;
+  else menu.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - mh - 8))}px`;
   anchor.setAttribute('aria-expanded', 'true');
   let i = 0;
   const focus = (k) => {
@@ -410,7 +414,9 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
     });
     buttons[i]?.focus();
   };
-  focus(0);
+  // Focusing it scrolls it into view, in a menu long enough to scroll.
+  const current = items.filter((it) => it !== 'hr' && !it.heading).findIndex((it) => it.current);
+  focus(Math.max(0, current));
   const onKey = (e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();

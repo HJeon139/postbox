@@ -645,7 +645,9 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 
 /* ───────── Menus, popovers, toasts, dialogs, side panel ───────── */
 
-.menu { position: absolute; z-index: 40; min-width: 240px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+/* Never taller than the window: a long menu scrolls inside (#36), and its items keep their height. */
+.menu { position: absolute; z-index: 40; min-width: 240px; max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 1px; }
+.menu > * { flex-shrink: 0; }
 .menu .mi { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; color: var(--text); text-decoration: none; cursor: pointer; border: 1px solid transparent; }
 .menu .mi:hover, .menu .mi.active { border-color: var(--accent); background: var(--sunk); }
 .menu .mi .i { color: var(--dim); }
@@ -654,6 +656,9 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .menu .mi.danger .i, .menu .mi.danger { color: var(--alert-ink); }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 2px; }
 .menu .label { padding: 6px 8px 3px; }
+/* An app’s versions (#36): each summary is clipped to one line, so a long one doesn’t make the menu tall or wide. */
+.menu.versions { max-width: min(420px, calc(100vw - 16px)); }
+.menu.versions .mi .grow { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .toasts { position: fixed; z-index: 60; right: 16px; top: 60px; display: flex; flex-direction: column; gap: 8px; width: 340px; }
 .toasts.bottom { top: auto; bottom: 16px; left: 50%; right: auto; transform: translateX(-50%); width: auto; }
@@ -965,6 +970,8 @@ iframe.app-iframe { display: block; width: 100%; border: 0; background: var(--st
 
 /* The top bar’s Work button, while Work is open in the pane. */
 #work-button[aria-pressed="true"] { background: var(--panel); box-shadow: inset 0 -2px var(--accent); }
+/* On a phone its word is hidden, so it’s square, like the top bar’s other icon buttons. */
+@media (max-width: 767px) { #work-button { width: 26px; padding: 0; } }
 
 /* A command that didn’t say how it ended: a dashed circle, never a color alone (its words say it too). */
 .g-unknown { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6' stroke-dasharray='2.4 2.2'/></svg>"); }
