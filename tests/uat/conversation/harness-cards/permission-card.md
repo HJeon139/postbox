@@ -11,6 +11,7 @@ In ask mode (and when auto mode can’t decide) you approve exactly what will ru
 ## Expected functionality
 
 - Shows the exact command or file, wrapped so it’s fully visible. A subagent’s prompt names it: “Let @coder’s subagent (Explore) …”.
+- An MCP tool call names the tool, in its own case (`mcp__github__create_issue`, not uppercased with the card’s label), and shows its arguments. A Codex agent’s card reads “Let @critic use github tool create_issue?”, with the tool’s description and arguments, never “run a command” ([#150](https://github.com/HJeon139/postbox/issues/150)).
 - **Allow:** runs the call as asked.
 - **Always allow:** runs it, and keeps allowing calls like it. The card says the rule and where it’s saved before you click: “Always allow `Bash(npm test:*)` in this folder (.claude/settings.local.json)”. It isn’t offered when there’s nothing safe to save: the Agent SDK suggests nothing, or says the rule would grant more than this call, or the rule would be too long to keep (a command with a heredoc).
   - With the Agent SDK, the rule is Claude Code’s own suggestion. One it suggested for the session only is saved in the folder’s local settings instead (each Postbox turn is a new session), and the card says so.
@@ -23,7 +24,7 @@ In ask mode (and when auto mode can’t decide) you approve exactly what will ru
 
 ## Steps to reproduce
 
-1. Run `node tools/check-permissions.mjs`. It answers a card each way with real clicks and key presses, including a subagent’s prompt. Every line should say ok.
+1. Run `node tools/check-permissions.mjs`. It answers a card each way with real clicks and key presses, including a subagent’s prompt and a Codex MCP tool call. Every line should say ok.
 2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open. Scene 10 (“Clear the index cache”): answer Allow.
 3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. In a project whose folder you can lose, set an agent to Ask me and send: “Run `echo hi > note.txt` yourself, then have a general-purpose subagent run `echo bye > note2.txt`.”
 4. On the first card, choose Edit…, change the command to `echo edited > note.txt`, and allow it. On the subagent’s card, choose Always allow.

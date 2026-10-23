@@ -1063,7 +1063,7 @@ function permissionBlock(it, ctx) {
       'div.block-head',
       open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
       h('span.title.grow', { id: titleId }, `Let ${by} ${it.summary}?`),
-      h('span.kind', `Permission · ${it.tool}`),
+      h('span.kind', 'Permission · ', h('span.tool-name', it.tool)),
     ),
     h(
       'div.block-body',
@@ -1123,7 +1123,7 @@ function denialBlock(it, ctx) {
       'div.block-head',
       open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
       h('span.title.grow', { id: titleId }, `Refused: ${by} tried to ${it.summary.charAt(0).toLowerCase()}${it.summary.slice(1)}`),
-      h('span.kind', `Refused · ${it.tool}`),
+      h('span.kind', 'Refused · ', h('span.tool-name', it.tool)),
     ),
     h(
       'div.block-body',

@@ -114,9 +114,12 @@ export async function codexApproval(ctx, msg) {
   const p = msg.params ?? {};
   if (msg.method === 'mcpServer/elicitation/request') {
     const meta = p._meta ?? {};
-    if (meta.codex_approval_kind === 'mcp_tool_call') {
+    // A tool call is marked by its kind, or only by its message (“Allow the github MCP server to run tool
+    // “create_issue”?”): either way the card names the tool and shows its arguments, never a generic prompt (#150).
+    const named = /run tool ["“]([^"”]+)["”]/i.exec(String(p.message ?? ''))?.[1];
+    if (meta.codex_approval_kind === 'mcp_tool_call' || named) {
       const server = String(p.serverName ?? 'mcp').slice(0, 80);
-      const name = String(meta.tool_name ?? meta.toolName ?? /run tool ["“]([^"”]+)["”]/i.exec(p.message ?? '')?.[1] ?? 'tool').slice(0, 80);
+      const name = String(meta.tool_name ?? meta.toolName ?? named ?? 'tool').slice(0, 80);
       // Postbox tools only update the current conversation. Like the Agent SDK, let those run directly;
       // the MCP endpoint still validates every call and the UI actions are intentionally user-scoped.
       if (server === POSTBOX_SERVER) return { action: 'accept', content: {} };

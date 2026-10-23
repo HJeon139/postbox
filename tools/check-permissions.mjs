@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { codexApproval } from '../server/adapters/codex.mjs';
 import { start } from '../server/index.mjs';
 import { launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
@@ -216,6 +217,36 @@ await check('#66 a subagent’s prompt names the subagent', async () => {
   assert.match(await text(`${card('list the files')}.querySelector('.title')`), /Let @coder’s subagent \(Explore\) list the files\?/);
   await click(byText('.transcript .block-foot button', 'Allow'));
   assert.equal((await answered(6)).allow, true);
+});
+
+await check('#150 a Codex approval for an MCP tool names the tool and shows its arguments, with a title that reads cleanly', async () => {
+  const replies = [];
+  script.push(async (ctx) => {
+    // What Codex’s app-server sends before a third-party MCP call (server/adapters/codex.mjs).
+    const request = {
+      id: 91,
+      method: 'mcpServer/elicitation/request',
+      params: {
+        serverName: 'github',
+        message: 'Allow the github MCP server to run tool "create_issue"?',
+        _meta: { codex_approval_kind: 'mcp_tool_call', tool_description: 'Create a GitHub issue.', tool_params: { title: 'Glossary links break' } },
+      },
+    };
+    replies.push(await codexApproval(ctx, request));
+  });
+  rt.sendMessage(thread.id, { text: 'File the issue.' });
+  const summary = 'use github tool create_issue';
+  await page.waitFor(`!!(${card(summary)})?.querySelector('.block-foot')`, { label: 'the Codex MCP card' });
+  assert.equal(await text(`${card(summary)}.querySelector('.title')`), 'Let @coder use github tool create_issue?');
+  // The tool’s name keeps its case: the label around it is uppercase.
+  assert.equal(await text(`${card(summary)}.querySelector('.kind .tool-name')`), 'mcp__github__create_issue');
+  const detail = await text(`${card(summary)}.querySelector('.perm-detail')`);
+  assert.match(detail, /Create a GitHub issue\./);
+  assert.match(detail, /"title": "Glossary links break"/);
+  assert.doesNotMatch(await text(card(summary)), /run a command|Codex wants/);
+  await click(byText('.transcript .block-foot button', 'Allow'));
+  await until(() => replies.length && rt.turns.size === 0, 'the answer to reach Codex');
+  assert.deepEqual(replies[0], { action: 'accept', content: {} });
 });
 
 // ── The panel ───────────────────────────────────────────────────────────────────────────

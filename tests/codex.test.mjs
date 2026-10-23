@@ -120,6 +120,40 @@ test('Codex external MCP tool approvals show tool details and return elicitation
   assert.deepEqual(await codexApproval({ askPermission: async () => ({ allow: false }) }, request), { action: 'decline' });
 });
 
+test('a Codex MCP approval without its kind is still a tool call, named from its message, never a generic prompt (#150)', async () => {
+  let permission;
+  const answer = await codexApproval(
+    {
+      askPermission: async (req) => {
+        permission = req;
+        return { allow: true };
+      },
+    },
+    {
+      id: 46,
+      method: 'mcpServer/elicitation/request',
+      params: { serverName: 'github', message: 'Allow the github MCP server to run tool "create_issue"?', _meta: { tool_params: { title: 'Fix it' } } },
+    },
+  );
+  assert.deepEqual(answer, { action: 'accept', content: {} });
+  assert.equal(permission.tool, 'mcp__github__create_issue');
+  assert.equal(permission.summary, 'use github tool create_issue');
+  assert.match(permission.detail, /"title": "Fix it"/);
+  // Postbox’s own tools still run without a card when only the message names them.
+  let asked = false;
+  const own = await codexApproval(
+    {
+      askPermission: async () => {
+        asked = true;
+        return { allow: false };
+      },
+    },
+    { id: 47, method: 'mcpServer/elicitation/request', params: { serverName: 'postbox', message: 'Allow the postbox MCP server to run tool "define_term"?' } },
+  );
+  assert.deepEqual(own, { action: 'accept', content: {} });
+  assert.equal(asked, false);
+});
+
 test('the recorded app-server stream maps text and command activity to Postbox', () => {
   const calls = { text: '', activity: [], status: [] };
   const ctx = {
