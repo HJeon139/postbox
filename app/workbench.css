@@ -787,9 +787,8 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   .composer { padding: 8px 12px 10px; }
   .me-card { max-width: 92%; }
   .form-grid { grid-template-columns: 1fr; }
-  /* Under the top bar, so its Work button and ⋯ stay in reach while the pane covers the conversation, and under
-     menus and dialogs, which may open from inside it (#105). */
-  .rpane { width: 100%; border-left: 0; z-index: 38; }
+  /* Under the top bar, so its Work button and ⋯ stay in reach while the pane covers the conversation. */
+  .rpane { width: 100%; border-left: 0; }
   .has-panel .main { margin-right: 0; }
   .ov { padding: 14px 12px 32px; }
   .ov-grid { grid-template-columns: 1fr; }
