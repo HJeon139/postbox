@@ -22,7 +22,19 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { runShell } from './shell.mjs';
-import { agentWake, bumpSideLink, forkBusy, forkDone, forkFresh, forkNote, forkRetry, recordAgentMessage, resolveHop, sideSession } from './side-threads.mjs';
+import {
+  agentWake,
+  bumpSideLink,
+  forkBusy,
+  forkDone,
+  forkFresh,
+  forkNote,
+  forkRetry,
+  recordAgentMessage,
+  resolveHop,
+  sideSession,
+  wakeAgent,
+} from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { askForTool, resolveToolAsk } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
@@ -3886,9 +3898,7 @@ export class Runtime {
         const sc = rt.schedule(sessionId, { inMs: Math.round((+in_minutes || 1) * 60000), note });
         return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}.` };
       },
-      wake_agent({ handle, message }) {
-        return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
-      },
+      wake_agent: (args) => wakeAgent(rt, sessionId, args),
       read_conversation(args = {}) {
         try {
           return { ok: true, message: rt.readConversation(se(), args) };

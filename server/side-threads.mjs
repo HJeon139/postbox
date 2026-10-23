@@ -84,6 +84,11 @@ export function agentWake(rt, fromSessionId, handle, text, { confirmed = false }
   return { ok: true, message: target.forkOf?.busy ? `Woke @${p.handle}: its session was busy, so a fork of it answers.` : `Woke @${p.handle}.` };
 }
 
+/** wake_agent { handle, message }, the tool, for the session rt.toolsFor made it for. */
+export function wakeAgent(rt, sessionId, { handle, message }) {
+  return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
+}
+
 /**
  * Who answers for a persona in a side thread (#110): one session per persona per conversation. That’s its session in
  * the conversation, which joins it if it isn’t there yet. Only while that session is mid-turn (or archived) does a fork
