@@ -420,7 +420,7 @@ flowchart LR
 
 **How a ceiling moves**
 - **Down:** a change that shrinks an offender lowers its ceilings to the new sizes in the same change, and removes the override once the file is under the default. No check enforces this yet, so the reviewer does.
-- **Never up in the change that tripped it** (developing.md, “Lint and type-check exceptions”). A file that needs to grow is split first.
-- **Test files too** (decided by the person, 23 October 2026). A test for code whose test file is at its ceiling goes in a new test file, named for what it tests, rather than raising the ceiling. A split that needs a design, as `server/runtime.mjs` does (which module owns which of its state), is decided in this document before its code moves.
+- **Never up in the change that tripped it** (developing.md, “Lint and type-check exceptions”). A file that needs to grow is split first. A split that needs a design, as `server/runtime.mjs` does (which module owns which of its state), is decided in this document before its code moves.
+- **Test files too** (decided by the person, 23 October 2026). A test for code whose test file is at its ceiling goes in a new test file rather than raising the ceiling. The new file is named for the module and the concern, `tests/<module>-<concern>.test.mjs`, such as `tests/runtime-jobs.test.mjs` (developing.md, “Modules”). It must end in `.test.mjs`: `npm test` runs only `tests/*.test.mjs`, so a file named anything else runs nowhere and passes.
 
 **Revisit when** the overrides are gone, or ceilings left loose after a file shrank become common: then a test that each ceiling equals its file’s size makes the lowering automatic.

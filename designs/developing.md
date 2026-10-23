@@ -143,7 +143,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 
 **A circular import means a missing module.** The shared value belongs in a third module that neither imports back, which is usually `shared/`.
 
-**Each test file is named for what it tests**: `tests/store.test.mjs` for `server/store.mjs`, so a reader finds a module’s tests on the first guess.
+**Each test file is named for what it tests**: `tests/store.test.mjs` for `server/store.mjs`, so a reader finds a module’s tests on the first guess. When a module’s test file is at its length ceiling, new tests go in `tests/<module>-<concern>.test.mjs`, such as `tests/runtime-jobs.test.mjs`, so a search for `runtime` still finds them (architecture.md, “Module and function size”). Every test file ends in `.test.mjs`, or `npm test` never runs it.
 
 **`app/kit/vendor/` is never edited.** Mermaid, KaTeX and D3 are vendored with their licenses. A fix to one is an upgrade of the whole file.
 
