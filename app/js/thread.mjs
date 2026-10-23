@@ -604,7 +604,8 @@ function activityLabel(all) {
 }
 
 // One step in an agent’s activity list: a tool call (the agent’s or a subagent’s), or a thought, which opens
-// to its whole text. A failed step says why; a refused one points to its card.
+// to its whole text. A failed step says why; a refused one says why too when its backend does (the Kiro and
+// Antigravity CLIs refuse headless, with no card: #152), and otherwise points to its card.
 const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done' };
 function stepRow(s) {
   const dur = h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : '');
@@ -615,7 +616,7 @@ function stepRow(s) {
       h('details.step-text', h('summary', s.label), s.detail && s.detail !== s.label ? h('p', s.detail) : null),
       dur,
     );
-  const note = s.state === 'denied' ? 'Refused: see the card below.' : s.state === 'failed' ? s.detail : null;
+  const note = s.state === 'denied' ? s.detail || 'Refused: see the card below.' : s.state === 'failed' ? s.detail : null;
   return h(
     'li',
     { class: s.state === 'denied' ? 'denied' : '' },

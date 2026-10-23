@@ -54,6 +54,8 @@ const HEADLESS_PERMISSIONS = /** @type {Record<string, Record<string, string>>} 
     acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
   },
 });
+/** The effort an Antigravity model id names (gemini-3.8-flash-high runs at high), or null (server/adapters/antigravity-cli.mjs). */
+const effortNamedBy = (backend, model) => (backend === 'antigravity-cli' ? (/-(low|medium|high)$/.exec(String(model ?? ''))?.[1] ?? null) : null);
 /** What a permission mode means on a backend: its own words where it reads the modes differently. */
 export const modeHelp = (backend, [id, , help]) => HEADLESS_PERMISSIONS[backend]?.[id] ?? help;
 export const defaultBackend = () => BACKENDS.map(([id]) => id).find((id) => (client.config.adapters ?? []).includes(id)) ?? 'mock';
@@ -235,6 +237,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
                   const offered = capsOf(id).models;
                   if (id !== 'mock' && (!st.model || st.model === 'mock' || (offered && !offered.includes(st.model))))
                     st.model = offered?.[0] ?? client.config.defaultModel ?? MODELS[0];
+                  st.effort = effortNamedBy(id, st.model) ?? st.effort;
                   paint();
                 },
               },
@@ -261,6 +264,15 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
             spellcheck: 'false',
             oninput: (e) => {
               st.model = e.target.value.trim();
+            },
+            // A model that names its effort runs at it, so Effort follows (the Gemini room UAT: Medium beside
+            // gemini-3.8-flash-high read as a contradiction).
+            onchange: () => {
+              const named = effortNamedBy(st.backend, st.model);
+              if (named && named !== st.effort) {
+                st.effort = named;
+                paint();
+              }
             },
           }),
           h(
