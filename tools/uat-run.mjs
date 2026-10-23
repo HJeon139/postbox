@@ -162,6 +162,9 @@ async function main() {
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
+  // The workspace is a git repository of its own. It lies inside the Postbox checkout, so without one an agent’s
+  // git add and commit would land in Postbox’s history; a workroom agent had to notice and make a nested repo.
+  spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -259,6 +262,13 @@ async function main() {
   server.stderr.on('data', (d) => log(`postbox (stderr): ${String(d).trim()}`));
   let exited = null;
   server.on('exit', (code) => (exited = code));
+  // Stopping the run stops its Postbox too, and with it the agents' turns: an orphaned server keeps agents running,
+  // and spending, after the run is gone.
+  for (const sig of ['SIGINT', 'SIGTERM'])
+    process.once(sig, () => {
+      if (exited === null) server.kill('SIGTERM');
+      process.exit(130);
+    });
   const api = async (p) => {
     if (exited !== null) throw new Error(`Postbox exited (code ${exited}); see run.log.`);
     return (await fetch(origin + p)).json();
@@ -582,6 +592,7 @@ async function main() {
           await d.stopAll();
           actionResult = 'Pressed Stop on the active reply.';
         } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
+        else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
         else if (a.type === 'act' || a.type === 'review') {
           // An answer is for the revision the tester read. If the block changed while it decided, a person would see
           // it change: say so instead of answering text it didn’t read. Otherwise note the revision it answers, so a

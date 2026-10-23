@@ -141,6 +141,13 @@ export function driver(page) {
       await press('Enter');
     },
 
+    /** Replies in the thread panel that’s open, to whoever is in that thread: messages inside the panel have no “Reply in thread”. */
+    async replyInOpenThread(text) {
+      if (!(await ev(`!!document.getElementById('side-input')`))) throw new Error('No thread is open in the right pane: open one with thread first.');
+      await typeInto(`document.getElementById('side-input')`, text, 'the thread reply box');
+      await press('Enter');
+    },
+
     /** Fills fields, picks options and presses a button inside one item (a block or a card). */
     async act(key, { fills = [], choose = [], button = null } = {}) {
       for (const { field, value } of fills) {
@@ -158,7 +165,8 @@ export function driver(page) {
         else await typeInto(control, String(value), `the field “${field}”`);
       }
       for (const option of choose) await clickAt(byText(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
-      if (button) await clickAt(byText(ITEM(key), 'button', button), `the button “${button}”`);
+      // A control may be a link, such as a reply’s work line (“2 files +112 −0”), which opens the Work pane.
+      if (button) await clickAt(byText(ITEM(key), 'button, a[href], [role=button]', button), `the button “${button}”`);
     },
 
     /**

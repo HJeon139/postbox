@@ -106,6 +106,7 @@ export const SCHEMA = {
             'send',
             'send_then_stop',
             'thread',
+            'thread_reply',
             'act',
             'review',
             'settings',
@@ -124,7 +125,7 @@ export const SCHEMA = {
             'done',
           ],
         },
-        text: { type: 'string', description: 'send, send_then_stop, thread, attach_screenshot: the message to write.' },
+        text: { type: 'string', description: 'send, send_then_stop, thread, thread_reply, attach_screenshot: the message to write.' },
         item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
         choose: { type: 'array', items: { type: 'string' } },
@@ -193,7 +194,8 @@ ${issues.map((i) => `#${i.number} ${i.title}`).join('\n') || '(none listed)'}
 Then choose one action:
 - send {text}: a message in the conversation. To talk to an agent, write its handle with the @, as in “@critic, what’s your biggest concern?”. “critic: …” or the bare name isn’t addressing: a message that @-mentions no agent goes to whichever agent spoke last.
 - send_then_stop {text, seconds?}: send a message, wait that many seconds (default 2), then press Stop on the active reply. Use this for a deliberate cancellation check.
-- thread {item, text}: reply in a topic thread on that message.
+- thread {item, text}: reply in a topic thread on that message, which opens it in the right pane.
+- thread_reply {text}: reply in the thread that’s open in the right pane. Messages inside the pane have no “Reply in thread” of their own.
 - act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text. A wake request (“Let @a wake @b?”) is a card: allow it or not with its button.
 - review {item, verdict, comments}: answer a review block. Approve only what you’d sign off as it is. Otherwise request changes, with at least one comment on a line saying what to change; comment, with comments, when you only have questions.
 - settings {target, permissions?}: open Settings › Personas and edit that agent (target is its handle), to see what it runs on, its model, permissions and setup; with permissions, also open its permissions panel. You get what they say and their screenshots; they close after.
