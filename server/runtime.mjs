@@ -508,7 +508,8 @@ export class Runtime {
       },
       /**
        * A background job the agent started (#129): { id, toolUseId, label, command, outputFile, state: 'running' }, then
-       * { id, state: 'done' | 'failed' | 'stopped' } when it ends, or { id, kept: true, pgid } when Stop kept it running.
+       * { id, state: 'done' | 'failed' | 'stopped' } when it ends, or { id, kept: true, pgid, groups } when Stop kept it
+       * running: groups are the process groups it may be in, with their leaders' command lines (#164).
        * Taken after the turn ends too, since a job outlives its turn.
        */
       job(j) {
@@ -939,12 +940,16 @@ export class Runtime {
       this.updateSession(se.id, { jobs: drop ? all.filter((x) => x !== drop) : all });
       return;
     }
-    if (j.kept === true && Number.isInteger(j.pgid) && j.pgid > 1) {
-      this.updateSession(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: j.pgid } : x)) });
+    const groups = j.kept === true ? keptGroupsOf(j) : [];
+    if (groups.length) {
+      this.updateSession(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: groups[0].pgid, groups } : x)) });
+      // Postbox couldn’t tell which of the turn’s processes was the job, so it kept them all (#164): say so.
+      const unsure = groups.length > 1 ? keepUnsure(groups.length) : null;
+      if (unsure) this.setJobStep(old, { detail: unsure });
       // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running.
       this.tellAgent(
         se.id,
-        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: the person kept it running when your last turn was stopped.${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation.`,
+        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: the person kept it running when your last turn was stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation.`,
       );
       this.watchKept();
       return;
@@ -969,7 +974,8 @@ export class Runtime {
       clearInterval(this.keptPoll);
       this.keptPoll = null;
     }
-    this.setJobStep(job, { state: STEP_STATES.has(state) ? state : 'done', ms: Date.now() - job.startedAt, ...(detail ? { detail } : {}) });
+    // A kept job’s step loses what it said while running (keepUnsure); another’s keeps why its CLI said it failed.
+    this.setJobStep(job, { state: STEP_STATES.has(state) ? state : 'done', ms: Date.now() - job.startedAt, ...(detail || job.kept ? { detail } : {}) });
     // A job Postbox kept running ended after its CLI had gone, so the agent hears it on its next turn.
     if (job.kept)
       this.tellAgent(
@@ -1003,7 +1009,7 @@ export class Runtime {
 
   /** The kept jobs, everywhere. */
   keptJobs() {
-    return Object.values(this.s.sessions).flatMap((se) => (se.jobs ?? []).filter((j) => j.kept && j.pgid));
+    return Object.values(this.s.sessions).flatMap((se) => (se.jobs ?? []).filter((j) => j.kept && keptGroupsOf(j).length));
   }
 
   /** Checks on the jobs Postbox kept running, until none is left: one whose process group is gone has ended. */
@@ -1016,7 +1022,7 @@ export class Runtime {
     if (!this.keptJobs().length) return;
     const procs = await this.listProcesses().catch(() => null);
     if (!procs) return;
-    for (const j of this.keptJobs()) if (!keptAlive(j, procs)) this.endJob(j.sessionId, j.id, 'done');
+    for (const j of this.keptJobs()) if (!liveGroups(j, procs).length) this.endJob(j.sessionId, j.id, 'done');
     if (!this.keptJobs().length && this.keptPoll) {
       clearInterval(this.keptPoll);
       this.keptPoll = null;
@@ -1029,7 +1035,7 @@ export class Runtime {
     if (!jobs.length) return;
     const procs = await this.listProcesses().catch(() => []);
     for (const j of jobs) {
-      if (keptAlive(j, procs)) stopPgid(j.pgid, { kill: this.signalProcess });
+      for (const g of liveGroups(j, procs)) stopPgid(g.pgid, { kill: this.signalProcess });
       this.endJob(j.sessionId, j.id, 'stopped', why);
     }
   }
@@ -1043,8 +1049,8 @@ export class Runtime {
     const job = (se.jobs ?? []).find((j) => j.id === jobId);
     if (!job) throw httpError(409, 'That background job already ended.');
     if (job.kept) {
-      // Only if its group is still the job’s: one that ended may have left its id to another process.
-      if (keptAlive(job, await this.listProcesses().catch(() => []))) stopPgid(job.pgid, { kill: this.signalProcess });
+      // Only the groups still the job’s: one that ended may have left its id to another process.
+      for (const g of liveGroups(job, await this.listProcesses().catch(() => []))) stopPgid(g.pgid, { kill: this.signalProcess });
       this.endJob(sessionId, jobId, 'stopped', null, { by: 'you' });
       return { ok: true };
     }
@@ -3337,17 +3343,39 @@ function stampSteps(item, block, now) {
 export function stopAskText(handle, n) {
   return `@${handle} has ${n === 1 ? '1 background job' : `${n} background jobs`} running. Stop ${n === 1 ? 'it' : 'them'} too?`;
 }
-const KEEP_LOST = 'Postbox couldn’t find its process to keep it running, so it stopped with the agent.';
+// Postbox never kills a job you kept (#164), but one with no process left under its agent couldn’t be kept either.
+const KEEP_LOST = 'Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.';
+/** What the person and the agent are told when Postbox couldn’t tell which of a turn’s processes a kept job was (#164). */
+const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is this job, so it kept them all running; stopping the job stops them all.`;
 
 /**
- * Whether a kept job’s process group is still the job’s: something is in it, and its leader, if still there, runs the
- * job’s command. A group can’t lose its id while anything is in it, but once it’s empty the id can go to another.
- * @param {{ pgid: number, command: string }} job @param {import('./adapters/process-group.mjs').Proc[]} procs
+ * A kept job’s process groups, with their leaders’ command lines when it was kept (#164). A job kept before those were
+ * recorded has only its pgid. Bounded and checked: these come from an adapter, or from saved state.
+ * @param {{ pgid?: unknown, groups?: unknown }} job
+ * @returns {{ pgid: number, command: string|null }[]}
  */
-function keptAlive(job, procs) {
-  const members = procs.filter((p) => p.pgid === job.pgid);
-  const leader = members.find((p) => p.pid === job.pgid);
-  return members.length > 0 && (!leader || runsCommand(leader, job.command));
+function keptGroupsOf(job) {
+  const ok = (n) => Number.isInteger(n) && n > 1;
+  if (Array.isArray(job.groups))
+    return job.groups
+      .filter((g) => ok(g?.pgid))
+      .slice(0, 20)
+      .map((g) => ({ pgid: g.pgid, command: typeof g.command === 'string' ? g.command.slice(0, 8000) : null }));
+  return ok(job.pgid) ? [{ pgid: /** @type {number} */ (job.pgid), command: null }] : [];
+}
+
+/**
+ * A kept job’s groups that are still its own: something is in them, and the leader, if still there, is the process it
+ * was when the job was kept (or, for a job from before that was recorded, runs the job’s command). A group can’t lose
+ * its id while anything is in it, but once it’s empty the id can go to another.
+ * @param {{ pgid?: number, groups?: unknown, command: string }} job @param {import('./adapters/process-group.mjs').Proc[]} procs
+ */
+function liveGroups(job, procs) {
+  return keptGroupsOf(job).filter((g) => {
+    const members = procs.filter((p) => p.pgid === g.pgid);
+    const leader = members.find((p) => p.pid === g.pgid);
+    return members.length > 0 && (!leader || (g.command !== null ? leader.command === g.command : runsCommand(leader, job.command)));
+  });
 }
 
 export function httpError(status, message) {

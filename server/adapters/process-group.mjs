@@ -8,6 +8,10 @@
 // So Stop sends SIGINT to the group, and if the CLI hasn’t exited after the grace period, SIGKILL to the group and to
 // every tool shell’s group it had. To keep a background job running, the CLI gets SIGKILL at once, since its SIGINT
 // handler would stop the job, and the job’s group is kept so Postbox can stop it later.
+//
+// A job to keep is found by what its shell runs (runsCommand), which isn’t always the command Claude Code was given: it
+// applies a leading `cd <dir> &&` itself, for one (#164). A job Postbox still can’t tell apart is never killed: the shells
+// it might be stay running with it, so the person’s choice to keep it holds, and its own Stop stops them all.
 
 import { execFile } from 'node:child_process';
 
@@ -60,13 +64,34 @@ export function shellGroups(procs, pgid) {
 }
 
 /**
- * Whether a tool shell runs this command. Claude Code wraps a Bash call as `$SHELL -c '… eval <command quoted> < /dev/null
- * && pwd -P >| …'`, quoting a ' inside it as '"'"' (recorded in the pull request for #126); '\'' is the other usual form.
+ * What a tool shell runs, or null for a process that isn’t one. Claude Code wraps a Bash call as `$SHELL -c '… eval
+ * <command quoted> < /dev/null && pwd -P >| …'`, quoting a ' inside it as '"'"' (recorded in the pull request for #126);
+ * '\'' is the other usual form.
+ * @param {string} line  the shell’s command line, as ps shows it
+ */
+export function evalOf(line) {
+  const m = /\beval '((?:[^']|'"'"'|'\\'')*)'/.exec(String(line ?? ''));
+  // In one pass, as the match read it: undoing one style, then the other, would turn the command '\'' into '.
+  return m ? m[1].replace(/'"'"'|'\\''/g, "'") : null;
+}
+
+/** A command as it runs: without the leading `cd <dir> &&` that Claude Code applies itself (#164), and its whitespace. */
+const bare = (command) => {
+  let c = String(command ?? '').trim();
+  for (let m; (m = /^cd\s+(?:'[^']*'|"[^"]*"|\S+)\s*&&\s*/.exec(c)); ) c = c.slice(m[0].length);
+  return c.replace(/\s+/g, ' ');
+};
+
+/**
+ * Whether a tool shell runs this command: what it evals is the command, give or take a leading `cd <dir> &&` and
+ * whitespace. No looser: a job that matches no shell is kept with all of them, but one that matches the wrong shell
+ * leaves its own to be killed as a foreground call.
+ * @param {Proc} shell @param {string} command
  */
 export function runsCommand(shell, command) {
-  const c = String(command ?? '');
-  if (!c) return false;
-  return [`eval '${c.replaceAll("'", `'"'"'`)}'`, `eval '${c.replaceAll("'", `'\\''`)}'`].some((q) => shell.command.includes(q));
+  const ran = evalOf(shell.command);
+  const want = bare(command);
+  return ran !== null && want !== '' && bare(ran) === want;
 }
 
 /** Signals a process group; a child without a pid (a test’s fake) gets the signal itself. */
@@ -97,36 +122,50 @@ export function signalPgid(pgid, signal, kill = process.kill) {
 }
 
 /**
+ * A kept job’s process group, with its leader’s command line when it was kept: a later check that the group is still
+ * the job’s compares that, not the job’s command, which may not match it (#164).
+ * @typedef {{ pgid: number, command: string }} KeptGroup
+ */
+
+/**
  * Stops one turn’s CLI and everything it started. Resolves once the signals are sent with the background jobs it kept,
- * [{ id, pgid }], and `gone`, which resolves once the CLI’s whole group has exited. That’s later than the spawned process
- * when it’s a launcher: a shim can exit on SIGINT while the CLI under it, in the same group, runs on (#126), so the
- * group gets SIGKILL after the grace period unless it’s empty by then. A job to keep whose shell can’t be found isn’t
- * kept: everything stops, as for a plain Stop, and the job is left out of kept.
+ * [{ id, pgid, groups }], and `gone`, which resolves once the CLI’s whole group has exited. That’s later than the spawned
+ * process when it’s a launcher: a shim can exit on SIGINT while the CLI under it, in the same group, runs on (#126), so
+ * the group gets SIGKILL after the grace period unless it’s empty by then.
+ *
+ * With jobs to keep, the CLI gets SIGKILL at once whatever happens, since its SIGINT would stop them. A job whose shell
+ * runsCommand finds is kept in that shell’s group. One it can’t find is never killed (#164): every other tool shell may
+ * be it, so they’re all kept as its groups, and the shells that are kept jobs’ own are the only ones known not to be. A
+ * job with no tool shell left at all isn’t in kept.
  * @param {any} child  the CLI, as spawned (detached)
  * @param {{ keep?: { id: string, command: string }[], exited: Promise<any>, graceMs?: number, pollMs?: number, kill?: KillFn,
  *           list?: () => Promise<Proc[]> }} opts  exited: resolves when the spawned process has exited
- * @returns {Promise<{ kept: { id: string, pgid: number }[], gone: Promise<void> }>}
+ * @returns {Promise<{ kept: { id: string, pgid: number, groups: KeptGroup[] }[], gone: Promise<void> }>}
  */
 export async function stopTurn(child, { keep = [], exited, graceMs = GRACE_MS, pollMs = 100, kill = process.kill, list = listProcesses }) {
   const pid = child?.pid;
   const shells = pid ? shellGroups(await list().catch(() => []), pid) : [];
-  /** @type {{ id: string, pgid: number }[]} */
-  let kept = [];
+  /** @type {{ id: string, pgid: number, groups: KeptGroup[] }[]} */
+  const kept = [];
   if (keep.length) {
     const used = new Set();
     const found = keep.map((j) => {
       const s = shells.find((x) => !used.has(x.pgid) && runsCommand(x, j.command));
       if (s) used.add(s.pgid);
-      return { id: j.id, pgid: s?.pgid ?? null };
+      return { id: j.id, shell: s ?? null };
     });
-    if (found.every((f) => f.pgid !== null)) {
-      kept = /** @type {{ id: string, pgid: number }[]} */ (found);
-      signalGroup(child, 'SIGKILL', kill);
-      for (const s of shells) if (!used.has(s.pgid)) signalPgid(s.pgid, 'SIGKILL', kill);
+    /** @param {Proc} s @returns {KeptGroup} */
+    const group = (s) => ({ pgid: s.pgid, command: s.command });
+    const rest = shells.filter((s) => !used.has(s.pgid)).map(group);
+    for (const f of found) {
+      if (f.shell) kept.push({ id: f.id, pgid: f.shell.pgid, groups: [group(f.shell)] });
+      else if (rest.length) kept.push({ id: f.id, pgid: rest[0].pgid, groups: rest });
     }
-  }
-  if (!kept.length) signalGroup(child, 'SIGINT', kill);
-  const others = shells.filter((s) => !kept.some((k) => k.pgid === s.pgid));
+    signalGroup(child, 'SIGKILL', kill);
+    // The other tool shells are the turn’s foreground calls, once every job is found; otherwise they may be a job.
+    if (found.every((f) => f.shell)) for (const s of rest) signalPgid(s.pgid, 'SIGKILL', kill);
+  } else signalGroup(child, 'SIGINT', kill);
+  const others = shells.filter((s) => !kept.some((k) => k.groups.some((g) => g.pgid === s.pgid)));
   // A fake child in a test has no pid: it’s gone when it has exited.
   if (!pid) return { kept, gone: exited.then(() => {}) };
   // Its timers hold Postbox open until the group is gone, at most graceMs + 5 s: a stop in progress should finish.

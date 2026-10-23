@@ -230,7 +230,7 @@ export class ClaudeCodeAdapter {
       const onAbort = () => {
         const keep = Array.isArray(ctx.signal.reason?.keepJobs) ? ctx.signal.reason.keepJobs : [];
         stopping = stopTurn(child, { keep, exited, ...procs }).then((r) => {
-          for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid });
+          for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid, groups: k.groups });
           return r;
         });
       };
