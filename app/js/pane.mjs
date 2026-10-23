@@ -2,12 +2,14 @@
 // they split it, Work above and the thread below, so the thread’s composer stays at the foot of the window beside the
 // conversation’s; the divider between them moves by mouse or keyboard, and its place is kept in this browser. What’s
 // open comes from the address (route() in ui.mjs), so a reload restores it, and either view goes full screen from
-// here: one contract for a pane view, a compact form in the pane and a full form over the window.
+// here: one contract for a pane view, a compact form in the pane and a full form over the window. Where the window
+// has no room for the pane beside the conversation, the view opened last opens full screen instead (#197).
 
 import { h, icon } from './dom.mjs';
 import { mountDivider } from './pane-split.mjs';
+import { mountWidth } from './pane-width.mjs';
 import { mountSidePanel } from './thread.mjs';
-import { setPaneFull } from './ui.mjs';
+import { navigate, paneHref, rememberWork, route, setPaneFull } from './ui.mjs';
 import { mountWorkPane } from './work.mjs';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])';
@@ -23,14 +25,23 @@ export function mountPane(convId) {
   /** @type {any} */
   let work = null;
   let lastTurn = null;
+  /** The view opened last, which opens full screen where the pane can’t sit beside the conversation. */
+  let latest = null;
 
   const divider = mountDivider(el);
+  const width = mountWidth(el, () => set(route()));
+  /** Back to the conversation, where it has no room for the pane beside it: what’s open there closes. */
+  const closeAll = () => {
+    rememberWork(convId, false);
+    navigate(paneHref(convId), { replace: true });
+  };
 
   // ── Full screen ───────────────────────────────────────────────────────────────────────
   // Either view goes full screen with the app frames’ icon (#45) in its head. It isn’t moved or rebuilt: the view
   // itself is fixed over the window (class pane-full), so a thread keeps its draft, where it was scrolled, and a
   // reply that’s streaming; Work swaps its compact form for its full one. It’s a dialog while it lasts: Tab stays in
-  // it, and Escape or the icon (now “Exit full screen”) brings it back to the pane, with focus on what opened it.
+  // it, and Escape or the icon (now “Exit full screen”) brings it back to the pane, with focus on what opened it, or,
+  // where the window has no room for the pane, back to the conversation.
 
   /** @type {'work' | 'thread' | null} */
   let fullKind = null;
@@ -46,7 +57,8 @@ export function mountPane(convId) {
     if (e.target instanceof Element && e.target.closest('.menu')) return;
     if (e.key === 'Escape') {
       e.preventDefault();
-      setPaneFull(null);
+      if (width.cramped()) closeAll();
+      else setPaneFull(null);
     }
     if (e.key === 'Tab') {
       const f = [...v.el.querySelectorAll(FOCUSABLE)].filter((x) => !x.disabled && x.offsetParent !== null);
@@ -100,7 +112,7 @@ export function mountPane(convId) {
     if (focus) (back instanceof HTMLElement && back.offsetParent ? back : v.fullBtn).focus();
   }
   /** The icon in a view’s head: full screen, or back to the pane. */
-  const fullToggle = (kind) => () => setPaneFull(fullKind === kind ? null : kind);
+  const fullToggle = (kind) => () => (fullKind === kind && width.cramped() ? closeAll() : setPaneFull(fullKind === kind ? null : kind));
 
   // ── What’s open ───────────────────────────────────────────────────────────────────────
 
@@ -108,10 +120,15 @@ export function mountPane(convId) {
     const had = el.contains(document.activeElement);
     const closing = { work: !!work && !r.work, thread: thread && thread.id !== (r.sideId ?? null) ? thread.id : null };
     const sideId = r.sideId ?? null;
+    if (sideId && sideId !== thread?.id) latest = 'thread';
+    else if (r.work && !work) latest = 'work';
+    // What’s full screen: what the address says, else, where the pane has no room, the view opened last (#197).
+    const cover = sideId && (!r.work || latest === 'thread') ? 'thread' : r.work ? 'work' : null;
+    const full = r.full ?? (width.cramped() ? cover : null);
     // A view leaving full screen goes back first, so it’s in the pane when it closes or another view goes full.
     // Focus goes back to its icon only if it stays open.
     const stays = fullKind === 'thread' ? thread?.id === sideId : !!r.work;
-    if (fullKind && (fullKind !== r.full || !stays)) leaveFull({ focus: stays && !r.full });
+    if (fullKind && (fullKind !== full || !stays)) leaveFull({ focus: stays && !full });
     // The thread.
     if ((thread?.id ?? null) !== sideId) {
       const next = sideId ? mountSidePanel(convId, sideId) : null;
@@ -151,6 +168,7 @@ export function mountPane(convId) {
     el.classList.toggle('split', both);
     el.hidden = !work && !thread;
     el.parentElement?.classList.toggle('has-panel', !el.hidden);
+    width.update();
 
     // Focus lost with a view that closed goes to what opens it: Work’s button, a thread’s line, else the conversation.
     // Focus given back outside the pane, as to the turn’s list row that opened Work full screen (#195), stays there.
@@ -162,9 +180,9 @@ export function mountPane(convId) {
     }
 
     // Full screen: Work on a turn or at an item, or the thread.
-    if (r.full && viewOf(r.full)) enterFull(r.full, r);
+    if (full && viewOf(full)) enterFull(full, r);
     // From a turn’s line: the pane scrolls to that turn, and focus goes to it.
-    if (work && r.full !== 'work') {
+    if (work && full !== 'work') {
       if (r.turn && (r.turn !== lastTurn || again)) work.showTurn(r.turn, { focus: true });
       else if (again && !r.turn) work.focus();
       lastTurn = r.turn;
@@ -176,6 +194,7 @@ export function mountPane(convId) {
     set,
     destroy() {
       leaveFull({ focus: false });
+      width.destroy();
       thread?.view.destroy();
       work?.destroy();
     },

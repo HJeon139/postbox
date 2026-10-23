@@ -20,4 +20,6 @@ export function toggleRail() {
     b.setAttribute('aria-label', hide ? 'Show the sidebar' : 'Hide the sidebar');
     b.setAttribute('aria-pressed', String(!hide));
   }
+  // The right pane takes the room it leaves, or gives it back (pane-width.mjs).
+  dispatchEvent(new Event('pb-rail'));
 }
