@@ -246,6 +246,9 @@ async function main() {
   // What the agents ran on, for the report: a fast run’s findings about agent choices aren’t the default model’s.
   const agentModels = agents.map((p) => `@${p.handle} ${p.model ?? 'its default model'}${p.effort ? `, ${p.effort} effort` : ''}`).join('; ');
   log(`Agents: ${agentModels}.`);
+  // The effort the scenario’s Claude agents run at, for run.json: a `- models: persona` run keeps each persona’s own.
+  const efforts = [...new Set(agents.filter((p) => scenario.agents.includes(p.handle) && !scenario.backends[p.handle]).map((p) => p.effort ?? null))];
+  const agentEffort = efforts.length > 1 ? efforts.map((e) => e ?? 'default').join('/') : (efforts[0] ?? null);
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,
     env: {
@@ -289,6 +292,7 @@ async function main() {
   const timeline = [];
   const facts = {
     agentModels,
+    agentEffort,
     state: null,
     threads: [],
     startPersonas: [],

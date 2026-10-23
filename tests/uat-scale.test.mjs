@@ -330,7 +330,7 @@ describe('run folders that outlive worktrees', () => {
   });
 
   test('run.json says what a refit needs; a run without one is read from its report, findings and streams', () => {
-    const rec = runRecord({
+    const rec0 = {
       root: '/r',
       dir: '/runs/2026-10-23T04-30-34-p0',
       scenario: read('p0'),
@@ -353,7 +353,8 @@ describe('run folders that outlive worktrees', () => {
       },
       coverage: [],
       git: (args) => (args.includes('--abbrev-ref') ? 'uat-scale' : 'abc123'),
-    });
+    };
+    const rec = runRecord(rec0);
     assert.deepEqual(rec, {
       run: '2026-10-23T04-30-34-p0',
       scenario: 'p0',
@@ -380,6 +381,23 @@ describe('run folders that outlive worktrees', () => {
       agentEffort: null,
     });
     assert.equal(streamModel([{ events: [{ type: 'system', subtype: 'init', model: 'a' }] }, { events: [] }]), 'a');
+    // The report's own line, as the runner writes it, gives the first agent's model and effort.
+    const usage = 'Run on 2026-10-23 07:11, 14 min, 15 steps. Usage: agents $0.96, tester $11.92.';
+    assert.deepEqual(reportFacts(`${usage} Agents: @researcher claude-haiku-5-5, low effort; @critic claude-haiku-5-5, low effort.`), {
+      minutes: 14,
+      steps: 15,
+      agentsUsd: 0.96,
+      kiroCredits: null,
+      testerUsd: 11.92,
+      agentModel: 'claude-haiku-5-5',
+      agentEffort: 'low',
+    });
+    assert.equal(reportFacts(`${usage} Agents: @researcher its default model.`).agentModel, null);
+    // A `- models: persona` run records the effort its agents were seeded with, not the runner's --agent-effort.
+    const persona = (agentEffort) => runRecord({ ...rec0, facts: { streams: [], agentEffort } }).agents.effort;
+    assert.equal(persona('high'), 'high');
+    assert.equal(persona('high/default'), 'high/default');
+    assert.equal(persona(null), null);
     const root = tmp();
     try {
       const dir = join(root, '2026-10-22T01-02-09-hotpotqa');

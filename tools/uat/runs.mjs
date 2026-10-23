@@ -94,21 +94,23 @@ export function reportFacts(md) {
   const m = new RegExp(String.raw`Run on [^,]*, (?:(\d+) min, )?(\d+) steps[^.]*\. Usage: agents \$${N}(?: and ${N} Kiro credits)?, tester \$${N}`).exec(
     md ?? '',
   );
-  const ran = /Agents ran on ([\w.:+-]+)(?:,? at (\w+) effort)?/i.exec(md ?? '');
+  // The runner’s “Agents: @critic claude-haiku-5-5, low effort; …” line, read for its first agent.
+  const ran = /Agents: @[\w-]+ (its default model|[\w.:+-]+)(?:, (\w+) effort)?/.exec(md ?? '');
   return {
     minutes: m?.[1] ? Number(m[1]) : null,
     steps: m ? Number(m[2]) : null,
     agentsUsd: m ? Number(m[3]) : null,
     kiroCredits: m?.[4] ? Number(m[4]) : null,
     testerUsd: m ? Number(m[5]) : null,
-    agentModel: ran?.[1] ?? null,
+    agentModel: ran && ran[1] !== 'its default model' ? ran[1] : null,
     agentEffort: ran?.[2] ?? null,
   };
 }
 
 /**
  * A live run’s record, for run.json: what a refit reads without parsing the report. The agents’ model is what their
- * streams say they ran, or the runner’s --agent-model where there is one; their effort is the runner’s --agent-effort.
+ * streams say they ran, or the runner’s --agent-model where there is one; their effort is what they were seeded with
+ * (facts.agentEffort: one level, several joined by “/”, or null for the backend’s default), else the runner’s --agent-effort.
  * @param {{ root: string, dir: string, scenario: any, name: string, opt: Record<string, unknown>, started: number, steps: number, cap: number, startPhase?: number,
  *   tester: { spent: number }, facts: any, coverage: any[], now?: number, git?: (args: string[], cwd: string) => string|null }} r
  */
@@ -121,7 +123,7 @@ export function runRecord({ root, dir, scenario, name, opt, started, steps, cap,
     title: scenario.title,
     kind: isTargeted(scenario) ? 'targeted' : 'exploratory',
     ...gitInfo(root, git),
-    agents: { model: streamModel(facts.streams) ?? flag('agent-model'), effort: flag('agent-effort') },
+    agents: { model: streamModel(facts.streams) ?? flag('agent-model'), effort: 'agentEffort' in facts ? facts.agentEffort : flag('agent-effort') },
     testerModel: flag('tester-model'),
     steps,
     stepCap: cap,
