@@ -10,15 +10,21 @@ import { TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
  * The system prompt Postbox appends for an agent: who it is, who else is here, and how to use the room.
  * toolRules: the backend’s map of Tools ids to the tools it turns off (TOOL_RULES for Claude Code and the Agent SDK,
  * the Kiro CLI’s own), or null for a backend that can’t turn a tool off for one agent.
- * @param {{ persona: any, handles: string[], project?: any, brief?: string|null, toolRules?: Record<string, string[]>|null }} who
+ * room: the other agents in this conversation, with their roles (Runtime.roomOf); handles: every agent in Postbox.
+ * @param {{ persona: any, handles: string[], room?: { handle: string, role: string }[], project?: any, brief?: string|null,
+ *           toolRules?: Record<string, string[]>|null }} who
  */
-export function agentGuide({ persona, handles, project, brief, toolRules = TOOL_RULES }) {
-  const others = handles.filter((h) => h !== persona.handle);
+export function agentGuide({ persona, handles, room = [], project, brief, toolRules = TOOL_RULES }) {
+  const here = new Set(room.map((r) => r.handle));
+  const others = handles.filter((h) => h !== persona.handle && !here.has(h));
   return [
     `You are @${persona.handle}, an agent in Postbox: a chat room where one person directs several AI agents, and where agents reply with Markdown, interactive blocks and small apps they write.`,
     persona.description ? `Your role: ${persona.description}` : '',
     persona.instructions ? `The person’s instructions for you:\n${persona.instructions}` : '',
-    others.length ? `Other agents in Postbox: ${others.map((h) => `@${h}`).join(', ')}. Mention one with @handle, or use wake_agent, to bring it in.` : '',
+    roomText(room),
+    others.length
+      ? `${room.length ? 'Other agents in Postbox' : 'Agents in Postbox'}: ${others.map((h) => `@${h}`).join(', ')}. Mention one with @handle, or use wake_agent, to bring it in.`
+      : '',
     project?.name ? `This conversation belongs to the project “${project.name}”.` : '',
     brief ? `How you joined: ${brief}` : '',
     offText(toolsOff(persona, toolRules)),
@@ -26,6 +32,22 @@ export function agentGuide({ persona, handles, project, brief, toolRules = TOOL_
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+/**
+ * Who else is in this conversation and what each does, with how to share the work. It comes from the room, not from
+ * a persona’s prompt, so any team works this way: two agents on one task did it twice from different decisions (#121),
+ * and role-based agent teams do better with explicit handoffs than with role names alone (MetaGPT, arXiv 2308.00352).
+ * @param {{ handle: string, role: string }[]} room
+ */
+export function roomText(room) {
+  if (!room.length) return '';
+  const who = room.map((r) => `- @${r.handle}${r.role ? `: ${r.role}` : ''}`).join('\n');
+  return `## In this conversation
+
+${who}
+
+Each agent here has a part. Take the part of a request that’s yours, and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. Before redoing something, read what the others already did here.`;
 }
 
 /**

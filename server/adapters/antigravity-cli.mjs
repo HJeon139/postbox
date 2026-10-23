@@ -700,7 +700,7 @@ export class AntigravityCliAdapter {
       );
     const prompt = formatMessage(message, ctx.pathOf);
     // agy can’t turn tools off: agyRules says what the persona turned off instead.
-    const guide = agentGuide({ persona, handles: ctx.handles, project: ctx.project, brief: session?.brief, toolRules: null });
+    const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null });
     const rules = agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER) });
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });

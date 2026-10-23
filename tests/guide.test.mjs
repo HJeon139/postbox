@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { agentGuide, guideText } from '../server/adapters/guide.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
+import { freshInstall } from '../server/seed.mjs';
 
 test('the guide starts from what a reply contains, not from what the person asked for', () => {
   const g = guideText();
@@ -67,4 +68,23 @@ test('a write outside the conversation is shown as a draft in a review block fir
   const first = guideText().split('\n## ')[0];
   assert.match(first, /^- A write outside this conversation \(a document, an issue, a message, through any tool\) → first its draft in a review block/m);
   assert.match(first, /unless they said to publish directly/);
+});
+
+test('the room tells an agent who else is in the conversation and what each does, and how to share the work', () => {
+  const room = [
+    { handle: 'researcher', role: 'Finds and reads sources.' },
+    { handle: 'critic', role: 'Reviews code and documents.' },
+  ];
+  const g = agentGuide({ persona: { handle: 'developer' }, handles: ['researcher', 'developer', 'critic', 'indexer'], room });
+  assert.match(g, /## In this conversation\n\n- @researcher: Finds and reads sources\.\n- @critic: Reviews code and documents\./);
+  assert.match(g, /Take the part of a request that’s yours/);
+  assert.match(g, /To hand work on, @mention the agent with what it needs to start/);
+  // Agents elsewhere in Postbox are listed apart, without the ones already here.
+  assert.match(g, /Other agents in Postbox: @indexer\./);
+  // Alone in its conversation, an agent gets no team section, only who it could bring in.
+  const alone = agentGuide({ persona: { handle: 'developer' }, handles: ['developer', 'critic'] });
+  assert.doesNotMatch(alone, /In this conversation|Take the part/);
+  assert.match(alone, /Agents in Postbox: @critic\. Mention one with @handle/);
+  // The persona’s own prompt names no other agent: the team comes from the room.
+  for (const p of freshInstall().personas) assert.doesNotMatch(p.instructions, /@(?:researcher|developer|critic)\b/, p.handle);
 });

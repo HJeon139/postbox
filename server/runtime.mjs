@@ -233,6 +233,21 @@ export class Runtime {
   sessionsIn(threadId) {
     return (this.s.threads[threadId]?.members ?? []).map((id) => this.s.sessions[id]).filter((x) => x && !x.deleting);
   }
+  /**
+   * The other agents in a turn’s conversation, with their roles, for the guide: the room tells each agent who else is
+   * here and what they do, so a persona’s own prompt needn’t know its team. A side or topic thread’s room is its
+   * conversation’s.
+   * @param {string} threadId @param {any} se  the agent the guide is for
+   * @returns {{ handle: string, role: string }[]}
+   */
+  roomOf(threadId, se) {
+    const t = this.s.threads[threadId];
+    const conv = t?.parentId && this.s.threads[t.parentId] ? t.parentId : threadId;
+    const seen = new Set([se.handle]);
+    return this.sessionsIn(conv)
+      .filter((x) => !x.archived && !seen.has(x.handle) && seen.add(x.handle))
+      .map((x) => ({ handle: x.handle, role: clipText(String(this.persona(x.personaId)?.description ?? ''), 200) }));
+  }
   handles() {
     return Object.values(this.s.personas)
       .filter((p) => !p.retired)
@@ -614,6 +629,7 @@ export class Runtime {
       project: rt.s.projects[thread?.projectId] ?? null,
       thread: { id: turn.threadId, title: thread?.title ?? '' },
       handles: rt.handles(),
+      room: rt.roomOf(turn.threadId, se0),
       /** What the adapter saved for this session last time, such as its own session id. */
       state: { ...(se0.backendState ?? {}) },
       saveState(patch) {
