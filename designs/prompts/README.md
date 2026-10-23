@@ -6,7 +6,7 @@ The plan follows the triage of 22 October 2026 (#64’s last two comments). Two 
 - **The triage session:** the P0 hotfixes, and then the side-thread sessions.
 - **The reviewing session:** #138 with #105, then waves 3 and 4. It's the only writer of this page.
 
-Whichever of the P0 pull request and #105 lands on main second rebases onto the other. #92 and #98 change code the P0 hotfixes also change (`update_block`’s reopen path, and `stop()`), so their sessions start from `main` after the P0 pull request merges.
+Whichever of the P0 pull request and #105 lands on main second rebases onto the other. #92 changes code the P0 hotfixes also change (`update_block`’s reopen path), so its session starts from `main` after the P0 pull request merges. #98 (Stop leaves progress steps running) is part of the P0 Stop fix.
 
 ```mermaid
 flowchart LR
@@ -37,13 +37,13 @@ flowchart LR
 
 | When | Session | Issues | Integrates |
 |---|---|---|---|
-| Now | P0 hotfixes | #108, #123, #125, #126 (with #129’s background-job tracking), on `fix/p0-hotfixes` | triage |
+| Now | P0 hotfixes | #108, #123, #125, #126 (with #129’s background-job tracking), #98, on `fix/p0-hotfixes` | triage |
 | Now | #105 with #138 | #105 (agents in the sidebar), #138 (the Work ledger, #132) | reviewing |
 | After #105 | Side-thread sessions (P0) | #121 (all six proposals), #110, with the part of #128 where a side thread starts copies | triage |
 | 3 | M1: tools and outside writes | #63’s remaining fixes (the guide’s table rule, a review before outside writes), #104, #112 | reviewing |
 | 3 | M2: apps follow the conversation | #49 with #92 (after the P0 merge), #36, #7 with #86 and #122 | reviewing |
 | 3 | M2: files and real data | #90, then #85 (agent attachments), #54, #47, #51, #44, #37 | reviewing |
-| 3 | M3: checks | #89, #98 (after the P0 merge), #102, #63’s block check and a long research exit scenario, #95 once decided | reviewing |
+| 3 | M3: checks | #89, #102, #63’s block check and a long research exit scenario, #95 once decided | reviewing |
 | 3 | #73 | subagent narration, thinking and tree, in #105’s Agents section beside #121’s tree | reviewing |
 | 3 | #87 | measure, then calibrate, the explainer guide | reviewing |
 | 4 | M4: supervision and side threads | #3, #6, #8, #11, #13, #14, #16; #85’s Files view and room menu; P1: #109, #124, #128, #106, #129’s rest; P2: #99, #101, #107, #114, #117’s rest (Codex, OpenCode), #118, #119, #130, #133–#137; P3: #111 | reviewing |
