@@ -704,6 +704,47 @@ test('#129: Keep running and Send now keep the job, listed with its own Stop, an
   await assert.rejects(rt.stopJob(se.id, 'bgx2'), /already ended/);
 });
 
+test('#129: a progress step that follows a kept job reads as running on, and stalls only once the job has ended', async () => {
+  // The P0 UAT of 23 October 2026: after Keep running, the agent was told to close its running step and closed it as
+  // failed while the kept loop was still writing.
+  const { rt, store, adapter, t, se } = setup();
+  const first = slowToExit({ job: { id: 'bgH', command: 'heartbeat loop' } });
+  adapter.next.push(first);
+  rt.sendMessage(t.id, { text: 'go' });
+  await sleep(5);
+  const steps = [{ id: 'w', label: 'Write heartbeat-1.log', state: 'running' }];
+  const block = rt.addItem(t.id, {
+    kind: 'block',
+    sessionId: se.id,
+    valid: true,
+    block: { id: 'hb', type: 'progress', version: 1, title: 'Heartbeat', steps },
+  });
+  rt.stop(se.id, { jobs: 'keep' });
+  first.exit();
+  await sleep(15);
+  const context = () => store.state.sessions[se.id].context.join('\n');
+  assert.equal(store.item(t.id, block.id).block.steps[0].state, 'running', 'not stalled while the job it follows runs on');
+  assert.match(context(), /bgH .* is still running.*leave that step running while the job runs: when it ends, Postbox tells you on your next turn/s);
+  assert.doesNotMatch(context(), /Close each with update_block/);
+  // A step a later turn leaves running doesn’t follow the job: it stalls at that turn’s end, as any would.
+  adapter.next.push(async (c) => {
+    rt.addItem(t.id, {
+      kind: 'block',
+      sessionId: se.id,
+      valid: true,
+      block: { id: 'mg', type: 'progress', version: 1, title: 'Migrate', steps: [{ id: 'm', label: 'Migrate the db', state: 'running' }] },
+    });
+    c.text('Migrating.');
+  });
+  rt.sendMessage(t.id, { text: 'now migrate the db' });
+  await until(() => store.items(t.id).some((i) => i.block?.id === 'mg' && i.block.steps[0].state === 'stalled'), 'the later step to stall');
+  assert.equal(store.item(t.id, block.id).block.steps[0].state, 'running', 'the step that follows the job still runs on');
+  // The job’s group is gone: it has ended, and the step it left running stalls now, as at a turn’s end.
+  await rt.pollKept();
+  assert.equal(store.item(t.id, block.id).block.steps[0].state, 'stalled');
+  assert.match(context(), /bgH ended while progress steps were running:\n- Block “Heartbeat” \(id hb\): Step “Write heartbeat-1\.log” was still running/);
+});
+
 test('#129: a kept job whose group is gone has ended; shutting down stops the ones still running', async () => {
   const { rt, store, adapter, t, se, k, procs } = setup();
   for (const id of ['bgA', 'bgB']) {

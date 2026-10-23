@@ -1057,6 +1057,8 @@ export class Runtime {
       });
     }
     this.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
+    // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
+    if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
     // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
     const se = this.s.sessions[sessionId];
     if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : 'stopped');
@@ -1171,9 +1173,10 @@ export class Runtime {
       if (unsure) this.setJobStep(old, { detail: unsure });
       this.ledger.jobUpdate(old, { kept: true });
       // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running.
+      // A step that follows it reads as running on (#129): the agent leaves it running, rather than closing it as failed.
       this.tellAgent(
         se.id,
-        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: the person kept it running when your last turn was stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation.`,
+        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: the person kept it running when your last turn was stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
       );
       this.watchKept();
       return;
@@ -1208,6 +1211,27 @@ export class Runtime {
         sessionId,
         `Your background job ${job.id} (\`${clipText(job.command, 200)}\`) ${by === 'you' ? 'was stopped by the person' : 'has ended'}.${job.outputFile ? ` Its output is in ${job.outputFile}.` : ''}`,
       );
+    // The last job kept running has ended: the progress steps held running with it (stop) stall now, as they would have
+    // when its turn ended, or when the turn running now ends (stallSteps).
+    const now = this.s.sessions[sessionId];
+    const held = now?.heldSteps;
+    if ((job.kept || detail === KEEP_LOST) && held && !(now.jobs ?? []).some((j) => j.kept)) {
+      this.updateSession(sessionId, { heldSteps: null });
+      const problems = this.turns.has(sessionId) ? [] : this.stallSteps({ threadId: held.threadId }, this.s.sessions[sessionId]);
+      if (problems.length)
+        this.tellAgent(
+          sessionId,
+          `Your background job ${job.id} ended while progress steps were running:\n${problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`).join('\n')}`,
+        );
+    }
+  }
+
+  /** The keys (`item:step`) of a session’s progress steps running in a thread. */
+  runningProgress(threadId, sessionId) {
+    return this.store
+      .items(threadId)
+      .filter((it) => it.kind === 'block' && it.valid && it.sessionId === sessionId && it.block.type === 'progress')
+      .flatMap((it) => it.block.steps.filter((s) => s.state === 'running').map((s) => `${it.id}:${s.id}`));
   }
 
   /** Changes a job’s step: in its turn while that runs, else in the reply it’s on. */
@@ -2057,14 +2081,22 @@ export class Runtime {
     );
   }
 
-  /** Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them. */
+  /**
+   * Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them.
+   * Not the steps that were running when the person kept its background jobs running, while one runs on (#129): such
+   * a step may follow the job, and they stall when the last one ends (endJob).
+   * @param {{ threadId: string, keepJobs?: Set<string> }} turn
+   */
   stallSteps(turn, se) {
     const problems = [];
+    const runsOn = turn.keepJobs?.size || (se.jobs ?? []).some((j) => j.kept);
+    const held = new Set(runsOn ? (se.heldSteps?.keys ?? []) : []);
     for (const it of this.store.items(turn.threadId)) {
       if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
-      const running = it.block.steps.filter((s) => s.state === 'running');
+      const stalls = (s) => s.state === 'running' && !held.has(`${it.id}:${s.id}`);
+      const running = it.block.steps.filter(stalls);
       if (!running.length) continue;
-      const steps = it.block.steps.map((s) => (s.state === 'running' ? { ...s, state: 'stalled' } : s));
+      const steps = it.block.steps.map((s) => (stalls(s) ? { ...s, state: 'stalled' } : s));
       this.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
       const names = running.map((s) => `“${s.label}”`);
       const one = running.length === 1;

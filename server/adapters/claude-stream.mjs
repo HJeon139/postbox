@@ -15,11 +15,17 @@ const DECLINED = /^The person didn’t allow/;
 const WINDOWS = /** @type {[RegExp, number][]} */ ([[/^claude-(?:opus|sonnet|fable)-5/, 1_000_000]]);
 export const windowFor = (model, fallback = 200_000) => WINDOWS.find(([re]) => re.test(String(model ?? '')))?.[1] ?? fallback;
 const SUBAGENT_TOOLS = new Set(['Task', 'Agent']);
-// A Bash call with run_in_background returns at once, and the job runs on (#129). Recorded on claude 2.1.296
-// (tests/fixtures/claude-code/background-*.jsonl): the result says “Command running in background with ID: <id>.
-// Output is being written to: <file>. …”, with tool_use_result.backgroundTaskId; a task_notification with the same
-// task_id says it completed, failed, or was stopped; and the CLI waits for its jobs before it exits.
-const BACKGROUND_ID = /running in background with ID: ([\w-]+)/;
+// A call that goes on in the background returns at once with the job's id, and the job runs on (#129). Recorded on
+// claude 2.1.296:
+// - Bash with run_in_background: “Command running in background with ID: <id>. Output is being written to: <file>. …”,
+//   with tool_use_result.backgroundTaskId (tests/fixtures/claude-code/background-*.jsonl);
+// - Bash past its timeout: “Command did not complete within its 120s timeout and was moved to the background (ID: <id>).
+//   Output is being written to: <file>. …” (background-moved.jsonl, from the HotpotQA UAT of 22 October 2026);
+// - Monitor: “Monitor started (task <id>, expires in …)”, with tool_use_result.taskId (monitor.jsonl).
+// A task_notification with the same task_id says it completed, failed, or was stopped; and the CLI waits for its jobs
+// before it exits. Each is how its result starts: a file the agent reads, or a search, can hold the same words.
+const BACKGROUND_ID =
+  /^(?:Command running in background with ID: |Command did not complete within its \d+s timeout and was moved to the background \(ID: |Monitor started \(task )([\w-]+)/;
 const BACKGROUND_FILE = /Output is being written to: (\S+?)\.?(?=\s|$)/;
 const JOB_STATES = { completed: 'done', failed: 'failed', stopped: 'stopped', killed: 'stopped' };
 
@@ -54,6 +60,7 @@ const resultText = (content) =>
 
 const GENERIC = {
   Bash: 'Running a command',
+  Monitor: 'Starting a watch',
   Read: 'Reading a file',
   Write: 'Writing a file',
   Edit: 'Editing a file',
@@ -78,6 +85,8 @@ export function describeTool(name, input = {}) {
   switch (name) {
     case 'Bash':
       return i.description ? clip(i.description, 80) : `Ran ${clip(i.command, 70)}`;
+    case 'Monitor':
+      return `Watching: ${clip(i.description ?? i.command, 70)}`;
     case 'Read':
       return `Read ${base(i.file_path)}`;
     case 'Write':
@@ -263,14 +272,15 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     }
   };
 
-  // A background Bash call (#129): its result only says the job started, so its step stays running, and the runtime
-  // records the job. Returns whether the result was one.
+  // A call that went on in the background (#129): Bash, Monitor, or any whose result names a background id. Its result
+  // only says the job started, so its step stays running, and the runtime records the job. Returns whether it was one.
   const startJob = (id, text, structured) => {
     const t = st.tools.get(id);
-    if (!t || t.done || t.name !== 'Bash') return false;
+    if (!t || t.done || SUBAGENT_TOOLS.has(t.name)) return false;
     // The result’s own text names its job; tool_use_result is one per message, so it’s only the fallback.
-    const jobId = String(BACKGROUND_ID.exec(text)?.[1] ?? structured?.backgroundTaskId ?? '');
-    if (!jobId || (t.input?.run_in_background !== true && !BACKGROUND_ID.test(text))) return false;
+    const named = BACKGROUND_ID.exec(String(text).trimStart())?.[1];
+    const jobId = String(named ?? structured?.backgroundTaskId ?? structured?.taskId ?? '');
+    if (!jobId || (!named && t.input?.run_in_background !== true)) return false;
     t.job = jobId;
     st.jobs.set(jobId, id);
     if (!t.quiet) ctx.activity({ id, label: t.label, state: 'running', job: jobId, ...(t.who ? { who: t.who } : {}) });
