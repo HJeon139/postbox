@@ -44,7 +44,8 @@ test('recurrence counts duplicate verdicts once per run, with the runs after eac
     recurrence(runs, issues).map((x) => [x.issue, x.state, x.priority, x.runs, x.findings, x.after]),
     [
       [106, 'OPEN', 'P1', 3, 3, 0],
-      [63, 'CLOSED', 'P1', 2, 3, 1],
+      // #63 closed at 16:16 on 23 October: only the run after that counts.
+      [63, 'CLOSED', 'P1', 1, 1, 1],
       [156, 'OPEN', null, 1, 1, 0],
     ],
   );
@@ -64,7 +65,7 @@ test('the table keeps its columns: issue, state, priority, runs, findings, runs 
   const [, head, first, second, third] = recurrenceTable(recurrence(runs, issues));
   assert.equal(head, '  Issue  State   Priority  Runs  Findings  Runs after close');
   assert.equal(first, '  #106   open    P1        3     3         0');
-  assert.equal(second, '  #63    closed  P1        2     3         1');
+  assert.equal(second, '  #63    closed  P1        1     1         1');
   assert.equal(third, '  #156   open    —         1     1         0');
   assert.equal(recurrenceTable(recurrence(runs))[2], '  #106   ?      —         3     3         ?');
   assert.deepEqual(recurrenceTable([]), ['Recurrence by issue: no run caught a known issue again.']);

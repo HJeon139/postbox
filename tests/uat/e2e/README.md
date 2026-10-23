@@ -274,7 +274,7 @@ Filed issues have no milestone, so they get triaged into the plan ([#64](https:/
 
 The person’s rule (23 October 2026): **recurring findings are prioritized.** A defect that a run catches again is one that people will meet again.
 
-**What counts.** Count each issue once per run, across every finished run, from findings whose verdict is `duplicate` by `verdictOf()` (`tools/uat/verdicts.mjs`): a check’s match, or a match a verifier or reviewer confirmed. A tester’s own `issue` is a guess until it’s verified, so it doesn’t count. Leave out what isn’t a defect: `measurement` findings, such as the M1 counts, and coverage rows. A p0 coverage hit means a fix was seen working, not that the defect came back. A check’s match to a closed issue counts only once it’s verified (“Verdicts”, above): it may be a check that predates the fix. A match from a run without the fix doesn’t count either: it’s the defect as it was, not a recurrence, so a closed issue’s row counts only its regressions.
+**What counts.** Count each issue once per run, across every finished run, from findings whose verdict is `duplicate` by `verdictOf()` (`tools/uat/verdicts.mjs`): a check’s match, or a match a verifier or reviewer confirmed. A tester’s own `issue` is a guess until it’s verified, so it doesn’t count. Leave out what isn’t a defect: `measurement` findings, such as the M1 counts, and coverage rows. A p0 coverage hit means a fix was seen working, not that the defect came back. A check’s match to a closed issue counts only once it’s verified (“Verdicts”, above): it may be a check that predates the fix. A match from before the issue closed, or from a run without the fix, doesn’t count either: it’s the defect as it was, not a recurrence. So a closed issue’s row counts only its verified regressions.
 
 **What it changes:**
 - **An open issue caught in two or more runs goes up one priority, once** (P3 to P2, or P2 to P1), with a comment that gives the runs. It isn’t raised again for recurring, so a check that fires in nearly every run, as #63’s does, can’t climb an issue by its firing rate. Recurrence alone never makes an issue P0. A recurring issue goes at the front of the next wave that can take it.
@@ -283,12 +283,12 @@ The person’s rule (23 October 2026): **recurring findings are prioritized.** A
 
 **Reading it.** `node tools/uat-stats.mjs` ends with the count, as a table by issue, open and closed (`recurrence` in `tools/uat/stats.mjs`). It reads the issues’ states and priorities through `gh`, and says “?” without it:
 
-| Column                 | What it is                                                                                                                                                      |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Issue, State, Priority | the issue, open or closed, and its P label now                                                                                                                  |
-| Runs                   | the runs that caught it again, each once: what the priority rule reads                                                                                          |
-| Findings               | the findings that did, across those runs: one check can fire several times in a run                                                                             |
-| Runs after close       | the runs that started after the issue closed. For a rechecked run, only a verified regression counts: a match from a run without the fix is left out of the row |
+| Column                 | What it is                                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Issue, State, Priority | the issue, open or closed, and its P label now                                                                                         |
+| Runs                   | the runs that caught it again, each once: what the priority rule reads                                                                 |
+| Findings               | the findings that did, across those runs: one check can fire several times in a run                                                    |
+| Runs after close       | the runs that started after the issue closed. For a closed issue, that’s all its runs: only verified regressions after it closed count |
 
 It’s sorted by runs, then findings, so what recurs most is first. Recheck the runs first (`--recheck <run> --file no`, no model call), so every finding is counted with the current checks and presets: a run not rechecked since #213 still counts its check’s matches to closed issues.
 
