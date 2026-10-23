@@ -389,7 +389,8 @@ export function readMessages(stream) {
           );
           reject(new Error(`No ${type} from the fake daemon within ${timeoutMs} ms; it sent ${messages.map((m) => m.type).join(', ') || 'nothing'}.`));
         }, timeoutMs);
-        timer.unref();
+        // Left ref’d: the daemon under test unrefs its own timers and file watches (a real one is kept up by its
+        // socket), so on Linux, where nothing else is pending, an unref’d wait let the event loop drain mid-test.
         waiting.push({ type, resolve, timer });
         offer();
       });

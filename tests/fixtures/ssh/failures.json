@@ -1,0 +1,118 @@
+{
+  "about": "What the system ssh wrote to stderr, and its exit code, for each way a connection to a host fails (#120, L1). “recorded” entries ran OpenSSH_10.3p1 (LibreSSL 3.3.6, macOS) with -F /dev/null -o BatchMode=yes -o ControlPath=none -T and no usable key, against a public SSH server, a closed local port, an unroutable address and a name that doesn’t resolve; the host names, user names, addresses, file paths and the key fingerprint were replaced. ssh ends each line with \r\n when it writes to a pipe. “probe” entries come from the remote-hosts probe runs on a Linux host (P6, a frozen host with ServerAliveInterval=15), host name removed. “documented” entries are built from the format strings in openssh-portable’s source (cited), since they weren’t recorded.",
+  "failures": [
+    {
+      "name": "resolve",
+      "kind": "unreachable",
+      "source": "recorded",
+      "code": 255,
+      "stderr": "ssh: Could not resolve hostname host.example.com: nodename nor servname provided, or not known\r\n"
+    },
+    {
+      "name": "resolve-linux",
+      "kind": "unreachable",
+      "source": "documented: sshconnect.c, “%s: Could not resolve hostname %.100s: %s” with glibc’s gai_strerror(EAI_NONAME)",
+      "code": 255,
+      "stderr": "ssh: Could not resolve hostname host.example.com: Name or service not known\r\n"
+    },
+    {
+      "name": "refused",
+      "kind": "unreachable",
+      "source": "recorded",
+      "code": 255,
+      "stderr": "ssh: connect to host host.example.com port 22: Connection refused\r\n"
+    },
+    {
+      "name": "timed-out",
+      "kind": "unreachable",
+      "source": "recorded",
+      "code": 255,
+      "stderr": "ssh: connect to host host.example.com port 22: Operation timed out\r\n"
+    },
+    {
+      "name": "timed-out-linux",
+      "kind": "unreachable",
+      "source": "documented: sshconnect.c, “ssh: connect to host %s port %s: %s” with Linux’s strerror(ETIMEDOUT)",
+      "code": 255,
+      "stderr": "ssh: connect to host host.example.com port 22: Connection timed out\r\n"
+    },
+    {
+      "name": "network-unreachable",
+      "kind": "unreachable",
+      "source": "documented: sshconnect.c, “ssh: connect to host %s port %s: %s” with strerror(ENETUNREACH)",
+      "code": 255,
+      "stderr": "ssh: connect to host host.example.com port 22: Network is unreachable\r\n"
+    },
+    {
+      "name": "keepalive-drop",
+      "kind": "unreachable",
+      "source": "probe: P6, ssh exited 255 about 56 s after the host froze, with ServerAliveInterval=15 and ServerAliveCountMax=3; host name removed",
+      "code": 255,
+      "stderr": "** WARNING: connection is not using a post-quantum key exchange algorithm.\r\n** This session may be vulnerable to \"store now, decrypt later\" attacks.\r\n** The server may need to be upgraded. See https://openssh.com/pq.html\r\nTimeout, server host.example.com not responding.\r\n"
+    },
+    {
+      "name": "closed-by-remote",
+      "kind": "unreachable",
+      "source": "documented: packet.c, “Connection closed by %s”, where %s is “<address> port <port>”",
+      "code": 255,
+      "stderr": "Connection closed by 192.0.2.10 port 22\r\n"
+    },
+    {
+      "name": "sign-in",
+      "kind": "sign-in",
+      "source": "recorded",
+      "code": 255,
+      "stderr": "Warning: Permanently added 'host.example.com' (ED25519) to the list of known hosts.\r\nno such identity: /Users/user/.ssh/id_ed25519: No such file or directory\r\nuser@host.example.com: Permission denied (publickey).\r\n"
+    },
+    {
+      "name": "sign-in-methods",
+      "kind": "sign-in",
+      "source": "documented: sshconnect2.c, “%s@%s: Permission denied (%s).” with the server’s list of methods",
+      "code": 255,
+      "stderr": "user@host.example.com: Permission denied (publickey,gssapi-keyex,gssapi-with-mic,keyboard-interactive).\r\n"
+    },
+    {
+      "name": "host-key-unknown",
+      "kind": "host-key",
+      "source": "recorded: StrictHostKeyChecking at its default, ask, which BatchMode can’t ask",
+      "code": 255,
+      "stderr": "Host key verification failed.\r\n"
+    },
+    {
+      "name": "host-key-unknown-strict",
+      "kind": "host-key",
+      "source": "recorded: StrictHostKeyChecking=yes",
+      "code": 255,
+      "stderr": "No ED25519 host key is known for host.example.com and you have requested strict checking.\r\nHost key verification failed.\r\n"
+    },
+    {
+      "name": "host-key-changed",
+      "kind": "host-key",
+      "changed": true,
+      "source": "recorded: a known_hosts line with another key for the host",
+      "code": 255,
+      "stderr": "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\nIT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\r\nSomeone could be eavesdropping on you right now (man-in-the-middle attack)!\r\nIt is also possible that a host key has just been changed.\r\nThe fingerprint for the ED25519 key sent by the remote host is\nSHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.\r\nPlease contact your system administrator.\r\nAdd correct host key in /Users/user/.ssh/known_hosts to get rid of this message.\r\nOffending ED25519 key in /Users/user/.ssh/known_hosts:3\r\nHost key for host.example.com has changed and you have requested strict checking.\r\nHost key verification failed.\r\n"
+    },
+    {
+      "name": "not-installed",
+      "kind": "not-installed",
+      "source": "recorded: bash 3.2 on macOS running the fixed command with -c, as sshd runs it through the login shell; home folder replaced",
+      "code": 127,
+      "stderr": "bash: /home/user/.postbox-remote/0.10.0/server/remote/host/host: No such file or directory\n"
+    },
+    {
+      "name": "not-installed-bash5",
+      "kind": "not-installed",
+      "source": "documented: bash 5 adds “line N:” for -c, as the probe’s “p1.sh: line 30: klist: command not found” shows",
+      "code": 127,
+      "stderr": "bash: line 1: /home/user/.postbox-remote/0.10.0/server/remote/host/host: No such file or directory\n"
+    },
+    {
+      "name": "other",
+      "kind": "failed",
+      "source": "documented: readconf.c, “%s: line %d: Bad configuration option: %s” and “%s: terminating, %d bad configuration options”, from a ~/.ssh/config ssh can’t read",
+      "code": 255,
+      "stderr": "/Users/user/.ssh/config: line 4: Bad configuration option: frobnicate\r\n/Users/user/.ssh/config: terminating, 1 bad configuration options\r\n"
+    }
+  ]
+}

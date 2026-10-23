@@ -195,6 +195,8 @@ export const TURN_FILES = Object.freeze({
   exit: 'exit.json',
   /** The runner: RunnerRecord, written before the harness starts. */
   runner: 'runner.json',
+  /** What the runner starts: StartRecord, written by the daemon before it launches the runner. */
+  start: 'start.json',
   /** The runner’s Unix socket. */
   socket: 'sock',
   /** The conversation snapshot the reading tools answer from. */
@@ -258,6 +260,32 @@ export const socketPathFits = (path) => utf8Bytes(path) <= SOCKET_PATH_BYTES;
  * match (the design’s “The daemon”). The runner leads its own session and group, so the group is -pid.
  * @typedef {{ turn: string, version: string, pid: number, bootId: string, startTime: number }} RunnerRecord
  */
+
+/**
+ * start.json: what the daemon tells a runner to start. The daemon launches the runner as
+ * `<node> <hostPaths().runner> <turn>`, detached, with no stdio of its own; the runner reads this file, never its
+ * arguments, for the rest. `program` is the absolute path of the harness the daemon found (or the configured one);
+ * `argv`, `env`, `stdin` and `folder` are the `start` message’s, unchanged.
+ * @typedef {{ turn: string, harness: string, program: string, argv: string[], env: Record<string, string>,
+ *   stdin: 'file' | 'none' | 'held', folder: string }} StartRecord
+ */
+
+/** @param {unknown} v @returns {Result<StartRecord>} */
+export function validateStartRecord(v) {
+  return run('start.json', v, () => {
+    const m = /** @type {any} */ (v);
+    return (
+      fields(m, 'start.json', ['turn', 'harness', 'program', 'argv', 'env', 'stdin', 'folder']) ||
+      turnId(m.turn, 'start.json.turn') ||
+      oneOf(m.harness, 'start.json.harness', HARNESSES) ||
+      hostPath(m.program, 'start.json.program') ||
+      checkArgv(m.argv) ||
+      checkEnv(m.env) ||
+      oneOf(m.stdin, 'start.json.stdin', STDIN_KINDS) ||
+      hostPath(m.folder, 'start.json.folder')
+    );
+  });
+}
 
 /** @param {unknown} v @returns {Result<ExitRecord>} */
 export function validateExitRecord(v) {

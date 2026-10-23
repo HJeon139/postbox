@@ -27,6 +27,7 @@ import {
   validateExitRecord,
   validateMessage,
   validateRunnerRecord,
+  validateStartRecord,
 } from '../shared/remote-protocol.mjs';
 import { checkHostPath, defaultHostSettings } from '../shared/remote-settings.mjs';
 import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT, fixtureLines, readMessages } from './fake-daemon.mjs';
@@ -336,6 +337,22 @@ test('exit.json has a code or a signal and a time; runner.json has the PID, boot
   assert.match(String(/** @type {any} */ (validateRunnerRecord({ ...runner, bootId: 'not-a-uuid' })).error), /bootId must be the boot ID/);
   assert.match(String(/** @type {any} */ (validateRunnerRecord({ ...runner, pid: '4242' })).error), /pid must be a whole number/);
   assert.match(String(/** @type {any} */ (validateRunnerRecord({ ...runner, startTime: undefined })).error), /needs “startTime”/);
+});
+
+test('start.json names the harness’s absolute program and the start message’s argv, env, stdin and folder', () => {
+  const start = {
+    turn: 't1',
+    harness: 'claude-code',
+    program: '/home/user/.local/bin/claude',
+    argv: ['-p'],
+    env: {},
+    stdin: 'file',
+    folder: '/home/user/work',
+  };
+  assert.ok(validateStartRecord(start).ok);
+  assert.match(String(/** @type {any} */ (validateStartRecord({ ...start, program: 'claude' })).error), /start\.json\.program/);
+  assert.match(String(/** @type {any} */ (validateStartRecord({ ...start, harness: 'sh' })).error), /start\.json\.harness/);
+  assert.match(String(/** @type {any} */ (validateStartRecord({ ...start, files: [] })).error), /files/);
 });
 
 test('host paths keep the repo’s layout under the version folder, and turns are shared by every version', () => {

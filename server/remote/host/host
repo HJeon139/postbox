@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+// The program ssh runs on a remote host (#120): `~/.postbox-remote/<version>/server/remote/host/host attach`. It’s a
+// relay to this version’s daemon, starting the daemon (`host serve`) first if none answers; daemon.mjs’s header says
+// how. The command line is fixed, and everything else arrives as JSON lines on stdin, so the login shell never parses
+// a prompt, a path or a setting.
+
+import { main } from './daemon.mjs';
+
+main({ argv: process.argv.slice(2) }).then(
+  (code) => process.exit(code),
+  (e) => {
+    process.stderr.write(`postbox host: ${e.stack ?? e.message}\n`);
+    process.exit(70);
+  },
+);

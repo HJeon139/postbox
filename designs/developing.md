@@ -67,7 +67,8 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 | No `innerHTML` without a named source; no attribute or style names chosen at run time | `lint-dom` |
 | American spelling in strings, comments and these docs; curly quotes in what people read in the app | `lint-copy` |
 | Every color pair in both themes, and on the app stage | `check:contrast` |
-| Unit tests, with no network and no processes | `node:test` with `tests/guard.mjs` |
+| Unit tests, with no network and no processes | `node:test` with `tests/guard.mjs` (`npm test`) |
+| The remote host’s programs as real processes: local child processes and Unix sockets only, never the network | `node:test` over `tests/integration/` (`npm run test:integration`), after `npm test` in `npm run check` |
 | Line coverage of the pure modules (the 90% target in architecture.md) | Nothing. `npm run test:coverage` reports it and fails on no threshold |
 | Headless Chrome behavior | `npm run check:browser`, in CI’s end-to-end job, not in `npm run check` |
 | No axe violations in any demo scene | `tools/shoot-app.mjs`, in CI’s end-to-end job |
@@ -210,7 +211,7 @@ engineering-practices.md, “Tests”, covers speed, recorded fixtures, a failin
 
 **Assert the side effect that must not happen, not only the error.** A test that a `!` command is refused off loopback can pass because the request failed earlier, on a missing token. The fake spawn records its calls, and asserting it was never called is what tells “refused” from “never got there”.
 
-**Inject; don’t reach for process state.** Adapters take fake `spawn` and `fork`, the runtime takes a stub corpus and a `now`, and the server takes its home and data folders. `tests/guard.mjs` fails any test that touches the network or starts a process, so a test that needs one is a test that should have taken a fake.
+**Inject; don’t reach for process state.** Adapters take fake `spawn` and `fork`, the runtime takes a stub corpus and a `now`, and the server takes its home and data folders. `tests/guard.mjs` fails any test that touches the network or starts a process, so a test that needs one is a test that should have taken a fake. The exception is `tests/integration/`, the host programs’ own process groups, signals and sockets, which only real processes test; it runs without the guard, and never touches the network.
 
 **A fake is driven by a recording, and stays small.** Postbox fakes the process and the HTTP layer (`tests/fake-http.mjs`) rather than mocking its own modules. A hand-written fake keeps passing after the real interface changes, so the bytes it plays back come from a recorded fixture, which is what ties it to the real thing.
 
