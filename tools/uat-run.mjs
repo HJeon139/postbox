@@ -7,7 +7,10 @@
 //   node tools/uat-run.mjs --scenario hotpotqa --steps 30 --budget 6 --tester-model claude-opus-5-5
 //
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. A scenario
-// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in.
+// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
+// the scenario is a compatibility run, which needs --compat:
+//
+//   node tools/uat-run.mjs --scenario mixedroom --compat
 // Everything a run makes goes in uat-runs/<time>-<scenario>/ (ignored by git): report.md, findings.json,
 // screenshots, each agent turn’s raw stream, and Postbox’s data.
 
@@ -24,7 +27,7 @@ import { launch, sleep } from './cdp.mjs';
 import { kiroCredits, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
-import { parseScenario } from './uat/scenario.mjs';
+import { compatBackends, parseScenario } from './uat/scenario.mjs';
 import { askOnce, createTester, systemPrompt, unaddressed, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -42,6 +45,8 @@ const { values: opt } = parseArgs({
     recheck: { type: 'string' },
     // After a run, verify new findings and file the confirmed ones that no open issue covers. --file no skips it.
     file: { type: 'string', default: 'yes' },
+    // Run a compatibility scenario: one with agents on a backend other than Claude’s, such as the Kiro CLI.
+    compat: { type: 'boolean', default: false },
   },
 });
 
@@ -113,6 +118,11 @@ const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.rep
 async function main() {
   const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
   const scenario = parseScenario(readFileSync(scenarioFile, 'utf8'));
+  const other = compatBackends(scenario);
+  if (other.length && !opt.compat)
+    throw new Error(
+      `This scenario puts agents on ${other.join(' and ')}, so it’s a compatibility run, which runs only when asked: it uses that harness’s credits, and a regular pass is Claude only. Pass --compat to run it.`,
+    );
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
   const dir = join(ROOT, 'uat-runs', `${stamp}-${name}`);

@@ -7,7 +7,7 @@ import { toPlainText } from '../shared/markdown.mjs';
 import { kiroCredits, runChecks, waitingOnYou } from '../tools/uat/checks.mjs';
 import { JOBS_ANSWERS } from '../tools/uat/driver.mjs';
 import { readHistory } from '../tools/uat/history.mjs';
-import { parseScenario } from '../tools/uat/scenario.mjs';
+import { compatBackends, parseScenario } from '../tools/uat/scenario.mjs';
 import { SCHEMA, signInSettings, systemPrompt, unaddressed } from '../tools/uat/tester.mjs';
 
 const stream = (name) =>
@@ -435,6 +435,24 @@ test('model-not-shown accepts a model a persona names, such as a Kiro agent’s 
 test('Kiro credits are added up from each turn’s completion; Claude streams add none', () => {
   assert.ok(Math.abs(kiroCredits([{ handle: 'critic', events: kiroFixture('isolated-deny') }]) - 0.3833) < 0.001);
   assert.equal(kiroCredits([{ handle: 'researcher', events: [{ type: 'result', total_cost_usd: 1 }] }]), 0);
+});
+
+test('a scenario with agents on a backend other than Claude’s is a compatibility run; Claude’s own backends aren’t', () => {
+  const mixed = parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8'));
+  assert.deepEqual(compatBackends(mixed), ['kiro-cli']);
+  assert.deepEqual(compatBackends(parseScenario('# T\n- backends: a=codex, b=agy:m1, c=codex\n')), ['codex', 'agy']);
+  assert.deepEqual(compatBackends(parseScenario('# T\n- backends: a=claude-code:claude-opus-5-5, b=agent-sdk\n')), []);
+  assert.deepEqual(compatBackends(parseScenario('# T\n')), []);
+  // The README lists each scenario where it belongs: compatibility runs under their own heading, regular ones above it.
+  const readme = readFileSync(new URL('uat/e2e/README.md', import.meta.url), 'utf8');
+  const [regular, compat] = readme.split('### Compatibility scenarios');
+  assert.ok(compat, 'the README has a Compatibility scenarios section');
+  const dir = new URL('uat/e2e/scenarios/', import.meta.url);
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.md'))) {
+    const isCompat = compatBackends(parseScenario(readFileSync(new URL(f, dir), 'utf8'))).length > 0;
+    assert.equal(compat.split('\n### ')[0].includes(`(scenarios/${f})`), isCompat, `${f} is listed under compatibility: ${isCompat}`);
+    assert.equal(regular.includes(`(scenarios/${f})`), !isCompat, `${f} is listed as a regular scenario: ${!isCompat}`);
+  }
 });
 
 test('a scenario can put agents on another backend, with a model', () => {

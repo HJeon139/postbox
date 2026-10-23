@@ -84,11 +84,19 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 - [SciFact: claims, abstracts and retrieval](scenarios/scifact.md)
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
 - [P0 hotfixes](scenarios/p0.md) (#108, #123, #125, #126): two Claude Code agents in a room. Phase 1 has them send each other long lists through more than three wakes, so the allow card appears (#108). Phase 2 has a draft one agent revises while the other reviews it and you answer, with a Send now mid-revision (#123, #125, and #126’s original chain). Phase 3 has a background command, then Stop with Keep running, Stop with Stop it too, and Send now (#126).
-- [Mixed room: a Claude Code agent and a Kiro CLI agent](scenarios/mixedroom.md) ([#117](https://github.com/HJeon139/postbox/issues/117)): the researcher on Claude Code, the critic on the Kiro CLI with a GPT model; options, a second opinion, wakes both ways, and a topic thread where the Kiro agent is refused a command
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)
   - [Paper survey: a job that takes minutes](scenarios/papersurvey.md)
+
+### Compatibility scenarios
+
+A scenario that puts an agent on a backend other than Claude’s is a **compatibility run**. That’s the Kiro CLI today, and agy and Codex as they’re added. A compatibility run checks that the harness still works with Postbox, and it spends that harness’s credits. So it’s never part of a regular pass, such as a wave’s integration run. Run one occasionally, or when a change touches that backend’s adapter, with `--compat`. Without the flag, the runner refuses the scenario and says why.
+- [Mixed room: a Claude Code agent and a Kiro CLI agent](scenarios/mixedroom.md) ([#117](https://github.com/HJeon139/postbox/issues/117)): the researcher on Claude Code, the critic on the Kiro CLI; options, a second opinion, wakes both ways, and a topic thread where the Kiro agent is refused a command. Its model must be one your Kiro account offers (`kiro-cli chat --list-models`).
+
+```bash
+node tools/uat-run.mjs --scenario mixedroom --compat
+```
 
 A scenario is Markdown:
 - a title
