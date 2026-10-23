@@ -2,6 +2,8 @@
 // - #194: text that spills out of its box (text-overflow) and text drawn over text (text-overlap), on the gallery
 //   whose descriptions ran into its demo heading, and its fix. Labels a transition moves into place, and labels
 //   hidden with opacity 0, and text under an opaque sticky footer, aren’t reported.
+// - #89: controls you can’t see or click (control-hidden): a row of buttons clipped by Postbox’s own .bar class, and a
+//   button under an overlay. Controls in a scroll box, and a checkbox hidden for screen readers, aren’t reported.
 //
 //   node tools/checks/app-check.mjs
 //
@@ -53,6 +55,15 @@ const APPS = {
   // A long list that runs under its opaque sticky footer, as the corpus explorer’s does: hidden there, not overlapped.
   sticky: `<ul style="margin:0;padding:12px;color:var(--text)">${Array.from({ length: 80 }, (_, i) => `<li>Passage ${i + 1}, about hope after loss</li>`).join('')}</ul>
 <div style="position:sticky;bottom:0;background:var(--sunk);color:var(--text);padding:10px 14px">Nothing selected</div>`,
+  // #89: a row of filter buttons in class="bar", which Postbox’s stylesheet makes a 4 px progress bar.
+  bar: `<p style="color:var(--text);margin:8px">Filter the frames:</p><div class="bar">${['All', 'Intro', 'Method', 'Results', 'Limits', 'Next']
+    .map((t) => `<button class="btn" type="button">${t}</button>`)
+    .join('')}</div>`,
+  // #89: a button under an overlay positioned over it.
+  covered: `<div style="position:relative;padding:12px"><button class="btn" type="button">Run it</button><div style="position:absolute;inset:0;background:var(--panel)"></div></div>`,
+  // Controls a scroll box holds past its edge, which you scroll to, and a checkbox hidden for screen readers behind its label.
+  scrolled: `<div style="height:120px;overflow:auto;padding:8px;color:var(--text)">${Array.from({ length: 12 }, (_, i) => `<p style="margin:0 0 8px">Row ${i + 1} <button class="btn sm" type="button">Open ${i + 1}</button></p>`).join('')}</div>
+<label style="position:relative;display:inline-flex;gap:6px;padding:8px;color:var(--text)"><input type="checkbox" style="position:absolute;width:1px;height:1px;clip:rect(0 0 0 0);overflow:hidden">Show years</label>`,
   // Ordinary text and controls, set tight: nothing to report.
   plain: `<main style="padding:12px;color:var(--text);line-height:1.1"><h2 style="margin:0">Corpus summary</h2><p style="margin:0">Twelve <b>books</b>, <i>4,210</i> passages, read in <code>order</code>.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" type="button">Index it</button><button class="btn" type="button">Later</button></div>
@@ -102,6 +113,20 @@ try {
   check(!codes('faded').includes('text-overlap'), 'text hidden with opacity 0 isn’t reported', says('faded'));
   check(rt.s.apps.plain.check.status === 'passed', 'ordinary text set tight passes', says('plain'));
   check(rt.s.apps.sticky.check.status === 'passed', 'a list scrolled under an opaque sticky footer passes', says('sticky'));
+
+  const bar = found('bar').filter((p) => p.code === 'control-hidden');
+  check(bar.length === 2, '#89: the .bar row is control-hidden, once at each width', says('bar'));
+  check(
+    bar.every(
+      (p) =>
+        /6 controls, such as the button “All”, are clipped to \d+ × 4 px by div\.bar/.test(p.message) &&
+        /\.bar is a class of Postbox’s own stylesheet/.test(p.message),
+    ),
+    'the message counts the buttons, names div.bar and says .bar is Postbox’s',
+    says('bar'),
+  );
+  check(/the button “Run it” is under div, which takes its clicks/.test(says('covered')), '#89: a button under an overlay is control-hidden', says('covered'));
+  check(rt.s.apps.scrolled.check.status === 'passed', 'controls in a scroll box, and a checkbox hidden for screen readers, pass', says('scrolled'));
 
   // How text-overlap measures, on its own in a blank page: an overlap counts only when it’s there both times.
   await page.goto('about:blank');

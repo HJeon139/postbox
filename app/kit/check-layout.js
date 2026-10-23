@@ -1,6 +1,7 @@
 // Layout problems for the pre-display check (app/kit/check.js), which a page-level overflow test misses because they
-// stay inside the page: text that spills out of its own box, and text drawn over other text (#194). Postbox inlines
-// it into a check frame’s page between the kit and check.js, which calls what it adds to window.__pbCheck.
+// stay inside the page: text that spills out of its own box or over other text (#194), and controls you can’t see or
+// click (#89). Postbox inlines it into a check frame’s page between the kit and check.js, which calls what it adds
+// to window.__pbCheck.
 (function () {
   // A check frame is hidden off screen, where the browser runs no animation frames, so an app’s transitions (d3’s)
   // would never finish, and their labels would stay where they started. Here they run on a timer instead.
@@ -140,5 +141,102 @@
     });
   }
 
-  Object.assign(window.__pbCheck, { textOverflow, textOverlap, hidden, shownPart, clip });
+  // ── Controls you can’t see or click (#89) ────────────────────────────────────────────
+
+  // The class names Postbox’s own stylesheet defines (the page’s first style), which an app’s markup takes on with them.
+  let postboxClasses = null;
+  function ours(el) {
+    if (!postboxClasses) {
+      postboxClasses = new Set();
+      const walk = (rules) => {
+        for (const r of rules) {
+          for (const m of (r.selectorText ?? '').matchAll(/\.([\w-]+)/g)) postboxClasses.add(m[1]);
+          if (r.cssRules) walk(r.cssRules);
+        }
+      };
+      walk(document.querySelector('head > style')?.sheet?.cssRules ?? []);
+    }
+    return [...el.classList].filter((c) => postboxClasses.has(c));
+  }
+  const tag = (el) =>
+    el.tagName.toLowerCase() +
+    [...el.classList]
+      .slice(0, 3)
+      .map((c) => `.${c}`)
+      .join('');
+  const name = (el) => {
+    const kind = el.matches('a[href]') ? 'link' : el.matches('input, select, textarea') ? 'field' : 'button';
+    const label = el.getAttribute('aria-label') || el.textContent || el.getAttribute('placeholder') || el.value || '';
+    return label.trim() ? `the ${kind} “${clip(label)}”` : `a ${kind}`;
+  };
+
+  // The ancestor that cuts a control down to under half of it, or under 8 px across. A scroll container doesn’t count
+  // when it’s big enough to scroll in: you can scroll to what it hides.
+  function clippedBy(el, r) {
+    let { left, top, right, bottom } = r;
+    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      const x = cs.overflowX !== 'visible';
+      const y = cs.overflowY !== 'visible';
+      const b = a.getBoundingClientRect();
+      if ((!x && !y) || (/auto|scroll/.test(cs.overflowX + cs.overflowY) && b.width >= 8 && b.height >= 8)) continue;
+      if (x) [left, right] = [Math.max(left, b.left), Math.min(right, b.right)];
+      if (y) [top, bottom] = [Math.max(top, b.top), Math.min(bottom, b.bottom)];
+      const w = Math.max(0, right - left);
+      const h = Math.max(0, bottom - top);
+      if (w < Math.min(8, r.width) || h < Math.min(8, r.height) || w * h < (r.width * r.height) / 2) {
+        const mine = ours(a);
+        const by = `${tag(a)}, which is ${px(b.width)} × ${px(b.height)} px with overflow: ${cs.overflow}`;
+        const fix = mine.length
+          ? `; .${mine.join(', .')} is a class of Postbox’s own stylesheet, so give yours a prefix of your own (such as app-${mine[0]}).`
+          : '. Let it grow, or let it scroll.';
+        return { key: a, why: `clipped to ${px(w)} × ${px(h)} px by ${by}${fix}` };
+      }
+    }
+    return null;
+  }
+
+  // What’s drawn over the middle of a control, where a click would land instead. The page scrolls to it first.
+  function coveredBy(el) {
+    let r = el.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > innerHeight) {
+      scrollBy(0, r.top + r.height / 2 - innerHeight / 2);
+      r = el.getBoundingClientRect();
+    }
+    // Scrolled out of view in a container, it’s reachable by scrolling there.
+    const s = shownPart(el, r);
+    if (!s.width || !s.height || s.top < 0 || s.bottom > innerHeight) return null;
+    const hit = document.elementFromPoint(s.left + s.width / 2, s.top + s.height / 2);
+    if (!hit || el.contains(hit) || hit.contains(el) || (el.labels && [...el.labels].some((l) => l.contains(hit)))) return null;
+    return { key: hit, why: `under ${tag(hit)}, which takes its clicks. Move one of them, or give the covering element pointer-events: none.` };
+  }
+
+  const CONTROLS = 'button, [role=button], [role=checkbox], [role=radio], [role=tab], a[href], input:not([type=hidden]), select, textarea, summary';
+  /** control-hidden: a control with no size, clipped by an ancestor, or under another element at its middle. */
+  function controlHidden(w) {
+    hiddenMemo.clear();
+    const y0 = scrollY;
+    const groups = new Map();
+    for (const el of document.querySelectorAll(CONTROLS)) {
+      if (!el.getClientRects().length || hidden(el)) continue;
+      const cs = getComputedStyle(el);
+      // Visually hidden on purpose, for screen readers (clip or clip-path), as a custom checkbox’s input is.
+      if (cs.clip !== 'auto' || cs.clipPath !== 'none') continue;
+      const r = el.getBoundingClientRect();
+      const found =
+        r.width < 1 || r.height < 1
+          ? { key: 'size', why: `${px(r.width)} × ${px(r.height)} px, with no size to see or click.` }
+          : clippedBy(el, r) || coveredBy(el);
+      if (!found) continue;
+      if (!groups.has(found.key)) groups.set(found.key, { n: 0, el, why: found.why });
+      groups.get(found.key).n++;
+    }
+    scrollTo(0, y0);
+    return [...groups.values()].slice(0, 3).map((g) => ({
+      code: 'control-hidden',
+      message: `At ${w} px, ${g.n === 1 ? `${name(g.el)} is` : `${g.n} controls, such as ${name(g.el)}, are`} ${g.why}`,
+    }));
+  }
+
+  Object.assign(window.__pbCheck, { textOverflow, textOverlap, controlHidden });
 })();
