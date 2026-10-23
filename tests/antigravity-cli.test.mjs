@@ -191,6 +191,29 @@ test('agy’s ERROR after a model call it retried and went on from: the turn sta
   );
 });
 
+test('agy’s ERROR on a turn with no failed call, which a refused read ended: the turn stands', () => {
+  // The Gemini room UAT rerun: “API error (attempt 2)”, though the stream has no error_message; the last step is
+  // a read outside the agent’s folder that agy refused.
+  const { ctx, m } = replay('error-after-refusal');
+  assert.equal(m.finished.status, 'ERROR');
+  assert.equal(m.error, null);
+  const done = ctx.calls.activity.filter((a) => a.state !== 'running');
+  assert.deepEqual(
+    done.map((a) => [a.label, a.state]),
+    [
+      ['Read dedup-plan.md', 'failed'],
+      ['Read package.json', 'denied'],
+      ['Antigravity reported an error as the turn ended', 'failed'],
+    ],
+  );
+  // A turn that got nowhere still fails with agy’s error.
+  const ctx2 = fakeCtx();
+  const m2 = createAgyMapper(ctx2);
+  m2.push({ event: 'step_update', step_update: { conversation_id: 'c', step_index: 0, state: 'DONE', step_type: 'user_input' } });
+  m2.push({ event: 'result', result: { status: 'ERROR', error: 'API error (attempt 2)', response: '' } });
+  assert.match(m2.error, /couldn’t run the turn: API error/);
+});
+
 test('agy’s ERROR when the retries ran out, with nothing after the last failed call: the turn fails', () => {
   const ctx = fakeCtx();
   const m = createAgyMapper(ctx);

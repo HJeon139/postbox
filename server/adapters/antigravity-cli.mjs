@@ -365,6 +365,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     wrote: false,
     // Whether a model call failed, and whether the turn went on after the last one (agy retries a failed call).
     retried: false,
+    // Whether the model got anywhere this turn (a tool step or a reply), and whether the last thing was a failed call.
+    went: false,
     stuck: false,
     afterTool: false,
     tools: new Map(),
@@ -442,7 +444,10 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     }
   };
   const step = (s) => {
-    if (s?.step_type === 'tool' || s?.step_type === 'agent_response') st.stuck = false;
+    if (s?.step_type === 'tool' || s?.step_type === 'agent_response') {
+      st.went = true;
+      st.stuck = false;
+    }
     switch (s?.step_type) {
       case 'agent_response': {
         const text = typeof s.text_delta === 'string' ? s.text_delta : '';
@@ -519,13 +524,18 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           deniedAfter(r.denied_actions);
           if (r.status === 'SUCCESS') return;
           const why = clip(r.error || r.status || 'no reason given', 400);
-          // agy reports a turn as ERROR when any model call failed, even one it retried and the turn went on from
-          // (recorded in the Gemini room UAT twice: a review written in full after the retry, and a turn that went
-          // on to a refused command, which is what ended it). Failing those would blame the wrong thing and offer a
-          // Retry that does it all again. So the error is a step, and the turn stands. It fails only if nothing
-          // came after the last failed call: the retries ran out.
-          if (st.retried && !st.stuck) {
-            ctx.activity({ id: 'agy-retried', label: 'Antigravity retried after a model error', state: 'done', detail: why });
+          // agy’s ERROR doesn’t say how the turn ended. Recorded in the Gemini room UAT: ERROR after a model call it
+          // retried and went on from, once with the review written in full and once ending at a refused command;
+          // and ERROR (“API error (attempt 2)”) on a turn with no failed call in its stream, which a refused read
+          // ended. Failing those would blame the wrong thing and offer a Retry that does it all again. So the stream
+          // decides: the turn fails if the model got nowhere, or if the last thing in it was a failed call (the
+          // retries ran out). Otherwise the error is a step, and the turn stands; a refusal shows as its own step.
+          if (st.went && !st.stuck) {
+            ctx.activity(
+              st.retried
+                ? { id: 'agy-retried', label: 'Antigravity retried after a model error', state: 'done', detail: why }
+                : { id: 'agy-error', label: 'Antigravity reported an error as the turn ended', state: 'failed', detail: why },
+            );
             return;
           }
           st.error = `Antigravity couldn’t run the turn: ${why}`;
