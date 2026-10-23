@@ -1,0 +1,2 @@
+{"type":"runStarted","data":{"payloadSchema":"acp","acpProtocolVersion":1,"engine":"v3"}}
+{"type":"runError","data":{"sessionId":null,"stage":"init","message":"Session 'sess_00000000-0000-0000-0000-000000000000' not found"}}

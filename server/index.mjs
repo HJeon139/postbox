@@ -15,6 +15,7 @@ import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
+import { findKiro, KiroCliAdapter, kiroModels, kiroVersion } from './adapters/kiro-cli.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
@@ -91,17 +92,23 @@ export async function start({
   if (claude) adapters.register(new ClaudeCodeAdapter({ workRoot: join(dataDir, 'workspaces') }));
   const sdk = real ? await loadAgentSdk() : null;
   if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot: join(dataDir, 'workspaces') }));
+  // An Isolated Kiro persona runs with a Kiro home of Postbox’s own (#117), next to the workspaces.
+  const kiro = real ? await kiroVersion(findKiro()) : null;
+  if (kiro)
+    adapters.register(
+      new KiroCliAdapter({ workRoot: join(dataDir, 'workspaces'), isolatedHome: join(dataDir, 'kiro-home'), models: await kiroModels(findKiro()) }),
+    );
   const config = {
     origin,
     imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'],
-    versions: { claudeCode: claude },
+    versions: { claudeCode: claude, kiroCli: kiro },
     // The person’s Claude Code user settings live here: the permissions panel reads and writes their rules (#66).
     home: claudeHome,
   };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell });
-  const firstReal = ['claude-code', 'agent-sdk'].find((b) => adapters.names().includes(b)) ?? 'mock';
+  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli'].find((b) => adapters.names().includes(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
   for (const se of Object.values(store.state.sessions))
@@ -252,6 +259,8 @@ export async function start({
           // Postbox’s tools, then those only real backends have (#5).
           knownTools: [...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS],
           adapters: adapters.names(),
+          // What each one can do (#117), so the page hides what a backend can’t honor rather than checking its name.
+          backends: Object.fromEntries(adapters.names().map((n) => [n, adapters.get(n).capabilities ?? {}])),
           defaultModel: DEFAULT_MODEL,
           effortLevels: EFFORT_LEVELS,
           defaultEffort: DEFAULT_EFFORT,
@@ -485,7 +494,7 @@ export async function start({
     });
   if (!quiet)
     console.log(
-      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${adapters.names().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${demo ? '\nDemo controls are on.' : ''}`,
+      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${adapters.names().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${demo ? '\nDemo controls are on.' : ''}`,
     );
   return {
     server,

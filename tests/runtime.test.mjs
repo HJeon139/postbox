@@ -792,6 +792,25 @@ test('#81 a fork with no fork point starts fresh, so its first catch-up has the 
   assert.doesNotMatch((adapter.calls.at(-1).message.context ?? []).join('\n'), /This thread started from/);
 });
 
+test('#117 a backend that can’t fork joins a topic fresh: no fork state, no “you remember”, and the root once', async () => {
+  const { rt, store, t, adapter } = await conversation();
+  adapter.capabilities = { fork: false };
+  const root = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'First answer.');
+  const { threadId } = rt.startTopic(t.id, root.id);
+  const [joiner] = rt.sessionsIn(threadId);
+  assert.deepEqual(joiner.backendState, {});
+  assert.equal(adapter.forks.length, 0, 'the adapter isn’t asked to fork');
+  rt.sendMessage(threadId, { text: 'Why?' });
+  await settle(rt);
+  const context = (adapter.calls.at(-1).message.context ?? []).join('\n');
+  assert.equal(adapter.calls.at(-1).sessionId, joiner.id);
+  assert.doesNotMatch(context, /You remember the conversation/);
+  assert.match(context, /This thread started from @alpha’s message: First answer\./);
+  rt.sendMessage(threadId, { text: 'And?' });
+  await settle(rt);
+  assert.doesNotMatch((adapter.calls.at(-1).message.context ?? []).join('\n'), /This thread started from/);
+});
+
 test('moving a persona from the mock to a real backend gives it the default model, and its conversations follow', async () => {
   const { rt, store, t, a } = setup();
   const calls = [];

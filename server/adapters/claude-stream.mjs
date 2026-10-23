@@ -6,6 +6,8 @@
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
 const QUIET =
   /^(?:mcp__postbox__(?:show_block|update_block|show_app|update_app|define_term|propose_agent|schedule_wake|wake_agent|permission_prompt|read_conversation)|ToolSearch|SubagentHandback)$/;
+/** Whether a tool call shows as what it makes rather than as a step (the Kiro CLI adapter shares this). */
+export const isQuietTool = (name) => QUIET.test(String(name ?? ''));
 // How Postbox answers a call the person declined on a permission card (server/runtime.mjs): that’s their
 // answer, not a refusal to show again.
 const DECLINED = /^The person didn’t allow/;

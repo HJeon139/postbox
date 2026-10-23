@@ -8,10 +8,11 @@
 // The server reads and writes the settings files (GET /api/permissions, POST /api/permissions/…), so a rule made
 // here shows in the CLI’s /permissions, and the reverse.
 
+import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
 import { decide } from '/shared/permission-match.mjs';
 import { api, busy, client, sessionsOf } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
-import { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, openFolderPicker } from './sheets.mjs';
+import { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, modelsFor, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -69,7 +70,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       const q = new URLSearchParams(Object.entries(target()).filter(([, v]) => v));
       view = await api(`/api/permissions?${q}`, undefined, 'GET');
       error = '';
-      if (view.real) loadMcp();
+      if (view.real && view.readsRules) loadMcp();
     } catch (e) {
       error = e.message;
     }
@@ -135,11 +136,18 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
         : null,
       status ? h('p.small.perm-status', { role: 'status' }, status) : null,
       view.real ? null : h('p.help', `@${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
+      // A backend that doesn’t read Claude Code’s rules or MCP config (the Kiro CLI, #117) shows only what it honors.
+      view.real && !view.readsRules
+        ? h(
+            'p.help',
+            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. Its mode and its Tools decide what it may do.`,
+          )
+        : null,
       view.real ? modeSection(p) : null,
-      rulesSection(),
+      view.readsRules ? rulesSection() : null,
       view.real ? folderSection() : null,
-      view.real ? mcpSection(p) : null,
-      view.real ? effectiveSection(p) : null,
+      view.real && view.readsRules ? mcpSection(p) : null,
+      view.real && view.readsRules ? effectiveSection(p) : null,
     ];
   }
 
@@ -594,7 +602,7 @@ export function openRunChoice(kind, { threadId, sessionId = null }) {
     if (kind === 'mode') return { list: MODES.map(([id, name]) => [id, name]), value: p.permissionMode ?? 'auto' };
     if (kind === 'model') {
       const value = se.personaSnapshot?.model ?? p.model;
-      return { list: [...new Set([...MODELS, value])].map((m) => [m, m]), value };
+      return { list: [...new Set([...modelsFor(p.backend), value])].map((m) => [m, m]), value };
     }
     const levels = client.config.effortLevels ?? Object.keys(EFFORT_NAMES);
     return { list: levels.map((l) => [l, EFFORT_NAMES[l] ?? l]), value: se.personaSnapshot?.effort ?? p.effort ?? client.config.defaultEffort };
