@@ -102,9 +102,24 @@ export const SCHEMA = {
       type: 'object',
       properties: {
         type: {
-          enum: ['send', 'thread', 'act', 'review', 'settings', 'app_click', 'attach_screenshot', 'full_screen', 'jobs', 'wait', 'next_phase', 'done'],
+          enum: [
+            'send',
+            'send_then_stop',
+            'thread',
+            'act',
+            'review',
+            'settings',
+            'app_click',
+            'attach_screenshot',
+            'full_screen',
+            'jobs',
+            'wait',
+            'stop',
+            'next_phase',
+            'done',
+          ],
         },
-        text: { type: 'string', description: 'send, thread, attach_screenshot: the message to write.' },
+        text: { type: 'string', description: 'send, send_then_stop, thread, attach_screenshot: the message to write.' },
         item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
         choose: { type: 'array', items: { type: 'string' } },
@@ -154,6 +169,7 @@ ${issues.map((i) => `#${i.number} ${i.title}`).join('\n') || '(none listed)'}
 
 Then choose one action:
 - send {text}: a message in the conversation. To talk to an agent, write its handle with the @, as in “@critic, what’s your biggest concern?”. “critic: …” or the bare name isn’t addressing: a message that @-mentions no agent goes to whichever agent spoke last.
+- send_then_stop {text, seconds?}: send a message, wait that many seconds (default 2), then press Stop on the active reply. Use this for a deliberate cancellation check.
 - thread {item, text}: reply in a topic thread on that message.
 - act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text. A wake request (“Let @a wake @b?”) is a card: allow it or not with its button.
 - review {item, verdict, comments}: answer a review block. Approve only what you’d sign off as it is. Otherwise request changes, with at least one comment on a line saying what to change; comment, with comments, when you only have questions.
@@ -163,6 +179,7 @@ Then choose one action:
 - full_screen {item}: press that app’s Expand button.
 - jobs {answer}: answer Postbox’s question about an agent’s background jobs, when it’s on screen: stop (“Stop it too”) or keep (“Keep running”).
 - wait {seconds}: when an agent is still working.
+- stop: press Stop on a reply that is currently working, if one is visible.
 - next_phase: when this phase’s goal is met, or blocked after two honest tries.
 - done: after the last phase.
 

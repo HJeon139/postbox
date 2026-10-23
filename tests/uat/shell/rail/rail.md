@@ -12,7 +12,7 @@ You switch between a project’s conversations constantly and need to spot a blo
 
 - Shows Overview, Threads (topic threads, with how many have new replies), the open conversation’s [Agents](agents-section.md) (#105), then Direct messages and Rooms, each with a “+”.
 - Other projects with agents that need you are listed at the top.
-- Archived and Personas at the bottom.
+- Archived and Personas at the bottom, with the build under Personas in tiny text: `vX.Y.Z · commit`, the version from package.json and the commit Postbox runs from (`POSTBOX_COMMIT`, or the git checkout).
 - Hidden and shown with the sidebar toggle or ⌘\.
 
 ## Steps to reproduce

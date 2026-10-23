@@ -14,12 +14,15 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
+import { AntigravityCliAdapter, agyModels, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
 import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
+import { CodexAdapter, codexModels, codexVersion, findCodex } from './adapters/codex.mjs';
 import { findKiro, KiroCliAdapter, kiroModels, kiroVersion } from './adapters/kiro-cli.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
+import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
@@ -98,17 +101,24 @@ export async function start({
     adapters.register(
       new KiroCliAdapter({ workRoot: join(dataDir, 'workspaces'), isolatedHome: join(dataDir, 'kiro-home'), models: await kiroModels(findKiro()) }),
     );
+  // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
+  const agy = real ? await agyVersion(findAgy()) : null;
+  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot: join(dataDir, 'workspaces'), models: await agyModels(findAgy()) }));
+  const codex = real ? await codexVersion(findCodex()) : null;
+  if (codex) adapters.register(new CodexAdapter({ workRoot: join(dataDir, 'workspaces'), models: await codexModels(findCodex()) }));
   const config = {
     origin,
+    // Which build this is, shown under Personas in the sidebar.
+    build: buildInfo({ root: ROOT }),
     imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'],
-    versions: { claudeCode: claude, kiroCli: kiro },
+    versions: { claudeCode: claude, kiroCli: kiro, antigravityCli: agy, codex },
     // The person’s Claude Code user settings live here: the permissions panel reads and writes their rules (#66).
     home: claudeHome,
   };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell });
-  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli'].find((b) => adapters.names().includes(b)) ?? 'mock';
+  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.names().includes(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
   for (const se of Object.values(store.state.sessions))
@@ -273,6 +283,7 @@ export async function start({
           // overview says how to install it (#12).
           realBackends: real,
           versions: config.versions,
+          build: config.build,
           corpus: corpus.stats(),
         },
       });
@@ -515,7 +526,7 @@ export async function start({
     });
   if (!quiet)
     console.log(
-      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${adapters.names().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${demo ? '\nDemo controls are on.' : ''}`,
+      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${adapters.names().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${agy ? ` (Antigravity CLI ${agy})` : ''}${codex ? ` (Codex ${codex})` : ''}${demo ? '\nDemo controls are on.' : ''}`,
     );
   return {
     server,

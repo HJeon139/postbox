@@ -180,16 +180,18 @@ The first failure goes back to the agent as an `app-check` message. If the next 
 
 ## Run real agents
 
-A persona runs on one of four backends. Pick one in the new-agent sheet, under **Runs on**.
+A persona runs on one of five backends. Pick one in the new-agent sheet, under **Runs on**.
 
 | Backend | What it runs | Needs |
 |---|---|---|
 | Claude Code | The `claude` CLI you’re signed in to, in print mode. Each thread is one Claude Code session, resumed every turn. | Claude Code installed (`claude --version` works), or `POSTBOX_CLAUDE_BIN` pointing at it |
 | Agent SDK | `query()` from `@anthropic-ai/claude-agent-sdk`, inside Postbox’s server | `npm install` |
 | Kiro CLI | The `kiro-cli` you’re signed in to, headless (`kiro-cli chat --agent-engine v3 --output-format stream-json`). Each thread is one Kiro session, resumed every turn. | Kiro CLI installed (`kiro-cli --version` works), or `POSTBOX_KIRO_BIN` pointing at it |
+| Antigravity CLI | The `agy` CLI you’re signed in to, headless (`agy --output-format stream-json --print`), with Gemini models. Each thread is one conversation, resumed every turn. | Antigravity CLI installed (`agy --version` works), or `POSTBOX_AGY_BIN` pointing at it |
+| Codex | The `codex app-server` you’re signed in to. Postbox starts and resumes an app-server thread for each conversation. | Codex CLI installed (`codex --version` works) and signed in, or `POSTBOX_CODEX_BIN` pointing at it |
 | Mock agent | The scripted agent the demo uses | Nothing |
 
-Postbox never reads, stores or asks for an API key. The Claude backends use Claude Code’s own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it; the Kiro CLI uses its own sign-in, or `KIRO_API_KEY`. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
+Postbox never reads, stores or asks for an API key. The Claude backends use Claude Code’s own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it; the Kiro CLI uses its own sign-in, or `KIRO_API_KEY`; the Antigravity CLI uses its own sign-in. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
 
 **Model.** New agents use `claude-opus-5-5`. Any model name Claude Code accepts works; change it per persona under **Personas**.
 
@@ -211,6 +213,18 @@ Postbox always passes the mode explicitly, so a default from your own Claude Cod
 - **Topic threads start fresh.** Kiro can’t fork a session, so an agent in a topic thread starts with the message the thread is about.
 - **Your setup.** With **Uses your Kiro setup**, it runs with your Kiro home (`KIRO_HOME`, else `~/.kiro`): your steering, skills, settings and MCP servers load, and the turn’s agent file is written to its `agents` folder for the turn. Off, it runs with `data/kiro-home`, and a deny rule turns off every MCP server but Postbox’s, including one a managed install adds to Kiro’s agent files by itself. A `.kiro` folder in the agent’s working folder loads either way.
 - **Models** are Kiro’s (`kiro-cli chat --list-models`), and the model field suggests the ones your sign-in offers, Claude’s and others such as GPT and DeepSeek. Postbox’s names become Kiro’s: `claude-opus-5-5` runs as `claude-opus-5.5`.
+
+**The Antigravity CLI.** agy has no flag for an MCP server or a system prompt, so each turn writes a plugin into the agent’s folder, `.agents/plugins/postbox/`, with Postbox’s MCP server and the guide as its rules, and removes it when the turn ends ([`server/adapters/antigravity-cli.mjs`](server/adapters/antigravity-cli.mjs)). In a git repository, that path goes in `.git/info/exclude`. Two Antigravity agents that share a folder take turns, since each turn’s plugin holds its own conversation. What differs from Claude Code:
+- **One line in your agy settings.** Headless, agy refuses every tool call it would ask about, Postbox’s own included. So the first turn adds `mcp(postbox_postbox/*)` to `permissions.allow` in `~/.gemini/antigravity-cli/settings.json`, and keeps the rest of the file. Only Postbox’s plugin names that server, and it exists only while a turn runs.
+- **It can’t ask you.** A call that would need asking shows as a denied step. agy ends the turn there, so Postbox resumes the conversation once for the agent to say what was refused and carry on. Ask me is agy’s default mode; Auto is `--mode auto`, agy’s sandbox and safety check, where your account offers it (otherwise agy runs it as Ask me); Accept edits is `--mode accept-edits`; Run everything is `--dangerously-skip-permissions`. Claude Code rules don’t apply.
+- **Tools are a request.** agy reads deny rules only from your own settings, which every agy session shares, so a persona’s unticked Tools can’t be turned off for one agent. The agent is told not to use them.
+- **Always your setup.** agy reads its config from `~/.gemini` and has no setting to move it, so there’s no Isolated mode: your rules, skills, plugins and MCP servers load, as in your terminal.
+- **Topic threads start fresh**, as on the Kiro CLI.
+- **Models** are agy’s (`agy models`): Gemini’s, and others such as Claude and GPT-OSS. A persona that names no model runs `gemini-3.8-flash-high`. Effort is part of some model ids (`gemini-3.8-flash-low`), so it’s passed only to a model that takes it, such as `gemini-3.8-flash` (up to High).
+
+**Codex.** Postbox uses the local `codex app-server` JSON-RPC protocol, with Codex’s own sign-in and configuration; it does not ask for an API key. It adds Postbox’s session-specific MCP endpoint to the Codex server, streams Codex text and tool activity, resumes each saved thread on the next turn, and forks topic threads from a completed-turn checkpoint. Stop sends `turn/interrupt` and then stops the child process if needed. Model suggestions come from app-server’s `model/list` catalog.
+
+Codex permission modes map to its sandbox and approval policy: **Ask me** uses read-only, **Auto** and **Accept edits** use workspace-write with network access off and approvals on request, and **Run everything** uses full access with approvals disabled. Codex cannot distinguish Auto from Accept edits in this integration, so the UI says so. Its approval requests appear as Postbox permission cards. The Codex app-server does not honor Postbox’s per-agent Tools checklist or Claude Code permission rules; those controls are marked unavailable. Codex reads its usual local configuration, including any MCP servers already configured there.
 
 **Attach a Claude Code session.** Choose **+**, then **Attach a Claude Code session**, to bring in one you started in a terminal. It joins as an agent working in that session’s folder, with its recent history. When you write to it, Postbox resumes that same session. When you type in the terminal, your turn and the agent’s reply appear in the thread, marked “from terminal”. Let a terminal turn finish before you write to it from Postbox.
 
@@ -278,7 +292,7 @@ They cover:
 - the diagram linter, against text sizes measured in Chrome
 - attaching and mirroring Claude Code sessions, narration, and the lint rules themselves
 
-Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs the same check on every pull request, then plays the demo in headless Chrome and runs axe-core on every scene.
+Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs the same check on every pull request, then plays the demo in headless Chrome and runs axe-core on every scene. It also checks that a pull request’s commit messages follow Conventional Commits, and that every change on main is released.
 
 | Command | What it does |
 |---|---|
@@ -289,8 +303,15 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 | `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage |
 | `npm run format` | Applies Biome’s formatting and safe fixes |
 | `npm run test:coverage` | Runs the tests with coverage for `shared/`, `server/` and the lint rules |
+| `npm run release [-- --dry-run]` | Releases the next semantic version from the commits since the last tag: package.json, CHANGELOG.md, a release commit and a tag |
+| `npm run lint:commits [range]` | Checks commit messages against Conventional Commits |
+| `npm run hooks` | Checks each commit message as you write it (`.githooks/commit-msg`) |
 
 Approved screenshots live in `screenshots/` and `screenshots/app/`. Working retakes go to `screenshots/latest/`, which git ignores.
+
+## Versions
+
+Postbox uses [semantic versioning](https://semver.org/), from [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): a breaking change moves the major version, a feature the minor version, and a fix the patch version. The sidebar shows the running build under Personas, as `vX.Y.Z · commit`. Each release is in [CHANGELOG.md](CHANGELOG.md), and the rules are in [designs/engineering-practices.md](designs/engineering-practices.md), “Commits and versions”.
 
 ## Known limits
 

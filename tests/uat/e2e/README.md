@@ -75,6 +75,9 @@ sequenceDiagram
 | duplicate-block-id           | #125  | One session with two blocks that have the same id in a conversation                                                                                                                                                                             |
 | approval-for-other-revision  | #123  | An answer applied to a revision other than the one the person was answering, or an update that reopened an answered block before the agent had a turn to read the answer                                                                        |
 | wake-text-clipped            | #108  | An allowed wake whose delivered message is shorter than what the agent sent                                                                                                                                                                     |
+| agy-refusal-not-shown        | #65   | A call Antigravity refused (on its step, or only in the result’s `denied_actions`) with no refused step under its id. Release runs only                                                                                                         |
+| agy-postbox-refused          | #143  | A call to Postbox’s own tools that Antigravity refused: the allow rule is missing from the agy settings. Release runs only                                                                                                                      |
+| agy-tool-not-allowed         | #5    | An Antigravity command or fetch that ran when the persona doesn’t tick `shell` or `web.fetch`: agy can’t turn them off, so the agent ignored being told. Release runs only                                                                      |
 | failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                                                                                                                                                       |
 
 When a defect is filed from a run, add a check for it here if it can be caught deterministically, so later runs keep watching for it.
@@ -94,15 +97,20 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 
 A scenario that puts an agent on a backend other than Claude’s is a **compatibility run**. That’s the Kiro CLI today, and agy and Codex as they’re added. A compatibility run checks that the harness still works with Postbox, and it spends that harness’s credits. So it’s never part of a regular pass, such as a wave’s integration run. Run one occasionally, or when a change touches that backend’s adapter, with `--compat`. Without the flag, the runner refuses the scenario and says why.
 - [Mixed room: a Claude Code agent and a Kiro CLI agent](scenarios/mixedroom.md) ([#117](https://github.com/HJeon139/postbox/issues/117)): the researcher on Claude Code, the critic on the Kiro CLI; options, a second opinion, wakes both ways, and a topic thread where the Kiro agent is refused a command. Its model must be one your Kiro account offers (`kiro-cli chat --list-models`).
+- [Codex: persistent turns, MCP and a topic fork](scenarios/codex.md) ([#144](https://github.com/HJeon139/postbox/issues/144)): resume a Codex app-server thread, call a Postbox tool, branch a topic thread, approve a command and stop a long turn. Needs a signed-in Codex CLI.
+- [Gemini room: a Claude Code agent and an Antigravity CLI agent](scenarios/geminiroom.md) ([#143](https://github.com/HJeon139/postbox/issues/143)), **release runs only** (`--release`), and kept short, since agy is on a free tier. Two phases: the critic on Gemini reviews a ten-line plan and remembers its concern across turns; then a topic thread where its command may be refused, and its settings and permissions panel.
 
 ```bash
 node tools/uat-run.mjs --scenario mixedroom --compat
+node tools/uat-run.mjs --scenario codex --compat
+node tools/uat-run.mjs --scenario geminiroom --release
 ```
 
 A scenario is Markdown:
 - a title
 - settings: the persona the tester plays, the agents, the project and the conversation’s name. A fresh install has only @assistant, so the runner seeds the scenario’s agents from [`personas.json`](personas.json), through `agents.json` in the run’s data folder. Since #5, a real agent can use only the tools its persona ticks, so both personas tick `shell` and `web.fetch`: they keep the commands and web access they had before, and a run on this branch differs from `main` only in what agents are told.
-- optionally, `backends`: agents to run on another backend, with a model, such as `critic=kiro-cli:gpt-5.6-terra`. Agents it doesn’t name run on the default backend, Claude Code. A Kiro agent is Isolated, with Postbox’s own Kiro home, so a run never writes into your `~/.kiro`
+- optionally, `backends`: agents to run on another backend, with a model, such as `critic=kiro-cli:gpt-5.6-terra`. Agents it doesn’t name run on the default backend, Claude Code. An agent on `antigravity-cli` makes the scenario a release-only one (`--release`, below). A Kiro agent is Isolated, with Postbox’s own Kiro home, so a run never writes into your `~/.kiro`. Codex scenarios use your local Codex sign-in and configuration; install and sign in to Codex first, or set `POSTBOX_CODEX_BIN`.
+- optionally, `permission_modes`: agent handles and modes, such as `critic=ask`, for testing a backend under a specific permission mode.
 - a summary
 - one `## Phase` section per phase, in the person’s words
 
@@ -146,6 +154,7 @@ Options:
 - `--tester-model`
 - `--port`, `--chrome-port`, for two runs at once
 - `--phase` (start at that phase, to rerun a later one; the tester sets up what it needs first)
+- `--release`: the run for a version release, the only one that may use the Antigravity CLI. Its quota is a free tier, and a run for every merge would use it up. Without `--release`, a scenario that puts an agent on `antigravity-cli` is refused, and Postbox starts without the Antigravity CLI, so the tester can’t pick it in a sheet either. A merge’s validation pass leaves it off; the Antigravity adapter’s recorded streams (`tests/antigravity-cli.test.mjs`) cover it there, at no cost.
 
 #126 showed up where `claude` is a launcher that starts the CLI as its child and doesn’t pass SIGINT on. Where `claude` is the CLI itself, Stop reaches it either way, so the P0 run puts the launcher in front of it:
 
@@ -155,14 +164,14 @@ POSTBOX_CLAUDE_BIN="$PWD/tools/uat/claude-launcher.mjs" node tools/uat-run.mjs -
 
 Give the launcher’s full path: the tester and the agents start in other folders, so a relative path fails with ENOENT before the first step.
 
-A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. A scenario with Kiro agents also needs the Kiro CLI, signed in; their turns use Kiro credits, which the report lists beside the agents’ cost. It uses real usage: a data-heavy agent turn can cost a few dollars.
+A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. A scenario with Kiro agents also needs the Kiro CLI, signed in; their turns use Kiro credits, which the report lists beside the agents’ cost. A scenario with Antigravity agents needs the Antigravity CLI, signed in, and `--release`; the report lists the Antigravity tokens it used. It uses real usage: a data-heavy agent turn can cost a few dollars.
 
 Each run writes to `uat-runs/<time>-<scenario>/`, which git ignores:
 - `report.md`: the issues caught again, new findings, and the timeline
 - `findings.json`
 - `run.log`
 - `shots/`: screenshots of every block and app the tester saw
-- `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/`
+- `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/` and Antigravity turns in `streams/agy/` (release runs)
 - `events.jsonl`: Postbox’s events for items and sessions, which `--recheck` reads (Postbox’s own log in `data/` drops its early segments once a snapshot covers them)
 - `data/`: Postbox’s data, so a run can be reopened with `node server/index.mjs --data uat-runs/<run>/data`
 

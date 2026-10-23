@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import { buildInfo } from '../server/build-info.mjs';
+import { bumpOf, changelogSection, nextVersion, parseCommit } from '../tools/commits.mjs';
+
+test('a conventional header is read, with its type, scope and whether it breaks anything', () => {
+  assert.deepEqual(parseCommit('feat(rail): show the build’s version under Personas'), {
+    ok: true,
+    type: 'feat',
+    scope: 'rail',
+    breaking: false,
+    subject: 'show the build’s version under Personas',
+  });
+  assert.equal(parseCommit('fix!: personas move to the home folder').breaking, true);
+  assert.equal(parseCommit('refactor: one pane system\n\nBREAKING CHANGE: the work route is gone').breaking, true);
+});
+
+test('a header that isn’t conventional is refused, with what to write instead', () => {
+  for (const bad of [
+    'Show image attachments as thumbnails',
+    'feature: x',
+    'fix:no space',
+    'Fix: capitalized type',
+    `feat: ${'x'.repeat(100)}`,
+    'fix: x\nno blank line',
+  ])
+    assert.equal(parseCommit(bad).ok, false, bad);
+  assert.match(parseCommit('Show image attachments').error, /type\(scope\): what changed/);
+});
+
+test('merges, release commits and git reverts are allowed, and don’t change the version on their own', () => {
+  for (const m of ['Merge pull request #148 from HJeon139/feat/codex-backend', "Merge branch 'main' into x", 'chore(release): v0.3.0', 'Revert "feat: x"']) {
+    assert.equal(parseCommit(m).ok, true, m);
+    assert.equal(bumpOf(m), null, m);
+  }
+});
+
+test('the version moves by the largest change: breaking is major, a feature minor, a fix patch', () => {
+  assert.equal(nextVersion('0.2.0', ['fix: a', 'docs: b']), '0.2.1');
+  assert.equal(nextVersion('0.2.1', ['fix: a', 'feat: b']), '0.3.0');
+  assert.equal(nextVersion('0.3.0', ['feat: a', 'fix!: b']), '1.0.0');
+  assert.equal(nextVersion('1.4.2', ['perf: faster']), '1.4.3');
+  assert.equal(nextVersion('1.4.2', ['docs: a', 'test: b', 'chore(release): v1.4.2']), null);
+  assert.throws(() => nextVersion('v1', ['fix: a']));
+});
+
+test('the changelog groups breaking changes, features and fixes', () => {
+  const s = changelogSection('0.3.0', '2026-10-23', ['feat(rail): version under Personas', 'fix: a bug', 'docs: words', 'feat!: big change']);
+  assert.match(s, /^## 0\.3\.0 \(2026-10-23\)/);
+  assert.match(s, /### Breaking changes\n\n- big change/);
+  assert.match(s, /### Features\n\n- \*\*rail:\*\* version under Personas/);
+  assert.match(s, /### Fixes\n\n- a bug/);
+  assert.doesNotMatch(s, /words/);
+});
+
+test('the build comes from package.json and the commit Postbox runs from', () => {
+  const root = new URL('..', import.meta.url).pathname;
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.deepEqual(buildInfo({ root, env: { POSTBOX_COMMIT: 'ABCDEF1234567' }, git: () => 'unused' }), { version, commit: 'abcdef1' });
+  assert.deepEqual(buildInfo({ root, env: {}, git: () => 'fedcba9\n' }), { version, commit: 'fedcba9' });
+  assert.deepEqual(
+    buildInfo({
+      root,
+      env: {},
+      git: () => {
+        throw new Error('not a git checkout');
+      },
+    }),
+    { version, commit: null },
+  );
+});

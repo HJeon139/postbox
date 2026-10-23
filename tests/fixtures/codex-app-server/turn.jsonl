@@ -1,0 +1,10 @@
+{"id":1,"result":{"userAgent":"codex/0","platformFamily":"unix","platformOs":"macos"}}
+{"id":2,"result":{"thread":{"id":"thr_postbox_1"}}}
+{"id":3,"result":{"turn":{"id":"turn_postbox_1","status":"inProgress","items":[]}}}
+{"method":"turn/started","params":{"threadId":"thr_postbox_1","turn":{"id":"turn_postbox_1"}}}
+{"method":"item/started","params":{"threadId":"thr_postbox_1","item":{"id":"msg_1","type":"agentMessage","text":""}}}
+{"method":"item/agentMessage/delta","params":{"threadId":"thr_postbox_1","itemId":"msg_1","delta":"Hello from Codex."}}
+{"method":"item/completed","params":{"threadId":"thr_postbox_1","item":{"id":"msg_1","type":"agentMessage","text":"Hello from Codex."}}}
+{"method":"item/started","params":{"threadId":"thr_postbox_1","item":{"id":"cmd_1","type":"commandExecution","command":"pwd","cwd":"/workspace","status":"inProgress"}}}
+{"method":"item/completed","params":{"threadId":"thr_postbox_1","item":{"id":"cmd_1","type":"commandExecution","command":"pwd","cwd":"/workspace","status":"completed","exitCode":0}}}
+{"method":"turn/completed","params":{"threadId":"thr_postbox_1","turn":{"id":"turn_postbox_1","status":"completed"}}}

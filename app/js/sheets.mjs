@@ -17,13 +17,15 @@ const toolsInProject = (projectId) =>
 
 // ── Backend, model and permissions ──────────────────────────────────────────────────────
 // Shared by the new-agent sheet and the persona editor. A persona runs on the mock, on Claude Code (the
-// claude CLI you’re signed in to), on the Agent SDK or on the Kiro CLI (#117); real backends take a model and a
-// permission mode.
+// claude CLI you’re signed in to), on the Agent SDK, on the Kiro CLI (#117) or on the Antigravity CLI (#143); real
+// backends take a model and a permission mode.
 
 const BACKENDS = [
   ['claude-code', 'Claude Code', 'Runs the claude CLI you’re signed in to.'],
   ['agent-sdk', 'Agent SDK', 'Runs the Claude Agent SDK in Postbox’s server.'],
   ['kiro-cli', 'Kiro CLI', 'Runs the kiro-cli you’re signed in to. It can’t ask you: what would need asking is refused.'],
+  ['antigravity-cli', 'Antigravity CLI', 'Runs the agy CLI you’re signed in to, with Gemini models. It can’t ask you: what would need asking is refused.'],
+  ['codex', 'Codex', 'Runs the Codex app-server with your local Codex sign-in and configuration.'],
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
 export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
@@ -39,13 +41,31 @@ const PERMISSIONS = [
   ['acceptEdits', 'Accept edits', 'It edits files in its folders freely, and asks before running commands.'],
   ['bypass', 'Run everything', 'It never asks. Use it only in a folder you can lose.'],
 ];
-// The Kiro CLI runs headless, where every ask is a refusal (server/adapters/kiro-cli.mjs), so the modes read differently.
-// The permissions panel uses them too (app/js/permissions.mjs).
-export const KIRO_PERMISSIONS = {
-  auto: 'Kiro has no safety check, so this is Ask me: it reads in its folders and runs a few read-only commands, such as git status, and refuses the rest.',
-  ask: 'It reads in its folders and runs a few read-only commands, such as git status, and refuses the rest: it can’t ask you.',
-  acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
-};
+// Backends that read the permission modes their own way. The Kiro and Antigravity CLIs run headless, where every ask
+// is a refusal (server/adapters/kiro-cli.mjs and antigravity-cli.mjs); Codex maps the modes onto its sandbox and
+// approval policy (server/adapters/codex.mjs). The permissions panel uses them too (app/js/permissions.mjs).
+const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
+  'kiro-cli': {
+    auto: 'Kiro has no safety check, so this is Ask me: it reads in its folders and runs a few read-only commands, such as git status, and refuses the rest.',
+    ask: 'It reads in its folders and runs a few read-only commands, such as git status, and refuses the rest: it can’t ask you.',
+    acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
+  },
+  'antigravity-cli': {
+    auto: 'Antigravity’s auto mode: it edits and runs commands in its sandbox, and a safety check decides the rest. Where your account doesn’t offer it, this is Ask me.',
+    ask: 'It reads in its folders and refuses edits and commands that would need asking: it can’t ask you.',
+    acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
+  },
+  codex: {
+    auto: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval. Auto and Accept edits have the same Codex permissions.',
+    ask: 'Codex uses a read-only sandbox. It requests approval before a command can go beyond it.',
+    acceptEdits: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval.',
+    bypass: 'Codex runs with full filesystem and network access and no approval prompts.',
+  },
+});
+/** The effort an Antigravity model id names (gemini-3.8-flash-high runs at high), or null (server/adapters/antigravity-cli.mjs). */
+const effortNamedBy = (backend, model) => (backend === 'antigravity-cli' ? (/-(low|medium|high)$/.exec(String(model ?? ''))?.[1] ?? null) : null);
+/** What a permission mode means on a backend: its own words where it reads the modes differently. */
+export const modeHelp = (backend, [id, , help]) => BACKEND_MODES[backend]?.[id] ?? help;
 export const defaultBackend = () => BACKENDS.map(([id]) => id).find((id) => (client.config.adapters ?? []).includes(id)) ?? 'mock';
 
 function seg(label, options, value, onPick) {
@@ -220,7 +240,12 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
                 onchange: (e) => {
                   const id = e.target.value;
                   st.backend = id;
-                  if (id !== 'mock' && (!st.model || st.model === 'mock')) st.model = client.config.defaultModel ?? MODELS[0];
+                  // A backend that lists its models gets its first one in place of a model it doesn’t offer: the
+                  // Antigravity CLI doesn’t run Claude’s default (#143).
+                  const offered = capsOf(id).models;
+                  if (id !== 'mock' && (!st.model || st.model === 'mock' || (offered && !offered.includes(st.model))))
+                    st.model = offered?.[0] ?? client.config.defaultModel ?? MODELS[0];
+                  st.effort = effortNamedBy(id, st.model) ?? st.effort;
                   paint();
                 },
               },
@@ -247,6 +272,15 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
             spellcheck: 'false',
             oninput: (e) => {
               st.model = e.target.value.trim();
+            },
+            // A model that names its effort runs at it, so Effort follows (the Gemini room UAT: Medium beside
+            // gemini-3.8-flash-high read as a contradiction).
+            onchange: () => {
+              const named = effortNamedBy(st.backend, st.model);
+              if (named && named !== st.effort) {
+                st.effort = named;
+                paint();
+              }
             },
           }),
           h(
@@ -278,7 +312,14 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
             ),
             icon('down'),
           ),
-          h('span.help', { id: `${idp}-e-help` }, 'How much it thinks before it answers. Higher is slower and costs more.'),
+          h(
+            'span.help',
+            { id: `${idp}-e-help` },
+            // agy names the effort in most model ids, and refuses --effort for them (server/adapters/antigravity-cli.mjs).
+            st.backend === 'antigravity-cli'
+              ? 'How much it thinks before it answers. A model whose name ends in -low, -medium or -high runs at that; this applies to one that doesn’t, such as gemini-3.8-flash, up to High.'
+              : 'How much it thinks before it answers. Higher is slower and costs more.',
+          ),
         )
       : null,
     real
@@ -289,7 +330,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
             st.permissionMode = id;
             paint();
           }),
-          h('span.help', (st.backend === 'kiro-cli' && KIRO_PERMISSIONS[perm[0]]) || perm[2]),
+          h('span.help', modeHelp(st.backend, perm)),
         )
       : null,
     real
@@ -309,15 +350,25 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           h('span.help', { id: `${idp}-f-help` }, 'Where it works. Leave it empty to work in the project’s root folder.'),
         )
       : null,
-    // What it takes from your own Claude Code (or Kiro) setup (#57). Your output style never applies.
-    real
+    // What it takes from your own Claude Code (or Kiro) setup (#57). Your output style never applies. A backend that
+    // can’t run apart from your setup (the Antigravity CLI) says so rather than offer a switch that does nothing.
+    real && capsOf(st.backend).isolation === false
+      ? h(
+          'div.field.span',
+          h('span.label', `Uses your ${BACKENDS.find(([id]) => id === st.backend)?.[1].replace(/ CLI$/, '') ?? st.backend} setup`),
+          h('span.help', 'Always: your rules, skills, plugins and MCP servers load, as in your terminal. It can’t run without them.'),
+        )
+      : null,
+    real && capsOf(st.backend).isolation !== false
       ? checkField({
           id: `${idp}-setup`,
-          label: st.backend === 'kiro-cli' ? 'Uses your Kiro setup' : 'Uses your Claude Code setup',
+          label: st.backend === 'kiro-cli' ? 'Uses your Kiro setup' : st.backend === 'codex' ? 'Uses your Codex setup' : 'Uses your Claude Code setup',
           help:
             st.backend === 'kiro-cli'
               ? 'Your steering, skills, settings, permissions and MCP servers, as in your terminal. Off, it loads only the folder’s .kiro and Postbox’s server.'
-              : 'Your skills, commands, plugins and permission rules, as in your terminal. Off, it uses only the project’s settings and the folder’s local file, where Always allow saves.',
+              : st.backend === 'codex'
+                ? 'Uses your local Codex sign-in, models, instructions and configuration. Off is not available: app-server uses the same Codex home for authentication.'
+                : 'Your skills, commands, plugins and permission rules, as in your terminal. Off, it uses only the project’s settings and the folder’s local file, where Always allow saves.',
           on: st.usesHostSetup !== false,
           onToggle: (on) => {
             st.usesHostSetup = on;
@@ -325,7 +376,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           },
         })
       : null,
-    real
+    real && st.backend !== 'codex'
       ? checkField({
           id: `${idp}-publish`,
           label: 'Can publish outside Postbox',
@@ -343,7 +394,11 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
 }
 
 // What the Tools checklist means on real backends (#5): server/adapters/setup.mjs, TOOL_RULES, and kiro-cli.mjs, KIRO_TOOL_RULES.
-const TOOLS_HELP = 'On Claude Code, the Agent SDK and the Kiro CLI, an unticked tool is turned off. A ticked one still follows its permissions.';
+// A backend that can’t turn a tool off for one agent (capabilities.tools: 'none', the Antigravity CLI) only tells it.
+const toolsHelp = (backend) =>
+  capsOf(backend).tools === 'none'
+    ? 'This backend can’t turn a tool off for one agent: an unticked one is only a request, which the agent is told. Its permissions still apply.'
+    : 'On Claude Code, the Agent SDK and the Kiro CLI, an unticked tool is turned off. A ticked one still follows its permissions.';
 
 // ── New agent ───────────────────────────────────────────────────────────────────────────
 
@@ -369,6 +424,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     saveBp: false,
     error: null,
   };
+  if (st.backend === 'codex' && !modelsFor(st.backend).includes(st.model) && modelsFor(st.backend).length) st.model = modelsFor(st.backend)[0];
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // Each change repaints the sheet; focus stays on the control you used (#26).
@@ -454,46 +510,48 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
           ),
         ),
       ),
-      h(
-        'fieldset',
-        { style: { border: 0, padding: 0, margin: 0 } },
-        h('legend.label', 'Tools'),
-        h(
-          'div',
-          { style: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' } },
-          S().config ? null : null,
-          (client.config.knownTools ?? []).map(([id, label]) => {
-            const on = st.tools.has(id);
-            return h(
-              'span.check',
-              {
-                role: 'checkbox',
-                tabindex: '0',
-                'aria-checked': String(on),
-                onclick: () => {
-                  if (on) st.tools.delete(id);
-                  else st.tools.add(id);
-                  paint();
-                },
-                onkeydown: (e) => {
-                  if (e.key === ' ' || e.key === 'Enter') {
-                    e.preventDefault();
-                    e.currentTarget.click();
-                  }
-                },
-              },
-              h('span.box'),
-              h('span.mono', id),
-              h(
-                'span.small',
-                { style: { color: on && !have.has(id) ? 'var(--accent)' : 'var(--dim)' } },
-                on && !have.has(id) ? 'New grant · no agent in this project has it yet' : label,
-              ),
-            );
-          }),
-        ),
-        st.backend === 'mock' ? null : h('span.help', TOOLS_HELP),
-      ),
+      st.backend === 'codex'
+        ? h('p.help', 'Codex app-server does not expose Postbox’s per-agent Tools checklist; this backend reports that capability as unavailable.')
+        : h(
+            'fieldset',
+            { style: { border: 0, padding: 0, margin: 0 } },
+            h('legend.label', 'Tools'),
+            h(
+              'div',
+              { style: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' } },
+              S().config ? null : null,
+              (client.config.knownTools ?? []).map(([id, label]) => {
+                const on = st.tools.has(id);
+                return h(
+                  'span.check',
+                  {
+                    role: 'checkbox',
+                    tabindex: '0',
+                    'aria-checked': String(on),
+                    onclick: () => {
+                      if (on) st.tools.delete(id);
+                      else st.tools.add(id);
+                      paint();
+                    },
+                    onkeydown: (e) => {
+                      if (e.key === ' ' || e.key === 'Enter') {
+                        e.preventDefault();
+                        e.currentTarget.click();
+                      }
+                    },
+                  },
+                  h('span.box'),
+                  h('span.mono', id),
+                  h(
+                    'span.small',
+                    { style: { color: on && !have.has(id) ? 'var(--accent)' : 'var(--dim)' } },
+                    on && !have.has(id) ? 'New grant · no agent in this project has it yet' : label,
+                  ),
+                );
+              }),
+            ),
+            st.backend === 'mock' ? null : h('span.help', toolsHelp(st.backend)),
+          ),
       h(
         'div.field',
         h('span.label', 'Where it works'),
@@ -948,31 +1006,33 @@ export function openSettings(tab = 'appearance', personaId = null) {
       h('div.field', h('label.label', { for: 'pe-d' }, 'What it does'), desc),
       h('div.field', h('label.label', { for: 'pe-i' }, 'Instructions'), ins),
       runBox,
-      h(
-        'div.field',
-        h('span.label', 'Tools'),
-        h(
-          'div.chips',
-          (client.config.knownTools ?? []).map(([id]) =>
+      run.backend === 'codex'
+        ? h('p.help', 'Codex app-server does not expose Postbox’s per-agent Tools checklist.')
+        : h(
+            'div.field',
+            h('span.label', 'Tools'),
             h(
-              'button.chip.sm',
-              {
-                type: 'button',
-                'aria-pressed': String(tools.has(id)),
-                class: tools.has(id) ? 'on' : '',
-                onclick: (e) => {
-                  if (tools.has(id)) tools.delete(id);
-                  else tools.add(id);
-                  e.currentTarget.classList.toggle('on');
-                  e.currentTarget.setAttribute('aria-pressed', String(tools.has(id)));
-                },
-              },
-              id,
+              'div.chips',
+              (client.config.knownTools ?? []).map(([id]) =>
+                h(
+                  'button.chip.sm',
+                  {
+                    type: 'button',
+                    'aria-pressed': String(tools.has(id)),
+                    class: tools.has(id) ? 'on' : '',
+                    onclick: (e) => {
+                      if (tools.has(id)) tools.delete(id);
+                      else tools.add(id);
+                      e.currentTarget.classList.toggle('on');
+                      e.currentTarget.setAttribute('aria-pressed', String(tools.has(id)));
+                    },
+                  },
+                  id,
+                ),
+              ),
             ),
+            run.backend === 'mock' ? null : h('span.help', toolsHelp(run.backend)),
           ),
-        ),
-        run.backend === 'mock' ? null : h('span.help', TOOLS_HELP),
-      ),
       // Its rules, folders and MCP servers, with where each comes from (#66), over this sheet.
       p.backend && p.backend !== 'mock'
         ? h(

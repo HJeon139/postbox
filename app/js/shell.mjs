@@ -234,6 +234,17 @@ function demoNote() {
 
 // ── The sidebar ─────────────────────────────────────────────────────────────────────────
 
+/** Which build this is, in tiny text under Personas: “v0.3.0 · 1a2b3c4”, so a screenshot says which build it came from. */
+function buildLine() {
+  const b = client.config?.build;
+  if (!b?.version) return null;
+  return h(
+    'p.rail-build',
+    { 'aria-label': `Postbox version ${b.version}${b.commit ? `, commit ${b.commit}` : ''}` },
+    `v${b.version}${b.commit ? ` · ${b.commit}` : ''}`,
+  );
+}
+
 export function railHidden() {
   try {
     return localStorage.getItem('pb-rail') === 'hidden';
@@ -338,6 +349,7 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
           icon('edit', 'dim'),
           h('span.name.dim', { style: { textAlign: 'left' } }, 'Personas'),
         ),
+        buildLine(),
       ),
     );
     const rowsT = el.querySelector('#rail-threads');
