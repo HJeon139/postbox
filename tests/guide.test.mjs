@@ -46,3 +46,25 @@ test('the guide stays short: agents follow defaults more than prose', () => {
   const who = { persona: { handle: 'a' }, handles: ['a', 'b'] };
   assert.equal(agentGuide(who), agentGuide(who));
 });
+
+test('an agent is told which tools are turned off for it, and how to ask for one, not that the computer lacks them (#104)', () => {
+  const who = { persona: { handle: 'critic', tools: ['web.fetch'] }, handles: ['critic'] };
+  const g = agentGuide(who);
+  assert.match(g, /## Turned off for you/);
+  assert.match(g, /running commands \(shell\)/);
+  assert.match(g, /messaging, scheduling or starting agents outside Postbox \(agents\.outside\)/);
+  assert.doesNotMatch(g, /fetching web pages or searching the web \(web\.fetch\)/);
+  assert.match(g, /don’t say the computer or the person lacks it: call ask_for_tool \{ tool: "shell"/);
+  assert.ok(TOOL_DEFS.some((t) => t.name === 'ask_for_tool'));
+  // Nothing off, nothing said; a backend that can’t turn tools off (Codex, agy) passes no rules.
+  assert.doesNotMatch(agentGuide({ ...who, persona: { handle: 'critic', tools: ['shell', 'web.fetch', 'agents.outside'] } }), /Turned off for you/);
+  assert.doesNotMatch(agentGuide({ ...who, toolRules: null }), /Turned off for you/);
+  // The Kiro CLI turns off only what it has rules for.
+  assert.doesNotMatch(agentGuide({ ...who, toolRules: { shell: ['shell'], 'web.fetch': ['web_fetch'] } }), /agents\.outside/);
+});
+
+test('a write outside the conversation is shown as a draft in a review block first, through any tool (#112)', () => {
+  const first = guideText().split('\n## ')[0];
+  assert.match(first, /^- A write outside this conversation \(a document, an issue, a message, through any tool\) → first its draft in a review block/m);
+  assert.match(first, /unless they said to publish directly/);
+});

@@ -2333,3 +2333,80 @@ test('#60: the model that answered and the effort a turn ran with are kept on th
   await settle(rt);
   assert.deepEqual([store.state.sessions[se.id].lastModel, store.state.sessions[se.id].lastEffort], ['claude-haiku-5-5', 'low']);
 });
+
+test('an agent asks for a tool that’s off; the person turns it on from the card, and the agent hears it (#104)', async () => {
+  const { rt, store, t, adapter, a } = setup();
+  /** @type {any} */
+  let first;
+  adapter.next.push(async (c) => {
+    first = c.tools.ask_for_tool({ tool: 'shell', why: 'To run gh issue create.' });
+    assert.equal(c.tools.ask_for_tool({ tool: 'shell', why: 'again' }).ok, true, 'a second ask points at the open card');
+    assert.match(c.tools.ask_for_tool({ tool: 'corpus.search', why: 'x' }).message, /already on/);
+    assert.match(c.tools.ask_for_tool({ tool: 'rm', why: 'x' }).message, /no tool “rm”/);
+  });
+  rt.sendMessage(t.id, { text: 'file two issues with gh' });
+  await settle(rt);
+  assert.equal(first.ok, true);
+  const cards = store.items(t.id).filter((i) => i.kind === 'toolask');
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].label, 'Run commands in the project folder');
+  const se = rt.sessionsIn(t.id)[0];
+  assert.equal(store.state.sessions[se.id].state, 'needs');
+  assert.equal(store.state.sessions[se.id].needs.kind, 'toolask');
+  rt.act(t.id, cards[0].id, 'on');
+  await settle(rt);
+  assert.deepEqual(store.state.personas[a.id].tools, ['corpus.search', 'shell']);
+  assert.equal(store.item(t.id, cards[0].id).status, 'on');
+  assert.ok(store.items(t.id).some((i) => i.kind === 'voice' && i.text === 'Turned on “Run commands in the project folder” for @alpha'));
+  assert.equal(adapter.calls.at(-1).message.kind, 'notice');
+  assert.match(adapter.calls.at(-1).message.text, /turned on shell \(Run commands in the project folder\) for you/);
+  assert.throws(() => rt.act(t.id, cards[0].id, 'off'), /already answered/);
+});
+
+test('keeping a tool off leaves the persona as it was and tells the agent to go on without it (#104)', async () => {
+  const { rt, store, t, adapter, a } = setup();
+  adapter.next.push(async (c) => {
+    c.tools.ask_for_tool({ tool: 'web.fetch', why: 'To read the docs.' });
+  });
+  rt.sendMessage(t.id, { text: 'read the docs' });
+  await settle(rt);
+  const card = store.items(t.id).find((i) => i.kind === 'toolask');
+  rt.act(t.id, card.id, 'off');
+  await settle(rt);
+  assert.deepEqual(store.state.personas[a.id].tools, ['corpus.search']);
+  assert.match(adapter.calls.at(-1).message.text, /kept web\.fetch off for you/);
+  assert.equal(store.state.sessions[rt.sessionsIn(t.id)[0].id].needs, null);
+});
+
+test('#63 a reply with options in prose gets a lint turn that asks for the choice; showing it ends as a note', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) =>
+    c.text('I can’t read the folder yet.\n\nTo unblock, pick one:\n1. Share the folder\n2. Paste the documents\n3. Point me at an export'),
+  );
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: { id: 'unblock', type: 'choice', version: 1, fallback: 'Pick one', options: [{ id: 'share', label: 'Share the folder' }] },
+    });
+  });
+  rt.sendMessage(t.id, { text: 'summarize the three documents' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+  assert.deepEqual(
+    lints(adapter)[0].message.problems.map((p) => p.code),
+    ['options-in-prose'],
+  );
+  assert.ok(store.items(t.id).some((i) => i.kind === 'block' && i.block.id === 'unblock'));
+  // The block it showed in the lint turn isn’t linted again, and the turn needs no reply.
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'agent').length, 1);
+});
+
+test('#63 a turn that showed a choice for its options isn’t linted', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.text('Two ways to go:\n1. Keyword search\n2. Embeddings\n\nWhich do you prefer?');
+    c.tools.show_block({ block: { id: 'way', type: 'choice', version: 1, fallback: 'Pick', options: [{ id: 'kw', label: 'Keyword' }] } });
+  });
+  rt.sendMessage(t.id, { text: 'how should we search?' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0);
+});

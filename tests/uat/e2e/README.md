@@ -103,6 +103,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)
   - [Paper survey: a job that takes minutes](scenarios/papersurvey.md)
+  - [Long research: a dataset scan and a use case to file](scenarios/longresearch.md): ten turns or more, where prose is tempting late in the session, a list of datasets to sort, and a document to sign off before the team sees it ([#63](https://github.com/HJeon139/postbox/issues/63), [#112](https://github.com/HJeon139/postbox/issues/112))
 
 ### Compatibility scenarios
 

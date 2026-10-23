@@ -51,7 +51,7 @@ import { TOOL_DEFS } from '../mcp.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, setupOf } from './setup.mjs';
+import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
 export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false });
@@ -227,13 +227,6 @@ export function agyArgs({ persona, model, effort, sessionId = null, prompt, addD
   ];
 }
 
-// The Tools ids agy can’t turn off for one turn, in words the agent can act on.
-const TOOL_WORDS = /** @type {Record<string, string>} */ ({
-  shell: 'running commands',
-  'web.fetch': 'fetching web pages or searching the web',
-  'agents.outside': 'messaging, scheduling or starting agents outside Postbox',
-});
-
 // A live turn (agy 1.4.5) had a command refused as “user denied permission to run command”. Nobody was asked, so
 // the agent is told what a refusal means here, and that agy ends the turn at one, before any reply.
 const HEADLESS_NOTE =
@@ -255,19 +248,22 @@ export const toolsNote = (dir) =>
   `## Postbox’s tools in Antigravity\n\nAntigravity names Postbox’s MCP server ${AGY_SERVER}. Its tools: ${TOOL_DEFS.map((t) => t.name).join(', ')}. Before you first call one, read its input schema with read_file at ${join(dir, '<tool>.json')}, such as ${join(dir, 'show_block.json')}. Don’t run a command to list them.`;
 
 /**
- * The plugin’s rules file: the guide, the note on refusals, and what the persona turned off that agy can’t.
+ * The plugin’s rules file: the guide, the note on refusals, and what the persona turned off that agy can’t (in
+ * TOOL_WORDS, the words the agent can act on).
  * Pure, so the tests can check it.
  * @param {{ persona: any, guide: string, schemas?: string|null }} turn  schemas: agy’s schema folder for Postbox’s server
  */
 export function agyRules({ persona, guide, schemas = null }) {
-  const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
-  const off = Object.entries(TOOL_WORDS)
-    .filter(([id]) => !has.has(id))
-    .map(([, words]) => words);
+  const ids = toolsOff(persona, TOOL_WORDS);
+  const off = ids.map((id) => `${TOOL_WORDS[id]} (${id})`);
   const { canPublish } = setupOf(persona);
   if (!canPublish) off.push('publishing or posting anything outside Postbox');
+  // A tool id can be turned on from a card the agent asks for (#104); publishing is the persona’s own setting.
+  const ask = ids.length
+    ? ` If a task needs ${ids.length === 1 ? 'it' : 'one of the tools'}, say it’s turned off in Postbox, and ask the person to turn it on with ask_for_tool { tool: "${ids[0]}", why }.`
+    : '';
   const limits = off.length
-    ? `\n\n## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}. Antigravity can’t enforce that, so it’s up to you: don’t do them, and say so if a task needs one.`
+    ? `\n\n## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}. Antigravity can’t enforce that, so it’s up to you: don’t do them, and say so if a task needs one.${ask}`
     : '';
   return `${guide}\n\n${schemas ? `${toolsNote(schemas)}\n\n` : ''}${HEADLESS_NOTE}${persona?.permissionMode === 'bypass' ? '' : `\n\n${LOOKING_NOTE}`}${limits}\n`;
 }
@@ -703,7 +699,8 @@ export class AntigravityCliAdapter {
         `Postbox couldn’t read ${this.settingsFile}, so Antigravity will refuse Postbox’s tools. Add "${ALLOW_POSTBOX}" to permissions.allow there.`,
       );
     const prompt = formatMessage(message, ctx.pathOf);
-    const guide = agentGuide({ persona, handles: ctx.handles, project: ctx.project, brief: session?.brief });
+    // agy can’t turn tools off: agyRules says what the persona turned off instead.
+    const guide = agentGuide({ persona, handles: ctx.handles, project: ctx.project, brief: session?.brief, toolRules: null });
     const rules = agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER) });
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });

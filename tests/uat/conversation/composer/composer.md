@@ -12,7 +12,7 @@ Where you write to agents; it must say who will answer.
 
 - Enter sends, Shift+Enter adds a line; drafts are kept per conversation.
 - The hint says who replies (the last speaker in a room); Stop replaces Send while an agent works.
-- / opens the [command menu](command-menu.md), as does the Commands button beside +; a line that starts with ! runs a [command](../transcript/command-item.md) in the conversation’s folder. The hint line says what Enter will do with either.
+- / opens the [command menu](command-menu.md), as does the Commands button beside +; a line that starts with ! runs a [command](../transcript/command-item.md) in the conversation’s folder. The hint line says what Enter will do with either. In a topic or side thread’s composer, / and ! don’t run anything: a line that starts with ! says so in the hint before you send it, and goes to the agent as a message ([#104](https://github.com/HJeon139/postbox/issues/104)).
 - Messages sent while an agent is busy are queued with Send now, Edit and remove ([screenshot](../../screenshots/queued-message.png)).
 - Messages typed offline are sent when the connection returns.
 - Files attach from + (Upload from computer), by pasting, or by dropping them. A file dropped anywhere in the conversation attaches to its composer; a file dropped on an open topic or side thread panel attaches to the panel’s composer, and only there.
@@ -30,8 +30,11 @@ Where you write to agents; it must say who will answer.
 4. Choose Reply in thread under a message, so the topic thread panel opens. Drag a file onto the panel’s replies, then another onto the conversation beside it. Open the panel’s + menu.
 
 **Pass if:** The first file attaches only to the panel’s composer, and the second only to the conversation’s. The panel’s + menu says “Or drop files on this thread”.
+5. In the panel’s composer, type `!gh --help`.
 
-The headless check `node tools/checks/attachments.mjs` covers steps 3 and 4 with a drawn PNG and SVG.
+**Pass if:** Before you send, the hint says “! runs commands only in the conversation’s own composer. Here, this goes to the agent as a message.”
+
+The headless check `node tools/checks/attachments.mjs` covers steps 3 and 4 with a drawn PNG and SVG, and `node tools/check-commands.mjs` covers step 5.
 
 ## Related
 

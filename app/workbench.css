@@ -446,6 +446,8 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .block-head { display: flex; flex-wrap: wrap; row-gap: 4px; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); min-height: 44px; }
 .block-head .title { font-size: 14px; }
 .block-head .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+/* A tool’s name is an identifier: it keeps its case on permission and refusal cards (#150). */
+.block-head .kind .tool-name { text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
 .block-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 .block-foot { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--sunk); flex-wrap: wrap; }
 .block.answered { background: transparent; }
@@ -840,6 +842,8 @@ html.pb-sandbox body { margin: 0; }
 .item:focus-visible, .turn:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
 .who .deleted { color: var(--dim); font-weight: 400; }
 .perm-detail, .perm-detail code { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* A write’s draft, as it will read (#112): bounded, so a long document doesn’t push the buttons away. */
+.perm-draft { gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); max-height: 420px; overflow: auto; }
 .who .via { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
 
 /* Markdown */

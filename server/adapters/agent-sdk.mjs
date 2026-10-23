@@ -18,7 +18,7 @@ import { withAskRules } from '../permission-rules.mjs';
 import { commandsOf, createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
-import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf } from './setup.mjs';
+import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
 const MODES = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
@@ -81,7 +81,8 @@ export function sdkOptions({
     // servers the persona turned off, and none of the tools it may not use (server/adapters/setup.mjs).
     // A ticked tool is never an allow rule: the permission mode still decides.
     settingSources: [...(setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES)],
-    settings: withAskRules(settingsFor(persona), rules.ask),
+    // Writes outside Postbox ask first (#112), through canUseTool, so the card shows the draft.
+    settings: withAskRules(settingsFor(persona), [...writeRules(persona), ...(rules.ask ?? [])]),
     ...(denied.length ? { disallowedTools: denied } : {}),
     // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
     thinking: { type: 'adaptive', display: 'summarized' },

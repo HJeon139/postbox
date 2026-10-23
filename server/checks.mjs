@@ -85,9 +85,12 @@ export function formatLint(message, { folded = false } = {}) {
     parts.push(`${which} in your reply can’t be read (it starts “${String(excerpt ?? '').split('\n')[0]}”):\n${lines(ps)}`);
   }
   if (diagrams.length) todo.push('Reply with a corrected version of each diagram, briefly, so the person can read it.');
-  const reply = of('reply');
+  const reply = of('reply').filter((p) => !SHOULD_BE_BLOCK.has(p.code));
   if (reply.length) parts.push(`In your reply:\n${lines(reply)}`);
   if (reply.length) todo.push('If the person needs the part it affected, reply with a corrected version, briefly.');
+  const shape = of('reply').filter((p) => SHOULD_BE_BLOCK.has(p.code));
+  if (shape.length) parts.push(`Your reply should have been a block:\n${lines(shape)}`);
+  if (shape.length) todo.push('Show that block now with show_block, built from what you wrote.');
   const apps = groups('app');
   for (const ps of apps) parts.push(`Your app “${ps[0].scope.title ?? ps[0].scope.id}” (id ${ps[0].scope.id}) is shown, with these warnings:\n${lines(ps)}`);
   if (apps.length) todo.push('Fix each app with update_app.');
@@ -96,6 +99,73 @@ export function formatLint(message, { folded = false } = {}) {
   if (folded) return `[Postbox] Postbox checked your last reply, and found what to fix along with the message below.\n\n${[...parts, ...todo].join('\n\n')}`;
   if (!diagrams.length && !reply.length) todo.push('No reply is needed: once you’ve made the changes, end your turn without writing anything.');
   return `[Postbox] ${[...parts, ...todo].join('\n\n')}`;
+}
+
+// What a reply that should have been a block holds (#63). Each costs a lint turn, so they’re conservative: they look
+// at how the reply ends, where options and questions are left for the person, and skip a turn that showed the block.
+const SHOULD_BE_BLOCK = new Set(['options-in-prose', 'questions-in-prose', 'draft-in-prose', 'table-in-markdown']);
+// Asking the person to pick: “pick one:”, “which do you…”, “would you rather…”. Not “we should pick one each”.
+const PICK = /\b(?:pick|choose) one\s*[:?]|\bwhich (?:one|option|do you|would you)\b|\bwould you (?:rather|prefer)\b|\bor should I\b/i;
+const DRAFT = /\b(?:draft|review|approve|looks? (?:good|right)|feedback|any changes)\b/i;
+
+/**
+ * A reply that should have been a block (#63): it ends with options or questions in prose, hands over a long draft,
+ * or has a long Markdown table. Agents slip back into prose over a long session, so this checks every reply. A turn
+ * that showed the right block, or where the person asked for prose or Markdown, isn’t flagged.
+ * @param {string} text  the reply @param {string[]} [shown]  the block types the turn showed
+ * @param {string} [asked]  what the person last wrote
+ * @returns {Problem[]}
+ */
+export function blockProblems(text, shown = [], asked = '') {
+  if (/\b(?:markdown|prose|plain text)\b/i.test(asked)) return [];
+  const prose = String(text ?? '')
+    .replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm, ' ')
+    .split('\n')
+    .filter((l) => l.trim() && !/^\s*(?:#|>)/.test(l));
+  const tail = prose.slice(-10);
+  const asks = shown.some((t) => ['choice', 'form', 'review', 'confirm'].includes(t));
+  const numbered = tail.filter((l) => /^\s*\d+[.)]\s+\S/.test(l)).length;
+  const bullets = tail.filter((l) => /^\s*[-*•]\s+\S/.test(l)).length;
+  const questions = tail.filter((l) => /\?\W*$/.test(l)).length;
+  const pick = PICK.test(tail.join('\n'));
+  /** @type {Problem[]} */
+  const out = [];
+  const reply = { kind: 'reply' };
+  // Questions first: a numbered list of questions is questions, not options.
+  if (!asks && questions >= 3)
+    out.push({
+      code: 'questions-in-prose',
+      message: `It ends with ${questions} questions in prose. Ask them in a form block, one field per question.`,
+      scope: reply,
+    });
+  else if (!asks && ((numbered >= 2 && (questions >= 1 || pick)) || (bullets >= 2 && pick)))
+    out.push({
+      code: 'options-in-prose',
+      message: 'It ends with options in a list. Offer them as a choice block, so the person picks one with a click.',
+      scope: reply,
+    });
+  else if (!asks && prose.length >= 40 && DRAFT.test([...prose.slice(0, 3), ...prose.slice(-3)].join('\n')))
+    out.push({
+      code: 'draft-in-prose',
+      message: `It hands over a draft of ${prose.length} lines as prose. Show it in a review block (format markdown), with a one-line reply.`,
+      scope: reply,
+    });
+  if (!shown.includes('table')) {
+    let rows = 0;
+    let most = 0;
+    for (const l of String(text ?? '').split('\n')) {
+      rows = /^\s*\|.*\|\s*$/.test(l) ? (/^\s*\|[\s:|-]+\|\s*$/.test(l) ? rows : rows + 1) : 0;
+      most = Math.max(most, rows);
+    }
+    // The header row is a row too.
+    if (most - 1 >= 10)
+      out.push({
+        code: 'table-in-markdown',
+        message: `It has a Markdown table of ${most - 1} rows. If the person would sort or filter it, show it as a table block with sortable columns.`,
+        scope: reply,
+      });
+  }
+  return out;
 }
 
 /**
