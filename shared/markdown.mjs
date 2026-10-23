@@ -3,7 +3,8 @@
 // content or an escaped attribute value, never an attribute name, a tag name or a style.
 //
 // Supported: paragraphs (a single newline is a line break), # headings, - and 1. lists (nested by
-// indentation), > quotes, ``` fences, ```mermaid diagrams, $$ math blocks (or $$…$$ on one line), $inline math$, pipe tables,
+// indentation), > quotes, ``` fences, ```mermaid diagrams, $$ math blocks (or $$…$$ on one line), $inline math$,
+// LaTeX’s \[display\] and \(inline\) math, pipe tables,
 // ---, `code`, **bold**, *italic*, ~~strikethrough~~, [links](https://…), bare https:// links,
 // citation markers [1], term links [label](term:key), glossary auto-links and @mentions.
 // While a reply is streaming, an unclosed fence is drawn as if it were closed.
@@ -285,6 +286,13 @@ function inline(s, ctx) {
   };
   while (i < s.length) {
     const c = s[i];
+    const math = c === '$' || c === '\\' ? mathAt(s, i) : null;
+    if (math) {
+      flush();
+      out += `<span class="md-math"${math.display ? ' data-display="true"' : ''}>${escapeHtml(math.tex)}</span>`;
+      i = math.end;
+      continue;
+    }
     if (c === '\\' && /[\\`*_{}[\]()#+\-.!|$~>@]/.test(s[i + 1] ?? '')) {
       buf += s[i + 1];
       i += 2;
@@ -302,14 +310,6 @@ function inline(s, ctx) {
       }
       buf += run;
       i += run.length;
-      continue;
-    }
-
-    const math = c === '$' ? mathAt(s, i) : null;
-    if (math) {
-      flush();
-      out += `<span class="md-math"${math.display ? ' data-display="true"' : ''}>${escapeHtml(math.tex)}</span>`;
-      i = math.end;
       continue;
     }
 

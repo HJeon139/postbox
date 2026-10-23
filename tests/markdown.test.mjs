@@ -70,6 +70,23 @@ test('#147: $$…$$ on one line is display math, alone on its line or inside one
   assert.equal(md('a $$ b'), '<p>a $$ b</p>');
 });
 
+test('#137: LaTeX’s (…) and […] are math; outside math, a backslash escape still works', () => {
+  const D = (tex) => `<div class="md-math" data-display="true">${tex}</div>`;
+  assert.equal(
+    md('\\( x^2 \\) and \\[ \\sum_i x_i \\]'),
+    '<p><span class="md-math"> x^2 </span> and <span class="md-math" data-display="true"> \\sum_i x_i </span></p>',
+  );
+  // As the mixed-room UAT’s critic wrote it, alone on its line, and the block form.
+  assert.equal(md('\\[ S \\le 10 + 3(20 + 10) + 15 = 115\\text{ s} \\]'), D(' S \\le 10 + 3(20 + 10) + 15 = 115\\text{ s} '));
+  assert.equal(md('Total:\n\\[\nS = 1\n\\]\nDone.'), `<p>Total:</p>${D('S = 1')}<p>Done.</p>`);
+  // Without its closing delimiter, or in code, it’s an escape or code, as before.
+  assert.equal(md('\\[not math and \\(this'), '<p>[not math and (this</p>');
+  assert.equal(md('A\n\\[\nno close'), '<p>A<br>[<br>no close</p>', 'a \\[ on its own line, never closed, stays an escaped bracket');
+  assert.equal(md('a \\\\(b\\\\) c'), '<p>a \\(b\\) c</p>');
+  assert.equal(md('`\\( x \\)` and\n```\n\\[ x \\]\n```'), '<p><code>\\( x \\)</code> and</p><pre class="md-code"><code>\\[ x \\]</code></pre>');
+  assert.equal(md('price \\$5 and \\*stars'), '<p>price $5 and *stars</p>');
+});
+
 test('pipe tables', () => {
   const out = md('| Book | n |\n|---|---|\n| Emma | 3 |');
   assert.equal(

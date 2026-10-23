@@ -48,6 +48,21 @@ test('an unclosed fence runs to the end, as in renderMarkdown; a list or table i
   assert.deepEqual(shape(group('$$\nx^2\n$$\n- item')), ['code 2', 'list 4']);
 });
 
+test('#137: [ and ] on lines of their own are a math group, as $$ is; a [ never closed stays a line', () => {
+  const groups = group('A\n\\[\nx = 1\n\\]\nB');
+  assert.deepEqual(shape(groups), ['line 1', 'code 3', 'line 5']);
+  const m = groups[1];
+  assert.ok(m.type === 'code' && m.lang === 'math');
+  if (m.type !== 'code') return;
+  assert.deepEqual(
+    m.hidden.map((r) => r.t),
+    ['\\[', '\\]'],
+  );
+  // As renderMarkdown draws it: without its \], \[ is an escaped bracket on a line of its own.
+  assert.deepEqual(shape(group('A\n\\[\nno close')), ['line 1', 'line 2', 'line 3']);
+  assert.deepEqual(shape(group('$$\nx')), ['code 2'], 'an unclosed $$ runs to the end, as before');
+});
+
 test('a list is one group with a target per item; continuation lines belong to their item', () => {
   const groups = group('- one\n  more of one\n- two\n  - nested\n\n- three\nlazy line\n\nAfter');
   assert.deepEqual(shape(groups), ['list 1,3,4,6', 'line 8', 'line 9']);
