@@ -121,18 +121,19 @@ test('card actions are capped at three', () => {
   bad(base('card', { actions: [1, 2, 3, 4].map((n) => ({ id: `a${n}`, label: `A${n}` })) }), /more than 3 items/);
 });
 
-test('#94: choice, form and confirm take an outcome, in Markdown and bounded; other blocks don’t', () => {
+test('#94, #106: choice, form, confirm and review take an outcome, in Markdown and bounded; other blocks don’t', () => {
   const asking = [
     base('choice', { options: [{ id: 'a', label: 'A' }] }),
     base('form', { fields: [{ id: 'f', label: 'F', kind: 'text' }] }),
     base('confirm', { statement: 'Delete 23 frames?', confirmLabel: 'Delete' }),
+    base('review', { format: 'markdown', content: 'x' }),
   ];
   for (const b of asking) {
     ok({ ...b, outcome: 'Done: **23 frames** deleted' });
     bad({ ...b, outcome: 'x'.repeat(501) }, /outcome is longer than 500 characters/);
     bad({ ...b, outcome: '' }, /outcome can’t be empty/);
   }
-  bad(base('review', { format: 'markdown', content: 'x', outcome: 'Done' }), /unknown field “outcome”/);
+  bad(base('code', { code: 'x', outcome: 'Done' }), /unknown field “outcome”/);
 });
 
 test('ids must be simple, so they are safe to use anywhere', () => {
@@ -151,6 +152,16 @@ test('every sandbox page is served with a sandbox policy, so it never runs with 
     assert.ok(!/allow-same-origin/.test(page.csp));
   }
   assert.match(csp('http://x'), /connect-src 'none'/);
+});
+
+test('#180: Postbox’s own media moves to the page’s origin, so a page opened at either spelling loads it', async () => {
+  const { onPageOrigin } = await import('../shared/urls.mjs');
+  const src = 'http://127.0.0.1:4191/media/middlemarch-title.svg?v=1';
+  assert.equal(onPageOrigin(src, 'http://localhost:4191'), 'http://localhost:4191/media/middlemarch-title.svg?v=1');
+  assert.equal(onPageOrigin(src, 'http://127.0.0.1:4191'), src);
+  // Not Postbox’s: another port, another host, or https from an allowed origin.
+  assert.equal(onPageOrigin('http://127.0.0.1:9999/x.png', 'http://localhost:4191'), 'http://127.0.0.1:9999/x.png');
+  assert.equal(onPageOrigin('https://www.gutenberg.org/x.png', 'http://localhost:4191'), 'https://www.gutenberg.org/x.png');
 });
 
 test('a type named after an Object property is unknown, not a crash', () => {

@@ -16,6 +16,7 @@ import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { parseDataset } from './corpus.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
@@ -37,7 +38,7 @@ import {
   wakeAgent,
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
-import { askForTool, resolveToolAsk } from './tool-ask.mjs';
+import { askForTool } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
 export { httpError } from './helpers.mjs';
@@ -71,7 +72,6 @@ const STOP_WATCHDOG_MS = 15000;
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
-const CATCH_UP_CHARS = 16000;
 const count = (n) => n.toLocaleString('en-US');
 /**
  * What a turn was asked, kept on its failed reply so Retry sends it again as it was, with its own kind (#151): a wake
@@ -139,7 +139,8 @@ function blockContent(it) {
       out.push(String(b.fallback ?? ''));
   }
   const a = it.answered ? it.answer : null;
-  if (a) {
+  if (it.closed) out.push(closedText(it));
+  else if (a) {
     const v = a.values ?? {};
     if (b.type === 'review') {
       const comments = Array.isArray(v.comments) ? v.comments : [];
@@ -1455,80 +1456,16 @@ export class Runtime {
 
   // ── Acting in blocks ───────────────────────────────────────────────────────────────
 
-  /** @param {number} [revision]  the revision of the block the person answered, as their page showed it (#123) */
   act(threadId, itemId, action, values, revision) {
-    const it = this.store.item(threadId, itemId);
-    if (!it) throw httpError(404, 'That block doesn’t exist any more.');
-    if (it.kind === 'hop') return this.resolveHop(threadId, itemId, action === 'confirm');
-    if (it.kind === 'proposal') return this.resolveProposal(threadId, itemId, action);
-    if (it.kind === 'permission') return this.resolvePermission(threadId, itemId, action, values);
-    if (it.kind === 'denial') return this.resolveDenial(threadId, itemId, action);
-    if (it.kind === 'appsend') return this.resolveAppSend(threadId, itemId, action);
-    if (it.kind === 'toolask') return resolveToolAsk(this, threadId, itemId, action);
-    if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
-    if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
-    // Progress, image and code never ask; a card or table action doesn’t lock the block.
-    const locks = ASKING.has(it.block.type);
-    const current = it.revision ?? 1;
-    // An answer is for the revision the person saw. One the agent replaced while they were answering is refused,
-    // so an approval never lands on text they didn’t see; their page keeps the draft and shows what changed.
-    if (revision !== undefined && !Number.isInteger(revision)) throw httpError(422, 'The revision you answered must be a whole number.');
-    if (locks && revision !== undefined && revision !== current)
-      throw Object.assign(
-        httpError(
-          409,
-          `This changed while you were answering: you answered revision ${revision}, and it’s now revision ${current}. Look it over, then answer again.`,
-        ),
-        { code: 'stale' },
-      );
-    const r = buildEvent(it.block, action, values, { revision: current });
-    if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
-    // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
-    if (locks)
-      this.patchItem(threadId, itemId, {
-        answered: true,
-        answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false },
-      });
-    this.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
-    const se = this.s.sessions[it.sessionId];
-    if (se?.needs?.itemId === itemId) this.updateSession(se.id, { needs: null, state: this.turns.has(se.id) ? se.state : 'idle' });
-    if (se) this.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId }, { threadId });
-    return { ok: true, voice: r.voice };
+    return act(this, threadId, itemId, action, values, revision);
   }
 
-  /**
-   * An answer is read once its event starts one of the agent’s turns (#123). While the agent works, the event waits
-   * in its turn’s queue, and until it’s delivered, update_block can’t reopen the block over it.
-   * @param {string} threadId @param {any} message  a message starting a turn
-   */
   answerDelivered(threadId, message) {
-    if (message.kind !== 'event' || !message.blockItemId) return;
-    const it = this.store.item(threadId, message.blockItemId);
-    if (it?.answer?.read === false && it.answer.revision === message.event.revision) this.patchItem(threadId, it.id, { answer: { ...it.answer, read: true } });
+    return answerDelivered(this, threadId, message);
   }
 
-  /**
-   * update_block’s refusal over an answer the agent hasn’t read: the answer stays on screen, and the reply says what
-   * it was. If its event is no longer waiting for the agent (a stopped or failed turn, or a restart, dropped it), the
-   * reply carries the whole answer and counts as reading it, so the block isn’t stuck.
-   * @param {string} sessionId @param {string} threadId @param {any} it  the answered block item
-   * @param {boolean} [outcome]  the update set outcome: it reports on an answer the agent can’t know yet
-   */
   unreadAnswer(sessionId, threadId, it, outcome = false) {
-    const a = it.answer;
-    const at = new Date(a.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const n = Array.isArray(a.values?.comments) ? a.values.comments.length : 0;
-    const full = JSON.stringify(a.values ?? {});
-    const what = it.block.type === 'review' ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}` : `${a.action} ${clipText(full, 300)}`;
-    const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
-    const waiting = this.turns.get(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
-    const then = outcome ? 'then record the outcome' : 'then update';
-    if (waiting) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
-    this.patchItem(threadId, it.id, { answer: { ...a, read: true } });
-    return {
-      ok: false,
-      message: `${said} It didn’t reach you in a turn, so ${it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`}. Read it, ${then}.`,
-    };
+    return unreadAnswer(this, sessionId, threadId, it, outcome);
   }
 
   resolveProposal(threadId, itemId, action) {
@@ -3747,55 +3684,8 @@ export class Runtime {
           ? { ok: true, message: renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown block ${v.block.id}.` }
           : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
       },
-      update_block({ block }) {
-        const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
-        if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
-        // In the thread the turn is in, else the session’s own: a block it showed in the conversation can be updated
-        // from a turn in a side thread (#110).
-        const mine = (id) =>
-          [...rt.store.items(id)].reverse().find((x) => x.kind === 'block' && x.valid && x.block.id === v.block.id && x.sessionId === sessionId);
-        const where = mine(threadId()) ? threadId() : se().threadId;
-        const existing = mine(where);
-        if (!existing) return { ok: false, message: `There’s no block with id ${v.block.id} to update. Use show_block to add it.` };
-        if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
-        const now = Date.now();
-        // An update that sets outcome reports a result, not a question (#94): it goes under the person’s answer, the
-        // block stays answered, and nobody is asked again. The question they answered stays as they saw it.
-        if (typeof v.block.outcome === 'string') {
-          if (!existing.answered)
-            return {
-              ok: false,
-              message: OUTCOME_LATER(v.block.id, 'The update wasn’t applied.'),
-            };
-          // Nor over an answer the agent hasn’t read (#123): it can’t know what came of an answer it hasn’t seen, and
-          // “Deleted.” could land under a Cancel.
-          if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing, true);
-          const { outcome, ...asked } = v.block;
-          const keys = new Set([...Object.keys(asked), ...Object.keys(existing.block)].filter((k) => k !== 'outcome'));
-          const changed = [...keys].some((k) => JSON.stringify(asked[k]) !== JSON.stringify(existing.block[k]));
-          rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, revision: (existing.revision ?? 1) + 1, updatedAt: now });
-          return {
-            ok: true,
-            message: `Recorded the outcome under the person’s answer to ${v.block.id}; it stays answered.${changed ? ' Your other changes weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.' : ''}`,
-          };
-        }
-        // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
-        // read (#123): the person would see it vanish, and the agent would never learn what it erased.
-        if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
-        /** @type {Record<string, any>} */
-        const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
-        if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
-        // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
-        if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
-        if (!followsConversation(v.block)) {
-          rt.patchItem(where, existing.id, patch);
-          return { ok: true, message: `Updated block ${v.block.id}.` };
-        }
-        // It asks again, so it comes to the newest point, where the person will look for it (#92). Text the turn writes
-        // next goes after it, when it’s in the turn’s own thread.
-        if (where === threadId()) endSegment();
-        const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
-        return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
+      update_block(args) {
+        return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment });
       },
       /**
        * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
@@ -3947,9 +3837,6 @@ export class Runtime {
   }
 }
 
-/** What a block’s stub calls it once it moved (#92): its title, or the start of what it asks. @param {any} b */
-const blockTitle = (b) => clip(String(b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id).replace(/\s+/g, ' '), 80);
-
 const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 /** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */
 const datasetDir = (folder) => join(folder, '.postbox', 'datasets');
@@ -3984,10 +3871,6 @@ export async function readCapped(path, max) {
   }
 }
 
-/** Why an outcome was refused on a block nobody has answered yet (#94). @param {string} id @param {string} what */
-const OUTCOME_LATER = (id, what) =>
-  `${what} outcome reports the result of the person’s answer, and ${id} hasn’t been answered yet. Send the block without outcome, and set outcome with update_block once they’ve answered.`;
-
 /** Host tools that apps (through the bridge) and agents can use, if granted. */
 export function hostTool(rt, tool, args = {}) {
   switch (tool) {
@@ -4006,34 +3889,6 @@ export function hostTool(rt, tool, args = {}) {
     default:
       throw httpError(404, `There’s no host tool called “${tool}”.`);
   }
-}
-
-/**
- * A progress update’s step times, kept beside the block: startedAt when a step starts running, endedAt when it
- * stops. A step that finishes without a duration gets one from them.
- * @param {any} item  the block as it was  @param {any} block  the update  @param {number} now
- */
-function stampSteps(item, block, now) {
-  const was = new Map((item.block.steps ?? []).map((s) => [s.id, s.state]));
-  /** @type {Record<string, { startedAt?: number, endedAt?: number }>} */
-  const times = {};
-  const steps = block.steps.map((sent) => {
-    const before = was.get(sent.id);
-    // Only Postbox marks a step stalled; from the agent, it means still running.
-    const s = sent.state === 'stalled' && before !== 'stalled' ? { ...sent, state: 'running' } : sent;
-    const t = { ...(item.stepTimes?.[s.id] ?? {}) };
-    const going = before === 'running' || before === 'stalled';
-    // A step that was running when the block was shown started then.
-    if (going) t.startedAt ??= item.at;
-    if (s.state === 'running') {
-      if (!going) t.startedAt = now;
-      delete t.endedAt;
-    } else if (going && s.state !== 'pending') t.endedAt = now;
-    times[s.id] = t;
-    const finished = s.state === 'done' || s.state === 'failed';
-    return finished && !s.duration && t.startedAt && t.endedAt ? { ...s, duration: formatDuration(t.endedAt - t.startedAt) } : s;
-  });
-  return { block: { ...block, steps }, stepTimes: times };
 }
 
 /** What Postbox asks when you stop an agent whose background jobs are running (#129). */

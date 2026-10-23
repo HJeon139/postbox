@@ -5,7 +5,7 @@
 // conversation, from its next turn (Runtime.personaFor reads Tools from the persona, not the session’s snapshot).
 
 import { REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
-import { httpError } from './runtime.mjs';
+import { httpError } from './helpers.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
 
 /** Every tool id the persona editor offers, with its label there. */
