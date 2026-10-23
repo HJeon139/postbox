@@ -209,7 +209,81 @@ Each is a test or a check, run headless unless it says otherwise.
 11. A room with a turn whose stream wasn’t recorded reports the gap, not a turn with zero tool calls (R10).
 12. Removing the persona stops recording from the next turn; deleting the conversation removes its telemetry folder, and Undo restores it (R11).
 13. `tools/uat-stats.mjs` counts a live report’s duplicate findings in recurrence and leaves it out of the discovery curve (R20).
-14. A UAT scenario adds `@telemetry` to a room, flags two items in its thread, asks for a report and files nothing; the runner checks the report against the run’s own facts (Claude agents only, `--agent-model` default).
+14. The end-to-end UAT below passes: its scenario’s triggers all happen, and none of its checks fires.
+
+## End-to-end UAT
+
+The checks above are headless. This section is the agentic part: a scenario that plays the persona the way a person would, and the persona running in every UAT run from then on, so the UAT collects and files what it finds. The person asked for both on 23 October 2026.
+
+- **Evidence:** the person’s request; the UAT found 8 confirmed defects in its first 11 runs, and each run’s check findings already carry issue numbers the persona can label.
+- **Intent:** principle 2. A run that labels its own failures, and measures how well its labeler does against the verifier, makes “is this defect real” cheaper to answer.
+
+### U1. A targeted scenario for the persona
+
+[`tests/uat/e2e/scenarios/telemetry.md`](../tests/uat/e2e/scenarios/telemetry.md) has three phases: work in the room, then add `@telemetry`; flag two moments in its thread, while an agent writes a line meant to fool it; then ask for a report with the history, remove a line, save it, and press File issue with no GitHub sign-in. Its triggers are new, in [`tools/uat/triggers.mjs`](../tools/uat/triggers.mjs). Until they exist, the runner refuses the scenario by name (`unknownTriggers`), so it can’t run before the persona does.
+
+| Trigger | Postbox showed that | Reads |
+|---|---|---|
+| canaries-in-room | every canary reached the room’s items or an agent’s stream, so the leak check below tests something | the run’s canaries, `facts.state`, `facts.streams` |
+| telemetry-joined | `@telemetry` joined, its line is in the room, and an agent took a turn after it | `facts.state`, `facts.events` |
+| telemetry-flag-pinned | a flag written in the telemetry thread was pinned to one item | the persona’s `draft_report` calls in `facts.streams` |
+| telemetry-flag-asked | a flag it couldn’t pin got a question back in its thread | `facts.state` |
+| telemetry-report-saved | a report was saved after a line was removed in review | `.postbox/telemetry/reports/`, `facts.events` |
+| telemetry-file-fallback | File issue with no `gh` put text on the clipboard and opened the new-issue page | `facts.probes.clipboard`, `facts.probes.tabs` |
+
+Why: each trigger is a path a person takes that the headless tests can only fake: a persona added late, flags in words, the tester’s own judgment of what came from the project.
+
+### U2. What the runner needs for it
+
+- **`- seed: canaries`** writes a small Python tool, its tests (one failing) and a `.env` into the run’s workspace before step 1, with canaries made fresh for the run: an AWS-style key, a function name, an email address and a private repository URL. They’re kept in the run folder, never in a report.
+- **`- gh: none`** starts Postbox with `gh` off its path, for the File issue fallback.
+- **`- telemetry: manual`** keeps the runner from adding `@telemetry` itself (U4), since this scenario has the tester add it.
+- **Probes:** the clipboard’s text after File issue, and any tab Postbox opened, with its address. The runner closes that tab without submitting.
+
+Why: canaries made per run can’t already be in a model’s training data, or in Postbox’s own vocabulary, so a canary in a report can only have come from the room.
+
+### U3. Checks that watch the persona
+
+These go in [`tools/uat/checks.mjs`](../tools/uat/checks.mjs) and the README’s checks table, and run in every run with `@telemetry` in it. None of them calls the gate’s code: a check that used the gate would only test that the gate agrees with itself ([Wu 2026](#ref-silent): validate the monitors).
+
+| Check | Requirement | Looks for |
+|---|---|---|
+| telemetry-leak | R12–R16, R19 | Any canary, file path, command line, persona instruction line, or run of five words from the room in a saved report, the copied text or a filed issue |
+| telemetry-visible | R5, R6 | Another agent’s stream that mentions `@telemetry`, its thread’s text or its handle; the room’s `@` menu offering it; a `wake_agent` to it that Postbox didn’t refuse |
+| telemetry-spoke-in-room | R5, calm | An item from the persona in the room’s transcript other than its join line |
+| telemetry-missed-finding | R8 | A check finding this run made, from a check a live room can run, that the report doesn’t list |
+| telemetry-gap-as-zero | R10 | A turn with a recorded stream that the report counts wrong, or a turn without one that it doesn’t list as a gap |
+| telemetry-bytes-mismatch | R18, R19 | Saved or copied bytes that differ from the review block the tester approved, less the line it removed |
+| telemetry-flag-misplaced | R9 | A flag pinned to an item other than the one the flag names, where the runner knows it (U4) |
+
+### U4. Telemetry in every UAT run
+
+Once the persona ships, the runner adds it to every scenario. The same change that builds the persona turns this on.
+
+- **Setup.** After the runner creates the conversation, and before step 1, it adds `@telemetry` from `+` › agent, as a person would. Its backend is always Claude Code, on its own model and effort (Haiku 5.5, low), whatever `--agent-model`, `- models: persona` or `- backends` say. So compatibility and release runs get it too, without spending Kiro or Antigravity quota. `--telemetry no` leaves it out, and `- telemetry: manual` lets the scenario add it.
+- **Flags.** When the tester records a finding, the runner writes it as a flag in the telemetry thread, with the finding’s title and the step’s newest item. The tester spends no step on it. The runner knows which item each flag means, so `telemetry-flag-misplaced` can measure how often the persona pins it right.
+- **The report.** After the last step, and before the verifier, the runner asks for a report with the history, approves it unchanged and saves it. It copies `report.json` into the run folder as `telemetry/report.json`. The runner waits for the persona’s turns like any agent’s, so they never overlap a step.
+- **What the report adds to `findings.json`:**
+  - A label on one of the run’s own check or tester findings goes on that finding as `telemetry: { mast, area, attribution, confidence }`. It adds no finding.
+  - A failure the persona found itself is a new finding with `source: "telemetry"`. It goes through the same preset, verifier and filing as a tester finding: deduplicated by fingerprint, filed only if it’s confirmed, and never filed when the verifier calls it `agent` or `harness`.
+  - A `telemetry-*` check finding is a defect in the persona, filed like any check finding.
+- **Filing.** The runner files through its own path (`--file`), never with File issue. Only the telemetry scenario presses File issue, with no `gh` to file through.
+- **Measurement integrity.** If `telemetry-visible` fires in a run, that run’s M1 exit counts and per-agent measurements are marked unreliable in the report, since the agents may have known they were being watched.
+
+Why: every run then produces the same labeled record a person’s live room would, against a ground truth the runner holds (its checks, the tester’s findings and the verifier’s verdicts). The UAT checks the persona’s output at no extra tester cost, and the persona’s labels sort findings the UAT already makes. Pinning the persona to Claude Code on Haiku keeps it off the quotas the person restricted (agy’s free tier, Kiro credits).
+
+### U5. What the runs say about the persona
+
+`run.json` gets a `telemetry` block, and `tools/uat-stats.mjs` prints its totals across runs:
+- **Recall:** of the run’s check findings a live room could make, the share the report listed.
+- **Pinning:** of the runner’s flags, the share pinned to the item the flag meant.
+- **Agreement:** on findings that both the persona and the verifier judged, how often the persona’s attribution matches the verifier’s verdict, with Cohen’s κ once there are 30 or more ([MAST](#ref-mast) reports κ = 0.77 for its judge).
+- **Precision:** the verdicts on `source: "telemetry"` findings, as a source of their own beside `check` and `tester`.
+- **Cost:** the persona’s tokens and spend per run.
+
+Findings with `source: "telemetry"` count toward recurrence and verdict precision, but not toward the per-step discovery curve: they’re found after the last step, not at one.
+
+Why: the research says one-shot labeling and attribution are unreliable ([Who&When](#ref-whowhen), [TRAIL](#ref-trail)). These numbers say whether the persona’s labels can be trusted for live rooms, measured where the answer is known.
 
 ## Not in scope
 
