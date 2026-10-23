@@ -4,7 +4,7 @@
 // (fixed when it started, or changed by a command), falling back to its persona’s; the server does the same
 // (server/runtime.mjs, personaFor; server/adapters/setup.mjs, modelOf and effortOf).
 
-export const BACKEND_NAMES = { 'claude-code': 'Claude Code', 'agent-sdk': 'Agent SDK', 'kiro-cli': 'Kiro CLI', mock: 'Mock agent' };
+export const BACKEND_NAMES = { 'claude-code': 'Claude Code', 'agent-sdk': 'Agent SDK', 'kiro-cli': 'Kiro CLI', codex: 'Codex', mock: 'Mock agent' };
 const EFFORT_WORDS = { low: 'low', medium: 'medium', high: 'high', xhigh: 'extra high', max: 'max' };
 const effortWord = (e) => (Object.hasOwn(EFFORT_WORDS, e) ? EFFORT_WORDS[e] : String(e));
 

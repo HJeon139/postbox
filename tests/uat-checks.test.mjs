@@ -290,18 +290,23 @@ test('the scenarios parse into phases the tester works through', () => {
     .filter((n) => n.endsWith('.md'))
     .map((n) => n.slice(0, -3));
   const personas = JSON.parse(readFileSync(new URL('uat/e2e/personas.json', import.meta.url), 'utf8')).map((p) => p.handle);
-  for (const name of ['scifact', 'hotpotqa', ...EXIT]) assert.ok(names.includes(name), name);
+  for (const name of ['scifact', 'hotpotqa', 'codex', ...EXIT]) assert.ok(names.includes(name), name);
   for (const name of names) {
     // uat-run.mjs --recheck reads a scenario’s name back from its run folder as word characters.
     assert.match(name, /^\w+$/, name);
     const s = parseScenario(readFileSync(new URL(`${name}.md`, dir), 'utf8'));
-    assert.ok(s.phases.length >= 2 && s.phases.length <= 3, name);
+    assert.ok(s.phases.length >= 2 && s.phases.length <= (name === 'codex' ? 4 : 3), name);
     assert.ok(
       s.agents.every((h) => personas.includes(h)),
       name,
     );
     assert.ok(s.persona.length > 40 && s.project && s.conversation && s.summary, name);
   }
+  const codex = parseScenario(readFileSync(new URL('codex.md', dir), 'utf8'));
+  assert.deepEqual(codex.backends.critic, { backend: 'codex', model: null });
+  assert.deepEqual(codex.permissionModes, { critic: 'ask' });
+  assert.ok(codex.phases.some((p) => /resume/i.test(p.title)));
+  assert.ok(codex.phases.some((p) => /fork/i.test(p.title)));
 });
 
 test('the M1 exit scenarios never name a block', () => {
@@ -464,6 +469,7 @@ test('a scenario can put agents on another backend, with a model', () => {
     b: { backend: 'claude-code', model: 'claude-opus-5-5' },
   });
   assert.deepEqual(parseScenario('# T\n').backends, {});
+  assert.deepEqual(parseScenario('# T\n- permission_modes: @critic=ask, reviewer=bypass\n').permissionModes, { critic: 'ask', reviewer: 'bypass' });
 });
 
 test('the tester keeps how your Claude Code signs in, and nothing else of your settings', () => {
@@ -531,12 +537,14 @@ test('the tester can answer a review, and is told to clear what waits on it befo
   assert.deepEqual(action.comments.items.required, ['line', 'text']);
   // And open a persona’s settings, and its permissions panel, which the mixed-room run couldn’t reach.
   assert.ok(action.type.enum.includes('settings'));
+  assert.ok(action.type.enum.includes('send_then_stop'));
   assert.equal(action.permissions.type, 'boolean');
   const prompt = systemPrompt({ scenario: parseScenario('# T\n- persona: someone\n\n## Phase 1: x\n\ny\n'), issues: [] });
   assert.match(prompt, /review \{item, verdict, comments\}/);
   assert.match(prompt, /request changes, with at least one comment on a line/);
   assert.match(prompt, /Answer them before you move to the next phase or finish/);
   assert.match(prompt, /settings \{target, permissions\?\}/);
+  assert.match(prompt, /send_then_stop \{text, seconds\?\}/);
 });
 
 test('a message that addresses an agent by name without its @ is flagged: it goes to whoever spoke last', () => {

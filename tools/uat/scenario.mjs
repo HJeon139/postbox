@@ -28,6 +28,16 @@ function backendsOf(spec) {
   return out;
 }
 
+function permissionModesOf(spec) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const part of String(spec ?? '').split(/,\s*/)) {
+    const m = /^@?([\w-]+)=(auto|ask|acceptEdits|bypass)$/.exec(part.trim());
+    if (m) out[m[1]] = m[2];
+  }
+  return out;
+}
+
 export function parseScenario(md) {
   const [head, ...phases] = md.split(/\n(?=## )/);
   const lines = head.split('\n');
@@ -48,6 +58,7 @@ export function parseScenario(md) {
     project: meta.project ?? 'UAT',
     conversation: meta.conversation ?? 'UAT',
     backends: backendsOf(meta.backends),
+    permissionModes: permissionModesOf(meta.permission_modes),
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- \w+: /.test(l)).join('\n'),
     phases: phases.map((p) => ({ title: p.split('\n')[0].replace(/^##\s*/, ''), text: p.split('\n').slice(1).join('\n').trim() })),
   };
