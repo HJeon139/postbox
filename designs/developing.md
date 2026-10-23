@@ -61,6 +61,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 | Rule | Checked by |
 |---|---|
 | Lint and formatting in `app/js`, `app/kit/kit.js`, `app/kit/diagram.js`, `app/theme.js`, `server`, `shared`, `tools` and `tests` | Biome, with warnings as errors. `app/workbench.css`, `app/index.html` and `mockups/` aren’t in its `includes` |
+| The length of each file and function, with a ceiling for each file that was already past it | Biome (architecture.md, “Module and function size”). Lowering a ceiling after a file shrinks is a review finding |
 | Types in `shared/` and `server/` | `tsc -p jsconfig.json`. `app/js/`, `tools/` and `tests/` aren’t type-checked at all, and `noImplicitAny` is off, so an untyped parameter is silently `any` |
 | No raw colors outside the token blocks | `lint-tokens`, in CSS and JavaScript |
 | No `innerHTML` without a named source; no attribute or style names chosen at run time | `lint-dom` |
@@ -132,12 +133,13 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 - A `lint-allow` or `lint-allow-file` without a reason. The tools require one, so an empty reason means the reason is being dodged.
 - Turning a rule off in `biome.json`, or loosening `jsconfig.json`, in the same change that tripped it.
 - Removing a path from Biome’s `includes` or `jsconfig.json`’s `include`, or adding one to an exclude, so the file stops being read.
+- Raising a file’s ceiling in `biome.json`’s overrides, or adding one for a file that wasn’t over the limit (architecture.md, “Module and function size”).
 
 **A real exception is narrow and says why.** `shared/urls.mjs` is the model: `// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters in a URL are exactly what this rejects`. It names the rule, sits on the one line, and tells the next reader whether it still applies. A rule turned off project-wide goes in `biome.json` with the reason in the commit (engineering-practices.md, “Biome”).
 
 ### Modules
 
-**One concern per module, small enough to read in one sitting** (architecture.md, “The front end”). `server/runtime.mjs` and `app/js/thread.mjs` are already past that. A change that adds a concern to either moves it into its own module rather than growing the file.
+**One concern per module, small enough to read in one sitting** (architecture.md, “The front end”). Biome fails a file or function past its default length. Files already past it, such as `server/runtime.mjs` and `app/js/thread.mjs`, have a ceiling at their size on 23 October 2026, so they can shrink and can’t grow (architecture.md, “Module and function size”). A change that adds a concern to one of them moves it into its own module, and a change that shrinks one lowers its ceiling to the new size.
 
 **A circular import means a missing module.** The shared value belongs in a third module that neither imports back, which is usually `shared/`.
 
