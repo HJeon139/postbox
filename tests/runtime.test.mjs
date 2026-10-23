@@ -2377,3 +2377,36 @@ test('keeping a tool off leaves the persona as it was and tells the agent to go 
   assert.match(adapter.calls.at(-1).message.text, /kept web\.fetch off for you/);
   assert.equal(store.state.sessions[rt.sessionsIn(t.id)[0].id].needs, null);
 });
+
+test('#63 a reply with options in prose gets a lint turn that asks for the choice; showing it ends as a note', async () => {
+  const { rt, store, t, adapter } = setup();
+  adapter.next.push(async (c) =>
+    c.text('I can’t read the folder yet.\n\nTo unblock, pick one:\n1. Share the folder\n2. Paste the documents\n3. Point me at an export'),
+  );
+  adapter.next.push(async (c) => {
+    c.tools.show_block({
+      block: { id: 'unblock', type: 'choice', version: 1, fallback: 'Pick one', options: [{ id: 'share', label: 'Share the folder' }] },
+    });
+  });
+  rt.sendMessage(t.id, { text: 'summarize the three documents' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 1);
+  assert.deepEqual(
+    lints(adapter)[0].message.problems.map((p) => p.code),
+    ['options-in-prose'],
+  );
+  assert.ok(store.items(t.id).some((i) => i.kind === 'block' && i.block.id === 'unblock'));
+  // The block it showed in the lint turn isn’t linted again, and the turn needs no reply.
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'agent').length, 1);
+});
+
+test('#63 a turn that showed a choice for its options isn’t linted', async () => {
+  const { rt, t, adapter } = setup();
+  adapter.next.push(async (c) => {
+    c.text('Two ways to go:\n1. Keyword search\n2. Embeddings\n\nWhich do you prefer?');
+    c.tools.show_block({ block: { id: 'way', type: 'choice', version: 1, fallback: 'Pick', options: [{ id: 'kw', label: 'Keyword' }] } });
+  });
+  rt.sendMessage(t.id, { text: 'how should we search?' });
+  await settle(rt);
+  assert.equal(lints(adapter).length, 0);
+});

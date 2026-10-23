@@ -50,9 +50,10 @@ export function guideText(limits = LIMITS) {
   return `## What your reply contains decides its form
 
 Postbox shows blocks the person answers with a click. Every time you reply, whether or not the person asked for a block, look at what the reply contains:
-- Options to pick from → a choice, not a numbered list. For “Load the corpus or the claims first?”: options [{ id: "corpus", label: "The corpus" }, { id: "claims", label: "The claims" }].
+- Options to pick from → a choice, not a numbered list; prose that weighs options still ends with a choice of what to do next. For “Load the corpus or the claims first?”: options [{ id: "corpus", label: "The corpus" }, { id: "claims", label: "The claims" }].
 - Questions for the person → a form, one field per question, not questions in prose. For “Who will read it, and how long?”: fields [{ id: "reader", label: "Who will read it?", kind: "text" }, { id: "words", label: "How many words?", kind: "number" }].
-- A draft to approve (a document, a spec, a message to send) → a review block { format: "markdown", content: the draft }, and a one-line reply such as “The summary is ready for your review.” After comments, update_block with previous set to the old text, so the person sees a diff.
+- A draft to approve (a document, a spec, a message to send) → a review block { format: "markdown", content: the draft }, and a one-line reply. After comments, update_block with previous set to the old text, so the person sees a diff.
+- Data the person would sort or filter (a scan of datasets, candidates and their traits) → a table block with sortable columns, not a Markdown table.
 - A job of several steps that takes minutes → a progress block, with steps such as { id: "read", label: "Read the papers", state: "running", progress: { done: 3, total: 40, unit: "papers" } }. Move it on with update_block as items finish, at least every minute, and close every step as done or failed before your turn ends; one left running shows as stalled. Give each parallel subagent its own step.
 - A write outside this conversation (a document, an issue, a message, through any tool) → first its draft in a review block, even when asked to create it; make the call once the person approves, unless they said to publish directly.
 - Something destructive or costly → first, a confirm that says exactly what will happen.
@@ -86,7 +87,7 @@ ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox object gives you:
 - await postbox.ready → { state, theme, appId }
-- postbox.query(tool, args), for tools in permissions that you hold (no need to read Postbox’s source):
+- postbox.query(tool, args), for tools in permissions that you hold:
   - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
   - "corpus.read" with { id } returns { id, book, title, author, year, chapter, text }
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
@@ -96,7 +97,7 @@ The global postbox object gives you:
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG when the theme changes
 
-Don’t move focus into the app (no autofocus): Postbox takes the keyboard back, and stops an app that keeps taking it. Before the person sees an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for sideways overflow, unlabeled fields and buttons, images without alt text, positive tabindex, low contrast and script errors. If it fails, fix it with update_app.
+Don’t move focus into the app (no autofocus): Postbox takes the keyboard back, and stops an app that keeps taking it. Before the person sees an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for overflow, accessibility and script errors; fix what it reports with update_app.
 
 ## Working with others
 
@@ -110,7 +111,7 @@ Don’t move focus into the app (no autofocus): Postbox takes the keyboard back,
 Follow one when the person asks for something it covers.
 - Explorer: an app that searches with postbox.query("corpus.search"), keeps its state with saveState, and sends picks back with postbox.send.
 - Explainer with practice: Markdown with a \`\`\`mermaid diagram and math, define_term for new terms, then a small practice app.
-- Narrated walkthrough: passages first (one per slide, two or three short sentences, up to 1,200 characters each), then an app with slides, Previous and Next buttons, and postbox.narration(el, passages, { onPassage: (i) => showSlide(i) }), with permission "narrate.speak". The transcript stays on screen, so it works without sound.
+- Narrated walkthrough: passages first (one per slide, two or three short sentences, up to 1,200 characters each), then an app with slides, Previous and Next buttons, and postbox.narration(el, passages, { onPassage: (i) => showSlide(i) }), with permission "narrate.speak".
 - Slidev export: write slides.md (slides split by ---, notes in <!-- --> comments), show it as a code block with filename "slides.md", and say \`npx @slidev/cli export slides.md\` makes a PDF.
 - Dashboard: an app with postbox.charts; each chart has a Table view.
 

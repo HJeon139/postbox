@@ -17,7 +17,7 @@ import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
-import { diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
+import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { runShell } from './shell.mjs';
@@ -1989,6 +1989,10 @@ export class Runtime {
         diagrams.map((d) => d.src),
       );
     problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
+    // A reply that should have been a block (#63): what this turn showed, and what the person last asked for.
+    const own = this.store.items(turn.threadId);
+    const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
+    problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? ''));
     return problems;
   }
 
