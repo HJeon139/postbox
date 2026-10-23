@@ -164,7 +164,7 @@
       "linter": {
         "rules": {
           "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 753 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 619 } } }
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 69, "skipIifes": true } } }
         }
       }
     },
