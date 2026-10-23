@@ -1,0 +1,16 @@
+{"type":"runStarted","data":{"payloadSchema":"acp","acpProtocolVersion":1,"engine":"v3"}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","currentValue":"auto"}]}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"context_usage","usagePercentage":1.2}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"context_usage","usagePercentage":1.2}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"context_usage","usagePercentage":1.2}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"context_usage","usagePercentage":1.2}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","currentValue":"auto"}]}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","currentValue":"claude-opus-5.5"}]}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","currentValue":"claude-opus-5.5"}]}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"context_usage","usagePercentage":1.2}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"turn_start"}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"OK"},"_meta":{"kiro":{"executionId":"57489bca-a5b7-45f6-89a4-4a6f6bb9aa17","turnId":"57489bca-a5b7-45f6-89a4-4a6f6bb9aa17","replayId":"7d40ef3c-fd18-496c-9c93-f4ed2d3c6e82-say"}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"context_usage","usagePercentage":2.5505002}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"context_usage","usagePercentage":2.5505002}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"turn_end","stopReason":"end_turn"}}}}}
+{"type":"runFinished","data":{"sessionId":"sess_2daecf15-7dd7-4df8-9238-71c5caaf1df2","status":"success","stopReason":"end_turn","finalText":"OK","finalTextTruncated":false}}

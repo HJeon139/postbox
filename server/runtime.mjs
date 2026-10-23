@@ -937,6 +937,13 @@ export class Runtime {
     const se = this.ensureSession(topicId, src.personaId);
     const root = items[idx];
     const who = root?.kind === 'user' ? 'your' : root?.handle ? `@${root.handle}’s` : 'a';
+    const adapter = this.adapters.get(this.persona(src.personaId)?.backend ?? 'mock');
+    // A backend that can’t fork a session (the Kiro CLI, #117) joins the thread fresh, as an agent that joined the
+    // conversation later does: its first catch-up starts with the message the thread is about (#81).
+    if (adapter.capabilities?.fork === false) {
+      this.updateSession(se.id, { personaSnapshot: src.personaSnapshot, forkOf: { sessionId: src.id, itemId: null }, backendState: {} });
+      return this.s.sessions[se.id];
+    }
     this.updateSession(se.id, {
       // The same persona version as the session it forks: it is the same agent, branching.
       personaSnapshot: src.personaSnapshot,
@@ -954,7 +961,7 @@ export class Runtime {
         `[Postbox] This is a topic thread that branches from ${who} message in the conversation “${this.s.threads[topic.parentId]?.title ?? ''}”: “${clip(root?.text || root?.block?.title || '', 400)}”. You remember the conversation up to there. It continues separately, and nothing from this thread reaches it unless the person sends it back.`,
       ],
     });
-    this.adapters.get(this.persona(src.personaId)?.backend ?? 'mock').fork?.(src, this.s.sessions[se.id]);
+    adapter.fork?.(src, this.s.sessions[se.id]);
     return this.s.sessions[se.id];
   }
 
@@ -1413,8 +1420,17 @@ export class Runtime {
     if (suppressAlways) return null;
     if (Array.isArray(suggestions)) return alwaysAllow(suggestions);
     if (suggestions !== null && suggestions !== undefined) return null;
-    const readsRules = this.adapters.get(this.persona(se.personaId)?.backend ?? '')?.folderFor;
-    return readsRules ? postboxAlways(String(tool ?? '').slice(0, 121), input) : null;
+    return this.readsRules(this.persona(se.personaId)?.backend) ? postboxAlways(String(tool ?? '').slice(0, 121), input) : null;
+  }
+
+  /**
+   * Whether a backend reads Claude Code’s permission rules from the agent’s folder: Claude Code and the Agent SDK do;
+   * the mock reads none, and the Kiro CLI has rules of its own (capabilities.permissions: 'none', #117).
+   * @param {string|undefined} backend
+   */
+  readsRules(backend) {
+    const adapter = backend && this.adapters.names().includes(backend) ? this.adapters.get(backend) : null;
+    return Boolean(adapter?.folderFor) && adapter?.capabilities?.permissions !== 'none';
   }
 
   /**
@@ -1490,7 +1506,7 @@ export class Runtime {
       const se = this.s.sessions[it.sessionId];
       const persona = se && this.personaFor(se);
       const adapter = persona && this.adapters.get(persona.backend);
-      if (!adapter?.folderFor) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+      if (!adapter?.folderFor || !this.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
       await addAllowRule(await adapter.folderFor(persona, this.s.projects[this.s.threads[threadId]?.projectId]), it.always.saves);
       // The card may have been answered, or its turn ended, while the file was written.
       if (!this.permissionWaits.has(it.id)) throw httpError(409, 'The rule is saved, but the turn that asked has ended.');
@@ -1544,7 +1560,7 @@ export class Runtime {
     if (action === 'always') {
       const persona = se && this.personaFor(se);
       const adapter = persona && this.adapters.get(persona.backend);
-      if (!adapter?.folderFor) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+      if (!adapter?.folderFor || !this.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
       const folder = await adapter.folderFor(persona, this.s.projects[this.s.threads[threadId]?.projectId]);
       const { file } = await addAllowRule(folder, it.rules.always);
       note = `[Postbox] The person now always allows \`${it.rules.always}\` (saved in ${file}). The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
@@ -1609,8 +1625,10 @@ export class Runtime {
   async permissionsView(who) {
     const { se, persona, project, folder } = await this.panelTarget(who);
     const real = persona.backend !== 'mock';
+    // The mock shows its rules too (the Tools ones); a real backend that doesn’t read Claude Code’s shows none.
+    const readsRules = !real || this.readsRules(persona.backend);
     const { usesHostSetup, canPublish } = setupOf(persona);
-    const files = real && folder ? await readRules({ folder, home: this.home, configDir: this.configDir, usesHostSetup }) : [];
+    const files = real && readsRules && folder ? await readRules({ folder, home: this.home, configDir: this.configDir, usesHostSetup }) : [];
     const has = new Set(persona.tools ?? []);
     const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));
     const conversation = se ? { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] } : null;
@@ -1627,6 +1645,7 @@ export class Runtime {
       sessionId: se?.id ?? null,
       projectId: project?.id ?? null,
       real,
+      readsRules,
       folder,
       projectFolder: project?.folder ?? null,
       home: this.home,
@@ -1668,7 +1687,7 @@ export class Runtime {
     if (!['local', 'user', 'conversation'].includes(where))
       throw httpError(422, 'A rule is saved in this folder’s local settings, your user settings or this conversation.');
     const { se, persona, folder } = await this.panelTarget({ sessionId, personaId, projectId });
-    if (persona.backend === 'mock') throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
+    if (persona.backend === 'mock' || !this.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
     const b = /** @type {'allow'|'ask'|'deny'} */ (behavior);
     if (where === 'conversation') {
       if (!se) throw httpError(409, 'Open the panel from a conversation to make a rule for it only.');

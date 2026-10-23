@@ -17,14 +17,20 @@ const toolsInProject = (projectId) =>
 
 // ── Backend, model and permissions ──────────────────────────────────────────────────────
 // Shared by the new-agent sheet and the persona editor. A persona runs on the mock, on Claude Code (the
-// claude CLI you’re signed in to) or on the Agent SDK; real backends take a model and a permission mode.
+// claude CLI you’re signed in to), on the Agent SDK or on the Kiro CLI (#117); real backends take a model and a
+// permission mode.
 
 const BACKENDS = [
   ['claude-code', 'Claude Code', 'Runs the claude CLI you’re signed in to.'],
   ['agent-sdk', 'Agent SDK', 'Runs the Claude Agent SDK in Postbox’s server.'],
+  ['kiro-cli', 'Kiro CLI', 'Runs the kiro-cli you’re signed in to. It can’t ask you: what would need asking is refused.'],
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
 export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
+/** What a backend can do (server/adapters/adapter.mjs, capabilities), as /api/state serves it (#117). */
+export const capsOf = (backend) => client.config.backends?.[backend] ?? {};
+/** The models to suggest for a backend: the ones it reported, else Claude’s. */
+export const modelsFor = (backend) => capsOf(backend).models ?? MODELS;
 // The levels come from the server (server/adapters/setup.mjs, EFFORT_LEVELS); these are their names.
 export const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 const PERMISSIONS = [
@@ -33,9 +39,16 @@ const PERMISSIONS = [
   ['acceptEdits', 'Accept edits', 'It edits files in its folders freely, and asks before running commands.'],
   ['bypass', 'Run everything', 'It never asks. Use it only in a folder you can lose.'],
 ];
+// The Kiro CLI runs headless, where every ask is a refusal (server/adapters/kiro-cli.mjs), so the modes read differently.
+// The permissions panel uses them too (app/js/permissions.mjs).
+export const KIRO_PERMISSIONS = {
+  auto: 'Kiro has no safety check, so this is Ask me: it reads in its folders and runs a few read-only commands, such as git status, and refuses the rest.',
+  ask: 'It reads in its folders and runs a few read-only commands, such as git status, and refuses the rest: it can’t ask you.',
+  acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
+};
 export const defaultBackend = () => BACKENDS.map(([id]) => id).find((id) => (client.config.adapters ?? []).includes(id)) ?? 'mock';
 
-function seg(label, options, value, onPick, { disabled = () => false, titleOf = () => null } = {}) {
+function seg(label, options, value, onPick) {
   return h(
     'div.seg',
     { role: 'radiogroup', 'aria-label': label },
@@ -46,8 +59,6 @@ function seg(label, options, value, onPick, { disabled = () => false, titleOf = 
           type: 'button',
           role: 'radio',
           'aria-checked': String(value === id),
-          disabled: disabled(id),
-          title: titleOf(id),
           onclick: () => onPick(id),
         },
         name,
@@ -192,26 +203,38 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
   const real = st.backend !== 'mock';
   const perm = PERMISSIONS.find(([id]) => id === st.permissionMode) ?? PERMISSIONS[0];
   return [
+    // A dropdown, as Effort is: four backends side by side wrapped their names onto two lines in a half-width
+    // field. One this computer can’t run stays in the list, disabled, so you can see it exists.
     h(
       'div.field',
-      h('span.label', 'Runs on'),
+      fixedBackend ? h('span.label', 'Runs on') : h('label.label', { for: `${idp}-b` }, 'Runs on'),
       fixedBackend
         ? h('span', BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend)
-        : seg(
-            'Runs on',
-            BACKENDS,
-            st.backend,
-            (id) => {
-              st.backend = id;
-              if (id !== 'mock' && (!st.model || st.model === 'mock')) st.model = client.config.defaultModel ?? MODELS[0];
-              paint();
-            },
-            {
-              disabled: (id) => !available.has(id),
-              titleOf: (id) => (available.has(id) ? null : 'Not available on this computer. See README, “Run real agents”.'),
-            },
+        : h(
+            'div.select-wrap',
+            h(
+              'select.select',
+              {
+                id: `${idp}-b`,
+                'aria-describedby': `${idp}-b-help`,
+                onchange: (e) => {
+                  const id = e.target.value;
+                  st.backend = id;
+                  if (id !== 'mock' && (!st.model || st.model === 'mock')) st.model = client.config.defaultModel ?? MODELS[0];
+                  paint();
+                },
+              },
+              BACKENDS.map(([id, name]) =>
+                h(
+                  'option',
+                  { value: id, selected: st.backend === id, disabled: !available.has(id) },
+                  available.has(id) ? name : `${name} (not on this computer)`,
+                ),
+              ),
+            ),
+            icon('down'),
           ),
-      h('span.help', BACKENDS.find(([id]) => id === st.backend)?.[2] ?? ''),
+      h('span.help', { id: `${idp}-b-help` }, BACKENDS.find(([id]) => id === st.backend)?.[2] ?? ''),
     ),
     real
       ? h(
@@ -229,7 +252,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           h(
             'datalist',
             { id: `${idp}-models` },
-            MODELS.map((m) => h('option', { value: m })),
+            modelsFor(st.backend).map((m) => h('option', { value: m })),
           ),
         )
       : null,
@@ -266,7 +289,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
             st.permissionMode = id;
             paint();
           }),
-          h('span.help', perm[2]),
+          h('span.help', (st.backend === 'kiro-cli' && KIRO_PERMISSIONS[perm[0]]) || perm[2]),
         )
       : null,
     real
@@ -286,12 +309,15 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           h('span.help', { id: `${idp}-f-help` }, 'Where it works. Leave it empty to work in the project’s root folder.'),
         )
       : null,
-    // What it takes from your own Claude Code setup (#57). Your output style never applies.
+    // What it takes from your own Claude Code (or Kiro) setup (#57). Your output style never applies.
     real
       ? checkField({
           id: `${idp}-setup`,
-          label: 'Uses your Claude Code setup',
-          help: 'Your skills, commands, plugins and permission rules, as in your terminal. Off, it uses only the project’s settings and the folder’s local file, where Always allow saves.',
+          label: st.backend === 'kiro-cli' ? 'Uses your Kiro setup' : 'Uses your Claude Code setup',
+          help:
+            st.backend === 'kiro-cli'
+              ? 'Your steering, skills, settings, permissions and MCP servers, as in your terminal. Off, it loads only the folder’s .kiro and Postbox’s server.'
+              : 'Your skills, commands, plugins and permission rules, as in your terminal. Off, it uses only the project’s settings and the folder’s local file, where Always allow saves.',
           on: st.usesHostSetup !== false,
           onToggle: (on) => {
             st.usesHostSetup = on;
@@ -310,12 +336,14 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           },
         })
       : null,
-    real ? mcpField(st, paint, { idp, personaId, projectId }) : null,
+    // The list reads Claude Code’s config (server/adapters/mcp-config.mjs): a backend that doesn’t read it (the Kiro
+    // CLI) has nothing true to show here.
+    real && capsOf(st.backend).permissions !== 'none' ? mcpField(st, paint, { idp, personaId, projectId }) : null,
   ];
 }
 
-// What the Tools checklist means on Claude Code and the Agent SDK (#5): server/adapters/setup.mjs, TOOL_RULES.
-const TOOLS_HELP = 'On Claude Code and the Agent SDK, an unticked tool is turned off. A ticked one still follows its permissions.';
+// What the Tools checklist means on real backends (#5): server/adapters/setup.mjs, TOOL_RULES, and kiro-cli.mjs, KIRO_TOOL_RULES.
+const TOOLS_HELP = 'On Claude Code, the Agent SDK and the Kiro CLI, an unticked tool is turned off. A ticked one still follows its permissions.';
 
 // ── New agent ───────────────────────────────────────────────────────────────────────────
 

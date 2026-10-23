@@ -1,0 +1,5 @@
+{"type":"runStarted","data":{"payloadSchema":"acp","acpProtocolVersion":1,"engine":"v3"}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_565ed957-03b7-4f33-a048-4ea1a8da9850","update":{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","currentValue":"auto"}]}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_565ed957-03b7-4f33-a048-4ea1a8da9850","update":{"sessionUpdate":"session_info_update","_meta":{"kiro":{"kind":"context_usage","usagePercentage":1.2}}}}}
+{"type":"sessionUpdate","data":{"sessionId":"sess_565ed957-03b7-4f33-a048-4ea1a8da9850","update":{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","currentValue":"auto"}]}}}
+{"type":"runError","data":{"sessionId":"sess_565ed957-03b7-4f33-a048-4ea1a8da9850","stage":"init","message":"agent \"nosuch\" not found, using \"default\""}}

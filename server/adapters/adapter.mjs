@@ -28,8 +28,19 @@
 //   ctx.mcpUrl                              where a real agent connects for the UI tools
 //
 // Throw (or reject) to fail the turn; the message is shown to you with Retry.
+//
+// An adapter may declare what it can’t do (#117), and the runtime and the UI read it rather than its name:
+//   capabilities.fork: false          a topic thread’s agent starts fresh, with the thread’s root message (#81)
+//   capabilities.permissions: 'none'  it doesn’t read Claude Code’s permission rules or MCP config, so the panel and
+//                                     the persona sheet hide them
+//   capabilities.models: [ids]        the models it offers, suggested in the model field instead of Claude’s
+// Left out, an adapter is taken to fork and read rules, with Claude’s models, as the Claude backends do. The page
+// gets every adapter’s capabilities in /api/state (config.backends).
 
-/** @typedef {{ name: string, deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter */
+/**
+ * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', models?: string[] },
+ *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
+ */
 
 export class AdapterRegistry {
   constructor() {

@@ -27,6 +27,8 @@ sequenceDiagram
 
 - **The driver** ([`tools/uat/driver.mjs`](../../../tools/uat/driver.mjs)) uses the UI the way a person does, with real clicks, key presses, typing and the file picker. It reads only what’s on screen, and reaches inside agent apps’ sandboxed frames to read and click them.
 - **The tester** ([`tools/uat/tester.mjs`](../../../tools/uat/tester.mjs)) plays the person in the scenario. It sees each step’s changes, with screenshots, and judges them: broken UI, errors, anything hidden or unreadable, and agents doing the wrong thing. It picks the next action, and matches what it finds to open issues. It runs on your signed-in `claude` CLI, isolated from your own Claude Code settings.
+- **What waits on the person.** Every step, the runner lists what “needs you” would count: blocks that ask and aren’t answered (review drafts included, whatever revision they’re on), wake requests, proposals, permission cards and failed turns. The tester answers them before it moves to the next phase or finishes. If it tries to move on, or to wait while no agent works, the runner holds the action once and says what’s still waiting. A review is answered with the `review` action: approve, or request changes with at least one comment on a line. The report lists anything left waiting at the end.
+- **Settings.** The `settings` action opens Settings › Personas and edits an agent, and with `permissions` its permissions panel too. The tester gets their text, what their fields hold (backend, model, checkboxes) and screenshots, and the run closes them after.
 - **The checks** ([`tools/uat/checks.mjs`](../../../tools/uat/checks.mjs)) catch defect classes deterministically from:
   - Postbox’s state and the page
   - every agent turn’s raw stream
@@ -60,6 +62,10 @@ sequenceDiagram
 | stale-progress               | #58   | A progress step still running after its agent stopped                                                                                                                                         |
 | silent-while-working         | #68   | Agents thinking or calling tools with no working row on screen                                                                                                                                |
 | model-not-shown              | #60   | No model name in the top bar                                                                                                                                                                  |
+| kiro-settings-leak           | #57   | An Isolated Kiro agent’s turn that loaded steering files (its stream’s `steering_inclusion`)                                                                                                  |
+| kiro-mcp-leak                | #57   | An Isolated Kiro agent’s call to an MCP server other than Postbox’s that completed, such as one a managed install adds by itself                                                              |
+| kiro-refusal-not-shown       | #65   | A call Kiro refused (an ask no one could answer headless, or a deny rule) with no refused step under its id in the conversation                                                               |
+| kiro-tool-not-allowed        | #5    | A Kiro command or fetch that ran when the persona doesn’t tick `shell` or `web.fetch`                                                                                                         |
 | failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                                                                                                     |
 
 When a defect is filed from a run, add a check for it here if it can be caught deterministically, so later runs keep watching for it.
@@ -68,6 +74,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 
 - [SciFact: claims, abstracts and retrieval](scenarios/scifact.md)
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
+- [Mixed room: a Claude Code agent and a Kiro CLI agent](scenarios/mixedroom.md) ([#117](https://github.com/HJeon139/postbox/issues/117)): the researcher on Claude Code, the critic on the Kiro CLI with a GPT model; options, a second opinion, wakes both ways, and a topic thread where the Kiro agent is refused a command
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)
@@ -76,6 +83,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 A scenario is Markdown:
 - a title
 - settings: the persona the tester plays, the agents, the project and the conversation’s name. A fresh install has only @assistant, so the runner seeds the scenario’s agents from [`personas.json`](personas.json), through `agents.json` in the run’s data folder. Since #5, a real agent can use only the tools its persona ticks, so both personas tick `shell` and `web.fetch`: they keep the commands and web access they had before, and a run on this branch differs from `main` only in what agents are told.
+- optionally, `backends`: agents to run on another backend, with a model, such as `critic=kiro-cli:gpt-5.6-terra`. Agents it doesn’t name run on the default backend, Claude Code. A Kiro agent is Isolated, with Postbox’s own Kiro home, so a run never writes into your `~/.kiro`
 - a summary
 - one `## Phase` section per phase, in the person’s words
 
@@ -118,15 +126,16 @@ Options:
 - `--budget` (the tester’s spend cap, in dollars)
 - `--tester-model`
 - `--port`, `--chrome-port`, for two runs at once
+- `--phase` (start at that phase, to rerun a later one; the tester sets up what it needs first)
 
-A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. It uses real usage: a data-heavy agent turn can cost a few dollars.
+A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. A scenario with Kiro agents also needs the Kiro CLI, signed in; their turns use Kiro credits, which the report lists beside the agents’ cost. It uses real usage: a data-heavy agent turn can cost a few dollars.
 
 Each run writes to `uat-runs/<time>-<scenario>/`, which git ignores:
 - `report.md`: the issues caught again, new findings, and the timeline
 - `findings.json`
 - `run.log`
 - `shots/`: screenshots of every block and app the tester saw
-- `streams/`: each agent turn’s raw stream
+- `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/`
 - `data/`: Postbox’s data, so a run can be reopened with `node server/index.mjs --data uat-runs/<run>/data`
 
 File what a run finds with the bug template in the [UAT README](../README.md), after checking each finding against its screenshot.

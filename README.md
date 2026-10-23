@@ -167,15 +167,16 @@ The first failure goes back to the agent as an `app-check` message. If the next 
 
 ## Run real agents
 
-A persona runs on one of three backends. Pick one in the new-agent sheet, under **Runs on**.
+A persona runs on one of four backends. Pick one in the new-agent sheet, under **Runs on**.
 
 | Backend | What it runs | Needs |
 |---|---|---|
 | Claude Code | The `claude` CLI you’re signed in to, in print mode. Each thread is one Claude Code session, resumed every turn. | Claude Code installed (`claude --version` works), or `POSTBOX_CLAUDE_BIN` pointing at it |
 | Agent SDK | `query()` from `@anthropic-ai/claude-agent-sdk`, inside Postbox’s server | `npm install` |
+| Kiro CLI | The `kiro-cli` you’re signed in to, headless (`kiro-cli chat --agent-engine v3 --output-format stream-json`). Each thread is one Kiro session, resumed every turn. | Kiro CLI installed (`kiro-cli --version` works), or `POSTBOX_KIRO_BIN` pointing at it |
 | Mock agent | The scripted agent the demo uses | Nothing |
 
-Postbox never reads, stores or asks for an API key. Both real backends use Claude Code’s own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
+Postbox never reads, stores or asks for an API key. The Claude backends use Claude Code’s own sign-in, or `ANTHROPIC_API_KEY` if your environment already sets it; the Kiro CLI uses its own sign-in, or `KIRO_API_KEY`. Postbox starts each backend only if it can run here; the server’s first lines list the ones it found. `POSTBOX_BACKENDS=mock` turns the real ones off.
 
 **Model.** New agents use `claude-opus-5-5`. Any model name Claude Code accepts works; change it per persona under **Personas**.
 
@@ -192,6 +193,12 @@ Postbox always passes the mode explicitly, so a default from your own Claude Cod
 
 **Folders.** An agent works in its project’s root folder, or in the folder its persona names, or, if neither is set, in `data/workspaces/<name>`. If its persona names a folder, it can also read the project’s. Its permission mode decides what it may change. Postbox’s own tools (show_block and the rest) never ask; they only show things in the thread.
 
+**The Kiro CLI.** Each turn, Postbox writes a Kiro custom agent with the guide as its prompt, Postbox’s MCP server and the persona’s rules, and removes it when the turn ends ([`server/adapters/kiro-cli.mjs`](server/adapters/kiro-cli.mjs)). What differs from Claude Code:
+- **It can’t ask you.** A headless Kiro run treats every ask as a refusal, so there’s no permission card: a call that would need asking shows as a denied step. Ask me and Auto both mean Kiro’s defaults plus reads in the agent’s folders; Accept edits adds writes there; Run everything is `--trust-all-tools`, and unticked Tools stay denied. Claude Code rules (the permissions panel, Allow once) don’t apply.
+- **Topic threads start fresh.** Kiro can’t fork a session, so an agent in a topic thread starts with the message the thread is about.
+- **Your setup.** With **Uses your Kiro setup**, it runs with your Kiro home (`KIRO_HOME`, else `~/.kiro`): your steering, skills, settings and MCP servers load, and the turn’s agent file is written to its `agents` folder for the turn. Off, it runs with `data/kiro-home`, and a deny rule turns off every MCP server but Postbox’s, including one a managed install adds to Kiro’s agent files by itself. A `.kiro` folder in the agent’s working folder loads either way.
+- **Models** are Kiro’s (`kiro-cli chat --list-models`), and the model field suggests the ones your sign-in offers, Claude’s and others such as GPT and DeepSeek. Postbox’s names become Kiro’s: `claude-opus-5-5` runs as `claude-opus-5.5`.
+
 **Attach a Claude Code session.** Choose **+**, then **Attach a Claude Code session**, to bring in one you started in a terminal. It joins as an agent working in that session’s folder, with its recent history. When you write to it, Postbox resumes that same session. When you type in the terminal, your turn and the agent’s reply appear in the thread, marked “from terminal”. Let a terminal turn finish before you write to it from Postbox.
 
 **Your own adapter.** All model access goes through one interface, in [`server/adapters/adapter.mjs`](server/adapters/adapter.mjs):
@@ -199,6 +206,7 @@ Postbox always passes the mode explicitly, so a default from your own Claude Cod
 ```js
 export class MyAdapter {
   name = 'my-backend';                      // a persona’s `backend` picks its adapter
+  capabilities = { fork: false, permissions: 'none' }; // optional: topic threads start fresh; no Claude Code rules
   async deliver(session, message, ctx) {    // one turn; resolve when it ends, throw to fail it
     ctx.status({ state: 'think', ctx: 12 }); // ring state and % of context used
     ctx.activity({ id: 't1', label: 'Read schema.md', state: 'running' });
