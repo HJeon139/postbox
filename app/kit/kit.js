@@ -1,6 +1,7 @@
 // The app kit, preloaded in every agent-app sandbox. It gives agent code:
 //   postbox.ready                 → Promise<{ state, theme, appId }>, resolves once Postbox says hello
 //   postbox.query(tool, args)     → Promise<result>; only tools the app and its agent were granted
+//   postbox.file(name)            → Promise<string>; a data file the agent attached to this version (#54)
 //   postbox.send(action, values, summary)  sends one event to the agent. Postbox writes the line in your voice from
 //                                 what was sent; summary shows beside it as the app’s own words (#51). Only
 //                                 right after the person clicks or presses a key in the app (it rejects
@@ -163,6 +164,8 @@
       return !!init.check;
     },
     query: (tool, args) => call('query', { tool, args: args || {} }),
+    // A data file the agent attached to this version (#54), as text.
+    file: (name) => call('file', { name: String(name) }),
     send(action, values, summary) {
       if (init.check) return Promise.resolve({ ok: true, skipped: true });
       const v = Object.assign({}, values || {});

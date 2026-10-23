@@ -3,13 +3,13 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
+import { open, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, resolve, sep } from 'node:path';
 import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { READING } from '../shared/limits.mjs';
+import { LIMITS, limitText, READING } from '../shared/limits.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { turnLine } from '../shared/work.mjs';
@@ -3501,6 +3501,90 @@ export class Runtime {
     return hostTool(this, tool, args);
   }
 
+  /**
+   * A data file of an app’s version (#54), as the app reads it with postbox.file(name).
+   * @param {string} appId @param {string} name @param {number} [v]  the version; the current one by default
+   */
+  async appFile(appId, name, v) {
+    const app = this.s.apps[appId];
+    if (!app) throw httpError(404, 'That app doesn’t exist.');
+    const ver = app.versions[(Number(v) || app.current) - 1];
+    const f = ver?.files?.find((x) => x.name === name);
+    if (!f || !this.blobs) throw httpError(404, `This version of ${app.title} has no file “${name}”.`);
+    return this.blobs.get(f.sha256);
+  }
+
+  // ── Files an agent names (#54) ─────────────────────────────────────────────────────
+
+  /** The folders an agent works in: its own (where it starts), the project’s, and any added for the conversation. */
+  async agentFolders(sessionId) {
+    const se = this.session(sessionId);
+    const persona = this.personaFor(se);
+    const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
+    const adapter = this.adapters.get(persona?.backend);
+    const own = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona?.folder || project?.folder || null;
+    return [...new Set([own, project?.folder, ...(se.addDirs ?? [])].filter(Boolean))];
+  }
+
+  /**
+   * Reads a file an agent named for an app: a path in one of its folders (relative to its own), followed through
+   * links, so a link can’t reach outside them. Larger than max bytes is refused before it’s read.
+   * @param {string} sessionId @param {unknown} path @param {number} max @param {string} what  how the error names it
+   */
+  async agentFile(sessionId, path, max, what) {
+    if (typeof path !== 'string' || !path.trim()) throw new AgentFileError(`${what} needs a path to a file in your folder.`);
+    const folders = await this.agentFolders(sessionId);
+    if (!folders.length) throw new AgentFileError(`You have no folder to read ${what} from. Send it inline instead.`);
+    const real = await realpath(resolve(folders[0], path)).catch(() => null);
+    if (!real) throw new AgentFileError(`There’s no file at ${path} (${what}).`);
+    const roots = await Promise.all(folders.map((f) => realpath(f).catch(() => null)));
+    if (!roots.some((r) => r && (real === r || real.startsWith(r + sep))))
+      throw new AgentFileError(`${path} is outside your folders, so Postbox didn’t read it (${what}).`);
+    const st = await stat(real);
+    if (!st.isFile()) throw new AgentFileError(`${path} isn’t a file (${what}).`);
+    const over = () => new AgentFileError(`${path} is over the limit for ${what}.`);
+    if (st.size > max) throw over();
+    const buf = await readCapped(real, max);
+    if (!buf) throw over();
+    return buf;
+  }
+
+  /**
+   * show_app and update_app as an agent calls them over MCP (#54): code may come from codePath, a file in its folder,
+   * and files names data files there for the app to read. Postbox reads both itself, under the same limits as an
+   * inline call, and stores the data files with the version. Returns the call’s arguments with code filled in, and
+   * the files as Postbox stored them; a call can’t name stored files itself.
+   * @param {string} sessionId @param {any} args
+   * @returns {Promise<{ args: any, files?: AppFile[] }>}
+   */
+  async appFiles(sessionId, args) {
+    const { codePath, files: wanted, ...rest } = args ?? {};
+    const out = { ...rest };
+    if (codePath !== undefined) {
+      if (typeof rest.code === 'string' && rest.code) throw new AgentFileError('Send code or codePath, not both.');
+      // A character is at most 4 bytes, so a file within the limit in characters is within 4 times it in bytes.
+      out.code = (await this.agentFile(sessionId, codePath, LIMITS.appCode * 4, 'codePath')).toString('utf8');
+      if (out.code.length > LIMITS.appCode)
+        throw new AgentFileError(`${codePath} has ${out.code.length.toLocaleString('en-US')} characters; an app’s code is up to ${limitText('appCode')}.`);
+    }
+    if (wanted === undefined) return { args: out };
+    if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
+    if (wanted.length > LIMITS.appFiles) throw new AgentFileError(`An app carries up to ${limitText('appFiles')} data files.`);
+    if (!this.blobs) throw new AgentFileError('This Postbox can’t store files.');
+    /** @type {AppFile[]} */
+    const stored = [];
+    for (const f of wanted) {
+      const path = typeof f === 'string' ? f : f?.path;
+      const name = String((typeof f === 'object' && f?.name) || basename(String(path ?? '')));
+      if (!FILE_NAME.test(name)) throw new AgentFileError(`“${name}” can’t name a file: use letters, digits and - _ . (up to 64).`);
+      if (stored.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
+      const buf = await this.agentFile(sessionId, path, LIMITS.appFileBytes, `the file “${name}” (up to ${limitText('appFileBytes')})`);
+      const { sha256, size } = await this.blobs.put(buf);
+      stored.push({ name, sha256, size });
+    }
+    return { args: out, files: stored };
+  }
+
   // ── Presence ───────────────────────────────────────────────────────────────────────
 
   view(threadId) {
@@ -3524,7 +3608,8 @@ export class Runtime {
     // Where the turn speaks: its session’s thread, or the side thread it answers in (#110).
     const threadId = () => turn?.threadId ?? se().threadId;
     return {
-      show_block({ block }) {
+      /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
+      show_block({ block }, given = {}) {
         // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
         // answers, even Cancel, so it’s refused here and only taken by update_block once the block is answered.
         if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
@@ -3536,7 +3621,7 @@ export class Runtime {
         let renamed = null;
         if (v.ok && v.block.type === 'app' && rt.s.apps[v.block.id]) {
           const { id, code, permissions, title } = /** @type {any} */ (v.block);
-          if (rt.s.apps[id].sessionId === sessionId) return this.update_app({ id, code, permissions, title });
+          if (rt.s.apps[id].sessionId === sessionId) return this.update_app({ id, code, permissions, title }, given);
           renamed = newId(String(id).slice(0, 40));
           v.block = { ...v.block, id: renamed };
         }
@@ -3568,7 +3653,7 @@ export class Runtime {
                 fallback: v.fallback,
               },
         );
-        if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId());
+        if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
         return v.ok
           ? { ok: true, message: renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown block ${v.block.id}.` }
           : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
@@ -3623,30 +3708,48 @@ export class Runtime {
         const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
         return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
       },
-      show_app({ id, title, code, permissions = [], fallback }) {
+      /**
+       * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
+       * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
+       */
+      show_app({ id, title, code, permissions = [], fallback }, given = {}) {
         const blockId = id ?? newId('app');
         const existing = rt.s.apps[blockId];
-        if (existing?.sessionId === sessionId) return this.update_app({ id: blockId, code, permissions, title });
-        return this.show_block({
-          block: {
-            id: blockId,
-            type: 'app',
-            version: 1,
-            title: title ?? 'App',
-            fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
-            code,
-            permissions,
+        if (existing?.sessionId === sessionId) return this.update_app({ id: blockId, code, permissions, title }, given);
+        return this.show_block(
+          {
+            block: {
+              id: blockId,
+              type: 'app',
+              version: 1,
+              title: title ?? 'App',
+              fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
+              code,
+              permissions,
+            },
           },
-        });
+          given,
+        );
       },
-      update_app({ id, code, permissions, title, summary = '' }) {
+      /**
+       * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
+       * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
+       */
+      update_app({ id, code, permissions, title, summary = '' }, given = {}) {
         const app = rt.s.apps[id];
         if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
         const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
         if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
         const versions = [
           ...app.versions,
-          { v: app.versions.length + 1, code, permissions: v.block.permissions ?? [], summary: String(summary ?? '').slice(0, 300), at: Date.now() },
+          {
+            v: app.versions.length + 1,
+            code,
+            permissions: v.block.permissions ?? [],
+            files: given.files ?? app.versions[app.current - 1].files ?? [],
+            summary: String(summary ?? '').slice(0, 300),
+            at: Date.now(),
+          },
         ];
         const next = {
           ...app,
@@ -3737,14 +3840,15 @@ export class Runtime {
     };
   }
 
-  registerApp(sessionId, block, itemId, threadId = this.s.sessions[sessionId]?.threadId) {
+  /** @param {string} sessionId @param {any} block @param {string} itemId @param {string} [threadId] @param {AppFile[]} [files] */
+  registerApp(sessionId, block, itemId, threadId = this.s.sessions[sessionId]?.threadId, files = []) {
     this.store.emit('app', {
       id: block.id,
       threadId,
       sessionId,
       itemId,
       title: block.title ?? 'App',
-      versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], at: Date.now(), summary: '' }],
+      versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], files, at: Date.now(), summary: '' }],
       current: 1,
       state: null,
       check: { status: 'pending', attempt: 0, problems: [] },
@@ -3754,6 +3858,36 @@ export class Runtime {
 
 /** What a block’s stub calls it once it moved (#92): its title, or the start of what it asks. @param {any} b */
 const blockTitle = (b) => clip(String(b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id).replace(/\s+/g, ' '), 80);
+
+/** A data file of an app’s version, stored by its hash (#54). @typedef {{ name: string, sha256: string, size: number }} AppFile */
+const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+/** A file an agent named that Postbox can’t use; its message goes back to the agent. */
+export class AgentFileError extends Error {}
+
+/**
+ * Reads a file, but never more than max bytes of it: null when it has more. Its size was checked before, but a file
+ * that’s still being written can grow after that, so the read itself stops past the limit.
+ * @param {string} path @param {number} max
+ */
+export async function readCapped(path, max) {
+  const fh = await open(path, 'r');
+  try {
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      // One byte past the limit is enough to know it’s over.
+      const chunk = Buffer.alloc(Math.min(1024 * 1024, max + 1 - total));
+      const { bytesRead } = await fh.read(chunk, 0, chunk.length, total);
+      if (!bytesRead) break;
+      chunks.push(chunk.subarray(0, bytesRead));
+      total += bytesRead;
+      if (total > max) return null;
+    }
+    return Buffer.concat(chunks, total);
+  } finally {
+    await fh.close();
+  }
+}
 
 /** Why an outcome was refused on a block nobody has answered yet (#94). @param {string} id @param {string} what */
 const OUTCOME_LATER = (id, what) =>

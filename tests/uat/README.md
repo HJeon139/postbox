@@ -95,7 +95,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
     - [Settings: Appearance](sheets/settings/appearance.md)
     - [Settings: Personas](sheets/settings/personas.md)
     - [Settings: Projects](sheets/settings/projects.md)
-    - [Settings: Connect an agent](sheets/settings/connect-an-agent.md)
+    - [Settings: Backends](sheets/settings/connect-an-agent.md)
 
 ## Runs
 

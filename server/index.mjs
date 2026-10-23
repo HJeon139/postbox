@@ -305,6 +305,14 @@ export async function start({
       return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
       return raw(res, 200, await rt.workOutput(m[1], m[2]), { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
+    // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.
+    if ((m = path.match(/^\/api\/apps\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET')
+      return raw(res, 200, await rt.appFile(decodeURIComponent(m[1]), decodeURIComponent(m[2]), Number(url.searchParams.get('v')) || undefined), {
+        'content-type': 'text/plain; charset=utf-8',
+        'x-content-type-options': 'nosniff',
+        'content-security-policy': "sandbox; default-src 'none'",
+        'cache-control': 'no-store',
+      });
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
         res.writeHead(503, { 'retry-after': '1' });

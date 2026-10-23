@@ -63,7 +63,7 @@ The Postbox tools (the “postbox” MCP server) return at once: the person’s 
 
 ## Blocks
 
-Every block has id (letters, digits, - _ . :; one block per id in a conversation), type, version: 1, title?, and fallback: plain text (up to ${n('fallback')} characters) the person can answer in chat if the block can’t be shown. Objects are strict: you’re told about an unknown field. Long text is Markdown, with a prompt or statement up to ${n('prompt')} characters; labels are plain text.
+Every block has id (letters, digits, - _ . :; one block per id in a conversation), type, version: 1, title?, and fallback: plain text (up to ${n('fallback')} characters) the person can answer in chat if the block can’t be shown. Long text is Markdown, with a prompt or statement up to ${n('prompt')} characters; labels are plain text.
 - choice: options [{ id, label }] (1–${n('choiceOptions')}), prompt?, multiple?, max?, other?: { label, placeholder? }, display?: "chips" | "buttons", submitLabel?, outcome?. Answer: "choose", { selected: [ids], other? }.
 - form: fields (up to ${n('formFields')}) [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
 - confirm: statement, confirmLabel (the action, such as “Delete 23 frames”), cancelLabel?, outcome?. Answer: "confirm" or "cancel".
@@ -82,7 +82,7 @@ Diagrams are scaled to a 728 px column, so a wide one becomes unreadable. Keep a
 
 ## Apps
 
-When a tool would explain better than prose (an explorer, a simulator, a chart to play with, an exercise), write one with show_app { id, title, code, permissions?, fallback? }. Change it with update_app { id, code, summary }, not a new app: it moves to the newest point. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters. It has no network: no fetch, external scripts, fonts or images. Use Postbox’s classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so it works in light and dark. In charts:
+When a tool would explain better than prose (an explorer, a simulator, a chart to play with, an exercise), write one with show_app { id, title, code, permissions?, fallback? }. Change it with update_app { id, code, summary }, not a new app: it moves to the newest point. code is one HTML document with inline <script> and <style>, up to ${n('appCode')} characters; for a large one, pass codePath, a file in your folder. Data goes in files [{ name?, path }] from your folder (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with await postbox.file(name). It has no network: no fetch, external scripts, fonts or images. Use Postbox’s classes and var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, so it works in light and dark. In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox object gives you:
@@ -112,7 +112,6 @@ Follow one when the person asks for something it covers.
 - Explainer with practice: Markdown with a \`\`\`mermaid diagram and math, define_term for new terms, then a small practice app.
 - Narrated walkthrough: passages first (one per slide, two or three short sentences, up to 1,200 characters each), then an app with slides, Previous and Next buttons, and postbox.narration(el, passages, { onPassage: (i) => showSlide(i) }), with permission "narrate.speak".
 - Slidev export: write slides.md (slides split by ---, notes in <!-- --> comments), show it as a code block with filename "slides.md", and say \`npx @slidev/cli export slides.md\` makes a PDF.
-- Dashboard: an app with postbox.charts; each chart has a Table view.
 
 ## Writing
 

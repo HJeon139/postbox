@@ -29,9 +29,10 @@ test('every limit in shared/limits.mjs is written into the guide from the module
 
 test('the MCP tool descriptions name the limits each tool needs', () => {
   const said = (tool) => TOOL_DEFS.find((t) => t.name === tool)?.description ?? '';
-  const blocks = names.filter((n) => !['eventBytes', 'appCode', 'outcome'].includes(n));
+  const apps = ['eventBytes', 'appCode', 'appFiles', 'appFileBytes'];
+  const blocks = names.filter((n) => ![...apps, 'outcome'].includes(n));
   for (const name of blocks) assert.ok(said('show_block').includes(limitText(name)), `show_block doesn’t name ${name}`);
-  for (const name of ['eventBytes', 'appCode']) assert.ok(said('show_app').includes(limitText(name)), `show_app doesn’t name ${name}`);
+  for (const name of apps) assert.ok(said('show_app').includes(limitText(name)), `show_app doesn’t name ${name}`);
   assert.match(said('update_block'), new RegExp(`outcome .*up to ${limitText('outcome')} characters`));
   assert.match(said('show_app'), /64 KB/);
   const count = (k) => `${k.toLocaleString('en-US')} characters`;

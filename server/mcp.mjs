@@ -8,12 +8,14 @@
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
 // a risky tool call in “ask” mode, and it waits for your answer on a card in the conversation.
 //
-// Each turn Postbox starts gets its own token in the URL. A call with a token that isn’t the session’s running turn’s,
-// such as one from a turn you stopped whose process hadn’t exited yet, is refused, and nothing of it reaches the
-// conversation (#126). A call without one is from an agent you connected yourself (Settings shows the endpoint).
+// Each turn Postbox starts gets its own token in the URL. A tool call needs the token of the session’s running turn:
+// one from a turn you stopped whose process hadn’t exited yet is refused, and nothing of it reaches the conversation
+// (#126). So is a call with no token (#54): the session id alone let any process on this computer act as that agent,
+// and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
 import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
+import { AgentFileError } from './runtime.mjs';
 
 const PROTOCOL = '2025-06-18';
 const count = (k) => k.toLocaleString('en-US');
@@ -22,6 +24,9 @@ const blockSchema = {
   type: 'object',
   description: 'A block from the catalog: { id, type, version, title?, fallback, …fields }. See README, “The block catalog”.',
 };
+
+/** A data file an app carries (#54): a path in the agent’s folder, and the name the app reads it by. */
+const FILE_SCHEMA = { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' } }, required: ['path'] };
 
 // The tools, as agents read them. Their limits come from shared/limits.mjs, as the guide’s do (#50).
 export const TOOL_DEFS = [
@@ -37,26 +42,35 @@ export const TOOL_DEFS = [
   },
   {
     name: 'show_app',
-    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}.`,
+    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}.`,
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string' },
         title: { type: 'string' },
         code: { type: 'string' },
+        codePath: { type: 'string', description: 'A file in your folder with the app’s code, in place of code.' },
+        files: { type: 'array', items: FILE_SCHEMA, description: 'Data files from your folder that the app reads with postbox.file(name).' },
         permissions: { type: 'array', items: { type: 'string' } },
         fallback: { type: 'string' },
       },
-      required: ['title', 'code'],
+      required: ['title'],
     },
   },
   {
     name: 'update_app',
-    description: `Replace an app you showed with a new version, up to ${n('appCode')} characters, rather than showing a second app. The app moves to the newest point in the conversation, with its saved state, and its old place becomes a one-line link to it. Older versions stay in its version menu; summary (up to 300 characters) names what changed.`,
+    description: `Replace an app you showed with a new version, up to ${n('appCode')} characters inline or from codePath, rather than showing a second app. files replaces its data files; without it, the new version keeps the last one’s. The app moves to the newest point in the conversation, with its saved state, and its old place becomes a one-line link to it. Older versions stay in its version menu; summary (up to 300 characters) names what changed.`,
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'string' }, code: { type: 'string' }, permissions: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } },
-      required: ['id', 'code'],
+      properties: {
+        id: { type: 'string' },
+        code: { type: 'string' },
+        codePath: { type: 'string', description: 'A file in your folder with the new code, in place of code.' },
+        files: { type: 'array', items: FILE_SCHEMA },
+        permissions: { type: 'array', items: { type: 'string' } },
+        summary: { type: 'string' },
+      },
+      required: ['id'],
     },
   },
   {
@@ -193,7 +207,12 @@ async function one(rt, sessionId, msg, turnToken) {
       return reply({ tools: TOOL_DEFS });
     case 'tools/call': {
       if (!rt.s.sessions[sessionId]) return fail(-32602, 'Unknown Postbox session. Connect with /mcp?session=<id>.');
-      if (turnToken !== null && rt.turns.get(sessionId)?.token !== turnToken)
+      if (turnToken === null)
+        return fail(
+          -32001,
+          'Postbox runs tool calls only from an agent turn it started, which carries its own token, so it didn’t run this one. Call the tool from your turn; for a large app, use codePath.',
+        );
+      if (rt.turns.get(sessionId)?.token !== turnToken)
         return fail(-32001, 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.');
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
@@ -201,9 +220,12 @@ async function one(rt, sessionId, msg, turnToken) {
       if (name === 'permission_prompt') return reply(await permission(rt, sessionId, args));
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {
-        const r = tools[name](args);
+        // An app’s code and data files may come from files in the agent’s folder, which Postbox reads itself (#54).
+        const app = name === 'show_app' || name === 'update_app' ? await rt.appFiles(sessionId, args) : { args };
+        const r = await tools[name](app.args, app.files ? { files: app.files } : {});
         return reply({ content: [{ type: 'text', text: r.results ? JSON.stringify(r.results) : r.message }], isError: r.ok === false && !r.waiting });
       } catch (e) {
+        if (e instanceof AgentFileError) return reply({ content: [{ type: 'text', text: e.message }], isError: true });
         return reply({ content: [{ type: 'text', text: e.userMessage ?? e.message }], isError: true });
       }
     }

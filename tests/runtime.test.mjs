@@ -497,19 +497,26 @@ test('#51: agents read an app’s send as what Postbox counted, with the app’s
 });
 
 test('MCP: initialize, list tools, and a tool call that returns at once', async () => {
-  const { rt, t } = setup();
+  const { rt, t, adapter } = setup();
   const se = rt.sessionsIn(t.id)[0];
   const init = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
   assert.equal(init.result.serverInfo.name, 'postbox');
   assert.equal(await handleMcp(rt, se.id, { jsonrpc: '2.0', method: 'notifications/initialized' }), null);
   const tools = (await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).result.tools.map((x) => x.name);
   assert.ok(tools.includes('show_block') && tools.includes('wake_agent'));
-  const r = await handleMcp(rt, se.id, {
+  const call = {
     jsonrpc: '2.0',
     id: 3,
     method: 'tools/call',
     params: { name: 'show_block', arguments: { block: { id: 'c', type: 'confirm', version: 1, fallback: 'x', statement: 'Do it?', confirmLabel: 'Do it' } } },
+  };
+  // A tool call comes from the running turn, with its token (#54).
+  let r = null;
+  adapter.next.push(async (c) => {
+    r = await handleMcp(rt, se.id, call, new URL(c.mcpUrl).searchParams.get('turn'));
   });
+  rt.sendMessage(t.id, { text: 'go' });
+  await settle(rt);
   assert.equal(r.result.isError, false);
   const bad = await handleMcp(rt, 'nope', { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'show_block', arguments: {} } });
   assert.match(bad.error.message, /Unknown Postbox session/);
@@ -569,12 +576,17 @@ test('MCP permission_prompt answers in the shape Claude Code expects', async () 
   let reply = null;
   adapter.next.push(async (c) => {
     const se = rt.sessionsIn(t.id)[0];
-    const pending = handleMcp(rt, se.id, {
-      jsonrpc: '2.0',
-      id: 9,
-      method: 'tools/call',
-      params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'ls', description: 'List files' } } },
-    });
+    const pending = handleMcp(
+      rt,
+      se.id,
+      {
+        jsonrpc: '2.0',
+        id: 9,
+        method: 'tools/call',
+        params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'ls', description: 'List files' } } },
+      },
+      new URL(c.mcpUrl).searchParams.get('turn'),
+    );
     await sleep(10);
     const card = store.items(t.id).find((i) => i.kind === 'permission');
     assert.equal(card.summary, 'run a command: List files');
@@ -1925,11 +1937,19 @@ test('#109 read_message is in the MCP tool list and answers over MCP', async () 
   assert.match(def.description, /2,000 characters/);
   assert.match(def.description, /a block’s whole content with its comments and the person’s answer/);
   assert.match(tools.find((x) => x.name === 'read_conversation').description, /cut at 2,000 characters, and a cut gives the id read_message takes/);
-  const r = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'read_message', arguments: { id: reply.id } } });
+  // A tool call comes from the agent's running turn, with its token (#54).
+  rt.turns.set(se.id, { id: 'tu_read', token: 'tok', sessionId: se.id, threadId: se.threadId, segment: null });
+  const r = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'read_message', arguments: { id: reply.id } } }, 'tok');
   assert.equal(r.result.isError, false);
   assert.match(r.result.content[0].text, /adults over 60\.$/);
-  const bad = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'read_message', arguments: { id: 'it_nope' } } });
+  const bad = await handleMcp(
+    rt,
+    se.id,
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'read_message', arguments: { id: 'it_nope' } } },
+    'tok',
+  );
   assert.equal(bad.result.isError, true);
+  rt.turns.delete(se.id);
 });
 
 test('#109 a topic thread’s root, cut at 4,000, gives its id, and read_message reads it from the thread', async () => {
