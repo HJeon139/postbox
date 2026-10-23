@@ -18,7 +18,7 @@ Follow a side question without filling the conversation: the thread’s replies 
 - One summary at a time (#93): from the click until the summary is posted, the button reads “Summary requested…” and is disabled, in every tab, and the server refuses a second request. If the turn fails or is stopped, the button comes back.
 - Once the summary is posted, the reply it came from shows “Sent to the conversation”, with no Send button, so it can’t go twice. While the summary is still being written, its replies can’t be sent on their own.
 - An agent’s first turn in the thread starts with the message the thread is about: its text, or a block’s or app’s title and text version, and isn’t told again (#81). Each turn there also catches up on what others said in the thread since it last took part.
-- Close returns to the conversation; on a phone it’s full screen.
+- Close returns to the conversation; on a phone it’s full screen. Its width and how it shares the window with the conversation (a handle on its left edge, the sidebar hiding while it’s open, full screen where there’s no room beside) are the right pane’s: see [Work view](../work-view.md), “The pane” and “Room for the conversation”.
 - A file dropped on the panel attaches to the panel’s composer, not the conversation’s ([composer](../composer/composer.md), step 4).
 
 ## Steps to reproduce

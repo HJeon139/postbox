@@ -1,8 +1,10 @@
-// A headless Chrome check of how the right pane shares the window with the conversation (#197, #7): at 800, 1024 and
+// A headless Chrome check of how the right pane shares the window with the conversation (#197, #7, #86): at 800, 1024 and
 // 1280 px with the sidebar open, opening Work or a thread leaves the conversation column and the composer’s text box
 // at or above their minimums, or opens the view full screen, where Escape brings the conversation back; what’s open
 // stays in the address, so a wider window puts the pane back beside the conversation; and the sidebar hides first
-// while the pane needs its room, giving an app more width, and comes back when the pane closes.
+// while the pane needs its room, giving an app more width, and comes back when the pane closes. A handle on the
+// pane’s edge resizes it by keyboard, drag and double-click, within the column’s minimum, with axe clean on it, and
+// its width survives a reload.
 //
 //   node tools/check-pane-width.mjs
 //
@@ -11,7 +13,8 @@
 // don’t collide.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
@@ -29,6 +32,7 @@ const { rt, store } = app;
 /** The conversation column’s minimum, and its composer’s text box at that width (architecture.md §14). */
 const COL_MIN = 640;
 const BOX_MIN = 430;
+const AXE = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
 // ── Real input ──────────────────────────────────────────────────────────────────────────
 
@@ -190,6 +194,65 @@ await check('#7 showing the sidebar again while the pane is open keeps it, and t
   const m = await measure();
   assert.deepEqual([m.rail, m.toggle, m.full], [248, 'Hide the sidebar', false]);
   assert.ok(m.main >= COL_MIN && m.pane === 1280 - 248 - COL_MIN, `the column is ${m.main} px and the pane ${m.pane} px`);
+});
+
+// ── #86: a handle on the pane’s edge ───────────────────────────────────────────────────
+
+const handle = (attr) => page.evaluate(`${q('.rp-handle')}.getAttribute(${JSON.stringify(attr)})`);
+/** Drags the handle to x, as a person does: press, two moves, release. */
+async function drag(x, clicks = 0) {
+  const b = await page.evaluate(`(() => { const r = ${q('.rp-handle')}.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 200 }; })()`);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y });
+  if (clicks) {
+    for (const clickCount of [1, 2])
+      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: b.x, y: b.y, button: 'left', clickCount });
+    return settle();
+  }
+  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', clickCount: 1 });
+  for (const to of [b.x - 20, x]) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: to, y: b.y, button: 'left', buttons: 1 });
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: b.y, button: 'left', clickCount: 1 });
+  await settle();
+}
+
+await check('#86 the pane’s handle resizes it by keyboard, within the column’s minimum, and the app resizes with it', async () => {
+  await fresh(1280);
+  await click(q('#work-button'));
+  await page.waitFor(`${q(WORK)} && ${q('.transcript .appframe iframe')}`, { label: 'Work, beside the app' });
+  assert.deepEqual(
+    [await handle('role'), await handle('aria-label'), await handle('aria-valuenow'), await handle('aria-valuemin'), await handle('aria-valuemax')],
+    ['separator', 'Resize the pane', '440', '320', String(1280 - COL_MIN)],
+  );
+  const before = await measure();
+  await page.evaluate(`${q('.rp-handle')}.focus()`);
+  await press('ArrowLeft', 'ArrowLeft', 37);
+  await press('ArrowLeft', 'ArrowLeft', 37);
+  const wider = await measure();
+  assert.deepEqual([await handle('aria-valuenow'), wider.pane], ['472', 472]);
+  assert.equal(wider.app, before.app - 32, 'the app didn’t resize with the pane');
+  // End takes it as wide as the column’s minimum allows, Home to its own minimum.
+  await press('End', 'End', 35);
+  assert.deepEqual([(await measure()).pane, (await measure()).main], [1280 - COL_MIN, COL_MIN]);
+  await press('Home', 'Home', 36);
+  assert.equal((await measure()).pane, 320);
+  // axe finds nothing wrong with it.
+  await page.evaluate(`${AXE};0`);
+  const bad = await page.evaluate(`axe.run({ include: [['.rp-handle']] }, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } })
+    .then((r) => r.violations.map((v) => v.id + ': ' + v.help))`);
+  assert.deepEqual(bad, []);
+});
+
+await check('#86 a drag resizes the pane, its width survives a reload, and a double-click puts it back', async () => {
+  await drag(1280 - 520);
+  assert.equal((await measure()).pane, 520);
+  await page.reload();
+  await page.waitFor(q(WORK), { label: 'Work, after the reload' });
+  await settle();
+  assert.deepEqual([await handle('aria-valuenow'), (await measure()).pane], ['520', 520]);
+  await drag(0, 2);
+  assert.deepEqual([await handle('aria-valuenow'), (await measure()).pane], ['440', 440]);
+  // At 375 px the pane covers the conversation, so it has no handle to show.
+  await page.size(375, 812);
+  await page.waitFor(`innerWidth === 375 && !${q('.rp-handle')}.getClientRects().length`, { label: 'no handle at 375 px' });
 });
 
 await page.close();

@@ -154,7 +154,7 @@ export function mountPane(convId) {
     if (r.work && !work) {
       work = mountWorkPane(convId);
       work.fullBtn.onclick = fullToggle('work');
-      el.prepend(work.el);
+      width.handle.after(work.el);
     } else if (!r.work && work) {
       work.destroy();
       work.el.remove();
