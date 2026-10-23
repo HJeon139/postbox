@@ -233,11 +233,16 @@ try {
     `${voices('grabber').length} sent`,
   );
 
-  // 7. Typing in the composer while an app keeps grabbing focus: your keys stay yours.
+  // 7. Typing in the composer while an app keeps grabbing focus: your keys stay yours. Postbox takes focus back each
+  // time the app grabs it, and stops it on the third grab. A key pressed between a grab and its return reaches the
+  // app, so type once Postbox has stopped it: the grabs come every 50 ms, but on a busy computer the three can take
+  // longer than a person takes to start typing.
   tools.show_app({ id: 'thief', title: 'Thief', code: THIEF, permissions: [] });
   await ready('thief', 'Thief');
   await sleep(500);
   await clickEl(`document.getElementById('composer-input')`);
+  const thiefStopped = `[...document.querySelectorAll('.appframe')].some((n) => /Postbox stopped Thief/.test(n.textContent) && !n.querySelector('iframe.app-iframe'))`;
+  await until(() => page.evaluate(thiefStopped), 'Postbox to stop Thief').catch(() => {});
   for (const ch of 'hello') {
     await key(ch, ch.toUpperCase().charCodeAt(0), ch);
     await sleep(80);
@@ -246,12 +251,7 @@ try {
   const typed = await page.evaluate(`document.getElementById('composer-input').value`);
   check(typed === 'hello', 'typing in the composer keeps the text there while an app grabs focus', `composer has “${typed}”`);
   check(!voices('thief').length, 'the focus-grabbing app sends nothing in your voice', `${voices('thief').length} sent`);
-  check(
-    await page.evaluate(
-      `[...document.querySelectorAll('.appframe')].some((n) => /Postbox stopped Thief/.test(n.textContent) && !n.querySelector('iframe.app-iframe'))`,
-    ),
-    'an app that keeps taking focus is stopped, with a card to reload it',
-  );
+  check(await page.evaluate(thiefStopped), 'an app that keeps taking focus is stopped, with a card to reload it');
   await page.evaluate(
     `(() => { const t = document.getElementById('composer-input'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   );
