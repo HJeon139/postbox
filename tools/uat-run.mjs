@@ -19,6 +19,7 @@ import { homedir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { codexModels, codexVersion, findCodex } from '../server/adapters/codex.mjs';
 import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
 import { kiroCredits, runChecks, waitingOnYou } from './uat/checks.mjs';
@@ -117,6 +118,7 @@ async function main() {
     workspace: join(dir, 'workspace'),
     streams: join(dir, 'streams'),
     kiroStreams: join(dir, 'streams', 'kiro'),
+    codexStreams: join(dir, 'streams', 'codex'),
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
@@ -141,12 +143,26 @@ async function main() {
   // A fresh install has one generic agent, so the scenario's agents are seeded from agents.json: every
   // persona in personas.json, since scenarios bring more agents (@critic) into topic threads than they start with.
   const personas = JSON.parse(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
+  let codexDefaultModel = null;
+  if (Object.values(scenario.backends).some((b) => b.backend === 'codex')) {
+    const v = await codexVersion(findCodex());
+    if (!v) throw new Error('This scenario puts agents on Codex, and the Codex CLI is not installed here (or set POSTBOX_CODEX_BIN).');
+    codexDefaultModel = (await codexModels(findCodex()))[0] ?? null;
+    log(`Codex ${v}${codexDefaultModel ? ` · default model ${codexDefaultModel}` : ''}.`);
+  }
   // An agent the scenario puts on another backend runs there with the model it names. A Kiro agent is Isolated: it
   // runs with Postbox’s own Kiro home, so the run never writes into the person’s ~/.kiro, and the Kiro checks can
   // tell the person’s steering and servers from Postbox’s (#57).
   const onBackend = (p) => {
     const b = scenario.backends[p.handle];
-    return b ? { ...p, backend: b.backend, ...(b.model ? { model: b.model } : {}), ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}) } : p;
+    return b
+      ? {
+          ...p,
+          backend: b.backend,
+          ...(b.model ? { model: b.model } : b.backend === 'codex' && codexDefaultModel ? { model: codexDefaultModel } : {}),
+          ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}),
+        }
+      : p;
   };
   const agents = [
     ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
@@ -165,7 +181,7 @@ async function main() {
   await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,
-    env: { ...process.env, POSTBOX_CLAUDE_RECORD: paths.streams, POSTBOX_KIRO_RECORD: paths.kiroStreams },
+    env: { ...process.env, POSTBOX_CLAUDE_RECORD: paths.streams, POSTBOX_KIRO_RECORD: paths.kiroStreams, POSTBOX_CODEX_RECORD: paths.codexStreams },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (d) => log(`postbox: ${String(d).trim()}`));
@@ -194,6 +210,7 @@ async function main() {
     startPersonas: [],
     streams: [],
     kiroStreams: [],
+    codexStreams: [],
     transcripts: [],
     console: page.logs,
     apps: {},
@@ -237,6 +254,7 @@ async function main() {
       facts.threads = threadsUnderTest(facts.state);
       facts.streams = readStreams(paths.streams);
       facts.kiroStreams = readStreams(paths.kiroStreams);
+      facts.codexStreams = readStreams(paths.codexStreams);
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
       facts.ui.reviewRawRows = await page.evaluate(
@@ -674,6 +692,7 @@ async function recheck(dir) {
       startPersonas: [],
       streams: readStreams(join(dir, 'streams')),
       kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
+      codexStreams: readStreams(join(dir, 'streams', 'codex')),
       console: page.logs,
       apps: {},
       probes: saved.probes ?? { fullScreen: [], attachments: [] },

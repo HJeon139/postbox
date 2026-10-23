@@ -285,18 +285,22 @@ test('the scenarios parse into phases the tester works through', () => {
     .filter((n) => n.endsWith('.md'))
     .map((n) => n.slice(0, -3));
   const personas = JSON.parse(readFileSync(new URL('uat/e2e/personas.json', import.meta.url), 'utf8')).map((p) => p.handle);
-  for (const name of ['scifact', 'hotpotqa', ...EXIT]) assert.ok(names.includes(name), name);
+  for (const name of ['scifact', 'hotpotqa', 'codex', ...EXIT]) assert.ok(names.includes(name), name);
   for (const name of names) {
     // uat-run.mjs --recheck reads a scenario’s name back from its run folder as word characters.
     assert.match(name, /^\w+$/, name);
     const s = parseScenario(readFileSync(new URL(`${name}.md`, dir), 'utf8'));
-    assert.ok(s.phases.length >= 2 && s.phases.length <= 3, name);
+    assert.ok(s.phases.length >= 2 && s.phases.length <= (name === 'codex' ? 4 : 3), name);
     assert.ok(
       s.agents.every((h) => personas.includes(h)),
       name,
     );
     assert.ok(s.persona.length > 40 && s.project && s.conversation && s.summary, name);
   }
+  const codex = parseScenario(readFileSync(new URL('codex.md', dir), 'utf8'));
+  assert.deepEqual(codex.backends.critic, { backend: 'codex', model: null });
+  assert.ok(codex.phases.some((p) => /resume/i.test(p.title)));
+  assert.ok(codex.phases.some((p) => /fork/i.test(p.title)));
 });
 
 test('the M1 exit scenarios never name a block', () => {
