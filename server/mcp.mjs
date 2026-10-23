@@ -89,23 +89,25 @@ export const TOOL_DEFS = [
   },
   {
     name: 'wake_agent',
-    description: 'Wake another agent with a message. The exchange happens in a side thread. After 3 agent wakes in a row, the person must allow the next one.',
+    description:
+      'Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its own session in this conversation, so it remembers it (a fork of that session, if it’s busy). After 3 agent wakes in a row, the person must allow the next one.',
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
     name: 'read_conversation',
-    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes.`,
+    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes. Pass the id of one of its side threads or topic threads to read that one instead: a catch-up line, a note about a fork of you, or a link the person sent gives it.`,
     inputSchema: {
       type: 'object',
       properties: {
         limit: { type: 'number', description: 'How many items, up to 200. Default 50.' },
         skip: { type: 'number', description: 'Skip this many of the newest items, to read further back.' },
+        thread: { type: 'string', description: 'The id (th_…) of a side thread or topic thread of this conversation. Default: where you are.' },
       },
     },
   },
   {
     name: 'read_message',
-    description: `Read one message or block of this conversation in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
+    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
     inputSchema: {
       type: 'object',
       properties: {
