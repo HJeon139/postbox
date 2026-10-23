@@ -55,6 +55,21 @@ test('math: inline and display, but not prices', () => {
   assert.equal(md('from $5 to $6'), '<p>from $5 to $6</p>');
 });
 
+test('#147: $$…$$ on one line is display math, alone on its line or inside one, with no stray $', () => {
+  const D = (tex) => `<div class="md-math" data-display="true">${tex}</div>`;
+  // As the SciFact UAT’s agent wrote it.
+  assert.equal(md('$$P = \\frac{|\\hat{R} \\cap R|}{|\\hat{R}|}$$'), D('P = \\frac{|\\hat{R} \\cap R|}{|\\hat{R}|}'));
+  assert.equal(md('Precision:\n  $$x^2$$  \nand more.'), `<p>Precision:</p>${D('x^2')}<p>and more.</p>`);
+  assert.equal(md('text $$x^2$$ text'), '<p>text <span class="md-math" data-display="true">x^2</span> text</p>');
+  assert.equal(md('$$a$$ and $$b$$'), '<p><span class="md-math" data-display="true">a</span> and <span class="md-math" data-display="true">b</span></p>');
+  // Unchanged: inline $…$, the block form, and $$ in code or with nothing between.
+  assert.equal(md('cost $x$ here'), '<p>cost <span class="md-math">x</span> here</p>');
+  assert.equal(md('$$\ny\n$$'), D('y'));
+  assert.equal(md('`$$x$$` and\n```\n$$x$$\n```'), '<p><code>$$x$$</code> and</p><pre class="md-code"><code>$$x$$</code></pre>');
+  assert.equal(md('$$ $$'), '<p>$$ $$</p>');
+  assert.equal(md('a $$ b'), '<p>a $$ b</p>');
+});
+
 test('pipe tables', () => {
   const out = md('| Book | n |\n|---|---|\n| Emma | 3 |');
   assert.equal(

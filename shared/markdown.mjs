@@ -3,7 +3,7 @@
 // content or an escaped attribute value, never an attribute name, a tag name or a style.
 //
 // Supported: paragraphs (a single newline is a line break), # headings, - and 1. lists (nested by
-// indentation), > quotes, ``` fences, ```mermaid diagrams, $$ math blocks, $inline math$, pipe tables,
+// indentation), > quotes, ``` fences, ```mermaid diagrams, $$ math blocks (or $$…$$ on one line), $inline math$, pipe tables,
 // ---, `code`, **bold**, *italic*, ~~strikethrough~~, [links](https://…), bare https:// links,
 // citation markers [1], term links [label](term:key), glossary auto-links and @mentions.
 // While a reply is streaming, an unclosed fence is drawn as if it were closed.
@@ -12,7 +12,7 @@
 // right after it, closed by its </details>, folds its Markdown away (agents use it to hide an exercise's
 // answer). The tags must be exactly these, with no attributes; anything else, or an unclosed tag, is text.
 
-import { findMathEnd } from './math.mjs';
+import { displayMath, mathAt } from './math.mjs';
 import { isSafeUrl } from './urls.mjs';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -20,7 +20,7 @@ export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
 // The block rules, shared with the review renderer's line grouping (review-lines.mjs).
 export const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
-export const MATH = /^ {0,3}\$\$\s*$/;
+export { MATH } from './math.mjs';
 export const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
 export const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
 export const QUOTE = /^ {0,3}>\s?(.*)$/;
@@ -87,11 +87,11 @@ function blocks(lines, ctx) {
       continue;
     }
 
-    if (MATH.test(line)) {
+    const display = displayMath(lines, i);
+    if (display) {
       flush();
-      const body = [];
-      for (i++; i < lines.length && !MATH.test(lines[i]); i++) body.push(lines[i]);
-      out.push(`<div class="md-math" data-display="true">${escapeHtml(body.join('\n'))}</div>`);
+      out.push(`<div class="md-math" data-display="true">${escapeHtml(display.tex)}</div>`);
+      i = display.end;
       continue;
     }
 
@@ -305,14 +305,12 @@ function inline(s, ctx) {
       continue;
     }
 
-    if (c === '$' && s[i + 1] !== '$' && s[i + 1] && !/\s/.test(s[i + 1])) {
-      const end = findMathEnd(s, i + 1);
-      if (end > -1) {
-        flush();
-        out += `<span class="md-math">${escapeHtml(s.slice(i + 1, end))}</span>`;
-        i = end + 1;
-        continue;
-      }
+    const math = c === '$' ? mathAt(s, i) : null;
+    if (math) {
+      flush();
+      out += `<span class="md-math"${math.display ? ' data-display="true"' : ''}>${escapeHtml(math.tex)}</span>`;
+      i = math.end;
+      continue;
     }
 
     if (c === '[') {

@@ -11,6 +11,7 @@ Cost models and formulas are part of the explainers.
 ## Expected functionality
 
 - Inline and display math render with KaTeX; prices like “$5” are not treated as math.
+- `$$…$$` on one line is display math, centered on its own line, with no stray dollar signs, the same as `$$` on lines of their own around a formula (#147). Inside a line of text it draws as display math too.
 - Wide formulas scroll sideways and can be scrolled by keyboard.
 
 ## Steps to reproduce
