@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.9.0 (2026-10-23)
+
+### Features
+
+- **personas:** the researcher's prompt lives in server/personas, shared with its boilerplate
+- **personas:** a fresh install seeds researcher, developer and critic
+
+### Fixes
+
+- **threads:** the agent tree's entries wrap instead of cutting off who they're with
+
 ## 0.8.0 (2026-10-23)
 
 ### Features
