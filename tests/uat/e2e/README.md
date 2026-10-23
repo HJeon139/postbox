@@ -267,12 +267,16 @@ Filed issues have no milestone, so they get triaged into the plan ([#64](https:/
 
 ## Recurring findings
 
-The person’s rule (23 October 2026): **recurring findings are prioritized.** A defect that a run catches again is one that people will meet again. Triage counts each issue once per run, whether the tester or a check caught it, across every finished run:
-- **An open issue caught in two or more runs goes up one priority** (P3 to P2, P2 to P1), with a comment that gives the runs. Recurrence alone never makes an issue P0. A recurring issue goes at the front of the next wave that can take it.
-- **A closed issue caught again after it closed is a possible regression.** It’s verified against the run’s commit before anything else (#213). If it’s confirmed, the issue is reopened at its old priority, and its fix goes first in the current wave. If the check was wrong, the check is fixed (`harness`).
-- **A finding without an issue that comes back in two runs is filed,** even if one run’s verifier passed on it.
+The person’s rule (23 October 2026): **recurring findings are prioritized.** A defect that a run catches again is one that people will meet again.
 
-Until #213 adds the table to `tools/uat-stats.mjs`, count from each run’s `findings.json`: a finding’s `duplicateOf`, or else its `issue`, names the issue it matched.
+**What counts.** Count each issue once per run, across every finished run, from findings whose verdict is `duplicate` by `verdictOf()` (`tools/uat/verdicts.mjs`): a check’s match, or a match a verifier or reviewer confirmed. A tester’s own `issue` is a guess until it’s verified, so it doesn’t count. Leave out what isn’t a defect: `measurement` findings, such as the M1 counts, and coverage rows. A p0 coverage hit means a fix was seen working, not that the defect came back. Until #213 fixes them, leave out #123’s and #49’s check hits too.
+
+**What it changes:**
+- **An open issue caught in two or more runs goes up one priority, once** (P3 to P2, or P2 to P1), with a comment that gives the runs. It isn’t raised again for recurring, so a check that fires in nearly every run, as #63’s does, can’t climb an issue by its firing rate. Recurrence alone never makes an issue P0. A recurring issue goes at the front of the next wave that can take it.
+- **A closed issue caught again after it closed is a possible regression.** It’s verified against the run’s commit first (#213). If it’s confirmed, the triage session or the person reopens it at its old priority, and its fix goes first in the current wave. The runner never reopens an issue. If the check was wrong, the verdict is `harness`, and the check is fixed.
+- **A finding without an issue that comes back in two runs is filed**, if the verifier passed on it as `not-reproduced`. Two runs’ findings are the same finding when they share a fingerprint, or a reviewer matched them, since a tester’s titles vary from run to run. A finding the verifier called `harness` or `agent` isn’t filed as a Postbox issue for recurring.
+
+Until #213 adds the table to `tools/uat-stats.mjs`, count by hand from each run’s `findings.json`.
 
 ## Refitting the scale
 

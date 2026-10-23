@@ -8,7 +8,7 @@ You’re making a UAT finding that comes back mean the defect came back, on the 
 
 ## Why
 
-The person asked for recurring UAT findings to be prioritized (23 October 2026). Recurrence is only a signal if a finding that comes back is real. Across the 15 finished runs, the checks that came back most often were mostly checks written before their issue’s fix:
+The person asked for recurring UAT findings to be prioritized (23 October 2026). Recurrence is only a signal if a finding that comes back is real. Across the 15 finished runs counted on 23 October 2026, the checks that came back most often were mostly checks written before their issue’s fix:
 - **#123’s check (a P0)** fired in two runs after #123 closed, because `blockHistory` reads a block’s revision only from `item.patch`, and a block that follows the conversation gets it through `item.move` (#92, #173).
 - **#49’s check** fires on any updated app more than 6 items from the bottom, although an update now moves the app to the newest point.
 - **#63’s check** flagged status reports and exercise answers as questions and drafts.
@@ -31,13 +31,13 @@ The person asked for recurring UAT findings to be prioritized (23 October 2026).
   - `updated-app-far-up` counts only the items that were already after the app when its last version landed.
   - Each gets a test that replays a moved block, or a moved app.
   - A fixture with a real unread reopening by `item.move` still fires.
-- **`prose-instead-of-block`:** a reply that reports what was done, or answers an exercise inside `<details>`, isn’t a question or a draft. Measure the check’s precision on the 15 runs’ hits, before and after, and put both numbers in the pull request.
+- **`prose-instead-of-block`:** a reply that reports what was done, or answers an exercise inside `<details>`, isn’t a question or a draft. Measure the check’s precision on every finished run’s hits, before and after, and put both numbers in the pull request. The labels come from the verdicts a reviewer or verifier set. Where there’s none, label the hit yourself and list your labels in the pull request, so the number has a source.
 - **A closed issue caught again:**
-  - The preset doesn’t apply to it. The verifier checks it against the run’s commit (`run.json`), and whether that commit has the fix.
-  - Confirmed: the runner comments on the issue with the evidence and asks to reopen it. It never reopens it on its own.
+  - The preset doesn’t apply to it. Whether the run’s commit (`run.json`) has the fix needs no model: take the fix from the issue’s closing pull request (`gh issue view N --json closedByPullRequestsReferences`), then `git merge-base --is-ancestor <fix> <run commit>`. The verifier then judges only whether the evidence shows the defect.
+  - Confirmed: the runner comments on the issue with the evidence. The triage session or the person reopens it. The runner never does.
   - Not confirmed: the verdict is `harness`, with the check named.
   - A run without a recorded commit says so, and its findings on closed issues aren’t verified.
-- **Recurrence in `uat-stats`:** a table by issue, for open and closed issues, with its runs, its findings, the runs after it closed, its state and its priority. Sort it by runs, then findings.
+- **Recurrence in `uat-stats`:** a table by issue, for open and closed issues, with its runs, its findings, the runs after it closed, its state and its priority. It counts what tests/uat/e2e/README.md, “Recurring findings”, counts: only `duplicate` verdicts by `verdictOf()`, without `measurement` findings or coverage rows. Sort it by runs, then findings.
 
 ## Files
 
@@ -47,6 +47,6 @@ The person asked for recurring UAT findings to be prioritized (23 October 2026).
 ## Done when
 
 - Each part has a test that fails without it.
-- Rechecking the 15 runs: #123’s and #49’s checks no longer fire on revisions or apps that moved, and no finding that matches a closed issue is preset as a duplicate.
+- Rechecking every finished run, including the four of 23 October 2026 at 21:00 or later: #123’s and #49’s checks no longer fire on revisions or apps that moved, and no finding that matches a closed issue is preset as a duplicate.
 - `uat-stats` prints the recurrence table, and a test keeps its columns.
 - `tests/uat/e2e/README.md` says how recurrence is read, under “Recurring findings”.

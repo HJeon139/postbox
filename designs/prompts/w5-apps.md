@@ -27,7 +27,7 @@ The check exists so the agent hears about these before the person sees them (int
   - Move the app functions out of `server/runtime.mjs` into `server/apps.mjs`, by the rewrite README.md’s “Length limits” allows, with their ceilings, in one commit with nothing else:
     - `registerApp`, `appCheck`, `appEvent`, `needAppSend`, `resolveAppSend`, `appState`, `appQuery`, `appFile`, `agentFolders`, `agentFile` and `appFiles`. `appEvent` is called from `server/index.mjs` and the tests, and `resolveAppSend` from `act`, so each keeps a delegator.
     - Their constants and types: `AgentFileError` (re-exported, since `server/mcp.mjs` imports it), `FILE_NAME`, the `AppFile` typedef and `APP_WARNINGS`.
-    - `readCapped` is shared with the datasets code, so it stays in `runtime.mjs`, or moves to a small helper both import.
+    - `readCapped` is shared with the datasets code, and `agentFile` calls it. It goes to a small module of its own that both `apps.mjs` and `runtime.mjs` import, never imported back from `runtime.mjs`, which would be a circular import.
   - `app/kit/kit.js` needs no move. It’s one IIFE, and Biome counts that wrapper as its 619-line function. Its longest real function is `legibility`, at 69 lines. In a commit of its own, set `"skipIifes": true` on kit.js’s `noExcessiveLinesPerFunction` override, lower its function ceiling to the measured size, and add a line to architecture.md §15 that the wrapper is a module scope, not a function.
 - **#193:** `retire_app { id, reason, replacedBy? }`, as #193 proposes:
   - It works only on the calling agent’s own apps.

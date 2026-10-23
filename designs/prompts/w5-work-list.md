@@ -37,6 +37,7 @@ You’re making each turn end with a list of what it did, every row leading to W
   - After 5 rows, “N more” expands in place.
   - The list is a `ul` labeled “What this turn did”, with one link per row. At 375 px, a long path is cut in the middle and keeps its file name.
 - **Work:** a Reads section, and publishes beside writes outside Postbox, each with a link to its item in the conversation. Remove the line “Changes a command makes … aren’t listed” for git folders, and say what still isn’t seen: files git ignores, and folders outside git.
+- **Then, if time allows, #214:** the reply header says “8.7 s” and Work says “23 s” for the same turn. One sums the tool steps, and the other is the turn’s elapsed time. The list’s heading says which it shows.
 - **intent.md and architecture.md:** once it’s built, change intent.md’s Work row from “to be seen (decided, not built yet)” to the present tense, and update §14’s “What it doesn’t see yet”.
 
 ## Files
