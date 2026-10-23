@@ -1415,6 +1415,46 @@ test('#94: show_block refuses an outcome, so a result can’t show under an answ
   assert.equal(store.item(t.id, item.id).block.outcome, undefined);
 });
 
+test('#125: show_block refuses an id this session already shows here, open or answered, so an answer belongs to one block', () => {
+  const { rt, store, t, b } = setup();
+  const se = rt.sessionsIn(t.id)[0];
+  const tools = rt.toolsFor(se.id);
+  const review = (title, content) => ({ id: 'issue-review', type: 'review', version: 1, fallback: 'Draft', title, format: 'markdown', content });
+  const blocks = () => store.items(t.id).filter((i) => i.kind === 'block');
+  assert.equal(tools.show_block({ block: review('Draft A', 'A') }).ok, true);
+  // The UAT’s case: a second, different draft under the same id, 27 seconds later.
+  const again = tools.show_block({ block: review('Draft B', 'B') });
+  assert.equal(again.ok, false);
+  assert.equal(again.message, 'Block issue-review is already shown. Use update_block to change it, or pick a new id.');
+  assert.equal(blocks().length, 1);
+  assert.equal(blocks()[0].block.title, 'Draft A');
+  // Answered, it still holds the id: an outcome or an update by that id can only mean it.
+  rt.act(t.id, blocks()[0].id, 'submit', { verdict: 'approve', comments: [] });
+  assert.equal(tools.show_block({ block: review('Draft B', 'B') }).ok, false);
+  assert.equal(blocks().length, 1);
+  // A new id is a new block, and another agent’s block may use the same id: each answers to its own session.
+  assert.equal(tools.show_block({ block: { ...review('Draft B', 'B'), id: 'issue-review-2' } }).ok, true);
+  const other = rt.ensureSession(t.id, b.id);
+  assert.equal(rt.toolsFor(other.id).show_block({ block: review('Theirs', 'C') }).ok, true);
+  assert.equal(blocks().length, 3);
+});
+
+test('#125: an app id the session owns still makes a new version, and an invalid block can be sent again', () => {
+  const { rt, store, t } = setup();
+  const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
+  assert.equal(tools.show_app({ id: 'ap', title: 'A', code: '<p>1</p>' }).ok, true);
+  assert.equal(tools.show_app({ id: 'ap', title: 'A', code: '<p>2</p>' }).ok, true);
+  assert.equal(store.state.apps.ap.versions.length, 2);
+  // A block can’t take an app’s id: an update by it couldn’t reach the block, so it asks for a new id instead.
+  const taken = tools.show_block({ block: { id: 'ap', type: 'confirm', version: 1, fallback: 'x', statement: 'Go?', confirmLabel: 'Go' } });
+  assert.equal(taken.ok, false);
+  assert.equal(taken.message, 'ap is the id of your app “A”. Pick a new id for this block.');
+  // An invalid block shows only its fallback and can’t be answered, so its fixed copy may use the same id.
+  const bad = { id: 'q', type: 'choice', version: 1, fallback: 'Pick', options: [] };
+  assert.equal(tools.show_block({ block: bad }).ok, false);
+  assert.equal(tools.show_block({ block: { ...bad, options: [{ id: 'a', label: 'A' }] } }).ok, true);
+});
+
 test('a persona’s permission mode reaches its running conversations from their next turn', async () => {
   const { rt, t, a, adapter } = setup();
   const seen = [];

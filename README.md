@@ -85,7 +85,7 @@ A block is JSON naming one component. Agents send it with the `show_block` tool.
 
 | Field | Required | Notes |
 |---|---|---|
-| `id` | Yes | Letters, digits and `- _ . :`. Sending the same id with `update_block` replaces the block in place. |
+| `id` | Yes | Letters, digits and `- _ . :`. Sending the same id with `update_block` replaces the block in place. An id names one block of its agent’s in a conversation, so `show_block` refuses an id that agent already showed there. |
 | `type` | Yes | One of the components below. |
 | `version` | Yes | The component version. This app reads version 1 of each. |
 | `title` | No | Up to 200 characters. |
