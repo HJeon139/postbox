@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.16.0 (2026-10-23)
+
+### Features
+
+- **blocks:** agents withdraw a block that asks, and the person can dismiss one
+
+### Fixes
+
+- **a11y:** screen readers hear replies as plain text, with dots in words kept
+- **markdown:** \(…\) and \[…\] are math, not escaped brackets
+- **markdown:** $$…$$ on one line is display math
+- **blocks:** Postbox's own images load at localhost, and a failed image says so
+- **blocks:** tell a topic thread's agent that its conversation's block is there
+
 ## 0.15.0 (2026-10-23)
 
 ### Features
