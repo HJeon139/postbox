@@ -1,10 +1,10 @@
-# Prompt: wave 4, side threads (#124, #128, #151, #130)
+# Prompt: wave 5, side threads (#124, #128, #151, #130)
 
-A wave 4 session, integrated by the triage session and reviewed by the reviewing session. Follow [README.md](README.md) for the rules every session shares. Your ports are 4650–4699 for servers and 9850–9899 for Chrome.
+A wave 5 session, carried over from wave 4, where it never started. The triage session integrates it, and the architectural review session reviews it. Follow [README.md](README.md) for the rules every session shares. Your ports are 4650–4699 for servers and 9850–9899 for Chrome.
 
 ---
 
-You’re finishing side threads after #171 (one session per persona per conversation, side-thread forks shown and stoppable), on the branch `fix/w4-side-threads`, in one pull request with one commit per issue.
+You’re finishing side threads after #171 (one session per persona per conversation, side-thread forks shown and stoppable), on the branch `fix/w5-side-threads`, in one pull request. The first commit moves the side-thread code out of `server/runtime.mjs` (README.md, “Length limits”), then one commit per issue.
 
 ## Why
 
@@ -20,10 +20,12 @@ Then, if time allows, two P2s on the same lines: #135 (a later turn from the sam
 
 - [README.md](README.md), `designs/intent.md` (Layout: the right-pane and agent-tree rows) and `designs/architecture.md` on side threads.
 - Each issue with its comments. #128 records the person’s decision on joining: a woken persona joins the conversation, with a visible note.
-- #171’s code: `sideSession`, `forkBusy`, `forkDone`, `roomOf` and the sidelink item in `server/runtime.mjs`; the agent tree in `app/js/agents.mjs`.
+- #171’s code: `sideSession`, `forkBusy`, `forkDone`, `roomOf` and the sidelink item in `server/runtime.mjs`; the agent tree in `app/js/agents.mjs`, with #191’s subagents in it.
+- `designs/architecture.md`, “Module and function size”, and README.md, “Length limits”.
 
 ## The work
 
+- **First, the move:** move the side-thread functions (`agentWake`, `sideSession`, `forkBusy`, `forkFresh`, `forkNote`, `forkRetry`, `forkDone`, `resolveHop`, `bumpSideLink`, `recordAgentMessage`) into `server/side-threads.mjs`, unchanged, with their ceilings (architecture.md, “A ceiling moves with the code”). Nothing else changes in that commit.
 - **#124:** the Threads page lists side threads with their pair, state and last activity, beside topic threads, and says which kind each is.
 - **#128, two ways back to the conversation** (the person’s decision of 23 October, recorded on #128):
   - **The person:** “Send to conversation” on a side-thread message, with the same contract as a topic thread’s Summarize back: the person chooses what goes, and it posts in the conversation as theirs.
@@ -34,10 +36,12 @@ Then, if time allows, two P2s on the same lines: #135 (a later turn from the sam
 
 ## Files
 
-- **Yours:** the side-thread code in `server/runtime.mjs` (`agentWake`, `sideSession`, `bumpSideLink` and the sidelink item), `share_to_conversation` in `server/mcp.mjs` and its line in `server/adapters/guide.mjs` (within `guideText`’s 9,000-character budget), the Threads page in `app/js/shell.mjs` (`mountThreads`), side-thread rendering in `app/js/thread.mjs`, `tools/check-side-threads.mjs` and `tests/side-threads.test.mjs`.
+- **Yours:** `server/side-threads.mjs`, and the lines in `server/runtime.mjs` that call it, `share_to_conversation` in `server/mcp.mjs` and its line in `server/adapters/guide.mjs` (within `guideText`’s 9,000-character budget), the Threads page in `app/js/shell.mjs` (`mountThreads`), side-thread rendering in `app/js/thread.mjs`, `tools/check-side-threads.mjs` and `tests/side-threads.test.mjs`.
 - **Shared:**
-  - **`app/js/agents.mjs`:** the agent-activity session (#73) adds subagents as children in #171’s tree. Change only the side-thread entries, and expect it to rebase on you.
-  - **`app/js/shell.mjs`:** the supervision session owns the overview. Change only `mountThreads`.
+  - **`server/runtime.mjs` and `biome.json`:** every wave 5 session moves its own concern out of `runtime.mjs` first. Move only the functions above, and lower `runtime.mjs`’s ceilings by what left.
+  - **`app/js/agents.mjs`:** change only the side-thread entries. #191’s subagent entries stay as they are.
+  - **`app/js/thread.mjs`:** the work-list session changes the work line under replies. Change only side-thread rendering.
+  - **`app/js/shell.mjs`:** the pane session changes the rail’s collapse. Change only `mountThreads`.
 
 ## Done when
 

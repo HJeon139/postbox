@@ -2,67 +2,79 @@
 
 Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139/postbox/issues/64), in waves of sessions that run in parallel, each in its own worktree. Every session follows [engineering-practices.md](../engineering-practices.md) and the rules on this page. Prompts for issues that are still blocked get written when the wave before them merges.
 
-The plan follows the triage of 22 October 2026 (#64’s last two comments), and the wave 4 plan the two integrating sessions agreed on 23 October 2026. Two sessions integrate and merge, and each reviews the other’s pull requests before they merge:
-- **The triage session:** wave 4’s side threads and blocks sessions.
-- **The reviewing session:** wave 4’s supervision, install and agent activity sessions. It’s the only writer of this page.
+The plan follows the triage of 22 October 2026 (#64’s last two comments), the wave 4 plan the two integrating sessions agreed on 23 October 2026, and the wave 5 plan the person approved the same day.
+
+**Who integrates wave 5.** The triage session integrates and merges all five sessions, and writes this page. The architectural review session reviews each pull request before it merges. (In wave 4 the reviewing session wrote this page and integrated three of its sessions. It isn’t running now.)
 
 A pull request merges once it’s approved and green. A CI failure that’s one of the known flaky checks, in a check the pull request doesn’t touch, doesn’t block it when its own checks pass locally (the person’s rule, 23 October 2026).
 
 ```mermaid
 flowchart LR
-  subgraph w3["Wave 3 (merged)"]
-    m1["M1: tools and outside writes (#172)"]
-    f["M2: apps follow the conversation, files and real data (#173)"]
-    r["Reading history (#170)"]
-    s["Side-thread sessions (#171)"]
+  subgraph w4["Wave 4 (merged)"]
+    a["Supervision: #3, #101"]
+    d["Install: #90, #157"]
+    e["Agent activity: #73, #129"]
   end
-  subgraph w4["Wave 4 (now)"]
-    a["1. Supervision: #3, #101"]
-    b["2. Side threads: #124, #128, #151, #130"]
-    c["3. Blocks: #106, #180, #147, #137"]
-    d["4. Install: #90, #157"]
-    e["5. Agent activity: #73, #129"]
+  subgraph w5["Wave 5 (now)"]
+    s1["1. Side threads: #124, #128, #151, #130"]
+    s2["2. Blocks and text: #106, #180, #147, #137, #196"]
+    s3["3. The turn’s work list: #195, #156"]
+    s4["4. Retiring apps and the app check: #193, #194, #89"]
+    s5["5. The right pane: #197, #86, #122, #7"]
   end
-  subgraph w5["Wave 5 (next)"]
-    v["Visual consistency: #8 + #181, #183, #116, #182"]
+  subgraph w6["Wave 6 (next)"]
+    v["Visual consistency: #8 + #181, #199, #116, #182"]
     rv["Review block: #179, #133"]
-    ap["Apps: #36, #7 + #86 + #122, #44, #37, #87"]
-    ck["Checks: #89, #95, #102"]
-    be["Backends: #118, #136, #117, #167"]
+    be["Backends: #118, #136, #117, #167, #150"]
+    ck["App checks: #95, #102, #87"]
     at["#85: agent attachments"]
   end
-  w3 --> w4
-  a --> v
-  c --> rv
-  b --> e
+  w4 --> w5
+  s2 --> rv
+  s4 --> ck
+  s5 --> v
 ```
 
 | Wave | Session | Prompt | Issues | Ports (server, Chrome) | Integrates |
 |---|---|---|---|---|---|
-| 4 | Supervision | [w4-supervision.md](w4-supervision.md) | #3, #101 (a proposal and the person’s decision first) | 4600–4649, 9800–9849 | reviewing |
-| 4 | Side threads | [w4-side-threads.md](w4-side-threads.md) | #124, #128’s rest, #151, #130; then #135, #114 | 4650–4699, 9850–9899 | triage |
-| 4 | Blocks | [w4-blocks.md](w4-blocks.md) | #106, #180, #147, #137 | 4700–4749, 9900–9949 | triage |
-| 4 | Install | [w4-install.md](w4-install.md) | #90, #157 (release blockers) | 4750–4799, 9950–9999 | reviewing |
-| 4 | Agent activity | [w4-agent-activity.md](w4-agent-activity.md) | #73 (elements 1–3 and 7), #129’s rest | 4800–4849, 10100–10149 | reviewing |
-| 5 | Visual consistency | to write | #8 with #181 (what amber means), #183, #116; #182 if time allows | — | — |
-| 5 | Review block | to write | #179, with selection comments, and #133: agents comment on a review through the same comment model | — | — |
-| 5 | Apps | to write | #36, #7 with #86 and #122, #44, #37, #87 | — | — |
-| 5 | Checks | to write | #89, #95, #102 | — | — |
-| 5 | Backends | to write | #118, #136, #117’s rest (Codex, OpenCode), #167 | — | — |
-| 5 | Attachments | to write | #85 | — | — |
-| — | Needs a decision first | — | #9 (a worktree per conversation), #84, #120 | — | — |
-| — | Backlog | — | #11, #13, #14, #15, #16, #21, #28, #41, #76, #99, #100, #103, #107, #111, #113, #115, #131, #134, #177 | — | — |
+| 5 | Side threads | [w5-side-threads.md](w5-side-threads.md) | #124, #128’s rest, #151, #130; then #135, #114 | 4650–4699, 9850–9899 | triage |
+| 5 | Blocks and text | [w5-blocks.md](w5-blocks.md) | #106, #180, #147, #137, #196 | 4700–4749, 9900–9949 | triage |
+| 5 | The turn’s work list | [w5-work-list.md](w5-work-list.md) | #195, #156 | 4850–4899, 10150–10199 | triage |
+| 5 | Retiring apps and the app check | [w5-apps.md](w5-apps.md) | #193, #194, #89 | 4900–4949, 10200–10249 | triage |
+| 5 | The right pane | [w5-pane.md](w5-pane.md) | #197, #86, #122, #7 | 4950–4999, 10250–10299 | triage |
+| 6 | Visual consistency | to write | #8 with #181 (what amber means), #199, #116; #182 if time allows | — | — |
+| 6 | Review block | to write | #179, with selection comments, and #133: agents comment on a review through the same comment model | — | — |
+| 6 | Backends | to write | #118, #136, #117’s rest (Codex, OpenCode), #167; #150 after the person’s `--compat` Codex run | — | — |
+| 6 | App checks | to write | #95, #102, #87 | — | — |
+| 6 | Attachments | to write | #85 | — | — |
+| — | Needs a decision first | — | #9 (a worktree per conversation), #84, #120; #201 and #203 (catalog changes), #202 (apps that collapse on their own); #189’s last fix (a subagent’s context share from its message’s `usage`, about five lines, left to the person by #191) | — | — |
+| — | Backlog | — | #11, #13, #14, #15, #16, #21, #37, #41, #44, #76, #99, #100, #103, #107, #111, #113, #115, #131, #134, #168, #177, #192 | — | — |
 
-**Wave 4’s overlaps:**
-- **Blocks and supervision:** #106 clears `needs` through the existing paths, and the supervision session owns how the overview and the sidebar draw needs-you.
-- **Side threads and agent activity:** both change `app/js/agents.mjs`. #73 adds subagents as children in #171’s tree, and rebases on the side-threads session.
-- **Blocks and install:** the blocks session owns `server/index.mjs`’s CSP line, and the install session owns its startup and paths.
-- **Closed or held:** #6 is closed, since #105 shipped its recommendation. #150 stays open for the person’s `--compat` Codex run.
+**Wave 5’s overlaps:**
+- **`server/runtime.mjs` and `biome.json`:** sessions 1, 2 and 4 each move their concern out of `runtime.mjs` first (“Length limits”, below), and session 3 does if it needs more than a call or two. The moved functions don’t overlap. Each session lowers `runtime.mjs`’s ceilings by what it moved, so `biome.json` conflicts at merge: the integrator sets `runtime.mjs`’s ceilings to its size after each merge.
+- **`app/js/thread.mjs`:** side threads (side-thread rendering) and the work list (`workChip` and its list).
+- **`app/js/shell.mjs`:** side threads (`mountThreads`) and the pane (the rail’s collapse).
+- **`app/js/ui.mjs`:** blocks and text (`announceStreaming`) and the pane (routing).
+- **`server/mcp.mjs`:** blocks (the block tools) and apps (`retire_app`).
+- **`tools/check-work-pane.mjs`:** the work list and the pane add their own cases.
+- **The work list and apps:** the list shows a retired app’s row. The apps session names the state, through the integrator.
 
-**End of wave 4:** a Claude-only UAT pass on Haiku, which the person approves with its estimated cost:
+**Merge order:** side threads, then blocks and text, then apps, then the work list, then the pane. Each later one rebases on main as the earlier ones land.
+
+**End of wave 5:** a Claude-only UAT pass on Haiku, which the person approves with its estimated cost. It covers wave 4 too, since wave 4’s pass didn’t run:
 - `longresearch`, which confirms #63 live;
-- `workroom`, for #178’s personas and the room roster;
+- `workroom`, for #178’s personas, the room roster, and #195’s list;
 - a `p0` recheck.
+
+## Wave 4 (merged, two sessions carried to wave 5)
+
+Side threads and blocks never started in wave 4. Their prompts moved to wave 5, as `w5-side-threads.md` and `w5-blocks.md`.
+
+| Session | Prompt | Issues | Ports (server, Chrome) |
+|---|---|---|---|
+| Supervision | [w4-supervision.md](w4-supervision.md) | #3, #101 | 4600–4649, 9800–9849 |
+| Install | [w4-install.md](w4-install.md) | #90, #157 | 4750–4799, 9950–9999 |
+| Agent activity | [w4-agent-activity.md](w4-agent-activity.md) | #73 (elements 1–3 and 7), #129’s rest | 4800–4849, 10100–10149 |
 
 ## Wave 2 (merged)
 
@@ -85,6 +97,12 @@ Merge order: M1 core, then transcript and threads.
 ## Rules for every session
 
 **Ports and data.** Use only your ports, for any server you start (`node server/index.mjs --port …`) and any headless Chrome (`launch({ port })` in `tools/cdp.mjs`). Give every server you start `--data` with a folder of your own, such as one in your scratchpad: without it, Postbox uses `~/.postbox`, which every clone, worktree and installed copy shares (#90). Never touch the preview on 4173, another tool’s server on 4320, the clone’s `data/`, or `~/.postbox`.
+
+**Length limits** (architecture.md, “Module and function size”). Biome fails any file or function past its default length, and a file already past it can shrink but not grow. So:
+- **Make room first.** When your change would grow a file at its ceiling, such as `server/runtime.mjs`, `server/ledger.mjs` or `app/js/thread.mjs`, first move the concern your prompt names into a module of its own. Move it unchanged, as its own commit, with no other change, so its diff reads as moved lines.
+- **Ceilings move with the code.** A moved function may take an override in `biome.json` at its current size, and so may its new module’s length. The old file’s ceilings drop by as much in the same commit: its file ceiling by the lines that left, and its function ceiling to its longest remaining function.
+- **Never raise a ceiling** for new code. A new function fits the defaults: 50 lines a function, 300 a file.
+- **Tests too.** A new test for a test file at its ceiling goes in `tests/<module>-<concern>.test.mjs`, which must end in `.test.mjs`, or `npm test` never runs it.
 
 **Files.** Each prompt lists the files the session owns, and the files it shares with another session.
 - In a shared file, change only the function or block the prompt names, so the merges stay small.
