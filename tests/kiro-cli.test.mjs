@@ -264,7 +264,11 @@ test('the agent: the guide and a note on refusals as its prompt, Postbox’s ser
   assert.match(a.prompt, /^GUIDE\n\n## Refused tool calls/);
   assert.deepEqual(a.mcpServers, { postbox: { type: 'http', url: 'http://127.0.0.1:1/mcp?session=se_1' } });
   assert.equal(a.includeMcpJson, true);
-  assert.equal(kiroAgent({ name: 'x', persona: { ...persona, usesHostSetup: false }, mcpUrl: '', guide: '', folders: [] }).includeMcpJson, false);
+  assert.doesNotMatch(a.prompt, /## Tools you can use/);
+  const isolated = kiroAgent({ name: 'x', persona: { ...persona, usesHostSetup: false }, mcpUrl: '', guide: '', folders: [] });
+  assert.equal(isolated.includeMcpJson, false);
+  // Kiro lists a denied server’s tools anyway, so an Isolated agent is told not to offer them.
+  assert.match(isolated.prompt, /## Tools you can use\n\nOnly Postbox’s MCP server is allowed/);
 });
 
 test('the Kiro home: yours (KIRO_HOME, else ~/.kiro), or Postbox’s own when Isolated', () => {

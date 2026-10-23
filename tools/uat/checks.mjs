@@ -7,6 +7,8 @@
 //   threads,         ids of the conversations and topic threads under test
 //   startPersonas,   the personas a fresh install had
 //   streams,         [{ handle, events }]: each real turn’s raw stream (POSTBOX_CLAUDE_RECORD)
+//   kiroStreams,     [{ handle, events }]: each Kiro CLI turn’s raw stream (POSTBOX_KIRO_RECORD), kept apart: its
+//                    lines are { type, data } around ACP session updates, which the Claude Code checks don’t read
 //   transcripts,     [{ handle, lines }]: each agent’s Claude Code transcript, as text lines
 //   console,         the page’s console errors and exceptions
 //   apps,            { [itemId]: { text, marks, tinyMarks, svgText, tinyText, fonts } } read from inside each app
@@ -18,8 +20,10 @@
 //                    purpose, so it reaching them isn’t a finding; no check uses it now.
 // }
 
-import { deniedTools, isPublishingTool, PUBLISHING_TOOLS } from '../../server/adapters/setup.mjs';
+import { REFUSED, toolOf } from '../../server/adapters/kiro-cli.mjs';
+import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from '../../server/adapters/setup.mjs';
 import { freshInstall } from '../../server/seed.mjs';
+import { ASKING } from '../../shared/catalog.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
 const clip = (s, n = 240) => {
@@ -51,6 +55,59 @@ const BLOCK_USE = {
 };
 /** @type {Record<string, keyof typeof BLOCK_USE>} */
 const SERVES = { choice: 'options', form: 'questions', review: 'draft', progress: 'long', confirm: 'decision' };
+
+// ── Kiro CLI turns (#117) ──────────────────────────────────────────────────────────────────────────────
+// What each Kiro turn’s stream says about its tool calls, for the checks below: one entry per toolCallId, with its
+// ACP kind, its MCP server (null for Kiro’s own tools), whether it completed, and whether Kiro refused it: an ask no
+// one could answer headless (pending_interaction, then interaction_resolved “cancelled”), a deny rule (policyDenial),
+// or Kiro’s refusal wording. Read the way server/adapters/kiro-cli.mjs reads a live turn.
+function kiroCalls(events) {
+  /** @type {Map<string, { id: string, kind: string|null, title: string, server: string|null, completed: boolean, refused: boolean }>} */
+  const calls = new Map();
+  const asked = new Set();
+  const call = (u) => {
+    if (!calls.has(u.toolCallId)) calls.set(u.toolCallId, { id: u.toolCallId, kind: null, title: '', server: null, completed: false, refused: false });
+    return calls.get(u.toolCallId);
+  };
+  for (const e of events) {
+    if (e?.type !== 'sessionUpdate') continue;
+    const u = e.data?.update ?? {};
+    const k = u._meta?.kiro;
+    if (u.sessionUpdate === 'session_info_update') {
+      if (k?.kind === 'pending_interaction' && k.interactionType === 'tool_approval' && k.toolCallId) asked.add(k.toolCallId);
+      // lint-allow spelling: Kiro’s value.
+      else if (k?.kind === 'interaction_resolved' && k.outcome === 'cancelled' && asked.has(k.toolCallId)) call({ toolCallId: k.toolCallId }).refused = true;
+      continue;
+    }
+    if ((u.sessionUpdate !== 'tool_call' && u.sessionUpdate !== 'tool_call_update') || !u.toolCallId) continue;
+    const c = call(u);
+    c.kind = u.kind ?? c.kind;
+    c.title = u.title || c.title;
+    const name = toolOf(u).name;
+    if (name) c.server = name.split('__')[1] ?? null;
+    if (u.status === 'completed') c.completed = true;
+    const why = JSON.stringify(u.rawOutput ?? u.content ?? '');
+    if (u.status === 'failed' && (k?.policyDenial || REFUSED.test(why))) c.refused = true;
+  }
+  return [...calls.values()];
+}
+/** The credits Kiro reported over a run’s turns: each turn_completion’s promptTurnSummaries, in credits. */
+export const kiroCredits = (streams) =>
+  streams
+    .flatMap(({ events }) => events.map((e) => e?.data?.update?._meta?.kiro))
+    .filter((k) => k?.kind === 'turn_completion')
+    .flatMap((k) => (Array.isArray(k.promptTurnSummaries) ? k.promptTurnSummaries : []))
+    .filter((t) => t?.unit === 'credit' && Number.isFinite(t.usage))
+    .reduce((a, t) => a + t.usage, 0);
+/** The Kiro streams with their persona: only personas on the Kiro CLI, since their settings decide what’s allowed. */
+const kiroTurns = (f) =>
+  (f.kiroStreams ?? []).flatMap(({ handle, events }) => {
+    const persona = Object.values(f.state.personas ?? {}).find((p) => p.handle === handle && p.backend === 'kiro-cli');
+    return persona ? [{ handle, persona, events, calls: kiroCalls(events) }] : [];
+  });
+const isolated = (persona) => persona.usesHostSetup === false;
+// The Tools ids Kiro’s own tool kinds stand for (ACP ToolKind; server/adapters/kiro-cli.mjs, KIRO_TOOL_RULES).
+const KIRO_KIND_TOOL = { execute: 'shell', fetch: 'web.fetch' };
 export const LONG_TURN_MS = 120_000;
 export const LONG_TURN_TOOLS = 10;
 const LONG_TURN_MIN_TOOLS = 3;
@@ -162,6 +219,39 @@ function blockUseTally() {
       };
     },
   };
+}
+
+/**
+ * What’s waiting on the person in these threads, as the “needs you” count sees it: a block that asks (choice,
+ * form, confirm, review) and isn’t answered, an open wake request or proposal, and whatever a session says it
+ * needs (a permission card, a failed turn to retry). The runner shows it to the tester every step, and doesn’t
+ * move on while it’s there, so a run answers what an agent asked instead of leaving it behind.
+ * @param {any} state  @param {string[]} threads
+ * @returns {{ itemId: string|null, threadId: string, what: string }[]}
+ */
+export function waitingOnYou(state, threads) {
+  /** @type {Map<string, { itemId: string|null, threadId: string, what: string }>} */
+  const out = new Map();
+  for (const t of threads)
+    for (const it of state.items?.[t] ?? []) {
+      const by = it.handle ? `@${it.handle}’s ` : '';
+      if (it.kind === 'block' && it.valid !== false && ASKING.has(it.block?.type) && !it.answered)
+        out.set(it.id, {
+          itemId: it.id,
+          threadId: t,
+          what: `${by}${it.block.type} “${clip(it.block.title ?? it.block.prompt ?? '', 80)}”${it.block.revision ? `, revision ${it.block.revision}` : ''}`,
+        });
+      else if ((it.kind === 'hop' || it.kind === 'proposal') && it.status === 'open')
+        out.set(it.id, { itemId: it.id, threadId: t, what: it.kind === 'hop' ? 'a wake request' : `${by}proposal for a new teammate` });
+    }
+  for (const t of threads)
+    for (const id of state.threads?.[t]?.members ?? []) {
+      const se = state.sessions?.[id];
+      if (!se?.needs) continue;
+      const key = se.needs.itemId ?? `needs:${se.id}`;
+      if (!out.has(key)) out.set(key, { itemId: se.needs.itemId ?? null, threadId: se.threadId ?? t, what: clip(se.needs.text ?? se.needs.kind, 120) });
+    }
+  return [...out.values()];
 }
 
 export const CHECKS = [
@@ -591,9 +681,110 @@ export const CHECKS = [
     id: 'model-not-shown',
     issue: 60,
     run: (f) =>
-      f.ui?.headerText && !/opus|sonnet|haiku|fable/i.test(f.ui.headerText)
+      // Claude’s families, or any model a persona in the run names: a Kiro persona can run gpt-5.6-terra (#117).
+      f.ui?.headerText &&
+      !/opus|sonnet|haiku|fable/i.test(f.ui.headerText) &&
+      !Object.values(f.state?.personas ?? {}).some((p) => p.model && p.model !== 'mock' && f.ui.headerText.includes(p.model))
         ? [{ title: 'The UI doesn’t show which model an agent runs', evidence: `Top bar: “${clip(f.ui.headerText, 120)}”.` }]
         : [],
+  },
+  {
+    // An Isolated Kiro persona runs with Postbox’s own Kiro home, so none of the person’s steering may load (#57).
+    id: 'kiro-settings-leak',
+    issue: 57,
+    run: (f) => {
+      const hits = kiroTurns(f).flatMap(({ handle, persona, events }) =>
+        isolated(persona)
+          ? events
+              .map((e) => e?.data?.update?._meta?.kiro)
+              .filter((k) => k?.kind === 'steering_inclusion' && Array.isArray(k.steeringDocuments) && k.steeringDocuments.length)
+              .map((k) => ({ handle, n: k.steeringDocuments.length }))
+          : [],
+      );
+      return hits.length
+        ? [
+            {
+              title: 'An Isolated Kiro agent loaded the person’s steering files',
+              evidence: hits
+                .slice(0, 3)
+                .map(({ handle, n }) => `@${handle} loaded ${n} steering file${n === 1 ? '' : 's'}`)
+                .join('; ')
+                .concat('.'),
+            },
+          ]
+        : [];
+    },
+  },
+  {
+    // An Isolated Kiro persona denies every MCP server but Postbox’s, a server a managed install adds by itself
+    // included (#57): a call to one that completed got through.
+    id: 'kiro-mcp-leak',
+    issue: 57,
+    run: (f) => {
+      const hits = kiroTurns(f).flatMap(({ handle, persona, calls }) =>
+        isolated(persona) ? calls.filter((c) => c.completed && c.server && c.server !== POSTBOX_SERVER).map((c) => ({ handle, c })) : [],
+      );
+      return hits.length
+        ? [
+            {
+              title: 'An Isolated Kiro agent used an MCP server other than Postbox’s',
+              evidence: `${hits
+                .slice(0, 3)
+                .map(({ handle, c }) => `@${handle}: ${clip(c.title, 80)} (${c.server})`)
+                .join('; ')}.`,
+            },
+          ]
+        : [];
+    },
+  },
+  {
+    // Kiro can’t ask from Postbox, and a refusal leaves the turn “successful”, so the step is its only record (#65):
+    // each refused call should be a denied step, under its toolCallId, in the conversation.
+    id: 'kiro-refusal-not-shown',
+    issue: 65,
+    run: (f) => {
+      const denied = new Set(
+        Object.values(f.state.items ?? {})
+          .flat()
+          .flatMap((it) => it?.activity?.steps ?? [])
+          .filter((st) => st.state === 'denied')
+          .map((st) => st.id),
+      );
+      const hidden = kiroTurns(f).flatMap(({ handle, calls }) => calls.filter((c) => c.refused && !denied.has(c.id)).map((c) => ({ handle, c })));
+      return hidden.length
+        ? [
+            {
+              title: 'Kiro refused calls, and the conversation shows no refused step',
+              evidence: `${hidden.length} refused without a step: ${hidden
+                .slice(0, 3)
+                .map(({ handle, c }) => `@${handle}: ${clip(c.title || c.kind || c.id, 80)}`)
+                .join('; ')}.`,
+            },
+          ]
+        : [];
+    },
+  },
+  {
+    // A Kiro call of a kind the persona’s Tools don’t tick, that ran (#5): the agent file’s deny rules didn’t hold.
+    id: 'kiro-tool-not-allowed',
+    issue: 5,
+    run: (f) => {
+      const hits = kiroTurns(f).flatMap(({ handle, persona, calls }) => {
+        const has = new Set(persona.tools ?? []);
+        return calls.filter((c) => c.completed && KIRO_KIND_TOOL[c.kind] && !has.has(KIRO_KIND_TOOL[c.kind])).map((c) => ({ handle, c }));
+      });
+      return hits.length
+        ? [
+            {
+              title: 'Kiro agents ran tools their persona doesn’t allow',
+              evidence: `${hits
+                .slice(0, 3)
+                .map(({ handle, c }) => `@${handle}: ${clip(c.title, 80)} (${KIRO_KIND_TOOL[c.kind]})`)
+                .join('; ')}.`,
+            },
+          ]
+        : [];
+    },
   },
   {
     id: 'page-errors',

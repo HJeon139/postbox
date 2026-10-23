@@ -170,6 +170,11 @@ export function kiroRules({ persona, folders }) {
 const HEADLESS_NOTE =
   '## Refused tool calls\n\nPostbox runs you headless, so Kiro can’t ask the person to approve a tool call: one that would need approval is refused, and Kiro reports it as “The user rejected this tool call.” The person didn’t see or decline it. Say which call was refused and that the agent’s permissions in Postbox didn’t allow it, then carry on without it.';
 
+// Kiro still lists a denied server’s tools to the model; it only refuses the call. In the mixed-room UAT, an Isolated
+// agent offered “Manage scoped AWS credentials” from a server a managed install had added, so it’s told.
+const ISOLATED_NOTE =
+  '## Tools you can use\n\nOnly Postbox’s MCP server is allowed for you here. Tools from any other MCP server you see listed are refused, so don’t offer or use them, and don’t count them among what you can do.';
+
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
  * @param {{ name: string, persona: any, mcpUrl: string, guide: string, folders: string[] }} turn
@@ -179,7 +184,7 @@ export function kiroAgent({ name, persona, mcpUrl, guide, folders }) {
   return {
     name,
     description: `@${persona.handle} in Postbox`,
-    prompt: `${guide}\n\n${HEADLESS_NOTE}`,
+    prompt: `${guide}\n\n${HEADLESS_NOTE}${usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`,
     tools: ['*'],
     // Your global and workspace mcp.json, unless the persona is Isolated.
     includeMcpJson: usesHostSetup,
@@ -237,8 +242,9 @@ const contentText = (content) =>
 // How v3 refuses a call it would ask about (recorded): a pending_interaction (tool_approval) for the call, then
 // lint-allow spelling: “cancelled” is Kiro’s value, as it sends it.
 // interaction_resolved with outcome “cancelled”, then the call fails with “The user rejected this tool call.” The
-// turn itself still succeeds, so the stream is the only record. The text is the fallback, and v2’s wording.
-const REFUSED = /The user rejected this tool call|permission approval is not supported/;
+// turn itself still succeeds, so the stream is the only record. The text is the fallback, and v2’s wording. The
+// UAT’s checks read recorded streams with it too (tools/uat/checks.mjs).
+export const REFUSED = /The user rejected this tool call|permission approval is not supported/;
 // Labels for Kiro’s tool kinds (ACP’s ToolKind), until a title arrives.
 const KINDS = {
   read: 'Reading a file',
@@ -256,7 +262,7 @@ const KINDS = {
  * mcp__<server>__<tool>, so Postbox’s own tools get the same labels and stay quiet. v3 names an MCP call in its
  * input (tool_id “postbox::show_block”) and _meta.kiro.serverName; v2 in _meta.kiro.toolName and mcpServerName.
  */
-function toolOf(u) {
+export function toolOf(u) {
   const kiro = u?._meta?.kiro ?? {};
   const id = typeof u?.rawInput?.tool_id === 'string' ? /^([^:]+)::(.+)$/.exec(u.rawInput.tool_id) : null;
   const server = id?.[1] ?? kiro.serverName ?? kiro.mcpServerName ?? null;

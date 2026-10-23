@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
-import { runChecks } from '../tools/uat/checks.mjs';
+import { kiroCredits, runChecks, waitingOnYou } from '../tools/uat/checks.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
+import { SCHEMA, signInSettings, systemPrompt, unaddressed } from '../tools/uat/tester.mjs';
 
 const stream = (name) =>
   readFileSync(new URL(`fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')
@@ -319,4 +320,204 @@ test('lint-on-person-term counts a term you used only when a lint turn made the 
   assert.ok(!issuesOf(facts(false)).includes(55));
   // Defined in the turn that answered a lint: the lint flagged your words.
   assert.ok(issuesOf(facts(true)).includes(55));
+});
+
+// ── Kiro CLI agents (#117): the checks read Kiro’s recorded turns (tests/fixtures/kiro-cli), kept apart from Claude Code’s.
+const kiroFixture = (name) =>
+  readFileSync(new URL(`fixtures/kiro-cli/${name}.jsonl`, import.meta.url), 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
+const kiroFacts = (name, persona = {}, over = {}) => {
+  const f = base({ kiroStreams: [{ handle: 'critic', events: kiroFixture(name) }], ...over });
+  f.state.personas = { p1: { id: 'p1', handle: 'critic', backend: 'kiro-cli', usesHostSetup: false, tools: ['shell', 'web.fetch'], ...persona } };
+  return f;
+};
+const kiroChecks = (facts) => runChecks(facts).filter((x) => x.check.startsWith('kiro-'));
+const toolCall = (id, extra) => ({
+  type: 'sessionUpdate',
+  data: { sessionId: 's', update: { sessionUpdate: 'tool_call', toolCallId: id, status: 'pending', ...extra } },
+});
+const toolDone = (id, extra) => ({
+  type: 'sessionUpdate',
+  data: { sessionId: 's', update: { sessionUpdate: 'tool_call_update', toolCallId: id, status: 'completed', ...extra } },
+});
+
+test('kiro-settings-leak: an Isolated Kiro agent that loaded steering files; with your setup they’re meant to load', () => {
+  // Recorded with the person’s own ~/.kiro: nine steering files.
+  const leak = kiroChecks(kiroFacts('host-write-refused'));
+  assert.deepEqual(
+    leak.filter((x) => x.check === 'kiro-settings-leak').map((x) => x.issue),
+    [57],
+  );
+  assert.match(leak.find((x) => x.check === 'kiro-settings-leak').evidence, /@critic loaded \d+ steering files/);
+  assert.ok(!kiroChecks(kiroFacts('host-write-refused', { usesHostSetup: true })).some((x) => x.check === 'kiro-settings-leak'));
+  // A Claude Code persona with the same handle isn’t read as a Kiro one.
+  assert.deepEqual(kiroChecks(kiroFacts('host-write-refused', { backend: 'claude-code' })), []);
+});
+
+test('kiro-mcp-leak: a completed call to a server other than Postbox’s; the recorded denied one isn’t', () => {
+  // Recorded: another server’s call denied by the Isolated rule, Postbox’s went through (and failed on a test session).
+  assert.ok(!kiroChecks(kiroFacts('isolated-deny')).some((x) => x.check === 'kiro-mcp-leak'));
+  const got = kiroFacts('isolated-deny');
+  got.kiroStreams[0].events.push(
+    toolCall('x1', { title: '@creds-agent/get_aws_creds', rawInput: { tool_id: 'creds-agent::get_aws_creds', arguments: {} } }),
+    toolDone('x1', { _meta: { kiro: { serverName: 'creds-agent' } } }),
+  );
+  const found = kiroChecks(got).filter((x) => x.check === 'kiro-mcp-leak');
+  assert.equal(found.length, 1);
+  assert.match(found[0].evidence, /@critic: @creds-agent\/get_aws_creds \(creds-agent\)/);
+  assert.ok(
+    !kiroChecks({ ...got, state: { ...got.state, personas: { p1: { ...got.state.personas.p1, usesHostSetup: true } } } }).some(
+      (x) => x.check === 'kiro-mcp-leak',
+    ),
+  );
+});
+
+test('kiro-refusal-not-shown: each refused call needs a denied step under its id', () => {
+  // Recorded: a command Kiro would have asked about, refused headless (pending_interaction, then cancelled).
+  const shown = (id) => ({
+    t1: [{ id: 'a1', kind: 'agent', handle: 'critic', activity: { steps: [{ id, label: 'Print a test greeting', state: 'denied' }] } }],
+  });
+  const hidden = kiroChecks(kiroFacts('resume-refused')).filter((x) => x.check === 'kiro-refusal-not-shown');
+  assert.equal(hidden.length, 1);
+  assert.equal(hidden[0].issue, 65);
+  assert.match(hidden[0].evidence, /^1 refused without a step: @critic: Print a test greeting\./);
+  const f = kiroFacts('resume-refused');
+  f.state.items = shown('run_command_toolu_bdrk_01VMYnYYRQUd4GpeSbRKVFQ8');
+  assert.ok(!kiroChecks(f).some((x) => x.check === 'kiro-refusal-not-shown'));
+  // A deny rule’s refusal (policyDenial) counts too.
+  const deny = kiroChecks(kiroFacts('isolated-deny')).filter((x) => x.check === 'kiro-refusal-not-shown');
+  assert.match(deny[0]?.evidence ?? '', /@other\/read_conversation/);
+});
+
+test('kiro-tool-not-allowed: a command or a fetch that ran when the persona doesn’t tick it', () => {
+  const ran = (tools) => {
+    const f = kiroFacts('first', { tools });
+    f.kiroStreams[0].events.push(toolCall('c1', { kind: 'execute', title: 'Running: echo hi' }), toolDone('c1'));
+    return kiroChecks(f).filter((x) => x.check === 'kiro-tool-not-allowed');
+  };
+  assert.equal(ran([]).length, 1);
+  assert.match(ran([])[0].evidence, /@critic: Running: echo hi \(shell\)/);
+  assert.deepEqual(ran(['shell']), []);
+  // A refused command didn’t run.
+  assert.ok(!kiroChecks(kiroFacts('resume-refused', { tools: [] })).some((x) => x.check === 'kiro-tool-not-allowed'));
+});
+
+test('Kiro streams don’t trip the Claude Code checks, and the recorded Kiro turns pass the Kiro ones', () => {
+  // The same findings as a run with no streams at all.
+  for (const name of ['block', 'host-write-refused', 'isolated-deny'])
+    assert.deepEqual(
+      runChecks(kiroFacts(name, { usesHostSetup: true }))
+        .filter((x) => !x.check.startsWith('kiro-'))
+        .map((x) => x.check),
+      runChecks(base()).map((x) => x.check),
+      name,
+    );
+  for (const name of ['block', 'first', 'missing-session', 'agent-missing']) assert.deepEqual(kiroChecks(kiroFacts(name)), [], name);
+});
+
+test('model-not-shown accepts a model a persona names, such as a Kiro agent’s GPT', () => {
+  const f = (header, model) => {
+    const x = base({ ui: { headerText: header } });
+    x.state.personas = { p1: { id: 'p1', handle: 'critic', backend: 'kiro-cli', model } };
+    return issuesOf(x).includes(60);
+  };
+  assert.equal(f('@critic gpt-5.6-terra · medium', 'gpt-5.6-terra'), false);
+  assert.equal(f('@critic medium', 'gpt-5.6-terra'), true);
+});
+
+test('Kiro credits are added up from each turn’s completion; Claude streams add none', () => {
+  assert.ok(Math.abs(kiroCredits([{ handle: 'critic', events: kiroFixture('isolated-deny') }]) - 0.3833) < 0.001);
+  assert.equal(kiroCredits([{ handle: 'researcher', events: [{ type: 'result', total_cost_usd: 1 }] }]), 0);
+});
+
+test('a scenario can put agents on another backend, with a model', () => {
+  const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8'));
+  assert.deepEqual(s.backends, { critic: { backend: 'kiro-cli', model: 'gpt-5.6-terra' } });
+  assert.deepEqual(s.agents, ['researcher']);
+  assert.deepEqual(parseScenario('# T\n- backends: @a=kiro-cli, b=claude-code:claude-opus-5-5, junk\n').backends, {
+    a: { backend: 'kiro-cli', model: null },
+    b: { backend: 'claude-code', model: 'claude-opus-5-5' },
+  });
+  assert.deepEqual(parseScenario('# T\n').backends, {});
+});
+
+test('the tester keeps how your Claude Code signs in, and nothing else of your settings', () => {
+  const read = () =>
+    JSON.stringify({
+      awsCredentialExport: 'some-helper --json',
+      modelOverrides: { 'claude-sonnet-5-5': 'arn:aws:bedrock:us-west-2:000000000000:x' },
+      env: { AWS_REGION: 'us-west-2', CLAUDE_CODE_USE_BEDROCK: '1', SECRET_THING: 'no' },
+      outputStyle: 'Concise',
+      permissions: { allow: ['Bash'] },
+    });
+  assert.deepEqual(signInSettings({ dir: '/nowhere', read }), {
+    awsCredentialExport: 'some-helper --json',
+    modelOverrides: { 'claude-sonnet-5-5': 'arn:aws:bedrock:us-west-2:000000000000:x' },
+    env: { AWS_REGION: 'us-west-2', CLAUDE_CODE_USE_BEDROCK: '1' },
+  });
+  assert.deepEqual(signInSettings({ dir: '/nowhere', read: () => '{"theme":"dark"}' }), {});
+  assert.deepEqual(
+    signInSettings({
+      dir: '/nowhere',
+      read: () => {
+        throw new Error('ENOENT');
+      },
+    }),
+    {},
+  );
+});
+
+test('what’s waiting on you: unanswered asking blocks, open requests, and what sessions need; not answered ones', () => {
+  const state = {
+    threads: { t1: { id: 't1', title: 'Main', members: ['s1', 's2'] }, t2: { id: 't2', title: 'Topic', members: ['s3'] } },
+    sessions: {
+      s1: { id: 's1', handle: 'researcher', threadId: 't1', needs: null },
+      s2: { id: 's2', handle: 'critic', threadId: 't1', needs: { kind: 'permission', itemId: 'p1', text: '@critic asks to run python3' } },
+      s3: { id: 's3', handle: 'critic', threadId: 't2', needs: { kind: 'failed', itemId: 'f1', text: 'The turn failed' } },
+    },
+    items: {
+      t1: [
+        { id: 'r1', kind: 'block', handle: 'researcher', valid: true, block: { type: 'review', title: 'Design note', revision: 3 } },
+        { id: 'c1', kind: 'block', handle: 'researcher', valid: true, answered: true, block: { type: 'choice', title: 'Pick one' } },
+        { id: 'x1', kind: 'block', handle: 'researcher', valid: true, block: { type: 'table', title: 'Numbers' } },
+        { id: 'b1', kind: 'block', handle: 'researcher', valid: false, block: { type: 'form', title: 'Broken' } },
+        { id: 'h1', kind: 'hop', status: 'open' },
+        { id: 'p1', kind: 'permission', handle: 'critic', status: 'open' },
+      ],
+      t2: [{ id: 'f1', kind: 'agent', handle: 'critic', status: 'failed' }],
+    },
+  };
+  assert.deepEqual(
+    waitingOnYou(state, ['t1', 't2']).map((w) => [w.itemId, w.threadId, w.what]),
+    [
+      ['r1', 't1', '@researcher’s review “Design note”, revision 3'],
+      ['h1', 't1', 'a wake request'],
+      ['p1', 't1', '@critic asks to run python3'],
+      ['f1', 't2', 'The turn failed'],
+    ],
+  );
+  assert.deepEqual(waitingOnYou(state, []), []);
+});
+
+test('the tester can answer a review, and is told to clear what waits on it before moving on', () => {
+  const action = SCHEMA.properties.action.properties;
+  assert.ok(action.type.enum.includes('review'));
+  assert.deepEqual(action.verdict.enum, ['approve', 'request_changes', 'comment']);
+  assert.deepEqual(action.comments.items.required, ['line', 'text']);
+  const prompt = systemPrompt({ scenario: parseScenario('# T\n- persona: someone\n\n## Phase 1: x\n\ny\n'), issues: [] });
+  assert.match(prompt, /review \{item, verdict, comments\}/);
+  assert.match(prompt, /request changes, with at least one comment on a line/);
+  assert.match(prompt, /Answer them before you move to the next phase or finish/);
+});
+
+test('a message that names an agent without its @ is flagged: it goes to whoever spoke last', () => {
+  const handles = ['researcher', 'critic'];
+  assert.deepEqual(unaddressed('critic: of everything you raised, what’s the biggest concern?', handles), ['critic']);
+  assert.deepEqual(unaddressed('researcher: did you fix the gap critic found?', handles), ['researcher', 'critic']);
+  assert.deepEqual(unaddressed('@researcher did you fix the gap critic found?', handles), [], 'it mentions someone');
+  assert.deepEqual(unaddressed('Good draft. Ship it.', handles), []);
+  assert.deepEqual(unaddressed('the critics agree', handles), [], 'a longer word isn’t the handle');
+  assert.match(systemPrompt({ scenario: parseScenario('# T\n'), issues: [] }), /write its handle with the @/);
 });

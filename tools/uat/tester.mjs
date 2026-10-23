@@ -1,9 +1,55 @@
 // The tester: a model that plays the person using Postbox. Each step it reads what’s on screen, judges what
 // the agents did, reports what’s wrong, and picks the next thing to do. It runs on the claude CLI you’re
-// signed in to (no API key), isolated from your own Claude Code settings, with one tool: Read, for the
+// signed in to (no API key), isolated from your own Claude Code settings but for how it signs in, with one tool: Read, for the
 // screenshots the runner saves. One Claude Code session per run, resumed each step, so it remembers the run.
 
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+/**
+ * How the person’s Claude Code signs in, taken from their user settings, so the tester keeps it while it leaves the
+ * rest of their setup out (`--setting-sources project`). On a machine that reaches Claude through Bedrock, the
+ * credentials come from a command in the user settings (awsCredentialExport, awsAuthRefresh), and the model names
+ * from modelOverrides: without them, the tester fell back to the default AWS credentials, whose token had expired,
+ * while `claude -p` in a terminal worked. Only those keys, and the sign-in variables of `env`, are kept.
+ * @param {{ read?: (path: string) => string, dir?: string }} [opts]  injected by tests
+ * @returns {Record<string, unknown>}
+ */
+export function signInSettings({ dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), read = (p) => readFileSync(p, 'utf8') } = {}) {
+  let user;
+  try {
+    user = JSON.parse(read(join(dir, 'settings.json')));
+  } catch {
+    return {};
+  }
+  if (!user || typeof user !== 'object') return {};
+  /** @type {Record<string, unknown>} */
+  const out = {};
+  for (const k of ['awsCredentialExport', 'awsAuthRefresh', 'apiKeyHelper', 'modelOverrides']) if (user[k] !== undefined) out[k] = user[k];
+  const env = Object.fromEntries(
+    Object.entries(user.env && typeof user.env === 'object' ? user.env : {}).filter(([k]) => /^(?:AWS_|ANTHROPIC_|CLAUDE_CODE_USE_)/.test(k)),
+  );
+  if (Object.keys(env).length) out.env = env;
+  return out;
+}
+/** `--settings` with the sign-in, when the person’s settings have one. */
+const signIn = () => {
+  const s = signInSettings();
+  return Object.keys(s).length ? ['--settings', JSON.stringify(s)] : [];
+};
+
+/**
+ * The agents a message names without their @, when it @-mentions none: Postbox sends such a message to the agent
+ * that spoke last, so “critic: what’s your concern?” may not reach the critic. Empty when it mentions anyone.
+ * @param {string} text  @param {string[]} handles
+ */
+export function unaddressed(text, handles) {
+  const esc = (h) => String(h).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (handles.some((h) => new RegExp(`@${esc(h)}(?![\\w-])`, 'i').test(text))) return [];
+  return handles.filter((h) => new RegExp(`(?:^|[^@\\w-])${esc(h)}(?![\\w-])`, 'i').test(text));
+}
 
 export const SCHEMA = {
   type: 'object',
@@ -28,7 +74,7 @@ export const SCHEMA = {
     action: {
       type: 'object',
       properties: {
-        type: { enum: ['send', 'thread', 'act', 'app_click', 'attach_screenshot', 'full_screen', 'wait', 'next_phase', 'done'] },
+        type: { enum: ['send', 'thread', 'act', 'review', 'app_click', 'attach_screenshot', 'full_screen', 'wait', 'next_phase', 'done'] },
         text: { type: 'string', description: 'send, thread, attach_screenshot: the message to write.' },
         item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
@@ -36,6 +82,12 @@ export const SCHEMA = {
         button: { type: 'string' },
         target: { type: 'string', description: 'app_click: the visible text to click inside the app.' },
         seconds: { type: 'integer' },
+        verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'review: your verdict.' },
+        comments: {
+          type: 'array',
+          description: 'review: comments on lines, by the line number shown beside each line.',
+          items: { type: 'object', properties: { line: { type: 'string' }, text: { type: 'string' } }, required: ['line', 'text'] },
+        },
       },
       required: ['type'],
     },
@@ -59,14 +111,17 @@ Judge every step, and report findings: anything a careful user would call wrong.
 ${issues.map((i) => `#${i.number} ${i.title}`).join('\n') || '(none listed)'}
 
 Then choose one action:
-- send {text}: a message in the conversation.
+- send {text}: a message in the conversation. To talk to an agent, write its handle with the @, as in “@critic, what’s your biggest concern?”. “critic: …” or the bare name isn’t addressing: a message that @-mentions no agent goes to whichever agent spoke last.
 - thread {item, text}: reply in a topic thread on that message.
 - act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text.
+- review {item, verdict, comments}: answer a review block. Approve only what you’d sign off as it is. Otherwise request changes, with at least one comment on a line saying what to change; comment, with comments, when you only have questions.
 - app_click {item, target}: click something inside that app by its visible text.
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.
 - full_screen {item}: press that app’s Expand button.
 - wait {seconds}: when an agent is still working.
 - next_phase: when this phase’s goal is met, or blocked after two honest tries.
+
+Each step also lists what’s waiting on you: blocks that ask you something, review drafts, wake requests, permission cards, failed turns to retry. Answer them before you move to the next phase or finish, as a person clearing “needs you” would: an agent that asked is stuck until you do. If one isn’t on screen, open the thread it’s in.
 - done: after the last phase.
 
 Scenario: ${scenario.title}
@@ -151,6 +206,7 @@ export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2 }) {
       'Read',
       '--setting-sources',
       'project',
+      ...signIn(),
       '--max-budget-usd',
       String(budgetUsd),
     ];
@@ -191,6 +247,7 @@ export function createTester({ cwd, model, budgetUsd, log }) {
         'Read',
         '--setting-sources',
         'project',
+        ...signIn(),
         '--permission-mode',
         'default',
         '--max-budget-usd',

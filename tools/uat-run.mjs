@@ -6,7 +6,8 @@
 //   node tools/uat-run.mjs --scenario scifact
 //   node tools/uat-run.mjs --scenario hotpotqa --steps 30 --budget 6 --tester-model claude-opus-5-5
 //
-// Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage.
+// Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. A scenario
+// can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in.
 // Everything a run makes goes in uat-runs/<time>-<scenario>/ (ignored by git): report.md, findings.json,
 // screenshots, each agent turn’s raw stream, and Postbox’s data.
 
@@ -18,11 +19,12 @@ import { homedir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
-import { runChecks } from './uat/checks.mjs';
+import { kiroCredits, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver } from './uat/driver.mjs';
 import { parseScenario } from './uat/scenario.mjs';
-import { askOnce, createTester, systemPrompt, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
+import { askOnce, createTester, systemPrompt, unaddressed, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -66,7 +68,8 @@ const portFree = (port) =>
       .listen(port, '127.0.0.1');
   });
 
-/** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD). */
+/** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), or by the Kiro CLI
+ * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/. */
 function readStreams(folder) {
   if (!existsSync(folder)) return [];
   return readdirSync(folder)
@@ -107,7 +110,13 @@ async function main() {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
   const dir = join(ROOT, 'uat-runs', `${stamp}-${name}`);
-  const paths = { data: join(dir, 'data'), workspace: join(dir, 'workspace'), streams: join(dir, 'streams'), shots: join(dir, 'shots') };
+  const paths = {
+    data: join(dir, 'data'),
+    workspace: join(dir, 'workspace'),
+    streams: join(dir, 'streams'),
+    kiroStreams: join(dir, 'streams', 'kiro'),
+    shots: join(dir, 'shots'),
+  };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
   const logLines = [];
   const log = (line) => {
@@ -130,14 +139,31 @@ async function main() {
   // A fresh install has one generic agent, so the scenario's agents are seeded from agents.json: every
   // persona in personas.json, since scenarios bring more agents (@critic) into topic threads than they start with.
   const personas = JSON.parse(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
+  // An agent the scenario puts on another backend runs there with the model it names. A Kiro agent is Isolated: it
+  // runs with Postbox’s own Kiro home, so the run never writes into the person’s ~/.kiro, and the Kiro checks can
+  // tell the person’s steering and servers from Postbox’s (#57).
+  const onBackend = (p) => {
+    const b = scenario.backends[p.handle];
+    return b ? { ...p, backend: b.backend, ...(b.model ? { model: b.model } : {}), ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}) } : p;
+  };
   const agents = [
     ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
     ...personas.filter((p) => !scenario.agents.includes(p.handle)),
-  ];
+  ].map(onBackend);
+  // Postbox registers the Kiro CLI only when it can run it, and seeding an agent on a backend it doesn’t have fails.
+  if (Object.values(scenario.backends).some((b) => b.backend === 'kiro-cli')) {
+    const v = await kiroVersion(findKiro());
+    if (!v) throw new Error('This scenario puts agents on the Kiro CLI, and kiro-cli isn’t installed here (or set POSTBOX_KIRO_BIN).');
+    log(
+      `Kiro CLI ${v}: ${Object.entries(scenario.backends)
+        .map(([h, b]) => `@${h} on ${b.backend}${b.model ? ` (${b.model})` : ''}`)
+        .join(', ')}.`,
+    );
+  }
   await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,
-    env: { ...process.env, POSTBOX_CLAUDE_RECORD: paths.streams },
+    env: { ...process.env, POSTBOX_CLAUDE_RECORD: paths.streams, POSTBOX_KIRO_RECORD: paths.kiroStreams },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (d) => log(`postbox: ${String(d).trim()}`));
@@ -165,6 +191,7 @@ async function main() {
     threads: [],
     startPersonas: [],
     streams: [],
+    kiroStreams: [],
     transcripts: [],
     console: page.logs,
     apps: {},
@@ -194,6 +221,7 @@ async function main() {
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
+    let pushedBack = ''; // the waiting list the tester was last told to answer before moving on
 
     const threadsUnderTest = (state) => [
       mainThread,
@@ -205,6 +233,7 @@ async function main() {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
       facts.streams = readStreams(paths.streams);
+      facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.transcripts = readTranscripts(facts, paths.workspace);
       facts.ui.headerText = await page.evaluate(`document.querySelector('header.topbar .present')?.innerText ?? ''`);
       facts.ui.reviewRawRows = await page.evaluate(
@@ -295,6 +324,12 @@ async function main() {
       const obs = await observe();
       const fresh = newFindings();
       const ph = scenario.phases[phase];
+      // What “needs you” counts, every step, whether or not it changed: an old review draft stays on the list.
+      const waiting = waitingOnYou(facts.state, facts.threads).map((w) => {
+        const label = w.itemId ? labels.get(w.itemId) : null;
+        const where = facts.state.threads[w.threadId];
+        return `${label ? `[${label}] ` : ''}${w.what}${where && w.threadId !== mainThread ? ` (in the thread “${where.title}”${label ? '' : ', not on screen: open it'})` : ''}`;
+      });
       const prompt = [
         `Step ${step} of at most ${opt.steps}. Phase ${phase + 1} of ${scenario.phases.length}: ${ph.title}`,
         ph.text,
@@ -304,6 +339,7 @@ async function main() {
         timedOut ? `The run itself pressed Stop: ${timedOut} A “Stopped by you” line is from that, not a bug.` : '',
         obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
         `Agents: ${obs.states.join('; ') || 'none yet'}`,
+        waiting.length ? `Waiting on you:\n${waiting.map((w) => `- ${w}`).join('\n')}` : 'Nothing is waiting on you.',
         fresh.length ? `The automatic checks found:\n${fresh.map((f) => `- ${f.title}${f.issue ? ` (#${f.issue})` : ''}: ${f.evidence}`).join('\n')}` : '',
       ]
         .filter(Boolean)
@@ -323,6 +359,15 @@ async function main() {
       actionError = null;
       actionResult = null;
       log(`action: ${JSON.stringify(a)}`);
+      // Moving on, or waiting while no agent works, past something that waits on the person: say so once, and ask
+      // again. A second try with the same list goes ahead, so a run can’t loop on a block it can’t answer.
+      const idle = !obs.states.some((s) => /: (?:think|tool|gen)\b/.test(s));
+      if (waiting.length && (a.type === 'next_phase' || a.type === 'done' || (a.type === 'wait' && idle)) && pushedBack !== waiting.join('\n')) {
+        pushedBack = waiting.join('\n');
+        actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first.`;
+        log(`action held: ${waiting.length} waiting on the person`);
+        continue;
+      }
       if (a.type === 'done') break;
       if (a.type === 'next_phase') {
         phase++;
@@ -332,9 +377,19 @@ async function main() {
       try {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
-        if (a.type === 'send') await d.send(a.text ?? '');
-        else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
+        if (a.type === 'send') {
+          await d.send(a.text ?? '');
+          // A message that names an agent without its @ goes to the last speaker, not to that agent: say so, so the
+          // tester knows where it went. The first mixed-room run wrote “critic: …” and “researcher: …”.
+          const named = unaddressed(
+            a.text ?? '',
+            Object.values(facts.state?.personas ?? {}).map((p) => p.handle),
+          );
+          if (named.length)
+            actionResult = `It names ${named.map((h) => `“${h}”`).join(' and ')} without the @, so it mentions no agent and went to whichever agent spoke last. Write @${named[0]} to address it.`;
+        } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'act') await d.act(key, a);
+        else if (a.type === 'review') await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
         else if (a.type === 'app_click') {
           // The transcript doesn’t change when an app does, so say what the click did inside the app.
           const before = (await d.appInside(key))?.text;
@@ -382,6 +437,9 @@ async function main() {
 async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, rechecked = false }) {
   const title = (n) => issues.find((i) => i.number === n)?.title ?? '(closed, or not in the list)';
   const agentCost = facts.streams.flatMap((s) => s.events.filter((e) => e.type === 'result')).reduce((a, e) => a + (e.total_cost_usd ?? 0), 0);
+  // Kiro reports credits, not dollars: they’re listed beside the agents’ cost when a run had Kiro turns.
+  const credits = kiroCredits(facts.kiroStreams ?? []);
+  const usage = `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}, tester $${tester.spent.toFixed(2)}.`;
   const caught = new Map();
   for (const f of findings) if (f.issue) caught.set(f.issue, [...(caught.get(f.issue) ?? []), f]);
   const { CHECKS } = await import('./uat/checks.mjs');
@@ -394,9 +452,14 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
     `# UAT: ${scenario.title}`,
     '',
     rechecked
-      ? `Run on ${new Date(started).toISOString().slice(0, 16).replace('T', ' ')}, ${timeline.length} steps; checks rerun over its saved data on ${new Date().toISOString().slice(0, 16).replace('T', ' ')}. Usage: agents $${agentCost.toFixed(2)}, tester $${tester.spent.toFixed(2)}.`
-      : `Run on ${new Date(started).toISOString().slice(0, 16).replace('T', ' ')}, ${Math.round((Date.now() - started) / 60000)} min, ${timeline.length} steps. Usage: agents $${agentCost.toFixed(2)}, tester $${tester.spent.toFixed(2)}.`,
+      ? `Run on ${new Date(started).toISOString().slice(0, 16).replace('T', ' ')}, ${timeline.length} steps; checks rerun over its saved data on ${new Date().toISOString().slice(0, 16).replace('T', ' ')}. ${usage}`
+      : `Run on ${new Date(started).toISOString().slice(0, 16).replace('T', ' ')}, ${Math.round((Date.now() - started) / 60000)} min, ${timeline.length} steps. ${usage}`,
     '',
+    // What the run left unanswered: an agent that asked is stuck on it, so a run should end with none.
+    ...(() => {
+      const left = facts.state ? waitingOnYou(facts.state, facts.threads ?? []) : [];
+      return left.length ? [`**Left waiting on you:** ${left.map((w) => w.what).join('; ')}.`, ''] : [];
+    })(),
     '## Known issues caught again',
     '',
     `${caught.size} open issues reproduced. The checks watch ${watched.length} issues; the tester can match any open issue.`,
@@ -584,6 +647,7 @@ async function recheck(dir) {
       ],
       startPersonas: [],
       streams: readStreams(join(dir, 'streams')),
+      kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
       console: page.logs,
       apps: {},
       probes: saved.probes ?? { fullScreen: [], attachments: [] },
