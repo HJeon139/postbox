@@ -6,11 +6,11 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { agentGuide, guideText } from '../server/adapters/guide.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
 import { sandboxPage } from '../server/sandbox.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { LIMITS, limitText, PALETTES, READING } from '../shared/limits.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 const names = /** @type {(keyof typeof LIMITS)[]} */ (Object.keys(LIMITS));
 

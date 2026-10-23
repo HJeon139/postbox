@@ -18,6 +18,8 @@ export function emptyState() {
     // Datasets agents loaded into the corpus (#47), so they’re loaded again after a restart.
     datasets: {},
     schedules: {},
+    // Remote hosts agents can run on (#120), each with its settings (shared/remote-settings.mjs).
+    hosts: {},
     // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
     work: {},
   };
@@ -56,6 +58,10 @@ export function apply(s, type, d) {
     case 'schedule':
       if (d.removed) delete s.schedules[d.id];
       else s.schedules[d.id] = d;
+      break;
+    case 'host':
+      if (d.removed) delete s.hosts?.[d.id];
+      else (s.hosts ??= {})[d.id] = d;
       break;
     case 'glossary':
       (s.glossary[d.threadId] ??= {})[d.entry.key] = d.entry;

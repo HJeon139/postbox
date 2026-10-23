@@ -9,10 +9,10 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { codexApproval } from '../server/adapters/codex.mjs';
 import { WRITE_TOOLS, writeRules } from '../server/adapters/setup.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { draftOf, isWriteCall, whereOf } from '../server/write-guard.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { decide } from '../shared/permission-match.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

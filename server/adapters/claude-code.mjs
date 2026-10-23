@@ -45,6 +45,22 @@ const MODES = {
   bypass: ['--permission-mode', 'bypassPermissions'],
 };
 
+/**
+ * What this backend can do, for the runtime and the UI (#117). Left out, it forks, reads rules and offers Claude’s
+ * models. On a remote host (#120), the message goes in a file, it sets no variable of its own, Postbox’s server goes
+ * in --mcp-config, a quiet tool call still prints tool_progress, and a sign-in that ran out ends the turn with an
+ * authentication_failed result.
+ */
+export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
+  remote: Object.freeze({
+    stdin: 'file',
+    env: Object.freeze([]),
+    server: 'mcp-config',
+    work: 'events',
+    signInError: Object.freeze({ type: 'result', is_error: true, error: 'authentication_failed' }),
+  }),
+});
+
 /** The claude binary: POSTBOX_CLAUDE_BIN, then the native installer’s location, then the PATH. */
 export function findClaude(env = process.env) {
   if (env.POSTBOX_CLAUDE_BIN) return env.POSTBOX_CLAUDE_BIN;
@@ -139,6 +155,7 @@ export function forkPoint(state) {
 
 export class ClaudeCodeAdapter {
   name = 'claude-code';
+  capabilities = CLAUDE_CODE_CAPABILITIES;
 
   /**
    * @param {{ bin?: string, workRoot: string, spawnImpl?: typeof spawn, kill?: import('./process-group.mjs').KillFn,

@@ -11,7 +11,7 @@ Each task that one of these affects names it again. Sources are the links in the
 | # | Change | From | Affects |
 |---|---|---|---|
 | C1 | The per-server MCP `timeout` is the main mechanism for a long permission wait: it’s a hard wall-clock limit, and a value of at least 1000 ms also sets a floor under the idle window. Progress notifications only back up the idle window, and their `progress` value must increase every time. | [Claude Code MCP](https://code.claude.com/docs/en/mcp), [env vars](https://code.claude.com/docs/en/env-vars), [MCP progress](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress) | T0, H3, L4a |
-| C2 | HTTP MCP servers have a 5-minute idle window, and stdio servers have 30 minutes (Claude Code v2.1.187 or later). Postbox’s own HTTP server sets no `timeout` (`postboxServer()` in `server/adapters/setup.mjs`) and sends no progress, so a card left for 5 minutes probably fails today. | Same | T0 |
+| C2 | HTTP MCP servers have a 5-minute idle window, and stdio servers have 30 minutes (Claude Code v2.1.187 or later). HTTP servers also have a per-request timer to the first response byte: 60 seconds unless the server’s `timeout` is greater. Postbox’s own HTTP server set no `timeout` (`postboxServer()` in `server/adapters/setup.mjs`), so T0’s repro with Claude Code 2.1.308 measured a card failing after 60 seconds. | Same; T0’s repro | T0 |
 | C3 | The daemon checks the host’s Claude Code version. The timeout behavior depends on it, and the repo pins only the Agent SDK. | Same | H2, L4a |
 | C4 | Keepalives of 15 s × 3 drop a dead connection in about 45 s, not “about a minute”. | [ssh_config(5)](https://man.openbsd.org/ssh_config) | L1 copy |
 | C5 | Stop sends SIGINT, which ends the turn. SIGTERM exits 143 with no result. | [headless](https://code.claude.com/docs/en/headless) | H2, L5 |
@@ -108,7 +108,7 @@ It doesn’t depend on remote hosts, so it ships as its own fix, under its own i
 ### D1 and D2: decisions for the person
 
 - **D1:** intent.md describes Postbox as a local app on your own computer. Remote turns keep Postbox local and move only the agent’s process. Record that, or decline #120.
-- **D2:** the design’s open questions 1 (reconnect on wake) and 2 (auto-resume), and whether to offer `--permission-prompts none` and `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` (C10). L5 builds “wait for the person” until D2 is answered.
+- **D2:** the design’s open questions 1 (reconnect on wake) and 2 (auto-resume), and whether to offer `--permission-prompts none` and `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` (C10). Answered 23 October 2026: Postbox reconnects on wake on its own; it resumes on its own after Sign-in needed or Interrupted once the host is back; a resumed Claude Code turn continues the cut-off turn (`CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`); and a per-host `denyPrompts` setting (off by default) passes `--permission-prompts none`. L4a passes both flags; L5 builds the reconnect and resume policy; L6 shows the setting.
 
 ### Probes (the person’s host, already running)
 

@@ -11,7 +11,17 @@ import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, POSTBOX_SERVER } from './setup.mjs';
 
 // Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false).
-export const CODEX_CAPABILITIES = Object.freeze({ resume: true, fork: true, permissions: 'none', tools: 'none', isolation: false });
+// On a remote host (#120), stdin stays open for the JSON-RPC until turn/completed, it sets no variable of its own,
+// Postbox’s server goes in -c mcp_servers.postbox.* overrides, and while a background command runs the model’s checks
+// on it are its sign of work. Its sign-in error isn’t recorded yet.
+export const CODEX_CAPABILITIES = Object.freeze({
+  resume: true,
+  fork: true,
+  permissions: 'none',
+  tools: 'none',
+  isolation: false,
+  remote: Object.freeze({ stdin: 'held', env: Object.freeze([]), server: 'codex-config', work: 'model-checks', signInError: null }),
+});
 export const findCodex = (env = process.env) => env.POSTBOX_CODEX_BIN || 'codex';
 
 function probe(bin, args, timeout = 8000) {

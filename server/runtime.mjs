@@ -9,6 +9,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
+import { checkDestination, checkHostPath, checkHostSettings } from '../shared/remote-settings.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
@@ -3049,6 +3050,74 @@ export class Runtime {
     return next;
   }
 
+  // ── Remote hosts (#120) ────────────────────────────────────────────────────────────
+
+  /** @param {string} id @returns {import('../shared/remote-settings.mjs').Host} */
+  host(id) {
+    const h = this.s.hosts?.[id];
+    if (!h) throw httpError(404, 'That host doesn’t exist. It may have been removed.');
+    return h;
+  }
+
+  /** A host by its SSH destination, the one the person sees. @param {string} name @param {string} [except] */
+  hostNamed(name, except) {
+    return Object.values(this.s.hosts ?? {}).find((h) => h.id !== except && h.name === name) ?? null;
+  }
+
+  /**
+   * Adds a host: its SSH destination and any settings that differ from the defaults.
+   * @param {{ name?: unknown, settings?: unknown }} opts
+   */
+  addHost({ name, settings } = {}) {
+    const dest = checked(checkDestination(name));
+    if (this.hostNamed(dest)) throw httpError(409, `${dest} is already a host.`);
+    const h = { id: newId('ho'), name: dest, settings: checked(checkHostSettings(settings)), createdAt: Date.now() };
+    this.store.emit('host', h);
+    return h;
+  }
+
+  /**
+   * Renames a host or changes some of its settings; settings not given keep their values.
+   * @param {string} id @param {{ name?: unknown, settings?: unknown }} patch
+   */
+  updateHost(id, { name, settings } = {}) {
+    const h = this.host(id);
+    const dest = name === undefined ? h.name : checked(checkDestination(name));
+    if (this.hostNamed(dest, id)) throw httpError(409, `${dest} is already a host.`);
+    const next = { ...h, name: dest, settings: checked(checkHostSettings(settings ?? {}, h.settings)) };
+    this.store.emit('host', next);
+    return next;
+  }
+
+  /** Removes a host, and every project’s folder on it. @param {string} id */
+  removeHost(id) {
+    this.host(id);
+    // TODO(#120): stop the host’s remote turns first, once there are any (the plan’s L5).
+    for (const p of Object.values(this.s.projects)) {
+      if (!p.hostFolders || !Object.hasOwn(p.hostFolders, id)) continue;
+      const { [id]: _gone, ...rest } = p.hostFolders;
+      this.store.emit('project', { ...p, hostFolders: rest });
+    }
+    this.store.emit('host', { id, removed: true });
+    return { ok: true };
+  }
+
+  /**
+   * Sets a project’s folder on a host, an absolute path there; null clears it, and its agents work in
+   * ~/postbox-work/<handle> on that host instead (the design, “The adapters stay”).
+   * @param {string} projectId @param {string} hostId @param {unknown} folder
+   */
+  setProjectHostFolder(projectId, hostId, folder) {
+    const p = this.s.projects[projectId];
+    if (!p) throw httpError(404, 'That project doesn’t exist.');
+    const h = this.host(hostId);
+    const { [hostId]: _old, ...rest } = p.hostFolders ?? {};
+    const hostFolders = folder === null ? rest : { ...rest, [hostId]: checked(checkHostPath(folder, `The project’s folder on ${h.name}`)) };
+    const next = { ...p, hostFolders };
+    this.store.emit('project', next);
+    return next;
+  }
+
   /**
    * What the persona sheet’s MCP list needs (#59), given a persona (or none, for a new agent) and a project: the
    * folder it works in (its own, else the project’s, else that of its latest conversation), and the MCP servers the
@@ -3687,6 +3756,11 @@ function writeOf(tool, input, detail, given) {
   };
 }
 
+/** A check’s value, or its refusal as a 422. @param {import('../shared/remote-settings.mjs').Checked} r */
+function checked(r) {
+  if (!r.ok) throw httpError(422, r.error);
+  return r.value;
+}
 /** An error the ledger raised with a status, as the API answers it. */
 const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;

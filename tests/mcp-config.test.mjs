@@ -9,7 +9,7 @@ import { claudeArgs } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { mcpServerList, yourMcpServers } from '../server/adapters/mcp-config.mjs';
 import { isPublishingTool, WRITE_TOOLS } from '../server/adapters/setup.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 const HOME = '/home/pat';
 const WORK = '/work/site';

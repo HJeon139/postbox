@@ -8,13 +8,14 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AgentSdkAdapter, liveControl, sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
-import { ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
+import { CLAUDE_CODE_CAPABILITIES, ClaudeCodeAdapter, claudeArgs, forkPoint } from '../server/adapters/claude-code.mjs';
 import { contextPercent, createStreamMapper, describePermission, describeTool, forkPointMissing, resultError } from '../server/adapters/claude-stream.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
+import { MockAdapter } from '../server/adapters/mock.mjs';
 import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES, WRITE_TOOLS } from '../server/adapters/setup.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 // Streams recorded from real Claude Code turns (claude 2.1.296, claude-opus-5-5), with local paths removed.
 const fixture = (name) =>
@@ -154,6 +155,24 @@ test('labels and permission cards say what a tool does', () => {
   assert.equal(describePermission('Write', { file_path: '/a/b/c.md' }).summary, 'write c.md');
   assert.equal(describePermission('mcp__github__create_issue', {}).summary, 'use create issue from github');
   assert.equal(contextPercent({ input_tokens: 1, cache_read_input_tokens: 49_999 }, 200_000), 25);
+});
+
+test('Claude Code says how it runs on a remote host; the Agent SDK and the mock can’t', () => {
+  // Only the remote shape: left out, the rest reads as forking, reading rules and Claude’s models (adapter.mjs).
+  assert.deepEqual(CLAUDE_CODE_CAPABILITIES, {
+    remote: {
+      stdin: 'file',
+      env: [],
+      server: 'mcp-config',
+      work: 'events',
+      signInError: { type: 'result', is_error: true, error: 'authentication_failed' },
+    },
+  });
+  assert.equal(new ClaudeCodeAdapter({ workRoot: '/tmp/pb-test-work' }).capabilities, CLAUDE_CODE_CAPABILITIES);
+  assert.equal(new AgentSdkAdapter({ sdk: {}, workRoot: '/tmp/pb-test-work' }).capabilities?.remote, undefined, 'it runs in Postbox’s process');
+  assert.equal(new MockAdapter().capabilities?.remote, undefined);
+  // It survives /api/state, which serves capabilities as JSON (server/index.mjs, config.backends).
+  assert.deepEqual(JSON.parse(JSON.stringify(CLAUDE_CODE_CAPABILITIES)), CLAUDE_CODE_CAPABILITIES);
 });
 
 test('CLI arguments follow the persona’s permission mode and the session', () => {

@@ -47,7 +47,7 @@ import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { TOOL_DEFS } from '../mcp.mjs';
+import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';

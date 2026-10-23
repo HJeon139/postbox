@@ -37,11 +37,32 @@
 //   capabilities.models: [ids]        the models it offers, suggested in the model field instead of Claude’s
 //   capabilities.tools: 'none'        it can’t turn a tool off for one agent, so the Tools help says so (#143)
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
+//   capabilities.remote: { ... }      how it runs on a remote host, where the daemon starts its process (#120):
+//     stdin: 'file' | 'none' | 'held'   the turn’s message goes in a file, or nothing goes in, or stdin stays open
+//                                       until the turn ends (Codex’s JSON-RPC)
+//     env: [names]                      the variables it sets on purpose, the only ones that reach the host, such as
+//                                       KIRO_HOME for an Isolated Kiro persona; the rest of the laptop’s don’t
+//     server: 'mcp-config' | 'agent-file' | 'codex-config'  where Postbox’s server is named: --mcp-config, the
+//                                       custom agent file, or Codex’s -c mcp_servers.postbox.* overrides
+//     work: 'events' | 'open-tool-call' | 'model-checks'  its sign of work while quiet, so a quiet turn isn’t taken
+//                                       for a hung one: events on stdout (Claude Code’s tool_progress), a tool call
+//                                       still in progress (Kiro prints nothing while a command runs), or the
+//                                       model’s checks on a background command (Codex, about every 5 minutes)
+//     signInError: { field: value } | null  the fields of a stream event that mean the host’s sign-in ran out, so
+//                                       the turn shows Sign-in needed rather than an error; null until one is recorded
+//   Left out, it can’t run on a remote host: the Agent SDK runs in Postbox’s own process, and the Antigravity CLI and
+//   the mock aren’t covered yet.
 // Left out, an adapter is taken to fork and read rules, with Claude’s models, as the Claude backends do. The page
 // gets every adapter’s capabilities in /api/state (config.backends).
 
 /**
- * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, models?: string[] },
+ * @typedef {{ stdin: 'file' | 'none' | 'held', env: string[], server: 'mcp-config' | 'agent-file' | 'codex-config',
+ *   work: 'events' | 'open-tool-call' | 'model-checks', signInError: Record<string, unknown> | null }} RemoteCapabilities
+ */
+
+/**
+ * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, models?: string[],
+ *   remote?: RemoteCapabilities },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
  */
 

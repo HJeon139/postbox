@@ -48,8 +48,19 @@ import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, setupOf } from './setup.mjs';
 
-/** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
-export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list' });
+/**
+ * What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. On a remote host
+ * (#120), nothing goes in on stdin, only KIRO_HOME reaches the host (an Isolated persona’s own home), Postbox’s server
+ * is in the custom agent file, and its sign of work is a tool call still in progress, since stdout is silent while a
+ * command runs. Its sign-in error isn’t recorded yet.
+ */
+export const KIRO_CAPABILITIES = Object.freeze({
+  resume: true,
+  fork: false,
+  permissions: 'none',
+  tools: 'deny-list',
+  remote: Object.freeze({ stdin: 'none', env: Object.freeze(['KIRO_HOME']), server: 'agent-file', work: 'open-tool-call', signInError: null }),
+});
 
 /** The kiro-cli binary: POSTBOX_KIRO_BIN, then the PATH. */
 export const findKiro = (env = process.env) => env.POSTBOX_KIRO_BIN || 'kiro-cli';

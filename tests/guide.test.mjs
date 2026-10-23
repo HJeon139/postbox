@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { agentGuide, guideText } from '../server/adapters/guide.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
 import { freshInstall } from '../server/seed.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 test('the guide starts from what a reply contains, not from what the person asked for', () => {
   const g = guideText();

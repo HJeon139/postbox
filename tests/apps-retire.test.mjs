@@ -4,9 +4,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 class Quiet {
   name = 'mock';

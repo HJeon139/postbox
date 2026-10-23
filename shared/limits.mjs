@@ -1,6 +1,6 @@
 // The limits agents must know, in one place. The code that enforces each one reads it from here
 // (shared/catalog.mjs for blocks, shared/events.mjs and the app kit for app events), and what agents read
-// (server/adapters/guide.mjs, the MCP tool descriptions in server/mcp.mjs) is written from here, so the number
+// (server/adapters/guide.mjs, the MCP tool descriptions in shared/mcp-tools.mjs) is written from here, so the number
 // an agent is told is the number Postbox enforces (#50). tests/limits.test.mjs fails when one isn’t in the guide.
 
 /** Sizes an agent can reach. Text lengths are in characters. */
