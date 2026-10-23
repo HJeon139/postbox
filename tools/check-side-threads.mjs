@@ -3,7 +3,9 @@
 // is and who woke it; a fork that answered while its session was busy is a second entry under the same persona; one
 // waiting on a permission prompt counts in the tab title and ⌃J opens the side thread at its card; /stop in the
 // conversation reaches the side thread but not a topic thread; Copy link and the composer’s # link a thread, whose id
-// the agent then gets; and at 375 px the side-thread line fits.
+// the agent then gets; the Threads page lists side threads (#124); a side-thread message goes to the conversation by
+// Send to conversation or an agent’s bring_to_conversation (#128); a failed turn there shows on the side-thread line,
+// with Retry, and the line opens at its card (#151); and at 375 px the side-thread line fits.
 //
 //   node tools/check-side-threads.mjs
 //
@@ -247,6 +249,37 @@ await check('a side-thread message goes to the conversation by Send to conversat
   const cards = await page.evaluate(`[...document.querySelectorAll('#main .shared-head')].map((n) => n.innerText.replace(/\\s+/g, ' ').trim())`);
   assert.ok(cards.includes(`From the thread “${side.title}” · shared by @researcher in a turn you started Open thread`), cards.join('\n'));
   assert.ok(cards.includes(`From the thread “${side.title}” · @researcher Open thread`), cards.join('\n'));
+});
+
+await check('a failed side-thread turn shows on its line with Retry, and the line’s Open goes to its card (#151)', async () => {
+  release(researcher.id);
+  await until(() => !busy(researcher.id), '@researcher to be free');
+  const side = sideOf();
+  scripts.set(researcher.id, async () => {
+    throw new Error('API 500');
+  });
+  wake(indexer.id, 'researcher', 'Review the plan.');
+  await until(() => store.state.sessions[researcher.id].state === 'failed', 'the failed turn');
+  const card = store.state.sessions[researcher.id].needs;
+  assert.equal(card.threadId, side.id);
+  await open(`#/t/${room.id}`);
+  const line = `[...document.querySelectorAll('#main [data-side-sig]')].find((n) => n.querySelector('.pill')?.textContent.includes('@researcher failed'))`;
+  await page.waitFor(line, { label: 'the failure on the side-thread line' });
+  assert.equal(await page.evaluate(`${line}.querySelector('button')?.textContent`), 'Retry');
+  // It counts as needing you, in the tab title.
+  assert.match(await page.evaluate('document.title'), /^\(\d+\) /);
+  // Open goes to the side thread, at the card, with its Retry focused.
+  await page.evaluate(`${line}.querySelector('.pill').click()`);
+  await page.waitFor(`document.activeElement?.closest('[data-key="${card.itemId}"]')`, { label: 'focus on the failed card' });
+  assert.ok(await page.evaluate(`!!document.activeElement.closest('.sidepanel')`));
+  // Retry on the line answers the wake again.
+  await open(`#/t/${room.id}`);
+  await page.waitFor(line, { label: 'the line again' });
+  const before = turns.length;
+  await page.evaluate(`${line}.querySelector('button').click()`);
+  await until(() => turns.length > before && busy(researcher.id), 'the retried turn');
+  assert.deepEqual([turns.at(-1).sessionId, turns.at(-1).thread, turns.at(-1).text], [researcher.id, side.id, 'Review the plan.']);
+  release(researcher.id);
 });
 
 await check('at 375 px, the side-thread line with its agent’s state fits without scrolling sideways', async () => {

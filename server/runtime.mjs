@@ -74,6 +74,11 @@ const CATCH_UP_ITEMS = 40;
 const CATCH_UP_CHARS = 16000;
 const count = (n) => n.toLocaleString('en-US');
 /**
+ * What a turn was asked, kept on its failed reply so Retry sends it again as it was, with its own kind (#151): a wake
+ * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s.
+ */
+const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
+/**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
  * read_message takes, so the agent can read the rest (#109).
  */
@@ -938,7 +943,7 @@ export class Runtime {
           text: '',
           status: 'failed',
         }).id;
-      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null });
+      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null, asked: askedOf(turn) });
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
@@ -1410,7 +1415,9 @@ export class Runtime {
     const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
     this.patchItem(threadId, itemId, { status: 'retried' });
     this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-    this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
+    if (it.asked) this.deliver(it.sessionId, { ...it.asked.message, retry: true }, { replyTo: it.asked.replyTo, summarizeTo: it.asked.summarizeTo, threadId });
+    // A failed reply stored before #151 kept nothing of what it was asked: the person’s last message is the best guess.
+    else this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
   }
 
   // ── Agents waking agents ───────────────────────────────────────────────────────────

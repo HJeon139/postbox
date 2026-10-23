@@ -144,6 +144,60 @@ test('#128: bring_to_conversation is offered over MCP only to the person’s tur
   assert.equal(await offered(alpha, () => rt.sendMessage(t.id, { text: '@alpha hello' })), false);
 });
 
+test('#151: a failed turn in a side thread needs you there, and Retry answers the wake again, to the agent that asked', async () => {
+  const { store, rt, adapter, t, alpha, beta } = setup();
+  adapter.next.push(async () => {
+    throw new Error('API 500');
+  });
+  rt.agentWake(alpha.id, 'beta', 'Review the plan.');
+  await settle(rt);
+  const side = sideOf(store, t);
+  const failed = store.items(side.id).find((x) => x.status === 'failed');
+  assert.equal(failed.handle, 'beta');
+  // The room sees it: beta needs you, at the card in the side thread.
+  assert.deepEqual(store.state.sessions[beta.id].needs, { kind: 'failed', itemId: failed.id, text: 'API 500', threadId: side.id });
+  // Retry is the wake again, in the side thread, and the reply goes back to alpha.
+  adapter.next.push(async (c) => c.text('Looks right.'));
+  adapter.next.push(async (c) => c.text('Thanks.'));
+  rt.retry(side.id, failed.id);
+  await settle(rt);
+  const [retried, heard] = adapter.calls.slice(-2);
+  assert.deepEqual(
+    [retried.handle, retried.message.kind, retried.message.from, retried.message.text, retried.thread],
+    ['beta', 'agent', '@alpha', 'Review the plan.', side.id],
+  );
+  assert.deepEqual([heard.handle, heard.message.from, heard.message.text], ['alpha', '@beta', 'Looks right.']);
+  assert.equal(store.item(side.id, failed.id).status, 'retried');
+  // The failed turn said nothing, so the line counts the wake and the reply that came on Retry (#130).
+  assert.equal(linkOf(store, t).count, 2);
+  assert.equal(store.state.sessions[beta.id].needs, null);
+});
+
+test('#151: Retry sends a failed turn again as it was asked, so an agent’s turn never comes back as the person’s', async () => {
+  const { store, rt, adapter, t, alpha, beta } = setup();
+  rt.agentWake(alpha.id, 'beta', 'Look at this.');
+  await settle(rt);
+  const side = sideOf(store, t);
+  // An agent’s message to beta in the side thread, not a wake (as a fork hears a reply), whose turn fails.
+  adapter.next.push(async () => {
+    throw new Error('API 500');
+  });
+  rt.deliver(beta.id, { kind: 'agent', from: '@gamma', text: 'Here are the numbers.' }, { threadId: side.id });
+  await settle(rt);
+  const failed = store.items(side.id).find((x) => x.status === 'failed');
+  let result;
+  adapter.next.push(async (c) => {
+    result = c.tools.bring_to_conversation({ text: 'Unasked post.' });
+  });
+  rt.retry(side.id, failed.id);
+  await settle(rt);
+  const retried = adapter.calls.at(-1).message;
+  assert.deepEqual([retried.kind, retried.from, retried.text, retried.retry], ['agent', '@gamma', 'Here are the numbers.', true]);
+  // So it isn’t the person’s turn, and can’t post to the conversation.
+  assert.equal(result.ok, false);
+  assert.equal(store.items(t.id).filter((x) => x.kind === 'shared').length, 0);
+});
+
 test('#128: from a side thread of a topic thread, bring_to_conversation posts in the conversation, not the topic', async () => {
   const { store, rt, adapter, t, beta } = setup();
   adapter.next.push(async (c) => c.text('Hi.'));
