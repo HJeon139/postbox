@@ -15,16 +15,14 @@ import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import {
   APP_HOLD_MAX,
   APP_SEND_LIMIT,
   APP_SEND_WINDOW_MS,
-  agentFile,
-  agentFolders,
   appCheck,
   appEvent,
   appFile,
-  appFiles,
   appQuery,
   appState,
   hostTool,
@@ -58,12 +56,13 @@ import { newId } from './store.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
-export { AgentFileError, hostTool } from './apps.mjs';
+export { AgentFileError } from './agent-files.mjs';
+export { hostTool } from './apps.mjs';
 export { httpError } from './helpers.mjs';
 export { HOP_LIMIT } from './side-threads.mjs';
 export { readCapped };
 
-/** @typedef {import('./apps.mjs').AppFile} AppFile */
+/** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
 const DELETE_UNDO_MS = 10000;
 /** The days a conversation can sit with nothing happening before it archives itself (#101), unless Settings says otherwise. */
