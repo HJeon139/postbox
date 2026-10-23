@@ -49,9 +49,9 @@ test('the fresh-install agents and their boilerplates carry the same prompts and
   const { personas } = freshInstall();
   const of = (handle) => personas.find((p) => p.handle === handle)?.instructions;
   const bp = (id) => BOILERPLATES.find((b) => b.id === id)?.instructions;
-  assert.match(of('researcher'), /^# Researcher standards\n/);
-  assert.match(of('developer'), /^# Developer standards\n/);
-  assert.match(of('critic'), /^# Critic standards\n/);
+  assert.match(of('researcher'), /^# Researcher\n/);
+  assert.match(of('developer'), /^# Developer\n/);
+  assert.match(of('critic'), /^# Critic\n/);
   assert.equal(bp('bp-developer'), of('developer'));
   assert.equal(bp('bp-critic'), of('critic'));
   assert.equal(bp('bp-researcher'), of('researcher'));

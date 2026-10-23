@@ -168,7 +168,7 @@ export class ClaudeCodeAdapter {
     const persona = ctx.persona;
     const cwd = await this.folderFor(persona, ctx.project);
     const prompt = formatMessage(message, ctx.pathOf);
-    const guide = agentGuide({ persona, handles: ctx.handles, project: ctx.project, brief: session?.brief });
+    const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
     // The project’s folder, and the folders the person added for this conversation (#66).
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
     const fork = !ctx.state.claudeSessionId ? forkPoint(ctx.state) : null;
