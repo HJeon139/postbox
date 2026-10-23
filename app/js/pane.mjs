@@ -29,7 +29,10 @@ export function mountPane(convId) {
   let latest = null;
 
   const divider = mountDivider(el);
-  const width = mountWidth(el, () => set(route()));
+  const width = mountWidth(el, () => {
+    const r = route();
+    if (r.threadId === convId) set(r);
+  });
   /** Back to the conversation, where it has no room for the pane beside it: what’s open there closes. */
   const closeAll = () => {
     rememberWork(convId, false);
@@ -92,7 +95,7 @@ export function mountPane(convId) {
     v.el.setAttribute('role', 'dialog');
     v.el.setAttribute('aria-modal', 'true');
     v.el.setAttribute('aria-labelledby', titleOf(kind));
-    v.fullBtn.setAttribute('aria-label', 'Exit full screen');
+    v.fullBtn.setAttribute('aria-label', width.cramped() ? 'Back to the conversation' : 'Exit full screen');
     document.addEventListener('keydown', onKey);
     to.focus();
   }

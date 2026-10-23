@@ -29,6 +29,9 @@ const NARROW = 768;
  */
 export function fit(win, want, { rail = !railHidden(), keep = false } = {}) {
   const room = (withRail) => win - (withRail ? RAIL_W : 0) - COL_MIN;
+  // Where even the pane’s minimum doesn’t fit beside the rail, the rail stays hidden: shown, it would only push the
+  // pane full screen over it.
+  keep &&= room(true) >= PANE_MIN;
   const max = room(rail && keep);
   if (win < NARROW || max < PANE_MIN) return { width: want, max: want, collapse: false, full: win >= NARROW };
   const width = Math.min(want, max);
@@ -136,6 +139,8 @@ export function mountWidth(el, onCramped) {
     /** Whether the pane’s view has to open full screen in this window. */
     cramped: () => fit(innerWidth, want, { keep }).full,
     destroy() {
+      // Before the next view builds its top bar, which reads whether the rail shows.
+      setRailAuto(false);
       removeEventListener('resize', refit);
       removeEventListener('pb-rail', refit);
     },

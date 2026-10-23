@@ -1,16 +1,12 @@
-// A headless Chrome check of how the right pane shares the window with the conversation (#197, #7, #86, #122): at 800, 1024 and
-// 1280 px with the sidebar open, opening Work or a thread leaves the conversation column and the composer’s text box
-// at or above their minimums, or opens the view full screen, where Escape brings the conversation back; what’s open
-// stays in the address, so a wider window puts the pane back beside the conversation; and the sidebar hides first
-// while the pane needs its room, giving an app more width, and comes back when the pane closes. A handle on the
-// pane’s edge resizes it by keyboard, drag and double-click, within the column’s minimum, with axe clean on it, and
-// its width survives a reload. A thread left open in a conversation opens again when you come back to it.
+// A headless Chrome check of how the right pane shares the window with the conversation, at 800, 1024 and 1280 px
+// with the sidebar open: the column and the composer’s text box keep their minimums or the view opens full screen,
+// and a wider window puts the pane back (#197); the sidebar hides first (#7); a handle resizes the pane (#86); and a
+// thread left open opens again when you come back (#122).
 //
-//   node tools/check-pane-width.mjs
+//   node tools/check-pane-width.mjs        (PB_PORT and PB_CHROME_PORT move it)
 //
-// It starts its own server with the demo seed (mock agents) on a fresh data folder in the temp directory, and drives
-// the page with real key presses and clicks. PB_PORT and PB_CHROME_PORT move it, so sessions working in parallel
-// don’t collide.
+// It starts its own server with the demo seed (mock agents) on a fresh data folder, and drives the page with real
+// key presses and clicks.
 
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -34,8 +30,6 @@ const COL_MIN = 640;
 const BOX_MIN = 430;
 const AXE = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
-// ── Real input ──────────────────────────────────────────────────────────────────────────
-
 const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
 const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
 const has = (sel) => page.evaluate(`!!${q(sel)}`);
@@ -55,17 +49,12 @@ async function click(expr) {
 
 async function check(name, fn) {
   let timer;
-  try {
-    const late = new Promise((_, fail) => {
-      timer = setTimeout(() => fail(new Error('Timed out after 60 s')), 60000);
-    });
-    await Promise.race([fn(), late]);
-    record(true, name);
-  } catch (e) {
-    record(false, name, e.message);
-  } finally {
-    clearTimeout(timer);
-  }
+  const late = new Promise((_, fail) => (timer = setTimeout(() => fail(new Error('Timed out after 60 s')), 60000)));
+  await Promise.race([fn(), late]).then(
+    () => record(true, name),
+    (e) => record(false, name, e.message),
+  );
+  clearTimeout(timer);
 }
 async function open(to) {
   // What the check changed on the server must have reached the page first, or it shows what was there before.
@@ -143,6 +132,8 @@ for (const [view, how] of [
       // Full screen, the view is the window and a dialog, and the address still says only what’s open.
       assert.ok(m.focusIn, 'focus isn’t in the full-screen view');
       assert.doesNotMatch(await hash(), /full=/);
+      // Its icon goes back to the conversation, since there’s no pane to go back to, and says so.
+      assert.equal(await page.evaluate(`document.querySelector('.pane-full .btn[id$="-full"]').getAttribute('aria-label')`), 'Back to the conversation');
       // Escape brings the conversation back.
       await press('Escape', 'Escape', 27);
       await page.waitFor(`!${q('.pane-full')} && ${q('.rpane[hidden]')}`, { label: 'the conversation, with the pane closed' });
@@ -197,6 +188,27 @@ await check('#7 showing the sidebar again while the pane is open keeps it, and t
   assert.ok(m.main >= COL_MIN && m.pane === 1280 - 248 - COL_MIN, `the column is ${m.main} px and the pane ${m.pane} px`);
 });
 
+await check('#7 where the pane wouldn’t fit beside the sidebar, showing it again leaves the pane beside the conversation', async () => {
+  await fresh(1024);
+  await click(q('#work-button'));
+  await page.waitFor(`${q(WORK)} && ${q('.app.rail-auto')}`, { label: 'Work, with the sidebar hidden' });
+  await click(q('#rail-toggle'));
+  const m = await measure();
+  assert.deepEqual([m.full, m.rail, m.auto], [false, 0, true], 'the pane went full screen, or the sidebar showed over it');
+  assert.ok(m.main >= COL_MIN, `the column is ${m.main} px`);
+});
+
+await check('#7 leaving a conversation whose pane hid the sidebar, the next one shows it, and its button says so', async () => {
+  await fresh(1280);
+  await open(conv(`/side/${topic}`));
+  await page.waitFor(`${q(THREAD)} && ${q('.app.rail-auto')}`, { label: 'the thread, with the sidebar hidden' });
+  await open(`#/t/${other.id}`);
+  await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${other.id}`)}`, { label: 'the other conversation' });
+  const m = await measure();
+  const pressed = await page.evaluate(`${q('#rail-toggle')}.getAttribute('aria-pressed')`);
+  assert.deepEqual([m.rail, m.toggle, pressed], [248, 'Hide the sidebar', 'true']);
+});
+
 // ── #86: a handle on the pane’s edge ───────────────────────────────────────────────────
 
 const handle = (attr) => page.evaluate(`${q('.rp-handle')}.getAttribute(${JSON.stringify(attr)})`);
@@ -243,6 +255,9 @@ await check('#86 the pane’s handle resizes it by keyboard, within the column�
 });
 
 await check('#86 a drag resizes the pane, its width survives a reload, and a double-click puts it back', async () => {
+  await fresh(1280);
+  await click(q('#work-button'));
+  await page.waitFor(q(WORK), { label: 'Work' });
   await drag(1280 - 520);
   assert.equal((await measure()).pane, 520);
   await page.reload();
