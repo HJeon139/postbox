@@ -19,7 +19,7 @@ const FOCUSABLE = 'button, [href], input, select, textarea, summary, [tabindex]:
  * @returns {{ el: HTMLElement, set: (r: any, opts?: { again?: boolean }) => void, destroy: () => void }}
  */
 export function mountPane(convId) {
-  const el = h('div.rpane', { hidden: true });
+  const el = h('div.rpane', { id: 'right-pane', hidden: true });
   /** @type {{ id: string, view: any } | null} */
   let thread = null;
   /** @type {any} */

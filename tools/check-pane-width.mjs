@@ -1,113 +1,15 @@
 // A headless Chrome check of how the right pane shares the window with the conversation, at 800, 1024 and 1280 px
 // with the sidebar open: the column and the composer’s text box keep their minimums or the view opens full screen,
-// and a wider window puts the pane back (#197); the sidebar hides first (#7); a handle resizes the pane (#86); and a
-// thread left open opens again when you come back (#122).
+// and a wider window puts the pane back (#197); and the sidebar hides first, while the pane needs its room (#7).
+// tools/check-pane-handle.mjs checks the pane’s handle (#86) and a thread left open (#122).
 //
 //   node tools/check-pane-width.mjs        (PB_PORT and PB_CHROME_PORT move it)
-//
-// It starts its own server with the demo seed (mock agents) on a fresh data folder, and drives the page with real
-// key presses and clicks.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
-import { finish, ports, record } from './harness.mjs';
+import { BOX_MIN, begin, COL_MIN, check, click, conv, end, fresh, has, hash, ids, measure, open, page, press, q, settle, THREAD, WORK } from './pane-check.mjs';
 
-const { PORT, CHROME_PORT } = await ports(4950, 10250);
-
-process.env.POSTBOX_BACKENDS = 'mock';
-const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-pane-width-'));
-const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
-const page = await launch({ port: CHROME_PORT });
-const { rt, store } = app;
-
-/** The conversation column’s minimum, and its composer’s text box at that width (architecture.md §14). */
-const COL_MIN = 640;
-const BOX_MIN = 430;
-const AXE = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
-
-const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
-const has = (sel) => page.evaluate(`!!${q(sel)}`);
-const hash = () => page.evaluate('location.hash');
-async function press(key, code, keyCode) {
-  const base = { key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
-  await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
-  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-  await settle();
-}
-async function click(expr) {
-  const r = await page.evaluate(`(() => { const b = ${expr}.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
-  for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
-    await page.send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
-  await settle();
-}
-
-async function check(name, fn) {
-  let timer;
-  const late = new Promise((_, fail) => (timer = setTimeout(() => fail(new Error('Timed out after 60 s')), 60000)));
-  await Promise.race([fn(), late]).then(
-    () => record(true, name),
-    (e) => record(false, name, e.message),
-  );
-  clearTimeout(timer);
-}
-async function open(to) {
-  // What the check changed on the server must have reached the page first, or it shows what was there before.
-  await page.synced(store.state.seq);
-  await page.evaluate(`location.hash = ${JSON.stringify(to)}`);
-  await page.waitFor(`document.querySelector('header.topbar')`);
-  await settle();
-}
-/** A window this wide, with the sidebar open, nothing kept from before, and the conversation alone. */
-async function fresh(width, height = 800) {
-  await page.size(width, height);
-  await page.waitFor(`innerWidth === ${width}`, { label: `a ${width} px window` });
-  await page.evaluate(`(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('pb-')) localStorage.removeItem(k); })()`);
-  await open(conv(''));
-  await page.reload();
-  await page.waitFor(q('.composer textarea'), { label: 'the conversation' });
-  await settle();
-}
-
-/** The layout as a person sees it: the column, a reply, the composer’s text box, the pane, and full screen. */
-const measure = () =>
-  page.evaluate(`(() => {
-    const w = (sel) => { const el = document.querySelector(sel); return el && el.getClientRects().length ? Math.round(el.getBoundingClientRect().width) : 0; };
-    const reply = Math.max(0, ...[...document.querySelectorAll('.transcript .md')].map((el) => Math.round(el.getBoundingClientRect().width)));
-    return { main: w('.main'), reply, box: w('.composer textarea'), pane: w('.rpane'), rail: w('.rail'),
-      app: w('.transcript .appframe'), auto: !!document.querySelector('.app.rail-auto'),
-      toggle: document.getElementById('rail-toggle')?.getAttribute('aria-label'), full: !!document.querySelector('.pane-full'), focusIn: !!document.activeElement?.closest('.pane-full') };
-  })()`);
-
-// ── A conversation with replies and a topic thread ─────────────────────────────────────
-
-const c = Object.values(store.state.threads).find((t) => t.title === 'Citation fixes');
-const [se] = rt.sessionsIn(c.id);
-const say = (text) => rt.addItem(c.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
-for (let i = 1; i <= 4; i++) {
-  rt.addItem(c.id, { kind: 'user', text: `Question ${i}: which citations does the script still miss?` });
-  say(`Answer ${i}: ${'The parser drops entries whose year sits in a note field, so the list comes up short. '.repeat(3)}`);
-}
-rt.toolsFor(se.id).show_app({
-  id: 'explorer',
-  title: 'Explorer',
-  fallback: 'Explorer: a box as wide as its frame.',
-  code: '<div style="height:200px;border:1px solid">An explorer</div>',
-});
-const root = store.items(c.id).find((i) => i.kind === 'agent');
-const { threadId: topic } = rt.startTopic(c.id, root.id);
-const conv = (r) => `#/t/${c.id}${r}`;
-const other = Object.values(store.state.threads).find((t) => t.title === 'Agent memory papers');
-const WORK = 'aside.workpane';
-const THREAD = 'aside.sidepanel';
-
-await page.goto(`${app.origin}/${conv('')}`);
-await page.waitFor(q('header.topbar #work-button'), { label: 'the Work button' });
+await begin('check-pane-width', 4950, 10250);
+const { topic, other } = ids;
 
 // ── #197: the column keeps its minimum, or the view opens full screen ──────────────────
 
@@ -188,120 +90,46 @@ await check('#7 showing the sidebar again while the pane is open keeps it, and t
   assert.ok(m.main >= COL_MIN && m.pane === 1280 - 248 - COL_MIN, `the column is ${m.main} px and the pane ${m.pane} px`);
 });
 
-await check('#7 where the pane wouldn’t fit beside the sidebar, showing it again leaves the pane beside the conversation', async () => {
-  await fresh(1024);
+await check('#7 from a sidebar the person hid, showing it while the pane is open shows it at once, and keeps it', async () => {
+  await fresh(1280, { railHidden: true });
   await click(q('#work-button'));
-  await page.waitFor(`${q(WORK)} && ${q('.app.rail-auto')}`, { label: 'Work, with the sidebar hidden' });
+  await page.waitFor(q(WORK), { label: 'Work' });
+  assert.equal((await measure()).rail, 0);
   await click(q('#rail-toggle'));
   const m = await measure();
-  assert.deepEqual([m.full, m.rail, m.auto], [false, 0, true], 'the pane went full screen, or the sidebar showed over it');
-  assert.ok(m.main >= COL_MIN, `the column is ${m.main} px`);
+  assert.deepEqual([m.rail, m.auto, m.toggle], [248, false, 'Hide the sidebar'], 'one press didn’t show the sidebar');
+  assert.ok(m.main >= COL_MIN && m.pane === 1280 - 248 - COL_MIN, `the column is ${m.main} px and the pane ${m.pane} px`);
+  assert.equal(await page.evaluate(`localStorage.getItem('pb-rail')`), 'shown');
 });
+
+for (const railHidden of [false, true])
+  await check(
+    `#7 where the pane wouldn’t fit beside the sidebar${railHidden ? ' the person hid' : ''}, the button says it can’t show it, and changes nothing`,
+    async () => {
+      await fresh(1024, { railHidden });
+      await click(q('#work-button'));
+      await page.waitFor(q(WORK), { label: 'Work' });
+      assert.equal(await page.evaluate(`${q('#rail-toggle')}.getAttribute('aria-disabled')`), 'true');
+      await click(q('#rail-toggle'));
+      await page.waitFor(`[...document.querySelectorAll('.toast')].some((t) => t.textContent.includes('No room for the sidebar beside the pane'))`, {
+        label: 'why it can’t show',
+      });
+      const m = await measure();
+      assert.deepEqual([m.full, m.rail, m.toggle], [false, 0, 'Show the sidebar'], 'the pane went full screen, or the sidebar showed over it');
+      assert.ok(m.main >= COL_MIN, `the column is ${m.main} px`);
+      assert.equal(await page.evaluate(`localStorage.getItem('pb-rail')`), railHidden ? 'hidden' : null, 'it changed what the person chose');
+    },
+  );
 
 await check('#7 leaving a conversation whose pane hid the sidebar, the next one shows it, and its button says so', async () => {
   await fresh(1280);
   await open(conv(`/side/${topic}`));
   await page.waitFor(`${q(THREAD)} && ${q('.app.rail-auto')}`, { label: 'the thread, with the sidebar hidden' });
-  await open(`#/t/${other.id}`);
-  await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${other.id}`)}`, { label: 'the other conversation' });
+  await open(`#/t/${other}`);
+  await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${other}`)}`, { label: 'the other conversation' });
   const m = await measure();
   const pressed = await page.evaluate(`${q('#rail-toggle')}.getAttribute('aria-pressed')`);
   assert.deepEqual([m.rail, m.toggle, pressed], [248, 'Hide the sidebar', 'true']);
 });
 
-// ── #86: a handle on the pane’s edge ───────────────────────────────────────────────────
-
-const handle = (attr) => page.evaluate(`${q('.rp-handle')}.getAttribute(${JSON.stringify(attr)})`);
-/** Drags the handle to x, as a person does: press, two moves, release. */
-async function drag(x, clicks = 0) {
-  const b = await page.evaluate(`(() => { const r = ${q('.rp-handle')}.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 200 }; })()`);
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y });
-  if (clicks) {
-    for (const clickCount of [1, 2])
-      for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: b.x, y: b.y, button: 'left', clickCount });
-    return settle();
-  }
-  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', clickCount: 1 });
-  for (const to of [b.x - 20, x]) await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: to, y: b.y, button: 'left', buttons: 1 });
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: b.y, button: 'left', clickCount: 1 });
-  await settle();
-}
-
-await check('#86 the pane’s handle resizes it by keyboard, within the column’s minimum, and the app resizes with it', async () => {
-  await fresh(1280);
-  await click(q('#work-button'));
-  await page.waitFor(`${q(WORK)} && ${q('.transcript .appframe iframe')}`, { label: 'Work, beside the app' });
-  assert.deepEqual(
-    [await handle('role'), await handle('aria-label'), await handle('aria-valuenow'), await handle('aria-valuemin'), await handle('aria-valuemax')],
-    ['separator', 'Resize the pane', '440', '320', String(1280 - COL_MIN)],
-  );
-  const before = await measure();
-  await page.evaluate(`${q('.rp-handle')}.focus()`);
-  await press('ArrowLeft', 'ArrowLeft', 37);
-  await press('ArrowLeft', 'ArrowLeft', 37);
-  const wider = await measure();
-  assert.deepEqual([await handle('aria-valuenow'), wider.pane], ['472', 472]);
-  assert.equal(wider.app, before.app - 32, 'the app didn’t resize with the pane');
-  // End takes it as wide as the column’s minimum allows, Home to its own minimum.
-  await press('End', 'End', 35);
-  assert.deepEqual([(await measure()).pane, (await measure()).main], [1280 - COL_MIN, COL_MIN]);
-  await press('Home', 'Home', 36);
-  assert.equal((await measure()).pane, 320);
-  // axe finds nothing wrong with it.
-  await page.evaluate(`${AXE};0`);
-  const bad = await page.evaluate(`axe.run({ include: [['.rp-handle']] }, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } })
-    .then((r) => r.violations.map((v) => v.id + ': ' + v.help))`);
-  assert.deepEqual(bad, []);
-});
-
-await check('#86 a drag resizes the pane, its width survives a reload, and a double-click puts it back', async () => {
-  await fresh(1280);
-  await click(q('#work-button'));
-  await page.waitFor(q(WORK), { label: 'Work' });
-  await drag(1280 - 520);
-  assert.equal((await measure()).pane, 520);
-  await page.reload();
-  await page.waitFor(q(WORK), { label: 'Work, after the reload' });
-  await settle();
-  assert.deepEqual([await handle('aria-valuenow'), (await measure()).pane], ['520', 520]);
-  await drag(0, 2);
-  assert.deepEqual([await handle('aria-valuenow'), (await measure()).pane], ['440', 440]);
-  // At 375 px the pane covers the conversation, so it has no handle to show.
-  await page.size(375, 812);
-  await page.waitFor(`innerWidth === 375 && !${q('.rp-handle')}.getClientRects().length`, { label: 'no handle at 375 px' });
-});
-
-// ── #122: a thread left open opens again ──────────────────────────────────────────────
-
-await check('#122 a thread left open in a conversation opens again when you come back, until you close it', async () => {
-  await fresh(1280);
-  await open(conv(`/side/${topic}`));
-  await page.waitFor(q(THREAD), { label: 'the thread' });
-  await open(`#/t/${other.id}`);
-  await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${other.id}`)} && ${q('.rpane[hidden]')}`, { label: 'the other conversation, alone' });
-  await open(conv(''));
-  await page.waitFor(q(THREAD), { label: 'the thread, open again' });
-  assert.equal(await hash(), conv(`/side/${topic}`));
-  // Closed, it stays closed.
-  await click(`${q(THREAD)}.querySelector('button[aria-label="Close thread"]')`);
-  await page.waitFor(q('.rpane[hidden]'), { label: 'the thread to close' });
-  assert.equal(await hash(), conv(''));
-  await open(`#/t/${other.id}`);
-  await open(conv(''));
-  assert.deepEqual([await hash(), await has(THREAD)], [conv(''), false]);
-});
-
-await check('#122 in a window with no room for the pane, coming back opens the conversation, not the thread over it', async () => {
-  await fresh(800);
-  await open(conv(`/side/${topic}`));
-  await page.waitFor(q('.sidepanel.pane-full'), { label: 'the thread, full screen' });
-  await open(`#/t/${other.id}`);
-  await open(conv(''));
-  assert.deepEqual([await hash(), await has(THREAD)], [conv(''), false]);
-});
-
-await page.close();
-await app.close();
-await rm(dataDir, { recursive: true, force: true });
-record(!page.logs.length, 'the page logged no errors', page.logs.join('\n'));
-finish();
+await end();

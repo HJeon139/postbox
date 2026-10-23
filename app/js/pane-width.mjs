@@ -17,29 +17,32 @@ const WIDTH_KEY = 'pb-pane-w';
 const RAIL_W = 248;
 /** Below this width the pane covers the conversation instead (workbench.css). */
 const NARROW = 768;
+/** The width the column and the pane share: the window’s, less a classic scroll bar. */
+const roomW = () => document.documentElement.clientWidth;
 
 /**
- * How the pane sits in a window win px wide when it wants want px: its width, the most it can take, whether the
- * rail hides to make room (#7), and whether the view opens full screen, since even the pane’s minimum would squeeze
- * the column.
+ * How the pane sits in win px when it wants want px: its width, the most it can take, whether the rail hides to make
+ * room (#7) and whether it could show at all, and whether the view opens full screen, since even the pane’s minimum
+ * would squeeze the column.
  * @param {number} win
  * @param {number} want
- * @param {{ rail?: boolean, keep?: boolean }} [opts]  rail: whether the person shows the rail; keep: they showed it
- *   again while the pane was open, so it stays
+ * @param {{ rail?: boolean, keep?: boolean, narrow?: boolean }} [opts]  rail: whether the person shows the rail;
+ *   keep: they showed it again while the pane was open, so it stays; narrow: the window is under 768 px
  */
-export function fit(win, want, { rail = !railHidden(), keep = false } = {}) {
+export function fit(win, want, { rail = !railHidden(), keep = false, narrow = innerWidth < NARROW } = {}) {
   const room = (withRail) => win - (withRail ? RAIL_W : 0) - COL_MIN;
   // Where even the pane’s minimum doesn’t fit beside the rail, the rail stays hidden: shown, it would only push the
   // pane full screen over it.
-  keep &&= room(true) >= PANE_MIN;
+  const railFits = room(true) >= PANE_MIN;
+  keep &&= railFits;
   const max = room(rail && keep);
-  if (win < NARROW || max < PANE_MIN) return { width: want, max: want, collapse: false, full: win >= NARROW };
+  if (narrow || max < PANE_MIN) return { width: want, max: want, collapse: false, railFits, full: !narrow };
   const width = Math.min(want, max);
-  return { width, max, collapse: rail && !keep && width > room(true), full: false };
+  return { width, max, collapse: rail && !keep && width > room(true), railFits, full: false };
 }
 
 /** Whether the pane fits beside the conversation in this window. */
-export const besideFits = () => innerWidth >= NARROW && !fit(innerWidth, PANE_MIN).full;
+export const besideFits = () => innerWidth >= NARROW && !fit(roomW(), PANE_MIN).full;
 
 function savedWidth() {
   try {
@@ -61,6 +64,7 @@ function mountHandle({ now, to }) {
     tabindex: '0',
     'aria-orientation': 'vertical',
     'aria-label': 'Resize the pane',
+    'aria-controls': 'right-pane',
     'aria-valuemin': String(PANE_MIN),
     onkeydown: (e) => {
       const { width, max } = now();
@@ -74,7 +78,7 @@ function mountHandle({ now, to }) {
       if (e.button !== 0) return;
       e.preventDefault();
       handle.setPointerCapture(e.pointerId);
-      const move = (ev) => to(innerWidth - ev.clientX, false);
+      const move = (ev) => to(roomW() - ev.clientX, false);
       const up = () => {
         handle.removeEventListener('pointermove', move);
         handle.removeEventListener('pointerup', up);
@@ -99,7 +103,7 @@ export function mountWidth(el, onCramped) {
   let want = savedWidth();
   let cramped = false;
   let keep = false;
-  let last = fit(innerWidth, want);
+  let last = fit(roomW(), want);
   const handle = mountHandle({
     now: () => last,
     to: (n, save) => {
@@ -115,13 +119,13 @@ export function mountWidth(el, onCramped) {
   /** Sets the width and the rail; whether the pane started or stopped having to open full screen. */
   function update() {
     if (el.hidden) keep = false;
-    const f = fit(innerWidth, want, { keep });
+    const f = fit(roomW(), want, { keep });
     last = f;
     el.parentElement?.style.setProperty('--pane-w', `${f.width}px`);
     handle.setAttribute('aria-valuenow', String(f.width));
     handle.setAttribute('aria-valuemax', String(f.max));
     handle.setAttribute('aria-valuetext', `${f.width} px wide`);
-    setRailAuto(!el.hidden && f.collapse);
+    setRailAuto(!el.hidden && f.collapse, !el.hidden && !f.railFits);
     const was = cramped;
     cramped = !el.hidden && f.full;
     return was !== cramped;
@@ -137,7 +141,7 @@ export function mountWidth(el, onCramped) {
     handle,
     update,
     /** Whether the pane’s view has to open full screen in this window. */
-    cramped: () => fit(innerWidth, want, { keep }).full,
+    cramped: () => fit(roomW(), want, { keep }).full,
     destroy() {
       // Before the next view builds its top bar, which reads whether the rail shows.
       setRailAuto(false);
