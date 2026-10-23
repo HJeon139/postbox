@@ -1858,6 +1858,12 @@ test('#109 read_message reads a long item in parts, and says where it couldn’t
   const last = read({ id: it.id, from: 80_000 });
   assert.match(last.message, /\(Characters 80,001–95,008 of 95,008\.\)$/);
   assert.equal(last.message.split('\n\n')[0].length, 15_008);
+  // At or past the end, it says so rather than giving an empty part.
+  for (const from of [95_008, 120_000]) {
+    const after = read({ id: it.id, from });
+    assert.equal(after.ok, true);
+    assert.equal(after.message, `Nothing after character 95,008: that’s the end of ${it.id}.`);
+  }
   const missing = read({ id: 'it_nope' });
   assert.equal(missing.ok, false);
   assert.match(missing.message, /There’s no item “it_nope” in this conversation/);
@@ -1972,13 +1978,13 @@ test('#153 a choice and a form give their prompt, options or fields, and the per
   );
   assert.ok(
     catchUp.includes(
-      '@alpha showed a choice block “When”:\nWhen should the digest go out?\n\nOptions: Monday 9:00 · Friday 16:00\n\nYour answer: Friday 16:00',
+      '@alpha showed a choice block “When”:\nWhen should the digest go out?\n\nOptions: Monday 9:00 · Friday 16:00\n\nThe person answered: Friday 16:00',
     ),
     catchUp,
   );
   assert.ok(
     catchUp.includes(
-      '@alpha showed a form block “Brief”:\nTwo questions before I start.\n\nFields:\n- Who will read it? (text, required)\n- Tone (select): Plain · Warm\n- Anything else? (longtext)\n\nYour answer:\n- Who will read it?: The board\n- Tone: Warm\n- Anything else?: Keep it under a page.',
+      '@alpha showed a form block “Brief”:\nTwo questions before I start.\n\nFields:\n- Who will read it? (text, required)\n- Tone (select): Plain · Warm\n- Anything else? (longtext)\n\nThe person answered:\n- Who will read it?: The board\n- Tone: Warm\n- Anything else?: Keep it under a page.',
     ),
     catchUp,
   );
@@ -2052,7 +2058,7 @@ test('#153 a long draft is cut with its id, and read_message gives the whole blo
     assert.equal(r.ok, true, id);
     assert.ok(
       r.message.includes(
-        `${draft}\n\nComments on line 1 (open):\n- @critic: Which flag?\n\nYour review: Request changes · 1 comment\n- line 3: Name the flag.`,
+        `${draft}\n\nComments on line 1 (open):\n- @critic: Which flag?\n\nThe person’s review: Request changes · 1 comment\n- line 3: Name the flag.`,
       ),
       r.message,
     );

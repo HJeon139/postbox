@@ -116,7 +116,7 @@ function blockContent(it) {
     if (b.type === 'review') {
       const comments = Array.isArray(v.comments) ? v.comments : [];
       out.push(
-        `Your review: ${String(a.voice ?? '').replace(/^Submitted review: /, '')}${comments.length ? `\n${lines(comments.map((c) => `${commentAt(c)}: ${c.text}`))}` : ''}`,
+        `The person’s review: ${String(a.voice ?? '').replace(/^Submitted review: /, '')}${comments.length ? `\n${lines(comments.map((c) => `${commentAt(c)}: ${c.text}`))}` : ''}`,
       );
     } else if (b.type === 'form') {
       const shown = (f) => {
@@ -126,12 +126,12 @@ function blockContent(it) {
         return String(x);
       };
       out.push(
-        `Your answer:\n${lines(b.fields.filter((f) => v[f.id] !== undefined && v[f.id] !== '').map((f) => `${f.label}: ${shown(f)}`)) || '- (nothing filled in)'}`,
+        `The person answered:\n${lines(b.fields.filter((f) => v[f.id] !== undefined && v[f.id] !== '').map((f) => `${f.label}: ${shown(f)}`)) || '- (nothing filled in)'}`,
       );
     } else if (b.type === 'choice') {
       const picked = (v.selected ?? []).map((id) => b.options.find((o) => o.id === id)?.label ?? id);
-      out.push(`Your answer: ${[...picked, ...(v.other ? [`“${v.other}”`] : [])].join(' · ')}`);
-    } else out.push(`Your answer: ${a.voice ?? a.action}`);
+      out.push(`The person answered: ${[...picked, ...(v.other ? [`“${v.other}”`] : [])].join(' · ')}`);
+    } else out.push(`The person answered: ${a.voice ?? a.action}`);
   }
   if (b.outcome) out.push(`Outcome: ${b.outcome}`);
   return out.filter(Boolean).join('\n\n');
@@ -1693,6 +1693,7 @@ export class Runtime {
     const full = this.readLine(it, se, Infinity);
     if (!full) return { ok: false, message: `${it.id} has nothing to read.` };
     const start = Math.max(0, Math.min(full.length, Math.floor(Number(from) || 0)));
+    if (start >= full.length) return { ok: true, message: `Nothing after character ${count(full.length)}: that’s the end of ${it.id}.` };
     const end = Math.min(full.length, start + READING.part);
     if (start === 0 && end === full.length) return { ok: true, message: full };
     const more = end < full.length ? ` read_message { id: "${it.id}", from: ${end} } reads on.` : '';
