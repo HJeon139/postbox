@@ -64,6 +64,18 @@ const APPS = {
   // Controls a scroll box holds past its edge, which you scroll to, and a checkbox hidden for screen readers behind its label.
   scrolled: `<div style="height:120px;overflow:auto;padding:8px;color:var(--text)">${Array.from({ length: 12 }, (_, i) => `<p style="margin:0 0 8px">Row ${i + 1} <button class="btn sm" type="button">Open ${i + 1}</button></p>`).join('')}</div>
 <label style="position:relative;display:inline-flex;gap:6px;padding:8px;color:var(--text)"><input type="checkbox" style="position:absolute;width:1px;height:1px;clip:rect(0 0 0 0);overflow:hidden">Show years</label>`,
+  // Text cut short with an ellipsis, a label hidden for screen readers, a label drawn twice for its halo, and rotated
+  // tick labels, beside other text: none of them is text over text.
+  clipped: `<div style="display:flex;gap:8px;padding:8px;color:var(--text)"><span style="width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">A title far too long for its box</span><span>12 Oct</span></div>
+<button class="btn" type="button"><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">Close the panel and go back</span>×</button> <span style="color:var(--text)">Panel</span>
+<svg width="300" height="90" role="img" aria-label="Ticks"><text x="40" y="20" fill="var(--panel)" stroke="var(--panel)" stroke-width="4">Paris</text><text x="40" y="20" fill="var(--text)">Paris</text>${[
+    0, 1, 2, 3, 4,
+  ]
+    .map((i) => `<text transform="translate(${40 + i * 22},80) rotate(-45)" fill="var(--text)" font-size="12">Category ${i}</text>`)
+    .join('')}</svg>`,
+  // A page that scrolls smoothly, with a button under an overlay far below the first screen, and one a box clips sideways.
+  smooth: `<style>html{scroll-behavior:smooth}</style><div style="height:1400px"></div><div style="position:relative;padding:12px"><button class="btn" type="button">Deep</button><div style="position:absolute;inset:0;background:var(--panel)"></div></div>
+<div style="width:30px;overflow-x:hidden;overflow-y:auto"><button class="btn" type="button" style="white-space:nowrap">A wide button label</button></div>`,
   // Ordinary text and controls, set tight: nothing to report.
   plain: `<main style="padding:12px;color:var(--text);line-height:1.1"><h2 style="margin:0">Corpus summary</h2><p style="margin:0">Twelve <b>books</b>, <i>4,210</i> passages, read in <code>order</code>.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" type="button">Index it</button><button class="btn" type="button">Later</button></div>
@@ -126,6 +138,9 @@ try {
     says('bar'),
   );
   check(/the button “Run it” is under div, which takes its clicks/.test(says('covered')), '#89: a button under an overlay is control-hidden', says('covered'));
+  check(!codes('clipped').includes('text-overlap'), 'text cut by its own box, a halo and rotated labels aren’t text over text', says('clipped'));
+  check(/the button “Deep” is under div/.test(says('smooth')), 'a covered control far down a smooth-scrolling page is found', says('smooth'));
+  check(/the button “A wide button label” is clipped/.test(says('smooth')), 'and one a box clips sideways while it scrolls up and down', says('smooth'));
   check(rt.s.apps.scrolled.check.status === 'passed', 'controls in a scroll box, and a checkbox hidden for screen readers, pass', says('scrolled'));
 
   // How text-overlap measures, on its own in a blank page: an overlap counts only when it’s there both times.

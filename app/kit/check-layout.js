@@ -12,6 +12,8 @@
     return t.length > 40 ? `${t.slice(0, 40)}…` : t;
   };
   const px = (n) => Math.round(n);
+  // Scrolls at once, whatever the app’s scroll-behavior: the check measures right after.
+  const jump = (top) => scrollTo({ top, behavior: 'instant' });
   const ownText = (el) =>
     [...el.childNodes]
       .filter((c) => c.nodeType === 3 && c.textContent.trim())
@@ -29,10 +31,11 @@
     return out;
   }
 
-  // What of a box its ancestors let show: each one whose overflow isn’t visible cuts it to its own box.
-  function shownPart(el, r) {
+  // What of a box its ancestors let show (and, for text, its own element): each one whose overflow isn’t visible cuts
+  // it to its own box, so text cut short with an ellipsis, or hidden for screen readers, is only what shows.
+  function shownPart(el, r, self = false) {
     let { left, top, right, bottom } = r;
-    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+    for (let a = self ? el : el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
       const cs = getComputedStyle(a);
       if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
       const b = a.getBoundingClientRect();
@@ -66,16 +69,18 @@
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const el = n.parentElement;
       if (!n.textContent.trim() || !el || el.closest('script, style') || hidden(el)) continue;
+      // A rotated label’s boxes are upright, so they’d cross its neighbors’: it isn’t measured.
+      const m = el.closest('svg') && el.getScreenCTM?.();
+      if (m && Math.abs(m.b) > 0.01) continue;
       range.selectNodeContents(n);
       for (const r of range.getClientRects()) {
-        const s = shownPart(el, r);
+        const s = shownPart(el, r, true);
         if (s.width > 0 && s.height > 0) boxes.push({ n, r: s });
       }
     }
     return boxes.sort((a, b) => a.r.top - b.r.top);
   }
 
-  /** text-overlap: text from two nodes drawn over each other by more than 2 × 2 px, keyed by the two texts. */
   // Whether both texts show where they meet: one painted over by something opaque of another’s (a list scrolled under
   // its sticky footer) is hidden there, not overlapped.
   const opaque = (e) => {
@@ -90,8 +95,7 @@
   };
   function bothShow(a, b, x, y, y0) {
     // Only off screen: scrolling moves a sticky footer, and with it what overlaps.
-    if (y < 0 || y > innerHeight) scrollTo(0, y + y0 - innerHeight / 2);
-    else scrollTo(0, y0);
+    jump(y < 0 || y > innerHeight ? y + y0 - innerHeight / 2 : y0);
     const stack = document.elementsFromPoint(x, y + y0 - scrollY);
     const under = (el) => {
       const i = stack.indexOf(el);
@@ -100,16 +104,23 @@
     return !under(a.n.parentElement) && !under(b.n.parentElement);
   }
 
+  /**
+   * text-overlap: text from two nodes drawn over each other by more than 2 × 2 px, keyed by the two texts. It stops at
+   * 20 of them, or after a million pairs, so a page of labels stacked in one place doesn’t run past the host’s wait.
+   */
   function textOverlaps() {
     hiddenMemo.clear();
     const found = new Map();
     const boxes = lineBoxes();
     const y0 = scrollY;
-    for (let i = 0; i < boxes.length; i++) {
+    let pairs = 0;
+    for (let i = 0; i < boxes.length && found.size < 20 && pairs < 1e6; i++) {
       const a = boxes[i];
-      for (let j = i + 1; j < boxes.length && boxes[j].r.top < a.r.bottom; j++) {
+      for (let j = i + 1; j < boxes.length && boxes[j].r.top < a.r.bottom; j++, pairs++) {
         const b = boxes[j];
-        if (a.n === b.n) continue;
+        // The same label drawn twice in one place is a halo (a stroke behind it, as d3 draws one), not an overlap.
+        const halo = a.n.textContent === b.n.textContent && Math.abs(a.r.left - b.r.left) < 2 && Math.abs(a.r.top - b.r.top) < 2;
+        if (a.n === b.n || halo) continue;
         const x = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left);
         const y = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
         // Lines set tight can touch by a few pixels; text over text covers a good part of a line’s height.
@@ -119,7 +130,7 @@
         if (!found.has(key) && bothShow(a, b, mid[0], mid[1], y0)) found.set(key, { a: clip(a.n.textContent), b: clip(b.n.textContent), x: px(x), y: px(y) });
       }
     }
-    scrollTo(0, y0);
+    jump(y0);
     return found;
   }
 
@@ -176,10 +187,11 @@
     let { left, top, right, bottom } = r;
     for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
       const cs = getComputedStyle(a);
-      const x = cs.overflowX !== 'visible';
-      const y = cs.overflowY !== 'visible';
       const b = a.getBoundingClientRect();
-      if ((!x && !y) || (/auto|scroll/.test(cs.overflowX + cs.overflowY) && b.width >= 8 && b.height >= 8)) continue;
+      const cuts = (v) => v !== 'visible' && !(/auto|scroll/.test(v) && b.width >= 8 && b.height >= 8);
+      const x = cuts(cs.overflowX);
+      const y = cuts(cs.overflowY);
+      if (!x && !y) continue;
       if (x) [left, right] = [Math.max(left, b.left), Math.min(right, b.right)];
       if (y) [top, bottom] = [Math.max(top, b.top), Math.min(bottom, b.bottom)];
       const w = Math.max(0, right - left);
@@ -200,7 +212,7 @@
   function coveredBy(el) {
     let r = el.getBoundingClientRect();
     if (r.top < 0 || r.bottom > innerHeight) {
-      scrollBy(0, r.top + r.height / 2 - innerHeight / 2);
+      jump(scrollY + r.top + r.height / 2 - innerHeight / 2);
       r = el.getBoundingClientRect();
     }
     // Scrolled out of view in a container, it’s reachable by scrolling there.
@@ -231,12 +243,20 @@
       if (!groups.has(found.key)) groups.set(found.key, { n: 0, el, why: found.why });
       groups.get(found.key).n++;
     }
-    scrollTo(0, y0);
+    jump(y0);
     return [...groups.values()].slice(0, 3).map((g) => ({
       code: 'control-hidden',
       message: `At ${w} px, ${g.n === 1 ? `${name(g.el)} is` : `${g.n} controls, such as ${name(g.el)}, are`} ${g.why}`,
     }));
   }
 
-  Object.assign(window.__pbCheck, { textOverflow, textOverlap, controlHidden });
+  // A check that throws loses only its own problems, not the rest of the check at this width.
+  const guard = (fn) => (w) => {
+    try {
+      return Promise.resolve(fn(w)).catch(() => []);
+    } catch {
+      return Promise.resolve([]);
+    }
+  };
+  Object.assign(window.__pbCheck, { textOverflow: guard(textOverflow), textOverlap: guard(textOverlap), controlHidden: guard(controlHidden) });
 })();

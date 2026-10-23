@@ -28,9 +28,9 @@
   ready
     .then(() => new Promise((r) => setTimeout(r, 600)))
     .then(quiet)
-    // Text over text is measured twice, a second apart (app/kit/check-layout.js), and the rest once it’s done.
-    .then(() => textOverlap(innerWidth))
-    .then((overlaps) => {
+    // Text over text is measured twice, a second apart, and the other layout problems once (app/kit/check-layout.js).
+    .then(() => Promise.all([textOverlap(innerWidth), textOverflow(innerWidth), controlHidden(innerWidth)]))
+    .then(([overlaps, overflows, hiddenControls]) => {
       const problems = [];
       const w = innerWidth;
       const sw = document.documentElement.scrollWidth;
@@ -88,7 +88,7 @@
           });
         }
       }
-      problems.push(...legibility(w), ...textOverflow(w), ...overlaps, ...controlHidden(w));
+      problems.push(...legibility(w), ...overflows, ...overlaps, ...hiddenControls);
       for (const e of errors) problems.push({ code: 'script-error', message: e });
       post({ type: 'check', width: w, problems });
     });
