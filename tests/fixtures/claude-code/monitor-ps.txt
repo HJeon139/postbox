@@ -1,0 +1,7 @@
+# ps axww -o pid=,ppid=,pgid=,command= while claude 2.1.296 (pid 26616, under timeout(1) in group 26615) ran a Monitor
+# call, recorded for #129 on 23 October 2026 (the stream is monitor.jsonl), with local paths removed and the CLI's rows
+# abridged. Monitor runs its command in a tool shell of its own, as a background Bash call does.
+26615 26610 26615 timeout 200 claude -p --output-format stream-json --include-partial-messages --verbose --thinking-display summarized --forward-subagent-text --model haiku
+26616 26615 26615 claude -p --output-format stream-json --include-partial-messages --verbose --thinking-display summarized --forward-subagent-text --model haiku
+26799 26616 26799 /bin/zsh -c source /Users/me/.claude/shell-snapshots/snapshot-zsh-1792779213793-d3xl9o.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'for i in 1 2 3 4 5; do sleep 3; echo tick $i; done' < /dev/null && pwd -P >| /tmp/claude-53ed-cwd
+26800 26799 26799 sleep 3

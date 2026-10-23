@@ -6,7 +6,7 @@
 
 Stop has to end the agent’s turn for real. Before #126, Stop marked the turn stopped but left the CLI running, so the next turn ran beside the old one in the same session, and the old turn’s tool calls showed up as the new turn’s. Now the session reads “stopping” until its process has exited, its next turn waits for that, and a stopped turn’s tool calls are refused.
 
-An agent can start a command in the background (Bash with `run_in_background`), such as a 30-minute UAT run that spends money (#129). Its tool call returns at once, so its step used to read “done” while the command ran on, and nothing in the room showed it. Stopping the agent stops those jobs too, so Stop asks first: you may want the agent to stop and its job to finish.
+An agent can start a command in the background (Bash with `run_in_background`, a Bash call Claude Code moves to the background at its timeout, or a `Monitor` watch), such as a 30-minute UAT run that spends money (#129). Its tool call returns at once, so its step used to read “done” while the command ran on, and nothing in the room showed it. Stopping the agent stops those jobs too, so Stop asks first: you may want the agent to stop and its job to finish.
 - **The job row** shows each background job that’s still running, outside the folded activity list, so you see it without opening anything. Its **Stop** stops that job alone.
 - **The ask** is a choice you make there and then, so it’s a quiet row above the composer, not a card. Only its first choice is amber.
 
@@ -16,7 +16,7 @@ An agent can start a command in the background (Bash with `run_in_background`), 
 - Stop, with a job running, asks “@developer has 1 background job running. Stop it too?” with **Stop it too**, **Keep running**, and an × (Don’t stop). Focus moves to Stop it too. Nothing stops until you answer.
   - Escape, or ×, closes the ask; the agent carries on, and focus goes back to Stop.
   - **Stop it too** stops the agent and its jobs. Their steps read “Stopped”.
-  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop. The agent’s next turn is told the job is still running and where its output is. Postbox never kills a job you kept (#164):
+  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop. The agent’s next turn is told the job is still running and where its output is, and to leave a progress step that follows it running. The progress steps that were running when you chose Keep running stay running, not stalled, while a job you kept runs on; a step a later turn leaves running stalls as usual. When the last kept job ends, those steps read as stalled, and the agent’s next turn is told to close them. Postbox never kills a job you kept (#164):
     - When it can’t tell which of the agent’s processes is the job, it keeps them all running. The job row says “Postbox couldn’t tell which of 2 processes is this job, so it kept them all running; stopping the job stops them all.”, the agent hears the same, and the job’s Stop stops them all ([screenshot](../../screenshots/kept-job-unsure.png)).
     - When the job has no process left to keep, its step reads “Stopped: Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.”
 - Stop with no background job running stops at once, without asking.

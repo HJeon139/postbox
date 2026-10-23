@@ -44,6 +44,8 @@ const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-f
  */
 export const PERMISSION_MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
+/** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
+const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
 /** How often Postbox checks whether a background job it kept running has ended (#129). */
 const KEPT_POLL_MS = 5000;
 /** The background jobs Postbox keeps on a session, at most. */
@@ -738,9 +740,20 @@ export class Runtime {
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
-      // who: the subagent that took the step; detail: why it failed, or the whole thought; kind: 'thought'; job: the
-      // id of the background job it started (#129).
-      activity({ id, label, state = 'running', ms = null, who = null, detail = null, kind = null, job = /** @type {string|null} */ (null) }) {
+      // who: the subagent that took the step, and parent: the step that started it, so the list nests it (#73); detail:
+      // why it failed, the whole thought or narration, or what a subagent returned; kind: 'thought', 'said' (a
+      // subagent’s narration) or 'agent' (a subagent’s own step); job: the id of the background job it started (#129).
+      activity({
+        id,
+        label,
+        state = 'running',
+        ms = null,
+        who = null,
+        parent = /** @type {string|null} */ (null),
+        detail = null,
+        kind = null,
+        job = /** @type {string|null} */ (null),
+      }) {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
@@ -751,22 +764,25 @@ export class Runtime {
           state: STEP_STATES.has(state) ? state : 'done',
           ms,
           ...(who ? { who: String(who).slice(0, 40) } : {}),
+          ...(typeof parent === 'string' && parent ? { parent: parent.slice(0, 100) } : {}),
           ...(detail ? { detail: String(detail).slice(0, 1200) } : {}),
-          ...(kind === 'thought' ? { kind } : {}),
+          ...(STEP_KINDS.has(kind) ? { kind } : {}),
           ...(typeof job === 'string' && job ? { job: job.slice(0, 60) } : {}),
         };
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
         if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
         const s = se();
-        // A thought is in the list, but it isn’t a tool call.
-        if (kind === 'thought') return;
+        // A thought or a subagent’s narration is in the list, but it isn’t a tool call.
+        if (kind === 'thought' || kind === 'said') return;
         const calls = [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5);
+        // A subagent’s step is its own: it moves its arc, not the agent’s state or step (#189).
+        const own = state === 'running' && !(i >= 0 ? turn.steps[i] : step).who;
         rt.updateSession(turn.sessionId, {
-          state: state === 'running' ? 'tool' : s.state,
+          state: own ? 'tool' : s.state,
           toolCalls: calls,
           toolCount: s.toolCount + (i >= 0 ? 0 : 1),
-          currentStep: state === 'running' ? step.label : s.currentStep,
+          currentStep: own ? step.label : s.currentStep,
         });
       },
       status(patch) {
@@ -775,11 +791,19 @@ export class Runtime {
         if (patch.state && ['think', 'gen', 'tool'].includes(patch.state)) allowed.state = patch.state;
         if (typeof patch.ctx === 'number') allowed.ctx = Math.max(0, Math.min(100, Math.round(patch.ctx)));
         if (Array.isArray(patch.subagents))
+          // Each with what it was asked, its step now, its latest narration and the subagent that started it (#73).
           allowed.subagents = patch.subagents.slice(0, 12).map((x) => ({
+            ...(typeof x.id === 'string' && x.id ? { id: x.id.slice(0, 100) } : {}),
             name: String(x.name).slice(0, 40),
             state: x.state,
             ctx: Math.max(0, Math.min(100, +x.ctx || 0)),
             doing: x.doing ? String(x.doing).slice(0, 120) : '',
+            ...(x.thinking === true ? { thinking: true } : {}),
+            ...(x.asked ? { asked: String(x.asked).slice(0, 120) } : {}),
+            ...(x.said ? { said: String(x.said).slice(0, 200) } : {}),
+            ...(x.since === true ? { since: true } : {}),
+            ...(typeof x.parent === 'string' && x.parent ? { parent: x.parent.slice(0, 100) } : {}),
+            ...(x.bg === true ? { bg: true } : {}),
           }));
         if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
         // A line of what it’s thinking or writing right now; cleared when the turn ends.
@@ -860,6 +884,7 @@ export class Runtime {
     if (turn.closed) return;
     turn.closed = true;
     this.turns.delete(turn.sessionId);
+    this.settleSubagentSteps(turn);
     this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
@@ -1040,6 +1065,7 @@ export class Runtime {
     turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
     turn.closed = true;
     this.turns.delete(sessionId);
+    this.settleSubagentSteps(turn);
     this.endWork(turn, 'stopped');
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', 'You stopped the agent.');
@@ -1060,6 +1086,8 @@ export class Runtime {
       });
     }
     this.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
+    // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
+    if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
     // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
     const se = this.s.sessions[sessionId];
     if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : 'stopped');
@@ -1174,9 +1202,10 @@ export class Runtime {
       if (unsure) this.setJobStep(old, { detail: unsure });
       this.ledger.jobUpdate(old, { kept: true });
       // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running.
+      // A step that follows it reads as running on (#129): the agent leaves it running, rather than closing it as failed.
       this.tellAgent(
         se.id,
-        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: the person kept it running when your last turn was stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation.`,
+        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: the person kept it running when your last turn was stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
       );
       this.watchKept();
       return;
@@ -1211,6 +1240,46 @@ export class Runtime {
         sessionId,
         `Your background job ${job.id} (\`${clipText(job.command, 200)}\`) ${by === 'you' ? 'was stopped by the person' : 'has ended'}.${job.outputFile ? ` Its output is in ${job.outputFile}.` : ''}`,
       );
+    // The last job kept running has ended: the progress steps held running with it (stop) stall now, as they would have
+    // when its turn ended, or when the turn running now ends (stallSteps).
+    const now = this.s.sessions[sessionId];
+    const held = now?.heldSteps;
+    if ((job.kept || detail === KEEP_LOST) && held && !(now.jobs ?? []).some((j) => j.kept)) {
+      this.updateSession(sessionId, { heldSteps: null });
+      const problems = this.turns.has(sessionId) ? [] : this.stallSteps({ threadId: held.threadId }, this.s.sessions[sessionId]);
+      if (problems.length)
+        this.tellAgent(
+          sessionId,
+          `Your background job ${job.id} ended while progress steps were running:\n${problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`).join('\n')}`,
+        );
+    }
+  }
+
+  /**
+   * A subagent that worked in the background, and its own calls, still running when its turn ends: nothing will say
+   * how they ended now (Stop, or its CLI exited without saying), so they read as stopped (#73).
+   */
+  settleSubagentSteps(turn) {
+    const open = new Set((turn.steps ?? []).filter((s) => s.kind === 'agent' && s.state === 'running').map((s) => s.id));
+    if (!open.size) return;
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const s of turn.steps)
+        if (s.state === 'running' && !s.job && s.parent && open.has(s.parent) && !open.has(s.id)) {
+          open.add(s.id);
+          grew = true;
+        }
+    }
+    turn.steps = turn.steps.map((s) => (open.has(s.id) ? { ...s, state: 'stopped', detail: 'its turn ended before it finished' } : s));
+    if (turn.first) this.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+  }
+
+  /** The keys (`item:step`) of a session’s progress steps running in a thread. */
+  runningProgress(threadId, sessionId) {
+    return this.store
+      .items(threadId)
+      .filter((it) => it.kind === 'block' && it.valid && it.sessionId === sessionId && it.block.type === 'progress')
+      .flatMap((it) => it.block.steps.filter((s) => s.state === 'running').map((s) => `${it.id}:${s.id}`));
   }
 
   /** Changes a job’s step: in its turn while that runs, else in the reply it’s on. */
@@ -2060,14 +2129,22 @@ export class Runtime {
     );
   }
 
-  /** Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them. */
+  /**
+   * Progress steps still running when their agent’s turn ends are marked stalled, and the agent is told to close them.
+   * Not the steps that were running when the person kept its background jobs running, while one runs on (#129): such
+   * a step may follow the job, and they stall when the last one ends (endJob).
+   * @param {{ threadId: string, keepJobs?: Set<string> }} turn
+   */
   stallSteps(turn, se) {
     const problems = [];
+    const runsOn = turn.keepJobs?.size || (se.jobs ?? []).some((j) => j.kept);
+    const held = new Set(runsOn ? (se.heldSteps?.keys ?? []) : []);
     for (const it of this.store.items(turn.threadId)) {
       if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
-      const running = it.block.steps.filter((s) => s.state === 'running');
+      const stalls = (s) => s.state === 'running' && !held.has(`${it.id}:${s.id}`);
+      const running = it.block.steps.filter(stalls);
       if (!running.length) continue;
-      const steps = it.block.steps.map((s) => (s.state === 'running' ? { ...s, state: 'stalled' } : s));
+      const steps = it.block.steps.map((s) => (stalls(s) ? { ...s, state: 'stalled' } : s));
       this.patchItem(turn.threadId, it.id, { block: { ...it.block, steps }, stalledAt: Date.now() });
       const names = running.map((s) => `“${s.label}”`);
       const one = running.length === 1;

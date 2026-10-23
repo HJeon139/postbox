@@ -12,6 +12,7 @@ A moving ring alone doesn’t say what the agent is doing. This row says it in a
 
 - One row per agent in the conversation that’s thinking or calling tools: its ring, name, and state, plus the current step while it calls a tool.
 - Below that, a glimpse of its latest thinking (real agents send summarized thinking), or of a subagent’s progress, updated a few times a second.
+- Then a line per subagent at work, attributed: its latest narration in quotes (“general-purpose: “The word count came back as 3.””), else its current step (#73).
 - The row goes away while the agent writes its reply, since the reply shows then, and when the turn ends.
 - The rows sit in the message column: the ring lines up with the @name of the messages above, at 1280 px with and without the thread panel. A long step stays on one line and ends with an ellipsis inside the column (#83).
 - The overview card’s Current step shows the same glimpse.

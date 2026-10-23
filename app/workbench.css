@@ -190,6 +190,7 @@ pre { max-width: 100%; }
 .g-done { color: var(--good); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6'/><path d='M5 8.3l2 2 4-4.3' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>"); }
 .g-pending { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='none' stroke='black' stroke-width='1.4' stroke-dasharray='2.4 2'/></svg>"); }
 .g-thought { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='4' cy='8' r='1.5'/><circle cx='8' cy='8' r='1.5'/><circle cx='12' cy='8' r='1.5'/></svg>"); }
+.g-said { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z' fill='none' stroke='black' stroke-width='1.4' stroke-linejoin='round'/></svg>"); }
 .g-stalled { color: var(--dim); --m: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.2' fill='none' stroke='black' stroke-width='1.6'/><path d='M6.3 5.5v5M9.7 5.5v5' stroke='black' stroke-width='1.6' stroke-linecap='round'/></svg>"); }
 /* The running glyph turns, so a live step looks different from a stalled one; it holds still with reduced motion. */
 .g-running { animation: pb-turn 2.4s infinite; }
@@ -355,6 +356,11 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .steps li.denied .step-note { color: var(--alert); }
 .steps li.thought details > summary { cursor: pointer; color: var(--dim); font-style: italic; }
 .steps li.thought details > p { margin: 4px 0 0; color: var(--dim); white-space: pre-wrap; }
+/* A subagent’s narration, in its own voice (#73); the steps a subagent took nest under its step. */
+.steps li.said details > summary { cursor: pointer; }
+.steps li.said details > p { margin: 4px 0 0; white-space: pre-wrap; }
+.steps li:has(> ul.steps) { flex-wrap: wrap; }
+.steps li > ul.steps { flex-basis: 100%; margin-top: 0; }
 /* While an agent works: one line of what it’s thinking or writing (the working row, the overview card). */
 .glimpse { font-size: 12px; color: var(--dim); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .glimpse:empty { display: none; }
@@ -366,6 +372,7 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .work-row pb-ring { margin-top: 1px; }
 .work-row b { color: var(--text); font-weight: 600; font-size: 13px; }
 .work-text { min-width: 0; flex: 1; }
+.work-sub { padding-left: 8px; }
 
 /* Citations and terms */
 .cite { display: inline-grid; place-items: center; min-width: 18px; height: 16px; padding: 0 4px; margin: 0 1px; vertical-align: 1px; font-size: 10.5px; font-weight: 600;
@@ -1132,6 +1139,15 @@ code.wc-name { font-size: 12px; }
 .agent-sub .name b { font-weight: 500; }
 .agent-sub .agent-asks { flex-basis: 100%; padding-left: 8px; }
 .agent-sub .ring-slot { width: 14px; }
+/* A subagent at work (#73): its name and what it was asked, then what it’s doing now, nested by who started it. */
+.agent-sub.subagent { align-items: flex-start; padding: 4px 8px; border-left: 1px solid var(--line); flex-wrap: nowrap; }
+.agent-sub.subagent[data-depth="1"] { margin-left: 12px; }
+.agent-sub.subagent[data-depth="2"] { margin-left: 24px; }
+.agent-sub.subagent[data-depth="3"] { margin-left: 36px; }
+.agent-sub.subagent .ring-slot { margin-top: 1px; }
+.agent-sub.subagent .name { display: flex; flex-direction: column; }
+.agent-sub.subagent .sub-now { color: var(--dim); }
+.agent-sub.subagent .sub-now.thinking { font-style: italic; }
 .sp-agents:has(> [hidden]) { display: none; }
 .sp-agents { padding: 4px 8px 6px; border-bottom: 1px solid var(--line); max-height: 40vh; overflow: auto; }
 .sp-agents .rail-sec { padding-top: 6px; }

@@ -15,12 +15,21 @@ const DECLINED = /^The person didn’t allow/;
 const WINDOWS = /** @type {[RegExp, number][]} */ ([[/^claude-(?:opus|sonnet|fable)-5/, 1_000_000]]);
 export const windowFor = (model, fallback = 200_000) => WINDOWS.find(([re]) => re.test(String(model ?? '')))?.[1] ?? fallback;
 const SUBAGENT_TOOLS = new Set(['Task', 'Agent']);
-// A Bash call with run_in_background returns at once, and the job runs on (#129). Recorded on claude 2.1.296
-// (tests/fixtures/claude-code/background-*.jsonl): the result says “Command running in background with ID: <id>.
-// Output is being written to: <file>. …”, with tool_use_result.backgroundTaskId; a task_notification with the same
-// task_id says it completed, failed, or was stopped; and the CLI waits for its jobs before it exits.
-const BACKGROUND_ID = /running in background with ID: ([\w-]+)/;
+// A call that goes on in the background returns at once with the job's id, and the job runs on (#129). Recorded on
+// claude 2.1.296:
+// - Bash with run_in_background: “Command running in background with ID: <id>. Output is being written to: <file>. …”,
+//   with tool_use_result.backgroundTaskId (tests/fixtures/claude-code/background-*.jsonl);
+// - Bash past its timeout: “Command did not complete within its 120s timeout and was moved to the background (ID: <id>).
+//   Output is being written to: <file>. …” (background-moved.jsonl, from the HotpotQA UAT of 22 October 2026);
+// - Monitor: “Monitor started (task <id>, expires in …)”, with tool_use_result.taskId (monitor.jsonl).
+// A task_notification with the same task_id says it completed, failed, or was stopped; and the CLI waits for its jobs
+// before it exits. Each is how its result starts: a file the agent reads, or a search, can hold the same words.
+const BACKGROUND_ID =
+  /^(?:Command running in background with ID: |Command did not complete within its \d+s timeout and was moved to the background \(ID: |Monitor started \(task )([\w-]+)/;
 const BACKGROUND_FILE = /Output is being written to: (\S+?)\.?(?=\s|$)/;
+// A subagent started in the background, or one a subagent starts (Claude Code runs those in the background), returns
+// at once too, and works on until its task_notification (subagent-tree.jsonl).
+const ASYNC_AGENT = /^Async agent launched/;
 const JOB_STATES = { completed: 'done', failed: 'failed', stopped: 'stopped', killed: 'stopped' };
 
 const clip = (s, n) => {
@@ -54,6 +63,7 @@ const resultText = (content) =>
 
 const GENERIC = {
   Bash: 'Running a command',
+  Monitor: 'Starting a watch',
   Read: 'Reading a file',
   Write: 'Writing a file',
   Edit: 'Editing a file',
@@ -78,6 +88,8 @@ export function describeTool(name, input = {}) {
   switch (name) {
     case 'Bash':
       return i.description ? clip(i.description, 80) : `Ran ${clip(i.command, 70)}`;
+    case 'Monitor':
+      return `Watching: ${clip(i.description ?? i.command, 70)}`;
     case 'Read':
       return `Read ${base(i.file_path)}`;
     case 'Write':
@@ -135,6 +147,9 @@ export function describeTool(name, input = {}) {
   }
 }
 
+/** What a subagent was asked to do, in a line: its call’s description, else its prompt’s first sentence. */
+const askedOf = (input) => clip(input?.description || firstSentence(input?.prompt ?? '', 120), 120);
+
 /** The share of the context window a request used, in percent. */
 export function contextPercent(usage, window) {
   if (!usage || !window) return null;
@@ -160,12 +175,16 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     streamed: new Set(), // message ids whose text arrived as deltas
     blocks: new Map(), // content block index → { type, id, name, json }
     tools: new Map(), // tool_use id → { name, label, input, who, started, quiet }
-    subagents: new Map(), // Task tool_use id → { name, state, ctx, doing }
+    // Task tool_use id → { id, name, state, ctx, asked, doing, thinking, said, since, parent, bg }: asked, what it was
+    // given to do; doing, its step now (a thought when thinking); said, its latest line of narration, and since, whether
+    // its step changed after it; parent, the subagent that started it; bg, whether it works on in the background (#73).
+    subagents: new Map(),
     subNames: new Map(), // Task tool_use id → its name, kept after it finishes (refusals can arrive later)
     tasks: new Map(), // subagent task id (a refusal’s agent_id) → its Task tool_use id
     denied: new Set(), // tool_use ids Claude Code refused
     jobs: new Map(), // background job id → its Bash tool_use id, while it runs
     thoughts: 0,
+    narrations: 0,
     thoughtMessages: new Set(), // message ids whose thinking arrived as deltas
     said: '', // reply text so far this turn, for the glimpse
     glimpse: '',
@@ -197,24 +216,51 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
   const flushGlimpse = () => {
     if (st.pending) glimpse(st.pending, { force: true });
   };
-  const thought = (text) => {
+  // by: the subagent a step is from ({ who: its name, parent: the call that started it }), so the list nests it (#73).
+  /** @typedef {{ who?: string|null, parent?: string|null }|null} By */
+  /** @param {By} [by] */
+  const byOf = (by) => (by?.who ? { who: by.who, ...(by.parent ? { parent: by.parent } : {}) } : {});
+  /** @param {string} text @param {By} [by] */
+  const thought = (text, by = null) => {
     const t = String(text ?? '').trim();
     if (!t) return;
     st.thoughts += 1;
-    ctx.activity({ id: `thought-${st.thoughts}`, label: firstSentence(t, 120), state: 'done', kind: 'thought', detail: clip(t, 1200) });
+    ctx.activity({ id: `thought-${st.thoughts}`, label: firstSentence(t, 120), state: 'done', kind: 'thought', detail: clip(t, 1200), ...byOf(by) });
+  };
+  // A subagent’s own text (its narration, such as “Now I’ll write my own probe…”, and its report) is a step in its
+  // voice, never the agent’s reply (#73).
+  /** @param {string} text @param {By} by */
+  const narrate = (text, by) => {
+    const t = String(text ?? '').trim();
+    if (!t) return;
+    st.narrations += 1;
+    ctx.activity({ id: `said-${st.narrations}`, label: firstSentence(t, 200), state: 'done', kind: 'said', detail: clip(t, 1200), ...byOf(by) });
   };
 
-  // who: the subagent that made the call, for calls made inside one.
-  const startTool = (id, name, input, who = null) => {
+  /** @param {string} id @param {string} name @param {any} input @param {By} [by] */
+  const startTool = (id, name, input, by = null) => {
     if (st.tools.has(id)) return;
+    const who = by?.who ?? null;
     const quiet = QUIET.test(name);
     const label = describeTool(name, input);
-    st.tools.set(id, { name, label, input, who, started: now(), quiet });
-    if (!quiet) ctx.activity({ id, label, state: 'running', ...(who ? { who } : {}) });
+    st.tools.set(id, { name, label, input, who, parent: by?.parent ?? null, started: now(), quiet });
+    if (!quiet) ctx.activity({ id, label, state: 'running', ...byOf(by), ...(SUBAGENT_TOOLS.has(name) ? { kind: 'agent' } : {}) });
     else if (!who) status({ state: 'tool', currentStep: label });
     if (SUBAGENT_TOOLS.has(name)) {
       const sub = clip(input?.subagent_type ?? input?.description ?? 'subagent', 40);
-      st.subagents.set(id, { name: sub, state: 'think', ctx: 0, doing: clip(input?.description, 120) });
+      st.subagents.set(id, {
+        id,
+        name: sub,
+        state: 'think',
+        ctx: 0,
+        asked: askedOf(input),
+        doing: clip(input?.description, 120),
+        thinking: false,
+        said: '',
+        since: false,
+        parent: by?.parent ?? null,
+        bg: input?.run_in_background === true,
+      });
       st.subNames.set(id, sub);
       pushSubagents();
     }
@@ -237,43 +283,52 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     const label = describeTool(t.name, input);
     if (label !== t.label) {
       t.label = label;
-      if (!t.quiet) ctx.activity({ id, label, state: 'running', ...(t.who ? { who: t.who } : {}) });
+      if (!t.quiet) ctx.activity({ id, label, state: 'running', ...byOf(t) });
       else if (!t.who) status({ currentStep: label });
     }
     const sub = st.subagents.get(id);
     if (sub && input) {
       sub.name = clip(input.subagent_type ?? input.description ?? sub.name, 40);
+      sub.asked = askedOf(input) || sub.asked;
       sub.doing = clip(input.description ?? sub.doing, 120);
+      sub.bg = sub.bg || input.run_in_background === true;
       st.subNames.set(id, sub.name);
       pushSubagents();
     }
   };
-  const stepOf = (id, t, state, extra = {}) => ({ id, label: t.label, state, ms: now() - t.started, ...(t.who ? { who: t.who } : {}), ...extra });
-  const endTool = (id, failed, detail = '') => {
+  const stepOf = (id, t, state, extra = {}) => ({ id, label: t.label, state, ms: now() - t.started, ...byOf(t), ...extra });
+  // stopped: a subagent that worked in the background and was stopped (#73).
+  const endTool = (id, failed, detail = '', { stopped = false } = {}) => {
     const t = st.tools.get(id);
     if (!t || t.done) return;
     t.done = true;
     used(id, t);
     if (failed && detail) t.error = detail;
-    const state = st.denied.has(id) ? 'denied' : failed ? 'failed' : 'done';
-    if (!t.quiet) ctx.activity(stepOf(id, t, state, failed && detail && state !== 'denied' ? { detail: firstSentence(detail, 300) } : {}));
+    const state = st.denied.has(id) ? 'denied' : failed ? 'failed' : stopped ? 'stopped' : 'done';
+    // A subagent’s step ends with what it returned (#73); any other’s with why it failed. One that worked in the
+    // background says how it ended, so its “Working in the background” doesn’t stay.
+    const why =
+      (failed && detail && state !== 'denied' ? detail : t.summary) ||
+      (t.async ? { done: 'Finished in the background', failed: 'Failed in the background', stopped: 'Stopped in the background' }[state] : '');
+    if (!t.quiet) ctx.activity(stepOf(id, t, state, why ? { detail: firstSentence(why, 300) } : {}));
     if (st.subagents.has(id)) {
       st.subagents.delete(id);
       pushSubagents();
     }
   };
 
-  // A background Bash call (#129): its result only says the job started, so its step stays running, and the runtime
-  // records the job. Returns whether the result was one.
+  // A call that went on in the background (#129): Bash, Monitor, or any whose result names a background id. Its result
+  // only says the job started, so its step stays running, and the runtime records the job. Returns whether it was one.
   const startJob = (id, text, structured) => {
     const t = st.tools.get(id);
-    if (!t || t.done || t.name !== 'Bash') return false;
+    if (!t || t.done || SUBAGENT_TOOLS.has(t.name)) return false;
     // The result’s own text names its job; tool_use_result is one per message, so it’s only the fallback.
-    const jobId = String(BACKGROUND_ID.exec(text)?.[1] ?? structured?.backgroundTaskId ?? '');
-    if (!jobId || (t.input?.run_in_background !== true && !BACKGROUND_ID.test(text))) return false;
+    const named = BACKGROUND_ID.exec(String(text).trimStart())?.[1];
+    const jobId = String(named ?? structured?.backgroundTaskId ?? structured?.taskId ?? '');
+    if (!jobId || (!named && t.input?.run_in_background !== true)) return false;
     t.job = jobId;
     st.jobs.set(jobId, id);
-    if (!t.quiet) ctx.activity({ id, label: t.label, state: 'running', job: jobId, ...(t.who ? { who: t.who } : {}) });
+    if (!t.quiet) ctx.activity({ id, label: t.label, state: 'running', job: jobId, ...byOf(t) });
     ctx.job?.({
       id: jobId,
       toolUseId: id,
@@ -294,6 +349,35 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       if (!t.quiet) ctx.activity(stepOf(id, t, state, { job: jobId, ...(state === 'failed' && summary ? { detail: firstSentence(summary, 300) } : {}) }));
     }
     ctx.job?.({ id: jobId, state });
+  };
+  /** The subagent calls still working in the background. */
+  const asyncAgents = () => [...st.tools].filter(([, t]) => t.async && !t.done).map(([id]) => id);
+  /** The agent’s step while background jobs or subagents run on after its reply. */
+  const waiting = (jobs, agents) => {
+    if (jobs.length) status({ state: 'tool', currentStep: jobs.length === 1 ? 'Waiting for a background job' : `Waiting for ${jobs.length} background jobs` });
+    else if (agents.length)
+      status({ state: 'tool', currentStep: agents.length === 1 ? 'Waiting for a background subagent' : `Waiting for ${agents.length} background subagents` });
+  };
+  // A subagent’s task ended: its step says what it returned. One that worked on in the background ends here; another
+  // ends with its tool result, which comes next.
+  const endAgent = (id, status, summary) => {
+    const t = st.tools.get(id);
+    if (!t) return;
+    if (typeof summary === 'string' && summary.trim()) t.summary = summary;
+    const state = JOB_STATES[/** @type {keyof typeof JOB_STATES} */ (status)] ?? 'done';
+    if (t.async) endTool(id, state === 'failed', state === 'failed' ? (summary ?? '') : '', { stopped: state === 'stopped' });
+  };
+  // A subagent that works on in the background (#73): its step and its entry stay until its task ends. Returns whether
+  // the result was one.
+  const startAsyncAgent = (id, text) => {
+    const t = st.tools.get(id);
+    const sub = st.subagents.get(id);
+    if (!t || t.done || !sub || !ASYNC_AGENT.test(text)) return false;
+    t.async = true;
+    sub.bg = true;
+    if (!t.quiet) ctx.activity({ id, label: t.label, state: 'running', detail: 'Working in the background', ...byOf(t) });
+    pushSubagents();
+    return true;
   };
 
   // Claude Code refused a call without asking: the auto-mode classifier, a deny rule, or the mode. Reported
@@ -320,17 +404,17 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     if (t?.done && !t.quiet) ctx.activity(stepOf(id, t, 'denied'));
   };
 
-  // Events from inside a subagent carry the Task call’s id; they move that subagent’s ring, not the agent’s.
-  // Its tool calls are steps in the list too, under its name.
+  // Events from inside a subagent carry the Task call’s id; they move that subagent’s ring, not the agent’s. Its tool
+  // calls, its narration and its thinking are steps in the list too, under its name and nested under that call (#73).
   const subagentEvent = (parent, e) => {
-    if (e.type === 'assistant') {
-      const who = st.subNames.get(parent) ?? 'subagent';
+    const by = { who: st.subNames.get(parent) ?? 'subagent', parent };
+    if (e.type === 'assistant')
       for (const b of e.message?.content ?? [])
         if (b.type === 'tool_use') {
-          startTool(b.id, b.name, b.input, who);
+          startTool(b.id, b.name, b.input, by);
           labelTool(b.id, b.input);
-        }
-    }
+        } else if (b.type === 'text') narrate(b.text, by);
+        else if (b.type === 'thinking') thought(b.thinking, by);
     const sub = st.subagents.get(parent);
     if (!sub) return;
     const ev = e.event;
@@ -343,18 +427,31 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     if (e.type === 'stream_event' && ev?.type === 'content_block_start') {
       const t = ev.content_block?.type;
       const next = t === 'thinking' || t === 'redacted_thinking' ? 'think' : t === 'text' ? 'gen' : 'tool';
-      if (t === 'tool_use') sub.doing = describeTool(ev.content_block.name, ev.content_block.input);
+      if (t === 'tool_use') doing(sub, describeTool(ev.content_block.name, ev.content_block.input));
       changed = sub.state !== next || changed;
       sub.state = next;
     }
     if (e.type === 'assistant') {
+      // Its messages arrive whole (recorded: subagent-tree.jsonl), so the last block says what it’s on.
+      const last = e.message?.content?.at(-1)?.type;
+      if (last) sub.state = last === 'thinking' || last === 'redacted_thinking' ? 'think' : last === 'text' ? 'gen' : 'tool';
       for (const b of e.message?.content ?? []) {
-        if (b.type === 'tool_use') sub.doing = describeTool(b.name, b.input);
-        else if (b.type === 'thinking' && b.thinking) sub.doing = firstSentence(b.thinking, 120);
+        if (b.type === 'tool_use') doing(sub, describeTool(b.name, b.input));
+        else if (b.type === 'thinking' && b.thinking) doing(sub, firstSentence(b.thinking, 120), true);
+        else if (b.type === 'text' && b.text?.trim()) {
+          sub.said = tailOf(firstSentence(b.text, 400), 160);
+          sub.since = false;
+        }
       }
       changed = true;
     }
     if (changed) pushSubagents();
+  };
+  // since: its step changed after its latest narration, so the line says both.
+  const doing = (sub, text, thinking = false) => {
+    if (clip(text, 120) !== sub.doing) sub.since = !!sub.said;
+    sub.doing = clip(text, 120);
+    sub.thinking = thinking;
   };
 
   /** Handles one parsed line of the stream. */
@@ -388,6 +485,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         // A background command or subagent ended, maybe long after its tool call returned (#129). A job’s step and
         // state end here, and the work ledger records how the command ended (#132): one event, told to both.
         if (st.jobs.has(e.task_id)) endJob(e.task_id, e.status, e.summary);
+        else if (st.subagents.has(e.tool_use_id)) endAgent(e.tool_use_id, e.status, e.summary);
         if (e.tool_use_id)
           ctx.taskEnded?.({
             toolUseId: e.tool_use_id,
@@ -400,7 +498,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       } else if (e.subtype === 'task_progress' && e.tool_use_id) {
         const sub = st.subagents.get(e.tool_use_id);
         if (sub && e.description) {
-          sub.doing = clip(e.description, 120);
+          doing(sub, e.description);
           pushSubagents();
           glimpse(`${sub.name}: ${e.description}`);
         }
@@ -490,14 +588,17 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           st.wroteText = true;
         }
       }
+      // A message that calls no tool, while subagents it started work on in the background: it waits on them (#189).
+      if (!(m.content ?? []).some((b) => /tool_use$/.test(b.type))) waiting([], asyncAgents());
       return;
     }
 
     if (e.type === 'user') {
       const results = (e.message?.content ?? []).filter((b) => b.type === 'tool_result');
       for (const b of results) {
-        // A command that went on in the background becomes a job (#129), and its step stays open until it ends.
-        const job = !b.is_error && startJob(b.tool_use_id, resultText(b.content), e.tool_use_result);
+        // A command that went on in the background becomes a job (#129), and a subagent that did works on (#73): the
+        // step stays open until it ends.
+        const job = !b.is_error && (startJob(b.tool_use_id, resultText(b.content), e.tool_use_result) || startAsyncAgent(b.tool_use_id, resultText(b.content)));
         if (!job) endTool(b.tool_use_id, b.is_error === true, b.is_error ? resultText(b.content) : '');
         // What the tool returned, for the work ledger (#132). tool_use_result is the tool’s own record (a file’s
         // contents before an edit, a command’s stdout and exit, a commit), on the event that carries the result.
@@ -537,11 +638,13 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       });
       // Refusals the stream didn’t report as they happened.
       for (const d of e.permission_denials ?? []) denial(d, { fromResult: true });
-      // A background job runs on after the reply: the CLI waits for it, then tells the agent how it went.
-      const running = new Set(st.jobs.values());
-      for (const [id] of st.tools) if (!running.has(id)) endTool(id, e.is_error === true);
-      if (running.size)
-        status({ state: 'tool', currentStep: running.size === 1 ? 'Waiting for a background job' : `Waiting for ${running.size} background jobs` });
+      // A background job or subagent runs on after the reply: the CLI waits for it, then tells the agent how it went.
+      const agents = asyncAgents();
+      const running = new Set([...st.jobs.values(), ...agents]);
+      // A background subagent’s own calls run on with it, at any depth.
+      const under = (t, n = 0) => !!t?.parent && n < 20 && (running.has(t.parent) || under(st.tools.get(t.parent), n + 1));
+      for (const [id, t] of st.tools) if (!running.has(id) && !under(t)) endTool(id, e.is_error === true);
+      waiting([...st.jobs.keys()], agents);
       flushGlimpse();
     }
   }
