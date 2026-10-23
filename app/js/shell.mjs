@@ -10,7 +10,7 @@ import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
-import { navigate, openMenu, route, toast, undoToast } from './ui.mjs';
+import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
 
@@ -18,7 +18,7 @@ const S = () => client.state;
  * The top bar: Postbox, then Overview and each project as tabs, the open conversation’s title and who’s in
  * it, and the global actions. On a phone the tabs fold into one menu button.
  */
-export function topbar({ title = '', threadId = null, projectId = null, work = false }) {
+export function topbar({ title = '', threadId = null, projectId = null }) {
   const t = threadId ? S().threads[threadId] : null;
   const pid = t?.projectId ?? projectId;
   const project = pid ? S().projects[pid] : null;
@@ -105,15 +105,6 @@ export function topbar({ title = '', threadId = null, projectId = null, work = f
         : [icon('right', `i-sm${up}`), h(t || title ? `a.crumb${up}` : 'span.title', t || title ? { href: '#/' } : {}, 'Overview')],
       title ? [icon('right', 'i-sm'), h('span.title', title)] : null,
     ),
-    // A conversation has two views: its transcript, and its Work (#132).
-    t
-      ? h(
-          'nav.conv-tabs',
-          { 'aria-label': 'Views of this conversation' },
-          h('a', { href: `#/t/${t.id}`, 'aria-current': work ? null : 'page' }, 'Conversation'),
-          h('a', { href: `#/t/${t.id}/work`, 'aria-current': work ? 'page' : null }, 'Work'),
-        )
-      : null,
     present,
     t
       ? h(
@@ -131,6 +122,20 @@ export function topbar({ title = '', threadId = null, projectId = null, work = f
     h(
       'div.top-actions',
       demoNote(),
+      // The conversation’s Work in the right pane (#132), opened and closed here: the first of its side views’ buttons.
+      t
+        ? h(
+            'button.btn.icon.sm.ghost',
+            {
+              type: 'button',
+              id: 'work-button',
+              'aria-label': 'Work',
+              'aria-pressed': String(route().work),
+              onclick: () => (route().work ? closeWork(t.id) : openWork(t.id)),
+            },
+            icon('file'),
+          )
+        : null,
       h('button.btn.sm.hide-sm', { type: 'button', onclick: openPalette }, icon('search', 'i-sm'), 'Jump to… ', h('kbd', '⌘K')),
       h(
         'button.btn.sm',
@@ -950,7 +955,7 @@ function conversationMenu(anchor, t) {
         label: 'Work',
         icon: 'file',
         desc: 'What its agents changed, ran and published',
-        run: () => navigate(`#/t/${t.id}/work`),
+        run: () => openWork(t.id),
       },
       {
         label: 'Permissions…',

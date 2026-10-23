@@ -69,7 +69,7 @@ const AFTER = [
   ],
   ['activity-line', 'Index the shelf', `[...document.querySelectorAll('.transcript details.activity')].at(0)?.closest('.item')`, 'open-activity'],
   ['work-chip', 'Citation fixes', `document.querySelector('.transcript .work-chip')?.closest('.item')`],
-  ['work-view', 'work:Citation fixes', q('main.work-view')],
+  ['work-view', 'work:Citation fixes', q('aside.workpane')],
   ['explainer-citations', 'ReAct, step by step', item('Step 1')],
   ['citation-card', 'ReAct, step by step', q('.hovercard'), 'cite'],
   ['glossary-term', 'ReAct, step by step', item('observation budget')],
@@ -249,7 +249,7 @@ try {
     where.startsWith('#')
       ? where
       : where.startsWith('work:')
-        ? `#/t/${byTitle(where.slice(5))?.id}/work`
+        ? `#/t/${byTitle(where.slice(5))?.id}?work`
         : where === 'threads'
           ? `#/p/${topic?.projectId ?? project.id}/threads`
           : where === 'topic'

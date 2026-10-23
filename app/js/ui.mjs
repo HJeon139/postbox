@@ -6,12 +6,28 @@ import { finishedSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
 
 // ── Navigation ──────────────────────────────────────────────────────────────────────────
-// Routes: #/ (overview), #/t/<threadId>, #/t/<threadId>/side/<sideThreadId>, and a conversation’s Work view (#132),
-// #/t/<threadId>/work, or one turn’s work, #/t/<threadId>/work/<turnId>
+// Routes: #/ (overview), #/t/<threadId>, and #/t/<threadId>/side/<sideThreadId> with a thread in the right pane.
+// After either, what else the pane shows (#132): ?work opens the conversation’s Work, turn=<turnId> scrolls it to a
+// turn, full expands it to the whole window (on that turn alone, with turn), and at=<id> opens one item there. The
+// Work page #138 had, #/t/<threadId>/work or /work/<turnId>, is read as oldWork, and main.mjs sends it to the pane.
 
 export function route() {
-  const m = location.hash.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+)|\/(work)(?:\/([^/]+))?)?/);
-  if (m) return { view: 'thread', threadId: m[1], sideId: m[2] ?? null, work: Boolean(m[3]), workTurn: m[4] ?? null };
+  const [path, query = ''] = location.hash.split('?');
+  const m = path.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+)|\/(work)(?:\/([^/]+))?)?/);
+  if (m) {
+    const q = new URLSearchParams(query);
+    const full = q.has('full');
+    return {
+      view: 'thread',
+      threadId: m[1],
+      sideId: m[2] ?? null,
+      work: full || q.has('work'),
+      turn: q.get('turn') || m[4] || null,
+      full,
+      at: q.get('at') || null,
+      oldWork: Boolean(m[3]),
+    };
+  }
   const p = location.hash.match(/^#\/p\/([^/]+)(\/threads)?/);
   if (p) return { view: p[2] ? 'threads' : 'project', projectId: p[1] };
   return { view: 'overview' };
@@ -20,6 +36,59 @@ export function navigate(hash, { replace = false } = {}) {
   if (location.hash === hash) return;
   if (replace) location.replace(hash);
   else location.hash = hash;
+}
+
+/**
+ * A conversation’s address with its right pane: a thread (side), and its Work, scrolled to a turn, expanded (full),
+ * or with one item open (at).
+ * @param {string} threadId
+ * @param {{ side?: string|null, work?: boolean, turn?: string|null, full?: boolean, at?: string|null }} [pane]
+ */
+export function paneHref(threadId, { side = null, work = false, turn = null, full = false, at = null } = {}) {
+  const q = [work || full ? 'work' : '', turn ? `turn=${encodeURIComponent(turn)}` : '', full ? 'full' : '', at ? `at=${encodeURIComponent(at)}` : ''].filter(
+    Boolean,
+  );
+  return `#/t/${threadId}${side ? `/side/${side}` : ''}${q.length ? `?${q.join('&')}` : ''}`;
+}
+
+// A conversation keeps its Work open until you close it, in this browser: a link to the conversation or one of its
+// threads opens Work beside it again. Opening and closing it replace the address rather than add to the history,
+// like the rail, so Back goes to where you were, not to the pane as it was.
+const workKey = (threadId) => `pb-work-${threadId}`;
+/** Whether Work was left open in a conversation. */
+export function workRemembered(threadId) {
+  try {
+    return localStorage.getItem(workKey(threadId)) === '1';
+  } catch {
+    return false;
+  }
+}
+export function rememberWork(threadId, open) {
+  try {
+    if (open) localStorage.setItem(workKey(threadId), '1');
+    else localStorage.removeItem(workKey(threadId));
+  } catch {}
+}
+/**
+ * Opens a conversation’s Work in its right pane, beside the thread open there. turn scrolls it to a turn’s line;
+ * full expands it to the whole window, at opens one item there. Asked again for what’s already open, it goes there
+ * again (the event “pb-pane”), since the address doesn’t change.
+ * @param {string} threadId
+ * @param {{ turn?: string|null, full?: boolean, at?: string|null }} [opts]
+ */
+export function openWork(threadId, { turn = null, full = false, at = null } = {}) {
+  const r = route();
+  const here = r.view === 'thread' && r.threadId === threadId;
+  rememberWork(threadId, true);
+  const href = paneHref(threadId, { side: here ? r.sideId : null, work: true, turn, full, at });
+  if (location.hash === href) dispatchEvent(new CustomEvent('pb-pane', { detail: { again: true } }));
+  else navigate(href, { replace: here });
+}
+/** Closes a conversation’s Work (shrink: only its expanded view, back to the pane). */
+export function closeWork(threadId, { shrink = false } = {}) {
+  const r = route();
+  if (!shrink) rememberWork(threadId, false);
+  navigate(paneHref(threadId, { side: r.threadId === threadId ? r.sideId : null, work: shrink }), { replace: true });
 }
 
 // ── Toasts ──────────────────────────────────────────────────────────────────────────────
