@@ -196,6 +196,7 @@ Postbox follows [Conventional Commits](https://www.conventionalcommits.org/en/v1
 
 **A release after each merge to main:**
 - The integrator runs `npm run release`. It finds the commits since the last tag, takes the largest bump among them, and writes the version to package.json and package-lock.json. It adds a CHANGELOG.md section, commits `chore(release): vX.Y.Z` and tags `vX.Y.Z`.
-- Push the merge, the release commit and the tag together.
+- Main takes changes only through a pull request, so the release commit goes up on a branch of its own, with the tag: `git push origin HEAD:refs/heads/release/vX.Y.Z vX.Y.Z`.
+- Open a pull request from `release/vX.Y.Z` to main, and merge it with a merge commit. That puts the tagged commit itself on main. A squash or a rebase would make a new commit and leave the tag off main.
 - CI fails on main when commits since the last tag change the version and aren’t released (`tools/release.mjs --check`).
 - The sidebar shows the build under Personas, as `vX.Y.Z · commit`, so a screenshot says which build it came from.
