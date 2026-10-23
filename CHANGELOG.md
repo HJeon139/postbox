@@ -2,6 +2,24 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.14.0 (2026-10-23)
+
+### Features
+
+- **uat:** print recurrence by issue in uat-stats
+
+### Fixes
+
+- **uat:** count a closed issue's recurrence only after it closed
+- **uat:** count only a closed issue's regressions as its recurrence
+- **uat:** read a draft that asks to go out, and a list put to the person
+- **uat:** catch an updated app its last version didn't move
+- **uat:** one regression comment per issue per run, only while it stands
+- **uat:** comment a regression a later filing pass finds, and never preset when gh fails
+- **uat:** verify a closed issue caught again against its fix
+- **uat:** stop #63's check flagging reports and exercise answers
+- **uat:** read moved blocks and apps in #123's and #49's checks
+
 ## 0.13.2 (2026-10-23)
 
 ### Fixes
