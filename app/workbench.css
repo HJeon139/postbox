@@ -283,6 +283,7 @@ pb-ring .dot.still { animation: none; }
   background: var(--chip); color: var(--text); border: 1px solid var(--line); }
 .badge.urgent { background: var(--on); color: var(--on-ink); border-color: var(--on); }
 .rail-foot { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; gap: 2px; }
+.rail-build { margin: 4px 10px 0; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; user-select: text; }
 
 .ringstrip { display: none; }
 

@@ -21,6 +21,7 @@ import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
+import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
@@ -103,6 +104,8 @@ export async function start({
   if (codex) adapters.register(new CodexAdapter({ workRoot: join(dataDir, 'workspaces'), models: await codexModels(findCodex()) }));
   const config = {
     origin,
+    // Which build this is, shown under Personas in the sidebar.
+    build: buildInfo({ root: ROOT }),
     imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'],
     versions: { claudeCode: claude, kiroCli: kiro, codex },
     // The person’s Claude Code user settings live here: the permissions panel reads and writes their rules (#66).
@@ -275,6 +278,7 @@ export async function start({
           // overview says how to install it (#12).
           realBackends: real,
           versions: config.versions,
+          build: config.build,
           corpus: corpus.stats(),
         },
       });
