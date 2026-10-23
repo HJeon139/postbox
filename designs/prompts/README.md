@@ -83,7 +83,7 @@ Merge order: M1 core, then transcript and threads.
 
 **Gate.** Before you hand off, these pass in your worktree:
 - `npm run check`
-- a headless Chrome check (`tools/cdp.mjs`) for each change you can see in the UI
+- `npm run check:browser`, which runs every headless Chrome check in parallel, with ports of its own. A change you can see in the UI adds or extends a check (`tools/check-*.mjs`, reporting through `tools/harness.mjs`), and the run picks it up.
 
 Then an adversarial review subagent goes through your diff against the practices doc, and you fix what it confirms, under the scope rule below.
 

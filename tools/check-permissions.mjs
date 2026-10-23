@@ -13,22 +13,13 @@
 
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { launch } from './cdp.mjs';
+import { finish, ports, record } from './harness.mjs';
 
-const PORT = Number(process.env.PB_PORT ?? 4435);
-const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9635);
-const free = (port) =>
-  new Promise((ok, fail) => {
-    const s = createServer();
-    s.once('error', () => fail(new Error(`Port ${port} is in use. Stop whatever is on it, or set PB_PORT and PB_CHROME_PORT.`)));
-    s.listen(port, '127.0.0.1', () => s.close(ok));
-  });
-await free(PORT);
-await free(CHROME_PORT);
+const { PORT, CHROME_PORT } = await ports(4435, 9635);
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const root = await mkdtemp(join(tmpdir(), 'pb-check-perm-'));
@@ -64,7 +55,6 @@ const persona = rt.createPersona({ handle: 'coder', backend: 'claude-code', perm
 const thread = rt.createThread({ projectId: 'pr_check', title: 'Permissions check', personaIds: [persona.id] });
 
 const page = await launch({ port: CHROME_PORT });
-const failures = [];
 
 // ── Real input ──────────────────────────────────────────────────────────────────────────
 
@@ -123,10 +113,9 @@ async function check(name, fn) {
       timer = setTimeout(() => fail(new Error('Timed out after 30 s')), 30000);
     });
     await Promise.race([fn(), late]);
-    console.log(`  ok    ${name}`);
+    record(true, name);
   } catch (e) {
-    failures.push(name);
-    console.log(`  FAIL  ${name}\n        ${e.message.split('\n').join('\n        ')}`);
+    record(false, name, e.message);
   } finally {
     clearTimeout(timer);
   }
@@ -371,13 +360,8 @@ await check('#66 the panel fits a narrow window (375 px) without scrolling sidew
 });
 
 const errors = page.logs.filter((l) => l.startsWith('exception'));
-for (const e of errors) console.log(`  page ${e}`);
+record(!errors.length, 'the page threw no exceptions', errors.join('\n'));
 await page.close();
 await app.close();
 await rm(root, { recursive: true, force: true });
-if (failures.length || errors.length) {
-  console.log(`\n${failures.length} permissions check(s) failed${errors.length ? `, and the page threw ${errors.length} time(s)` : ''}.`);
-  process.exit(1);
-}
-console.log('\nAll permissions checks passed.');
-process.exit(0);
+finish();

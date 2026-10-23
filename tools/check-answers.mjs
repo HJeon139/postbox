@@ -12,27 +12,13 @@
 // of the review after the refusal.
 
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { launch, sleep } from './cdp.mjs';
+import { record as check, finish, ports } from './harness.mjs';
 
-const PORT = Number(process.env.PB_PORT ?? 4950);
-const CHROME = Number(process.env.PB_CHROME_PORT ?? 10150);
-
-const free = (port) =>
-  new Promise((ok) => {
-    const s = createServer()
-      .once('error', () => ok(false))
-      .once('listening', () => s.close(() => ok(true)))
-      .listen(port, '127.0.0.1');
-  });
-for (const p of [PORT, CHROME])
-  if (!(await free(p))) {
-    console.error(`Port ${p} is in use. Set PB_PORT or PB_CHROME_PORT to a free one.`);
-    process.exit(1);
-  }
+const { PORT, CHROME_PORT: CHROME } = await ports(4950, 10150);
 
 const V1 = ['# Draft issue', '', 'Steps to reproduce:', '1. Open a review.', '2. Answer it.'].join('\n');
 // Revision 2 adds a line near the top, so the line you commented on (“Steps to reproduce:”) moves from 3 to 4.
@@ -80,11 +66,6 @@ const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-answers-'));
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 app.rt.adapters.register(agent);
 const page = await launch({ port: CHROME });
-const failures = [];
-const check = (ok, what) => {
-  console.log(`${ok ? '✓' : '✗'} ${what}`);
-  if (!ok) failures.push(what);
-};
 const until = async (fn, ms = 10000) => {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) {
     const v = await fn();
@@ -194,9 +175,4 @@ try {
   await rm(dataDir, { recursive: true, force: true });
 }
 
-if (failures.length) {
-  console.error(`\n${failures.length} check${failures.length === 1 ? '' : 's'} failed.`);
-  process.exit(1);
-}
-console.log('\nAll answer checks passed.');
-process.exit(0);
+finish();
