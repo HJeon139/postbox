@@ -11,19 +11,19 @@ These changes move the controls you use most. Agent settings leave the top bar f
 
 ## What’s new, and how each part is covered
 
-| Feature | Issue | Headless check | UAT doc and screenshot | Real-agent check (`workroom.md`) |
-|---|---|---|---|---|
-| The Agents section: one row per agent, with its ring, state and open asks | #105 | `check-agents.mjs` | `shell/rail/agents-section.md`; scene `agents-section` | `agents-section-members` |
-| The quick panel: model, effort, mode and tools, each with its scope | #105 | `check-agents.mjs` | scene `agent-quick-panel` | `quick-panel-takes-effect`; phase 2 |
-| A slimmer top bar: the title and project in full | #105 | `check-header.mjs` | `overview.png`, `rail.png` | `topbar-title-cut` |
-| A turned-off tool is refused visibly | #104, with #105 | — | — | `shell-off-silent`; phase 2 |
-| The Work ledger: files, commands, version control, outside writes, effort | #132, #138 | `tests/work.test.mjs` | `conversation/work-view.md` | `work-files-match-git`, `work-commands-match-stream` |
-| Restore and Remove, refused if the file changed since | #138 | `tests/work.test.mjs` | `work-view.md` | phase 3 |
-| Work in the right pane: compact, with an expand to full screen | Work-pane PR | its new pane check | `work-view.md`; scenes `work-pane`, `work-fullscreen` | phase 1 |
-| The right pane split: a thread and Work, one above the other | Work-pane PR | its new pane check | scene `pane-split` | `pane-split`; phase 3 |
-| Thread full screen keeps the draft, the scroll and streaming | Work-pane PR | its new pane check | scene `thread-fullscreen` | `fullscreen-keeps-draft`; phase 3 |
-| Each reply’s work line opens Work at that turn | #138, Work-pane PR | its new pane check | `work-chip.png` | phase 3 |
-| A Kiro CLI agent in a room | #117, #127 | `tests/kiro-cli.test.mjs` | `sheets/new-agent.md` | `mixedroom.md` (needs `kiro-cli`) |
+| Feature                                                                   | Issue              | Headless check            | UAT doc and screenshot                                 | Real-agent check (`workroom.md`)                     |
+| ------------------------------------------------------------------------- | ------------------ | ------------------------- | ------------------------------------------------------ | ---------------------------------------------------- |
+| The Agents section: one row per agent, with its ring, state and open asks | #105               | `check-agents.mjs`        | `shell/rail/agents-section.md`; scene `agents-section` | `agents-section-members`                             |
+| The quick panel: model, effort, mode and tools, each with its scope       | #105               | `check-agents.mjs`        | scene `agent-quick-panel`                              | `quick-panel-takes-effect`; phase 2                  |
+| A slimmer top bar: the title and project in full                          | #105               | `check-header.mjs`        | `overview.png`, `rail.png`                             | `topbar-title-cut`                                   |
+| A turned-off tool is refused visibly                                      | #104, with #105    | —                         | —                                                      | `shell-off-silent`; phase 2                          |
+| The Work ledger: files, commands, version control, outside writes, effort | #132, #138         | `tests/work.test.mjs`     | `conversation/work-view.md`                            | `work-files-match-git`, `work-commands-match-stream` |
+| Restore and Remove, refused if the file changed since                     | #138               | `tests/work.test.mjs`     | `work-view.md`                                         | phase 3                                              |
+| Work in the right pane: compact, with an expand to full screen            | Work-pane PR       | `check-work-pane.mjs`     | `work-view.md`; scenes `work-pane`, `work-fullscreen`  | phase 1                                              |
+| The right pane split: a thread and Work, one above the other              | Work-pane PR       | `check-work-pane.mjs`     | scene `pane-split`                                     | `pane-split`; phase 3                                |
+| Thread full screen keeps the draft, the scroll and streaming              | Work-pane PR       | `check-work-pane.mjs`     | scene `thread-fullscreen`                              | `fullscreen-keeps-draft`; phase 3                    |
+| Each reply’s work line opens Work at that turn                            | #138, Work-pane PR | `check-work-pane.mjs`     | `work-chip.png`                                        | phase 3                                              |
+| A Kiro CLI agent in a room                                                | #117, #127         | `tests/kiro-cli.test.mjs` | `sheets/new-agent.md`                                  | `mixedroom.md` (needs `kiro-cli`)                    |
 
 ## What already worked: the regression set
 
