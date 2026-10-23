@@ -1095,7 +1095,8 @@ code.wc-name { font-size: 12px; }
   border-radius: 0 6px 6px 0; color: var(--text); text-decoration: none; }
 .agent-sub-link:hover { background: var(--panel); }
 .agent-sub-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.agent-sub .name { flex: 1; min-width: 0; font-size: 12px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Short, and it wraps rather than cut: nothing about the entry is hover-only. */
+.agent-sub .name { flex: 1; min-width: 0; font-size: 12px; line-height: 1.3; overflow-wrap: anywhere; }
 .agent-sub .name b { font-weight: 500; }
 .agent-sub .agent-asks { flex-basis: 100%; padding-left: 8px; }
 .agent-sub .ring-slot { width: 14px; }
