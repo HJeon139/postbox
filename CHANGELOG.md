@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.8.0 (2026-10-23)
+
+### Features
+
+- **corpus:** agents load datasets into the corpus with add_dataset, with no restart
+- **apps:** send a large app and its data as files, and require the turn's token on /mcp
+- **apps:** an updated app moves to the newest point in the conversation
+
+### Fixes
+
+- **apps:** Postbox writes an app's "Sent from" line from what it sent, with the app's summary apart
+- **blocks:** a block that asks again moves to the newest point in the conversation
+
 ## 0.7.0 (2026-10-23)
 
 ### Features
