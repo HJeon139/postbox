@@ -53,3 +53,14 @@ jobs:
           name: screenshots
           path: screenshots/latest/app/
           retention-days: 14
+      # Every headless check (tools/check-*.mjs, tools/checks/*.mjs), in parallel, so a pull request’s own
+      # checks run before review. It runs even when the screenshots fail, so a run shows both.
+      - name: Headless Chrome checks
+        if: success() || failure()
+        run: CHROME="$(command -v google-chrome)" npm run check:browser -- --logs check-logs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-logs
+          path: check-logs/
+          retention-days: 14

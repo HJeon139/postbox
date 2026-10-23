@@ -16,9 +16,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { launch } from './cdp.mjs';
+import { finish, ports, record } from './harness.mjs';
 
-const PORT = Number(process.env.PB_PORT ?? 4440);
-const CHROME_PORT = Number(process.env.PB_CHROME_PORT ?? 9640);
+const { PORT, CHROME_PORT } = await ports(4440, 9640, { span: 2 });
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-header-'));
@@ -26,7 +26,6 @@ const claudeHome = await mkdtemp(join(tmpdir(), 'pb-check-header-home-'));
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true, claudeHome });
 const page = await launch({ port: CHROME_PORT });
 const { rt, store } = app;
-const failures = [];
 
 // ── The room: four agents, two on real backends ─────────────────────────────────────────
 
@@ -70,10 +69,9 @@ async function check(name, fn) {
       timer = setTimeout(() => fail(new Error('Timed out after 30 s')), 30000);
     });
     await Promise.race([fn(), late]);
-    console.log(`  ok    ${name}`);
+    record(true, name);
   } catch (e) {
-    failures.push(name);
-    console.log(`  FAIL  ${name}\n        ${e.message.split('\n').join('\n        ')}`);
+    record(false, name, e.message);
   } finally {
     clearTimeout(timer);
   }
@@ -276,9 +274,11 @@ await check('#12 at 375 px the banner folds to “Demo”, and its whole sentenc
 
 await check('#12 without --demo there’s no banner, and with Claude Code missing the overview says how to install it', async () => {
   delete process.env.POSTBOX_BACKENDS;
-  const was = process.env.POSTBOX_CLAUDE_BIN;
-  // A path that doesn’t exist, so Postbox finds no Claude Code. The person’s own install is never run.
-  process.env.POSTBOX_CLAUDE_BIN = join(claudeHome, 'no-such-folder', 'claude');
+  // Paths that don’t exist, so Postbox finds no Claude Code and no other CLI. The person’s own installs are never
+  // run: asking agy, Kiro and Codex for their models took most of the case’s 30 s on a busy computer.
+  const BINS = ['POSTBOX_CLAUDE_BIN', 'POSTBOX_KIRO_BIN', 'POSTBOX_AGY_BIN', 'POSTBOX_CODEX_BIN'];
+  const was = Object.fromEntries(BINS.map((k) => [k, process.env[k]]));
+  for (const k of BINS) process.env[k] = join(claudeHome, 'no-such-folder', k.slice(8, -4).toLowerCase());
   const freshDir = await mkdtemp(join(tmpdir(), 'pb-check-header-fresh-'));
   const fresh = await start({ port: PORT + 1, dataDir: freshDir, fresh: true, quiet: true, claudeHome });
   try {
@@ -297,8 +297,9 @@ await check('#12 without --demo there’s no banner, and with Claude Code missin
     await page.send('Page.navigate', { url: 'about:blank' });
     await fresh.close();
     await rm(freshDir, { recursive: true, force: true });
-    if (was === undefined) delete process.env.POSTBOX_CLAUDE_BIN;
-    else process.env.POSTBOX_CLAUDE_BIN = was;
+    for (const k of BINS)
+      if (was[k] === undefined) delete process.env[k];
+      else process.env[k] = was[k];
     process.env.POSTBOX_BACKENDS = 'mock';
     loaded = false;
   }
@@ -430,6 +431,5 @@ await page.close();
 await app.close();
 await rm(dataDir, { recursive: true, force: true });
 await rm(claudeHome, { recursive: true, force: true });
-if (page.logs.length) console.log(`\nPage errors:\n  ${page.logs.join('\n  ')}`);
-console.log(failures.length ? `\n${failures.length} failed.` : '\nAll header checks passed.');
-process.exit(failures.length || page.logs.length ? 1 : 0);
+record(!page.logs.length, 'the page logged no errors', page.logs.join('\n'));
+finish();

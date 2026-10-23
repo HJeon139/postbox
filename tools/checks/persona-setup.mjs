@@ -4,37 +4,18 @@
 //
 //   node tools/checks/persona-setup.mjs
 //
-// It starts its own fresh Postbox on port 4400 (demo mode, with a stand-in Claude Code backend so the real
-// backend’s fields show) and Chrome on 9600, prints one PASS or FAIL line per assertion, and exits non-zero on
-// any failure.
+// It starts its own fresh Postbox (demo mode, with a stand-in Claude Code backend so the real backend’s fields
+// show) and Chrome. PB_PORT and PB_CHROME_PORT move them (4400 and 9600 by default), so sessions working in
+// parallel don’t collide. It reports through tools/harness.mjs: one line per assertion, and exit code 1 on any failure.
 
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
 import { launch, sleep } from '../cdp.mjs';
+import { record as check, finish, ports } from '../harness.mjs';
 
-const PORT = 4400;
-const CHROME_PORT = 9600;
-
-/** Fails fast when something else already listens on a port this check needs. */
-const free = (port) =>
-  new Promise((ok, fail) => {
-    const s = createServer()
-      .once('error', () => fail(new Error(`Port ${port} is in use. Stop whatever runs there, then try again.`)))
-      .once('listening', () => s.close(() => ok(true)))
-      .listen(port, '127.0.0.1');
-  });
-
-let failures = 0;
-const check = (ok, what, detail = '') => {
-  if (!ok) failures++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${what}${!ok && detail ? ` (${detail})` : ''}`);
-};
-
-await free(PORT);
-await free(CHROME_PORT);
+const { PORT, CHROME_PORT } = await ports(4400, 9600);
 const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-setup-'));
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 /** @type {any} */
@@ -133,4 +114,4 @@ try {
   await app.close();
   await rm(dataDir, { recursive: true, force: true });
 }
-process.exit(failures ? 1 : 0);
+finish();

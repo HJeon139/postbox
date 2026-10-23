@@ -5,26 +5,17 @@
 //
 //   node tools/checks/app-fullscreen.mjs
 //
-// Prints one PASS or FAIL line per assertion and exits non-zero on any failure.
+// PB_PORT and PB_CHROME_PORT move it (4413 and 9613 by default), so sessions working in parallel don’t collide.
+// It reports through tools/harness.mjs: one line per assertion, and exit code 1 on any failure.
 
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
 import { launch, sleep } from '../cdp.mjs';
+import { record as check, finish, ports } from '../harness.mjs';
 
-const PORT = 4413;
-const CHROME_PORT = 9613;
-
-const free = (port) =>
-  new Promise((ok, fail) => {
-    const s = createServer();
-    s.once('error', () => fail(new Error(`Port ${port} is in use. Stop whatever is on it and try again.`)));
-    s.listen(port, '127.0.0.1', () => s.close(() => ok(undefined)));
-  });
-await free(PORT);
-await free(CHROME_PORT);
+const { PORT, CHROME_PORT } = await ports(4413, 9613);
 
 // Counts its loads in saved state, so a reload shows up as a second load.
 const APP = (
@@ -45,11 +36,6 @@ const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-app-full-'));
 process.env.POSTBOX_MOCK_SPEED = '0.1';
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 let page = null;
-let failed = 0;
-const check = (ok, what, detail = '') => {
-  if (!ok) failed++;
-  console.log(`${ok ? 'PASS' : 'FAIL'} ${what}${!ok && detail ? ` (${detail})` : ''}`);
-};
 
 try {
   const { rt } = app;
@@ -241,11 +227,10 @@ try {
     `defaultPrevented: ${await ev('window.__esc')}`,
   );
 } catch (e) {
-  failed++;
-  console.log(`FAIL ${e.message}`);
+  check(false, 'the check ran to the end', e.message);
 } finally {
   await page?.close();
   await app.close();
   await rm(dataDir, { recursive: true, force: true });
 }
-process.exit(failed ? 1 : 0);
+finish();

@@ -19,6 +19,7 @@
     "lint:project": "node tools/lint-tokens.mjs && node tools/lint-dom.mjs && node tools/lint-copy.mjs",
     "check:contrast": "node tools/contrast.mjs app/workbench.css",
     "check": "npm run lint && npm run typecheck && npm run lint:project && npm run check:contrast && npm test",
+    "check:browser": "node tools/check-all.mjs",
     "shoot:mockups": "node tools/shoot.mjs",
     "shoot:app": "node tools/shoot-app.mjs",
     "uat": "node tools/uat-run.mjs",

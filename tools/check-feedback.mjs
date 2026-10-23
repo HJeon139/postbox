@@ -14,27 +14,13 @@
 // PB_PORT and PB_CHROME_PORT move them, so sessions working in parallel don’t collide.
 
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { launch, sleep } from './cdp.mjs';
+import { record as check, finish, ports } from './harness.mjs';
 
-const PORT = Number(process.env.PB_PORT ?? 4610);
-const CHROME = Number(process.env.PB_CHROME_PORT ?? 9810);
-
-const free = (port) =>
-  new Promise((ok) => {
-    const s = createServer()
-      .once('error', () => ok(false))
-      .once('listening', () => s.close(() => ok(true)))
-      .listen(port, '127.0.0.1');
-  });
-for (const p of [PORT, CHROME])
-  if (!(await free(p))) {
-    console.error(`Port ${p} is in use. Set PB_PORT or PB_CHROME_PORT to a free one.`);
-    process.exit(1);
-  }
+const { PORT, CHROME_PORT: CHROME } = await ports(4610, 9810);
 
 const BROKEN = 'flowchart LR\n  A[Read] -->> B[Index]';
 
@@ -100,11 +86,6 @@ const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-feedback-'));
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 app.rt.adapters.register(agent);
 const page = await launch({ port: CHROME });
-const failures = [];
-const check = (ok, what) => {
-  console.log(`${ok ? '✓' : '✗'} ${what}`);
-  if (!ok) failures.push(what);
-};
 const until = async (fn, ms = 15000) => {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(150)) {
     const v = fn();
@@ -210,9 +191,4 @@ try {
   await rm(dataDir, { recursive: true, force: true });
 }
 
-if (failures.length) {
-  console.error(`\n${failures.length} check${failures.length === 1 ? '' : 's'} failed.`);
-  process.exit(1);
-}
-console.log('\nAll feedback checks passed.');
-process.exit(0);
+finish();
