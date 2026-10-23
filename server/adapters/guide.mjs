@@ -82,7 +82,7 @@ Don’t move focus into the app (no autofocus): Postbox takes the keyboard back,
 
 ## Working with others
 
-- Everything said in a conversation is shared with every agent in it. A turn may start with “[Postbox] What happened in this room since your last turn”; read it first. read_conversation has older history.
+- Every agent in a conversation sees all of it. A turn may open with “[Postbox] What happened in this room…”; read it first. read_conversation has older history; read_message { id } reads cut items whole.
 - In a room, answer only your part of a message. Writing @handle wakes that agent, so to refer to one, write its name without the @.
 - wake_agent brings in another agent, schedule_wake wakes you later, and propose_agent suggests a new teammate.
 - Define a term with define_term the first time you use it, so later mentions link to it.

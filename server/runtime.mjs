@@ -9,6 +9,7 @@ import { basename, isAbsolute, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { READING } from '../shared/limits.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { turnLine } from '../shared/work.mjs';
@@ -48,6 +49,15 @@ export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
 const CATCH_UP_CHARS = 16000;
 const clipText = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const count = (n) => n.toLocaleString('en-US');
+/**
+ * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
+ * read_message takes, so the agent can read the rest (#109).
+ */
+const clipItem = (s, n, id) => {
+  const t = String(s ?? '');
+  return t.length > n ? `${t.slice(0, n)}… (${count(n)} of ${count(t.length)} characters; read_message { id: "${id}" } has the rest)` : t;
+};
 const clip = (s, n = 200) => {
   const t = toPlainText(s);
   return t.length > n ? t.slice(0, n - 1) + '…' : t;
@@ -1481,7 +1491,7 @@ export class Runtime {
     const root = this.store.item(t.parentId, t.rootItemId);
     if (!root) return null;
     // The thread is about this message, so it gets more room than an item in the catch-up.
-    const text = (s) => clipText(String(s ?? ''), 4000);
+    const text = (s) => clipItem(s, 4000, root.id);
     const from = 'This thread started from';
     switch (root.kind) {
       case 'user':
@@ -1502,11 +1512,12 @@ export class Runtime {
   }
 
   /**
-   * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out.
-   * @param {any} i @param {any} [se]
+   * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out. Its
+   * text is cut at n characters, saying so (#109).
+   * @param {any} i @param {any} [se] @param {number} [n]
    */
-  describeItem(i, se = null) {
-    const text = (s) => clipText(String(s ?? ''), 2000);
+  describeItem(i, se = null, n = READING.item) {
+    const text = (s) => clipItem(s, n, i.id);
     switch (i.kind) {
       case 'user':
         return `You: ${text(i.text)}${i.attachments?.length ? ` [attached: ${i.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
@@ -1557,11 +1568,50 @@ export class Runtime {
     const n = Math.max(1, Math.min(200, Number(limit) || 50));
     const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
     const slice = items.slice(Math.max(0, end - n), end);
-    const lines = slice
-      .map((i) => (i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipText(i.text ?? '', 2000)}` : this.describeItem(i)))
-      .filter(Boolean);
+    const lines = slice.map((i) => this.readLine(i, se)).filter(Boolean);
     const before = end - slice.length;
     return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
+  }
+
+  /**
+   * An item as read_conversation and read_message give it to `se`, whose own messages say “You”.
+   * @param {any} i @param {any} se @param {number} [n]
+   */
+  readLine(i, se, n = READING.item) {
+    return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n);
+  }
+
+  /**
+   * read_message: one item in full, by its id (the history and read_conversation give it where they cut one) or by
+   * a block’s id, from this thread or the conversation it branched from. Long text comes in parts (#109).
+   * @param {any} se @param {{ id?: string, from?: number }} [args]
+   */
+  readMessage(se, { id, from = 0 } = {}) {
+    const key = String(id ?? '').trim();
+    if (!key) return { ok: false, message: 'Name the item: read_message { id }, with an id from your history or read_conversation.' };
+    const threads = this.lineage(se.threadId);
+    let it = threads.map((th) => this.store.item(th, key)).find(Boolean);
+    if (!it) {
+      const blocks = threads.flatMap((th) => this.store.items(th).filter((i) => i.kind === 'block' && i.valid && i.block?.id === key));
+      if (blocks.length > 1)
+        return {
+          ok: false,
+          message: `More than one block is called “${key}”: ${blocks.map((b) => `@${b.handle}’s is ${b.id}`).join(', ')}. Read one by that id.`,
+        };
+      it = blocks[0];
+    }
+    if (!it)
+      return {
+        ok: false,
+        message: `There’s no item “${clipText(key, 80)}” in this conversation. Your history and read_conversation give the id of each item they cut.`,
+      };
+    const full = this.readLine(it, se, Infinity);
+    if (!full) return { ok: false, message: `${it.id} has nothing to read.` };
+    const start = Math.max(0, Math.min(full.length, Math.floor(Number(from) || 0)));
+    const end = Math.min(full.length, start + READING.part);
+    if (start === 0 && end === full.length) return { ok: true, message: full };
+    const more = end < full.length ? ` read_message { id: "${it.id}", from: ${end} } reads on.` : '';
+    return { ok: true, message: `${full.slice(start, end)}\n\n(Characters ${count(start + 1)}–${count(end)} of ${count(full.length)}.${more})` };
   }
 
   // ── The lint pipeline ──────────────────────────────────────────────────────────────
@@ -3264,6 +3314,9 @@ export class Runtime {
       },
       read_conversation(args = {}) {
         return { ok: true, message: rt.readConversation(se(), args) };
+      },
+      read_message(args = {}) {
+        return rt.readMessage(se(), args);
       },
       corpus_search(args) {
         return { ok: true, results: hostTool(rt, 'corpus.search', args) };

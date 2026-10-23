@@ -30,6 +30,17 @@ export const LIMITS = Object.freeze({
   cardActions: 3,
 });
 
+/**
+ * What agents read of the conversation, rather than what they send (#109). Each cut says where the rest is, so the
+ * guide doesn’t list these; read_conversation’s and read_message’s descriptions name them.
+ */
+export const READING = Object.freeze({
+  /** One item in the history at the start of a turn and in read_conversation, before it’s cut. */
+  item: 2000,
+  /** What one read_message call returns of a long item. */
+  part: 40_000,
+});
+
 /** @typedef {keyof typeof LIMITS} LimitName */
 
 /**

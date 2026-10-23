@@ -12,10 +12,11 @@
 // such as one from a turn you stopped whose process hadn’t exited yet, is refused, and nothing of it reaches the
 // conversation (#126). A call without one is from an agent you connected yourself (Settings shows the endpoint).
 
-import { limitText as n, PALETTES } from '../shared/limits.mjs';
+import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
 
 const PROTOCOL = '2025-06-18';
+const count = (k) => k.toLocaleString('en-US');
 
 const blockSchema = {
   type: 'object',
@@ -93,14 +94,25 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_conversation',
-    description:
-      'Read this conversation’s history: what the person and every agent in it said, newest last. Each turn already starts with what happened since your last one; use this for anything older.',
+    description: `Read this conversation’s history: what the person and every agent in it said, newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes.`,
     inputSchema: {
       type: 'object',
       properties: {
         limit: { type: 'number', description: 'How many items, up to 200. Default 50.' },
         skip: { type: 'number', description: 'Skip this many of the newest items, to read further back.' },
       },
+    },
+  },
+  {
+    name: 'read_message',
+    description: `Read one message of this conversation in full, where your history or read_conversation cut it at ${count(READING.item)} characters: they say how much they kept and give its id. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The id a cut gives, such as it_4kQ2xY9a, or a block’s id.' },
+        from: { type: 'number', description: 'The character to start from, for a message longer than one read.' },
+      },
+      required: ['id'],
     },
   },
   {

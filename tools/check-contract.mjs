@@ -3,6 +3,8 @@
 //        reaches the conversation; the same hand-off by id goes through.
 //   #94: update_block with outcome on an answered confirm shows the result as a Markdown line under the answer,
 //        and the block stays answered, with no needs-you.
+//   #109: asked to review another agent’s 5,000-character reply, @critic quotes its last paragraph: its history
+//        cut the reply and gave its id, and read_message gave it the rest.
 //
 //   node tools/check-contract.mjs
 //
@@ -126,6 +128,23 @@ try {
   check(!rt.s.sessions[se.id].needs, 'the agent doesn’t need the person', JSON.stringify(rt.s.sessions[se.id].needs));
   const needsGlyph = await page.evaluate(`!!${node}.querySelector('.g-needs')`);
   check(!needsGlyph, 'the block shows no needs-you mark');
+
+  // ── #109: a reviewer reads another agent’s long reply in full ─────────────────────────
+  const room = rt.createThread({ projectId, title: 'Reading check', personaIds: ['researcher', 'critic'].map((h) => rt.personaByHandle(h).id) });
+  const researcher = rt.sessionsIn(room.id).find((x) => x.handle === 'researcher');
+  const LAST = 'Last, the conclusion holds only for adults over 60.';
+  const long = `${Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}: the claim in section ${i + 1} rests on one study, and its sample is small. `.repeat(3)).join('\n\n')}\n\n${LAST}`;
+  rt.addItem(room.id, { kind: 'agent', sessionId: researcher.id, handle: 'researcher', text: long, status: 'done' });
+  await page.evaluate(`location.hash = '#/t/${room.id}'`);
+  rt.sendMessage(room.id, { text: '@critic review what researcher wrote' });
+  const replied = () => store.items(room.id).find((x) => x.kind === 'agent' && x.handle === 'critic' && x.status === 'done');
+  await until(replied, '@critic to reply');
+  const reply = replied();
+  const said109 = await page.evaluate(
+    `new Promise((ok) => { const read = () => document.querySelector('[data-item="${reply.id}"]')?.closest('.turn')?.querySelector('.md')?.innerText ?? ''; const t = setInterval(() => { if (read().includes('It ends')) { clearInterval(t); ok(read()); } }, 100); setTimeout(() => { clearInterval(t); ok(read()); }, 5000); })`,
+  );
+  check(long.length > 5000 && long.indexOf(LAST) > 2000, 'the reply is over 5,000 characters, and its last paragraph is past the cut', String(long.length));
+  check(said109.includes(LAST), '@critic quotes the last paragraph of the reply, which its history cut', said109);
 } catch (e) {
   check(false, 'the check ran to the end', e.message);
 } finally {
