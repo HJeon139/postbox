@@ -24,6 +24,7 @@ import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules,
 import { runShell } from './shell.mjs';
 import {
   agentWake,
+  bringToConversation,
   bumpSideLink,
   forkBusy,
   forkDone,
@@ -1630,10 +1631,10 @@ export class Runtime {
     return this.s.sessions[se.id];
   }
 
-  /** “Send to conversation”: a reply from a topic thread is posted in its conversation, for you and its agents. */
+  /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
   shareToConversation(topicId, itemId) {
     const topic = this.thread(topicId);
-    if (topic.kind !== 'topic') throw httpError(409, 'Only replies in a topic thread can be sent to the conversation.');
+    if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only messages in a topic or side thread can be sent to the conversation.');
     const it = this.store.item(topicId, itemId);
     if (!it?.text) throw httpError(404, 'That reply has no text to send.');
     if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
@@ -1682,13 +1683,14 @@ export class Runtime {
   }
 
   /**
-   * Posts text from a topic thread in its conversation. The conversation’s agents read it at the start of
-   * their next turn rather than being woken by it, so sharing never costs a turn.
+   * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
+   * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
+   * bring_to_conversation, because the person asked it to (#128).
    */
-  shareText(threadId, { fromThreadId, handle, text, summary = false }) {
+  shareText(threadId, { fromThreadId, handle, text, summary = false, agent = false }) {
     const from = this.s.threads[fromThreadId];
     // The conversation’s agents read it at the start of their next turn, with everything else they missed.
-    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary });
+    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary, ...(agent ? { agent } : {}) });
     return it;
   }
 
@@ -1786,7 +1788,7 @@ export class Runtime {
         return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
-        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
+        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
       case 'system':
         if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
         if (i.variant === 'joined') return `@${i.to} joined`;
@@ -3899,6 +3901,7 @@ export class Runtime {
         return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}.` };
       },
       wake_agent: (args) => wakeAgent(rt, sessionId, args),
+      bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
       read_conversation(args = {}) {
         try {
           return { ok: true, message: rt.readConversation(se(), args) };

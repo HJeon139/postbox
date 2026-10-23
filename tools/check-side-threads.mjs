@@ -224,6 +224,31 @@ await check('the Threads page lists side threads beside topic threads, with thei
   );
 });
 
+await check('a side-thread message goes to the conversation by Send to conversation, or by an agent the person asked (#128)', async () => {
+  const side = sideOf();
+  // The person asks an agent in the side thread, and it posts it with bring_to_conversation.
+  scripts.set(researcher.id, (ctx) => {
+    ctx.tools.bring_to_conversation({ text: 'The editions, for the main chat.' });
+    ctx.text('Posted it in the conversation.');
+  });
+  release(researcher.id);
+  await until(() => !busy(researcher.id), '@researcher to be free');
+  rt.sendMessage(side.id, { text: '@researcher post the editions in the main chat' });
+  await until(() => store.items(room.id).some((x) => x.kind === 'shared' && x.agent), 'the agent’s post');
+  await until(() => !busy(researcher.id), '@researcher’s turn to end');
+  const reply = store.items(side.id).findLast((x) => x.kind === 'agent' && x.handle === 'researcher' && x.text && !x.sharedAt);
+  await open(`#/t/${room.id}/side/${side.id}`);
+  const button = `[...document.querySelectorAll('.sidepanel [data-key="${reply.id}"] button')].find((b) => b.textContent === 'Send to conversation')`;
+  await page.waitFor(button, { label: 'Send to conversation on the side thread’s reply' });
+  await page.evaluate(`${button}.click()`);
+  await until(() => store.items(room.id).some((x) => x.kind === 'shared' && !x.agent && x.text === reply.text), 'the reply in the conversation');
+  await page.synced(store.state.seq);
+  await page.waitFor(`document.querySelector('.sidepanel [data-key="${reply.id}"]')?.innerText.includes('Sent to the conversation')`, { label: 'Sent' });
+  const cards = await page.evaluate(`[...document.querySelectorAll('#main .shared-head')].map((n) => n.innerText.replace(/\\s+/g, ' ').trim())`);
+  assert.ok(cards.includes(`From the thread “${side.title}” · shared by @researcher in a turn you started Open thread`), cards.join('\n'));
+  assert.ok(cards.includes(`From the thread “${side.title}” · @researcher Open thread`), cards.join('\n'));
+});
+
 await check('at 375 px, the side-thread line with its agent’s state fits without scrolling sideways', async () => {
   await page.size(375, 812);
   try {

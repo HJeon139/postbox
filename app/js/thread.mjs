@@ -402,8 +402,8 @@ const who = (it, { you = false } = {}) => {
   return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
 };
 
-// Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a reply in a
-// topic thread: “Send to conversation”. The actions appear on hover and focus, and always on touch screens.
+// Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
+// topic or side thread (#128): “Send to conversation”. The actions appear on hover and focus, and always on touch screens.
 function messageActions(node, it, ctx) {
   if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent) return;
   if (it.kind === 'block' && !it.valid) return;
@@ -440,7 +440,7 @@ function messageActions(node, it, ctx) {
           'Reply in thread',
         ),
       );
-  } else if (ctx.kind === 'topic' && (it.kind === 'agent' || it.kind === 'user') && it.text) {
+  } else if ((ctx.kind === 'topic' || ctx.kind === 'side') && (it.kind === 'agent' || it.kind === 'user') && it.text) {
     bar.append(
       it.sharedAt
         ? h('span.small.dim', icon('check', 'i-sm'), ' Sent to the conversation')
@@ -584,7 +584,8 @@ function renderItem(it, prev, ctx) {
         it.quote ? h('span.app-says', 'The app’s summary: ', h('q', it.quote)) : null,
       );
     case 'shared':
-      // A reply or a summary sent back from a topic thread. Its agents read it at the start of their next turn.
+      // A reply or a summary sent back from a topic or side thread, by you or by an agent you asked (#128). Its agents
+      // read it at the start of their next turn.
       return h(
         'div.col.turn',
         h(
@@ -592,7 +593,12 @@ function renderItem(it, prev, ctx) {
           h(
             'div.shared-head',
             icon('thread', 'i-sm'),
-            h('span.grow', it.summary ? 'Summary of the thread ' : 'From the thread ', h('b', `“${it.fromTitle}”`), it.handle ? ` · @${it.handle}` : ' · you'),
+            h(
+              'span.grow',
+              it.summary ? 'Summary of the thread ' : 'From the thread ',
+              h('b', `“${it.fromTitle}”`),
+              it.agent ? ` · shared by @${it.handle} in a turn you started` : it.handle ? ` · @${it.handle}` : ' · you',
+            ),
             S().threads[it.fromThreadId] ? h('a.small', { href: hrefOf(it.fromThreadId) }, 'Open thread') : null,
           ),
           h('div.md', { html: trusted(renderMarkdown(it.text, { mentions: handles() })) }),
