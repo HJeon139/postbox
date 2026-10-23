@@ -5,6 +5,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { draftOf } from '../write-guard.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
+import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, POSTBOX_SERVER } from './setup.mjs';
@@ -253,12 +254,9 @@ export class CodexAdapter {
     this.spawn = spawnImpl;
     this.capabilities = { ...CODEX_CAPABILITIES, ...(models.length ? { models } : {}) };
   }
-  async folderFor(persona, project) {
-    const { mkdir } = await import('node:fs/promises');
-    const { join } = await import('node:path');
-    const dir = persona.folder || project?.folder || join(this.workRoot, persona.handle);
-    await mkdir(dir, { recursive: true }).catch(() => {});
-    return dir;
+  /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
+  folderFor(persona, project) {
+    return agentFolder(persona, project, this.workRoot);
   }
   async deliver(session, message, ctx) {
     const cwd = await this.folderFor(ctx.persona, ctx.project);

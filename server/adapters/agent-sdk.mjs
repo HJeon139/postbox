@@ -12,10 +12,9 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
 import { withAskRules } from '../permission-rules.mjs';
 import { commandsOf, createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
+import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
@@ -181,11 +180,9 @@ export class AgentSdkAdapter {
     this.list = list;
   }
 
-  /** Same folder rule as the Claude Code backend: the persona’s, the project’s, or a workspace of its own. */
-  async folderFor(persona, project) {
-    const dir = persona.folder || project?.folder || join(this.workRoot, persona.handle);
-    await mkdir(dir, { recursive: true }).catch(() => {});
-    return dir;
+  /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
+  folderFor(persona, project) {
+    return agentFolder(persona, project, this.workRoot);
   }
 
   async deliver(session, message, ctx) {

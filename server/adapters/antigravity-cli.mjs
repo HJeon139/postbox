@@ -49,6 +49,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { TOOL_DEFS } from '../mcp.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
+import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
@@ -679,11 +680,9 @@ export class AntigravityCliAdapter {
     this.excluded = new Set();
   }
 
-  /** Same folder rule as the Claude backends: the persona’s, the project’s, or a workspace of its own. */
-  async folderFor(persona, project) {
-    const dir = persona.folder || project?.folder || join(this.workRoot, persona.handle);
-    await mkdir(dir, { recursive: true }).catch(() => {});
-    return dir;
+  /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
+  folderFor(persona, project) {
+    return agentFolder(persona, project, this.workRoot);
   }
 
   async deliver(session, message, ctx) {
