@@ -428,16 +428,10 @@ for (const theme of ['light', 'dark'])
       // there’s no stack to fold one ring into.
       rt.renameThread(shelf.id, 'Index every book on the shelf, then check the index against the catalog');
       await open(`#/t/${shelf.id}`);
-      // #138’s Conversation and Work tabs are being replaced by a Work pane on another branch, so the top bar’s fit is
-      // judged without them, as check-header.mjs does.
-      await page.evaluate(
-        `document.getElementById('no-conv-tabs') ?? document.head.append(Object.assign(document.createElement('style'), { id: 'no-conv-tabs', textContent: 'nav.conv-tabs { display: none !important; }' }))`,
-      );
-      await settle();
       assert.equal(
         await page.evaluate(`document.querySelector('header.topbar').scrollWidth <= document.querySelector('header.topbar').clientWidth`),
         true,
-        'The top bar overflows',
+        `The top bar overflows: ${await page.evaluate(`(() => { const b = document.querySelector('header.topbar'); return JSON.stringify({ over: b.scrollWidth - b.clientWidth, drop: b.dataset.drop, kids: [...b.children].map((c) => (c.id || c.className) + ':' + Math.round(c.getBoundingClientRect().width)), actions: [...b.querySelector('.top-actions').children].map((c) => (c.id || c.className) + ':' + Math.round(c.getBoundingClientRect().width)) }); })()`)}`,
       );
       assert.equal(await page.evaluate(`getComputedStyle(${q('.rail')}).display`), 'none');
       const ring = `document.getElementById('top-ring-${sessionIn(shelf, 'indexer').id}')`;
@@ -469,7 +463,6 @@ for (const theme of ['light', 'dark'])
       assert.match(await page.evaluate(`document.activeElement?.id ?? ''`), /^top-ring-/);
     } finally {
       rt.renameThread(shelf.id, 'Index the shelf');
-      await page.evaluate(`document.getElementById('no-conv-tabs')?.remove()`);
       await page.size(1280, 900);
     }
   });

@@ -168,6 +168,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
     ),
   );
   fitter?.observe(bar);
+  // Fitted once it’s on the page too: the observer’s first call waits for a frame, which a hidden tab can hold back.
+  queueMicrotask(() => fitTopbar(bar));
   return bar;
 }
 

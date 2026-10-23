@@ -338,11 +338,7 @@ const measure = () =>
       stack: stack ? { shown: shown(stack), rings: stack.querySelectorAll('pb-ring').length } : null,
     };
   })()`);
-// #138’s Conversation and Work tabs are being replaced by a Work pane on another branch, so the top bar is judged as
-// it will be without them: hidden here, they take no room. Once they’re gone, this hides nothing.
-const withoutTabs = `document.getElementById('no-conv-tabs') ?? document.head.append(Object.assign(document.createElement('style'), { id: 'no-conv-tabs', textContent: 'nav.conv-tabs { display: none !important; }' }))`;
 const fitted = async () => {
-  await page.evaluate(withoutTabs);
   await settle();
   await page.evaluate('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))');
   return measure();
