@@ -238,10 +238,12 @@ try {
   // app, so type once Postbox has stopped it: the grabs come every 50 ms, but on a busy computer the three can take
   // longer than a person takes to start typing.
   tools.show_app({ id: 'thief', title: 'Thief', code: THIEF, permissions: [] });
-  await ready('thief', 'Thief');
+  const thiefStopped = `[...document.querySelectorAll('.appframe')].some((n) => /Postbox stopped Thief/.test(n.textContent) && !n.querySelector('iframe.app-iframe'))`;
+  // Thief grabs focus as soon as it’s ready, so Postbox may stop it before it reports its size.
+  await until(() => ['passed', 'note'].includes(rt.s.apps.thief?.check.status), 'Thief to pass its check');
+  await until(() => page.evaluate(`!!${frameOf('Thief')}?.dataset.sized || ${thiefStopped}`), 'Thief to load, or be stopped');
   await sleep(500);
   await clickEl(`document.getElementById('composer-input')`);
-  const thiefStopped = `[...document.querySelectorAll('.appframe')].some((n) => /Postbox stopped Thief/.test(n.textContent) && !n.querySelector('iframe.app-iframe'))`;
   await until(() => page.evaluate(thiefStopped), 'Postbox to stop Thief').catch(() => {});
   for (const ch of 'hello') {
     await key(ch, ch.toUpperCase().charCodeAt(0), ch);
