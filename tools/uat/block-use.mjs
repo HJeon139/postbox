@@ -1,5 +1,6 @@
-// M1’s exit check (#64): what a turn’s reply calls for, and whether it used the right block. prose-instead-of-block
-// in tools/uat/checks.mjs reads it, and counts the run with blockUseTally.
+// M1’s exit check (#64): what a turn’s reply calls for, and whether it used the right block; and what a reply leaves
+// for the person in prose (#63). prose-instead-of-block in tools/uat/checks.mjs reads both, and counts the run with
+// blockUseTally.
 
 // ── M1’s exit check: did a reply that called for a block use the right one? (#64) ──────────────────────
 // What a turn calls for, from what the person asked and what the agent did, as the agent guide maps them:
@@ -52,6 +53,40 @@ function askingLines(text) {
     if (!practice) out.push(line);
   }
   return out;
+}
+
+// ── #63: what a reply leaves for the person in prose (#213) ────────────────────────────────────────────
+// Stricter than callsFor, which M1’s counts keep as they were. Over the 15 runs of 21–23 October 2026, most of this
+// check’s hits were reports: “All 8 pass … Should I add the check?” reports what was done and offers one next step,
+// and asks the person to pick nothing. So:
+// - questions: three or more questions, each the end of a sentence, or two in lines that speak to the person (you,
+//   your): “Why lower? I haven’t tested this…” answers itself. Code, tables, quotes, a dataset’s own questions
+//   (“Question: …”), exercises and answers inside <details> ask the person nothing, and neither does a URL’s “?”.
+// - options: two or more list items, and a question that asks the person to pick (which, choose, prefer, or…).
+// - a draft: eight or more lines whose last three ask the person to approve them (“If you approve the design…”),
+//   with no block to point at. A report isn’t one, however long, nor one that mentions an approval in passing
+//   (“I wrote CHECKLIST.md from the approved revision”).
+const PICKS = /\b(which|pick|choose|prefer|rather|or)\b/i;
+const QUESTION = /[^.!?]*\?(?=[*_"”’)\]]*(?:\s|$))/g;
+const FENCE = /^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm;
+const QUOTED = /^\s*(?:[|>]|(?:\*\*)?(?:question|q\d*)(?:\*\*)?\s*:)/i;
+const APPROVE_IT =
+  /\b(?:if|once|when) you approve\b(?! the (?:block|review))|\byour (?:approval|sign[- ]?off)\b|\b(?:do|would|can) you approve\b|\blooks? good to you\b|\bready to (?:send|post|publish|go out)\b/i;
+
+/**
+ * What a reply asks of the person in prose, by the rules above: 'questions', 'options', 'draft', or null.
+ * @param {string} text
+ * @returns {'questions'|'options'|'draft'|null}
+ */
+export function asksInProse(text) {
+  const lines = askingLines(String(text ?? '').replace(FENCE, '')).filter((l) => l.trim() && !QUOTED.test(l));
+  const tail = lines.slice(-14);
+  const questions = tail.flatMap((l) => l.match(QUESTION) ?? []);
+  const toYou = tail.filter((l) => /\byour?\b/i.test(l)).flatMap((l) => l.match(QUESTION) ?? []);
+  if (questions.length >= 3 || toYou.length >= 2) return 'questions';
+  if (tail.filter((l) => LIST_ITEM.test(l)).length >= 2 && questions.some((q) => PICKS.test(q))) return 'options';
+  if (lines.length >= DRAFT_LINES && APPROVE_IT.test(lines.slice(-3).join('\n')) && !POINTS_AT_BLOCK.test(text)) return 'draft';
+  return null;
 }
 
 /** What a turn’s reply calls for, by the rules above. */

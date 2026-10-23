@@ -32,7 +32,7 @@ import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from 
 import { freshInstall } from '../../server/seed.mjs';
 import { ASKING } from '../../shared/catalog.mjs';
 import { toPlainText } from '../../shared/markdown.mjs';
-import { blockUseTally } from './block-use.mjs';
+import { asksInProse, blockUseTally } from './block-use.mjs';
 
 export { callsFor, LONG_TURN_MS, LONG_TURN_TOOLS } from './block-use.mjs';
 
@@ -652,15 +652,16 @@ export const CHECKS = [
           .map((it) => it.text ?? '')
           .join('\n');
         const tail = text.split('\n').slice(-14).join('\n');
-        const numbered = (tail.match(/^\s*(?:\d+[.)]|[-*])\s+\S/gm) ?? []).length;
-        const questions = (tail.match(/\?/g) ?? []).length;
-        const draft = text.split('\n').length > 40;
         tally.add(list, types, person.get(turnId) ?? '');
         if (types.some((t) => ['choice', 'form', 'review', 'confirm'].includes(t))) continue;
-        if ((numbered >= 2 && questions >= 1) || questions >= 3 || draft)
+        const asks = asksInProse(text);
+        if (asks)
           out.push({
             key: list[0].id,
-            title: draft ? 'A long draft was sent as prose, not a review block' : 'Questions or options were asked in prose, not a form or choice block',
+            title:
+              asks === 'draft'
+                ? 'A draft to approve was sent as prose, not a review block'
+                : 'Questions or options were asked in prose, not a form or choice block',
             evidence: `@${list[0].handle}: “${clip(tail, 200)}”`,
           });
       }
