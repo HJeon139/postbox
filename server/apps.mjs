@@ -58,7 +58,7 @@ export function appCheck(rt, appId, { version, problems = [] }) {
 // browser accepts a send only right after a click or key press in that app (app/js/apps.mjs); here, where a
 // script calling the API lands too, an app gets APP_SEND_LIMIT sends per APP_SEND_WINDOW_MS. More wait on
 // a card for you to allow or not, and nothing is dropped silently: the app is told its send is waiting.
-// The browser keeps the same limit (SEND_LIMIT in app/js/apps.mjs), and the agent guide says so.
+// The browser keeps the same limit (SEND_LIMIT in app/js/app-send-card.mjs), and the agent guide says so.
 export const APP_SEND_LIMIT = 5;
 export const APP_SEND_WINDOW_MS = 60_000;
 /** Sends one card holds; past that, a send is refused with a reason. */
@@ -212,8 +212,10 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
       at: Date.now(),
     },
   ];
+  // A new version brings a retired app back (#193).
+  const { retired: _, ...live } = app;
   const next = {
-    ...app,
+    ...live,
     title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
     versions,
     current: versions.length,
@@ -227,6 +229,34 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
     moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
   }
   return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
+}
+
+/**
+ * retire_app (#193): an app its agent no longer needs shows as one line in its place, saying why and leading to what
+ * replaced it, with its version menu. It stays where it is, since nothing new needs the person, and it runs no
+ * sandbox until they open a version. A new version (update_app) brings it back.
+ * @param {any} rt  the Runtime @param {string} sessionId @param {{ id?: unknown, reason?: unknown, replacedBy?: unknown }} args
+ */
+export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
+  const app = rt.s.apps[String(id)];
+  if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
+  const why = String(reason ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
+  if (!why) return { ok: false, message: 'retire_app needs a reason, which the person reads in the app’s place.' };
+  /** @type {{ id: string, title: string, itemId: string } | null} */
+  let to = null;
+  if (replacedBy != null && replacedBy !== '') {
+    const rid = String(replacedBy);
+    // What replaced it is shown in the same conversation, so its line can lead there: another app, or a block.
+    const other = rid === app.id ? null : rt.s.apps[rid];
+    const item = rt.store.items(app.threadId).find((x) => x.kind === 'block' && x.valid && x.block.id === rid && (other || x.block.type !== 'app'));
+    if (!item) return { ok: false, message: `There’s no other app or block ${rid} in this conversation. Name one shown here, or leave out replacedBy.` };
+    to = { id: rid, title: String(other?.title ?? item.block.title ?? item.block.prompt ?? rid).slice(0, 200), itemId: item.id };
+  }
+  rt.store.emit('app', { ...app, retired: { by: rt.session(sessionId).handle, reason: why, replacedBy: to, at: Date.now() } });
+  return { ok: true, message: `Retired ${app.title}. It shows as one line where it was, with its versions; update_app brings it back.` };
 }
 
 /** Host tools that apps (through the bridge) and agents can use, if granted. */

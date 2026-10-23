@@ -1,7 +1,7 @@
 // The MCP server: Postbox’s UI tools over JSON-RPC 2.0 (MCP’s Streamable HTTP transport, JSON responses).
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
-// and gets show_block, update_block, show_app, update_app, define_term, propose_agent, schedule_wake,
+// and gets show_block, update_block, show_app, update_app, retire_app, define_term, propose_agent, schedule_wake,
 // wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search and add_dataset.
 // Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
 // carrying { blockId, action, values }.
@@ -73,6 +73,20 @@ export const TOOL_DEFS = [
         summary: { type: 'string' },
       },
       required: ['id'],
+    },
+  },
+  {
+    name: 'retire_app',
+    description:
+      'Retire an app you showed that’s wrong, replaced or no longer needed, rather than updating it to a version that only points elsewhere. It shows as one line where it is, with reason (up to 300 characters) and, when replacedBy names an app or block shown in this conversation, a link to it; it doesn’t move, runs nothing until the person opens a version, and keeps its versions. update_app brings it back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        reason: { type: 'string' },
+        replacedBy: { type: 'string', description: 'The id of the app or block that replaces it.' },
+      },
+      required: ['id', 'reason'],
     },
   },
   {

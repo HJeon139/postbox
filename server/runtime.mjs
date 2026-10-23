@@ -29,6 +29,7 @@ import {
   needAppSend,
   registerApp,
   resolveAppSend,
+  retireApp,
   updateApp,
 } from './apps.mjs';
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
@@ -2001,7 +2002,7 @@ export class Runtime {
     const send = () => {
       e.timer = null;
       // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
-      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending');
+      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending' && !a.retired);
       if (wait > 0 && checking && Date.now() < until) {
         e.timer = setTimeout(send, wait);
         e.timer.unref?.();
@@ -3535,6 +3536,9 @@ export class Runtime {
       },
       update_app(args, given) {
         return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
+      },
+      retire_app(args) {
+        return retireApp(rt, sessionId, args);
       },
       define_term({ term, definition, key, source }) {
         if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };

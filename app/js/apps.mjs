@@ -4,7 +4,7 @@
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
-import { api, client } from './client.mjs';
+import { api, client, itemsOf } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
 
@@ -43,7 +43,7 @@ addEventListener('message', async (e) => {
   }
   const reply = (result, error) => e.source.postMessage({ __pb: 1, type: 'reply', id: m.id, result, error }, '*');
   const app = client.state.apps[rec.appId];
-  const current = app && rec.version === app.current && !rec.check;
+  const current = app && !app.retired && rec.version === app.current && !rec.check;
   switch (m.type) {
     case 'hello':
       e.source.postMessage({ __pb: 1, type: 'init', theme: theme(), state: rec.check ? null : (app?.state ?? null) }, '*');
@@ -84,7 +84,15 @@ addEventListener('message', async (e) => {
       }
       break;
     case 'event':
-      if (!current) return reply(null, rec.check ? 'Events are off during the check.' : 'This is an older version, shown read-only.');
+      if (!current)
+        return reply(
+          null,
+          rec.check
+            ? 'Events are off during the check.'
+            : app?.retired
+              ? 'This app was retired, so it’s shown read-only.'
+              : 'This is an older version, shown read-only.',
+        );
       {
         const refused = activated(e, rec);
         if (refused) return reply(null, refused);
@@ -479,14 +487,14 @@ const observer = new IntersectionObserver(
 /**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.
  */
-export function mountApp(container, appId, { review = false, onPin } = {}) {
+export function mountApp(container, appId, { review = false, onPin, onBack } = {}) {
   const app = client.state.apps[appId];
   if (!app) {
     container.replaceChildren(h('p.small.dim', 'This app isn’t available any more.'));
     return;
   }
   const v = viewing.get(appId) ?? app.current;
-  const old = v !== app.current;
+  const old = v !== app.current || !!app.retired; // a retired app’s versions open read-only, the current one too (#193)
   const key = `${appId}:${v}`;
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
@@ -615,10 +623,10 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
               type: 'button',
               onclick: () => {
                 viewing.delete(appId);
-                mountApp(container, appId, { review, onPin });
+                (onBack ?? (() => mountApp(container, appId, { review, onPin })))();
               },
             },
-            `Back to v${app.current}`,
+            app.retired ? 'Close' : `Back to v${app.current}`,
           ),
         ),
       ),
@@ -670,7 +678,7 @@ export function renderAppItem(item, ctx) {
               // Opens on the version shown, scrolled into view among many (#36).
               current: ver.v === v,
               run: () => {
-                if (ver.v === app.current) viewing.delete(app.id);
+                if (ver.v === app.current && !app.retired) viewing.delete(app.id);
                 else viewing.set(app.id, ver.v);
                 ctx.rerender();
               },
@@ -682,6 +690,8 @@ export function renderAppItem(item, ctx) {
     `v${app.current} · updated ${ago(last.at)}`,
     icon('down', 'i-sm'),
   );
+  // Retired (#193): one line in its place, and no sandbox until you open a version from its menu.
+  if (app.retired && !viewing.has(app.id)) return retiredLine(app, versionBtn, ctx);
   const titleId = `app-${app.id}`;
   const fullBtn = h('button.btn.icon.sm', { type: 'button', 'aria-label': 'Full screen' }, icon('expand'));
   const node = h(
@@ -695,7 +705,7 @@ export function renderAppItem(item, ctx) {
   const slot = h('div.app-slot', overlay);
   const rec = { appId: app.id, slot, overlay, btn: fullBtn, titleId };
   fullBtn.onclick = () => (full?.overlay === overlay ? exitFull() : enterFull(rec));
-  mountApp(holder, app.id);
+  mountApp(holder, app.id, app.retired ? { onBack: ctx.rerender } : {});
   // Re-rendered while full screen (another version, say): the new box takes the old one’s place.
   // (Only a re-render: the old box is still on the page. Coming back to the conversation later starts in the column.)
   if (full && !full.overlay.isConnected) exitFull({ focus: false });
@@ -708,6 +718,30 @@ export function renderAppItem(item, ctx) {
       enterFull(rec, { focus: refocus });
     });
   return slot;
+}
+
+/**
+ * A retired app (#193): one quiet line where it was, saying who retired it and why, with a link to what replaced it
+ * when that’s shown in this conversation, and its version menu.
+ */
+function retiredLine(app, versionBtn, ctx) {
+  const r = app.retired;
+  const to = r.replacedBy && itemsOf(ctx.threadId).some((x) => x.id === r.replacedBy.itemId) ? r.replacedBy : null;
+  const goTo = (e) => {
+    const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
+    const node = box?.querySelector(`:scope > [data-key="${CSS.escape(to.itemId)}"]`);
+    if (!(node instanceof HTMLElement)) return;
+    node.scrollIntoView({ block: 'center' });
+    (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
+  };
+  return h(
+    'div.col.sys-line.app-retired',
+    { role: 'group', 'aria-label': `${app.title}, retired` },
+    icon('archive', 'i-sm'),
+    h('span.grow', h('b', app.title), ` · Retired by @${r.by}: ${r.reason}`),
+    to ? h('button.btn.sm.ghost', { type: 'button', onclick: goTo }, `Go to ${to.title}`) : null,
+    versionBtn,
+  );
 }
 
 // ── Full screen ──────────────────────────────────────────────────────────────────────────
