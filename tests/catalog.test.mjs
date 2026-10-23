@@ -154,6 +154,16 @@ test('every sandbox page is served with a sandbox policy, so it never runs with 
   assert.match(csp('http://x'), /connect-src 'none'/);
 });
 
+test('#180: Postbox’s own media moves to the page’s origin, so a page opened at either spelling loads it', async () => {
+  const { onPageOrigin } = await import('../shared/urls.mjs');
+  const src = 'http://127.0.0.1:4191/media/middlemarch-title.svg?v=1';
+  assert.equal(onPageOrigin(src, 'http://localhost:4191'), 'http://localhost:4191/media/middlemarch-title.svg?v=1');
+  assert.equal(onPageOrigin(src, 'http://127.0.0.1:4191'), src);
+  // Not Postbox’s: another port, another host, or https from an allowed origin.
+  assert.equal(onPageOrigin('http://127.0.0.1:9999/x.png', 'http://localhost:4191'), 'http://127.0.0.1:9999/x.png');
+  assert.equal(onPageOrigin('https://www.gutenberg.org/x.png', 'http://localhost:4191'), 'https://www.gutenberg.org/x.png');
+});
+
 test('a type named after an Object property is unknown, not a crash', () => {
   for (const type of ['constructor', 'toString', '__proto__']) {
     const r = validateBlock(base(type));

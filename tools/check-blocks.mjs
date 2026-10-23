@@ -3,6 +3,8 @@
 //     the agent hears “dismiss”, and its agent stops needing them;
 //   • the agent withdraws a choice it asked: it reads “Withdrawn by @drafter” with the reason, and can’t be answered;
 //   • the agent records an outcome on an approved review: it shows under the answer, and the review stays answered.
+// And the image block (#180): the demo’s title page, from Postbox’s own media, loads with the page opened at
+// 127.0.0.1 and at localhost, and an image that fails says so, in place of a broken image.
 //
 //   node tools/check-blocks.mjs
 //
@@ -37,6 +39,19 @@ const scripts = {
   ask: (ctx) => ctx.tools.show_block({ block: choice('where', 'Where should I report this?') }),
   stale: (ctx) => ctx.tools.show_block({ block: choice('stale', 'Which tracker?') }),
   review: (ctx) => ctx.tools.show_block({ block: review }),
+  images: (ctx) => {
+    // The demo’s title page, as tools/demo.mjs shows it, and one that isn’t there.
+    const image = (id, name) => ({
+      id,
+      type: 'image',
+      version: 1,
+      fallback: 'The title page',
+      src: `${process.env.POSTBOX_ORIGIN}/media/${name}`,
+      alt: `The ${id}`,
+    });
+    ctx.tools.show_block({ block: { ...image('title-page', 'middlemarch-title.svg'), caption: 'Served by Postbox, an allowed origin.' } });
+    ctx.tools.show_block({ block: image('missing-page', 'not-there.svg') });
+  },
 };
 const agent = {
   name: 'mock',
@@ -130,7 +145,30 @@ try {
     `the outcome shows under the answer, and it stays answered (“${filed.outcome}”)`,
   );
 
-  check(!page.logs.length, `no errors in the page${page.logs.length ? `: ${page.logs.join('; ')}` : ''}`);
+  // ── Images (#180) ──
+  rt.sendMessage(thread.id, { text: 'images' });
+  await until(() => itemOf('missing-page') && !rt.turns.size);
+  for (const host of ['127.0.0.1', 'localhost']) {
+    // The page is open at 127.0.0.1 already, where the hash alone wouldn’t load it again.
+    if (host === '127.0.0.1') await page.reload();
+    else await page.goto(`http://${host}:${PORT}/#/t/${thread.id}`);
+    await page.synced(store.state.seq);
+    await page.waitFor(`${BLOCK('missing-page')}`, { label: `the image blocks at ${host}` });
+    await page.evaluate(`${BLOCK('title-page')}.scrollIntoView({ block: 'center' })`);
+    const loaded = await until(
+      () => page.evaluate(`(() => { const i = ${BLOCK('title-page')}.querySelector('img'); return i?.complete && i.naturalWidth > 0; })()`),
+      5000,
+    );
+    check(!!loaded, `the demo’s title page loads with the page at ${host}`);
+    await page.evaluate(`${BLOCK('missing-page')}.scrollIntoView({ block: 'center' })`);
+    const failed = await until(() => page.evaluate(`${BLOCK('missing-page')}.querySelector('.img-failed')?.textContent ?? ''`), 5000);
+    const broken = await page.evaluate(`!!${BLOCK('missing-page')}.querySelector('img')`);
+    check(failed === 'This image couldn’t load. It shows: The missing-page' && !broken, `an image that fails says so, at ${host} (“${failed}”)`);
+  }
+
+  // The missing image’s 404 is the one expected error.
+  const logs = page.logs.filter((l) => !/not-there\.svg|status of 404/.test(l));
+  check(!logs.length, `no errors in the page${logs.length ? `: ${logs.join('; ')}` : ''}`);
 } finally {
   await page.close?.();
   await app.close();

@@ -5,6 +5,7 @@
 import { ASKING } from '/shared/catalog.mjs';
 import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
+import { onPageOrigin } from '/shared/urls.mjs';
 import { mountApp } from './apps.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { client } from './client.mjs';
@@ -620,7 +621,16 @@ const RENDER = {
         'div.block-body',
         h(
           'figure',
-          h('img', { src: b.src, alt: b.alt, width: b.width ?? null, height: b.height ?? null, loading: 'lazy', referrerpolicy: 'no-referrer' }),
+          h('img', {
+            src: onPageOrigin(b.src, location.origin),
+            alt: b.alt,
+            width: b.width ?? null,
+            height: b.height ?? null,
+            loading: 'lazy',
+            referrerpolicy: 'no-referrer',
+            // A failed image says so, in place of a broken-image icon (#180). The alt text stays as the description.
+            onerror: (e) => e.target.replaceWith(h('p.err.img-failed', icon('warn'), `This image couldn’t load. It shows: ${b.alt}`)),
+          }),
           h('figcaption', b.caption ? `${b.caption} · ` : '', `From ${new URL(b.src).host}`),
         ),
       ),
