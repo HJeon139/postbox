@@ -278,7 +278,7 @@ const clip200 = (s) => {
   const t = toPlainText(s);
   return t.length > 200 ? `${t.slice(0, 199)}…` : t;
 };
-const clock = (ms) => new Date(ms).toISOString().slice(11, 19);
+const clock = (ms) => `${new Date(ms).toISOString().slice(11, 19)} UTC`;
 /** The Claude Code session a turn’s stream ran in, from its init. */
 const claudeSessionOf = (events) => events.find((e) => e?.type === 'system' && e.subtype === 'init')?.session_id ?? null;
 /**
@@ -313,24 +313,32 @@ const resultsOf = (events) =>
 /** The Postbox tool calls a stream made after a moment, that Postbox didn’t refuse. */
 function postboxCallsAfter(events, after) {
   const results = resultsOf(events);
-  return events
-    .filter((e) => e?.type === 'assistant' && (timeOf(e.timestamp) ?? 0) > after)
-    .flatMap((e) => (Array.isArray(e.message?.content) ? e.message.content : []).map((b) => ({ b, at: timeOf(e.timestamp) })))
-    .filter(({ b }) => b?.type === 'tool_use' && String(b.name ?? '').startsWith(`mcp__${POSTBOX_SERVER}__`) && results.get(b.id)?.is_error !== true)
-    .map(({ b, at }) => ({ name: String(b.name).slice(`mcp__${POSTBOX_SERVER}__`.length), at: /** @type {number} */ (at) }));
+  return (
+    events
+      .filter((e) => e?.type === 'assistant' && (timeOf(e.timestamp) ?? 0) > after)
+      .flatMap((e) => (Array.isArray(e.message?.content) ? e.message.content : []).map((b) => ({ b, at: timeOf(e.timestamp) })))
+      // A call with no result never got an answer from Postbox (the process was killed first), so it counts only with one.
+      .filter(
+        ({ b }) =>
+          b?.type === 'tool_use' && String(b.name ?? '').startsWith(`mcp__${POSTBOX_SERVER}__`) && results.has(b.id) && results.get(b.id).is_error !== true,
+      )
+      .map(({ b, at }) => ({ name: String(b.name).slice(`mcp__${POSTBOX_SERVER}__`.length), at: /** @type {number} */ (at) }))
+  );
 }
 
 /**
  * Each block’s history from the event log (#123): every answer, with the revision it landed on, and every update that
  * reopened an answered block before the agent had read the answer. An answer reaches an agent at the start of a turn:
  * one given while its turn runs waits for that turn to end. So an update with no new turn of that session since the
- * answer was written without it. A block shown before the history begins (a log that lost its first segment) is
+ * answer was written without it. A turn starts when the session starts thinking with finishedAt cleared, and ends when
+ * finishedAt is set: a permission card mid-turn sets the state to needs, not finishedAt. A fix that marks the answer
+ * read (answer.read, #123) is read too. A block shown before the history begins (a log that lost its first segment) is
  * skipped.
  * @param {any[]} events
  */
 export function blockHistory(events) {
-  /** @type {Map<string, string|null>} */
-  const sessionState = new Map();
+  /** @type {Map<string, boolean>} */
+  const inTurn = new Map();
   /** @type {Map<string, number[]>} */
   const turnStarts = new Map();
   /** @type {Map<string, any>} */
@@ -341,9 +349,11 @@ export function blockHistory(events) {
     const d = e?.data;
     if (!d) continue;
     if (e.type === 'session') {
-      const was = sessionState.get(d.id) ?? null;
-      if (d.state === 'think' && !BUSY.has(was ?? '')) turnStarts.set(d.id, [...(turnStarts.get(d.id) ?? []), e.seq]);
-      sessionState.set(d.id, d.state);
+      const was = inTurn.get(d.id) ?? false;
+      // A history without finishedAt (none on main lacks it) falls back to the state alone.
+      const now = d.finishedAt === undefined ? BUSY.has(d.state) : d.finishedAt === null && (was || d.state === 'think');
+      if (now && !was) turnStarts.set(d.id, [...(turnStarts.get(d.id) ?? []), e.seq]);
+      inTurn.set(d.id, now);
     } else if (e.type === 'item.add' && d.item?.kind === 'block' && d.item.valid) {
       const it = d.item;
       blocks.set(it.id, {
@@ -363,12 +373,12 @@ export function blockHistory(events) {
       if (p.answered === true && p.answer) {
         // A fix that records the revision the person saw puts it on the answer (#123).
         const saw = Number.isFinite(p.answer.revision) ? p.answer.revision : null;
-        b.answer = { seq: e.seq, at: p.answer.at ?? null, action: p.answer.action ?? 'answer', revision: b.revision, saw };
+        b.answer = { seq: e.seq, at: p.answer.at ?? null, action: p.answer.action ?? 'answer', revision: b.revision, saw, read: p.answer.read === true };
         answers.push({ ...b.answer, itemId: b.itemId, threadId: b.threadId, handle: b.handle, title: b.title });
-      }
+      } else if (p.answer?.read === true && b.answer) b.answer.read = true;
       if (Number.isFinite(p.revision)) {
         if (p.answered === false && b.answer) {
-          const read = (turnStarts.get(b.sessionId) ?? []).some((s) => s > b.answer.seq && s < e.seq);
+          const read = b.answer.read || (turnStarts.get(b.sessionId) ?? []).some((s) => s > b.answer.seq && s < e.seq);
           if (!read)
             reopened.push({
               itemId: b.itemId,
@@ -492,6 +502,9 @@ function jobRecord(state, j) {
   }
   return null;
 }
+
+/** The checks the runner also runs while agents work, since what they catch can be gone by the time the turn ends. */
+export const MID_TURN = ['background-step-closed', 'two-processes-one-session'];
 
 export const CHECKS = [
   {
@@ -1093,7 +1106,9 @@ export const CHECKS = [
           const shown = steps.get(j.id);
           if (shown?.step.state !== 'done') return [];
           const record = jobRecord(f.state, j);
-          if (record ? record.ended : j.ended) return [];
+          // A fix keeps the job’s record while it runs, and its step running until it ends: a step it closed (one that
+          // names its job) with no record left has ended, whatever the stream, whose CLI Keep running ends, says.
+          if (record ? record.ended : j.ended || shown.step.job) return [];
           return [
             {
               key: j.id,
@@ -1194,7 +1209,9 @@ export const CHECKS = [
               (m) => m.from === hop.from && (m.to === null || m.to === hop.to) && m.text.length > delivered.text.length && clip200(m.text) === hop.reason,
             )?.text ??
             null;
-          const short = original !== null ? delivered.text.length < original.length : /…$/.test(hop.reason) && hop.reason.length >= 200;
+          // Clipped, not only made plain: a message of 200 characters or fewer was never cut.
+          const short =
+            original !== null ? original.length > 200 && delivered.text.length < original.length : /…$/.test(hop.reason) && hop.reason.length >= 200;
           if (!short) return [];
           return [
             {
@@ -1229,9 +1246,12 @@ export const CHECKS = [
   },
 ];
 
-/** Runs every check; each finding carries its check id and issue number. */
-export function runChecks(facts) {
-  return CHECKS.flatMap((c) => {
+/**
+ * Runs every check, or only those named; each finding carries its check id and issue number.
+ * @param {any} facts  @param {{ only?: string[] | null }} [opts]
+ */
+export function runChecks(facts, { only = null } = {}) {
+  return CHECKS.filter((c) => !only || only.includes(c.id)).flatMap((c) => {
     try {
       // A finding can set its own issue (null for information), and carry a verdict, a note and counts for the
       // report: the block counts for M1’s exit check do.

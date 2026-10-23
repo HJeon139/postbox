@@ -638,6 +638,20 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     short.state.items.t1 = [{ id: 'h', at: T0, kind: 'hop', fromSessionId: 's2', from: 'critic', to: 'researcher', reason: 'Two fixes.', status: 'allowed' }];
     short.state.items.t2 = [{ id: 'w', at: T0 + 1, kind: 'agent', sessionId: 's2', handle: 'critic', text: 'Two fixes.', status: 'done' }];
     assert.deepEqual(found(short, 'wake-text-clipped'), []);
+    // Nor was one under 200 characters whose preview is only plainer, with its Markdown gone.
+    const md = 'Fix [the docs](https://example.com/docs) and `setup.py` first.';
+    const plain = room({
+      streams: [
+        {
+          handle: 'critic',
+          events: [{ ...wakeCall[1], message: { content: [{ ...wakeCall[1].message.content[0], input: { handle: 'researcher', message: md } }] } }],
+        },
+      ],
+    });
+    plain.state.items.t1 = [{ id: 'h', at: T0, kind: 'hop', fromSessionId: 's2', from: 'critic', to: 'researcher', reason: preview(md), status: 'allowed' }];
+    plain.state.items.t2 = [{ id: 'w', at: T0 + 1, kind: 'agent', sessionId: 's2', handle: 'critic', text: preview(md), status: 'done' }];
+    assert.ok(preview(md).length < md.length);
+    assert.deepEqual(found(plain, 'wake-text-clipped'), []);
   });
 
   // Two turns of @critic’s one Claude Code session, as in #126: the person sent a message at 17:22:52, Postbox showed
@@ -690,11 +704,11 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     );
     assert.equal(
       hits[0].evidence,
-      '@critic’s turn started at 17:22:52 while the session’s previous turn (Claude Code session 35d8a8ea) went on until 17:24:20, 88 s later.',
+      '@critic’s turn started at 17:22:52 UTC while the session’s previous turn (Claude Code session 35d8a8ea) went on until 17:24:20 UTC, 88 s later.',
     );
     assert.equal(
       hits[1].evidence,
-      '@critic was stopped at 17:22:52, and its process then made 2 Postbox calls (show_block, update_block), the last 70 s after Stop.',
+      '@critic was stopped at 17:22:52 UTC, and its process then made 2 Postbox calls (show_block, update_block), the last 70 s after Stop.',
     );
   });
 
@@ -707,6 +721,16 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     f = room({
       streams: [turn(T0 - 60_000, T0 + 2900, [{ at: T0 + 2500, name: 'mcp__postbox__show_block', error: true }]), turn(T0 + 4000, T0 + 9000)],
     });
+    f.state.items.t1 = [stopped];
+    assert.deepEqual(found(f, 'two-processes-one-session'), []);
+    // A call the process made just before it was killed, with no result, never reached Postbox.
+    const cut = turn(T0 - 60_000, T0 + 1000);
+    cut.events.push({
+      type: 'assistant',
+      timestamp: iso(T0 + 1500),
+      message: { content: [{ type: 'tool_use', id: 'toolu_cut', name: 'mcp__postbox__show_block', input: {} }] },
+    });
+    f = room({ streams: [cut, turn(T0 + 4000, T0 + 9000)] });
     f.state.items.t1 = [stopped];
     assert.deepEqual(found(f, 'two-processes-one-session'), []);
     // Turns of different sessions (a topic thread’s fork has its own id) may run side by side.
@@ -791,7 +815,14 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
       output_file: '/tmp/x.output',
     };
     assert.deepEqual(found(bgRoom('done', [bgStream([end])]), 'background-step-closed'), []);
-    // A fix’s own record of the job decides, when there is one.
+    // A fix’s own record of the job decides, when there is one. Without one, a step that names its job was closed by a
+    // fix that tracks it (fix/p0-stop removes the record when the job ends), even when Keep running left the stream
+    // without the end.
+    const tracked = bgRoom('done', [bgStream()]);
+    tracked.state.items.t1[0].activity.steps[0].job = 'bgxwt3pqu';
+    assert.deepEqual(found(tracked, 'background-step-closed'), []);
+    tracked.state.sessions.s1.jobs = [{ id: 'bgxwt3pqu', toolUseId: 'toolu_bg', state: 'running', kept: true }];
+    assert.equal(found(tracked, 'background-step-closed').length, 1);
     assert.deepEqual(
       found(bgRoom('done', [bgStream()], { jobs: [{ id: 'bgxwt3pqu', toolUseId: 'toolu_bg', status: 'stopped' }] }), 'background-step-closed'),
       [],
@@ -858,7 +889,8 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
 
   // #123’s timeline, from the event log of block it_QhzCNay: @critic’s update at +4 s was written before it read the
   // request for changes, and its update at +70 s before it read the approval of revision 2.
-  const session = (seq, state) => ({ seq, type: 'session', data: { id: 's2', state } });
+  // A turn clears finishedAt as it starts and sets it as it ends; a permission card mid-turn sets needs, not finishedAt.
+  const session = (seq, state, finishedAt = state === 'idle' ? T0 : null) => ({ seq, type: 'session', data: { id: 's2', state, finishedAt } });
   const added = {
     seq: 2,
     type: 'item.add',
@@ -896,7 +928,10 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
       session(6, 'think'),
       session(7, 'tool'),
       answer(8, 'approve', T0 + 35_000),
-      update(9, 3, T0 + 70_000),
+      // A permission card in the same turn: the state goes to needs and back, and the turn goes on.
+      session(9, 'needs'),
+      session(10, 'think'),
+      update(11, 3, T0 + 70_000),
     ];
     const hits = found(room({ events }), 'approval-for-other-revision');
     assert.deepEqual(
@@ -917,6 +952,20 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     const refused = [session(1, 'think'), added, answer(3, 'request_changes', T0), session(4, 'idle')];
     assert.deepEqual(found(room({ events: refused }), 'approval-for-other-revision'), []);
     // An outcome under an answer reports a result; it doesn’t reopen the block (#94).
+    // A fix marks the answer read when it reaches the agent, or when update_block’s refusal gives it: an update after
+    // that, in the same turn, was written with it.
+    const told = [
+      session(1, 'think'),
+      added,
+      answer(3, 'request_changes', T0, { revision: 1, read: false }),
+      {
+        seq: 4,
+        type: 'item.patch',
+        data: { threadId: 't1', id: 'it_QhzCNay', patch: { answer: { action: 'request_changes', at: T0, revision: 1, read: true } } },
+      },
+      update(5, 2, T0 + 9000),
+    ];
+    assert.deepEqual(found(room({ events: told }), 'approval-for-other-revision'), []);
     const outcome = [
       session(1, 'think'),
       added,
@@ -966,7 +1015,7 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
       ];
       // The last line was still being written.
       writeFileSync(join(dir, 'data', 'events-1.jsonl'), `${log.map((e) => JSON.stringify(e)).join('\n')}\n{"seq":4,"type":"item.pa`);
-      assert.deepEqual(readHistory(dir), [{ seq: 1, type: 'session', data: { id: 's2', state: 'think', updatedAt: null } }, added]);
+      assert.deepEqual(readHistory(dir), [{ seq: 1, type: 'session', data: { id: 's2', state: 'think', finishedAt: null, updatedAt: null } }, added]);
       writeFileSync(join(dir, 'events.jsonl'), `${JSON.stringify(session(9, 'idle'))}\n`);
       assert.deepEqual(readHistory(dir), [session(9, 'idle')]);
     } finally {
@@ -991,7 +1040,7 @@ describe('the P0 hotfixes’ checks fire on the defect as it was reported, and s
     assert.deepEqual(action.interrupt.properties.do.enum, ['stop', 'send_now']);
     assert.deepEqual(action.interrupt.required, ['after', 'do']);
     // The decision’s words for the two answers (#126).
-    assert.deepEqual(JOBS_ANSWERS, { stop: 'Stop it too', keep: 'Keep running' });
+    assert.deepEqual(JOBS_ANSWERS, { stop: ['Stop it too', 'Stop them too'], keep: ['Keep running'] });
     const prompt = systemPrompt({ scenario: parseScenario('# T\n'), issues: [] });
     assert.match(prompt, /jobs \{answer\}/);
     assert.match(prompt, /an interrupt \{after, do, jobs\?, text\?\}/);

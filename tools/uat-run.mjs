@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
-import { kiroCredits, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { kiroCredits, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
 import { parseScenario } from './uat/scenario.mjs';
@@ -251,9 +251,9 @@ async function main() {
         `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
       );
     };
-    const newFindings = () => {
+    const newFindings = (only = null) => {
       const fresh = [];
-      for (const f of runChecks(facts)) {
+      for (const f of runChecks(facts, { only })) {
         const k = `${f.check}:${f.key}`;
         if (findings.has(k)) continue;
         const x = { ...f, source: 'check', step: timeline.length, phase: scenario.phases[phase]?.title };
@@ -262,6 +262,21 @@ async function main() {
         log(`check ${f.check}${f.issue ? ` (#${f.issue})` : ''}: ${f.title}`);
       }
       return fresh;
+    };
+
+    // Some defects show only while a turn runs: a background command’s step reads done while the command runs, and the
+    // turn ends only when the command does (#126). Those checks also run every 15 s while agents work, and what they
+    // find goes to the tester with the next step.
+    const midTurn = [];
+    let lastMidTurn = 0;
+    const midTurnChecks = async (st = null) => {
+      if (Date.now() - lastMidTurn < 15_000) return;
+      lastMidTurn = Date.now();
+      facts.state = st ?? (await api('/api/state')).state;
+      facts.threads = threadsUnderTest(facts.state);
+      facts.streams = readStreams(paths.streams);
+      facts.events = history.events();
+      midTurn.push(...newFindings(MID_TURN));
     };
 
     /** Waits until no agent under test is working, sampling what the screen says meanwhile. */
@@ -280,6 +295,7 @@ async function main() {
         const checking = Object.values(st.apps).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
         const thinking = working.filter((se) => se.state !== 'gen').map((se) => se.handle);
         if (thinking.length) facts.samples.push({ busy: thinking, rows: (await d.working()).length });
+        if (working.length) await midTurnChecks(st);
         calm = working.length || checking ? 0 : calm + 1;
         if (calm >= 2) return null;
       }
@@ -333,7 +349,7 @@ async function main() {
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
       const obs = await observe();
-      const fresh = newFindings();
+      const fresh = [...midTurn.splice(0), ...newFindings()];
       // Stop’s question about background jobs (#126) can be a dialog, which isn’t an item: say it’s there.
       const jobsAsk = await d.jobsAsk();
       const ph = scenario.phases[phase];
@@ -466,7 +482,9 @@ async function main() {
         } else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
         // Stop or Send now while the turn this action started is running (#126).
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
-          const said = await d.interrupt(a.interrupt);
+          // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
+          const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
+          const said = await d.interrupt(a.interrupt, { panel, onWait: () => midTurnChecks() });
           actionResult = actionResult ? `${actionResult} ${said}` : said;
         }
       } catch (e) {

@@ -8,9 +8,15 @@ import { sleep } from '../cdp.mjs';
 
 const J = JSON.stringify;
 const ITEM = (key) => `document.querySelector('[data-key=${J(key)}]')`;
-// The answers to Stop’s question about background jobs, in the decision’s words (#126). The UI is built in another
-// pull request; if its buttons say something else, change them here.
-export const JOBS_ANSWERS = { stop: 'Stop it too', keep: 'Keep running' };
+// The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
+// than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
+export const JOBS_ANSWERS = { stop: ['Stop it too', 'Stop them too'], keep: ['Keep running'] };
+/** The visible answer button of Postbox’s ask: in its row above the composer, or outside any agent block or app. */
+const JOBS_BUTTON = (answer) =>
+  `[...document.querySelectorAll('button')].find((b) => b.offsetParent !== null && (b.closest('.stop-ask') || !b.closest('[data-key]')) && ${J(JOBS_ANSWERS[answer] ?? [])}.includes(b.textContent.replace(/\\s+/g, ' ').trim()))`;
+/** The text of the ask a button belongs to. */
+const JOBS_BOX = (b) =>
+  `((${b}.closest('.stop-ask, [role=dialog], [role=alertdialog], .dialog, .toast') ?? ${b}.parentElement)?.innerText ?? ${b}.textContent).replace(/\\s+/g, ' ').trim().slice(0, 400)`;
 
 /** @param {any} page  from tools/cdp.mjs launch() */
 export function driver(page) {
@@ -359,41 +365,48 @@ export function driver(page) {
 
     /**
      * Postbox’s question about an agent’s background jobs, if it’s on screen: since #126, Stop asks whether to stop
-     * them too (“Stop it too” or “Keep running”). Read by its buttons, wherever it’s drawn (a dialog, a card, the
-     * composer), with the text around them.
+     * them too. Read by its buttons, in Postbox’s own frame: a row above the composer (.stop-ask), or anywhere but an
+     * agent’s block or app, whose own buttons could say the same words.
      * @returns {Promise<string|null>}
      */
-    jobsAsk: () =>
-      ev(`(() => {
-        const b = ${byText('document', 'button', JOBS_ANSWERS.stop)} ?? ${byText('document', 'button', JOBS_ANSWERS.keep)};
-        if (!b) return null;
-        const box = b.closest('[role=dialog], [role=alertdialog], .dialog, .toast, .item, .block, .composer') ?? b.parentElement;
-        return (box?.innerText ?? b.textContent).replace(/\\s+/g, ' ').trim().slice(0, 400);
-      })()`),
+    jobsAsk: () => ev(`(() => { const b = ${JOBS_BUTTON('stop')} ?? ${JOBS_BUTTON('keep')}; return b ? ${JOBS_BOX('b')} : null; })()`),
 
     /** Answers that question: stop the jobs too, or keep them running. @param {'stop'|'keep'} answer */
     async answerJobs(answer) {
       if (!JOBS_ANSWERS[answer]) throw new Error(`Answer background jobs with stop or keep, not “${answer}”.`);
-      await clickAt(byText('document', 'button', JOBS_ANSWERS[answer]), `“${JOBS_ANSWERS[answer]}”`);
+      await clickAt(JOBS_BUTTON(answer), `“${JOBS_ANSWERS[answer][0]}”`);
     },
+
+    /** Whether an item is in the thread panel, where its agent’s composer is the panel’s. @param {string} key */
+    inPanel: (key) => ev(`!!${ITEM(key)}?.closest('.sidepanel')`),
 
     /**
      * Acts while an agent’s turn runs, as a person does mid-turn: waits until the composer shows Stop (an agent is
-     * working here), lets it work `after` seconds, then presses Stop, or writes `text` and presses Send now on it
+     * working there), lets it work `after` seconds, then presses Stop, or writes `text` and presses Send now on it
      * once it’s queued. After Stop, it answers Postbox’s question about background jobs with `jobs`, if it asks.
+     * `panel` picks the thread panel’s composer over the conversation’s; `onWait` runs every few seconds meanwhile.
      * @param {{ after?: number, do: 'stop'|'send_now', jobs?: 'stop'|'keep'|null, text?: string }} what
+     * @param {{ panel?: boolean, onWait?: () => Promise<void> }} [opts]
      * @returns {Promise<string>}  what happened, for the tester
      */
-    async interrupt({ after = 20, do: action, jobs = null, text = '' }) {
+    async interrupt({ after = 20, do: action, jobs = null, text = '' }, { panel = false, onWait = async () => {} } = {}) {
       if (action !== 'stop' && action !== 'send_now') throw new Error(`An interrupt is stop or send_now, not “${action}”.`);
       if (action === 'send_now' && !String(text).trim()) throw new Error('Send now needs the message to send.');
-      const stop = `document.querySelector('.composer button.stop')`;
+      const composer = panel
+        ? `document.querySelector('.sidepanel .composer')`
+        : `[...document.querySelectorAll('.composer')].find((c) => !c.closest('.sidepanel'))`;
+      const stop = `${composer}?.querySelector('button.stop')`;
       const working = () => ev(`(() => { const b = ${stop}; return !!b && b.offsetParent !== null; })()`);
       for (let i = 0; i < 360 && !(await working()); i++) await sleep(250);
       if (!(await working())) return 'No agent started working here within 90 s, so nothing was interrupted.';
       const end = Date.now() + Math.max(0, Math.min(600, Number(after) || 0)) * 1000;
+      let waited = Date.now();
       while (Date.now() < end) {
         if (!(await working())) return `The agent finished before ${after} s had passed, so nothing was interrupted.`;
+        if (Date.now() - waited > 5000) {
+          await onWait();
+          waited = Date.now();
+        }
         await sleep(500);
       }
       const who = String((await ev(`${stop}?.getAttribute('aria-label') ?? ''`)) ?? '').replace(/^Stop /, '');
@@ -402,9 +415,10 @@ export function driver(page) {
         await clickAt(stop, 'the Stop button');
         notes.push(`Pressed Stop on ${who || 'the working agent’s reply'} after ${after} s.`);
       } else {
-        await typeInto(`document.getElementById('composer-input')`, String(text), 'the composer');
+        const input = panel ? `document.getElementById('side-input')` : `document.getElementById('composer-input')`;
+        await typeInto(input, String(text), 'the composer');
         await press('Enter');
-        const row = `[...document.querySelectorAll('.composer .queued')].find((r) => r.textContent.includes(${J(String(text).trim().slice(0, 60))}))`;
+        const row = `[...(${composer}?.querySelectorAll('.queued:not(.stop-ask)') ?? [])].find((r) => r.textContent.includes(${J(String(text).trim().slice(0, 60))}))`;
         for (let i = 0; i < 20 && !(await ev(`!!${row}`)); i++) await sleep(150);
         if (await ev(`!!${row}`)) {
           await clickAt(byText(row, 'button', 'Send now'), 'Send now on the queued message');
@@ -417,7 +431,7 @@ export function driver(page) {
       if (!ask) notes.push('Postbox didn’t ask about background jobs.');
       else if (jobs) {
         await this.answerJobs(jobs);
-        notes.push(`Postbox asked: “${ask}” You answered “${JOBS_ANSWERS[jobs]}”.`);
+        notes.push(`Postbox asked: “${ask}” You answered “${JOBS_ANSWERS[jobs][0]}”.`);
       } else notes.push(`Postbox asks: “${ask}” Answer it with jobs.`);
       return notes.join(' ');
     },

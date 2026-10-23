@@ -9,8 +9,9 @@ import { join } from 'node:path';
 /** The event, cut to what the checks read, or null for one they don’t (streamed text, apps, glossary…). */
 export function keepEvent(seq, type, data) {
   if (type === 'item.add' || type === 'item.patch') return { seq, type, data };
-  // A session event holds the whole session; the checks read only its state.
-  if (type === 'session' && data?.id) return { seq, type, data: { id: data.id, state: data.state ?? null, updatedAt: data.updatedAt ?? null } };
+  // A session event holds the whole session; the checks read only its state, and finishedAt, which a turn clears.
+  if (type === 'session' && data?.id)
+    return { seq, type, data: { id: data.id, state: data.state ?? null, finishedAt: data.finishedAt ?? null, updatedAt: data.updatedAt ?? null } };
   return null;
 }
 
