@@ -147,7 +147,7 @@ test('the recorded app-server stream maps text and command activity to Postbox',
   assert.deepEqual(calls.checkpoint, { turnId: 'turn_postbox_1', threadId: 'thr_postbox_1' });
 });
 
-function fakeAppServer(seen) {
+function fakeAppServer(seen, { hold = false } = {}) {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
@@ -173,6 +173,7 @@ function fakeAppServer(seen) {
       }
       if (req.method === 'turn/start') {
         child.stdout.write(`${JSON.stringify({ id: req.id, result: { turn: { id: 'turn_fake', status: 'inProgress' } } })}\n`);
+        if (hold) continue;
         setImmediate(() => {
           child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
           child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
@@ -242,4 +243,47 @@ test('a topic thread forks Codex history at the saved completed-turn checkpoint'
   await adapter.deliver({}, { kind: 'user', text: 'Continue the branch.' }, ctx);
   const fork = seen.find((request) => request.method === 'thread/fork');
   assert.deepEqual(fork.params, { threadId: 'thr_source', lastTurnId: 'turn_source', excludeTurns: true });
+});
+
+test('a stopped Codex turn ends only once its app-server has exited, so the next turn can’t run beside it (#126)', async () => {
+  const seen = [];
+  const child = fakeAppServer(seen, { hold: true });
+  const signals = [];
+  // A process that takes a moment to exit after SIGINT, as a real app-server does.
+  child.kill = (sig) => {
+    signals.push(sig);
+    setTimeout(() => child.emit('close', 0), 30);
+    return true;
+  };
+  const adapter = new CodexAdapter({ workRoot: '/tmp/postbox-codex-test', spawnImpl: () => child });
+  const abort = new AbortController();
+  const ctx = {
+    persona: { handle: 'critic', model: 'gpt-5.6-terra' },
+    project: { folder: '/tmp/postbox-codex-test/project' },
+    handles: ['critic'],
+    state: {},
+    signal: abort.signal,
+    mcpUrl: 'http://127.0.0.1:1/mcp?session=s3&turn=t1',
+    text: () => {},
+    activity: () => {},
+    status: () => {},
+    saveState: () => {},
+    checkpoint: () => {},
+    pathOf: () => null,
+  };
+  let ended = false;
+  const turn = adapter.deliver({}, { kind: 'user', text: 'Work for a while.' }, ctx).then(() => {
+    ended = true;
+  });
+  while (!seen.some((x) => x.method === 'turn/start')) await new Promise((r) => setImmediate(r));
+  abort.abort();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(
+    seen.some((x) => x.method === 'turn/interrupt'),
+    'Stop interrupts the Codex turn',
+  );
+  assert.equal(ended, false, 'the turn hasn’t ended while the app-server is still running');
+  await turn;
+  assert.equal(ended, true);
+  assert.deepEqual(signals, ['SIGINT'], 'the app-server gets SIGINT, and SIGKILL only if it outlives the grace period');
 });

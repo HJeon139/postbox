@@ -5,6 +5,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
+import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, POSTBOX_SERVER } from './setup.mjs';
 
 export const CODEX_CAPABILITIES = Object.freeze({ resume: true, fork: true, permissions: 'none', tools: 'none' });
@@ -233,9 +234,14 @@ export function createCodexMapper(ctx) {
 
 export class CodexAdapter {
   name = 'codex';
-  /** @param {{ bin?: string, workRoot?: string, models?: string[], spawnImpl?: typeof spawn }} opts */
-  constructor({ bin = findCodex(), workRoot = process.cwd(), models = [], spawnImpl = spawn } = {}) {
+  /**
+   * @param {{ bin?: string, workRoot?: string, models?: string[], spawnImpl?: typeof spawn, kill?: typeof process.kill,
+   *           listProcesses?: typeof listProcesses }} opts
+   */
+  constructor({ bin = findCodex(), workRoot = process.cwd(), models = [], spawnImpl = spawn, kill = process.kill, listProcesses: list = listProcesses } = {}) {
     this.bin = bin;
+    this.kill = kill;
+    this.list = list;
     this.workRoot = workRoot;
     this.spawn = spawnImpl;
     this.capabilities = { ...CODEX_CAPABILITIES, ...(models.length ? { models } : {}) };
@@ -250,7 +256,13 @@ export class CodexAdapter {
   async deliver(session, message, ctx) {
     const cwd = await this.folderFor(ctx.persona, ctx.project);
     const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl)];
-    const child = this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+    // Its own process group, so stopping the turn reaches everything the app-server started (#126).
+    const child = this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
+    const exitedP = new Promise((r) => {
+      child.once('exit', r);
+      child.once('close', r);
+      child.once('error', r);
+    });
     /** @type {string|null} */
     let recordFile = null;
     if (process.env.POSTBOX_CODEX_RECORD) {
@@ -324,12 +336,10 @@ export class CodexAdapter {
       exited = true;
       if (code !== 0) fail(new Error(`Codex app-server exited with code ${code}${stderr ? `: ${stderr.trim().slice(-500)}` : ''}.`));
     });
+    // Stop asks Codex to interrupt the turn; the app-server itself is stopped as the turn ends, below.
     const onAbort = () => {
       const threadId = ctx.state.codexThreadId;
       if (threadId && activeTurnId) send({ id: requestId++, method: 'turn/interrupt', params: { threadId, turnId: activeTurnId } });
-      setTimeout(() => {
-        if (!exited) child.kill('SIGTERM');
-      }, 2500).unref?.();
     };
     ctx.signal.addEventListener('abort', onAbort, { once: true });
     try {
@@ -383,8 +393,10 @@ export class CodexAdapter {
       });
     } finally {
       ctx.signal.removeEventListener('abort', onAbort);
-      if (!exited) child.kill('SIGTERM');
       rl.close();
+      // The turn ends once the app-server's whole group has exited: SIGINT, then SIGKILL. Until then the session reads
+      // stopping, so the next turn can't resume this Codex thread beside a process that's still running it (#126).
+      if (!exited) await (await stopTurn(child, { exited: exitedP, kill: this.kill, list: this.list })).gone;
     }
   }
 }
