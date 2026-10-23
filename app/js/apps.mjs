@@ -494,7 +494,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
     return;
   }
   const v = viewing.get(appId) ?? app.current;
-  const old = v !== app.current || !!app.retired; // a retired app’s versions open read-only, the current one too (#193)
+  const old = v !== app.current || (!!app.retired && !!onBack); // a retired app’s line opens its versions read-only, the current one too (#193)
   const key = `${appId}:${v}`;
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
@@ -626,7 +626,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
                 (onBack ?? (() => mountApp(container, appId, { review, onPin })))();
               },
             },
-            app.retired ? 'Close' : `Back to v${app.current}`,
+            onBack ? 'Close' : `Back to v${app.current}`,
           ),
         ),
       ),
@@ -705,7 +705,13 @@ export function renderAppItem(item, ctx) {
   const slot = h('div.app-slot', overlay);
   const rec = { appId: app.id, slot, overlay, btn: fullBtn, titleId };
   fullBtn.onclick = () => (full?.overlay === overlay ? exitFull() : enterFull(rec));
-  mountApp(holder, app.id, app.retired ? { onBack: ctx.rerender } : {});
+  // Close goes back to a retired app’s line, out of full screen, with focus on its version menu.
+  const back = () => {
+    if (full?.appId === app.id) exitFull({ focus: false });
+    ctx.rerender();
+    document.querySelector(`[data-key="${CSS.escape(item.id)}"] .app-retired [aria-haspopup]`)?.focus();
+  };
+  mountApp(holder, app.id, app.retired ? { onBack: back } : {});
   // Re-rendered while full screen (another version, say): the new box takes the old one’s place.
   // (Only a re-render: the old box is still on the page. Coming back to the conversation later starts in the column.)
   if (full && !full.overlay.isConnected) exitFull({ focus: false });

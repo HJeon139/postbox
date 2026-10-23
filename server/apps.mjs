@@ -17,7 +17,8 @@ const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-f
 export function appCheck(rt, appId, { version, problems = [] }) {
   const app = rt.s.apps[appId];
   if (!app) throw httpError(404, 'That app doesn’t exist.');
-  if (version !== app.current) return { ignored: true };
+  // A retired app shows no frame, so a check still running when it was retired has nothing to fix (#193).
+  if (version !== app.current || app.retired) return { ignored: true };
   const clean = (Array.isArray(problems) ? problems : [])
     .slice(0, 20)
     .map((p) => ({ code: String(p?.code).slice(0, 40), message: String(p?.message).slice(0, 300) }));

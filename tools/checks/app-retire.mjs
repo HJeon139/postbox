@@ -101,6 +101,16 @@ try {
   await ev(`[...${item('lab')}.querySelectorAll('.app-note button')].find((b) => b.textContent === 'Close').click()`);
   await page.waitFor(`!!${item('lab')}?.querySelector('.app-retired')`, { label: 'the line again' });
   check(!(await ev(`!!${item('lab')}.querySelector('iframe')`)), 'Close puts the line back, with no frame');
+  check(await ev(`${item('lab')}.querySelector('.app-retired [aria-haspopup]') === document.activeElement`), 'with focus on its version menu');
+  // The current version opens read-only too.
+  await ev(`${item('lab')}.querySelector('[aria-haspopup="menu"]').click()`);
+  await page.waitFor(`!!document.querySelector('.versions [role="menuitem"]')`, { label: 'the version menu again' });
+  await ev(`[...document.querySelectorAll('.versions [role="menuitem"]')].find((b) => /^v2\\b/.test(b.innerText)).click()`);
+  await page.waitFor(`!!${item('lab')}?.querySelector('iframe.app-iframe')`, { label: 'v2’s frame' });
+  const current = await ev(`${item('lab')}.querySelector('.app-note')?.innerText ?? ''`);
+  check(/Viewing v2, read-only/.test(current), 'the current version of a retired app opens read-only', current);
+  await ev(`[...${item('lab')}.querySelectorAll('.app-note button')].find((b) => b.textContent === 'Close').click()`);
+  await page.waitFor(`!!${item('lab')}?.querySelector('.app-retired')`, { label: 'the line once more' });
 
   // 4. A new version brings it back, at the newest point.
   const u = mine.update_app({ id: 'lab', code: APP('Lab v3'), summary: 'the route in the lab' });

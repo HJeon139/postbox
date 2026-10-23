@@ -86,6 +86,15 @@ test('#193: a new version brings a retired app back, at the newest point', () =>
   assert.equal(order(store, t).at(-1), 'lab');
 });
 
+test('#193: a check still running when the app was retired is ignored, and nothing goes to the agent', () => {
+  const { store, rt, tools } = setup();
+  tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
+  tools.retire_app({ id: 'lab', reason: 'Not needed.' });
+  const r = rt.appCheck('lab', { version: 1, problems: [{ code: 'contrast', message: 'Low.' }] });
+  assert.deepEqual(r, { ignored: true });
+  assert.equal(store.state.apps.lab.check.status, 'pending');
+});
+
 test('#193: retire_app is one of the MCP tools, with a reason it requires', () => {
   const def = TOOL_DEFS.find((d) => d.name === 'retire_app');
   assert.ok(def);
