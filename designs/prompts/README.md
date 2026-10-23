@@ -4,7 +4,7 @@ Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139
 
 The plan follows the triage of 22 October 2026 (#64’s last two comments), the wave 4 plan the two integrating sessions agreed on 23 October 2026, and the wave 5 plan the person approved the same day.
 
-**Who integrates wave 5.** The triage session integrates and merges all seven sessions, and writes this page. The architectural review session reviews each pull request before it merges. (In wave 4 the reviewing session wrote this page and integrated three of its sessions. It isn’t running now.)
+**Who integrates wave 5.** The triage session integrates and merges all eight sessions, and writes this page. The architectural review session reviews each pull request before it merges. (In wave 4 the reviewing session wrote this page and integrated three of its sessions. It isn’t running now.)
 
 A pull request merges once it’s approved and green. A CI failure that’s one of the known flaky checks, in a check the pull request doesn’t touch, doesn’t block it when its own checks pass locally (the person’s rule, 23 October 2026).
 
@@ -23,6 +23,7 @@ flowchart LR
     s5["5. The right pane: #197, #86, #122, #7"]
     s6["6. UAT checks that recur for real: #213"]
     s7["7. A permission card that waits: #217"]
+    s8["8. One pool of agents, ending a fork: #228, #229"]
   end
   subgraph w6["Wave 6 (next)"]
     v["Visual consistency: #8 + #181, #199, #116, #182"]
@@ -46,6 +47,7 @@ flowchart LR
 | 5 | The right pane | [w5-pane.md](w5-pane.md) | #197, #86, #122, #7 | 4950–4999, 10250–10299 | triage |
 | 5 | UAT checks that recur for real | [w5-uat-checks.md](w5-uat-checks.md) | #213 | 5000–5049, 10300–10349 | triage |
 | 5 | A permission card that waits | [w5-permission-wait.md](w5-permission-wait.md) | #217 (P1) | 5050–5099, 10350–10399 | triage |
+| 5 | One pool of agents, and ending a fork | [w5-thread-pool.md](w5-thread-pool.md) | #228 (P1, the person chose option a), #229 (P1) | 5100–5149, 10400–10449 | triage |
 | 6 | Visual consistency | to write | #8 with #181 (what amber means), #199, #116; #182 if time allows | — | — |
 | 6 | Review block | to write | #179, with selection comments, and #133: agents comment on a review through the same comment model | — | — |
 | 6 | Backends | to write | #118, #136, #117’s rest (Codex, OpenCode), #167; #150 after the person’s `--compat` Codex run | — | — |
@@ -65,7 +67,7 @@ flowchart LR
 
 **Why these, in this order.** Wave 5 takes the open P1s, the per-turn work list the person asked for, and the issues UAT runs keep catching. The person’s rule of 23 October 2026 is that recurring findings come first (tests/uat/e2e/README.md, “Recurring findings”). Across 15 runs, #106 and #128 recurred in three runs each and #156 in two, so they’re here. #213 comes from the same count: the issues that came back most after closing were mostly checks written before their fixes, so recurrence can’t be trusted until those checks are fixed.
 
-**Merge order:** the permission card first, since it’s a P1 of a line or two. Then UAT checks, since it touches nothing the others do and makes the end-of-wave pass trustworthy. Then side threads, blocks and text, apps, the work list, and the pane. Each later one rebases on main as the earlier ones land.
+**Merge order:** the permission card first, since it’s a P1 of a line or two. Then UAT checks, since it touches nothing the others do and makes the end-of-wave pass trustworthy. Then side threads, blocks and text, apps, the work list, and the pane. One pool of agents (#228, #229) started after side threads merged, and lands when it’s ready, before the pane. Each later one rebases on main as the earlier ones land.
 
 **End of wave 5:** a Claude-only UAT pass on Haiku, which the person approves with its estimated cost. It covers wave 4 too, since wave 4’s pass didn’t run:
 - `longresearch`, which confirms #63 live;
