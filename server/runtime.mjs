@@ -766,7 +766,9 @@ export class Runtime {
         fromSessionId,
         from: from.handle,
         to: p.handle,
+        // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
         reason: clip(text, 200),
+        text,
         status: 'open',
         n: (parent.hops ?? 0) + 1,
       });
@@ -817,7 +819,8 @@ export class Runtime {
     const from = this.s.sessions[it.fromSessionId];
     if (from) this.updateSession(from.id, { needs: null, state: this.turns.has(from.id) ? from.state : 'idle' });
     this.putThread({ ...this.s.threads[threadId], hops: 0 });
-    if (allow) this.agentWake(it.fromSessionId, it.to, it.reason, { confirmed: true });
+    // A request stored before #108 kept only the preview.
+    if (allow) this.agentWake(it.fromSessionId, it.to, it.text ?? it.reason, { confirmed: true });
     else if (from) this.deliver(from.id, { kind: 'notice', text: `The person chose not to let you wake @${it.to}. Carry on without it.` });
   }
 

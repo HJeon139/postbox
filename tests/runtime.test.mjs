@@ -228,6 +228,38 @@ test(`after ${HOP_LIMIT} agent wakes in a row, the next one waits for your confi
   assert.equal(store.item(t.id, hop.id).status, 'allowed');
 });
 
+test('a wake you allow delivers its whole message, not the card’s preview (#108)', async () => {
+  const { rt, store, t, b, adapter } = setup();
+  rt.ensureSession(t.id, b.id);
+  const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check');
+  await settle(rt);
+  const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
+  assert.equal(rt.agentWake(alpha.id, 'beta', long).waiting, true);
+  const hop = store.items(t.id).find((i) => i.kind === 'hop');
+  assert.ok(hop.reason.length <= 200, 'the card keeps a short preview');
+  rt.act(t.id, hop.id, 'confirm');
+  await settle(rt);
+  const woke = adapter.calls.filter((c) => c.handle === 'beta' && c.message.kind === 'agent' && c.message.from === '@alpha').at(-1);
+  assert.equal(woke?.message.text.length, 3000);
+  assert.equal(woke?.message.text, long);
+});
+
+test('a wake request stored before #108, with only a preview, still delivers that preview when allowed', async () => {
+  const { rt, store, t, b, adapter } = setup();
+  rt.ensureSession(t.id, b.id);
+  const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check');
+  await settle(rt);
+  rt.agentWake(alpha.id, 'beta', 'the whole message');
+  const hop = store.items(t.id).find((i) => i.kind === 'hop');
+  rt.patchItem(t.id, hop.id, { text: undefined, reason: 'the preview' });
+  rt.act(t.id, hop.id, 'confirm');
+  await settle(rt);
+  const woke = adapter.calls.filter((c) => c.handle === 'beta' && c.message.kind === 'agent' && c.message.from === '@alpha').at(-1);
+  assert.equal(woke?.message.text, 'the preview');
+});
+
 test('a message from you resets the wake count', async () => {
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
