@@ -10,7 +10,7 @@ import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './c
 import { fill, h, plural, syncList } from './dom.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { capsOf, EFFORT_NAMES, KIRO_PERMISSIONS, modelsFor, openSettings } from './sheets.mjs';
+import { capsOf, EFFORT_NAMES, modeHelp, modelsFor, openSettings } from './sheets.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -359,7 +359,6 @@ function choice(label, where, list, value, onPick) {
 
 function modeChoice(se, p, done, failed) {
   const value = p.permissionMode ?? 'auto';
-  const kiro = p.backend === 'kiro-cli';
   return [
     choice(
       'Permission mode',
@@ -375,7 +374,8 @@ function modeChoice(se, p, done, failed) {
           failed,
         ),
     ),
-    h('span.help', (kiro && KIRO_PERMISSIONS[value]) || (MODES.find(([id]) => id === value)?.[2] ?? '')),
+    // In the backend’s own words where it reads the modes differently (Kiro, Codex), as the persona sheet says it.
+    h('span.help', modeHelp(p.backend, MODES.find(([id]) => id === value) ?? MODES[0])),
   ];
 }
 
