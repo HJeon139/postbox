@@ -941,6 +941,7 @@ export class Runtime {
     }
     if (j.kept === true && Number.isInteger(j.pgid) && j.pgid > 1) {
       this.updateSession(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: j.pgid } : x)) });
+      this.ledger.jobUpdate(old, { kept: true });
       // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running.
       this.tellAgent(
         se.id,
@@ -964,6 +965,8 @@ export class Runtime {
     const se = this.s.sessions[sessionId];
     const job = se?.jobs?.find((j) => j.id === jobId);
     if (!se || !job) return;
+    // Work says how it ended too: its turn may have ended thinking it was still running (#164).
+    this.ledger.jobUpdate(job, { state, by });
     this.updateSession(sessionId, { jobs: se.jobs.filter((j) => j.id !== jobId) });
     if (this.keptPoll && !this.keptJobs().length) {
       clearInterval(this.keptPoll);
