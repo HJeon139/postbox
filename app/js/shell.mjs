@@ -1,5 +1,6 @@
-// The shell: top bar, rail (conversations and rooms with rings), the phone ring strip, and the overview —
-// one column per live session, with quick answers, tool calls, subagents, agent messages and stats.
+// The shell: top bar, rail (conversations and rooms with rings), the phone ring strip, and the overview — a card
+// for each session that needs you or is working, with quick answers, tool calls, subagents, agent messages and
+// stats, and a row for each idle conversation.
 
 import { factsText, installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
@@ -515,14 +516,17 @@ export function mountOverview({ archived = false } = {}) {
   const el = h('main.ov', { id: 'main', tabindex: '-1' });
   const grid = h('div.ov-grid', { style: { gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' } });
   const headEl = h('div.ov-head');
+  // Idle conversations, one compact row each, below what needs you and what’s working (#3).
+  const rows = h('ul.ov-rows', { 'aria-labelledby': 'ov-idle-h' });
+  const idleSec = h('section.ov-idle', h('h2.label', { id: 'ov-idle-h' }, 'Idle'), rows);
   const archive = h('div');
-  el.append(...[headEl, archived ? null : installLine(), grid, archive].filter((x) => x !== null));
-  const order = (se) => (se.needs ? 0 : busy(se) ? 1 : 2);
+  el.append(...[headEl, archived ? null : installLine(), grid, idleSec, archive].filter((x) => x !== null));
+  const order = (se) => (se.needs ? 0 : 1);
   const paint = () => {
-    // A topic or side thread’s agent gets a column only while it’s working or waiting for you (#121).
-    const live = liveSessions()
-      .filter((se) => !['topic', 'side'].includes(S().threads[se.threadId]?.kind) || busy(se) || se.needs)
-      .sort((a, b) => order(a) - order(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+    const live = liveSessions();
+    // A card for each session that needs you or is working, its side and topic threads’ forks too (#121).
+    const active = live.filter((se) => se.needs || busy(se)).sort((a, b) => order(a) - order(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+    const idle = idleConversations(live, active);
     const n = needsYou().length;
     const finished = live.filter((se) => se.unread && !se.needs).length;
     headEl.replaceChildren(
@@ -546,6 +550,7 @@ export function mountOverview({ archived = false } = {}) {
     );
     if (archived) {
       grid.replaceChildren();
+      idleSec.hidden = true;
       archive.replaceChildren(archivedList());
       return;
     }
@@ -563,11 +568,20 @@ export function mountOverview({ archived = false } = {}) {
     else
       syncList(
         grid,
-        live,
+        active,
         (se) => se.id,
         (se) => card(se),
         (node, se) => updateCard(node, se),
       );
+    grid.hidden = !!live.length && !active.length;
+    idleSec.hidden = !idle.length;
+    syncList(
+      rows,
+      idle,
+      (c) => c.t.id,
+      (c) => idleRow(c),
+      (node, c) => updateIdleRow(node, c),
+    );
     archive.replaceChildren(archivedList(true));
   };
   paint();
@@ -575,7 +589,7 @@ export function mountOverview({ archived = false } = {}) {
   // A card’s change re-sorts the columns a moment later, but not while a menu opened from a card is open: the
   // card would move out from under the menu and the pointer, and a second click on its ⋯ would miss (#29).
   const resort = () => {
-    if (grid.contains(menuAnchor())) t = setTimeout(resort, 300);
+    if (grid.contains(menuAnchor()) || rows.contains(menuAnchor())) t = setTimeout(resort, 300);
     else paint();
   };
   const off = client.on((ch) => {
@@ -668,6 +682,77 @@ function archivedList(collapsed = false) {
   );
 }
 
+/** The conversation a thread belongs to: a side or topic thread’s parent, or itself. */
+const convOf = (threadId) => {
+  const t = S().threads[threadId];
+  return t && (t.kind === 'side' || t.kind === 'topic') ? t.parentId : threadId;
+};
+const lastActive = (se) => se.finishedAt ?? se.updatedAt ?? se.startedAt ?? 0;
+
+/**
+ * The idle conversations, most recent first, each with its idle agents (#3, #101). A conversation that has a card
+ * above isn’t listed again, and idle side and topic threads’ forks aren’t listed at all (#121).
+ */
+function idleConversations(live, active) {
+  const carded = new Set(active.map((se) => convOf(se.threadId)));
+  const by = new Map();
+  for (const se of live) {
+    const t = S().threads[se.threadId];
+    if (se.needs || busy(se) || t.kind === 'side' || t.kind === 'topic' || carded.has(t.id)) continue;
+    by.set(t.id, [...(by.get(t.id) ?? []), se]);
+  }
+  return [...by]
+    .map(([id, ses]) => ({ t: S().threads[id], ses: ses.sort((a, b) => lastActive(b) - lastActive(a)) }))
+    .sort((a, b) => lastActive(b.ses[0]) - lastActive(a.ses[0]));
+}
+
+/** An idle conversation as one row: its agents’ rings and names, where it is, the last message, and when. */
+function idleRow(c) {
+  const node = h('li.ov-row');
+  // Like a card, the whole row opens the conversation; the link is the real target for the keyboard.
+  node.addEventListener('click', (e) => {
+    if (e.target.closest('a, button, [role=menu]') || getSelection()?.toString()) return;
+    navigate(hrefOf(node.dataset.key));
+  });
+  updateIdleRow(node, c, true);
+  return node;
+}
+
+function updateIdleRow(node, { t, ses }, fresh = false) {
+  const project = S().projects[t.projectId];
+  const last = ses[0];
+  const unread = ses.reduce((a, x) => a + (x.unread ?? 0), 0);
+  const sig = JSON.stringify([
+    t.title,
+    project?.name,
+    unread,
+    ses.map((x) => [x.id, x.handle, isMock(x), x.state, x.ctx, x.subagents, x.lastMessage, lastActive(x)]),
+  ]);
+  if (!fresh && node.dataset.sig === sig) return;
+  node.dataset.sig = sig;
+  const when = lastActive(last);
+  fill(
+    node,
+    h('span.ring-slot', rings(t)),
+    h(
+      'a.ov-row-link',
+      { href: hrefOf(t.id) },
+      h(
+        'span.ov-row-who',
+        ses.flatMap((x, i) => [i ? ', ' : '', h('b', `@${x.handle}`), mockMarker(x)]),
+      ),
+      h('span.small.dim.ov-row-where', `${project?.name ?? ''} · ${t.title}`),
+    ),
+    h('span.small.dim.ov-row-last', last.lastMessage ?? ''),
+    // An unanswered block from an earlier turn stays quiet here too, as on a card (#69).
+    h(
+      'span.small.dim.ov-row-when',
+      ...ses.map((x) => openAsksEl(x)),
+      unread ? [`Finished ${ago(when || Date.now())} `, h('span.badge', String(unread))] : when ? ago(when) : '',
+    ),
+  );
+}
+
 function card(se) {
   const node = h('article.ov-col');
   // The whole card opens the agent’s conversation; buttons, links and fields inside it keep their own jobs.
@@ -727,6 +812,8 @@ function updateCard(node, se, fresh = false) {
         );
   const sec = (label, ...content) => h('div.oc-sec', h('span.label', label), ...content);
   const quick = quickAnswer(se);
+  // The current step shows only when it says more than the state in the header (#3).
+  const step = busy(se) && se.currentStep && !repeatsState(se) ? se.currentStep : '';
   fill(
     node,
     h(
@@ -738,7 +825,8 @@ function updateCard(node, se, fresh = false) {
           'a.oc-link',
           { href: hrefOf(t.id) },
           h('span.oc-name', h('b', `@${se.handle}`), mockMarker(se)),
-          h('span.small.dim', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'topic thread: ' : ''}${t.title}`),
+          // One line, so the cards in a row line up; the link’s text keeps the whole name (#3).
+          h('span.small.dim.oc-where', `${project?.name ?? ''} · ${t.kind === 'topic' ? 'topic thread: ' : ''}${t.title}`),
         ),
         stateLine,
         openAsksEl(se),
@@ -758,12 +846,13 @@ function updateCard(node, se, fresh = false) {
           quick ?? h('a.btn.sm', { href: hrefOf(whereOf(se)), style: { alignSelf: 'flex-start' } }, 'Open conversation'),
         )
       : null,
-    sec('Current step', h('p', { class: busy(se) ? '' : 'dim' }, se.currentStep || '—'), busy(se) && se.glimpse ? h('p.glimpse', se.glimpse) : null),
+    // Sections with nothing in them are left out (#3).
+    step || (busy(se) && se.glimpse) ? sec('Current step', step ? h('p', step) : null, busy(se) && se.glimpse ? h('p.glimpse', se.glimpse) : null) : null,
     se.lastMessage ? sec('Last message', h('p.clamp2', se.lastMessage)) : null,
-    sec(
-      h('span', 'Tool calls ', h('span.dim', String(se.toolCount ?? 0))),
-      se.toolCalls?.length
-        ? h(
+    se.toolCalls?.length
+      ? sec(
+          h('span', 'Tool calls ', h('span.dim', String(se.toolCount ?? 0))),
+          h(
             'ul.mini-list',
             se.toolCalls
               .slice(0, 4)
@@ -776,14 +865,14 @@ function updateCard(node, se, fresh = false) {
                 ),
               ),
             se.toolCount > 4 ? h('li.small.dim', `+ ${se.toolCount - 4} more`) : null,
-          )
-        : h('p.small.dim', 'None yet'),
-    ),
-    sec(h('span', 'Agent messages ', se.agentMessages?.length ? h('span.dim', String(se.agentMessages.length)) : null), agentMessages(se)),
-    sec(
-      h('span', 'Subagents ', se.subagents?.length ? h('span.dim', String(se.subagents.length)) : null),
-      se.subagents?.length
-        ? h(
+          ),
+        )
+      : null,
+    se.agentMessages?.length ? sec(h('span', 'Agent messages ', h('span.dim', String(se.agentMessages.length))), agentMessages(se)) : null,
+    se.subagents?.length
+      ? sec(
+          h('span', 'Subagents ', h('span.dim', String(se.subagents.length))),
+          h(
             'ul.mini-list',
             se.subagents.map((s) =>
               h(
@@ -792,9 +881,9 @@ function updateCard(node, se, fresh = false) {
                 h('span.t', h('b', s.name), s.doing ? h('span.dim', ` ${s.doing}`) : null),
               ),
             ),
-          )
-        : h('p.small.dim', 'None'),
-    ),
+          ),
+        )
+      : null,
     h(
       'div.oc-sec.stats',
       h('div', h('span.label', 'Context'), h('b', `${se.ctx}%`)),
@@ -804,8 +893,12 @@ function updateCard(node, se, fresh = false) {
   );
 }
 
+/** Steps the header already says: its state, a wait, or nothing yet. */
+const repeatsState = (se) =>
+  /^(thinking|writing a reply|waiting for you|failed|stopping|idle since .*)$/i.test(se.currentStep ?? '') ||
+  se.currentStep?.toLowerCase() === stateWord(se.state).toLowerCase();
+
 function agentMessages(se) {
-  if (!se.agentMessages?.length) return h('p.small.dim', 'None');
   return h(
     'ul.mini-list.small',
     se.agentMessages.slice(0, 3).map((m) => {
