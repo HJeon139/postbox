@@ -2,7 +2,7 @@
 // and posts what it finds, which goes to the agent. Postbox inlines it after the kit, and only into a check frame’s
 // page (server/sandbox.mjs); the kit hands it what it shares with the rest of the kit.
 (function () {
-  const { ready, errors, post, rgb, lum } = window.__pbCheck;
+  const { ready, errors, post, rgb, lum, textOverflow, textOverlap } = window.__pbCheck;
   delete window.__pbCheck;
   // ── The pre-display check ─────────────────────────────────────────────────────────────
   // Run inside hidden frames at 375 and 1280 px before you see the app. Problems go to the agent.
@@ -28,7 +28,9 @@
   ready
     .then(() => new Promise((r) => setTimeout(r, 600)))
     .then(quiet)
-    .then(() => {
+    // Text over text is measured twice, a second apart (app/kit/check-layout.js), and the rest once it’s done.
+    .then(() => textOverlap(innerWidth))
+    .then((overlaps) => {
       const problems = [];
       const w = innerWidth;
       const sw = document.documentElement.scrollWidth;
@@ -86,7 +88,7 @@
           });
         }
       }
-      problems.push(...legibility(w));
+      problems.push(...legibility(w), ...textOverflow(w), ...overlaps);
       for (const e of errors) problems.push({ code: 'script-error', message: e });
       post({ type: 'check', width: w, problems });
     });

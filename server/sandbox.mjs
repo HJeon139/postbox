@@ -65,7 +65,7 @@ export function sandboxPage({ origin, app, version, theme, check }) {
 <title>${esc(app.title)}</title>
 ${css()}
 <script data-init="${esc(JSON.stringify(init))}">${inline('kit/kit.js', '</script')}</script>
-${check ? `<script>${inline('kit/check.js', '</script')}</script>\n` : ''}</head>
+${check ? `<script>${inline('kit/check-layout.js', '</script')}</script>\n<script>${inline('kit/check.js', '</script')}</script>\n` : ''}</head>
 <body>
 ${version.code}
 </body>
