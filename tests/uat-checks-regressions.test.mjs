@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { closedIssues, commentRegressions, hasFix, markClosed, presetFindings, verifyRegressions } from '../tools/uat/regressions.mjs';
-import { verdictOf } from '../tools/uat/verdicts.mjs';
+import { setVerdict, verdictOf, withoutPreset } from '../tools/uat/verdicts.mjs';
 
 const FIX = '9dd3c46c9116c2e0ca64ba31ca93c8617d5251ec';
 const MERGE = '1111111111111111111111111111111111111111';
@@ -12,17 +12,23 @@ const RUN = '7fa3a6df70ba2eb9f0c71a75d98fd4be9f9d5f12';
 const OLD = 'c7a406692890b534054283cfc40fa21ade688482';
 const ok = (stdout) => ({ status: 0, stdout: typeof stdout === 'string' ? stdout : JSON.stringify(stdout) });
 // #123 was closed by a commit, #49 by pull request #173, and #106 is open.
+// Comments posted through it land in `posted`, so a later pass sees them on the issue.
 const gh =
-  (calls = []) =>
+  (calls = [], posted = []) =>
   (args) => {
     calls.push(args);
     const [cmd, sub, n] = args;
     if (cmd === 'issue' && sub === 'view' && args.includes('title,body')) return ok({ title: `Issue ${n}`, body: 'What went wrong.' });
+    if (cmd === 'issue' && sub === 'view' && args.includes('comments')) return ok({ comments: posted.filter((c) => c.n === n) });
     if (cmd === 'issue' && sub === 'view')
       return ok(n === '106' ? { state: 'OPEN' } : { state: 'CLOSED', closedByPullRequestsReferences: n === '49' ? [{ number: 173 }] : [] });
     if (cmd === 'api') return ok(args[2].includes('/123/') ? `-\n${FIX}\n` : '-\n');
     if (cmd === 'pr') return ok({ mergeCommit: { oid: MERGE }, headRefOid: HEAD });
-    if (cmd === 'issue' && sub === 'comment') return ok('https://github.com/HJeon139/postbox/issues/123#issuecomment-1');
+    if (cmd === 'issue' && sub === 'comment') {
+      const url = `https://github.com/HJeon139/postbox/issues/${n}#issuecomment-${posted.length + 1}`;
+      posted.push({ n, body: args[4], url });
+      return ok(url);
+    }
     return { status: 1, stdout: '' };
   };
 // RUN has every fix; OLD has none; any other commit is unknown to this clone.
@@ -147,4 +153,99 @@ test('when gh can’t read an issue, its match isn’t preset as a duplicate: it
   assert.equal(findings[0].verdict, undefined);
   assert.equal(verdictOf(findings[0]), null);
   assert.equal(findings[0].note, 'gh couldn’t read #123, so whether it’s closed can’t be told, and it isn’t preset. Not verified.');
+});
+
+test('one comment per issue per run, listing its findings, and none again for a run that already commented', async () => {
+  const findings = [check(123, 'a'), check(123, 'b')];
+  presetFindings(findings, { root: '.', commit: RUN, gh: gh(), git });
+  const ask = async () => ({ value: { results: [0, 1].map((index) => ({ index, shown: true, note: `Came back (${index}).` })) } });
+  const calls = [];
+  const posted = [];
+  const dir = '/runs/2026-10-23T21-18-25-p0';
+  await verifyRegressions({ root: '.', testerModel: 'm', dir, findings, log: () => {}, file: true, ask, gh: gh(calls, posted) });
+  commentRegressions({ root: '.', dir, findings, log: () => {}, gh: gh(calls, posted) });
+  assert.equal(posted.length, 1);
+  assert.match(posted[0].body, /finding `a`: E \*\*Verifier:\*\* Came back \(0\)\.\n- `approval-for-other-revision`, finding `b`/);
+  assert.match(posted[0].body, /<!-- uat-regression:2026-10-23T21-18-25-p0 -->$/);
+  assert.deepEqual(
+    findings.map((f) => f.regressionComment),
+    [posted[0].url, posted[0].url],
+  );
+  // A recheck of the same run that lost the record (a copy, an older findings.json) finds its mark on the issue.
+  for (const f of findings) delete f.regressionComment;
+  commentRegressions({ root: '.', dir, findings, log: () => {}, gh: gh(calls, posted) });
+  assert.equal(posted.length, 1);
+  assert.equal(findings[0].regressionComment, posted[0].url);
+});
+
+test('a regression a person judged otherwise isn’t commented on, nor listed as caught again', async () => {
+  const findings = [check(123)];
+  presetFindings(findings, { root: '.', commit: RUN, gh: gh(), git });
+  const ask = async () => ({ value: { results: [{ index: 0, shown: true, note: 'It came back.' }] } });
+  await verifyRegressions({ root: '.', testerModel: 'm', dir: '/r', findings, log: () => {}, file: false, ask, gh: gh() });
+  assert.equal(findings[0].regression, true);
+  // Between that pass and a recheck that files, the person looks and calls it the runner’s.
+  setVerdict(findings[0], { verdict: 'harness', by: 'person', note: 'The runner answered a stale revision.' });
+  assert.deepEqual([findings[0].regression, findings[0].issue, findings[0].matchedIssue], [undefined, null, 123]);
+  const posted = [];
+  commentRegressions({ root: '.', dir: '/r', findings, log: () => {}, gh: gh([], posted) });
+  // Even a stale mark doesn’t post without the duplicate verdict.
+  commentRegressions({ root: '.', dir: '/r', findings: [{ ...findings[0], regression: true }], log: () => {}, gh: gh([], posted) });
+  assert.deepEqual(posted, []);
+});
+
+test('a recheck drops a check’s own preset, live findings’ too, and keeps every other verdict', () => {
+  const preset = {
+    ...check(123),
+    verdict: 'duplicate',
+    verdictBy: 'check',
+    verdictAt: 't',
+    verdicts: [{}],
+    note: 'A check caught #123 again.',
+    duplicateOf: 123,
+  };
+  assert.deepEqual(withoutPreset(preset), check(123));
+  // The preset is then set again against what’s known now: #123 has closed, so it isn’t one.
+  const again = withoutPreset(preset);
+  presetFindings([again], { root: '.', commit: RUN, gh: gh(), git });
+  assert.equal(again.verdict, undefined);
+  const reviewer = { ...preset, verdictBy: 'reviewer' };
+  assert.equal(withoutPreset(reviewer), reviewer);
+  const measured = { ...check(null), verdict: 'measurement', verdictBy: 'check' };
+  assert.equal(withoutPreset(measured), measured);
+});
+
+test('the fix is present if any closing pull request’s commits are in the run', () => {
+  const two = (args) =>
+    args[0] === 'issue'
+      ? ok({ state: 'CLOSED', closedByPullRequestsReferences: [{ number: 79 }, { number: 80 }] })
+      : args[0] === 'api'
+        ? ok('-\n')
+        : ok(args[2] === '79' ? { mergeCommit: { oid: OLD }, headRefOid: OLD } : { mergeCommit: { oid: RUN }, headRefOid: HEAD });
+  const c = closedIssues([62], two).get(62);
+  assert.deepEqual(c, { fix: [OLD, OLD, RUN, HEAD], by: 'pull requests #79, #80' });
+  // The first pull request’s commits aren’t in the run; the second’s are: one is enough.
+  assert.equal(
+    hasFix(c.fix, RUN, (args) => ({ status: args[2] === RUN ? 0 : 1, stdout: '' })),
+    true,
+  );
+});
+
+test('a finding whose issue can’t be read isn’t verified, and a verifier with no results changes nothing', async () => {
+  const findings = [check(123)];
+  presetFindings(findings, { root: '.', commit: RUN, gh: gh(), git });
+  let asked = 0;
+  const ask = async () => {
+    asked++;
+    return { value: {} };
+  };
+  const unreadable = (args) => (args.includes('title,body') ? { status: 1, stdout: '' } : gh()(args));
+  const logs = [];
+  await verifyRegressions({ root: '.', testerModel: 'm', dir: '/r', findings, log: (l) => logs.push(l), file: false, ask, gh: unreadable });
+  assert.equal(asked, 0);
+  assert.deepEqual(logs, ['Couldn’t read #123, so its findings weren’t verified.']);
+  await verifyRegressions({ root: '.', testerModel: 'm', dir: '/r', findings, log: (l) => logs.push(l), file: false, ask, gh: gh() });
+  assert.equal(asked, 1);
+  assert.equal(findings[0].verdict, undefined);
+  assert.match(logs.at(-1), /failed: the answer had no results/);
 });

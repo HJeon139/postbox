@@ -92,8 +92,32 @@ export function setVerdict(f, { verdict, by, note = null, issue = null, at = new
   f.verdictAt = at;
   if (note !== null) f.note = note;
   if (v === 'duplicate') f.duplicateOf = issue ?? f.duplicateOf;
-  else delete f.duplicateOf;
+  else {
+    delete f.duplicateOf;
+    // A regression someone judged otherwise isn’t one (#213): no comment goes out for it, and the report doesn’t list
+    // its closed issue as caught again.
+    delete f.regression;
+    if (f.closedIssue) unmatchClosed(f);
+  }
   return true;
+}
+
+/** Takes a closed issue off a finding that isn’t a duplicate of it, keeping it as matchedIssue. @param {any} f */
+export function unmatchClosed(f) {
+  if (!Number.isInteger(f.issue)) return;
+  f.matchedIssue = f.issue;
+  f.issue = null;
+}
+
+/**
+ * A finding without a check’s own preset (a duplicate set by “check”), for a recheck that sets it again against what’s
+ * known now: the issue may have closed since (#213). Any other verdict stays.
+ * @param {any} f
+ */
+export function withoutPreset(f) {
+  if (f.verdictBy !== 'check' || normalVerdict(f.verdict) !== 'duplicate') return f;
+  const { verdict, verdictBy, verdictAt, verdicts, note, duplicateOf, ...rest } = f;
+  return rest;
 }
 
 /**

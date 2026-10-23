@@ -38,7 +38,7 @@ import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/ru
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { coverageSection, gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
-import { mergePeopleVerdicts } from './uat/verdicts.mjs';
+import { mergePeopleVerdicts, withoutPreset } from './uat/verdicts.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -915,19 +915,31 @@ async function recheck(dir) {
       .map((f) => ({ ...f, source: 'check', step: 'recheck' }));
     // Checks that read the live run (the fresh install, UI probes, samples while agents worked) can’t run
     // again; their findings, and the run’s own (a turn past the time limit), are kept as they were.
-    const live = saved.findings.filter((f) => f.source === 'run' || (f.source === 'check' && LIVE_ONLY.has(f.check)));
+    // A check’s own preset is set again below, for these as for the recomputed ones (#213).
+    const live = saved.findings.filter((f) => f.source === 'run' || (f.source === 'check' && LIVE_ONLY.has(f.check))).map(withoutPreset);
     const gh = spawnSync('gh', ['issue', 'list', '--state', 'all', '--limit', '300', '--json', 'number,title'], { cwd: ROOT, encoding: 'utf8' });
     const issues = gh.status === 0 ? JSON.parse(gh.stdout) : [];
     // Verdicts and filed issue numbers from earlier reviews carry over to the recomputed findings. A check’s own
     // preset doesn’t: it’s set again below, and a match to an issue closed since isn’t preset (#213).
     const before = new Map(saved.findings.filter((f) => f.source === 'check').map((f) => [`${f.check}:${f.key}`, f]));
-    const reviewed = ['verdict', 'verdictBy', 'verdictAt', 'verdicts', 'note', 'duplicateOf'];
+    const carried = [
+      'step',
+      'phase',
+      'filed',
+      'regression',
+      'regressionNote',
+      'regressionComment',
+      'verdict',
+      'verdictBy',
+      'verdictAt',
+      'verdicts',
+      'note',
+      'duplicateOf',
+    ];
     for (const c of checks) {
       const b = before.get(`${c.check}:${c.key}`);
       // Its step too: the refit counts a finding at the step it was first seen.
-      if (b)
-        for (const k of ['step', 'phase', 'filed', 'regression', 'regressionNote', 'regressionComment', ...(b.verdictBy === 'check' ? [] : reviewed)])
-          if (b[k] !== undefined) c[k] = b[k];
+      if (b) for (const [k, v] of Object.entries(withoutPreset(b))) if (carried.includes(k) && v !== undefined) c[k] = v;
     }
     // Coverage is read again from the whole run: a phase’s triggers either happened in it or didn’t. A gap saved
     // before keeps its verdict if it’s still a gap.

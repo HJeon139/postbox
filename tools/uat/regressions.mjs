@@ -8,7 +8,7 @@
 import { spawnSync } from 'node:child_process';
 import { basename } from 'node:path';
 import { askOnce } from './tester.mjs';
-import { normalVerdict, presetVerdicts, setVerdict } from './verdicts.mjs';
+import { normalVerdict, presetVerdicts, setVerdict, unmatchClosed, verdictOf } from './verdicts.mjs';
 
 /** @typedef {(args: string[]) => { status: number|null, stdout: string, stderr?: string }} Cli */
 
@@ -24,8 +24,8 @@ const json = (r) => {
 };
 
 /**
- * Each closed issue among these numbers, with its fix: the commit its last “closed” event names, else its closing
- * pull request’s merge and head commits. An open issue is left out. One gh can’t read is kept as unread: it may be
+ * Each closed issue among these numbers, with its fix: the commit its last “closed” event names, else every closing
+ * pull request’s merge and head commits (the run has the fix if it has any of them). An open issue is left out. One gh can’t read is kept as unread: it may be
  * closed, so it mustn’t be preset as a duplicate.
  * @param {number[]} numbers  @param {Cli} gh
  * @returns {Map<number, { fix: string[], by: string|null, unread?: true }>}
@@ -42,10 +42,14 @@ export function closedIssues(numbers, gh) {
       out.set(n, { fix: [commit], by: `commit ${short(commit)}` });
       continue;
     }
-    const pr = (issue.closedByPullRequestsReferences ?? []).at(-1)?.number;
-    const merged = pr ? json(gh(['pr', 'view', String(pr), '--json', 'mergeCommit,headRefOid'])) : null;
-    const fix = [merged?.mergeCommit?.oid, merged?.headRefOid].filter((s) => typeof s === 'string' && s);
-    out.set(n, { fix, by: fix.length ? `pull request #${pr}` : null });
+    const prs = (issue.closedByPullRequestsReferences ?? []).map((p) => p.number).filter(Number.isInteger);
+    const fix = prs
+      .flatMap((pr) => {
+        const merged = json(gh(['pr', 'view', String(pr), '--json', 'mergeCommit,headRefOid']));
+        return [merged?.mergeCommit?.oid, merged?.headRefOid];
+      })
+      .filter((s) => typeof s === 'string' && s);
+    out.set(n, { fix, by: fix.length ? `pull request${prs.length > 1 ? 's' : ''} #${prs.join(', #')}` : null });
   }
   return out;
 }
@@ -81,7 +85,7 @@ export function markClosed(findings, { closed, commit, git }) {
     const has = commit && c.fix.length ? hasFix(c.fix, commit, git) : null;
     f.closedIssue = { issue: n, fix: c.fix[0] ?? null, by: c.by, commit, hasFix: has, ...(c.unread ? { unread: true } : {}) };
     if (f.verdict) {
-      if (normalVerdict(f.verdict) !== 'duplicate') unmatch(f);
+      if (normalVerdict(f.verdict) !== 'duplicate') unmatchClosed(f);
       continue;
     }
     if (c.unread) f.note = `gh couldn’t read #${n}, so whether it’s closed can’t be told, and it isn’t preset. Not verified.`;
@@ -100,12 +104,6 @@ export function markClosed(findings, { closed, commit, git }) {
           : `#${n} is closed, and the run’s commit ${short(commit)} has its fix (${c.by}): a possible regression, for the verifier.`;
   }
 }
-
-/** Takes a closed issue off a finding the verifier didn’t confirm, keeping it as matchedIssue. @param {any} f */
-const unmatch = (f) => {
-  f.matchedIssue = f.issue;
-  f.issue = null;
-};
 
 /**
  * The verdicts that need no model, in a checkout: a match to a closed issue is marked first (markClosed), and the
@@ -155,59 +153,90 @@ ${findings
 /**
  * Asks a verifier whether each finding on a closed issue that the run had the fix for shows the defect. Shown: a
  * duplicate of that issue, marked as a regression, for commentRegressions. Not shown: harness, naming the check, so
- * the check gets fixed.
+ * the check gets fixed. A finding whose issue gh can’t read isn’t verified: the verifier would judge it blind.
  * @param {{ root: string, testerModel: string, dir: string, findings: any[], log: (l: string) => void, file: boolean, ask?: typeof askOnce, gh?: Cli }} o
  */
 export async function verifyRegressions({ root, testerModel, dir, findings, log, file, ask = askOnce, gh = cli('gh', root) }) {
-  const pending = findings.filter((f) => f.closedIssue?.hasFix === true && !f.verdict);
+  const waiting = findings.filter((f) => f.closedIssue?.hasFix === true && !f.verdict);
+  const issues = new Map();
+  for (const n of new Set(waiting.map((f) => f.closedIssue.issue))) {
+    const issue = json(gh(['issue', 'view', String(n), '--json', 'title,body']));
+    if (issue) issues.set(n, issue);
+    else log(`Couldn’t read #${n}, so its findings weren’t verified.`);
+  }
+  const pending = waiting.filter((f) => issues.has(f.closedIssue.issue));
   if (!pending.length) return;
-  const issues = new Map(pending.map((f) => [f.closedIssue.issue, json(gh(['issue', 'view', String(f.closedIssue.issue), '--json', 'title,body'])) ?? {}]));
   log(`Verifying ${pending.length} findings on closed issues, whose fixes the run had…`);
-  let value;
+  let results;
   try {
-    ({ value } = await ask({ cwd: dir, model: testerModel, prompt: regressionPrompt({ findings: pending, issues }), schema: REGRESSION_SCHEMA }));
+    const { value } = await ask({ cwd: dir, model: testerModel, prompt: regressionPrompt({ findings: pending, issues }), schema: REGRESSION_SCHEMA });
+    results = value.results;
+    if (!Array.isArray(results)) throw new Error('the answer had no results');
   } catch (e) {
     return log(`Verifying the findings on closed issues failed: ${e.message}`);
   }
-  for (const r of value.results) {
+  for (const r of results) {
     const f = pending[r.index];
     if (!f) continue;
     const n = f.closedIssue.issue;
     if (!r.shown) {
-      if (setVerdict(f, { verdict: 'harness', by: 'verifier', note: `The ${f.check} check matched closed #${n}, and the evidence doesn’t show it: ${r.note}` }))
-        unmatch(f);
+      setVerdict(f, { verdict: 'harness', by: 'verifier', note: `The ${f.check} check matched closed #${n}, and the evidence doesn’t show it: ${r.note}` });
       continue;
     }
     if (!setVerdict(f, { verdict: 'duplicate', by: 'verifier', issue: n, note: `#${n} came back after its fix (${f.closedIssue.by}): ${r.note}` })) continue;
     f.regression = true;
     f.regressionNote = r.note;
-    if (!file) log(`#${n} came back after its fix. With --file no, the issue wasn’t commented on: a run that files will.`);
+    if (!file) log(`#${n} came back after its fix. With --file no, the issue wasn’t commented on: a recheck of this run that files will.`);
   }
 }
 
 /**
- * Comments on each confirmed regression’s issue with the evidence, once: one confirmed by a pass that didn’t file
- * (--file no) is commented on by the next that does. The runner never reopens the issue.
+ * Comments on each issue with a confirmed regression in this run, once per issue per run, listing the run’s findings
+ * on it: one confirmed by a pass that didn’t file (--file no) is commented on by a recheck of the run that does. Only
+ * while the finding is still a duplicate of that issue: a person or a reviewer who judged it otherwise clears it
+ * (setVerdict). A hidden mark names the run, so a comment the run already left isn’t posted again. The runner never
+ * reopens the issue.
  * @param {{ root: string, dir: string, findings: any[], log: (l: string) => void, gh?: Cli }} o
  */
 export function commentRegressions({ root, dir, findings, log, gh = cli('gh', root) }) {
-  for (const f of findings.filter((x) => x.regression && !x.regressionComment && Number.isInteger(x.closedIssue?.issue))) {
-    const n = f.closedIssue.issue;
-    const c = gh(['issue', 'comment', String(n), '--body', regressionComment(f, dir, f.regressionNote ?? f.note)]);
-    if (c.status === 0) f.regressionComment = c.stdout.trim();
-    else log(`Couldn’t comment on #${n}: ${String(c.stderr ?? '').trim()}`);
+  const run = basename(dir);
+  const mark = `<!-- uat-regression:${run} -->`;
+  /** @type {Map<number, any[]>} */
+  const byIssue = new Map();
+  for (const f of findings) {
+    const n = f.closedIssue?.issue;
+    if (f.regression && verdictOf(f) === 'duplicate' && f.duplicateOf === n) byIssue.set(n, [...(byIssue.get(n) ?? []), f]);
+  }
+  for (const [n, list] of byIssue) {
+    if (list.every((f) => f.regressionComment)) continue;
+    const seen = json(gh(['issue', 'view', String(n), '--json', 'comments']));
+    if (!seen) {
+      log(`Couldn’t read #${n}’s comments, so it wasn’t commented on.`);
+      continue;
+    }
+    let url = (seen.comments ?? []).find((c) => String(c.body ?? '').includes(mark))?.url;
+    if (!url) {
+      const c = gh(['issue', 'comment', String(n), '--body', regressionComment(list, run, mark)]);
+      if (c.status !== 0) {
+        log(`Couldn’t comment on #${n}: ${String(c.stderr ?? '').trim()}`);
+        continue;
+      }
+      url = c.stdout.trim();
+    }
+    for (const f of list) f.regressionComment = url;
   }
 }
 
-/** The comment a confirmed regression leaves on its issue. */
-const regressionComment = (f, dir, note) =>
+/** The comment a run’s confirmed regressions leave on their issue. @param {any[]} list  @param {string} run  @param {string} mark */
+const regressionComment = (list, run, mark) =>
   [
     `A UAT run caught this again after its fix, and the verifier confirmed it from the run’s evidence.`,
     '',
-    `- **Run:** \`${basename(dir)}\`, at ${f.closedIssue.commit}, which has the fix (${f.closedIssue.by}).`,
-    `- **Check:** \`${f.check}\`, finding \`${f.key}\`.`,
-    `- **Evidence:** ${f.evidence}`,
-    `- **Verifier:** ${note}`,
+    `**Run:** \`${run}\`, at ${list[0].closedIssue.commit}, which has the fix (${list[0].closedIssue.by}).`,
+    '',
+    ...list.map((f) => `- \`${f.check}\`, finding \`${f.key}\`: ${f.evidence} **Verifier:** ${f.regressionNote ?? f.note}`),
     '',
     'The runner doesn’t reopen issues: the triage session or the person decides.',
+    '',
+    mark,
   ].join('\n');
