@@ -205,6 +205,25 @@ await check('an agent woken from outside the conversation joins it, and its row,
   assert.doesNotMatch(await page.evaluate(`${row('indexer')}.innerText`), /Joined when/);
 });
 
+await check('the Threads page lists side threads beside topic threads, with their pair, state, count and last activity (#124)', async () => {
+  const side = sideOf();
+  const link = store.items(room.id).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
+  await open(`#/p/${room.projectId}/threads`);
+  const cards = () =>
+    page.evaluate(
+      `[...document.querySelectorAll('.thread-list li')].map((li) => ({ kind: li.dataset.kind, text: li.innerText.replace(/\\s+/g, ' ').trim(), href: li.querySelector('a').getAttribute('href') }))`,
+    );
+  const card = (await cards()).find((c) => c.kind === 'side' && c.text.startsWith(side.title));
+  assert.ok(card, 'No card for the side thread');
+  assert.match(card.text, new RegExp(`^${side.title} Side thread · in Side checks · ${link.count} messages · (idle|@\\w+ [a-z ]+) · `));
+  assert.equal(card.href, `#/t/${room.id}/side/${side.id}`);
+  // A topic thread says which kind it is too.
+  assert.ok(
+    (await cards()).some((c) => c.kind === 'topic' && / Topic thread · in /.test(c.text)),
+    'No topic thread says its kind',
+  );
+});
+
 await check('at 375 px, the side-thread line with its agent’s state fits without scrolling sideways', async () => {
   await page.size(375, 812);
   try {

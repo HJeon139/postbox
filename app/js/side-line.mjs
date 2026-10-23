@@ -32,4 +32,4 @@ export function sideActive(sideId) {
 }
 export const sideSig = (se) => (se ? `${se.id}:${se.state}` : '');
 /** “is calling tools”, “needs you”: what an agent is doing, after its name. */
-const doing = (se) => (se.state === 'needs' ? 'needs you' : se.state === 'failed' ? 'failed' : `is ${stateWord(se.state).toLowerCase()}`);
+export const doing = (se) => (se.state === 'needs' ? 'needs you' : se.state === 'failed' ? 'failed' : `is ${stateWord(se.state).toLowerCase()}`);
