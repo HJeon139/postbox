@@ -351,7 +351,9 @@ export function driver(page) {
     },
 
     async stopAll() {
-      await ev(`document.querySelector('.composer button.stop')?.click()`);
+      await ev(
+        `(() => { const b = [...document.querySelectorAll('.composer button.stop')].find((x) => x.getClientRects().length && !x.disabled); if (!b) throw new Error('No Stop control is visible.'); b.click(); })()`,
+      );
     },
   };
 }

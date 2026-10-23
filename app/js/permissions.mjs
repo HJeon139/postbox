@@ -140,7 +140,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       view.real && !view.readsRules
         ? h(
             'p.help',
-            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. Its mode and its Tools decide what it may do.`,
+            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. ${p.backend === 'codex' ? 'Ask me uses read-only; Auto and Accept edits share workspace-write with network off; Run everything has full access and no approval prompts. The per-agent Tools checklist is unavailable.' : 'Its mode and its Tools decide what it may do.'}`,
           )
         : null,
       view.real ? modeSection(p) : null,

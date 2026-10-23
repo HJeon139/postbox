@@ -159,6 +159,7 @@ async function main() {
       ? {
           ...p,
           backend: b.backend,
+          ...(scenario.permissionModes[p.handle] ? { permissionMode: scenario.permissionModes[p.handle] } : {}),
           ...(b.model ? { model: b.model } : b.backend === 'codex' && codexDefaultModel ? { model: codexDefaultModel } : {}),
           ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}),
         }
@@ -418,6 +419,11 @@ async function main() {
           );
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
+        } else if (a.type === 'send_then_stop') {
+          await d.send(a.text ?? '');
+          await sleep(Math.max(1, Math.min(10, a.seconds ?? 2)) * 1000);
+          await d.stopAll();
+          actionResult = 'Pressed Stop on the active reply.';
         } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'act') await d.act(key, a);
         else if (a.type === 'review') await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
@@ -455,6 +461,7 @@ async function main() {
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
         } else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
+        else if (a.type === 'stop') await d.stopAll();
       } catch (e) {
         actionError = e.message;
         log(`action failed: ${e.message}`);

@@ -32,7 +32,7 @@ test('Codex config attaches Postbox MCP through the local HTTP endpoint', () => 
   ]);
 });
 
-test('Codex approval requests become explicit Postbox permission cards without unsupported Always allow rules', async () => {
+test('Codex command approvals become Postbox permission cards without unsupported Always allow rules', async () => {
   let requested;
   const allowed = await codexApproval(
     {
@@ -41,13 +41,13 @@ test('Codex approval requests become explicit Postbox permission cards without u
         return { allow: true };
       },
     },
-    { method: 'item/commandExecution/requestApproval', params: { itemId: 'cmd_1', command: 'touch ../outside.txt' } },
+    { method: 'item/commandExecution/requestApproval', params: { itemId: 'cmd_1', command: 'touch ../outside.txt', cwd: '/work' } },
   );
   assert.deepEqual(allowed, { decision: 'accept' });
   assert.deepEqual(requested, {
     tool: 'Bash',
-    summary: 'Codex wants to run a command',
-    detail: 'touch ../outside.txt',
+    summary: 'run a command',
+    detail: 'touch ../outside.txt\n\nWorking directory: /work',
     toolUseId: 'cmd_1',
     suppressAlways: true,
   });
@@ -56,6 +56,68 @@ test('Codex approval requests become explicit Postbox permission cards without u
     { method: 'item/fileChange/requestApproval', params: { itemId: 'file_1', grantRoot: '/workspace' } },
   );
   assert.deepEqual(denied, { decision: 'decline' });
+});
+
+test('Codex Postbox MCP tool requests are approved in the MCP elicitation protocol without permission cards', async () => {
+  let asked = false;
+  const answer = await codexApproval(
+    {
+      askPermission: async () => {
+        asked = true;
+        return { allow: false };
+      },
+    },
+    {
+      id: 44,
+      method: 'mcpServer/elicitation/request',
+      params: {
+        serverName: 'postbox',
+        mode: 'form',
+        message: 'Allow the postbox MCP server to run tool "show_block"?',
+        _meta: { codex_approval_kind: 'mcp_tool_call', tool_name: 'show_block', tool_params: { block: { type: 'card' } } },
+        requestedSchema: { type: 'object', properties: {} },
+      },
+    },
+  );
+  assert.deepEqual(answer, { action: 'accept', content: {} });
+  assert.equal(asked, false);
+});
+
+test('Codex external MCP tool approvals show tool details and return elicitation decisions', async () => {
+  const request = {
+    id: 45,
+    method: 'mcpServer/elicitation/request',
+    params: {
+      serverName: 'github',
+      mode: 'form',
+      message: 'Allow the github MCP server to run tool "create_issue"?',
+      _meta: {
+        codex_approval_kind: 'mcp_tool_call',
+        tool_description: 'Create a GitHub issue.',
+        tool_params: { title: 'Fix it' },
+      },
+      requestedSchema: { type: 'object', properties: {} },
+    },
+  };
+  let permission;
+  const accepted = await codexApproval(
+    {
+      askPermission: async (req) => {
+        permission = req;
+        return { allow: true };
+      },
+    },
+    request,
+  );
+  assert.deepEqual(accepted, { action: 'accept', content: {} });
+  assert.deepEqual(permission, {
+    tool: 'mcp__github__create_issue',
+    summary: 'use github tool create_issue',
+    detail: '{\n  "description": "Create a GitHub issue.",\n  "arguments": {\n    "title": "Fix it"\n  }\n}',
+    toolUseId: 45,
+    suppressAlways: true,
+  });
+  assert.deepEqual(await codexApproval({ askPermission: async () => ({ allow: false }) }, request), { action: 'decline' });
 });
 
 test('the recorded app-server stream maps text and command activity to Postbox', () => {

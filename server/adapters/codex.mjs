@@ -107,14 +107,57 @@ export function codexConfigArgs(mcpUrl) {
 
 const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server failed.';
 
-/** Map app-server command and file-change approval requests onto Postbox's permission card. */
+/** Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses. */
 export async function codexApproval(ctx, msg) {
   const p = msg.params ?? {};
+  if (msg.method === 'mcpServer/elicitation/request') {
+    const meta = p._meta ?? {};
+    if (meta.codex_approval_kind === 'mcp_tool_call') {
+      const server = String(p.serverName ?? 'mcp').slice(0, 80);
+      const name = String(meta.tool_name ?? meta.toolName ?? /run tool ["“]([^"”]+)["”]/i.exec(p.message ?? '')?.[1] ?? 'tool').slice(0, 80);
+      // Postbox tools only update the current conversation. Like the Agent SDK, let those run directly;
+      // the MCP endpoint still validates every call and the UI actions are intentionally user-scoped.
+      if (server === POSTBOX_SERVER) return { action: 'accept', content: {} };
+      const tool = `mcp__${server}__${name}`;
+      const args = meta.tool_params ?? {};
+      const detail = JSON.stringify(
+        {
+          ...(meta.tool_description ? { description: meta.tool_description } : {}),
+          arguments: args,
+        },
+        null,
+        2,
+      );
+      const answer = await ctx.askPermission({
+        tool,
+        summary: `use ${server} tool ${name}`,
+        detail,
+        toolUseId: msg.id,
+        suppressAlways: true,
+      });
+      return answer?.allow ? { action: 'accept', content: {} } : { action: 'decline' };
+    }
+    const server = String(p.serverName ?? 'MCP server').slice(0, 80);
+    const answer = await ctx.askPermission({
+      tool: `mcp__${server}__elicitation`,
+      summary: `respond to ${server}`,
+      detail: String(p.message ?? 'The MCP server requests input.'),
+      toolUseId: msg.id,
+      suppressAlways: true,
+    });
+    return answer?.allow ? { action: 'accept', content: {} } : { action: 'decline' };
+  }
+  const isCommand = msg.method === 'item/commandExecution/requestApproval';
   const isFile = msg.method === 'item/fileChange/requestApproval';
-  const summary = isFile ? 'Codex wants to change files' : 'Codex wants to run a command';
-  const detail = p.command ?? p.reason ?? p.networkApprovalContext?.host ?? p.grantRoot ?? summary;
-  const answer = await ctx.askPermission({ tool: isFile ? 'Edit' : 'Bash', summary, detail, toolUseId: p.itemId, suppressAlways: true });
-  return { decision: answer?.allow ? 'accept' : 'decline' };
+  if (isCommand || isFile) {
+    const summary = isFile ? 'change files' : 'run a command';
+    const detail =
+      [p.command ?? p.reason ?? p.networkApprovalContext?.host ?? p.grantRoot, p.cwd ? `Working directory: ${p.cwd}` : null].filter(Boolean).join('\n\n') ||
+      summary;
+    const answer = await ctx.askPermission({ tool: isFile ? 'Edit' : 'Bash', summary, detail, toolUseId: p.itemId, suppressAlways: true });
+    return { decision: answer?.allow ? 'accept' : 'decline' };
+  }
+  throw new Error(`Unsupported Codex app-server request: ${msg.method ?? 'unknown'}`);
 }
 
 /** Translate app-server notifications into Postbox turn events. */
@@ -250,8 +293,12 @@ export class CodexAdapter {
         return;
       }
       if (msg.id != null && msg.method) {
-        // App-server initiated approval request. Keep Postbox's interactive permission card as the decision point.
-        send({ id: msg.id, result: await codexApproval(ctx, msg) });
+        // App-server initiated approval/elicitation request.
+        try {
+          send({ id: msg.id, result: await codexApproval(ctx, msg) });
+        } catch (error) {
+          send({ id: msg.id, error: { code: -32601, message: error.message } });
+        }
         return;
       }
       if (msg.method === 'turn/started') activeTurnId = msg.params?.turn?.id ?? activeTurnId;
