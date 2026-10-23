@@ -9,11 +9,27 @@ import { join } from 'node:path';
 /** The event, cut to what the checks read, or null for one they don’t (streamed text, apps, glossary…). */
 export function keepEvent(seq, type, data) {
   if (type === 'item.add' || type === 'item.patch') return { seq, type, data };
-  // A session event holds the whole session; the checks read only its state, and finishedAt, which a turn clears.
+  // A session event holds the whole session; the checks read only its state, and finishedAt, which a turn clears. The
+  // triggers (tools/uat/triggers.mjs) also read Stop’s question about background jobs, and the jobs themselves (#126),
+  // when the session has them.
   if (type === 'session' && data?.id)
-    return { seq, type, data: { id: data.id, state: data.state ?? null, finishedAt: data.finishedAt ?? null, updatedAt: data.updatedAt ?? null } };
+    return {
+      seq,
+      type,
+      data: {
+        id: data.id,
+        state: data.state ?? null,
+        finishedAt: data.finishedAt ?? null,
+        updatedAt: data.updatedAt ?? null,
+        ...(Object.hasOwn(data, 'stopAsk') ? { stopAsk: data.stopAsk ? { at: data.stopAsk.at ?? null, jobs: data.stopAsk.jobs ?? null } : null } : {}),
+        ...(Array.isArray(data.jobs) ? { jobs: data.jobs.slice(0, 50).map(jobOf) } : {}),
+      },
+    };
   return null;
 }
+
+/** A background job, cut to what the triggers read. */
+const jobOf = (j) => ({ id: String(j?.id ?? ''), state: j?.state ?? null, kept: j?.kept === true, turnId: j?.turnId ?? null });
 
 /**
  * Follows a Postbox server’s event stream (/api/stream) from its first event, keeping the events the checks read.

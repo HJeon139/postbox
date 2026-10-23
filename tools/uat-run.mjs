@@ -12,8 +12,10 @@
 // for a version release: --release (releaseGate), which also counts as --compat:
 //
 //   node tools/uat-run.mjs --scenario mixedroom --compat
-// Everything a run makes goes in uat-runs/<time>-<scenario>/ (ignored by git): report.md, findings.json,
-// screenshots, each agent turn’s raw stream, and Postbox’s data.
+// Everything a run makes goes in uat-runs/<time>-<scenario>/ in the main checkout, or POSTBOX_UAT_RUNS (tools/uat/runs.mjs),
+// ignored by git: report.md, findings.json, run.json, screenshots, each agent turn’s raw stream, and Postbox’s data.
+// A run is 15 steps unless its scenario or --steps says otherwise; a targeted scenario’s phases end on their triggers
+// (tools/uat/triggers.mjs). Every finding gets a verdict: the verifier’s after the run, or yours (tools/uat-verdict.mjs).
 
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -28,10 +30,13 @@ import { codexModels, codexVersion, findCodex } from '../server/adapters/codex.m
 import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
 import { agyTokens, kiroCredits, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
-import { driver } from './uat/driver.mjs';
+import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
-import { compatBackends, parseScenario, releaseGate } from './uat/scenario.mjs';
+import { readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
+import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
 import { askOnce, createTester, systemPrompt, unaddressed, VERIFY_SCHEMA, verifyPrompt } from './uat/tester.mjs';
+import { coverageSection, gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
+import { mergePeopleVerdicts, presetVerdicts, setVerdict } from './uat/verdicts.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -39,14 +44,18 @@ const { values: opt } = parseArgs({
     scenario: { type: 'string', default: 'scifact' },
     port: { type: 'string', default: '4310' },
     'chrome-port': { type: 'string', default: '9510' },
-    steps: { type: 'string', default: '40' },
+    // The most steps: the scenario’s own `- steps: N`, else a targeted scenario’s phase caps added up, else 15.
+    steps: { type: 'string' },
     // Start at this phase (1 is the first), to rerun a later one without the earlier ones; the tester sets up what it needs.
     phase: { type: 'string', default: '1' },
     'turn-timeout': { type: 'string', default: '900' },
     budget: { type: 'string', default: '8' },
     'tester-model': { type: 'string', default: 'claude-sonnet-5-5' },
     recheck: { type: 'string' },
-    // After a run, verify new findings and file the confirmed ones that no open issue covers. --file no skips it.
+    // After a run, verify the findings that have no verdict (--verify no skips it), and file the confirmed ones that no
+    // open issue covers (--file no verifies without filing).
+    // (A recheck verifies only when it files, unless --verify yes: --recheck --file no stays free.)
+    verify: { type: 'string' },
     file: { type: 'string', default: 'yes' },
     // The run for a version release: only it may use the release-only backends (tools/uat/scenario.mjs, RELEASE_ONLY).
     release: { type: 'boolean', default: false },
@@ -132,9 +141,12 @@ async function main() {
   // without it, so the tester can’t put an agent on it from a sheet either.
   const gate = releaseGate(scenario, { release: opt.release });
   if (gate.error) throw new Error(gate.error);
+  const unknown = unknownTriggers(scenario);
+  if (unknown.length) throw new Error(`This scenario names triggers that don’t exist: ${unknown.join(', ')}. See tools/uat/triggers.mjs.`);
+  const steps = stepCap(scenario, opt.steps);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
-  const dir = join(ROOT, 'uat-runs', `${stamp}-${name}`);
+  const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = {
     data: join(dir, 'data'),
     workspace: join(dir, 'workspace'),
@@ -152,7 +164,7 @@ async function main() {
     console.log(l);
   };
   const started = Date.now();
-  log(`UAT “${scenario.title}” → ${relative(ROOT, dir)}`);
+  log(`UAT “${scenario.title}” → ${dir}, at most ${steps} steps`);
 
   // Open issues, so the tester and the report can name the ones a run catches again.
   const gh = spawnSync('gh', ['issue', 'list', '--state', 'open', '--limit', '200', '--json', 'number,title'], { cwd: ROOT, encoding: 'utf8' });
@@ -257,7 +269,9 @@ async function main() {
     transcripts: [],
     console: page.logs,
     apps: {},
-    probes: { fullScreen: [], attachments: [], answers: [] },
+    // stale: the page’s notices that Postbox refused an answer as stale (#123); interrupts: how the runner answered
+    // Stop’s question about background jobs (#126). The triggers read both.
+    probes: { fullScreen: [], attachments: [], answers: [], stale: [], interrupts: [] },
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
@@ -281,6 +295,41 @@ async function main() {
     const seen = new Map(); // item key → text last shown to the tester
     let phase = Math.min(Math.max(Number(opt.phase) - 1 || 0, 0), scenario.phases.length - 1);
     if (phase) log(`Starting at phase ${phase + 1}: ${scenario.phases[phase].title}.`);
+    // A targeted phase ends when its triggers have happened, or at its step cap (tools/uat/triggers.mjs).
+    const startPhase = phase;
+    const goals = phaseGoals(scenario, { cap: phaseCap, start: phase, log });
+    const blockById = (st, id) =>
+      Object.values(st?.items ?? {})
+        .flatMap((list) => list ?? [])
+        .find((x) => x?.id === id);
+    /** @type {Set<string>} */
+    const staleSeen = new Set();
+    // Postbox’s notice on a block whose answer it refused because it changed meanwhile (#123): the page’s own record.
+    const noteStale = async () => {
+      const notes = await d.staleNotes().catch((e) => {
+        log(`Couldn’t read the page’s stale-answer notices, so the stale-answer trigger may be missed: ${e.message}`);
+        return [];
+      });
+      for (const n of notes ?? []) {
+        if (!n?.key || staleSeen.has(`${n.key}\n${n.text}`)) continue;
+        staleSeen.add(`${n.key}\n${n.text}`);
+        facts.probes.stale.push({ key: n.key, text: n.text, at: Date.now(), step: timeline.length });
+        log(`the page refused a stale answer to ${n.key}: ${n.text}`);
+      }
+    };
+    // An answer while the agent works (an interrupt that answers), to cause #123’s refusals: the page answers the
+    // revision it showed, whatever the agent has done since.
+    const answerMidTurn = async (it) => {
+      const key = keys.get(it.item);
+      if (!key) throw new Error(`There’s no item ${it.item}.`);
+      const now = blockById((await api('/api/state')).state, key);
+      if (now?.kind === 'block') facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
+      if (it.verdict) await d.review(key, { verdict: it.verdict, comments: it.comments ?? [] });
+      else await d.act(key, { fills: it.fills ?? [], choose: it.choose ?? [], button: it.button ?? null });
+      await sleep(1000);
+      await noteStale();
+      return `Answered ${it.item}${now?.revision ? ` (at revision ${now.revision} when you answered)` : ''} while the agent worked.`;
+    };
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
@@ -398,12 +447,19 @@ async function main() {
       return { items: out, states };
     };
 
-    for (let step = 1; step <= Number(opt.steps); step++) {
+    for (let step = 1; step <= steps; step++) {
       const timedOut = await settle();
       await refreshFacts();
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
       const obs = await observe();
+      await noteStale();
+      // What the last step’s action caused is that step’s.
+      goals.observe(facts, timeline.length);
+      const goal = goals.check(phase, step);
+      if (goal.end === 'now') break;
+      if (goal.phase !== phase) log(`phase ${phase + 1} → ${goal.phase + 1}: ${goal.note}`);
+      phase = goal.phase;
       const fresh = [...midTurn.splice(0), ...newFindings()];
       // Stop’s question about background jobs (#126) can be a dialog, which isn’t an item: say it’s there.
       const jobsAsk = await d.jobsAsk();
@@ -415,8 +471,9 @@ async function main() {
         return `${label ? `[${label}] ` : ''}${w.what}${where && w.threadId !== mainThread ? ` (in the thread “${where.title}”${label ? '' : ', not on screen: open it'})` : ''}`;
       });
       const prompt = [
-        `Step ${step} of at most ${opt.steps}. Phase ${phase + 1} of ${scenario.phases.length}: ${ph.title}`,
+        `Step ${step} of at most ${steps}. Phase ${phase + 1} of ${scenario.phases.length}: ${ph.title}`,
         ph.text,
+        goal.note,
         lastAction
           ? `Your last action: ${JSON.stringify(lastAction)}${actionError ? `. It failed: ${actionError}` : ''}${actionResult ? `. Result: ${actionResult}` : ''}`
           : phase
@@ -435,6 +492,7 @@ async function main() {
         .filter(Boolean)
         .join('\n\n');
       const answer = await tester.step(prompt, system);
+      goals.took(phase);
       timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action });
       log(`step ${step} · ${answer.assessment}`);
       for (const f of answer.findings) {
@@ -456,6 +514,13 @@ async function main() {
         pushedBack = waiting.join('\n');
         actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first.`;
         log(`action held: ${waiting.length} waiting on the person`);
+        continue;
+      }
+      // Moving on from a phase whose triggers haven’t happened: held once, then a coverage gap.
+      const held = a.type === 'next_phase' || a.type === 'done' ? goals.leave(phase) : null;
+      if (held) {
+        actionError = held;
+        log('action held: the phase’s triggers haven’t happened');
         continue;
       }
       if (a.type === 'done') break;
@@ -505,8 +570,11 @@ async function main() {
           if (now) facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
           if (a.type === 'act') await d.act(key, a);
           else await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
-        } else if (a.type === 'jobs') await d.answerJobs(a.answer);
-        else if (a.type === 'settings') {
+          await noteStale();
+        } else if (a.type === 'jobs') {
+          await d.answerJobs(a.answer);
+          facts.probes.interrupts.push({ step, at: Date.now(), do: 'jobs', answered: JOBS_ANSWERS[a.answer]?.[0] ?? null });
+        } else if (a.type === 'settings') {
           const r = await d.personaSettings(a.target ?? '', {
             permissions: a.permissions === true,
             shots: paths.shots,
@@ -545,7 +613,8 @@ async function main() {
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
           // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
-          const said = await d.interrupt(a.interrupt, { panel, onWait: () => midTurnChecks() });
+          const said = await d.interrupt(a.interrupt, { panel, onWait: () => midTurnChecks(), answer: () => answerMidTurn(a.interrupt) });
+          facts.probes.interrupts.push({ step, at: Date.now(), do: a.interrupt.do, answered: /You answered “([^”]+)”/.exec(said)?.[1] ?? null });
           actionResult = actionResult ? `${actionResult} ${said}` : said;
         }
       } catch (e) {
@@ -557,14 +626,26 @@ async function main() {
     await settle();
     await refreshFacts();
     newFindings();
+    // What the last action caused counts, and every phase with triggers that didn’t all happen is a coverage gap.
+    await noteStale();
+    goals.observe(facts, timeline.length);
+    if (goals.check(phase, timeline.length).end !== 'now') goals.finish(phase);
+    for (const g of goals.gaps()) findings.set(`coverage-gap:${g.key}`, { ...g, step: timeline.length });
+    const coverage = goals.coverage();
     // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
     await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
-    await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
-    if (opt.file !== 'no') {
-      await fileFindings({ dir, scenario, findings: all, timeline, log });
-      await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines });
+    presetVerdicts(all);
+    await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
+    if (opt.verify !== 'no' || opt.file !== 'no') {
+      await reviewFindings({ dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
+      await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     }
+    // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
+    writeJsonAtomic(
+      join(dir, 'run.json'),
+      runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
+    );
   } finally {
     history.close();
     await page.close().catch(() => {});
@@ -574,7 +655,7 @@ async function main() {
 
 // ── Report ─────────────────────────────────────────────────────────────────────────────────
 
-async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, rechecked = false }) {
+async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, coverage = [], rechecked = false }) {
   const title = (n) => issues.find((i) => i.number === n)?.title ?? '(closed, or not in the list)';
   const agentCost = facts.streams.flatMap((s) => s.events.filter((e) => e.type === 'result')).reduce((a, e) => a + (e.total_cost_usd ?? 0), 0);
   // Kiro reports credits, not dollars: they’re listed beside the agents’ cost when a run had Kiro turns.
@@ -602,6 +683,8 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
       const left = facts.state ? waitingOnYou(facts.state, facts.threads ?? []) : [];
       return left.length ? [`**Left waiting on you:** ${left.map((w) => w.what).join('; ')}.`, ''] : [];
     })(),
+    // A targeted run says first which fixes it reached, and which it didn’t test.
+    ...coverageSection(coverage, { rechecked }),
     '## Known issues caught again',
     '',
     `${caught.size} open issues reproduced. The checks watch ${watched.length} issues; the tester can match any open issue.`,
@@ -632,7 +715,7 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
       .filter((f) => !f.issue && f.verdict !== 'harness')
       .map(
         (f) =>
-          `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(f.evidence).slice(0, 260)} | ${f.source} (step ${f.step}) | ${f.filed ? `filed #${f.filed}` : f.duplicateOf ? `duplicate of #${f.duplicateOf}` : esc(f.verdict ?? 'not reviewed')}${f.note ? `: ${esc(f.note)}` : ''} |`,
+          `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(f.evidence).slice(0, 260)} | ${f.source} (step ${f.step}) | ${f.filed ? `filed #${f.filed}` : f.duplicateOf ? `duplicate of #${f.duplicateOf}` : esc(f.verdict ?? 'not reviewed')}${f.verdictBy ? ` (${f.verdictBy})` : ''}${f.note ? `: ${esc(f.note)}` : ''} |`,
       ),
     '',
     ...(findings.some((f) => f.verdict === 'harness')
@@ -653,15 +736,36 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
     '',
   ].join('\n');
   await writeFile(join(dir, 'report.md'), md);
-  await writeFile(
-    join(dir, 'findings.json'),
-    `${JSON.stringify({ scenario: scenario.title, started, testerSpent: tester.spent, findings, timeline, probes: facts.probes, samples: facts.samples }, null, 2)}\n`,
-  );
+  keepPeopleVerdicts(findings, join(dir, 'findings.json'));
+  writeJsonAtomic(join(dir, 'findings.json'), {
+    scenario: scenario.title,
+    started,
+    testerSpent: tester.spent,
+    findings,
+    timeline,
+    probes: facts.probes,
+    samples: facts.samples,
+    coverage,
+  });
   if (rechecked) await writeFile(join(dir, 'run.log'), `${readFileSync(join(dir, 'run.log'), 'utf8')}${logLines.join('\n')}\n`);
   else await writeFile(join(dir, 'run.log'), `${logLines.join('\n')}\n`);
   console.log(
-    `\nReport: ${relative(ROOT, join(dir, 'report.md'))} · ${caught.size} known issues caught again · ${findings.filter((f) => !f.issue && f.verdict !== 'harness').length} new findings`,
+    `\nReport: ${join(dir, 'report.md')} · ${caught.size} known issues caught again · ${findings.filter((f) => !f.issue && f.verdict !== 'harness').length} new findings`,
   );
+}
+
+/**
+ * A verdict a person or a reviewer recorded in findings.json (tools/uat-verdict.mjs) while this process held the
+ * findings in memory, such as during a recheck’s verification, is kept rather than written over.
+ * @param {any[]} findings  @param {string} file
+ */
+function keepPeopleVerdicts(findings, file) {
+  if (!existsSync(file)) return;
+  try {
+    mergePeopleVerdicts(findings, JSON.parse(readFileSync(file, 'utf8')).findings ?? []);
+  } catch (e) {
+    console.log(`Couldn’t read ${file} to keep the verdicts in it: ${e.message}`);
+  }
 }
 
 // ── Filing ─────────────────────────────────────────────────────────────────────────────────
@@ -675,21 +779,24 @@ const fingerprint = (f) =>
     .replace(/\W+/g, '-')
     .slice(0, 60)}`;
 
-async function fileFindings({ dir, scenario, findings, timeline, log }) {
+/**
+ * Gives every finding without a verdict one, in a fresh model session (verify), then files the confirmed ones that no
+ * open issue covers (file). A verdict a person or a reviewer set is never re-verified (tools/uat/verdicts.mjs).
+ */
+async function reviewFindings({ dir, scenario, findings, timeline, log, verify, file }) {
   const gh = (args) => spawnSync('gh', args, { cwd: ROOT, encoding: 'utf8' });
   const open = gh(['issue', 'list', '--state', 'open', '--limit', '300', '--json', 'number,title,body']);
-  if (open.status !== 0) return log('Filing skipped: the gh CLI isn’t available or signed in.');
+  // Without the open issues, the verifier can’t tell a duplicate, and would confirm it: wait for a recheck with gh.
+  if (open.status !== 0) return log('Verifying and filing skipped: the gh CLI isn’t available or signed in. Recheck the run once it is.');
   const issues = JSON.parse(open.stdout);
   const filedBefore = new Map(issues.flatMap((i) => [...(i.body ?? '').matchAll(/<!-- (uat:[^ ]+) -->/g)].map((m) => [m[1], i.number])));
-  const pending = findings.filter((f) => !f.issue && !f.filed && !f.verdict);
-  for (const f of findings.filter((x) => !x.issue && !x.filed && filedBefore.has(fingerprint(x)))) {
-    f.verdict = 'duplicate';
-    f.duplicateOf = filedBefore.get(fingerprint(f));
-    f.note = `Filed by an earlier run as #${f.duplicateOf}.`;
+  for (const f of findings.filter((x) => !x.issue && !x.filed && !x.verdict && filedBefore.has(fingerprint(x)))) {
+    const n = filedBefore.get(fingerprint(f));
+    setVerdict(f, { verdict: 'duplicate', by: 'runner', issue: n, note: `Filed by an earlier run as #${n}.` });
   }
-  const toVerify = pending.filter((f) => !f.verdict);
-  if (toVerify.length) {
-    log(`Verifying ${toVerify.length} new findings before filing…`);
+  const toVerify = findings.filter((f) => !f.filed && !f.verdict);
+  if (verify && toVerify.length) {
+    log(`Verifying ${toVerify.length} findings${file ? ' before filing' : ''}…`);
     try {
       const { value } = await askOnce({
         cwd: dir,
@@ -700,15 +807,21 @@ async function fileFindings({ dir, scenario, findings, timeline, log }) {
       for (const r of value.results) {
         const f = toVerify[r.index];
         if (!f) continue;
-        Object.assign(f, { verdict: r.verdict, note: r.note, ...(r.duplicateOf ? { duplicateOf: r.duplicateOf } : {}) });
-        if (r.verdict === 'confirmed') f.filing = r;
+        if (!setVerdict(f, { verdict: r.verdict, by: 'verifier', note: r.note, issue: r.duplicateOf ?? null })) continue;
+        // The tester matched it to an open issue, and the verifier didn’t agree: it isn’t a catch of that issue.
+        if (f.issue && !(f.verdict === 'duplicate' && f.duplicateOf === f.issue)) {
+          f.matchedIssue = f.issue;
+          f.issue = f.verdict === 'duplicate' ? (f.duplicateOf ?? null) : null;
+        }
+        if (f.verdict === 'confirmed') f.filing = r;
       }
     } catch (e) {
       log(`Verification failed, so nothing was filed: ${e.message}`);
       return;
     }
   }
-  for (const f of findings.filter((x) => x.verdict === 'confirmed' && x.filing && !x.filed)) {
+  if (!file || open.status !== 0) return;
+  for (const f of findings.filter((x) => x.verdict === 'confirmed' && x.filing && !x.filed && !x.issue)) {
     const r = f.filing;
     const body = [
       `**Component:** ${r.component}`,
@@ -740,7 +853,6 @@ async function fileFindings({ dir, scenario, findings, timeline, log }) {
     f.filed = Number(made.stdout.trim().split('/').pop());
     log(`Filed #${f.filed}: ${r.title}`);
   }
-  await writeFile(join(dir, 'findings.json'), `${JSON.stringify({ ...JSON.parse(readFileSync(join(dir, 'findings.json'), 'utf8')), findings }, null, 2)}\n`);
 }
 
 // ── Recheck ──────────────────────────────────────────────────────────────────────────────────
@@ -750,9 +862,12 @@ async function fileFindings({ dir, scenario, findings, timeline, log }) {
 const LIVE_ONLY = new Set(['fresh-install-agents', 'full-screen-noop', 'image-not-shown', 'silent-while-working']);
 
 async function recheck(dir) {
-  dir = resolve(dir);
+  // A run folder, or a run’s name in the runs folder.
+  dir = existsSync(dir) ? resolve(dir) : join(runsRoot({ root: ROOT }), dir);
   const saved = JSON.parse(readFileSync(join(dir, 'findings.json'), 'utf8'));
-  const name = dir.replace(/^.*-(\w+)$/, '$1');
+  // Its record before the report is rewritten: the minutes it took are only in the first report.
+  const record = readRun(dir);
+  const name = existsSync(join(dir, 'run.json')) && record?.scenario ? record.scenario : dir.replace(/^.*-(\w+)$/, '$1');
   const scenario = parseScenario(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8'));
   const port = Number(opt.port);
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
@@ -819,9 +934,26 @@ async function recheck(dir) {
     const before = new Map(saved.findings.filter((f) => f.source === 'check').map((f) => [`${f.check}:${f.key}`, f]));
     for (const c of checks) {
       const b = before.get(`${c.check}:${c.key}`);
-      if (b) for (const k of ['verdict', 'note', 'filed', 'duplicateOf']) if (b[k] !== undefined) c[k] = b[k];
+      // Its step too: the refit counts a finding at the step it was first seen.
+      if (b)
+        for (const k of ['step', 'phase', 'verdict', 'verdictBy', 'verdictAt', 'verdicts', 'note', 'filed', 'duplicateOf']) if (b[k] !== undefined) c[k] = b[k];
     }
-    const findings = [...checks, ...live, ...kept];
+    // Coverage is read again from the whole run: a phase’s triggers either happened in it or didn’t. A gap saved
+    // before keeps its verdict if it’s still a gap.
+    // A run that started at a later phase (--phase) skipped the ones before it: they aren’t gaps.
+    const start = Math.max(0, (Number(record?.startPhase) || 1) - 1);
+    const goals = phaseGoals(scenario, { cap: phaseCap, start, log: (l) => console.log(l) });
+    goals.observe(facts, null);
+    const coverage = goals.coverage();
+    const gapsBefore = new Map(live.filter((f) => f.check === 'coverage-gap').map((f) => [f.key, f]));
+    const gaps = scenario.phases.flatMap((ph, i) => {
+      const missing = coverage.filter((c) => c.phase === i + 1 && c.hit === false && !c.skipped).map((c) => c.trigger);
+      if (!missing.length) return [];
+      const g = { ...gapFinding({ phase: i + 1, title: ph.title, missing, why: 'Over the whole run,' }), step: 'recheck', phase: ph.title };
+      return [{ ...g, ...(gapsBefore.get(g.key)?.verdictBy === 'person' || gapsBefore.get(g.key)?.verdictBy === 'reviewer' ? gapsBefore.get(g.key) : {}) }];
+    });
+    const findings = [...checks, ...live.filter((f) => f.check !== 'coverage-gap'), ...gaps, ...kept];
+    presetVerdicts(findings);
     const report = () =>
       writeReport({
         dir,
@@ -833,13 +965,27 @@ async function recheck(dir) {
         tester: { spent: saved.testerSpent ?? 0 },
         facts,
         logLines: [`Rechecked ${new Date().toISOString()} with the current checks and driver.`],
+        coverage,
         rechecked: true,
       });
     await report();
-    if (opt.file !== 'no') {
-      await fileFindings({ dir, scenario, findings, timeline: saved.timeline, log: (l) => console.log(l) });
+    // A recheck verifies only when it files, unless asked: --recheck --file no makes no model call.
+    const verify = opt.verify ? opt.verify !== 'no' : opt.file !== 'no';
+    if (verify || opt.file !== 'no') {
+      await reviewFindings({
+        dir,
+        scenario,
+        findings,
+        timeline: saved.timeline,
+        log: (l) => console.log(l),
+        verify,
+        file: opt.file !== 'no',
+      });
       await report();
     }
+    // A run from before run.json gets one, from what its report and streams say.
+    const { dir: _d, findings: _f, ...kept2 } = record ?? {};
+    writeJsonAtomic(join(dir, 'run.json'), { ...kept2, scenario: name, kind: isTargeted(scenario) ? 'targeted' : 'exploratory', coverage });
   } finally {
     await page.close().catch(() => {});
     server.kill();

@@ -379,20 +379,33 @@ export function driver(page) {
       await clickAt(JOBS_BUTTON(answer), `“${JOBS_ANSWERS[answer][0]}”`);
     },
 
+    /**
+     * Postbox’s notices on blocks whose answer it refused because the agent changed them while the person was answering
+     * (#123), by item: the page’s own record of the refusal, which the server keeps nowhere.
+     * @returns {Promise<{ key: string|null, text: string }[]>}
+     */
+    staleNotes: () =>
+      ev(
+        `[...document.querySelectorAll('.stale-note')].map((n) => ({ key: n.closest('[data-key]')?.dataset.key ?? null, text: n.textContent.replace(/\\s+/g, ' ').trim().slice(0, 300) }))`,
+      ),
+
     /** Whether an item is in the thread panel, where its agent’s composer is the panel’s. @param {string} key */
     inPanel: (key) => ev(`!!${ITEM(key)}?.closest('.sidepanel')`),
 
     /**
      * Acts while an agent’s turn runs, as a person does mid-turn: waits until the composer shows Stop (an agent is
      * working there), lets it work `after` seconds, then presses Stop, or writes `text` and presses Send now on it
-     * once it’s queued. After Stop, it answers Postbox’s question about background jobs with `jobs`, if it asks.
-     * `panel` picks the thread panel’s composer over the conversation’s; `onWait` runs every few seconds meanwhile.
-     * @param {{ after?: number, do: 'stop'|'send_now', jobs?: 'stop'|'keep'|null, text?: string }} what
-     * @param {{ panel?: boolean, onWait?: () => Promise<void> }} [opts]
+     * once it’s queued, or answers a block with `answer` (the runner’s, which answers as act or review do: a draft
+     * answered while its agent revises it, #123). After Stop, it answers Postbox’s question about background jobs with
+     * `jobs`, if it asks. `panel` picks the thread panel’s composer over the conversation’s; `onWait` runs every few
+     * seconds meanwhile.
+     * @param {{ after?: number, do: 'stop'|'send_now'|'answer', jobs?: 'stop'|'keep'|null, text?: string }} what
+     * @param {{ panel?: boolean, onWait?: () => Promise<void>, answer?: () => Promise<string> }} [opts]
      * @returns {Promise<string>}  what happened, for the tester
      */
-    async interrupt({ after = 20, do: action, jobs = null, text = '' }, { panel = false, onWait = async () => {} } = {}) {
-      if (action !== 'stop' && action !== 'send_now') throw new Error(`An interrupt is stop or send_now, not “${action}”.`);
+    async interrupt({ after = 20, do: action, jobs = null, text = '' }, { panel = false, onWait = async () => {}, answer = null } = {}) {
+      if (action !== 'stop' && action !== 'send_now' && action !== 'answer') throw new Error(`An interrupt is stop, send_now or answer, not “${action}”.`);
+      if (action === 'answer' && !answer) throw new Error('An answer while the agent works needs the block to answer.');
       if (action === 'send_now' && !String(text).trim()) throw new Error('Send now needs the message to send.');
       const composer = panel
         ? `document.querySelector('.sidepanel .composer')`
@@ -413,6 +426,8 @@ export function driver(page) {
       }
       const who = String((await ev(`${stop}?.getAttribute('aria-label') ?? ''`)) ?? '').replace(/^Stop /, '');
       const notes = [];
+      // An answer isn’t a Stop: Postbox asks nothing about background jobs.
+      if (action === 'answer') return `${await /** @type {() => Promise<string>} */ (answer)()} (after ${after} s of ${who || 'its reply'})`;
       if (action === 'stop') {
         await clickAt(stop, 'the Stop button');
         notes.push(`Pressed Stop on ${who || 'the working agent’s reply'} after ${after} s.`);

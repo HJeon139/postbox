@@ -28,9 +28,9 @@ sequenceDiagram
 - **The driver** ([`tools/uat/driver.mjs`](../../../tools/uat/driver.mjs)) uses the UI the way a person does, with real clicks, key presses, typing and the file picker. It reads only what’s on screen, and reaches inside agent apps’ sandboxed frames to read and click them.
 - **The tester** ([`tools/uat/tester.mjs`](../../../tools/uat/tester.mjs)) plays the person in the scenario. It sees each step’s changes, with screenshots, and judges them: broken UI, errors, anything hidden or unreadable, and agents doing the wrong thing. It picks the next action, and matches what it finds to open issues. It runs on your signed-in `claude` CLI, isolated from your own Claude Code settings.
 - **What waits on the person.** Every step, the runner lists what “needs you” would count: blocks that ask and aren’t answered (review drafts included, whatever revision they’re on), wake requests, proposals, permission cards and failed turns. The tester answers them before it moves to the next phase or finishes. If it tries to move on, or to wait while no agent works, the runner holds the action once and says what’s still waiting. A review is answered with the `review` action: approve, or request changes with at least one comment on a line. The report lists anything left waiting at the end.
-- **While a turn runs.** The runner waits for the agents to finish before each step, so a `send`, `thread`, `act` or `review` can carry an `interrupt`: once an agent is working, the run lets it work for a number of seconds, then presses Stop, or writes a message and presses Send now on it. After Stop, it answers Postbox’s question about the agent’s background jobs (“Stop it too” or “Keep running”, #126) if one appears, and the `jobs` action answers one left on screen. A wake request is a card, answered with `act` and its button.
+- **While a turn runs.** The runner waits for the agents to finish before each step, so a `send`, `thread`, `act` or `review` can carry an `interrupt`: once an agent is working, the run lets it work for a number of seconds, then presses Stop, writes a message and presses Send now on it, or answers a block (`do: answer`, with the item and the answer `review` or `act` would give). After Stop, it answers Postbox’s question about the agent’s background jobs (“Stop it too” or “Keep running”, #126) if one appears, and the `jobs` action answers one left on screen. A wake request is a card, answered with `act` and its button.
 - **Checks while agents work.** `background-step-closed` and `two-processes-one-session` also run every 15 seconds while an agent works, and during an interrupt’s wait: on `main`, a turn with a background command lasts until the command ends, so by the next step the stream has reported its end and the step’s “done” looks right again.
-- **What the tester read.** Before it answers a block, the runner checks that the block is still the revision the tester read. If an agent changed it meanwhile, it doesn’t answer, and tells the tester to read it again, as a person would see it change. It notes the revision it answered, for `approval-for-other-revision`. So that check’s “applied to another revision” half covers only the seconds the runner takes to answer; its other half, an update that erased an unread answer, covers #123’s own timeline.
+- **What the tester read.** Before it answers a block, the runner checks that the block is still the revision the tester read. If an agent changed it meanwhile, it doesn’t answer, and tells the tester to read it again, as a person would see it change. It notes the revision it answered, for `approval-for-other-revision`. So that check’s “applied to another revision” half covers only the seconds the runner takes to answer; its other half, an update that erased an unread answer, covers #123’s own timeline. An answer given while the agent works (an interrupt that answers) skips that guard on purpose: the page answers the revision it showed, which is how P0’s phase 2 makes Postbox refuse a stale answer, or an update over an unread one.
 - **Settings.** The `settings` action opens Settings › Personas and edits an agent, and with `permissions` its permissions panel too. The tester gets their text, what their fields hold (backend, model, checkboxes) and screenshots, and the run closes them after.
 - **The checks** ([`tools/uat/checks.mjs`](../../../tools/uat/checks.mjs)) catch defect classes deterministically from:
   - Postbox’s state and the page
@@ -86,7 +86,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 
 - [SciFact: claims, abstracts and retrieval](scenarios/scifact.md)
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
-- [P0 hotfixes](scenarios/p0.md) (#108, #123, #125, #126): two Claude Code agents in a room. Phase 1 has them send each other long lists through more than three wakes, so the allow card appears (#108). Phase 2 has a draft one agent revises while the other reviews it and you answer, with a Send now mid-revision (#123, #125, and #126’s original chain). Phase 3 has a background command, then Stop with Keep running, Stop with Stop it too, and Send now (#126).
+- [P0 hotfixes](scenarios/p0.md) (#108, #123, #125, #126), a targeted scenario (see “How long a run is”): two Claude Code agents in a room. Phase 1 has them trade a 15-item checklist, and then only their changes, through more than three wakes, so the allow card appears (#108). Phase 2 makes the draft change under you: you answer it while its agent revises it, answer a revision that has since changed, and ask for it again under the same id (#123, #125). Phase 3 has a background command, then Stop with Keep running, Stop with Stop it too, and Send now (#126).
 - [Work room: real changes, the agents in the sidebar, and the right pane](scenarios/workroom.md): @researcher changes real files and @critic reviews them, through the Agents section and the Work view in the right pane. Its plan is [plan-agents-and-work.md](../plan-agents-and-work.md).
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
@@ -141,6 +141,53 @@ node tools/uat-run.mjs --scenario wikisearch
 node tools/uat-run.mjs --recheck uat-runs/<run>
 ```
 
+## How long a run is
+
+**An exploratory run is 15 steps.** A scenario can set its own cap in its header (`- steps: 20`), and `--steps` overrides both. Fifteen comes from the 11 runs that had finished by 22 October 2026, which found 8 defects later confirmed and filed (#69, #70, #71, #147, #149–#152):
+- The tester’s new findings per step (product findings no open issue covered), over the runs that reached each step: 0.26 in steps 1–5, 0.20 in 6–10, 0.18 in 11–15, and 0.09 in 16–20.
+- By step 15, a run had found about 89% of what it found by step 20 (bootstrap 95% CI 80–100%), and 7 of the 8 confirmed defects were first seen by step 14.
+- The drop after step 15 isn’t significant (p ≈ 0.18), so the cap is a cost decision: a step cost from $0.06 to $5.79.
+- The deterministic checks catch known issues again almost only in steps 1–5.
+
+Refit it as runs accumulate (“Refitting the scale”, below), and change `DEFAULT_STEPS` in `tools/uat/scenario.mjs` when the data says to. A cap of 15 means new runs stop seeing steps 16–20, so the refit can’t check the cap by itself: run about one exploratory pass in five with `--steps 20`, so the share of the 20-step yield stays measurable.
+
+**A targeted scenario’s phases end on their triggers.** The 49-turn P0 run hit each fix’s code path within about 10 turns of its phase, then spent 21 turns covering nothing new, and #123’s and #125’s refusals never fired at all: the scenario hoped for a race instead of causing one. So a phase can name what it’s there to cause, before its text:
+
+```markdown
+## Phase 2: A draft that changes while you answer it
+
+- triggers: update-over-unread, stale-answer, repeated-block-id
+- steps: 10
+```
+
+A trigger is a deterministic predicate over what the run records ([`tools/uat/triggers.mjs`](../../../tools/uat/triggers.mjs)): Postbox’s state, its history (`events.jsonl`), the agents’ streams, and what the runner saw on the page.
+
+| Trigger              | Issue | Postbox showed that                                                                                    |
+| -------------------- | ----- | ------------------------------------------------------------------------------------------------------ |
+| wake-full-text       | #108  | an allowed wake delivered the agent’s whole message, longer than the request’s 200-character preview   |
+| update-over-unread   | #123  | it refused update_block over an answer the agent hadn’t read yet                                       |
+| stale-answer         | #123  | it refused an answer from the person’s page because the block had changed since they read it           |
+| repeated-block-id    | #125  | it refused show_block for an id the agent already showed                                               |
+| stop-keep-jobs       | #126  | Stop asked about a background job, and the person kept it running                                      |
+| stop-jobs-too        | #126  | Stop asked about a background job, and the person stopped it too                                       |
+| send-now-job-running | #126  | Send now interrupted a turn with a background job running, and the job kept running without a question |
+
+```mermaid
+flowchart TD
+  step["Each step: settle, read the run’s facts"] --> fired{"All the phase’s triggers happened?"}
+  fired -- yes --> next["Tell the tester; it finishes the phase, and the run moves on within 2 steps"]
+  fired -- no --> cap{"Phase at its step cap (default 8)?"}
+  cap -- yes --> gap["Record a coverage gap, and move on"]
+  cap -- no --> tester["The tester works on causing it; a first next_phase is held"]
+```
+
+- Each step, the tester is told what the phase is waiting to see, and how many steps it has left for it.
+- Once a phase’s triggers have happened, the tester gets up to 2 more steps to finish what the phase asks (approve the draft, check what the woken agent got, answer what’s waiting) and says next_phase; then the run moves on by itself.
+- A phase that reaches its cap without its triggers records a **coverage gap**: a finding with the verdict “measurement”, such as “Phase 2’s trigger “stale-answer” never happened”. A tester that asks twice to move on records one too.
+- The report opens with a **Coverage** table, per phase and trigger: whether it happened, by which step, and the steps used. It says plainly which fixes the run didn’t test. A run that missed a trigger hasn’t tested that fix, however clean its checks are.
+- A targeted run’s step cap is its phases’ caps added up (28 for P0). A phase without triggers works as before: the tester says when it’s done.
+- `--recheck` reads the triggers again over a finished run. A run from before the runner recorded what a trigger reads (the page’s stale notice, the jobs in the history) says it can’t tell.
+
 ## Running it
 
 ```bash
@@ -148,7 +195,8 @@ node tools/uat-run.mjs --scenario scifact
 ```
 
 Options:
-- `--steps` (30 to 40 for a full run)
+- `--steps` (the default is 15 for an exploratory scenario, and the phase caps added up for a targeted one)
+- `--verify no` (skip the verifier after the run) and `--file no` (verify without filing), below
 - `--turn-timeout` (seconds per agent turn, default 900)
 - `--budget` (the tester’s spend cap, in dollars)
 - `--tester-model`
@@ -166,9 +214,10 @@ Give the launcher’s full path: the tester and the agents start in other folder
 
 A run needs Claude Code installed and signed in, Chrome, and network access for the agents’ data downloads. A scenario with Kiro agents also needs the Kiro CLI, signed in; their turns use Kiro credits, which the report lists beside the agents’ cost. A scenario with Antigravity agents needs the Antigravity CLI, signed in, and `--release`; the report lists the Antigravity tokens it used. It uses real usage: a data-heavy agent turn can cost a few dollars.
 
-Each run writes to `uat-runs/<time>-<scenario>/`, which git ignores:
-- `report.md`: the issues caught again, new findings, and the timeline
-- `findings.json`
+Each run writes to `uat-runs/<time>-<scenario>/` in the main checkout, which git ignores, or to `POSTBOX_UAT_RUNS` when it’s set. A run started in a worktree still lands there (the runner finds the main checkout through git’s common dir), so deleting the worktree doesn’t delete the run: the wave 1 and 2 runs were lost that way, with their findings unreviewed. `--recheck` takes any run folder. A run holds:
+- `report.md`: coverage (for a targeted run), the issues caught again, new findings with their verdicts, and the timeline
+- `findings.json`: every finding with its verdict, the timeline, and what the runner probed
+- `run.json`: what a refit reads, so it needn’t parse the report: the scenario and its kind, the branch and commit, the model the agents ran on (from their streams) and their effort when the runner knows it, the tester’s model, the steps and the cap, the minutes, the cost, and the coverage
 - `run.log`
 - `shots/`: screenshots of every block and app the tester saw
 - `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/` and Antigravity turns in `streams/agy/` (release runs)
@@ -177,19 +226,48 @@ Each run writes to `uat-runs/<time>-<scenario>/`, which git ignores:
 
 File what a run finds with the bug template in the [UAT README](../README.md), after checking each finding against its screenshot.
 
-## Filing what a run finds
+## Verdicts, and filing what a run finds
 
-New findings are filed as GitHub issues automatically, unless an open issue already covers them. After the report, the runner:
-1. **Skips** findings that match an open issue. These are tagged by the tester or a check, or carry the fingerprint of an issue an earlier run filed.
-2. **Verifies** the rest in a fresh model session against the screenshots and the run’s evidence. Each finding gets a verdict:
-   - **confirmed:** a defect in Postbox
-   - **harness:** caused by the runner
-   - **not reproduced**
-   - **duplicate:** an open issue covers it
-   - **agent-work:** a flaw in the agent’s own reasoning that Postbox didn’t cause
-3. **Files** each confirmed finding with the bug template: component, urgency, steps to reproduce, expected, and what failed instead. It gets the `uat` label, a priority from its severity, and a hidden fingerprint so later runs don’t file it again. The report shows each verdict and issue number.
+Every finding ends up with a verdict, so the harness’s precision can be counted. Before verdicts were kept, most findings stayed “not reviewed”, and no one could say how many were real. The verdicts:
+- **confirmed:** a defect in Postbox
+- **duplicate:** an open issue covers it (with its number)
+- **harness:** caused by the runner
+- **agent:** a flaw in the agent’s own reasoning or work that Postbox didn’t cause
+- **by-design:** Postbox does it on purpose
+- **not-reproduced:** the evidence doesn’t support it
+- **measurement:** not a defect: the M1 exit counts, or a coverage gap
 
-Filed issues have no milestone, so they get triaged into the plan ([#64](https://github.com/HJeon139/postbox/issues/64)) like any other. Pass `--file no` to skip filing, and `--recheck uat-runs/<run>` to file from a finished run.
+Each records who set it (`person`, `reviewer` or `verifier`, or `check` and `runner` for the ones they set themselves) and when, in `findings.json`. After the report, the runner:
+1. **Presets** what needs no model: a check that matched an open issue caught it again (a duplicate of it), and a finding with the fingerprint of an issue an earlier run filed is a duplicate of that one.
+2. **Verifies** the rest in a fresh model session against the screenshots and the run’s evidence, including the tester’s own matches to open issues. It does this with `--file no` too; `--verify no` skips it.
+3. **Files** each confirmed finding with the bug template: component, urgency, steps to reproduce, expected, and what failed instead. It gets the `uat` label, a priority from its severity, and a hidden fingerprint so later runs don’t file it again. The report shows each verdict, who set it, and the issue number. `--file no` verifies without filing.
+
+A person or a reviewing session records or overrides a verdict with:
+
+```bash
+node tools/uat-verdict.mjs <run> --list
+node tools/uat-verdict.mjs <run> <finding key or index> <verdict> [note] [--issue N] [--by person|reviewer]
+```
+
+`<run>` is a run folder, or its name in the runs folder. A person’s or a reviewer’s verdict wins over the verifier’s, and a recheck keeps it. Every verdict stays in the finding’s `verdicts`, so a refit can see where the verifier and a reviewer disagreed.
+
+Filed issues have no milestone, so they get triaged into the plan ([#64](https://github.com/HJeon139/postbox/issues/64)) like any other. Pass `--recheck <run>` to verify and file from a finished run. A recheck verifies only when it files (a model call), so `--recheck <run> --file no` stays free; add `--verify yes` to verify without filing.
+
+## Refitting the scale
+
+```bash
+node tools/uat-stats.mjs
+node tools/uat-stats.mjs --runs /some/uat-runs --runs /another/uat-runs
+```
+
+It reads every finished run (one with `findings.json`; a run in two folders counts once) and prints, for all runs, then per scenario kind (exploratory or targeted) and per the agents’ model:
+- discovery per step, in steps 1–5, 6–10, 11–15 and 16–20, counting only the runs that reached each step: the tester’s new findings, and every distinct product finding
+- the share of the 20-step yield reached by steps 5, 10 and 15, with bootstrap 95% CIs (seeded, so a refit prints the same numbers)
+- the verdicts’ shares, and the precision of the reviewed defect claims
+- the cost per step
+- for targeted runs, how often each trigger happened
+
+It says so when the data is too thin: fewer than 5 runs, fewer than 3 that reached step 20, fewer than 10 reviewed claims, or an interval wider than 30 points. A run without `run.json` is read from its report, findings and streams. Over the 11 runs above, it prints the numbers in “How long a run is”, and a test keeps it doing so (`tests/uat-scale.test.mjs`).
 
 ## Validation: 21 October 2026
 
