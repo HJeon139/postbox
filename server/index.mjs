@@ -1,12 +1,13 @@
 // Postbox server: serves the app, the API, live updates over server-sent events, the MCP endpoint and
 // the sandbox frames for agent-written apps. Node only, no dependencies.
 //
-//   node server/index.mjs [--port 4173] [--data ./data] [--fresh] [--demo]
+//   node server/index.mjs [--port 4173] [--data <folder>] [--fresh] [--demo]
 //
-// --fresh starts from an empty store; --demo also enables the demo controls (reset, drop connections).
+// The same as the postbox command (bin/postbox.mjs), which reads the flags and finds the data folder (server/home.mjs).
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, normalize, relative, resolve, sep } from 'node:path';
@@ -24,6 +25,7 @@ import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/se
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
+import { dataFolder } from './home.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
@@ -33,11 +35,6 @@ import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const arg = (name, dflt) => {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : dflt;
-};
-const flag = (name) => process.argv.includes(`--${name}`);
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -48,6 +45,10 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8',
@@ -56,9 +57,18 @@ const STATIC = {
   '/app/': join(ROOT, 'app'),
   '/shared/': join(ROOT, 'shared'),
   '/kit/': join(ROOT, 'app', 'kit'),
-  '/media/': join(ROOT, 'app', 'media'),
+  // Only in a clone: an installed package doesn’t ship the mockups.
   '/mockups/': join(ROOT, 'mockups'),
 };
+// /media/ serves the media that comes with Postbox, then the media agents added to the data folder (#90). It’s the only
+// place an app’s sandbox loads images from (server/sandbox.mjs), and the package’s own folder isn’t the person’s to
+// write in: an upgrade replaces it.
+const BUNDLED_MEDIA = join(ROOT, 'app', 'media');
+// The data folder’s media is images only, each sent as a sandboxed page with no script if it’s opened: an agent, or an
+// archive it unpacked, could put an HTML page or a scripted SVG there, and on Postbox’s origin it would carry the page’s
+// token cookie. It goes without the open CORS header, too, which would let another site’s script read it.
+const MEDIA_TYPES = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.svg']);
+const MEDIA_HEADERS = { 'content-security-policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'" };
 
 /**
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
@@ -71,7 +81,7 @@ const STATIC = {
  */
 export async function start({
   port = 4173,
-  dataDir = join(ROOT, 'data'),
+  dataDir = dataFolder({ root: ROOT }).dataDir,
   fresh = false,
   demo = false,
   quiet = false,
@@ -82,6 +92,10 @@ export async function start({
 } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
+  // Agents copy the images their apps show here; show_app’s description names the variable.
+  const mediaDir = join(dataDir, 'media');
+  await mkdir(mediaDir, { recursive: true });
+  process.env.POSTBOX_MEDIA = mediaDir;
   if (fresh)
     for (const n of await readdir(dataDir).catch(() => []))
       if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
@@ -230,14 +244,16 @@ export async function start({
     if (path === '/favicon.svg') return file(res, join(ROOT, 'app', 'media', 'favicon.svg'), {}, req);
     if (path === '/kit/workbench.css' || path === '/app/workbench.css')
       return file(res, join(ROOT, 'app', 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
+    if (path.startsWith('/media/')) {
+      const rel = path.slice('/media/'.length);
+      return file(res, safeJoin(BUNDLED_MEDIA, rel), { 'access-control-allow-origin': '*' }, req).catch(async (e) => {
+        if (e.status !== 404) throw e;
+        return file(res, await mediaFile(mediaDir, rel), MEDIA_HEADERS, req);
+      });
+    }
     for (const [prefix, dir] of Object.entries(STATIC)) {
       if (path.startsWith(prefix))
-        return file(
-          res,
-          safeJoin(dir, path.slice(prefix.length)),
-          prefix === '/kit/' || prefix === '/media/' ? { 'access-control-allow-origin': '*' } : {},
-          req,
-        );
+        return file(res, safeJoin(dir, path.slice(prefix.length)), prefix === '/kit/' ? { 'access-control-allow-origin': '*' } : {}, req);
     }
 
     // Sandbox frames: agent apps and Mermaid diagrams. Each is its own page with a strict policy and,
@@ -580,6 +596,16 @@ function appHeaders(config) {
   };
 }
 
+/** An image in the data folder’s media, followed through links, which can’t lead out of it. */
+async function mediaFile(dir, rel) {
+  const isImage = (p) => MEDIA_TYPES.has(extname(p).toLowerCase());
+  const asked = safeJoin(dir, rel);
+  const [root, real] = await Promise.all([realpath(dir), realpath(asked).catch(() => null)]);
+  if (!real || !isImage(asked) || !isImage(real)) throw httpError(404, 'Not found.');
+  if (!real.startsWith(root + sep)) throw httpError(403, 'That path isn’t allowed.');
+  return real;
+}
+
 function safeJoin(dir, rel) {
   const p = normalize(join(dir, decodeURIComponent(rel)));
   if (p !== dir && !p.startsWith(dir + sep)) throw httpError(403, 'That path isn’t allowed.');
@@ -601,7 +627,7 @@ async function file(res, path, headers = {}, req = null) {
   let entry = staticCache.get(path);
   if (!entry || entry.mtime !== st.mtimeMs) {
     const data = await readFile(path);
-    const type = TYPES[extname(path)] ?? 'application/octet-stream';
+    const type = TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
     const compressible = /^(text\/|application\/json|image\/svg)/.test(type) && data.length > 1024;
     entry = { mtime: st.mtimeMs, data, type, etag: `"${createHash('sha1').update(data).digest('base64url')}"`, gz: compressible ? gzipSync(data) : null };
     staticCache.set(path, entry);
@@ -649,12 +675,8 @@ async function json(req) {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const app = await start({ port: Number(arg('port', 4173)), dataDir: resolve(arg('data', join(ROOT, 'data'))), fresh: flag('fresh'), demo: flag('demo') });
-  const bye = async () => {
-    await app.close();
-    process.exit(0);
-  };
-  process.on('SIGINT', bye);
-  process.on('SIGTERM', bye);
+// Real paths, so a run through a link to the clone starts too.
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
+  const { main } = await import('../bin/postbox.mjs');
+  await main(process.argv.slice(2), start);
 }

@@ -41,7 +41,7 @@ The kit’s player:
 - marks the passage being read with `aria-current`, and lets you click any passage to start there
 - if the voice isn’t available, it says so, and the transcript still reads in full
 
-The voice is Kokoro, running on this computer in its own process ([`server/narration/`](../server/narration/)). Its model, about 100 MB, downloads into `data/models/` the first time anything is read aloud. Nothing is sent anywhere else.
+The voice is Kokoro, running on this computer in its own process ([`server/narration/`](../server/narration/)). Its model, about 100 MB, downloads into `models/` in the data folder (`~/.postbox`) the first time anything is read aloud. Nothing is sent anywhere else.
 
 ## Slidev export
 

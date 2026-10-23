@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node server/index.mjs",
+    "start": "node bin/postbox.mjs",
     "demo": "node tools/demo.mjs",
     "test": "node --test --import ./tests/guard.mjs tests/*.test.mjs",
     "test:coverage": "node --test --import ./tests/guard.mjs --experimental-test-coverage --test-coverage-include=shared/** --test-coverage-include=server/** --test-coverage-include=tools/lint-*.mjs tests/*.test.mjs",
