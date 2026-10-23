@@ -115,6 +115,9 @@ try {
   await until(() => page.evaluate(`!!${node}`), 'the confirm to show');
   rt.act(t.id, item.id, 'confirm', {});
   await until(() => page.evaluate(`!!${node}?.querySelector('.answered-note')`), 'the answer to show');
+  // An agent reports a result only after its turn has given it the answer: since #123, an outcome over an answer it
+  // hasn’t read is refused, as it should be.
+  await until(() => store.items(t.id).find((x) => x.id === item.id)?.answer?.read !== false, 'the agent to read the answer');
   const said = tools.update_block({ block: { ...confirm, outcome: 'Done: **23 frames** deleted, `frames/` is empty' } });
   await until(() => page.evaluate(`!!${node}?.querySelector('.outcome')`), 'the outcome to show').catch(() => {});
   const shown = await page.evaluate(`(() => {
