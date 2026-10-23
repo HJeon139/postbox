@@ -145,6 +145,7 @@ sequenceDiagram
 | Stop ends the reply cleanly and marks it “stopped” | A stopped reply is clearly different from a failed one. |
 | The connection uses server-sent events, shows a visible “Reconnecting…” line, and loses or duplicates nothing | Everything is kept in Postbox’s own store, so it survives a reload. |
 | Stop ends this agent’s turn and its subagents | Agents it woke keep running, each with its own Stop. |
+| Stop reaches every process of the turn, and the agent reads “stopping” until they’ve exited; its next turn waits for that. With background jobs running, Stop asks whether to stop them too; Send now keeps them running. A job that runs on is listed under its reply with its own Stop | Decided in #126 and #129: a turn that only looked stopped ran on beside the next one, and a background job’s step read “done” while it ran for half an hour. Send now is a change of course, not a reason to lose a job’s work. |
 | Each compaction gets a divider that expands to the summary the agent kept | You can see what it might have forgotten. |
 | Turns typed in an attached Claude Code session’s terminal are mirrored, marked “from terminal” | The thread stays the complete record. |
 | Citations are inline markers plus a sources list. A hover card fills a loading bar under its header, then becomes sticky; when the pointer leaves, the same bar counts down before it closes. Keyboard focus works the same way, Enter pins at once and Esc closes | Hover cards don’t flicker, and their links can be clicked. The same cards explain glossary terms. |
