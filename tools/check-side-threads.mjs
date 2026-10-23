@@ -156,7 +156,13 @@ await check('an agent woken into a side thread works in its own session, and the
   assert.equal(await page.evaluate(`${link}.getAttribute('href')`), `#/t/${room.id}/side/${side.id}`);
   assert.equal(await page.evaluate(`${link}.title`), `In the side thread “${side.title}”, woken by @indexer`);
   assert.equal(await page.evaluate(`${link}.getAttribute('aria-label')`), `Calling tools with @indexer, in the side thread “${side.title}”, woken by @indexer`);
-  assert.ok(await page.evaluate(`${link}.getBoundingClientRect().height <= 40`), 'The entry wraps');
+  // Its words show whole, wrapped if need be: none of it is only in the tooltip.
+  assert.ok(
+    await page.evaluate(
+      `(() => { const n = ${link}.querySelector('.name'); return n.scrollWidth <= n.clientWidth && n.scrollHeight <= n.clientHeight + 1; })()`,
+    ),
+    'The entry’s text is cut',
+  );
   // The side-thread line, with the ring and state word.
   assert.match(await sideLine(), /@indexer asked @researcher · @researcher is calling tools · 1 message · Open/);
   assert.ok(await page.evaluate(`!![...document.querySelectorAll('#main .pill')].find((p) => p.textContent.includes('asked'))?.querySelector('pb-ring')`));
@@ -181,6 +187,10 @@ await check('a wake while that session is busy in the conversation goes to a for
   await until(() => fork() && busy(fork().id), 'the fork’s turn');
   await page.waitFor(`${row('researcher')}?.querySelectorAll('.agent-sub').length === 1`, { label: 'the fork’s entry' });
   assert.deepEqual(await subs('researcher'), ['Fork · calling tools with @indexer Stop']);
+  assert.ok(
+    await page.evaluate(`(() => { const n = ${row('researcher')}.querySelector('.agent-sub .name'); return n.scrollWidth <= n.clientWidth; })()`),
+    'The fork’s entry is cut',
+  );
   assert.equal(await page.evaluate(`${row('researcher')}.querySelectorAll('.agent-sub pb-ring').length`), 1, 'The fork has its own ring');
   // Two sessions of one persona, two entries: its row (at work in the conversation) and the fork.
   assert.match(await page.evaluate(`${row('researcher')}.querySelector('.agent-btn').innerText`), /calling tools/);

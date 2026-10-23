@@ -25,7 +25,7 @@ One agent’s settings were in four places: `/model`, `/effort` and `/mode` in t
 - By keyboard: each group of choices is one Tab stop; the arrow keys move within it, and Enter or Space picks. Space or Enter flips a switch. Escape closes the panel and returns focus to the row or ring it came from.
 - Model and effort changed elsewhere (`/model`, another tab) show in the open panel at once.
 - An agent the person never added, which joined because another agent woke it in a side thread, says so under its row (“Joined when @indexer woke it”) and on its ring in the top bar; the wake’s line in the conversation ends “joined the conversation” (#110).
-- **The agent tree** (#121, #110). Under an agent’s row, one line each: its turn when it answers in a side thread (“Calling tools with @indexer”), and each fork of it that answered there while its session was busy elsewhere (“Fork · calling tools with @indexer”), each with a Stop while it works. Each entry opens its side thread; hovering it shows which thread and who woke it. A persona running in two sessions shows two entries, and one of them waiting for you counts in “needs you”, ⌃J and the tab title.
+- **The agent tree** (#121, #110). Under an agent’s row, a short entry each, wrapped rather than cut: its turn when it answers in a side thread (“Calling tools with @indexer”), and each fork of it that answered there while its session was busy elsewhere (“Fork · calling tools with @indexer”), each with a Stop while it works. Each entry opens its side thread; hovering it shows which thread and who woke it. A persona running in two sessions shows two entries, and one of them waiting for you counts in “needs you”, ⌃J and the tab title.
 
 ## Steps to reproduce
 
