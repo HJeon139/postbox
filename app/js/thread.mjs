@@ -12,7 +12,7 @@ import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from 
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
-import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
+import { announceStreaming, navigate, openMenu, openWork, paneHref, say, toast } from './ui.mjs';
 
 const S = () => client.state;
 const handles = () =>
@@ -587,11 +587,24 @@ function renderItem(it, prev, ctx) {
   }
 }
 
-/** A turn’s line from the work ledger (#132), which opens the conversation’s Work view on that turn. */
+/** A turn’s line from the work ledger (#132), which opens the conversation’s Work in the right pane, at that turn. */
 function workChip(it, ctx) {
   const t = client.state.threads[ctx.threadId];
   const conv = (t?.kind === 'side' || t?.kind === 'topic') && t.parentId ? t.parentId : ctx.threadId;
-  return h('a.work-chip', { href: `#/t/${conv}/work/${it.turnId}`, 'aria-label': `This turn’s work: ${it.work}` }, icon('file', 'i-sm'), it.work);
+  return h(
+    'a.work-chip',
+    {
+      href: paneHref(conv, { work: true, turn: it.turnId }),
+      'aria-label': `This turn’s work: ${it.work}`,
+      // Beside the thread that’s open, if any: the address is worked out when you choose it.
+      onclick: (e) => {
+        e.preventDefault();
+        openWork(conv, { turn: it.turnId });
+      },
+    },
+    icon('file', 'i-sm'),
+    it.work,
+  );
 }
 
 function failureText(msg = 'This reply didn’t finish.') {

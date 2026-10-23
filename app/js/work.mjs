@@ -2,12 +2,17 @@
 // work ledger (server/ledger.mjs, shared/work.mjs). It covers every session in the conversation, its side and topic
 // threads included. Where each change stands (uncommitted, committed, pushed) is asked of git when it opens and
 // whenever a turn ends.
+//
+// It has two forms. In the conversation’s right pane, beside a thread or alone, a compact one (mountWorkPane): what
+// needs review, files by where they stand, commands, what was published, spend, and each turn’s line. Full screen, the
+// whole of it over the window (mountWork): every file with its diff and Restore, version control, every command with
+// its output, and effort by agent.
 
 import { formatDuration } from '/shared/text.mjs';
-import { fileEffort, fileState, flagged, formatBytes, formatCost, formatTokens, signed, summarize } from '/shared/work.mjs';
+import { fileEffort, fileState, flagged, formatBytes, formatCost, formatTokens, signed, summarize, turnLine } from '/shared/work.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
-import { keepFocus, openDialog, toast } from './ui.mjs';
+import { closeWork, keepFocus, openDialog, openWork, paneHref, route, toast } from './ui.mjs';
 
 const S = () => client.state;
 const STATE_WORDS = {
@@ -40,31 +45,94 @@ function signedEl(added, deleted) {
 }
 
 /**
- * @param {string} threadId  the conversation
- * @param {{ turnId?: string|null }} [opts]  turnId: show one turn’s work, from the transcript’s line under it
+ * A link to Work as the pane or full-screen Work shows it, which replaces the address like the rest of the pane.
+ * @param {string} threadId
+ * @param {{ turn?: string|null, full?: boolean, at?: string|null }} to
  */
-export function mountWork(threadId, { turnId = null } = {}) {
-  const el = h('main.work-view', { id: 'main', tabindex: '-1', dataset: { thread: threadId } });
-  /** @type {any} */
-  let git = null;
-  let gitError = '';
-  let handle = null;
-  const opened = new Set(); // ids of the items you opened, kept across repaints
-  const loaded = new Map(); // what a diff or an output request returned, by item
-  const asked = new Set();
+function workLink(threadId, to, ...children) {
+  const r = route();
+  const href = paneHref(threadId, { side: r.threadId === threadId ? r.sideId : null, work: true, ...to });
+  return h(
+    'a',
+    {
+      href,
+      onclick: (e) => {
+        e.preventDefault();
+        openWork(threadId, to);
+      },
+    },
+    ...children,
+  );
+}
 
-  const loadGit = async () => {
+/**
+ * Where each change stands, asked of git when Work opens and again once a turn ends, a commit or push lands, or a
+ * file is restored. Calls back everyone listening on every answer; the pane’s two forms share one.
+ * @param {string} threadId
+ */
+function watchGit(threadId) {
+  const g = { data: /** @type {any} */ (null), error: '' };
+  const listeners = new Set();
+  let timer = 0;
+  let stopped = false;
+  const load = async () => {
     try {
       const r = await fetch(`/api/threads/${threadId}/work/git`, { cache: 'no-store' });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error ?? `The server answered ${r.status}.`);
-      git = data;
-      gitError = '';
+      g.data = data;
+      g.error = '';
     } catch (e) {
-      gitError = e.message;
+      g.error = e.message;
     }
-    paint();
+    if (!stopped) for (const fn of [...listeners]) fn();
   };
+  const off = client.on((ch) => {
+    if ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId) {
+      // A turn that ended, a commit or a restore changes where files stand: ask git again, once things settle.
+      const done = ch.type === 'work.patch' ? ch.data.patch.status || ch.data.patch.restored : ['commit', 'push', 'restore'].includes(ch.data.entry.kind);
+      if (done) {
+        clearTimeout(timer);
+        timer = setTimeout(load, 800);
+      }
+    }
+  });
+  load();
+  return Object.assign(g, {
+    /** @param {() => void} fn  @returns {() => void} */
+    listen(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    stop() {
+      stopped = true;
+      off();
+      clearTimeout(timer);
+    },
+  });
+}
+
+/**
+ * The whole Work view: Work’s full form, shown when Work in the pane goes full screen.
+ * @param {string} threadId  the conversation
+ * @param {{ turnId?: string|null, at?: string|null, gitWatch?: any }} [opts]  turnId: show one turn’s work; at: the item
+ *   or section to open and go to; gitWatch: the pane’s git watcher, to share
+ */
+export function mountWork(threadId, { turnId = null, at = null, gitWatch = null } = {}) {
+  const el = h('div.work-view', { tabindex: '-1', dataset: { thread: threadId } });
+  let handle = null;
+  const opened = new Set(at ? [at] : []); // ids of the items you opened, kept across repaints
+  const loaded = new Map(); // what a diff or an output request returned, by item
+  const asked = new Set();
+  const gitNow = gitWatch ?? watchGit(threadId);
+  /** @type {any} */
+  let git = gitNow.data;
+  let gitError = gitNow.error;
+  const unlisten = gitNow.listen(() => {
+    git = gitNow.data;
+    gitError = gitNow.error;
+    paint();
+  });
   const load = async (key, url, as = 'json') => {
     if (asked.has(key)) return;
     asked.add(key);
@@ -94,7 +162,6 @@ export function mountWork(threadId, { turnId = null } = {}) {
       'div.ov-head',
       h(
         'div.grow',
-        h('h1.title', { style: { fontSize: '20px' } }, 'Work'),
         h(
           'p.small.dim',
           'Everything this conversation’s agents changed, ran and published, and what it took. Lines are counted from each file’s diff, not from what an agent said.',
@@ -104,7 +171,7 @@ export function mountWork(threadId, { turnId = null } = {}) {
               'p.work-turn',
               icon('clock', 'i-sm'),
               `One turn: @${turn.handle} at ${timeOf(turn.startedAt)}${turn.ms ? `, ${dur(turn.ms)}` : ''}. `,
-              h('a', { href: `#/t/${threadId}/work` }, 'Show the whole conversation'),
+              workLink(threadId, { full: true }, 'Show the whole conversation'),
             )
           : null,
       ),
@@ -173,7 +240,20 @@ export function mountWork(threadId, { turnId = null } = {}) {
         ? h(
             'p.small.dim',
             `${plural(s.idle.turns, 'turn')} left nothing lasting: ${[dur(s.idle.ms), s.idle.priced ? formatCost(s.idle.costUsd) : null].filter(Boolean).join(', ')}. `,
-            h('a', { href: '#work-effort' }, 'See which'),
+            h(
+              'a',
+              {
+                href: '#work-effort',
+                // A link within the view, not an address: the conversation’s address stays as it is.
+                onclick: (ev) => {
+                  ev.preventDefault();
+                  const to = el.querySelector('#work-effort');
+                  to?.setAttribute('tabindex', '-1');
+                  to?.focus();
+                },
+              },
+              'See which',
+            ),
           )
         : null,
       s.flagged
@@ -310,7 +390,7 @@ export function mountWork(threadId, { turnId = null } = {}) {
                 ` ${who(c)} `,
                 c.binary ? 'binary' : signedEl(c.added, c.deleted),
                 ' · ',
-                h('a', { href: `#/t/${threadId}/work/${c.turnId}` }, 'That turn'),
+                workLink(threadId, { full: true, turn: c.turnId }, 'That turn'),
               ),
             ),
           )
@@ -589,7 +669,7 @@ export function mountWork(threadId, { turnId = null } = {}) {
                 const files = entries.filter((e) => e.kind === 'change' && e.turnId === t.id).length;
                 return h(
                   'li',
-                  h('a', { href: `#/t/${threadId}/work/${t.id}` }, `@${t.handle} at ${timeOf(t.startedAt)}`),
+                  workLink(threadId, { full: true, turn: t.id }, `@${t.handle} at ${timeOf(t.startedAt)}`),
                   h(
                     'span.small.dim',
                     ` · ${[dur(t.ms), anyPrice ? formatCost(t.costUsd ?? 0) : null, cmds.length ? `${plural(cmds.length, 'command')}${failed ? `, ${failed} failed` : ''}` : null, files ? `${plural(files, 'file')} put back` : null].filter(Boolean).join(' · ')}`,
@@ -605,34 +685,395 @@ export function mountWork(threadId, { turnId = null } = {}) {
   // ── Live ──────────────────────────────────────────────────────────────────────────────
 
   let frame = 0;
-  let gitTimer = 0;
   const repaint = () => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(paint);
   };
   const off = client.on((ch) => {
-    if (ch.type === 'load') {
-      repaint();
-      return;
-    }
-    if ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId) {
-      repaint();
-      // A turn that ended, a commit or a restore changes where files stand: ask git again, once things settle.
-      const done = ch.type === 'work.patch' ? ch.data.patch.status || ch.data.patch.restored : ['commit', 'push', 'restore'].includes(ch.data.entry.kind);
-      if (done) {
-        clearTimeout(gitTimer);
-        gitTimer = setTimeout(loadGit, 800);
-      }
+    if (ch.type === 'load' || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) repaint();
+  });
+  paint();
+  return {
+    el,
+    /** What to put focus on when the view opens: the item or section it was opened at, else the view. */
+    target() {
+      const sec = at ? el.querySelector(`#${CSS.escape(at)}`) : null;
+      sec?.setAttribute('tabindex', '-1');
+      return /** @type {HTMLElement} */ ((at && el.querySelector(`#wsum-${CSS.escape(at)}`)) || sec || el);
+    },
+    destroy() {
+      off();
+      unlisten();
+      if (!gitWatch) gitNow.stop();
+      cancelAnimationFrame(frame);
+    },
+  };
+}
+
+// ── The pane ────────────────────────────────────────────────────────────────────────────
+
+/** How many items a list in the pane shows before “All …”, and how many turns before “Show earlier turns”. */
+const SHORT = 3;
+const TURNS = 8;
+const failedCommand = (c) => c.state === 'failed' || c.state === 'denied';
+
+/**
+ * Work in the conversation’s right pane, its compact form: what needs review, files by where they stand, commands
+ * and how many failed, what was published outside Postbox, spend, and each turn’s line, newest first. Each list is
+ * short, and each item opens in the full form. Nothing here moves or pulses: it’s a record, read when you look.
+ * Full screen (pane.mjs), the body holds the full form instead (setFull): #138’s view, as it was.
+ * @param {string} threadId  the conversation
+ */
+export function mountWorkPane(threadId) {
+  const body = h('div.wp-body', { tabindex: '-1' });
+  // The full-screen control, the app frames’ own (#45); pane.mjs gives it its job.
+  const fullBtn = h('button.btn.icon.sm', { type: 'button', id: 'work-full', 'aria-label': 'Full screen' }, icon('expand'));
+  /** The full form while full screen, and which turn and item it opened on. */
+  let full = null;
+  const el = h(
+    'aside.workpane',
+    { id: 'work-pane', 'aria-labelledby': 'wp-title', dataset: { thread: threadId } },
+    h(
+      'div.wp-head',
+      icon('file', 'dim'),
+      h('div.grow', h('b', { id: 'wp-title' }, 'Work'), h('div.small.dim', 'What the agents changed, ran and published')),
+      fullBtn,
+      h('button.btn.icon.sm.ghost', { type: 'button', id: 'work-close', 'aria-label': 'Close Work', onclick: () => closeWork(threadId) }, icon('x')),
+    ),
+    body,
+  );
+  let target = null; // the turn the pane was last opened at, from its line in the transcript
+  let allTurns = false;
+  const openTurns = new Set();
+  /** @type {any} */
+  let git = null;
+  let gitError = '';
+  const gitNow = watchGit(threadId);
+  gitNow.listen(() => {
+    git = gitNow.data;
+    gitError = gitNow.error;
+    paint();
+  });
+  /** Opens Work full screen, at an item or section, or on one turn. */
+  const go = (to) => openWork(threadId, { full: true, ...to });
+
+  const sec = (id, title, count, ...kids) =>
+    h('section.wc-sec', { 'aria-labelledby': `${id}-h` }, h('h2.wc-h', { id: `${id}-h` }, title, count ? h('span.badge', count) : null), ...kids);
+  const row = (id, run, ...kids) => h('li', h('button.wc-row', { type: 'button', id, onclick: run }, ...kids));
+  /** The first few of a list, then a row that opens the whole of it. */
+  const short = (list, make, all, n = SHORT) =>
+    h(
+      'ul.wc-list',
+      list.slice(0, n).map(make),
+      list.length > n ? h('li', h('button.wc-row.wc-more', { type: 'button', onclick: all }, `All ${list.length}`, icon('right', 'i-sm'))) : null,
+    );
+  // A file’s name first, then its folder, so a long path outside the project still shows which file it is.
+  const fileRow = (f, to, prefix) =>
+    row(
+      `${prefix}-${to.at}`,
+      () => go(to),
+      h('span.mono.wc-name', f.rel.replace(/^.*\//, ''), f.rel.includes('/') ? h('span.dim', ` ${f.rel.replace(/\/[^/]*$/, '')}`) : null),
+      f.binary ? h('span.small.dim', 'binary') : signedEl(f.added, f.deleted),
+    );
+  const commandRow = (c, to, prefix) =>
+    row(
+      `${prefix}-${c.id}`,
+      () => go(to),
+      h(`span.g.g-${GLYPH[c.state] ?? 'done'}`, { role: 'img', 'aria-label': COMMAND_WORDS[c.state] ?? c.state }),
+      h('code.wc-name', `$ ${c.command.split('\n')[0]}`),
+      h(
+        'span.small.work-exit',
+        { class: failedCommand(c) ? 'bad' : '' },
+        c.state === 'failed' && c.exit != null ? `Exit ${c.exit}` : (COMMAND_WORDS[c.state] ?? c.state),
+      ),
+    );
+
+  function review(s) {
+    const list = s.files.filter((f) => flagged(f, git));
+    if (!list.length) return null;
+    return sec(
+      'wc-review',
+      [icon('warn', 'i-sm'), 'To review'],
+      String(list.length),
+      h('p.small.dim', 'Changed outside the project, or a file git can’t give back. Postbox kept a copy from before.'),
+      short(
+        list,
+        (f) => fileRow(f, { at: f.id }, 'wc-review'),
+        () => go({ at: 'work-files' }),
+      ),
+    );
+  }
+
+  function files(s) {
+    const states = ['uncommitted', 'committed', 'pushed', 'outside'].filter((st) => s.byState[st].files);
+    const back = s.byState.unchanged.files;
+    return sec(
+      'wc-files',
+      'Files',
+      s.total.files ? String(s.total.files) : '',
+      // The total, when there’s more than one state to add up.
+      states.length > 1 || (back && s.total.files)
+        ? h('p.small', plural(s.total.files, 'file'), ' ', signedEl(s.total.added, s.total.deleted), back ? h('span.dim', ` · ${back} put back`) : null)
+        : null,
+      states.length
+        ? states.map((st) =>
+            h(
+              'div.wc-group',
+              h(
+                'p.wc-state',
+                h('span.status-tag', { class: `ws-${st}` }, STATE_WORDS[st]),
+                h('span.small', plural(s.byState[st].files, 'file')),
+                signedEl(s.byState[st].added, s.byState[st].deleted),
+              ),
+              short(
+                s.files.filter((f) => fileState(f, git) === st).sort((a, b) => (b.lastAt ?? 0) - (a.lastAt ?? 0)),
+                (f) => fileRow(f, { at: f.id }, 'wc-file'),
+                () => go({ at: 'work-files' }),
+              ),
+            ),
+          )
+        : h('p.empty-note', back ? 'Every changed file was put back.' : 'No files changed yet.'),
+      gitError
+        ? h('p.small.dim', `Git couldn’t say where the changes stand: ${gitError}`)
+        : !git && s.files.length
+          ? h('p.small.dim', 'Asking git where each change stands…')
+          : null,
+    );
+  }
+
+  function commands(s) {
+    if (!s.commands.length) return null;
+    const failed = s.commands.filter((c) => c.state === 'failed').length;
+    const newest = [...s.commands].reverse();
+    return sec(
+      'wc-commands',
+      'Commands',
+      String(s.commands.length),
+      h('p.small', plural(s.commands.length, 'command'), failed ? h('span.work-exit.bad', ` · ${failed} failed`) : null),
+      short(
+        [...newest.filter(failedCommand), ...newest.filter((c) => !failedCommand(c))],
+        (c) => commandRow(c, { at: c.id }, 'wc-cmd'),
+        () => go({ at: 'work-commands' }),
+      ),
+    );
+  }
+
+  function external(s) {
+    if (!s.external.length) return null;
+    const list = [...s.external].reverse();
+    return sec(
+      'wc-external',
+      'Outside Postbox',
+      String(list.length),
+      h(
+        'ul.wc-list.wc-plain',
+        list
+          .slice(0, SHORT)
+          .map((x) =>
+            h(
+              'li',
+              h('span', x.what),
+              x.state === 'failed' || x.state === 'denied' ? [' ', h('span.status-tag.ws-failed', x.state === 'denied' ? 'Refused' : 'Failed')] : null,
+              x.urls?.[0]
+                ? [
+                    ' · ',
+                    h(
+                      'a',
+                      { href: x.urls[0], target: '_blank', rel: 'noopener noreferrer' },
+                      x.urls[0].replace(/^https?:\/\/(www\.)?/, ''),
+                      ' ',
+                      icon('link', 'i-sm'),
+                    ),
+                  ]
+                : null,
+            ),
+          ),
+        list.length > SHORT
+          ? h('li', h('button.wc-row.wc-more', { type: 'button', onclick: () => go({ at: 'work-external' }) }, `All ${list.length}`, icon('right', 'i-sm')))
+          : null,
+      ),
+    );
+  }
+
+  function spend(s) {
+    if (!s.turns.length) return null;
+    const e = s.effort;
+    const agents = s.byAgent.filter((a) => a.turns);
+    return sec(
+      'wc-spend',
+      'Spend',
+      '',
+      h(
+        'p.small',
+        [e.priced ? formatCost(e.costUsd) : null, plural(e.turns, 'turn'), e.ms ? dur(e.ms) : null, e.tokens ? `${formatTokens(e.tokens)} tokens` : null]
+          .filter(Boolean)
+          .join(' · '),
+      ),
+      e.priced ? null : h('p.small.dim', 'Spend shows for Claude Code and Agent SDK turns.'),
+      agents.length > 1
+        ? h(
+            'p.small.dim',
+            agents.map((a, i) => [i ? ' · ' : '', `@${a.handle} `, e.priced ? formatCost(a.costUsd) : plural(a.turns, 'turn')]),
+          )
+        : null,
+      s.idle.turns
+        ? h(
+            'p.small.dim',
+            `${plural(s.idle.turns, 'turn')} left nothing lasting${[dur(s.idle.ms), s.idle.priced ? formatCost(s.idle.costUsd) : null]
+              .filter(Boolean)
+              .map((x, i) => `${i ? ', ' : ': '}${x}`)
+              .join('')}.`,
+          )
+        : null,
+      h(
+        'ul.wc-list',
+        row('wc-effort', () => go({ at: 'work-effort' }), h('span.wc-name', 'Effort by agent'), icon('right', 'i-sm')),
+      ),
+    );
+  }
+
+  function turns(entries, list) {
+    if (!list.length) return null;
+    if (target && list.findIndex((x) => x.t.id === target) >= TURNS) allTurns = true;
+    const shown = allTurns ? list : list.slice(0, TURNS);
+    return sec(
+      'wc-turns',
+      'Turns',
+      String(list.length),
+      h(
+        'div.wc-turns',
+        shown.map(({ t, line }) => {
+          const d = h(
+            'details.wc-turn',
+            {
+              id: `wturn-${t.id}`,
+              class: t.id === target ? 'is-target' : '',
+              open: openTurns.has(t.id),
+              ontoggle: () => {
+                if (d.open === openTurns.has(t.id)) return;
+                if (d.open) openTurns.add(t.id);
+                else openTurns.delete(t.id);
+                paint();
+              },
+            },
+            h(
+              'summary',
+              { id: `wturn-s-${t.id}` },
+              icon('right', 'i-sm'),
+              h('span.wc-turn-who', h('b', `@${t.handle}`), h('span.small.dim', ` · ${timeOf(t.startedAt)}`)),
+              h('span.small.wc-turn-line', line),
+            ),
+            openTurns.has(t.id) ? turnBody(entries, t) : null,
+          );
+          return d;
+        }),
+      ),
+      shown.length < list.length
+        ? h(
+            'button.btn.sm.ghost',
+            {
+              type: 'button',
+              onclick: () => {
+                allTurns = true;
+                paint();
+              },
+            },
+            `Show ${plural(list.length - shown.length, 'earlier turn')}`,
+          )
+        : null,
+    );
+  }
+
+  function turnBody(entries, t) {
+    const s = summarize(entries, { git, turnId: t.id });
+    return h(
+      'div.wc-turn-body',
+      s.files.length
+        ? short(
+            s.files,
+            (f) => fileRow(f, { turn: t.id, at: f.changeId }, `wc-t-${t.id}`),
+            () => go({ turn: t.id, at: 'work-files' }),
+            5,
+          )
+        : null,
+      s.commands.length
+        ? short(
+            s.commands,
+            (c) => commandRow(c, { turn: t.id, at: c.id }, `wc-t-${t.id}`),
+            () => go({ turn: t.id, at: 'work-commands' }),
+            5,
+          )
+        : null,
+      h('button.btn.sm', { type: 'button', id: `wc-open-${t.id}`, onclick: () => go({ turn: t.id }) }, icon('expand', 'i-sm'), 'Open this turn'),
+    );
+  }
+
+  const paint = () =>
+    keepFocus(body, () => {
+      if (full) return;
+      const entries = S().work?.[threadId] ?? [];
+      const s = summarize(entries, { git });
+      const lines = s.turns
+        .map((t) => ({ t, line: turnLine(entries, t.id) }))
+        .filter((x) => x.line)
+        .reverse();
+      if (!lines.length && !s.files.length && !s.commands.length && !s.external.length)
+        return fill(
+          body,
+          h('p.empty-note', 'Nothing yet. When an agent edits a file, runs a command or publishes something, it shows here, with what it took.'),
+        );
+      fill(body, review(s), files(s), commands(s), external(s), spend(s), turns(entries, lines));
+    });
+
+  let frame = 0;
+  const off = client.on((ch) => {
+    if (ch.type === 'load' || ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId)) {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(paint);
     }
   });
   paint();
-  loadGit();
   return {
     el,
+    /** Opens a turn’s line in the list and scrolls the pane to it; with focus, focus goes to it too. */
+    showTurn(turnId, { focus = false } = {}) {
+      target = turnId;
+      openTurns.add(turnId);
+      paint();
+      const d = body.querySelector(`#wturn-${CSS.escape(turnId)}`);
+      if (!d) return;
+      body.scrollTop += d.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
+      if (focus) /** @type {HTMLElement} */ (d.querySelector('summary')).focus({ preventScroll: true });
+    },
+    focus() {
+      body.focus();
+    },
+    fullBtn,
+    /**
+     * Shows the full form in place of the compact one, on a turn or opened at an item (opts), or the compact one
+     * again (null). Returns what focus should go to.
+     * @param {{ turn?: string|null, at?: string|null } | null} opts
+     */
+    setFull(opts) {
+      const key = opts ? `${opts.turn ?? ''}|${opts.at ?? ''}` : null;
+      if (key === (full?.key ?? null)) return full ? full.view.target() : fullBtn;
+      full?.view.destroy();
+      full = null;
+      if (opts) {
+        const view = mountWork(threadId, { turnId: opts.turn ?? null, at: opts.at ?? null, gitWatch: gitNow });
+        full = { key, view };
+        fill(body, view.el);
+        body.scrollTop = 0;
+        return view.target();
+      }
+      paint();
+      return fullBtn;
+    },
     destroy() {
       off();
+      gitNow.stop();
+      full?.view.destroy();
       cancelAnimationFrame(frame);
-      clearTimeout(gitTimer);
     },
   };
 }

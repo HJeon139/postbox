@@ -126,14 +126,21 @@ const appItem = (t, appId) => store.items(t.id).find((i) => i.kind === 'block' &
 /** Waits for the item with this id to be on the page, and optionally for more about it. */
 const shown = (id, more = '') => page.waitFor(`document.querySelector('[data-key="${id}"]${more}')`, { label: `item ${id}${more}` });
 
-/** Opens a route, and waits for the view it builds (not the one it replaces) to settle. */
+/**
+ * Opens a route, and waits for the view it builds (not the one it replaces) to settle. Within one conversation,
+ * opening or closing the thread panel changes only the right pane, so then it waits for the pane instead.
+ */
 async function open(hash) {
+  const [, thread, side] = hash.match(/#\/t\/([^/]+)(?:\/side\/(.+))?/) ?? [];
   if (await page.evaluate('location.origin === "null" || location.href === "about:blank"')) await page.goto(`${app.origin}/${hash}`);
   else {
+    const pane = side ? `!!document.querySelector('.sidepanel .transcript[data-thread="${side}"]')` : `!document.querySelector('.sidepanel')`;
     await page.evaluate(`(() => { const a = document.querySelector('.app'); if (a) a.dataset.old = '1'; location.hash = ${JSON.stringify(hash)}; })()`);
-    await page.waitFor(`document.querySelector('.app') && !document.querySelector('.app').dataset.old`, { label: `the view for ${hash}` });
+    await page.waitFor(
+      `document.querySelector('.app') && (!document.querySelector('.app').dataset.old || (location.hash === ${JSON.stringify(hash)} && ${pane}))`,
+      { label: `the view for ${hash}` },
+    );
   }
-  const [, thread, side] = hash.match(/#\/t\/([^/]+)(?:\/side\/(.+))?/) ?? [];
   if (thread) await page.waitFor(`document.querySelector('.transcript[data-thread="${thread}"] .item')`, { label: 'the transcript' });
   if (side) await page.waitFor(`document.querySelector('.sidepanel .transcript[data-thread="${side}"]')`, { label: 'the panel’s transcript' });
   await settle(400);
@@ -199,7 +206,7 @@ await check('#88 at the bottom: opening and closing the thread panel leaves the 
   for (let i = 0; i < 12; i++) rt.addItem(threadId, { kind: 'user', text: LONG(200 + i) });
   await open(`#/t/${t.id}/side/${threadId}`);
   await page.waitFor(q('.sidepanel'), { label: 'the panel' });
-  // The app frame is rebuilt, starts at 200 px and grows again in the narrower column.
+  // The app frame stays (only the pane changes), and keeps its height in the narrower column.
   const grown = `document.querySelector('[data-key="${appItem(t, 'explainer')}"] iframe')?.getBoundingClientRect().height >= 690`;
   await page.waitFor(grown, { label: 'the rebuilt app to grow' });
   await settle();
@@ -308,7 +315,7 @@ await check('#88 scrolled up: streaming, patches, new items, an app growing abov
   await page.waitFor('innerWidth === 1280', { label: 'the size back' });
   await settle(400);
   assert.ok(moved <= 1, `a resize moved it by ${moved} px`);
-  // Opening the panel rebuilds the view around the conversation: you stay on the same message.
+  // Opening the panel narrows the conversation beside it: you stay on the same message.
   const root = store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, root.id);
   // The root message’s Reply in thread becomes its Thread link first; measure once that’s on the page.

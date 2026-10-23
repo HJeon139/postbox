@@ -383,4 +383,22 @@ flowchart LR
 
 **What it doesn’t see.** A file a command changes (a formatter, a script, `sed -i`) isn’t listed: only the file tools name files. Snapshotting the whole folder at each turn’s ends would catch those, at the cost of a second repository per folder and of attribution when turns overlap. A background command still running when its process ends is shown as having said nothing about how it ended (#129). Artifacts (recordings, reports, screenshots) and servers or ports a command started aren’t picked out yet.
 
+**Where it shows: the right pane.** Work is one of the conversation’s side views in the right pane ([`app/js/pane.mjs`](../app/js/pane.mjs)), beside a thread or alone, not a page of its own. What’s open is in the address after the conversation’s path, so a reload restores it and the views change in place without rebuilding the transcript:
+
+```mermaid
+flowchart LR
+  A["#/t/conv/side/thread?work&turn=t1&full=work&at=item"] --> R[route]
+  R -->|sideId| T[thread view]
+  R -->|work, turn| W["Work view: compact form (mountWorkPane)"]
+  R -->|"full=work, at"| F["Work’s full form (mountWork), in its place"]
+  R -->|full=thread| TF["the same thread, fixed over the window"]
+  T & W --> P["pane: one view, or split by a divider"]
+```
+
+- `work` opens the compact form, `turn` scrolls it to a turn’s line (or, full screen, shows that turn alone), `full=work` or `full=thread` shows that view full screen, and `at` opens one item in full-screen Work.
+- **One contract for a pane view:** a compact form in the pane and a full form over the window, with the app frames’ full-screen icon (#45) in its head. Full screen doesn’t move or rebuild the view: pane.mjs fixes the view’s own element over the window (`pane-full`), makes it a modal dialog while it lasts (Tab stays in it; Escape or the icon ends it, with focus back on what opened it: the icon, or the item chosen in the pane), and Work swaps its body for `mountWork`. So a thread keeps its composer draft, its scroll (#88’s anchor holds through the width change) and a streaming reply. App frames keep their own full screen (#45). #138’s page addresses, `#/t/<id>/work` and `/work/<turnId>`, are replaced by these.
+- Opening and closing Work replaces the address instead of adding to the history, and the browser remembers per conversation that Work was left open (`pb-work-<id>` in `localStorage`), so a link to the conversation or one of its threads opens it beside them again, in a window wide enough to show both (below 768 px the pane would cover the conversation, so it opens on its own). The divider’s place is kept the same way (`pb-pane-split`). Both are this browser’s conveniences, not state anyone else needs.
+- The pane’s width is `--pane-w`, so a resizable pane (#86) changes one value.
+- Both forms read the same ledger through `summarize()` and ask git through the same endpoint; the compact form adds nothing to the store.
+
 **Revisit when** a command’s file changes matter as much as the file tools’ (then add folder snapshots for git repositories, alongside this), when the CLI reports files a command changed, or when the Agent SDK’s results stop carrying `tool_use_result`.

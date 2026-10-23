@@ -310,14 +310,13 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await send(cites, 'Try a faster parser');
   await settled(cites, (st) => st.work?.[cites.id]?.filter((e) => e.kind === 'turn').every((e) => e.status !== 'running'), 'the second turn’s work');
   await shot('21a-work-chip');
-  await view(`#/t/${cites.id}/work`);
+  await view(`#/t/${cites.id}?work`);
   await shot('21-work');
+  // A flagged file, chosen in the pane: the expanded view, opened at its diff.
   await shot('21b-work-file', {
     prepare: async (page) => {
-      await page.evaluate(`document.querySelector('.work-item.flagged > summary')?.click()`);
+      await page.evaluate(`document.querySelector('#wc-review-h')?.closest('section').querySelector('.wc-row')?.click()`);
       await sleep(600);
-      await page.evaluate(`document.querySelector('.work-item[open]')?.scrollIntoView({ block: 'start' })`);
-      await sleep(200);
     },
   });
 
