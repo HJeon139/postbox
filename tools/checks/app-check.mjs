@@ -76,6 +76,32 @@ const APPS = {
   // A page that scrolls smoothly, with a button under an overlay far below the first screen, and one a box clips sideways.
   smooth: `<style>html{scroll-behavior:smooth}</style><div style="height:1400px"></div><div style="position:relative;padding:12px"><button class="btn" type="button">Deep</button><div style="position:absolute;inset:0;background:var(--panel)"></div></div>
 <div style="width:30px;overflow-x:hidden;overflow-y:auto"><button class="btn" type="button" style="white-space:nowrap">A wide button label</button></div>`,
+  // Math KaTeX sets, inline and on its own line: its glyphs sit over each other on purpose.
+  katex: `<div style="padding:12px;color:var(--text)"><p>The estimate <span id="a"></span> is close.</p><div id="b"></div><div id="c"></div></div>
+<script>postbox.load('katex').then((k) => {
+  k.render('\\\\hat{y}', document.getElementById('a'));
+  k.render('\\\\vec{v}\\\\cdot\\\\dot{x}', document.getElementById('b'), { displayMode: true });
+  k.render('\\\\sum_{i=1}^{n} x_i', document.getElementById('c'), { displayMode: true });
+});</script>`,
+  // A big figure set tight over its caption, a <pre> in a box that scrolls sideways, and a badge past a button’s corner.
+  tight: `<div style="padding:12px;color:var(--text)"><div style="font-size:40px;line-height:.9;font-weight:600">4,210</div><div style="font-size:12px">passages read</div>
+<div style="overflow-x:auto;margin-top:8px"><pre style="margin:0">const passages = corpus.search({ query: 'hope after loss', mode: 'both', k: 12 });</pre></div>
+<button class="btn" type="button" style="position:relative;margin-top:12px">Inbox<span style="position:absolute;top:-6px;right:-14px;background:var(--accent);color:var(--on-ink);border-radius:8px;padding:0 5px;font-size:11px">12</span></button></div>`,
+  // Sixty opaque cards stacked in one place, each of 25 lines: every line is over another, and hidden under the top card.
+  cards: `<div style="position:relative;height:600px">${Array.from({ length: 60 }, (_, i) => `<div style="position:absolute;inset:0;background:var(--panel);color:var(--text);padding:8px">${Array.from({ length: 25 }, (_, j) => `Card ${i + 1}, line ${j + 1}`).join('<br>')}</div>`).join('')}</div>`,
+  // Controls hidden on purpose: under an open modal dialog, a carousel’s other slides, an accordion closed at max-height: 0,
+  // a menu at scale(0), and custom radios whose inputs have no size.
+  purpose: `<div style="padding:12px;color:var(--text)"><button class="btn" type="button">Behind the dialog</button>
+<div style="overflow:hidden;width:200px"><div style="display:flex;width:600px"><button class="btn" type="button" style="width:200px">Slide 1</button><button class="btn" type="button" style="width:200px">Slide 2</button><button class="btn" type="button" style="width:200px">Slide 3</button></div></div>
+<div style="max-height:0;overflow:hidden"><button class="btn" type="button">In the closed accordion</button></div>
+<div style="transform:scale(0)"><button class="btn" type="button">In the closed menu</button></div>
+<label><input type="radio" name="r" style="width:0;height:0;margin:0"> Weekly</label> <label><input type="radio" name="r" style="width:0;height:0;margin:0"> Daily</label>
+<dialog id="d"><p>Pick a corpus first.</p><button class="btn" type="button">OK</button></dialog></div>
+<script>document.getElementById('d').showModal();</script>`,
+  // A watermark you can barely see over a button: it takes the button’s clicks.
+  watermark: `<div style="position:relative;padding:12px"><button class="btn" type="button">Export</button><div class="wm" style="position:absolute;inset:0;opacity:.06;background:var(--text)"></div></div>`,
+  // The kit’s own heatmap, 8 columns, at 375 px too.
+  heatmap: `<div id="h" style="padding:8px"></div><script>postbox.charts.heatmap(document.getElementById('h'), { rows: ['Middlemarch', 'Persuasion', 'Emma'], cols: ['Grief', 'Hope', 'Money', 'The sea', 'Marriage', 'Duty', 'Faith', 'Travel'], values: [[3, 5, 8, 0, 9, 4, 2, 1], [6, 2, 4, 1, 8, 5, 3, 0], [1, 4, 6, 0, 9, 3, 2, 2]], label: 'Themes by book' });</script>`,
   // Ordinary text and controls, set tight: nothing to report.
   plain: `<main style="padding:12px;color:var(--text);line-height:1.1"><h2 style="margin:0">Corpus summary</h2><p style="margin:0">Twelve <b>books</b>, <i>4,210</i> passages, read in <code>order</code>.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" type="button">Index it</button><button class="btn" type="button">Later</button></div>
@@ -109,6 +135,9 @@ try {
     found(id)
       .map((p) => `${p.code}: ${p.message}`)
       .join('\n') || 'no problems';
+  // A negative assertion counts only for a check that finished: a frame that never answered reports nothing either.
+  const finished = (id) => rt.s.apps[id].check.status !== 'pending' && !codes(id).some((c) => c === 'no-answer' || c === 'check-error');
+  const clean = (id) => finished(id) && rt.s.apps[id].check.status === 'passed';
 
   check(
     codes('grid').includes('text-overflow') && codes('grid').includes('text-overlap'),
@@ -120,11 +149,11 @@ try {
   check(/white-space: nowrap/.test(over) && /minmax\(0, …\)/.test(over), 'and the usual fix', over);
   check(/drawn over “Heading”/.test(found('grid').find((p) => p.code === 'text-overlap')?.message ?? ''), 'text-overlap names both texts', says('grid'));
   check(codes('gallery1').includes('text-overflow') && codes('gallery1').includes('text-overlap'), 'the gallery’s v1 fails', says('gallery1'));
-  check(rt.s.apps.gallery2.check.status === 'passed', 'its v2 passes', says('gallery2'));
-  check(!codes('moving').includes('text-overlap'), 'labels a transition moves apart aren’t reported', says('moving'));
-  check(!codes('faded').includes('text-overlap'), 'text hidden with opacity 0 isn’t reported', says('faded'));
-  check(rt.s.apps.plain.check.status === 'passed', 'ordinary text set tight passes', says('plain'));
-  check(rt.s.apps.sticky.check.status === 'passed', 'a list scrolled under an opaque sticky footer passes', says('sticky'));
+  check(clean('gallery2'), 'its v2 passes', says('gallery2'));
+  check(finished('moving') && !codes('moving').includes('text-overlap'), 'labels a transition moves apart aren’t reported', says('moving'));
+  check(finished('faded') && !codes('faded').includes('text-overlap'), 'text hidden with opacity 0 isn’t reported', says('faded'));
+  check(clean('plain'), 'ordinary text set tight passes', says('plain'));
+  check(clean('sticky'), 'a list scrolled under an opaque sticky footer passes', says('sticky'));
 
   const bar = found('bar').filter((p) => p.code === 'control-hidden');
   check(bar.length === 2, '#89: the .bar row is control-hidden, once at each width', says('bar'));
@@ -138,10 +167,24 @@ try {
     says('bar'),
   );
   check(/the button “Run it” is under div, which takes its clicks/.test(says('covered')), '#89: a button under an overlay is control-hidden', says('covered'));
-  check(!codes('clipped').includes('text-overlap'), 'text cut by its own box, a halo and rotated labels aren’t text over text', says('clipped'));
+  check(
+    finished('clipped') && !codes('clipped').includes('text-overlap'),
+    'text cut by its own box, a halo and rotated labels aren’t text over text',
+    says('clipped'),
+  );
   check(/the button “Deep” is under div/.test(says('smooth')), 'a covered control far down a smooth-scrolling page is found', says('smooth'));
   check(/the button “A wide button label” is clipped/.test(says('smooth')), 'and one a box clips sideways while it scrolls up and down', says('smooth'));
-  check(rt.s.apps.scrolled.check.status === 'passed', 'controls in a scroll box, and a checkbox hidden for screen readers, pass', says('scrolled'));
+  check(clean('katex'), 'KaTeX math, inline and on its own line, passes', says('katex'));
+  check(clean('tight'), 'a figure set tight over its caption, a <pre> that scrolls sideways and a badge past a corner pass', says('tight'));
+  check(finished('cards') && !codes('cards').includes('text-overlap'), 'sixty opaque cards stacked in one place finish, with nothing over them', says('cards'));
+  check(clean('purpose'), 'controls under an open modal, on other slides, in a closed accordion or menu, and hidden radios pass', says('purpose'));
+  check(
+    /the button “Export” is under div\.wm, which is nearly transparent but takes its clicks\. Give div\.wm pointer-events: none\./.test(says('watermark')),
+    'a faint watermark over a button says to give it pointer-events: none',
+    says('watermark'),
+  );
+  check(clean('heatmap'), 'the kit’s own heatmap with 8 columns passes at both widths', says('heatmap'));
+  check(clean('scrolled'), 'controls in a scroll box, and a checkbox hidden for screen readers, pass', says('scrolled'));
 
   // How text-overlap measures, on its own in a blank page: an overlap counts only when it’s there both times.
   await page.goto('about:blank');

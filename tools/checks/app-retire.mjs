@@ -64,7 +64,6 @@ try {
   const line = await ev(`${item('lab')}.innerText`);
   check(/Practice lab/.test(line) && /Retired by @researcher: The metro map covers the same route\./.test(line), 'the line says who retired it and why', line);
   check(!(await ev(`!!${item('lab')}.querySelector('iframe')`)), 'a retired app runs no sandbox');
-  check(!(await ev(`!!document.querySelector('iframe.check-frame[title="Checking Practice lab"]')`)), 'nor a check frame');
   const height = await ev(`${item('lab')}.querySelector('.app-retired').getBoundingClientRect().height`);
   check(height < 40, 'the line is one quiet line, not an app frame', `${height} px`);
 
@@ -112,7 +111,27 @@ try {
   await ev(`[...${item('lab')}.querySelectorAll('.app-note button')].find((b) => b.textContent === 'Close').click()`);
   await page.waitFor(`!!${item('lab')}?.querySelector('.app-retired')`, { label: 'the line once more' });
 
-  // 4. A new version brings it back, at the newest point.
+  // 4. Retired before its check finishes: whatever the check finds is ignored, nothing goes to the agent, and the line
+  // shows, after a reload too.
+  mine.show_app({ id: 'early', title: 'Early draft', code: APP('Draft') });
+  mine.retire_app({ id: 'early', reason: 'Replaced before it was shown.' });
+  await page.synced(store.state.seq);
+  await page.waitFor(`!!${item('early')}?.querySelector('.app-retired')`, { label: 'the early draft’s line' });
+  await page.waitFor(`!document.querySelector('iframe.check-frame[title="Checking Early draft"]')`, { label: 'no check frame for the early draft' });
+  check(
+    rt.s.apps.early.check.status === 'pending' && !(await ev(`!!${item('early')}.querySelector('iframe')`)),
+    'an app retired before its check finishes stays a line, unchecked',
+    rt.s.apps.early.check.status,
+  );
+  await page.reload();
+  await page.waitFor(`!!${item('early')}?.querySelector('.app-retired')`, { label: 'the line after a reload' });
+  check(
+    /Retired by @researcher: Replaced before it was shown\./.test(await ev(`${item('early')}.innerText`)) &&
+      !(await ev(`!!${item('lab')}.querySelector('iframe')`)),
+    'after a reload, the retired apps are still their lines',
+  );
+
+  // 5. A new version brings it back, at the newest point.
   const u = mine.update_app({ id: 'lab', code: APP('Lab v3'), summary: 'the route in the lab' });
   check(u.ok && store.items(t.id).at(-1).id === rt.s.apps.lab.itemId, 'update_app brings a retired app back at the newest point', u.message);
   await page.synced(store.state.seq);

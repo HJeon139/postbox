@@ -1,6 +1,6 @@
-// Layout problems for the pre-display check (app/kit/check.js), which a page-level overflow test misses because they
-// stay inside the page: text that spills out of its own box or over other text (#194), and controls you can’t see or
-// click (#89). Postbox inlines it into a check frame’s page between the kit and check.js, which calls what it adds
+// Text problems for the pre-display check (app/kit/check.js), which a page-level overflow test misses because they
+// stay inside the page: text that spills out of its own box, and text drawn over other text (#194). Postbox inlines it
+// into a check frame’s page after the kit; check-controls.js (#89) uses its helpers, and check.js calls what they add
 // to window.__pbCheck.
 (function () {
   // A check frame is hidden off screen, where the browser runs no animation frames, so an app’s transitions (d3’s)
@@ -30,6 +30,7 @@
     hiddenMemo.set(el, out);
     return out;
   }
+  hidden.reset = () => hiddenMemo.clear();
 
   // What of a box its ancestors let show (and, for text, its own element): each one whose overflow isn’t visible cuts
   // it to its own box, so text cut short with an ellipsis, or hidden for screen readers, is only what shows.
@@ -45,36 +46,66 @@
     return { left, top, right, bottom, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
   }
 
+  // Math KaTeX sets is built of glyphs placed over each other on purpose (a hat over a y, limits over a sum).
+  const SKIP = 'script, style, svg, .katex';
+  const range = document.createRange();
+  // How far an element’s own text reaches past its padding box, and how wide that text is. Measured from the text, not
+  // scrollWidth, which also counts a badge positioned past the element’s corner.
+  function spill(el) {
+    let l = Infinity;
+    let r = -Infinity;
+    for (const c of el.childNodes) {
+      if (c.nodeType !== 3 || !c.textContent.trim()) continue;
+      range.selectNodeContents(c);
+      for (const b of range.getClientRects()) [l, r] = [Math.min(l, b.left), Math.max(r, b.right)];
+    }
+    const b = el.getBoundingClientRect();
+    const inner = b.left + el.clientLeft;
+    return { past: Math.max(r - (inner + el.clientWidth), inner - l), width: r - l };
+  }
+  // Text in a box that scrolls sideways (a <pre> in an overflow-x: auto wrapper) can be scrolled to.
+  const scrolls = (el) => {
+    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) if (/auto|scroll/.test(getComputedStyle(a).overflowX)) return true;
+    return false;
+  };
+
   /** text-overflow: an element that holds text itself, lets it overflow (overflow-x: visible), and is narrower than it. */
   function textOverflow(w) {
+    hidden.reset();
     const out = [];
     for (const el of document.body.querySelectorAll('*')) {
       if (out.length >= 3) break;
-      if (el.closest('svg') || hidden(el)) continue;
+      if (el.closest(SKIP) || hidden(el)) continue;
       const text = ownText(el);
       if (!text || !el.clientWidth || el.scrollWidth <= el.clientWidth + 1 || getComputedStyle(el).overflowX !== 'visible') continue;
+      const s = spill(el);
+      if (s.past <= 1 || scrolls(el)) continue;
       out.push({
         code: 'text-overflow',
-        message: `At ${w} px, “${clip(text)}” is ${el.scrollWidth} px wide in a ${el.clientWidth} px box, so it spills out of it. Let it wrap (remove white-space: nowrap), or give its grid column minmax(0, …).`,
+        message: `At ${w} px, “${clip(text)}” is ${px(s.width)} px wide in a ${el.clientWidth} px box, so it spills out of it. Let it wrap (remove white-space: nowrap), or give its grid column minmax(0, …).`,
       });
     }
     return out;
   }
 
-  // The line boxes of every visible text node, SVG labels too, cut to what their ancestors let show.
+  // The line boxes of every visible text node, SVG labels too, cut to what their ancestors let show. A box is the font’s
+  // whole height, room for accents and descenders; set tighter than that (a 40 px figure at line-height .9), only its
+  // line’s height counts, so the line below it doesn’t overlap it.
   function lineBoxes() {
     const boxes = [];
-    const range = document.createRange();
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const el = n.parentElement;
-      if (!n.textContent.trim() || !el || el.closest('script, style') || hidden(el)) continue;
+      if (!n.textContent.trim() || !el || el.closest('script, style, .katex') || hidden(el)) continue;
       // A rotated label’s boxes are upright, so they’d cross its neighbors’: it isn’t measured.
       const m = el.closest('svg') && el.getScreenCTM?.();
       if (m && Math.abs(m.b) > 0.01) continue;
+      const lh = parseFloat(getComputedStyle(el).lineHeight);
       range.selectNodeContents(n);
       for (const r of range.getClientRects()) {
-        const s = shownPart(el, r, true);
+        const mid = (r.top + r.bottom) / 2;
+        const tight = lh < r.height ? { left: r.left, right: r.right, top: mid - lh / 2, bottom: mid + lh / 2 } : r;
+        const s = shownPart(el, tight, true);
         if (s.width > 0 && s.height > 0) boxes.push({ n, r: s });
       }
     }
@@ -106,15 +137,17 @@
 
   /**
    * text-overlap: text from two nodes drawn over each other by more than 2 × 2 px, keyed by the two texts. It stops at
-   * 20 of them, or after a million pairs, so a page of labels stacked in one place doesn’t run past the host’s wait.
+   * 20 of them, a million pairs or 200 questions of what’s drawn where, so a page of labels stacked in one place, or of
+   * cards stacked over each other, doesn’t run past the host’s wait.
    */
   function textOverlaps() {
-    hiddenMemo.clear();
+    hidden.reset();
     const found = new Map();
     const boxes = lineBoxes();
     const y0 = scrollY;
     let pairs = 0;
-    for (let i = 0; i < boxes.length && found.size < 20 && pairs < 1e6; i++) {
+    let asks = 0;
+    for (let i = 0; i < boxes.length && found.size < 20 && pairs < 1e6 && asks < 200; i++) {
       const a = boxes[i];
       for (let j = i + 1; j < boxes.length && boxes[j].r.top < a.r.bottom; j++, pairs++) {
         const b = boxes[j];
@@ -127,7 +160,8 @@
         if (x <= 2 || y <= 2 || y < Math.min(a.r.height, b.r.height) / 3) continue;
         const key = `${clip(a.n.textContent)}\u0000${clip(b.n.textContent)}`;
         const mid = [(Math.max(a.r.left, b.r.left) + Math.min(a.r.right, b.r.right)) / 2, (Math.max(a.r.top, b.r.top) + Math.min(a.r.bottom, b.r.bottom)) / 2];
-        if (!found.has(key) && bothShow(a, b, mid[0], mid[1], y0)) found.set(key, { a: clip(a.n.textContent), b: clip(b.n.textContent), x: px(x), y: px(y) });
+        if (found.has(key) || asks++ >= 200) continue;
+        if (bothShow(a, b, mid[0], mid[1], y0)) found.set(key, { a: clip(a.n.textContent), b: clip(b.n.textContent), x: px(x), y: px(y) });
       }
     }
     jump(y0);
@@ -140,7 +174,8 @@
    */
   function textOverlap(w) {
     const first = textOverlaps();
-    return new Promise((r) => setTimeout(r, 1000)).then(() => {
+    // A hidden frame’s timers fire on the next whole second, so 900 ms comes to about a second; 1,000 came to two.
+    return new Promise((r) => setTimeout(r, 900)).then(() => {
       const out = [];
       for (const [key, o] of textOverlaps())
         if (first.has(key) && out.length < 3)
@@ -152,111 +187,19 @@
     });
   }
 
-  // ── Controls you can’t see or click (#89) ────────────────────────────────────────────
-
-  // The class names Postbox’s own stylesheet defines (the page’s first style), which an app’s markup takes on with them.
-  let postboxClasses = null;
-  function ours(el) {
-    if (!postboxClasses) {
-      postboxClasses = new Set();
-      const walk = (rules) => {
-        for (const r of rules) {
-          for (const m of (r.selectorText ?? '').matchAll(/\.([\w-]+)/g)) postboxClasses.add(m[1]);
-          if (r.cssRules) walk(r.cssRules);
-        }
-      };
-      walk(document.querySelector('head > style')?.sheet?.cssRules ?? []);
-    }
-    return [...el.classList].filter((c) => postboxClasses.has(c));
-  }
-  const tag = (el) =>
-    el.tagName.toLowerCase() +
-    [...el.classList]
-      .slice(0, 3)
-      .map((c) => `.${c}`)
-      .join('');
-  const name = (el) => {
-    const kind = el.matches('a[href]') ? 'link' : el.matches('input, select, textarea') ? 'field' : 'button';
-    const label = el.getAttribute('aria-label') || el.textContent || el.getAttribute('placeholder') || el.value || '';
-    return label.trim() ? `the ${kind} “${clip(label)}”` : `a ${kind}`;
-  };
-
-  // The ancestor that cuts a control down to under half of it, or under 8 px across. A scroll container doesn’t count
-  // when it’s big enough to scroll in: you can scroll to what it hides.
-  function clippedBy(el, r) {
-    let { left, top, right, bottom } = r;
-    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
-      const cs = getComputedStyle(a);
-      const b = a.getBoundingClientRect();
-      const cuts = (v) => v !== 'visible' && !(/auto|scroll/.test(v) && b.width >= 8 && b.height >= 8);
-      const x = cuts(cs.overflowX);
-      const y = cuts(cs.overflowY);
-      if (!x && !y) continue;
-      if (x) [left, right] = [Math.max(left, b.left), Math.min(right, b.right)];
-      if (y) [top, bottom] = [Math.max(top, b.top), Math.min(bottom, b.bottom)];
-      const w = Math.max(0, right - left);
-      const h = Math.max(0, bottom - top);
-      if (w < Math.min(8, r.width) || h < Math.min(8, r.height) || w * h < (r.width * r.height) / 2) {
-        const mine = ours(a);
-        const by = `${tag(a)}, which is ${px(b.width)} × ${px(b.height)} px with overflow: ${cs.overflow}`;
-        const fix = mine.length
-          ? `; .${mine.join(', .')} is a class of Postbox’s own stylesheet, so give yours a prefix of your own (such as app-${mine[0]}).`
-          : '. Let it grow, or let it scroll.';
-        return { key: a, why: `clipped to ${px(w)} × ${px(h)} px by ${by}${fix}` };
-      }
-    }
-    return null;
-  }
-
-  // What’s drawn over the middle of a control, where a click would land instead. The page scrolls to it first.
-  function coveredBy(el) {
-    let r = el.getBoundingClientRect();
-    if (r.top < 0 || r.bottom > innerHeight) {
-      jump(scrollY + r.top + r.height / 2 - innerHeight / 2);
-      r = el.getBoundingClientRect();
-    }
-    // Scrolled out of view in a container, it’s reachable by scrolling there.
-    const s = shownPart(el, r);
-    if (!s.width || !s.height || s.top < 0 || s.bottom > innerHeight) return null;
-    const hit = document.elementFromPoint(s.left + s.width / 2, s.top + s.height / 2);
-    if (!hit || el.contains(hit) || hit.contains(el) || (el.labels && [...el.labels].some((l) => l.contains(hit)))) return null;
-    return { key: hit, why: `under ${tag(hit)}, which takes its clicks. Move one of them, or give the covering element pointer-events: none.` };
-  }
-
-  const CONTROLS = 'button, [role=button], [role=checkbox], [role=radio], [role=tab], a[href], input:not([type=hidden]), select, textarea, summary';
-  /** control-hidden: a control with no size, clipped by an ancestor, or under another element at its middle. */
-  function controlHidden(w) {
-    hiddenMemo.clear();
-    const y0 = scrollY;
-    const groups = new Map();
-    for (const el of document.querySelectorAll(CONTROLS)) {
-      if (!el.getClientRects().length || hidden(el)) continue;
-      const cs = getComputedStyle(el);
-      // Visually hidden on purpose, for screen readers (clip or clip-path), as a custom checkbox’s input is.
-      if (cs.clip !== 'auto' || cs.clipPath !== 'none') continue;
-      const r = el.getBoundingClientRect();
-      const found =
-        r.width < 1 || r.height < 1
-          ? { key: 'size', why: `${px(r.width)} × ${px(r.height)} px, with no size to see or click.` }
-          : clippedBy(el, r) || coveredBy(el);
-      if (!found) continue;
-      if (!groups.has(found.key)) groups.set(found.key, { n: 0, el, why: found.why });
-      groups.get(found.key).n++;
-    }
-    jump(y0);
-    return [...groups.values()].slice(0, 3).map((g) => ({
-      code: 'control-hidden',
-      message: `At ${w} px, ${g.n === 1 ? `${name(g.el)} is` : `${g.n} controls, such as ${name(g.el)}, are`} ${g.why}`,
-    }));
-  }
-
-  // A check that throws loses only its own problems, not the rest of the check at this width.
-  const guard = (fn) => (w) => {
+  // A check that throws loses only its own problems, not the rest of the check at this width, and says so: check-error
+  // is Postbox’s, so it’s shown as a note and never sent to the agent to fix (server/apps.mjs).
+  const guard = (code, fn) => (w) => {
+    const failed = (e) => [{ code: 'check-error', message: `At ${w} px, Postbox couldn’t check for ${code}: ${e?.message ?? e}` }];
     try {
-      return Promise.resolve(fn(w)).catch(() => []);
-    } catch {
-      return Promise.resolve([]);
+      return Promise.resolve(fn(w)).catch(failed);
+    } catch (e) {
+      return Promise.resolve(failed(e));
     }
   };
-  Object.assign(window.__pbCheck, { textOverflow: guard(textOverflow), textOverlap: guard(textOverlap), controlHidden: guard(controlHidden) });
+  Object.assign(window.__pbCheck, {
+    textOverflow: guard('text-overflow', textOverflow),
+    textOverlap: guard('text-overlap', textOverlap),
+    ...{ clip, px, jump, hidden, shownPart, guard },
+  });
 })();

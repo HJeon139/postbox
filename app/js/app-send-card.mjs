@@ -7,6 +7,14 @@ import { toast } from './ui.mjs';
 /** The sends a minute that go straight through (app/js/apps.mjs); the card says so. */
 export const SEND_LIMIT = 5;
 
+/** What an answered card says came of its sends: allowed, not allowed, or dropped when its app was retired (#193). */
+const outcome = (it, n) =>
+  it.retired
+    ? `Not sent: ${it.title} was retired.`
+    : it.status === 'allowed'
+      ? `Allowed. ${n === 1 ? 'It was' : 'They were'} sent.`
+      : `Not allowed. ${n === 1 ? 'It wasn’t' : 'They weren’t'} sent.`;
+
 // ── An app’s sends waiting for you ───────────────────────────────────────────────────────
 // Past the limit, an app’s sends wait on this card (the server’s appsend item). Postbox draws it, like the
 // permission and refusal cards: Allow sends them to the agent as they were sent, Don’t allow drops them.
@@ -54,13 +62,7 @@ export function renderAppSendCard(it, ctx) {
         'ul.appsend-list',
         it.events.map((ev) => h('li', ev.voice, ev.quote ? h('span.app-says', 'The app’s summary: ', h('q', ev.quote)) : null)),
       ),
-      !open
-        ? h(
-            'span.answered-note',
-            icon(it.status === 'allowed' ? 'check' : 'x', 'i-sm'),
-            it.status === 'allowed' ? `Allowed. ${n === 1 ? 'It was' : 'They were'} sent.` : `Not allowed. ${n === 1 ? 'It wasn’t' : 'They weren’t'} sent.`,
-          )
-        : null,
+      !open ? h('span.answered-note', icon(it.status === 'allowed' ? 'check' : 'x', 'i-sm'), outcome(it, n)) : null,
     ),
     open
       ? h(

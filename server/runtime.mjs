@@ -16,6 +16,7 @@ import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.m
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
+import { retireApp } from './app-retire.mjs';
 import {
   APP_HOLD_MAX,
   APP_SEND_LIMIT,
@@ -29,7 +30,6 @@ import {
   needAppSend,
   registerApp,
   resolveAppSend,
-  retireApp,
   updateApp,
 } from './apps.mjs';
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';

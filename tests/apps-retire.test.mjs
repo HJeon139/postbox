@@ -95,6 +95,40 @@ test('#193: a check still running when the app was retired is ignored, and nothi
   assert.equal(store.state.apps.lab.check.status, 'pending');
 });
 
+test('#193: retiring drops the sends waiting for the person, clears needs-you, and later sends are refused', () => {
+  const { store, rt, t, se, tools } = setup();
+  tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
+  rt.appEvent('lab', 'try', { n: 1 }, { hold: true });
+  const card = store.items(t.id).find((x) => x.kind === 'appsend');
+  assert.equal(store.state.sessions[se.id].needs?.itemId, card.id);
+  tools.retire_app({ id: 'lab', reason: 'Not needed.' });
+  const after = store.item(t.id, card.id);
+  assert.equal(after.status, 'declined');
+  assert.equal(after.retired, true);
+  assert.equal(store.state.sessions[se.id].needs, null);
+  assert.throws(() => rt.appEvent('lab', 'try', { n: 2 }), /Practice lab was retired, so it can’t send messages/);
+});
+
+test('#193: replacedBy names the caller’s own block when another agent’s has the same id', () => {
+  const { store, tools, theirs } = setup();
+  const pick = (title) => ({ block: { id: 'pick', type: 'choice', version: 1, fallback: 'x', title, options: [{ id: 'a', label: 'A' }] } });
+  theirs.show_block(pick('Their question'));
+  tools.show_block(pick('My question'));
+  tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
+  tools.retire_app({ id: 'lab', reason: 'Asked instead.', replacedBy: 'pick' });
+  assert.equal(store.state.apps.lab.retired.replacedBy.title, 'My question');
+});
+
+test('#193: a topic thread’s fork is told the app is in the conversation, not that it doesn’t exist (#216)', () => {
+  const { rt, se, other, tools, theirs } = setup();
+  tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
+  rt.updateSession(other.id, { forkOf: { sessionId: se.id, itemId: null } });
+  for (const r of [theirs.retire_app({ id: 'lab', reason: 'Gone.' }), theirs.update_app({ id: 'lab', code: '<p>2</p>' })]) {
+    assert.equal(r.ok, false);
+    assert.match(r.message, /App lab is in the conversation, not in this thread, and it can’t be changed from here/);
+  }
+});
+
 test('#193: retire_app is one of the MCP tools, with a reason it requires', () => {
   const def = TOOL_DEFS.find((d) => d.name === 'retire_app');
   assert.ok(def);

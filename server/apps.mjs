@@ -4,6 +4,7 @@
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { notYours } from './app-retire.mjs';
 import { httpError } from './helpers.mjs';
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
@@ -30,10 +31,10 @@ export function appCheck(rt, appId, { version, problems = [] }) {
     rt.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
     return { status: 'crashed' };
   }
-  // Problems the agent can’t fix (the frame never answered) are shown as a note, not sent back. Warnings (marks or
-  // text too small, an app showing only an error) don’t hold the app back: it’s shown with notes, and the agent
-  // hears of them through the lint pipeline, unless it’s already fixing the app.
-  const fixable = clean.filter((p) => p.code !== 'no-answer');
+  // Problems the agent can’t fix (the frame never answered, or a check of Postbox’s threw) are shown as a note, not
+  // sent back. Warnings (marks or text too small, an app showing only an error) don’t hold the app back: it’s shown
+  // with notes, and the agent hears of them through the lint pipeline, unless it’s already fixing the app.
+  const fixable = clean.filter((p) => p.code !== 'no-answer' && p.code !== 'check-error');
   const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
   if (app.check.attempt === 0 && blocking.length && rt.s.sessions[app.sessionId]) {
     rt.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable } });
@@ -74,6 +75,7 @@ export const APP_HOLD_MAX = 20;
 export function appEvent(rt, appId, action, values, { hold = false, now = Date.now() } = {}) {
   const app = rt.s.apps[appId];
   if (!app) throw httpError(404, 'That app doesn’t exist.');
+  if (app.retired) throw httpError(409, `${app.title} was retired, so it can’t send messages.`);
   const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
   if (!r.ok) throw httpError(422, r.error);
   const items = rt.store.items(app.threadId);
@@ -199,7 +201,7 @@ export function registerApp(rt, sessionId, block, itemId, threadId = rt.s.sessio
  */
 export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '' }, given = {}) {
   const app = rt.s.apps[id];
-  if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
+  if (!app || app.sessionId !== sessionId) return notYours(rt, sessionId, id);
   const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
   if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
   const versions = [
@@ -230,34 +232,6 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
     moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
   }
   return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
-}
-
-/**
- * retire_app (#193): an app its agent no longer needs shows as one line in its place, saying why and leading to what
- * replaced it, with its version menu. It stays where it is, since nothing new needs the person, and it runs no
- * sandbox until they open a version. A new version (update_app) brings it back.
- * @param {any} rt  the Runtime @param {string} sessionId @param {{ id?: unknown, reason?: unknown, replacedBy?: unknown }} args
- */
-export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
-  const app = rt.s.apps[String(id)];
-  if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
-  const why = String(reason ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 300);
-  if (!why) return { ok: false, message: 'retire_app needs a reason, which the person reads in the app’s place.' };
-  /** @type {{ id: string, title: string, itemId: string } | null} */
-  let to = null;
-  if (replacedBy != null && replacedBy !== '') {
-    const rid = String(replacedBy);
-    // What replaced it is shown in the same conversation, so its line can lead there: another app, or a block.
-    const other = rid === app.id ? null : rt.s.apps[rid];
-    const item = rt.store.items(app.threadId).find((x) => x.kind === 'block' && x.valid && x.block.id === rid && (other || x.block.type !== 'app'));
-    if (!item) return { ok: false, message: `There’s no other app or block ${rid} in this conversation. Name one shown here, or leave out replacedBy.` };
-    to = { id: rid, title: String(other?.title ?? item.block.title ?? item.block.prompt ?? rid).slice(0, 200), itemId: item.id };
-  }
-  rt.store.emit('app', { ...app, retired: { by: rt.session(sessionId).handle, reason: why, replacedBy: to, at: Date.now() } });
-  return { ok: true, message: `Retired ${app.title}. It shows as one line where it was, with its versions; update_app brings it back.` };
 }
 
 /** Host tools that apps (through the bridge) and agents can use, if granted. */

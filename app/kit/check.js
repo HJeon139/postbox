@@ -28,7 +28,7 @@
   ready
     .then(() => new Promise((r) => setTimeout(r, 600)))
     .then(quiet)
-    // Text over text is measured twice, a second apart, and the other layout problems once (app/kit/check-layout.js).
+    // Text over text is measured twice, a second apart, and the other layout problems once (check-layout.js, check-controls.js).
     .then(() => Promise.all([textOverlap(innerWidth), textOverflow(innerWidth), controlHidden(innerWidth)]))
     .then(([overlaps, overflows, hiddenControls]) => {
       const problems = [];
@@ -65,33 +65,38 @@
         if (+el.getAttribute('tabindex') > 0)
           problems.push({ code: 'tab-order', message: 'An element sets a positive tabindex, which breaks keyboard order.' });
       });
-      let low = 0;
-      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      const seen = new Set();
-      for (let n = walk.nextNode(); n && low < 3; n = walk.nextNode()) {
-        const el = n.parentElement;
-        if (!n.textContent.trim() || !el || seen.has(el) || el.closest('svg')) continue;
-        seen.add(el);
-        const cs = getComputedStyle(el);
-        if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
-        const fg = rgb(cs.color);
-        const bg = background(el);
-        if (!fg || !bg) continue;
-        const ratio = contrast(blend(fg, bg), bg);
-        const size = parseFloat(cs.fontSize);
-        const large = size >= 24 || (size >= 18.66 && +cs.fontWeight >= 700);
-        if (ratio < (large ? 3 : 4.5)) {
-          low++;
-          problems.push({
-            code: 'contrast',
-            message: `Text “${n.textContent.trim().slice(0, 30)}” has contrast ${ratio.toFixed(2)}:1; it needs ${large ? 3 : 4.5}:1.`,
-          });
-        }
-      }
-      problems.push(...legibility(w), ...overflows, ...overlaps, ...hiddenControls);
+      problems.push(...lowContrast(), ...legibility(w), ...overflows, ...overlaps, ...hiddenControls);
       for (const e of errors) problems.push({ code: 'script-error', message: e });
       post({ type: 'check', width: w, problems });
     });
+  // Text whose contrast with what’s behind it is under WCAG AA, up to 3.
+  function lowContrast() {
+    const out = [];
+    let low = 0;
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const seen = new Set();
+    for (let n = walk.nextNode(); n && low < 3; n = walk.nextNode()) {
+      const el = n.parentElement;
+      if (!n.textContent.trim() || !el || seen.has(el) || el.closest('svg')) continue;
+      seen.add(el);
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
+      const fg = rgb(cs.color);
+      const bg = background(el);
+      if (!fg || !bg) continue;
+      const ratio = contrast(blend(fg, bg), bg);
+      const size = parseFloat(cs.fontSize);
+      const large = size >= 24 || (size >= 18.66 && +cs.fontWeight >= 700);
+      if (ratio < (large ? 3 : 4.5)) {
+        low++;
+        out.push({
+          code: 'contrast',
+          message: `Text “${n.textContent.trim().slice(0, 30)}” has contrast ${ratio.toFixed(2)}:1; it needs ${large ? 3 : 4.5}:1.`,
+        });
+      }
+    }
+    return out;
+  }
   // Legibility: SVG marks, labels and dash patterns too small to read at this width, and an app that shows only an
   // error. These are warnings: the app is still shown, and the agent is told.
   function legibility(w) {

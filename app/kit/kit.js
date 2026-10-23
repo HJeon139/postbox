@@ -443,7 +443,11 @@
             cw = (w - m.l - m.r) / spec.cols.length,
             ch = 26,
             h = m.t + spec.rows.length * ch + m.b;
-          let s = spec.cols.map((c, j) => `<text x="${m.l + j * cw + cw / 2}" y="10" fill="var(--dim)" text-anchor="middle">${esc(c)}</text>`).join('');
+          // Column labels that wouldn’t fit side by side show every few columns; the table view and each cell’s title name all.
+          const every = Math.max(1, Math.ceil((Math.max(...spec.cols.map((c) => String(c).length)) * 6.5 + 8) / cw));
+          let s = spec.cols
+            .map((c, j) => (j % every ? '' : `<text x="${m.l + j * cw + cw / 2}" y="10" fill="var(--dim)" text-anchor="middle">${esc(c)}</text>`))
+            .join('');
           spec.rows.forEach((r, i) => {
             s += `<text x="${m.l - 8}" y="${m.t + i * ch + ch / 2}" fill="var(--text)" text-anchor="end" dominant-baseline="middle">${esc(r)}</text>`;
             spec.values[i].forEach((v, j) => {

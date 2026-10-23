@@ -494,7 +494,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
     return;
   }
   const v = viewing.get(appId) ?? app.current;
-  const old = v !== app.current || (!!app.retired && !!onBack); // a retired app’s line opens its versions read-only, the current one too (#193)
+  const old = v !== app.current || !!app.retired; // a retired app’s versions open read-only, the current one too, unchecked (#193)
   const key = `${appId}:${v}`;
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
@@ -518,7 +518,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
                 type: 'button',
                 onclick: () => {
                   stopped.delete(key);
-                  mountApp(container, appId, { review, onPin });
+                  mountApp(container, appId, { review, onPin, onBack });
                 },
               },
               icon('retry', 'i-sm'),
@@ -546,7 +546,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
                 onclick: () => {
                   crashes.delete(key);
                   reloaded.add(key);
-                  mountApp(container, appId, { review, onPin });
+                  mountApp(container, appId, { review, onPin, onBack });
                 },
               },
               icon('retry', 'i-sm'),
@@ -586,11 +586,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       ),
     );
   } else {
-    const mount = () => {
-      const f = frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin }) });
-      body.replaceChildren(f);
-      return f;
-    };
+    const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin, onBack }) }));
     mount();
     body._remount = () => mount();
     body._unmount = () => {
@@ -621,9 +617,11 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
             'button.btn.sm.ghost',
             {
               type: 'button',
+              // A retired app in a review has no line to go back to.
+              hidden: !!app.retired && !onBack,
               onclick: () => {
                 viewing.delete(appId);
-                (onBack ?? (() => mountApp(container, appId, { review, onPin })))();
+                (onBack ?? (() => mountApp(container, appId, { review, onPin, onBack })))();
               },
             },
             onBack ? 'Close' : `Back to v${app.current}`,
@@ -691,7 +689,10 @@ export function renderAppItem(item, ctx) {
     icon('down', 'i-sm'),
   );
   // Retired (#193): one line in its place, and no sandbox until you open a version from its menu.
-  if (app.retired && !viewing.has(app.id)) return retiredLine(app, versionBtn, ctx);
+  if (app.retired && !viewing.has(app.id)) {
+    if (full?.appId === app.id) exitFull({ focus: false });
+    return retiredLine(app, versionBtn, ctx);
+  }
   const titleId = `app-${app.id}`;
   const fullBtn = h('button.btn.icon.sm', { type: 'button', 'aria-label': 'Full screen' }, icon('expand'));
   const node = h(
