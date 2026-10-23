@@ -242,7 +242,9 @@ function refreshTop() {
 
 function notify(d) {
   if (d.level !== 'blocking') return; // informational events are still badges, not toasts
-  if (route().threadId === d.threadId && document.visibilityState === 'visible') {
+  // In view: its conversation, or the side thread it’s in, open in the panel (#121).
+  const r = route();
+  if ((r.threadId === d.threadId || r.sideId === d.threadId) && document.visibilityState === 'visible') {
     say(`${d.title}. ${d.text}`);
     return;
   }
@@ -252,7 +254,7 @@ function notify(d) {
     text: d.text,
     level: 'blocking',
     ring: se ? ringFor(se, 'sm') : null,
-    action: { label: 'Go', run: () => navigate(`#/t/${d.threadId}`) },
+    action: { label: 'Go', run: () => navigate(hrefOf(d.threadId)) },
     timeout: 12000,
   });
 }

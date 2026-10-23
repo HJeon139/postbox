@@ -12,7 +12,7 @@ You can always see who started what: wakes, joins, compactions, side threads, at
 
 - “You woke @x”, “@a woke @b · agent wake n of 3”.
 - Compaction divider with Show summary ([screenshot](../../screenshots/compaction-divider.png)).
-- A side-thread link “@a asked @b · n messages · Open” ([screenshot](../../screenshots/side-thread-link.png)).
+- A side-thread link “@a asked @b · n messages · Open” ([screenshot](../../screenshots/side-thread-link.png)). While an agent works or waits for you in it, the link carries that agent’s ring and state: “@a asked @b · @b is calling tools · 3 messages · Open”, or “@b (a fork) needs you” (#121).
 
 ## Steps to reproduce
 
