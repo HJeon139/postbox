@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.6.0 (2026-10-23)
+
+### Features
+
+- **work:** agents in the sidebar, a Work ledger, and Work in a right pane with full screen
+- **uat:** agents run on Haiku at low effort, and measurement scenarios keep the personas' models
+- **uat:** test the Agents section, the Work ledger and the right pane
+
+### Fixes
+
+- **uat:** a stopped run stops its Postbox, and workspaces are their own git repos
+- **agents:** word the quick panel's mode help with modeHelp, which replaced KIRO_PERMISSIONS
+
 ## 0.5.0 (2026-10-23)
 
 ### Features
