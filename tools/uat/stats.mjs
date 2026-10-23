@@ -170,6 +170,54 @@ export function triggerCoverage(runs) {
   return [...out.values()];
 }
 
+/** When a run started, from its folder’s name (the runner names it for the UTC time: 2026-10-23T21-18-25-p0). */
+const runTime = (run) => {
+  const m = /^(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)/.exec(run);
+  return m ? Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`) : null;
+};
+
+/**
+ * Each issue a run caught again, as tests/uat/e2e/README.md (“Recurring findings”) counts them: findings whose verdict
+ * is duplicate by verdictOf(), each issue once per run; measurements and coverage rows aren’t defects. A run after its
+ * issue closed may be a regression. Sorted by runs, then findings.
+ * @param {{ run: string, findings: any[] }[]} runs
+ * @param {Map<number, { state: string, closedAt?: string|null, priority?: string|null }>} [issues]  from gh; empty without it
+ */
+export function recurrence(runs, issues = new Map()) {
+  /** @type {Map<number, { issue: number, runs: Set<string>, findings: number, after: Set<string> }>} */
+  const rows = new Map();
+  for (const r of runs)
+    for (const f of r.findings ?? []) {
+      const n = f.duplicateOf ?? f.issue;
+      if (verdictOf(f) !== 'duplicate' || f.check === 'coverage-gap' || !Number.isInteger(n)) continue;
+      const row = rows.get(n) ?? { issue: n, runs: new Set(), findings: 0, after: new Set() };
+      row.runs.add(r.run);
+      row.findings++;
+      const closed = issues.get(n)?.closedAt ? Date.parse(String(issues.get(n)?.closedAt)) : null;
+      const at = runTime(r.run);
+      if (closed !== null && at !== null && at > closed) row.after.add(r.run);
+      rows.set(n, row);
+    }
+  return [...rows.values()]
+    .map((x) => ({ ...x, runs: x.runs.size, after: issues.has(x.issue) ? x.after.size : null, ...issues.get(x.issue) }))
+    .sort((a, b) => b.runs - a.runs || b.findings - a.findings || a.issue - b.issue);
+}
+
+export const RECURRENCE_COLUMNS = ['Issue', 'State', 'Priority', 'Runs', 'Findings', 'Runs after close'];
+
+/** The recurrence table, as lines of text. @param {ReturnType<typeof recurrence>} rows */
+export function recurrenceTable(rows) {
+  if (!rows.length) return ['Recurrence by issue: no run caught a known issue again.'];
+  const cells = rows.map((x) => [`#${x.issue}`, x.state?.toLowerCase() ?? '?', x.priority ?? '—', x.runs, x.findings, x.after ?? '?'].map(String));
+  const width = RECURRENCE_COLUMNS.map((c, i) => Math.max(c.length, ...cells.map((r) => r[i].length)));
+  const line = (r) => `  ${r.map((c, i) => c.padEnd(width[i])).join('  ')}`.trimEnd();
+  return [
+    'Recurrence by issue (tests/uat/e2e/README.md, “Recurring findings”): an open issue in 2 or more runs goes up one priority, once; a closed one caught after it closed is verified against the run’s commit.',
+    line(RECURRENCE_COLUMNS),
+    ...cells.map(line),
+  ];
+}
+
 // ── The printout ───────────────────────────────────────────────────────────────────────────
 
 /** Below these, the numbers are printed with a plain warning, or not at all. */
