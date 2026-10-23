@@ -1,4 +1,4 @@
-// Closing blocks that ask (#106): server/blocks.mjs.
+// Closing blocks that ask (#106), and update_block from a topic thread (#216): server/blocks.mjs.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -209,4 +209,44 @@ test('#106: the person dismisses a block that asks: it closes, stops needing the
   const cardItem = store.items(t.id).find((i) => i.block?.id === 'c');
   rt.act(t.id, cardItem.id, 'dismiss', {});
   assert.equal(store.item(t.id, cardItem.id).closed, undefined);
+});
+
+test('#216: a topic thread’s agent hears that a block its conversation showed is there, and what it can do instead', async () => {
+  const { rt, store, t, adapter } = setup();
+  const table = {
+    id: 'hotpot-10-sample',
+    type: 'table',
+    version: 1,
+    fallback: 'Ten questions',
+    columns: [{ id: 'q', label: 'Question' }],
+    rows: [{ id: 'r1', cells: { q: 'Who?' } }],
+  };
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: table }));
+  const reply = store.items(t.id).find((i) => i.kind === 'agent' && i.text === 'Done.');
+  const { threadId } = rt.startTopic(t.id, reply.id);
+  // Another agent’s block in the conversation, and one this agent showed in a side thread there, answering another.
+  const se = rt.sessionsIn(t.id)[0];
+  rt.addItem(t.id, { kind: 'block', sessionId: 'se_other', handle: 'other', valid: true, block: { ...table, id: 'theirs' }, answered: false });
+  const side = rt.putThread({ id: 'th_side', projectId: 'p1', title: '@other ↔ @critic', kind: 'side', parentId: t.id, members: [], queue: [], hops: 0 });
+  rt.addItem(side.id, { kind: 'block', sessionId: se.id, handle: 'critic', valid: true, block: { ...table, id: 'aside' }, answered: false });
+  let fixed;
+  let missing;
+  let others;
+  let aside;
+  adapter.next.push(async (c) => {
+    fixed = c.tools.update_block({ block: { ...table, rows: [{ id: 'r1', cells: { q: 'Whom?' } }] } });
+    missing = c.tools.update_block({ block: { ...table, id: 'never-shown' } });
+    others = c.tools.update_block({ block: { ...table, id: 'theirs' } });
+    aside = c.tools.update_block({ block: { ...table, id: 'aside' } });
+    c.text('Done.');
+  });
+  rt.sendMessage(threadId, { text: 'Rename the entities in that table.' });
+  await settle(rt);
+  assert.equal(fixed.ok, false);
+  assert.match(fixed.message, /^Block hotpot-10-sample is in the conversation, not in this thread, and it can’t be changed from here\./);
+  assert.match(fixed.message, /show a corrected block in this thread with a new id, or ask the person to send your correction to the conversation/);
+  assert.equal(store.items(t.id).find((i) => i.kind === 'block').block.rows[0].cells.q, 'Who?', 'the conversation’s block is unchanged');
+  assert.match(missing.message, /^There’s no block with id never-shown to update\. Use show_block to add it\.$/);
+  assert.match(others.message, /^There’s no block with id theirs to update\./, 'another agent’s block gets the old answer');
+  assert.match(aside.message, /^Block aside is in the side thread “@other ↔ @critic”, not in this thread, and it can’t be changed from here\./);
 });
