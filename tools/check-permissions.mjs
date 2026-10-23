@@ -142,8 +142,11 @@ async function asking(req) {
   rt.sendMessage(thread.id, { text: `Please ${req.summary}.` });
   await page.waitFor(`!!(${card(req.summary)})?.querySelector('.block-foot')`, { label: `the card to ${req.summary}` });
 }
+/** Waits for the agent to have the nth answer, and for the page to show what the server made of it. */
 const answered = async (n) => {
   await until(() => answers.length >= n && rt.turns.size === 0, 'the answer to reach the agent');
+  await page.synced(store.state.seq);
+  await settle();
   return answers[n - 1];
 };
 
