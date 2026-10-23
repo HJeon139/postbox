@@ -6,12 +6,12 @@
 import { BACKEND_NAMES, chipEffort, chipModel, shortModel } from '/shared/agent-facts.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
-import { api, busy, client, itemsOf, sessionsOf } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, plural, syncList } from './dom.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { capsOf, EFFORT_NAMES, KIRO_PERMISSIONS, modelsFor, openSettings } from './sheets.mjs';
-import { keepFocus, openDialog, say, toast } from './ui.mjs';
+import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
 const S = () => client.state;
 
@@ -249,8 +249,14 @@ export function openAgentPanel(sessionId, from = null) {
             'button.btn.sm',
             {
               type: 'button',
+              // Not while it’s already stopping (#126): it says so in the row and the panel’s line, and Stop is pressed once.
               disabled: !busy(se),
-              onclick: () => api(`/api/sessions/${se.id}/stop`, {}).then(() => done(`Stopped @${se.handle}.`), failed),
+              onclick: () =>
+                stopSession(se).then(
+                  // With background jobs running, Stop asks in the conversation whether to stop them too (#129): go there.
+                  (r) => (r?.ask ? handOff(() => navigate(hrefOf(se.threadId))) : done(`Stopping @${se.handle}.`)),
+                  failed,
+                ),
             },
             'Stop',
           ),

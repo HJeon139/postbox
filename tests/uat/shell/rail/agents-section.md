@@ -20,7 +20,7 @@ One agent’s settings were in four places: `/model`, `/effort` and `/mode` in t
 - Every control’s name carries its scope too, so a screen reader hears it on the control: “Model, in this conversation”, “Shell, for @critic everywhere”.
 - After a change, a line under the controls says what changed and when it takes effect (“Model: Sonnet 5.5 for @indexer in this conversation, from its next turn.”), and it’s announced.
 - “Rules, folders and MCP…” opens the [permissions panel](../permissions-panel.md) on this agent (not on a Kiro agent, which doesn’t read them). “Edit persona…” opens Settings › Personas on it.
-- Stop (only while it works), Compact (on a real backend, while idle; it runs `/compact` as the agent’s turn, as the composer’s `/compact` does) and Archive (with Restore in the toast).
+- Stop (only while it works; while its process exits it reads “stopping”, and Stop isn’t offered again; with background jobs running, it closes the panel and the conversation asks whether to stop them too), Compact (on a real backend, while idle; it runs `/compact` as the agent’s turn, as the composer’s `/compact` does) and Archive (with Restore in the toast).
 - A mock agent says it has no model, effort or permission mode to change; its tools still show.
 - By keyboard: each group of choices is one Tab stop; the arrow keys move within it, and Enter or Space picks. Space or Enter flips a switch. Escape closes the panel and returns focus to the row or ring it came from.
 - Model and effort changed elsewhere (`/model`, another tab) show in the open panel at once.

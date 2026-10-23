@@ -347,7 +347,13 @@ await check('Stop is there only while it works, Compact only on a real backend, 
   await page.waitFor(`${inPanel('button', 'Stop')}?.disabled === false`, { label: 'Stop to turn on while it works' });
   assert.equal(await page.evaluate(`${inPanel('button', 'Compact')}.disabled`), true);
   await click(inPanel('button', 'Stop'));
-  await page.waitFor(`${q('.qp .perm-status')}?.textContent === 'Stopped @indexer.'`, { label: 'the Stop status' });
+  await page.waitFor(`${q('.qp .perm-status')}?.textContent === 'Stopping @indexer.'`, { label: 'the Stop status' });
+  // While its process exits it reads “stopping” (#126), in the panel and its row, and Stop isn’t offered again.
+  rt.updateSession(indexer.id, { state: 'stopping' });
+  await page.waitFor(`${inPanel('button', 'Stop')}?.disabled === true && ${row('indexer')}.innerText.includes('· stopping')`, {
+    label: 'Stop to turn off while it stops',
+  });
+  assert.match(await page.evaluate(`document.getElementById(${panel}.getAttribute('aria-labelledby')).closest('.d-head').innerText`), /Stopping/);
   rt.updateSession(indexer.id, { state: 'idle' });
   // Compact runs Claude Code’s /compact as the agent’s turn, as the composer’s /compact does, and closes the panel.
   await page.waitFor(`${inPanel('button', 'Compact')}?.disabled === false`);
