@@ -124,7 +124,8 @@ test('#126: the Claude Code CLI starts in its own group, and Stop signals the gr
   });
   const ctx = fakeCtx();
   const done = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx);
-  await sleep(5);
+  // deliver makes the agent’s folder before it spawns: wait for the spawn, not a fixed time, which a busy CI runner outlasts.
+  await until(() => spawned.length, 'the spawn');
   assert.equal(spawned[0].detached, true, 'its own process group');
   ctx.abort.abort();
   await sleep(5);
@@ -333,7 +334,7 @@ test('#126: the Agent SDK’s CLI is spawned by Postbox, in its own group; Stop 
   const done = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx).then(() => {
     ended = true;
   });
-  await sleep(10);
+  await until(() => spawned.length, 'the spawn');
   assert.equal(spawned[0].detached, true);
   ctx.abort.abort();
   await sleep(10);
