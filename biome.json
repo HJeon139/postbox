@@ -258,6 +258,10 @@
       }
     },
     {
+      "includes": ["server/side-threads.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 66 } } } } }
+    },
+    {
       "includes": ["shared/catalog.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 332 } } } } }
     },
