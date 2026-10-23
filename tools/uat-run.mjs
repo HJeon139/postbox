@@ -32,12 +32,13 @@ import { launch, sleep } from './cdp.mjs';
 import { agyTokens, kiroCredits, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
+import { presetFindings } from './uat/regressions.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
+import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { coverageSection, gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
-import { mergePeopleVerdicts, presetVerdicts } from './uat/verdicts.mjs';
+import { mergePeopleVerdicts } from './uat/verdicts.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -702,7 +703,7 @@ async function main() {
     // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
     await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
-    presetVerdicts(all);
+    presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     if (opt.verify !== 'no' || opt.file !== 'no') {
       await reviewFindings({ ...REVIEW, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
@@ -917,13 +918,16 @@ async function recheck(dir) {
     const live = saved.findings.filter((f) => f.source === 'run' || (f.source === 'check' && LIVE_ONLY.has(f.check)));
     const gh = spawnSync('gh', ['issue', 'list', '--state', 'all', '--limit', '300', '--json', 'number,title'], { cwd: ROOT, encoding: 'utf8' });
     const issues = gh.status === 0 ? JSON.parse(gh.stdout) : [];
-    // Verdicts and filed issue numbers from earlier reviews carry over to the recomputed findings.
+    // Verdicts and filed issue numbers from earlier reviews carry over to the recomputed findings. A check’s own
+    // preset doesn’t: it’s set again below, and a match to an issue closed since isn’t preset (#213).
     const before = new Map(saved.findings.filter((f) => f.source === 'check').map((f) => [`${f.check}:${f.key}`, f]));
+    const reviewed = ['verdict', 'verdictBy', 'verdictAt', 'verdicts', 'note', 'duplicateOf'];
     for (const c of checks) {
       const b = before.get(`${c.check}:${c.key}`);
       // Its step too: the refit counts a finding at the step it was first seen.
       if (b)
-        for (const k of ['step', 'phase', 'verdict', 'verdictBy', 'verdictAt', 'verdicts', 'note', 'filed', 'duplicateOf']) if (b[k] !== undefined) c[k] = b[k];
+        for (const k of ['step', 'phase', 'filed', 'regression', 'regressionComment', ...(b.verdictBy === 'check' ? [] : reviewed)])
+          if (b[k] !== undefined) c[k] = b[k];
     }
     // Coverage is read again from the whole run: a phase’s triggers either happened in it or didn’t. A gap saved
     // before keeps its verdict if it’s still a gap.
@@ -940,7 +944,7 @@ async function recheck(dir) {
       return [{ ...g, ...(gapsBefore.get(g.key)?.verdictBy === 'person' || gapsBefore.get(g.key)?.verdictBy === 'reviewer' ? gapsBefore.get(g.key) : {}) }];
     });
     const findings = [...checks, ...live.filter((f) => f.check !== 'coverage-gap'), ...gaps, ...kept];
-    presetVerdicts(findings);
+    presetFindings(findings, { root: ROOT, commit: record?.commit ?? null });
     const report = () =>
       writeReport({
         dir,

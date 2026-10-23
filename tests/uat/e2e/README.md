@@ -242,7 +242,7 @@ File what a run finds with the bug template in the [UAT README](../README.md), a
 
 Every finding ends up with a verdict, so the harness’s precision can be counted. Before verdicts were kept, most findings stayed “not reviewed”, and no one could say how many were real. The verdicts:
 - **confirmed:** a defect in Postbox
-- **duplicate:** an open issue covers it (with its number)
+- **duplicate:** an open issue covers it (with its number), or a closed one whose defect came back (a regression, below)
 - **harness:** caused by the runner
 - **agent:** a flaw in the agent’s own reasoning or work that Postbox didn’t cause
 - **by-design:** Postbox does it on purpose
@@ -251,8 +251,12 @@ Every finding ends up with a verdict, so the harness’s precision can be counte
 
 Each records who set it (`person`, `reviewer` or `verifier`, or `check` and `runner` for the ones they set themselves) and when, in `findings.json`. After the report, the runner:
 1. **Presets** what needs no model: a check that matched an open issue caught it again (a duplicate of it), and a finding with the fingerprint of an issue an earlier run filed is a duplicate of that one.
-2. **Verifies** the rest in a fresh model session against the screenshots and the run’s evidence, including the tester’s own matches to open issues. It does this with `--file no` too; `--verify no` skips it.
-3. **Files** each confirmed finding with the bug template: component, urgency, steps to reproduce, expected, and what failed instead. It gets the `uat` label, a priority from its severity, and a hidden fingerprint so later runs don’t file it again. The report shows each verdict, who set it, and the issue number. `--file no` verifies without filing.
+2. **Compares a closed issue’s fix with the run’s commit**, for a check that matched a closed issue ([`tools/uat/regressions.mjs`](../../../tools/uat/regressions.mjs)). The preset doesn’t apply to it: a check written before its issue’s fix can keep firing after it (#213). The fix is the commit that closed the issue, or else its closing pull request’s commits, and `git merge-base --is-ancestor` says whether the run’s commit (`run.json`) has it:
+   - **Without the fix**, it’s the defect as it was: a `duplicate`, set by the runner.
+   - **With the fix**, it’s a possible regression. A verifier judges only whether the evidence shows the defect. Shown: a `duplicate` of the closed issue, marked `regression`, and, when the run files, a comment on the issue with the evidence. The triage session or the person reopens it; the runner never does. Not shown: `harness`, with the check named in the note, so the check gets fixed.
+   - **A run without a recorded commit**, or a fix this clone can’t compare, says so in the finding’s note, and the finding isn’t verified.
+3. **Verifies** the rest in a fresh model session against the screenshots and the run’s evidence, including the tester’s own matches to open issues. It does this with `--file no` too; `--verify no` skips it.
+4. **Files** each confirmed finding with the bug template: component, urgency, steps to reproduce, expected, and what failed instead. It gets the `uat` label, a priority from its severity, and a hidden fingerprint so later runs don’t file it again. The report shows each verdict, who set it, and the issue number. `--file no` verifies without filing.
 
 A person or a reviewing session records or overrides a verdict with:
 
@@ -273,7 +277,7 @@ The person’s rule (23 October 2026): **recurring findings are prioritized.** A
 
 **What it changes:**
 - **An open issue caught in two or more runs goes up one priority, once** (P3 to P2, or P2 to P1), with a comment that gives the runs. It isn’t raised again for recurring, so a check that fires in nearly every run, as #63’s does, can’t climb an issue by its firing rate. Recurrence alone never makes an issue P0. A recurring issue goes at the front of the next wave that can take it.
-- **A closed issue caught again after it closed is a possible regression.** It’s verified against the run’s commit first (#213). If it’s confirmed, the triage session or the person reopens it at its old priority, and its fix goes first in the current wave. The runner never reopens an issue. If the check was wrong, the verdict is `harness`, and the check is fixed.
+- **A closed issue caught again after it closed is a possible regression.** It’s verified against the run’s commit first (#213; “Verdicts”, above). If it’s confirmed, the runner comments on the issue, and the triage session or the person reopens it at its old priority, and its fix goes first in the current wave. The runner never reopens an issue. If the check was wrong, the verdict is `harness`, and the check is fixed.
 - **A finding without an issue that comes back in two runs is filed**, if the verifier passed on it as `not-reproduced`. Two runs’ findings are the same finding when they share a fingerprint, or a reviewer matched them, since a tester’s titles vary from run to run. A finding the verifier called `harness` or `agent` isn’t filed as a Postbox issue for recurring.
 
 Until #213 adds the table to `tools/uat-stats.mjs`, count by hand from each run’s `findings.json`.

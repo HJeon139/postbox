@@ -99,7 +99,8 @@ export function setVerdict(f, { verdict, by, note = null, issue = null, at = new
 /**
  * The verdict a finding carries for counting: its own, in this set, or one implied by how the run handled it, as
  * presetVerdicts sets it on new runs: a filed finding was confirmed, and a check that matched an open issue caught it
- * again. Null for one no one reviewed (a tester’s match to an issue is a guess until verified).
+ * again. Null for one no one reviewed (a tester’s match to an issue is a guess until verified), and for a check’s match
+ * to a closed issue that wasn’t verified (#213, tools/uat/regressions.mjs).
  * @param {any} f
  * @returns {string|null}
  */
@@ -107,7 +108,7 @@ export function verdictOf(f) {
   const v = normalVerdict(f.verdict);
   if (v) return v;
   if (f.filed) return 'confirmed';
-  if (f.duplicateOf || (f.source === 'check' && Number.isInteger(f.issue))) return 'duplicate';
+  if (f.duplicateOf || (f.source === 'check' && Number.isInteger(f.issue) && !f.closedIssue)) return 'duplicate';
   return null;
 }
 
@@ -131,7 +132,8 @@ export function mergePeopleVerdicts(findings, onDisk) {
 
 /**
  * Verdicts that need no model: a check that matched an open issue caught that issue again (a duplicate of it), and
- * a measurement or a coverage gap carries its own. Leaves a finding with a verdict as it is.
+ * a measurement or a coverage gap carries its own. A match to a closed issue (closedIssue, from markClosed in
+ * tools/uat/regressions.mjs) isn’t preset: it may be a stale check (#213). Leaves a finding with a verdict as it is.
  * @param {any[]} findings
  */
 export function presetVerdicts(findings) {
@@ -142,7 +144,7 @@ export function presetVerdicts(findings) {
       if (v && v !== f.verdict) f.verdict = v;
       continue;
     }
-    if (f.source === 'check' && Number.isInteger(f.issue))
+    if (f.source === 'check' && Number.isInteger(f.issue) && !f.closedIssue)
       setVerdict(f, { verdict: 'duplicate', by: 'check', issue: f.issue, note: `A check caught #${f.issue} again.` });
   }
 }

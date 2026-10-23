@@ -2,6 +2,7 @@
 // (tools/uat-run.mjs calls it).
 
 import { spawnSync } from 'node:child_process';
+import { verifyRegressions } from './regressions.mjs';
 import { askOnce, VERIFY_SCHEMA, verifyPrompt } from './tester.mjs';
 import { setVerdict } from './verdicts.mjs';
 
@@ -17,10 +18,20 @@ const fingerprint = (f) =>
     .slice(0, 60)}`;
 
 /**
- * Gives every finding without a verdict one, in a fresh model session (verify), then files the confirmed ones that no
- * open issue covers (file). A verdict a person or a reviewer set is never re-verified (tools/uat/verdicts.mjs).
+ * Verifies the findings on closed issues against their fixes (tools/uat/regressions.mjs), then the rest.
+ * @param {{ root: string, testerModel: string, dir: string, scenario: any, findings: any[], timeline: any[], log: (l: string) => void, verify: boolean, file: boolean }} o
  */
-export async function reviewFindings({ root, testerModel, dir, scenario, findings, timeline, log, verify, file }) {
+export async function reviewFindings(o) {
+  if (o.verify) await verifyRegressions(o);
+  await verifyAndFile(o);
+}
+
+/**
+ * Gives every finding without a verdict one, in a fresh model session (verify), then files the confirmed ones that no
+ * open issue covers (file). A verdict a person or a reviewer set is never re-verified (tools/uat/verdicts.mjs), and a
+ * match to a closed issue is verifyRegressions’s.
+ */
+async function verifyAndFile({ root, testerModel, dir, scenario, findings, timeline, log, verify, file }) {
   const gh = (args) => spawnSync('gh', args, { cwd: root, encoding: 'utf8' });
   const open = gh(['issue', 'list', '--state', 'open', '--limit', '300', '--json', 'number,title,body']);
   // Without the open issues, the verifier can’t tell a duplicate, and would confirm it: wait for a recheck with gh.
@@ -31,7 +42,7 @@ export async function reviewFindings({ root, testerModel, dir, scenario, finding
     const n = filedBefore.get(fingerprint(f));
     setVerdict(f, { verdict: 'duplicate', by: 'runner', issue: n, note: `Filed by an earlier run as #${n}.` });
   }
-  const toVerify = findings.filter((f) => !f.filed && !f.verdict);
+  const toVerify = findings.filter((f) => !f.filed && !f.verdict && !f.closedIssue);
   if (verify && toVerify.length) {
     log(`Verifying ${toVerify.length} findings${file ? ' before filing' : ''}…`);
     try {
