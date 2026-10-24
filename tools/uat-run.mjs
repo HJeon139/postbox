@@ -49,6 +49,7 @@ import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
 import { sendThenStop, settle as settleTurns, stopThroughPage, WAIT_MAX_S, watchBudget } from './uat/turns.mjs';
 import { withoutPreset } from './uat/verdicts.mjs';
+import { makeWorkspace } from './uat/workspace.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -128,10 +129,7 @@ async function main() {
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
-  // The workspace is a git repository of its own. It lies inside the Postbox checkout, so without one an agent’s
-  // git add and commit would land in Postbox’s history; a workroom agent had to notice and make a nested repo.
-  spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
-  const canaries = scenario.seed === 'canaries' ? tm.seedCanaries(paths.workspace, dir) : null;
+  const canaries = makeWorkspace(scenario, paths, dir);
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
