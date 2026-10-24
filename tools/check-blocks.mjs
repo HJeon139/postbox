@@ -4,7 +4,9 @@
 //   • the agent withdraws a choice it asked: it reads “Withdrawn by @drafter” with the reason, and can’t be answered;
 //   • the agent records an outcome on an approved review: it shows under the answer, and the review stays answered.
 // And the image block (#180): the demo’s title page, from Postbox’s own media, loads with the page opened at
-// 127.0.0.1 and at localhost, and an image that fails says so, in place of a broken image.
+// 127.0.0.1 and at localhost, and an image that fails says so, in place of a broken image. The same holds for a review’s
+// Markdown images (#218).
+// And the code block (#41): its header shows the filename, and its code is highlighted, line numbers intact.
 //
 //   node tools/check-blocks.mjs
 //
@@ -51,7 +53,19 @@ const scripts = {
     });
     ctx.tools.show_block({ block: { ...image('title-page', 'middlemarch-title.svg'), caption: 'Served by Postbox, an allowed origin.' } });
     ctx.tools.show_block({ block: image('missing-page', 'not-there.svg') });
+    const media = (name) => `${process.env.POSTBOX_ORIGIN}/media/${name}`;
+    const content = `# Pictures\n\n![The title page](${media('middlemarch-title.svg')})\n\n![A missing page](${media('not-there.svg')})\n\n![A page from elsewhere](https://example.com/elsewhere.png)`;
+    ctx.tools.show_block({ block: { ...review, id: 'pictures', title: 'pictures.md', fallback: 'A draft with pictures', content } });
   },
+};
+// The block from #41’s report ({ title: "The schema", filename: "schema.ts", language: "ts" }), with a comment that
+// spans two lines, and one with a filename and no title.
+const TS = '/* Where a passage sits\n   in its book. */\nexport function span(p) {\n  return { start: p.start, end: 18342, unit: "char" };\n}';
+const PY = '# Offsets, not pages\ndef span(p):\n    return (p.start, 18342)';
+const codeBlock = (id, extra) => ({ id, type: 'code', version: 1, fallback: 'The passage offsets', ...extra });
+scripts.code = (ctx) => {
+  ctx.tools.show_block({ block: codeBlock('schema', { title: 'The schema', filename: 'schema.ts', language: 'ts', code: TS }) });
+  ctx.tools.show_block({ block: codeBlock('offsets', { filename: 'offsets.py', language: 'python', code: PY }) });
 };
 const agent = {
   name: 'mock',
@@ -147,7 +161,7 @@ try {
 
   // ── Images (#180) ──
   rt.sendMessage(thread.id, { text: 'images' });
-  await until(() => itemOf('missing-page') && !rt.turns.size);
+  await until(() => itemOf('pictures') && !rt.turns.size);
   for (const host of ['127.0.0.1', 'localhost']) {
     // The page is open at 127.0.0.1 already, where the hash alone wouldn’t load it again.
     if (host === '127.0.0.1') await page.reload();
@@ -164,10 +178,63 @@ try {
     const failed = await until(() => page.evaluate(`${BLOCK('missing-page')}.querySelector('.img-failed')?.textContent ?? ''`), 5000);
     const broken = await page.evaluate(`!!${BLOCK('missing-page')}.querySelector('img')`);
     check(failed === 'This image couldn’t load. It shows: The missing-page' && !broken, `an image that fails says so, at ${host} (“${failed}”)`);
+    // A review’s Markdown images: Postbox’s own loads, and one that fails says so in its place (#218).
+    await page.evaluate(`${BLOCK('pictures')}.scrollIntoView({ block: 'center' })`);
+    const drawn = await until(
+      () => page.evaluate(`(() => { const i = ${BLOCK('pictures')}.querySelector('img.md-img'); return i?.complete && i.naturalWidth > 0 && i.alt; })()`),
+      5000,
+    );
+    check(drawn === 'The title page', `a review’s Markdown image loads with the page at ${host} (${drawn})`);
+    // One that isn’t there, and one from an origin the page’s policy doesn’t allow (server/index.mjs, img-src).
+    const said = await until(
+      () =>
+        page.evaluate(
+          `(() => { const f = [...${BLOCK('pictures')}.querySelectorAll('.img-failed')]; return f.length === 2 && f.map((x) => x.textContent); })()`,
+        ),
+      5000,
+    );
+    check(
+      said?.join(' · ') === 'This image couldn’t load. It shows: A missing page · This image couldn’t load. It shows: A page from elsewhere',
+      `a review’s Markdown image that fails, or comes from an origin Postbox doesn’t allow, says so, at ${host} (${said?.join(' · ')})`,
+    );
   }
 
-  // The missing image’s 404 is the one expected error.
-  const logs = page.logs.filter((l) => !/not-there\.svg|status of 404/.test(l));
+  // ── The code block (#41) ──
+  rt.sendMessage(thread.id, { text: 'code' });
+  await until(() => itemOf('offsets') && !rt.turns.size);
+  await page.synced(store.state.seq);
+  await page.waitFor(`${BLOCK('offsets')}?.querySelector('pre')`, { label: 'the code blocks' });
+  const code = (id) =>
+    page.evaluate(`(() => { const b = ${BLOCK(id)}; const pre = b.querySelector('pre'); const of = (c) => [...pre.querySelectorAll(c)].map((n) => n.textContent);
+      return { title: b.querySelector('.block-head .title').textContent, file: b.querySelector('.block-head .code-file')?.offsetWidth > 0,
+        name: b.getAttribute('aria-labelledby') && document.getElementById(b.getAttribute('aria-labelledby'))?.textContent,
+        text: [...pre.childNodes].filter((n) => !n.classList?.contains('ln')).map((n) => n.textContent).join(''), lines: of('.ln').length,
+        kw: of('.kw'), str: of('.str'), num: of('.num-t'), fn: of('.fn'), com: of('.com') }; })()`);
+  const ts = await code('schema');
+  check(ts.title === 'The schema schema.ts' && ts.file, `the header shows the title and the filename (“${ts.title}”)`);
+  check(ts.name === 'The schema schema.ts', `the block’s accessible name carries the filename (“${ts.name}”)`);
+  check(ts.text === TS && ts.lines === 5, `the code reads as sent, with a number on each of its 5 lines (${ts.lines})`);
+  const want = { kw: 'export,function,return', str: '"char"', num: '18342', fn: 'span', com: '/* Where a passage sits,   in its book. */' };
+  const got = { kw: ts.kw.join(), str: ts.str.join(), num: ts.num.join(), fn: ts.fn.join(), com: ts.com.join() };
+  check(
+    JSON.stringify(got) === JSON.stringify(want),
+    `TypeScript is highlighted: keywords, a string, a number, a function and a comment (${JSON.stringify(got)})`,
+  );
+  const py = await code('offsets');
+  check(py.title === 'offsets.py' && py.file, `with no title, the filename is the title (“${py.title}”)`);
+  check(py.com.join() === '# Offsets, not pages' && py.kw.join() === 'def,return' && py.fn.join() === 'span', `Python is highlighted (${JSON.stringify(py)})`);
+
+  // An image that failed is commented on whole, as a diagram is: a click on it in Preview opens Lines at its line (#179).
+  await page.evaluate('getSelection().removeAllRanges()');
+  const spot = await page.evaluate(
+    `(() => { const el = ${BLOCK('pictures')}.querySelector('.img-failed'); el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + 4, y: r.top + r.height / 2 }; })()`,
+  );
+  for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...spot, button: 'left', clickCount: 1 });
+  const box = await until(() => page.evaluate(`document.activeElement?.tagName === 'TEXTAREA' && document.activeElement.getAttribute('aria-label')`), 5000);
+  check(box === 'Comment on line 5', `a click on a review’s image that failed opens Lines at its line, with its comment box (${box})`);
+
+  // The missing image’s 404, and the policy refusing the image from elsewhere, are the expected errors.
+  const logs = page.logs.filter((l) => !/not-there\.svg|status of 404|example\.com\/elsewhere\.png/.test(l));
   check(!logs.length, `no errors in the page${logs.length ? `: ${logs.join('; ')}` : ''}`);
 } finally {
   await page.close?.();

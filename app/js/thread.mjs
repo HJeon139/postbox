@@ -4,6 +4,7 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
+import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
 import { inThreadLine, subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
@@ -26,15 +27,6 @@ import { workList } from './work-list.mjs';
 export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
-const handles = () =>
-  Object.values(S().personas)
-    .filter((p) => !p.retired)
-    .map((p) => p.handle);
-const glossaryOf = (threadId) => {
-  const t = S().threads[threadId];
-  const g = { ...(S().glossary[t?.parentId] ?? {}), ...(S().glossary[threadId] ?? {}) };
-  return g;
-};
 // A reply replaced by its replay (#120: a turn on a host attached again after a restart) shows nothing, so the replay
 // after it names its speaker.
 const speaker = (it) =>
@@ -394,25 +386,6 @@ function fillWorkRow(row, se) {
   );
 }
 
-function agentMarkdown(it, threadId) {
-  return renderMarkdown(it.text ?? '', {
-    streaming: it.status === 'streaming',
-    citations: it.sources?.length ?? 0,
-    citeId: `src-${it.id}`,
-    glossary: Object.values(glossaryOf(threadId)).map((g) => ({ key: g.key, term: g.term })),
-    mentions: handles(),
-  });
-}
-
-function markTerms(root, threadId) {
-  const g = glossaryOf(threadId);
-  for (const t of root.querySelectorAll('.term')) {
-    const known = !!g[t.dataset.term];
-    t.classList.toggle('undef', !known);
-    if (!known) t.title = 'Not defined yet. The agent has been asked to define it.';
-  }
-}
-
 const who = (it, { you = false } = {}) => {
   const se = S().sessions[it.sessionId];
   const ts = h('span.ts', { title: `${dayOf(it.at)} ${timeOf(it.at)}` }, `${timeOf(it.at)}`);
@@ -614,10 +587,12 @@ function renderItem(it, prev, ctx) {
         h('span.voice', icon('thread', 'i-sm'), it.text),
         it.quote ? h('span.app-says', 'The app’s summary: ', h('q', it.quote)) : null,
       );
-    case 'shared':
+    case 'shared': {
       // A reply or a summary sent back from a topic or side thread, by you or by an agent you asked (#128). Its agents
-      // read it at the start of their next turn.
-      return h(
+      // read it at the start of their next turn. It’s drawn as an agent’s reply is (#99), with the glossary of the
+      // thread it was written in while that thread is there, and its terms look their cards up there too.
+      const from = S().threads[it.fromThreadId] ? it.fromThreadId : ctx.threadId;
+      const node = h(
         'div.col.turn',
         h(
           'div.shared-card',
@@ -632,9 +607,14 @@ function renderItem(it, prev, ctx) {
             ),
             S().threads[it.fromThreadId] ? h('a.small', { href: hrefOf(it.fromThreadId) }, 'Open thread') : null,
           ),
-          h('div.md', { html: trusted(renderMarkdown(it.text, { mentions: handles() })) }),
+          h('div.md', { html: trusted(agentMarkdown(it, from)), dataset: { thread: from } }),
         ),
       );
+      const box = node.querySelector('.shared-card > .md');
+      markTerms(box, from);
+      queueMicrotask(() => enhanceMarkdown(box));
+      return node;
+    }
     case 'system':
       return systemLine(it, ctx);
     case 'sidelink':

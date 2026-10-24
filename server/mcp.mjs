@@ -1,7 +1,7 @@
 // The MCP server: Postbox’s UI tools over JSON-RPC 2.0 (MCP’s Streamable HTTP transport, JSON responses).
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
-// and gets show_block, update_block, show_app, update_app, retire_app, define_term, propose_agent, schedule_wake,
+// and gets show_block, update_block, review_block, show_app, update_app, retire_app, define_term, propose_agent, schedule_wake,
 // wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search and add_dataset.
 // Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
 // carrying { blockId, action, values }. The tools’ definitions are in shared/mcp-tools.mjs, which the shim on a
@@ -16,7 +16,7 @@
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
-import { describePermission } from './adapters/claude-stream.mjs';
+import { permission } from './permission-prompt.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { offersBring } from './side-threads.mjs';
 import { withUrgent } from './subagent-end.mjs';
@@ -94,26 +94,4 @@ async function one(rt, sessionId, msg, turnToken) {
 function inThread(rt, sessionId, turnToken) {
   const turn = rt.turns.get(sessionId);
   return turn?.token === turnToken && offersBring(rt, turn);
-}
-
-/**
- * Asks the person whether a tool may run, and answers in the shape Claude Code expects from a
- * permission prompt tool: { behavior: "allow", updatedInput } or { behavior: "deny", message }.
- */
-async function permission(rt, sessionId, args) {
-  const { tool_name, input = {}, tool_use_id, permission_suggestions, agent_id } = args ?? {};
-  const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
-  const answer = await rt.requestPermission(sessionId, {
-    tool: String(tool_name ?? ''),
-    summary,
-    detail,
-    toolUseId: tool_use_id,
-    input,
-    suggestions: permission_suggestions,
-    agentId: typeof agent_id === 'string' ? agent_id : null,
-  });
-  const decision = answer.allow
-    ? { behavior: 'allow', updatedInput: answer.updatedInput ?? input, ...(answer.updatedPermissions ? { updatedPermissions: answer.updatedPermissions } : {}) }
-    : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
-  return { content: [{ type: 'text', text: JSON.stringify(decision) }] };
 }

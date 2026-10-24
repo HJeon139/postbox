@@ -4,6 +4,7 @@
 // So this file imports only node: modules and shared/, as host code must (#120); tests/host-imports.test.mjs checks it.
 
 import { limitText as n, PALETTES, READING } from './limits.mjs';
+import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
 
 const count = (k) => k.toLocaleString('en-US');
 
@@ -14,6 +15,22 @@ const blockSchema = {
 
 /** A data file an app carries (#54): a path in the agent’s folder, and the name the app reads it by. */
 const FILE_SCHEMA = { type: 'object', properties: { name: { type: 'string' }, path: { type: 'string' } }, required: ['path'] };
+
+/** review_block (#133), as agents read it; server/review-comments.mjs runs it. */
+const REVIEW_BLOCK_DEF = {
+  name: 'review_block',
+  // lint-allow thread: a review block’s comment threads, not a topic or side thread.
+  description: `Comment on another agent’s review block in this conversation, as its reviewer. Each comment becomes an open comment thread on the draft, with your handle, where the person sees it, and the block’s agent hears about it, so it can revise and resolve it. It doesn’t answer the block: that stays the person’s to approve. blockId: the review’s id, or its item id if two agents use the same one. comments (1–${MAX_COMMENTS}, each up to ${COMMENT_MAX.toLocaleString('en-US')} characters): { line, text } on a line; { line, col, endLine, endCol, quote, text } on a selection, with columns from 1, endCol the column of its last character, and quote the exact text there (up to ${QUOTE_MAX.toLocaleString('en-US')} characters); { anchor, text } on an app’s part; or { threadId, text } to reply in its comment thread. verdict?: “comment”, “approve” or “request_changes”, shown on the block.`,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      blockId: { type: 'string' },
+      comments: { type: 'array', items: { type: 'object' } },
+      verdict: { type: 'string', enum: VERDICTS },
+    },
+    required: ['blockId', 'comments'],
+  },
+};
 
 // The tools, as agents read them. Their limits come from shared/limits.mjs, as the guide’s do (#50).
 export const TOOL_DEFS = [
@@ -27,6 +44,7 @@ export const TOOL_DEFS = [
     description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form, confirm or review (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, such as “Filed as #105”, keeps the block answered, and changes nothing else. To close a choice, form, confirm or review that’s wrong, handled or stale, answered or not, call update_block with block: { id, withdraw: why } (up to ${n('outcome')} characters): the person sees it closed with your reason, and it stops waiting on them. Don’t ask again just to say a block is done. A choice, form, confirm or review that asks again moves to the newest point in the conversation, with a line where it was; other blocks update in place. Each update makes the block’s next revision, and the person’s answer names the revision it’s for. An update over an answer you haven’t read yet (it waits until your turn ends), whether it asks again or sets outcome, is refused, and the reply says what they answered: read it, then update. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
+  REVIEW_BLOCK_DEF,
   {
     name: 'show_app',
     description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). Images load from data: URLs, or from <origin>/media/<name> for a file you copy into the folder $POSTBOX_MEDIA names (never into Postbox’s own folder). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}.`,

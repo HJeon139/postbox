@@ -91,7 +91,10 @@ try {
   // ── Review ──
   rt.sendMessage(thread.id, { text: 'review' });
   await until(() => itemOf('issue'));
-  await page.waitFor(`${BLOCK('issue')}?.querySelector('.g-mark[data-line="3"]')`, { label: 'the review block' });
+  // The draft opens in Preview (#179); lines take their comments in Lines.
+  await page.waitFor(`${BUTTON('issue', 'Lines')}`, { label: 'the review block' });
+  await page.evaluate(`${BUTTON('issue', 'Lines')}.click()`);
+  await page.waitFor(`${BLOCK('issue')}?.querySelector('.g-mark[data-line="3"]')`, { label: 'the review’s lines' });
   // You comment on line 3, “Steps to reproduce:”.
   await page.evaluate(`${BLOCK('issue')}.querySelector('.g-mark[data-line="3"]').click()`);
   await page.waitFor(`${BLOCK('issue')}.querySelector('textarea')`, { label: 'the comment box' });
@@ -111,7 +114,7 @@ try {
   check(!calls.some((m) => m.kind === 'event'), 'review: nothing reached the agent');
   const shown = await page.evaluate(`(() => {
     const b = ${BLOCK('issue')};
-    const view = [...b.querySelectorAll('.block-head .seg button')].map((x) => [x.textContent, x.getAttribute('aria-checked')]);
+    const view = [...b.querySelectorAll('.block-head [aria-label="Changes"] button')].map((x) => [x.textContent, x.getAttribute('aria-checked')]);
     const added = [...b.querySelectorAll('.rv-line.add')].map((l) => l.textContent);
     const draft = b.querySelector('.status-tag.draft')?.closest('.rv-thread');
     const before = draft?.previousElementSibling;

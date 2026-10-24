@@ -84,6 +84,8 @@ export const STDIN_KINDS = Object.freeze(/** @type {const} */ (['file', 'none', 
 export const TOOL_ROUTES = Object.freeze({
   show_block: 'queue',
   update_block: 'queue',
+  // Its comments go on another agent’s review block, which only Postbox has, and a refusal says what to fix, so it waits.
+  review_block: 'ask',
   show_app: 'queue',
   update_app: 'queue',
   retire_app: 'queue',

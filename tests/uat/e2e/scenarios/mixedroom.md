@@ -14,7 +14,7 @@ Ask @researcher how to cache the catalog API: in the service, in a shared cache 
 
 ## Phase 2: The second opinion
 
-If @researcher hasn’t brought @critic in, ask it to. @critic should go through the note line by line and say what it would change. Answer what it asks. Ask @critic to send its biggest concern back to @researcher, and check that @researcher answers it. Both agents’ terms should link to definitions. Approve the note once the concern is settled.
+If @researcher hasn’t brought @critic in, ask it to. @critic should go through the note line by line and say what it would change, with its comments on the draft itself, so you see them on the note in the room, by line or on the words they’re about (#133). Answer what it asks. Ask @critic to send its biggest concern back to @researcher, and check that @researcher answers it. Both agents’ terms should link to definitions. Approve the note once the concern is settled.
 
 ## Phase 3: A topic thread, and what the Kiro agent may do
 
