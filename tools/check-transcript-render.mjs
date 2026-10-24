@@ -67,8 +67,21 @@ try {
       '```',
     ].join('\n'),
   });
+  // A reply that keeps its question (#111): one whose fence would have swallowed the answer, were they one text.
+  const answered = rt.shareText(thread.id, {
+    fromThreadId: topic,
+    handle: 'analyst',
+    text: 'Use chapter offsets.',
+    question: 'Which?\n```js\nconst unit = "page"',
+  });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await page.synced(store.state.seq);
+  const ASKED = `document.querySelector('[data-key="${answered.id}"] .shared-card')`;
+  await page.waitFor(ASKED, { label: 'the shared reply' });
+  const parts = await page.evaluate(
+    `(() => { const c = ${ASKED}; return { q: !!c.querySelector('.shared-q pre'), a: [...c.querySelectorAll('p')].some((p) => p.textContent === 'Use chapter offsets.' && !p.closest('pre, .shared-q')) }; })()`,
+  );
+  check(parts.q && parts.a, `#111 a shared reply shows its question apart, and the answer isn’t swallowed by it (${JSON.stringify(parts)})`);
   const CARD = `document.querySelector('[data-key="${shared.id}"] .shared-card')`;
   await page.waitFor(CARD, { label: 'the shared summary' });
   // KaTeX keeps the source in its MathML, so what’s read is whether every formula was drawn.
