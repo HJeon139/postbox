@@ -29,6 +29,7 @@ import { launch, sleep } from './cdp.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
+import { startPostbox } from './uat/postbox.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
@@ -189,42 +190,20 @@ async function main() {
   // The runner must talk to its own fresh Postbox, never to one that’s already running there.
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
-  const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
-    cwd: ROOT,
+  const postbox = await startPostbox({
+    root: ROOT,
+    port,
+    data: paths.data,
     env: {
-      ...process.env,
       ...gate.env,
       POSTBOX_CLAUDE_RECORD: paths.streams,
       POSTBOX_KIRO_RECORD: paths.kiroStreams,
       POSTBOX_AGY_RECORD: paths.agyStreams,
       POSTBOX_CODEX_RECORD: paths.codexStreams,
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    log,
   });
-  server.stdout.on('data', (d) => log(`postbox: ${String(d).trim()}`));
-  server.stderr.on('data', (d) => log(`postbox (stderr): ${String(d).trim()}`));
-  let exited = null;
-  server.on('exit', (code) => (exited = code));
-  // Stopping the run stops its Postbox too, and with it the agents' turns: an orphaned server keeps agents running,
-  // and spending, after the run is gone.
-  for (const sig of ['SIGINT', 'SIGTERM'])
-    process.once(sig, () => {
-      if (exited === null) server.kill('SIGTERM');
-      process.exit(130);
-    });
-  const api = async (p) => {
-    if (exited !== null) throw new Error(`Postbox exited (code ${exited}); see run.log.`);
-    return (await fetch(origin + p)).json();
-  };
-  for (let i = 0; ; i++) {
-    try {
-      await api('/api/state');
-      break;
-    } catch (e) {
-      if (exited !== null || i > 80) throw new Error(`Postbox didn’t start: ${e.message}`);
-      await sleep(250);
-    }
-  }
+  const { api } = postbox;
   // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
   const history = followEvents(origin);
   const page = await launch({ port: Number(opt['chrome-port']) });
@@ -652,7 +631,7 @@ async function main() {
   } finally {
     history.close();
     await page.close().catch(() => {});
-    server.kill();
+    postbox.kill();
   }
 }
 
