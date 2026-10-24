@@ -184,8 +184,7 @@ test('#93: a restart clears a pending summary, since its turn doesn’t survive 
   f.rt.summarizeBack(f.topic);
   assert.ok(f.store.state.threads[f.topic].summaryPending);
   // Postbox starts again on the same saved state.
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  new Runtime({ store: f.store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), corpus, config: { origin: 'http://127.0.0.1:1' } });
+  new Runtime({ store: f.store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), corpus: f.rt.corpus, config: f.rt.config });
   assert.equal(f.store.state.threads[f.topic].summaryPending, null);
   summary.release();
   await settle(f.rt);
@@ -207,4 +206,30 @@ test('#93: Retry on a failed summary is pending again until it’s written', asy
   await settle(f.rt);
   assert.equal(f.store.state.threads[f.topic].summaryPending, null);
   assert.equal(f.store.items(f.t.id).at(-1).summary, true);
+});
+
+test('#225: one that waited is no longer pending when its agent’s session is deleted for good before the process exits', async () => {
+  const f = await sideThread();
+  const lingering = askWhileExiting(f, f.side.id, '@alpha one more thing', f.alpha.id);
+  f.rt.deleteSession(f.alpha.id);
+  f.rt.purgeSession(f.alpha.id);
+  lingering.release();
+  await settle(f.rt);
+  assert.equal(f.rt.summarizing(f.side.id), false);
+  assert.equal(f.store.state.threads[f.side.id].summaryPending, null, 'the summary isn’t coming');
+});
+
+test('#93: Retry on a failed summary is refused while another summary is on its way, so one is posted', async () => {
+  const f = await topicThread();
+  f.adapter.next.push(async () => {
+    throw new Error('The model is overloaded.');
+  });
+  f.rt.summarizeBack(f.topic);
+  await settle(f.rt);
+  const failed = f.store.items(f.topic).find((x) => x.status === 'failed');
+  f.rt.summarizeBack(f.topic);
+  assert.throws(() => f.rt.retry(f.topic, failed.id), { status: 409, message: /A summary is already on its way/ });
+  assert.equal(f.store.item(f.topic, failed.id).status, 'failed', 'the failed card can still be retried later');
+  await settle(f.rt);
+  assert.equal(f.store.items(f.t.id).filter((x) => x.summary).length, 1);
 });

@@ -1000,8 +1000,7 @@ export class Runtime {
       for (const it of items)
         if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
     }
-    // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
-    // turn (#225). Any turn ending clears one a restart left behind, too.
+    // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this turn (#225).
     this.clearSummaryPending(turn.threadId, turn);
     if (err && err.name !== 'AbortError') {
       // Its progress steps still running show as stalled, as at any turn’s end (#98).
@@ -1454,6 +1453,8 @@ export class Runtime {
   retry(threadId, itemId) {
     const it = this.store.item(threadId, itemId);
     if (it?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
+    // A failed summary is one at a time too (#93).
+    if (it.asked?.summarizeTo && this.summarizing(threadId)) throw httpError(409, 'A summary is already on its way. Retry it once that one is posted.');
     const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
     this.patchItem(threadId, itemId, { status: 'retried' });
     this.updateSession(it.sessionId, { needs: null, state: 'idle' });

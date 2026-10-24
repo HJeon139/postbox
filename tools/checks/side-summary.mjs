@@ -124,6 +124,8 @@ await check('#225 Summarize back asked while its agent’s stopped turn is still
   rt.sendMessage(side.id, { text: '@indexer one more thing' });
   await until(() => busy(indexer.id), '@indexer at work');
   rt.stop(indexer.id);
+  // Counted now: a reload slower than Stop’s watchdog lets the summary start before the process exits.
+  const before = turns.length;
   await open(`#/t/${room.id}/side/${side.id}`);
   await page.waitFor(`${BUTTON} && !${BUTTON}.disabled`, { label: 'Summarize back in the side thread' });
   await page.evaluate(`${BUTTON}.focus()`);
@@ -140,7 +142,6 @@ await check('#225 Summarize back asked while its agent’s stopped turn is still
   );
   expect(was[0] && was[1] === 'Summary requested…', `After a reload, Summarize back could be asked again while the summary waited: ${JSON.stringify(was)}`);
   // The process exits, the summary’s turn runs, and once it’s posted the button is back.
-  const before = turns.length;
   exit();
   await until(() => turns.length > before && /^Summarize/.test(turns.at(-1).text), 'the summary’s turn');
   release(indexer.id);

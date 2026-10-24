@@ -117,7 +117,12 @@ function summarizeButton(sideId, parent) {
     if (el.textContent !== label) el.textContent = label;
   };
   paint();
-  return { el, destroy: client.on((ch) => ((ch.type === 'thread' && ch.data.id === sideId) || ch.type === 'load') && paint()) };
+  const repaint = (ch) => {
+    // The whole state again, after a reconnect: what it says of the request is all there is to go on.
+    if (ch.type === 'load') asking = false;
+    if ((ch.type === 'thread' && ch.data.id === sideId) || ch.type === 'load') paint();
+  };
+  return { el, destroy: client.on(repaint) };
 }
 
 /**

@@ -14,14 +14,14 @@ export function turnExited(rt, turn) {
   if (ex?.turn !== turn) return;
   rt.exiting.delete(turn.sessionId);
   const se = rt.s.sessions[turn.sessionId];
+  const held = !se || se.archived || se.deleting ? [] : ex.held;
+  // A summary that waited and won’t start now isn’t coming (#93).
+  if (held !== ex.held) for (const h of ex.held) if (h.summarizeTo) rt.clearSummaryPending(h.threadId);
   if (!se) return;
   // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
   if (se.state === 'stopping' || se.currentStep === 'Stopping')
     rt.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: 'Stopped by you', finishedAt: Date.now(), sideTurn: null });
   else if (se.sideTurn) rt.updateSession(se.id, { sideTurn: null });
-  const held = se.archived || se.deleting ? [] : ex.held;
-  // A summary that waited and won’t start now isn’t coming (#93).
-  if (held !== ex.held) for (const h of ex.held) if (h.summarizeTo) rt.clearSummaryPending(h.threadId);
   // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
   if (rt.closing) {
     for (const h of held.filter((x) => x.message.kind === 'user')) {
