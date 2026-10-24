@@ -15,4 +15,6 @@ The chess meanings follow the standard annotation symbols (https://en.wikipedia.
 
 Made locally with FLUX.2 [dev] at 512 px (28 steps, guidance 4), with crops of Postbox’s own screenshots as style
 references, then backgrounds removed and downsampled with premultiplied alpha. FLUX.2 [dev] is under Black Forest
-Labs’ non-commercial license; its model card allows commercial use of the outputs.
+Labs’ non-commercial license; its model card allows commercial use of the outputs. The person confirmed on 24 October
+2026 that Postbox ships these outputs under its Apache-2.0 license (#263). The 128 px files are kept as the source
+for larger sizes; the page uses the 64 px ones, which are sharp at 20 px up to a 3× screen.
