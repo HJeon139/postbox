@@ -1,30 +1,20 @@
 // The room’s agent tree (#121), under each agent’s row in the Agents section: where the agent’s turn is when it’s in a
-// side thread, each fork of it with its state and Stop, and the subagents at work in its turn (#73).
+// side or topic thread, and the subagents at work in its turn (#73), which are its only children: there are no forks
+// (#228).
 
-import { busy, client, hrefOf, sideSessionsOf, stopSession } from './client.mjs';
+import { busy, client, hrefOf, stopSession } from './client.mjs';
 import { fill, h } from './dom.mjs';
-import { openAsksEl } from './open-asks.mjs';
-import { ringFor, stateWord } from './ring.mjs';
+import { stateWord } from './ring.mjs';
 import { navigate, say, toast } from './ui.mjs';
 
 const S = () => client.state;
 
-/**
- * The entries nested under an agent’s row (#121): its own turn when that’s in a side thread, and the forks of it in
- * this conversation’s side threads. A side-thread session that isn’t in the conversation shows where it is.
- */
+/** The entry nested under an agent’s row before its subagents (#121): its own turn, when that’s in a side or topic thread. */
 export function treeOf(se) {
-  const conv = S().threads[se.threadId];
-  const out = [];
   const here = se.sideTurn && S().threads[se.sideTurn.threadId];
-  if (here) out.push({ se, thread: here, by: se.sideTurn.by, fork: false });
-  if (conv?.kind === 'side') out.push({ se, thread: conv, by: se.wokenBy ?? null, fork: false });
-  else
-    for (const f of sideSessionsOf(se.threadId).filter((x) => x.personaId === se.personaId && x.id !== se.id && !x.archived))
-      out.push({ se: f, thread: S().threads[f.threadId], by: f.forkOf?.by ?? null, fork: true });
-  return out;
+  return here ? [{ se, thread: here, by: se.sideTurn.by }] : [];
 }
-export const treeSig = (list) => JSON.stringify(list.map((x) => [x.se.id, x.se.state, x.thread.id, x.thread.title, x.by, x.fork]));
+export const treeSig = (list) => JSON.stringify(list.map((x) => [x.se.id, x.se.state, x.thread.id, x.thread.title, x.by]));
 
 /**
  * The subagents at work in an agent’s turn (#73), each after the one that started it, with how deep it is. One whose
@@ -101,25 +91,22 @@ export function paintSubagents(list, after, subs) {
 }
 
 /** One nested entry: where it is (a link that opens the side thread), who woke it, its state, and its Stop. */
-export function treeEntry({ se, thread, by, fork }) {
+export function treeEntry({ se, thread, by }) {
   const who = by === 'you' ? 'you' : by ? `@${by}` : null;
   // Who it’s talking with there: the other agent of the side thread’s pair, else who woke it.
   const partner = (thread.pair ?? '').split('|').find((x) => x && x !== se.handle) ?? (by && by !== 'you' ? by : null);
-  // One line, state first, so it fits the sidebar: “Calling tools with @indexer”, or “Fork · calling tools with …”.
-  const state = fork ? stateWord(se.state).toLowerCase() : stateWord(se.state);
-  const line = `${fork ? 'Fork · ' : ''}${state}${partner ? ` with @${partner}` : ''}`;
-  const where = `in the side thread “${thread.title}”${who ? `, woken by ${who}` : ''}`;
-  const ring = fork ? ringFor(se, 'xs') : null;
-  if (ring) ring.dataset.session = se.id;
+  // One line, state first, so it fits the sidebar: “Calling tools with @indexer”.
+  const line = `${stateWord(se.state)}${partner ? ` with @${partner}` : ''}`;
+  const where = `in the ${thread.kind === 'topic' ? 'thread' : 'side thread'} “${thread.title}”${who ? `, woken by ${who}` : ''}`;
   const stop = h(
     'button.btn.sm.ghost',
     {
       type: 'button',
       hidden: !busy(se),
-      'aria-label': `Stop @${se.handle}${fork ? '’s fork' : ''} in ${thread.title}`,
+      'aria-label': `Stop @${se.handle} in ${thread.title}`,
       onclick: () =>
         stopSession(se).then(
-          (r) => (r?.ask ? navigate(hrefOf(thread.id)) : say(`Stopping @${se.handle}${fork ? '’s fork' : ''}.`)),
+          (r) => (r?.ask ? navigate(hrefOf(thread.id)) : say(`Stopping @${se.handle}.`)),
           (e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }),
         ),
     },
@@ -127,16 +114,13 @@ export function treeEntry({ se, thread, by, fork }) {
   );
   return h(
     'li.agent-sub',
-    { dataset: { session: se.id, fork: String(fork) } },
+    { dataset: { session: se.id } },
     h(
       'a.agent-sub-link',
       // The thread and who woke it are on hover and in its name; the link opens the thread.
       { href: hrefOf(thread.id), title: `${where[0].toUpperCase()}${where.slice(1)}`, 'aria-label': `${line}, ${where}` },
-      ring ? h('span.ring-slot', { 'aria-hidden': 'true' }, ring) : null,
-      // Under its persona’s row, so a fork needs no name.
-      h('span.name', fork ? [h('b', 'Fork'), ` · ${line.slice('Fork · '.length)}`] : line),
+      h('span.name', line),
     ),
     stop,
-    fork ? h('div.agent-asks', openAsksEl(se, true)) : null,
   );
 }

@@ -1,5 +1,6 @@
-// The wake-limit card (#108): after three agent wakes in a row without you, the next one waits for your Allow. And
-// focusComposer, which it and the transcript use, so the two modules don't import each other.
+// The wake-limit card (#108): after three agent wakes in a row without you, the next one waits for your Allow. The same
+// card asks to add an agent the conversation doesn’t have, when another agent wakes it (#228). And focusComposer, which
+// it and the transcript use, so the two modules don't import each other.
 
 import { api } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
@@ -19,20 +20,27 @@ export function hopBlock(it, ctx) {
     h(
       'div.block-head',
       open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h('span.title.grow', `Let @${it.from} wake @${it.to}?`),
+      h('span.title.grow', it.join ? `Add @${it.to} to this conversation?` : `Let @${it.from} wake @${it.to}?`),
       h('span.kind', 'Confirm · from Postbox'),
     ),
     h(
       'div.block-body.md',
-      h('p', `That would be agent wake ${it.n} since your last message. After 3 in a row, the next one waits for you.`),
+      h(
+        'p',
+        it.join
+          ? `@${it.from} wants to wake @${it.to}, which isn’t in this conversation. Added, it joins with a note on why, and gets the message.`
+          : `That would be agent wake ${it.n} since your last message. After 3 in a row, the next one waits for you.`,
+      ),
       it.reason ? h('p.dim.small', `@${it.from}’s reason: “${it.reason}”`) : null,
-      !open ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'allowed' ? 'Allowed' : 'Not allowed') : null,
+      !open
+        ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'allowed' ? (it.join ? 'Added' : 'Allowed') : it.join ? 'Not added' : 'Not allowed')
+        : null,
     ),
     open
       ? h(
           'div.block-foot',
-          h('button.btn', { type: 'button', onclick: () => act(true) }, `Let @${it.from} wake @${it.to}`),
-          h('button.btn', { type: 'button', onclick: () => act(false) }, `Don’t wake @${it.to}`),
+          h('button.btn', { type: 'button', onclick: () => act(true) }, it.join ? `Add @${it.to}` : `Let @${it.from} wake @${it.to}`),
+          h('button.btn', { type: 'button', onclick: () => act(false) }, it.join ? `Don’t add @${it.to}` : `Don’t wake @${it.to}`),
         )
       : null,
   );

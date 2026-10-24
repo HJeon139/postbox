@@ -119,13 +119,12 @@ test('#193: replacedBy names the caller’s own block when another agent’s has
   assert.equal(store.state.apps.lab.retired.replacedBy.title, 'My question');
 });
 
-test('#193: a topic thread’s fork is told the app is in the conversation, not that it doesn’t exist (#216)', () => {
-  const { rt, se, other, tools, theirs } = setup();
+test('#193, #228: another agent can’t retire or change an app it didn’t show', () => {
+  const { tools, theirs } = setup();
   tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
-  rt.updateSession(other.id, { forkOf: { sessionId: se.id, itemId: null } });
   for (const r of [theirs.retire_app({ id: 'lab', reason: 'Gone.' }), theirs.update_app({ id: 'lab', code: '<p>2</p>' })]) {
     assert.equal(r.ok, false);
-    assert.match(r.message, /App lab is in the conversation, not in this thread, and it can’t be changed from here/);
+    assert.match(r.message, /There’s no app with id lab from you/);
   }
 });
 

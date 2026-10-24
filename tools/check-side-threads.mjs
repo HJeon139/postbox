@@ -1,11 +1,10 @@
-// A headless Chrome check of side threads as the person sees them (#121, #110): an agent woken into a side thread
-// shows in its conversation (the sidebar’s agent tree, the side-thread line and the conversation’s row) with where it
-// is and who woke it; a fork that answered while its session was busy is a second entry under the same persona; one
-// waiting on a permission prompt counts in the tab title and ⌃J opens the side thread at its card; /stop in the
-// conversation reaches the side thread but not a topic thread; Copy link and the composer’s # link a thread, whose id
-// the agent then gets; the Threads page lists side threads (#124); a side-thread message goes to the conversation by
-// Send to conversation or an agent’s bring_to_conversation (#128); a failed turn there shows on the side-thread line,
-// with Retry, and the line opens at its card (#151); and at 375 px the side-thread line fits.
+// A headless Chrome check of side threads as the person sees them (#121, #110): an agent woken into a side thread shows
+// in its conversation (its agent tree, the side-thread line and the conversation’s row) with where it is and who woke
+// it; a wake while it’s busy waits in the side thread’s queue, with no fork (#228); one waiting on a permission prompt
+// counts in the tab title and ⌃J opens its card; /stop in the conversation reaches the side thread, not a topic thread;
+// a wake for one outside the conversation brings a card, and Add joins it (#228); Copy link and the composer’s # link a
+// thread, whose id the agent then gets; the Threads page lists side threads (#124); Send to conversation and
+// bring_to_conversation (#128); a failed turn’s line, with Retry (#151); and at 375 px the side-thread line fits.
 //
 //   node tools/check-side-threads.mjs
 //
@@ -82,41 +81,35 @@ await check('an agent woken into a side thread works in its own session, and the
   wake(indexer.id, 'researcher', 'And the dates?');
   const here = (x) => x.threadId === room.id || store.state.threads[x.threadId]?.parentId === room.id;
   assert.equal(Object.values(store.state.sessions).filter((x) => x.handle === 'researcher' && here(x)).length, 1);
-  assert.equal(rt.turns.get(researcher.id).pending.length, 1);
+  assert.equal(sideOf().queue.length, 1);
 });
 
-await check('a wake while that session is busy in the conversation goes to a fork of it: a second entry under the persona, with its Stop', async () => {
+await check('a wake while that session is busy in the conversation waits for its turn: no fork, and no second entry (#228)', async () => {
   // The queued wake runs and ends; then @researcher takes on a long job in the conversation.
   release(researcher.id);
   await until(() => turns.some((t) => t.text === 'And the dates?') && !busy(researcher.id), 'the queued wake');
   rt.sendMessage(room.id, { text: '@researcher start the long job' });
   await until(() => busy(researcher.id) && !store.state.sessions[researcher.id].sideTurn, '@researcher at work in the conversation');
-  wake(indexer.id, 'researcher', 'One question meanwhile.');
-  const fork = () => Object.values(store.state.sessions).find((x) => x.forkOf?.sessionId === researcher.id && x.forkOf.busy);
-  await until(() => fork() && busy(fork().id), 'the fork’s turn');
-  await page.waitFor(`${row('researcher')}?.querySelectorAll('.agent-sub').length === 1`, { label: 'the fork’s entry' });
-  // The entry can show before the event that names it a fork reaches the page.
+  const r = wake(indexer.id, 'researcher', 'One question meanwhile.');
+  assert.match(r.message, /it’s busy, so it answers when its current turn ends/);
+  assert.equal(Object.values(store.state.sessions).filter((x) => x.forkOf?.sessionId === researcher.id).length, 0, 'A fork answered');
+  await open(`#/t/${room.id}/side/${sideOf().id}`); // it waits in the side thread’s queue, as the agent’s message
+  const queued = `document.querySelector('.sidepanel .queued')`;
+  await page.waitFor(`${queued}?.innerText.includes('@indexer’s message · waits for @researcher to finish')`, { label: 'the queued wake' });
+  assert.equal(await page.evaluate(`[...${queued}.querySelectorAll('button')].some((b) => b.textContent === 'Edit')`), false, 'A wake can be edited');
   await page.synced(store.state.seq);
   await settle();
-  assert.deepEqual(await subs('researcher'), ['Fork · calling tools with @indexer Stop']);
-  assert.ok(
-    await page.evaluate(`(() => { const n = ${row('researcher')}.querySelector('.agent-sub .name'); return n.scrollWidth <= n.clientWidth; })()`),
-    'The fork’s entry is cut',
-  );
-  assert.equal(await page.evaluate(`${row('researcher')}.querySelectorAll('.agent-sub pb-ring').length`), 1, 'The fork has its own ring');
-  // Two sessions of one persona, two entries: its row (at work in the conversation) and the fork.
+  assert.deepEqual(await subs('researcher'), [], 'Its row has an entry of its own');
   assert.match(await page.evaluate(`${row('researcher')}.querySelector('.agent-btn').innerText`), /calling tools/);
 });
 
 await check('a side-thread agent waiting on a permission prompt counts in the tab title, and ⌃J opens the side thread at its card', async () => {
   const side = sideOf();
-  const fork = Object.values(store.state.sessions).find((x) => x.forkOf?.sessionId === researcher.id);
-  // The fork’s next turn asks first; let the current one finish so it starts.
-  scripts.set(fork.id, (ctx) => ctx.askPermission({ tool: 'Bash', summary: 'run the indexer' }));
-  release(fork.id);
-  wake(indexer.id, 'researcher', 'Run the indexer, please.');
-  await until(() => store.state.sessions[fork.id].needs?.kind === 'permission', 'the permission prompt');
-  const card = store.state.sessions[fork.id].needs.itemId;
+  // The long job ends, and the wake that waited for it asks first.
+  scripts.set(researcher.id, (ctx) => ctx.askPermission({ tool: 'Bash', summary: 'run the indexer' }));
+  release(researcher.id);
+  await until(() => store.state.sessions[researcher.id].needs?.kind === 'permission', 'the permission prompt');
+  const card = store.state.sessions[researcher.id].needs.itemId;
   assert.ok(store.item(side.id, card), 'The card isn’t in the side thread');
   await page.waitFor(`document.title.startsWith('(1) ')`, { label: 'the tab title’s count' });
   await page.evaluate(`document.querySelector('#composer-input')?.blur(); document.body.focus()`);
@@ -124,14 +117,14 @@ await check('a side-thread agent waiting on a permission prompt counts in the ta
   await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${room.id}/side/${side.id}`)}`, { label: 'the side thread to open' });
   await page.waitFor(`document.activeElement?.closest('[data-key="${card}"]')`, { label: 'focus on the card' });
   rt.act(side.id, card, 'allow');
-  await until(() => !store.state.sessions[fork.id].needs, 'the answer');
+  await until(() => !store.state.sessions[researcher.id].needs, 'the answer');
 });
 
 await check('/stop in the conversation stops its agents in side threads, and not a topic thread’s', async () => {
-  const fork = Object.values(store.state.sessions).find((x) => x.forkOf?.sessionId === researcher.id);
-  // The fork works again, and a topic thread off the conversation has a turn running.
+  // @researcher works in the side thread again, and a topic thread off the conversation has a turn running.
+  await until(() => !rt.turns.has(researcher.id) && !rt.exiting.has(researcher.id), 'the answered turn to end');
   wake(indexer.id, 'researcher', 'One more pass.');
-  await until(() => busy(fork.id) && busy(researcher.id), 'both sessions at work');
+  await until(() => busy(researcher.id) && store.state.sessions[researcher.id].sideTurn, '@researcher at work in the side thread');
   const root = rt.addItem(room.id, {
     kind: 'agent',
     sessionId: indexer.id,
@@ -142,13 +135,14 @@ await check('/stop in the conversation stops its agents in side threads, and not
   });
   const topic = store.state.threads[rt.startTopic(room.id, root.id).threadId];
   rt.sendMessage(topic.id, { text: 'Go on here.' });
-  const topicSe = rt.sessionsIn(topic.id)[0];
+  // Its agent answers there from its one session in the conversation (#228).
+  const topicSe = indexer;
   await until(() => busy(topicSe.id), 'the topic thread’s turn');
   await open(`#/t/${room.id}`);
   await page.evaluate(`document.querySelector('#composer-input').focus()`);
   await type('/stop');
   await press('Enter');
-  await until(() => !busy(researcher.id) && !busy(fork.id), 'the side thread’s sessions to stop');
+  await until(() => !busy(researcher.id), 'the side thread’s session to stop');
   assert.ok(busy(topicSe.id), 'Stop reached the topic thread');
   rt.stop(topicSe.id);
 });
@@ -190,21 +184,27 @@ await check('a side thread has Copy link, which gives its whole address', async 
   assert.equal(await page.evaluate('navigator.clipboard.readText()'), `${app.origin}/#/t/${room.id}/side/${side.id}`);
 });
 
-await check('an agent woken from outside the conversation joins it, and its row, its ring and the wake’s line say why', async () => {
+await check('an agent that wakes one from outside the conversation brings a card; Add joins it with a note on its row (#228)', async () => {
   await open(`#/t/${room.id}`);
-  wake(indexer.id, 'critic', 'Read the schema, please.');
   const critic = () => sessionIn(room, 'critic');
+  const before = Object.keys(store.state.sessions).length;
+  assert.equal(wake(indexer.id, 'critic', 'Read the schema, please.').waiting, true);
+  assert.equal(Object.keys(store.state.sessions).length, before, 'The wake made a session');
+  const card = store.items(room.id).find((x) => x.kind === 'hop' && x.join && x.status === 'open');
+  const add = `[...document.querySelectorAll('#main [data-key="${card.id}"] button')].find((b) => b.textContent === 'Add @critic')`;
+  await page.waitFor(add, { label: 'the card’s Add' });
+  assert.match(await page.evaluate(`document.querySelector('#main [data-key="${card.id}"]').innerText`), /Add @critic to this conversation\?/);
+  await page.evaluate(`${add}.click()`);
   await until(() => critic(), '@critic to join');
-  assert.equal(Object.values(store.state.sessions).filter((x) => x.handle === 'critic' && x.threadId === room.id).length, 1);
-  await page.waitFor(`${row('critic')}?.querySelector('.agent-btn').innerText.includes('Joined when @indexer woke it')`, { label: 'the row’s note' });
-  const line = await page.evaluate(
-    `[...document.querySelectorAll('#main .sys-line')].map((n) => n.innerText.replace(/\\s+/g, ' ').trim()).find((t) => t.includes('woke @critic')) ?? ''`,
-  );
-  assert.match(line, /^@indexer woke @critic · joined the conversation · agent wake 1 of 3$/);
+  const why = 'Joined when @indexer woke it';
+  await page.waitFor(`${row('critic')}?.querySelector('.agent-btn').innerText.includes('${why}')`, { label: 'the row’s note' });
   await page.waitFor(`document.getElementById('top-ring-${critic().id}')`, { label: 'its ring in the top bar' });
-  assert.equal(await page.evaluate(`document.getElementById('top-ring-${critic().id}').title`), 'Joined when @indexer woke it');
+  assert.equal(await page.evaluate(`document.getElementById('top-ring-${critic().id}').title`), why);
   // The agents the person added say nothing of the kind.
   assert.doesNotMatch(await page.evaluate(`${row('indexer')}.innerText`), /Joined when/);
+  // The mock @critic’s reply can ask something, which would take the side-thread line in the cases after this one.
+  await until(() => !rt.turns.has(critic().id), '@critic’s turn to end');
+  rt.archive(critic().id);
 });
 
 await check('the Threads page lists side threads beside topic threads, with their pair, state, count and last activity (#124)', async () => {

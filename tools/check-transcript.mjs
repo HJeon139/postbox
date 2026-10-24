@@ -422,7 +422,7 @@ await check('#93 Summarize back clicked twice posts one summary; the button wait
   await page.waitFor(`${button}.textContent === 'Summarize back' && !${button}.disabled`, { label: 'the button to come back', timeout: 15000 });
   const shared = store.items(t.id).filter((i) => i.kind === 'shared');
   assert.equal(shared.length, 1, 'one summary in the conversation');
-  assert.equal(shared[0].summary, true);
+  assert.deepEqual([shared[0].summary, shared[0].text.slice(0, 26)], [true, 'In the thread we looked at'], 'not a summary of the thread (#228)');
   assert.equal(store.items(threadId).filter((i) => i.kind === 'voice').length, 1, 'one request');
   const reply = store.items(threadId).find((i) => i.kind === 'agent' && i.text);
   await page.waitFor(`document.querySelector('.sp-body [data-key="${reply.id}"] .msg-actions')?.textContent.includes('Sent to the conversation')`, {
@@ -435,7 +435,7 @@ await check('#93 Send to conversation clicked twice posts once', async () => {
   const { t, researcher } = room('Send once', 6);
   const root = store.items(t.id).find((i) => i.kind === 'agent' && i.sessionId === researcher.id);
   const { threadId } = rt.startTopic(t.id, root.id);
-  const fork = rt.sessionsIn(threadId)[0];
+  const fork = researcher; // its one session answers in the thread (#228)
   const reply = rt.addItem(threadId, {
     kind: 'agent',
     sessionId: fork.id,

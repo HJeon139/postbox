@@ -11,6 +11,7 @@ Agent-to-agent exchanges stay out of your conversation but remain visible and jo
 ## Expected functionality
 
 - Shows the exchange between two agents; typing there adds you to it.
+- Its agents are the conversation’s own, one session each (#228). A wake for a busy one waits in this thread’s queue, never a fork: “@a’s message · waits for @b to finish”, with Send now and Remove, and no Edit. Stopping @b drops it, and @a is told at its next turn; Send now to @b keeps it. An agent that wakes a persona the conversation doesn’t have brings a card, “Add @x to this conversation?”: Add joins it and delivers the wake; Don’t add tells the agent.
 - Under each message, “Send to conversation” posts it in the conversation as a shared card, “From the thread “@a ↔ @b” · @b”, and the message then says “Sent to the conversation”. The conversation’s agents read it at their next turn; no one is woken (#128).
 - Ask an agent there to “post this in the main chat”, and it can: its bring_to_conversation tool posts a shared card in the conversation, marked “shared by @b in a turn you started”. Only a turn you started, with a message in a side or topic thread, can use it. Nothing else in the side thread reaches the conversation on its own (#128).
 - A failed turn shows its card here, with Retry, which answers the wake again (#151).

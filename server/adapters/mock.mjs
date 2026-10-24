@@ -23,21 +23,13 @@ export class MockAdapter {
     this.memory.set(session.id, mem);
     ctx.checkpoint?.({ mock: session.id });
     const a = kit(ctx, session, mem);
-    // In a topic thread, any mock agent answers the side question and can summarize it back.
-    if (message.context?.some((c) => c.includes('This is a topic thread'))) mem.topic = true;
-    if (mem.topic && message.kind === 'notice' && /Summarize this topic thread/.test(message.text)) await topicSummary(a);
-    else if (mem.topic && message.kind === 'user') await topicReply(a);
+    // In a topic thread, any mock agent answers the side question and can summarize it back. It answers there from its
+    // one session in the conversation (#228), so what says it’s a topic thread is where the turn speaks.
+    const topic = ctx.thread?.kind === 'topic';
+    if (topic && message.kind === 'notice' && /Summarize this topic thread/.test(message.text)) await topicSummary(a);
+    else if (topic && message.kind === 'user') await topicReply(a);
     else await (HANDLERS[session.handle] ?? HANDLERS.default)(message, a, mem, session);
     a.grow(message);
-  }
-
-  /** A topic thread’s fork starts with what the conversation’s session remembered. */
-  fork(source, target) {
-    try {
-      this.memory.set(target.id, structuredClone(this.memory.get(source.id) ?? {}));
-    } catch {
-      this.memory.set(target.id, {});
-    }
   }
 
   dispose(session) {

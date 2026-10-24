@@ -1,8 +1,8 @@
 // A headless Chrome check of the agents section and each agent’s quick panel (#105), driven with real key presses
-// and clicks, at 1280 and 375 px: the rows in the sidebar and in a topic thread’s panel; changing the model, effort,
-// permission mode and shell in two clicks; the scope each control says; the links, Stop, Compact and Archive; the
-// rings in the top bar, which open the same panel where the sidebar is hidden; and the subagents at work in the tree
-// and the working row, from a recorded stream (#73).
+// and clicks, at 1280 and 375 px: the rows in the sidebar, and a topic thread’s line of who is in it (#228); changing
+// the model, effort, permission mode and shell in two clicks; the scope each control says; the links, Stop, Compact
+// and Archive; the rings in the top bar, which open the same panel where the sidebar is hidden; and the subagents at
+// work in the tree and the working row, from a recorded stream (#73).
 //
 //   node tools/check-agents.mjs
 //
@@ -77,7 +77,7 @@ const planning = threadNamed('Corpus planning');
 const shelf = threadNamed('Index the shelf');
 const sessionIn = (t, handle) => rt.sessionsIn(t.id).find((x) => x.handle === handle);
 const indexer = sessionIn(planning, 'indexer');
-// A topic thread from a reply of @indexer’s, with a fork of its session (#105: its agents get the same controls).
+// A topic thread from a reply of @indexer’s, answered there by its one session in the conversation (#228).
 const root = rt.addItem(planning.id, {
   kind: 'agent',
   sessionId: indexer.id,
@@ -87,7 +87,6 @@ const root = rt.addItem(planning.id, {
   status: 'done',
 });
 const topic = store.state.threads[rt.startTopic(planning.id, root.id).threadId];
-const forked = rt.sessionsIn(topic.id)[0];
 real('indexer', { backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium', permissionMode: 'auto' });
 real('researcher', { backend: 'agent-sdk', model: 'claude-opus-5-5', effort: 'high', permissionMode: 'auto' });
 
@@ -415,32 +414,18 @@ await check('Archive puts the session to sleep, closes the panel and offers Rest
 
 // ── A topic thread ──────────────────────────────────────────────────────────────────────
 
-await check('a topic thread lists its agents in its panel, and two clicks change the thread’s model, not the conversation’s', async () => {
+await check('a topic thread is answered by the conversation’s own session; its panel names it in a line, with no list (#228)', async () => {
   await open(`#/t/${planning.id}/side/${topic.id}`);
-  await page.waitFor(row('indexer', '.sp-agents'), { label: 'the thread’s agent row' });
-  assert.equal(await page.evaluate(`${q('.sp-agents .label')}.textContent`), 'Agents in this thread');
-  const before = store.state.sessions[indexer.id].personaSnapshot.model;
-  await click(row('indexer', '.sp-agents'));
-  await page.waitFor(panel);
-  const heads = await page.evaluate(`[...${panel}.querySelectorAll('.qp-head')].map((x) => x.textContent)`);
-  assert.deepEqual(heads, ['In this thread', 'For @indexer everywhere']);
-  assert.equal(await page.evaluate(`${panel}.querySelector('[role=radiogroup]').getAttribute('aria-label')`), 'Model, in this thread');
-  await click(radio('Model', 'Fable 5.1'));
-  await page.waitFor(`${q('.qp .perm-status')}?.textContent.includes('in this thread')`);
-  assert.equal(store.state.sessions[forked.id].personaSnapshot.model, 'claude-fable-5-1');
-  assert.equal(store.state.sessions[indexer.id].personaSnapshot.model, before, 'The conversation’s session changed too');
-});
-
-await check('in a topic thread, by keyboard: Enter on the row opens the panel, and Escape returns to the row', async () => {
-  await open(`#/t/${planning.id}/side/${topic.id}`);
-  await page.waitFor(row('indexer', '.sp-agents'));
-  await focus(row('indexer', '.sp-agents'));
-  await press('Enter');
-  await page.waitFor(panel);
-  assert.equal(await focused(), 'radio: Fable 5.1');
-  await press('Escape');
-  assert.match(await focused(), /^button: @indexer/);
-  assert.equal(await page.evaluate(`document.activeElement.closest('.sp-agents') !== null`), true);
+  await page.waitFor(`${q('.sp-agents p')}?.textContent === '@indexer is in this thread.'`, { label: 'the line' });
+  assert.equal(await page.evaluate(`document.querySelectorAll('.sidepanel .agent-row, .sidepanel .agents-sec').length`), 0, 'The thread lists agents');
+  const n = turns.length;
+  rt.sendMessage(topic.id, { text: 'Which shelf?' });
+  await until(() => turns.length > n, 'the reply');
+  assert.deepEqual(turns.at(-1), { handle: 'indexer', text: 'Which shelf?' });
+  assert.equal(rt.sessionsIn(topic.id).length, 0, 'The thread has a session of its own');
+  await until(() => store.state.sessions[indexer.id].state === 'idle', 'the turn to end');
+  await page.synced(store.state.seq);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.rail .agent-row').length`), rt.sessionsIn(planning.id).length, 'A row that isn’t an agent');
 });
 
 // ── The top bar’s rings, and a narrow window ────────────────────────────────────────────
@@ -552,25 +537,6 @@ for (const theme of ['light', 'dark'])
       await page.size(1280, 900);
     }
   });
-
-await check('at 375 px, a topic thread’s panel lists its agents, and the quick panel opens from there and fits', async () => {
-  await page.size(375, 812);
-  try {
-    await open(`#/t/${planning.id}/side/${topic.id}`);
-    await page.waitFor(row('indexer', '.sp-agents'));
-    await focus(row('indexer', '.sp-agents'));
-    await press('Enter');
-    await page.waitFor(panel);
-    assert.ok(await panelFits(), 'The panel doesn’t fit');
-    // Above the thread panel, which covers the page here.
-    assert.equal(await page.evaluate(`document.elementFromPoint(187, ${panel}.getBoundingClientRect().top + 20)?.closest('.dialog.quick') !== null`), true);
-    await click(radio('Effort', 'Max'));
-    await page.waitFor(`${q('.qp .perm-status')}?.textContent.includes('Effort: max')`);
-    assert.equal(store.state.sessions[forked.id].personaSnapshot.effort, 'max');
-  } finally {
-    await page.size(1280, 900);
-  }
-});
 
 await page.close();
 await app.close();

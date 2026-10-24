@@ -4,7 +4,7 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
-import { agentsSection, subagentNow } from './agents.mjs';
+import { inThreadLine, subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
@@ -415,7 +415,7 @@ function messageActions(node, it, ctx) {
   if (ctx.kind === 'thread' || ctx.kind === 'room') {
     const topic = it.topicId && S().threads[it.topicId];
     if (topic) {
-      const unread = sessionsOf(topic.id).reduce((a, x) => a + (x.unread ?? 0), 0);
+      const unread = topic.unread ?? 0;
       bar.append(
         h(
           'a.replies',
@@ -1407,6 +1407,18 @@ export function flushOutbox() {
   if (items.length) client.emit({ type: 'outbox' });
 }
 
+/**
+ * A queued wake (#228) is another agent’s message, waiting for its agent to finish: it says whose, and has no Edit.
+ * @param {HTMLElement} row @param {any} q
+ */
+function asWake(row, q) {
+  if (q.kind !== 'wake') return row;
+  const what = row.querySelector('.q-text .small');
+  if (what) what.textContent = `@${q.from}’s message · waits for ${what.textContent.replace(/^Queued · sends when (.*) finishes$/, '$1')} to finish`;
+  [...row.querySelectorAll('button')].find((b) => b.textContent === 'Edit')?.remove();
+  return row;
+}
+
 export function mountComposer(threadId, { side = false } = {}) {
   const topic = S().threads[threadId]?.kind === 'topic';
   // / and ! (#67) live in a conversation’s own composer, not in a thread panel’s.
@@ -1640,10 +1652,10 @@ export function mountComposer(threadId, { side = false } = {}) {
     runAgentCommand(se, '/compact');
   }
   function stopAll() {
-    // In a conversation, Stop reaches its side threads too (#121): its agents wherever their turn is, and the forks
-    // answering there. Topic threads keep running: you forked them, and each has its own Stop.
+    // In a conversation, Stop reaches its side threads too (#121), but not a turn in a topic thread: it has its own (#228).
     const t = thread();
-    const working = (t?.kind === 'side' || t?.kind === 'topic' ? sessionsAt(threadId) : [...sessionsOf(threadId), ...sideSessionsOf(threadId)]).filter(busy);
+    const go = (se) => busy(se) && !(t?.kind !== 'topic' && S().threads[se.sideTurn?.threadId]?.kind === 'topic');
+    const working = (t?.kind === 'side' || t?.kind === 'topic' ? sessionsAt(threadId) : [...sessionsOf(threadId), ...sideSessionsOf(threadId)]).filter(go);
     if (!working.length) return say('Nothing is running here.');
     for (const se of working)
       stopSession(se).then(
@@ -2113,10 +2125,10 @@ export function mountComposer(threadId, { side = false } = {}) {
       queue,
       t.queue ?? [],
       (q) => q.id,
-      (q) => queuedRow(q),
+      (q) => asWake(queuedRow(q), q),
       (node, q) => {
         if (node.dataset.editing) return; // keep an inline edit open while the agent works
-        const fresh = queuedRow(q);
+        const fresh = asWake(queuedRow(q), q);
         node.replaceChildren(...fresh.childNodes);
       },
     );
@@ -2380,10 +2392,9 @@ export function mountSidePanel(parentId, sideId) {
   const tr = mountTranscript(sideId, { inPanel: true });
   const comp = mountComposer(sideId, { side: true });
   const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
-  const agents = sessionsOf(sideId).filter((x) => !x.archived);
-  const body = h('div.sp-body', topic ? threadRoot(root, agents) : null, tr.el);
-  // A topic thread’s agents, with the same rows and quick panel as the sidebar’s (#105): its composer has no / commands.
-  const who = topic ? agentsSection(sideId, { label: 'Agents in this thread' }) : null;
+  const body = h('div.sp-body', topic ? threadRoot(root) : null, tr.el);
+  // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
+  const who = topic ? inThreadLine(sideId) : null;
   // One summary at a time (#93): from the request until it’s posted or the turn ends, the button waits. The
   // server keeps the request on the thread, so a reload or a second tab waits too, and it refuses a second one.
   // From the click until the server’s own state shows the request: its agent at work on it.
@@ -2419,13 +2430,18 @@ export function mountSidePanel(parentId, sideId) {
   const paintSummarize = () => {
     if (!summarize) return;
     const waiting = pendingSummary();
-    summarize.disabled = waiting || !sessionsOf(sideId).some((x) => !x.archived);
+    summarize.disabled = waiting || !(S().threads[sideId]?.lastSpeaker || S().threads[sideId]?.woke);
     const label = waiting ? 'Summary requested…' : 'Summarize back';
     if (summarize.textContent !== label) summarize.textContent = label;
   };
   paintSummarize();
   const off = client.on((ch) => {
-    if ((ch.type === 'thread' && ch.data.id === sideId) || (ch.type === 'session' && ch.data.threadId === sideId) || ch.type === 'load') paintSummarize();
+    if (
+      (ch.type === 'thread' && ch.data.id === sideId) ||
+      (ch.type === 'session' && ch.data.id === S().threads[sideId]?.summaryPending?.sessionId) ||
+      ch.type === 'load'
+    )
+      paintSummarize();
   });
   const el = h(
     'aside.sidepanel',
@@ -2492,11 +2508,10 @@ function copyLink(threadId, topic) {
   return b;
 }
 
-/** The message a topic thread branched from, at its top, and what the forked agent remembers. */
-function threadRoot(root, agents) {
+/** The message a topic thread branched from, at its top. */
+function threadRoot(root) {
   if (!root) return null;
   const text = root.kind === 'block' ? `${root.block?.title ?? root.block?.type ?? 'A block'}${root.block?.type === 'app' ? ' (app)' : ''}` : (root.text ?? '');
-  const one = agents.length === 1;
   // A long message is clamped to a few lines here; it’s all in the conversation beside it.
   const md = h('div.md.clamped', { html: trusted(renderMarkdown(text, { mentions: handles() })) });
   queueMicrotask(() => enhanceMarkdown(md));
@@ -2518,12 +2533,6 @@ function threadRoot(root, agents) {
     h('span.label', root.kind === 'user' ? 'You' : `@${root.handle ?? ''}`),
     md,
     text.length > 280 || /\n\s*\n/.test(text) ? more : null,
-    h(
-      'p.small.dim',
-      agents.length
-        ? `${agents.map((x) => `@${x.handle}`).join(' and ')} here ${one ? 'is a branch of its' : 'are branches of their'} session at this message: ${one ? 'it remembers' : 'they remember'} the conversation up to here, and nothing in this thread reaches the conversation unless you send it.`
-        : 'No agent is in this thread. @-mention one from the conversation to bring in a branch of its session.',
-    ),
   );
 }
 

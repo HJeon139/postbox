@@ -120,7 +120,7 @@ export const TOOL_DEFS = [
   {
     name: 'wake_agent',
     description:
-      'Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its own session in this conversation, so it remembers it (a fork of that session, if it’s busy). After 3 agent wakes in a row, the person must allow the next one.',
+      'Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its one session in this conversation, so it remembers it; if it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After 3 agent wakes in a row, the person must allow the next one.',
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
@@ -131,7 +131,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_conversation',
-    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes. Pass the id of one of its side threads or topic threads to read that one instead: a catch-up line, a note about a fork of you, or a link the person sent gives it.`,
+    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes. Pass the id of one of its side threads or topic threads to read that one instead: a catch-up line, or a link the person sent, gives it.`,
     inputSchema: {
       type: 'object',
       properties: {

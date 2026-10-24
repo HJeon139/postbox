@@ -1,17 +1,16 @@
-// The agents in a conversation or a topic thread (#105): one row each in the sidebar (or the thread panel) with its
-// ring, name, state, what it runs with and its open asks, and a quick panel behind each row and each ring in the
+// The agents in a conversation (#105): one row each in the sidebar with its ring, name, state, what it runs with and its
+// open asks, and a quick panel behind each row and each ring in the
 // top bar. The panel changes the model, effort, permission mode and tools in two clicks, without a command, and
 // says the scope of each: model and effort are this conversation’s, mode and tools the persona’s, everywhere.
 //
-// Under each row, the room’s agent tree (#121), in agent-tree.mjs: where the agent’s turn is when it’s in a side thread, and each fork of
-// it that answered there while it was busy (#110), with who woke it, its state and a Stop. A persona with two
-// sessions shows two entries. Then the subagents at work in its turn (#73), each under the one that started it, with
-// what it was asked and what it’s doing now, a line each, without hover.
+// Under each row, the room’s agent tree (#121), in agent-tree.mjs: where the agent’s turn is when it’s in a side or
+// topic thread, then the subagents at work in its turn (#73), its only children (#228), each under the one that
+// started it, with what it was asked and what it’s doing now, a line each, without hover.
 
 import { BACKEND_NAMES, chipEffort, chipModel, shortModel } from '/shared/agent-facts.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
-import { api, busy, client, hrefOf, sessionsOf, sideSessionsOf, stopSession } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
@@ -27,27 +26,16 @@ const S = () => client.state;
 // ── The section ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Which agents a conversation or topic thread lists: the ones in it, not archived, then any side-thread session whose
- * persona isn’t one of them (from before #110, each wake started one).
+ * The Agents section for a conversation, in the sidebar: the conversation’s pool, one row per agent, since each has
+ * one session there (#228). It keeps itself up to date as agents join, leave, change state or change what they run with.
+ * @param {string} threadId
  */
-const agentsIn = (threadId) => {
-  const own = sessionsOf(threadId).filter((x) => !x.archived);
-  const personas = new Set(own.map((x) => x.personaId));
-  const strays = sideSessionsOf(threadId).filter((x) => !x.archived && !personas.has(x.personaId) && !x.forkOf?.busy);
-  return [...own, ...strays];
-};
-
-/**
- * The Agents section for a conversation (the sidebar) or a topic thread (its panel): a heading, then a row per
- * agent. It keeps itself up to date as agents join, leave, change state or change what they run with.
- * @param {string} threadId @param {{ label?: string }} [opts]
- */
-export function agentsSection(threadId, { label = 'Agents' } = {}) {
+export function agentsSection(threadId) {
   const headId = `agents-head-${threadId}`;
   const list = h('ul.agent-rows', { 'aria-labelledby': headId });
-  const el = h('section.agents-sec', h('div.rail-sec', h('h2.label', { id: headId }, label)), list);
+  const el = h('section.agents-sec', h('div.rail-sec', h('h2.label', { id: headId }, 'Agents')), list);
   const paint = () => {
-    const ses = agentsIn(threadId);
+    const ses = sessionsOf(threadId).filter((x) => !x.archived);
     el.hidden = !ses.length;
     syncList(
       list,
@@ -61,6 +49,27 @@ export function agentsSection(threadId, { label = 'Agents' } = {}) {
   const off = client.on((ch) => {
     if (ch.type === 'session' && ch.data.threadId !== threadId && S().threads[ch.data.threadId]?.parentId !== threadId) return;
     if (['session', 'thread', 'persona', 'load', 'remove'].includes(ch.type)) paint();
+  });
+  return { el, destroy: off };
+}
+
+/**
+ * Who is in a topic thread, in one line for its panel (#228): the agent it started with, and the ones that answered
+ * there. Each answers from its one session in the conversation, so the thread has no list of agents of its own.
+ * @param {string} threadId
+ */
+export function inThreadLine(threadId) {
+  const el = h('p.small.dim');
+  const paint = () => {
+    const said = itemsOf(threadId).filter((i) => i.kind === 'agent' && i.handle);
+    const names = [...new Set([S().threads[threadId]?.woke, ...said.map((i) => i.handle)].filter(Boolean))].map((x) => `@${x}`);
+    const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
+    const text = list ? `${list} ${names.length > 1 ? 'are' : 'is'} in this thread.` : 'No agent is in this thread yet. @-mention one to bring it in.';
+    if (el.textContent !== text) el.textContent = text;
+  };
+  paint();
+  const off = client.on((ch) => {
+    if (['item.add', 'thread', 'load'].includes(ch.type)) paint();
   });
   return { el, destroy: off };
 }
@@ -82,7 +91,7 @@ function agentRow(se) {
     'li.agent-row',
     button,
     h('div.agent-asks', openAsksEl(se, true)),
-    h('ul.agent-subs', { 'aria-label': `@${se.handle}’s sessions in side threads, and its subagents` }),
+    h('ul.agent-subs', { 'aria-label': `Where @${se.handle} is at work, and its subagents` }),
   );
   paintRow(n, se, true);
   return n;

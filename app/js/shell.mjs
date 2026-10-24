@@ -320,7 +320,7 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
     // Archived counts conversations, as its page lists them (#101).
     const archived = new Set(
       Object.values(S().sessions)
-        .filter((se) => se.archived && !se.deleting)
+        .filter((se) => se.archived && !se.deleting && !se.retiredFork)
         .map((se) => convOf(se.threadId)),
     ).size;
     fill(
@@ -436,7 +436,7 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
 /** “Threads”: the project’s topic threads, with how many have replies you haven’t seen. */
 function threadsRow(projectId, active) {
   const topics = topicsOf(projectId);
-  const unread = topics.filter((x) => sessionsOf(x.id).some((se) => se.unread)).length;
+  const unread = topics.filter((x) => x.unread).length;
   return h(
     'a.row',
     { href: `#/p/${projectId}/threads`, style: { minHeight: '32px' }, 'aria-current': active ? 'page' : null },
@@ -655,7 +655,7 @@ function archivedList(collapsed = false) {
   const by = new Map();
   for (const se of Object.values(S().sessions)) {
     const t = S().threads[convOf(se.threadId)];
-    if (!se.archived || se.deleting || !t || t.deleting) continue;
+    if (!se.archived || se.deleting || se.retiredFork || !t || t.deleting) continue; // a retired fork can’t come back (#228)
     by.set(t.id, [...(by.get(t.id) ?? []), se]);
   }
   const at = (ses) => Math.max(...ses.map((se) => se.archivedAt ?? se.updatedAt ?? 0));
