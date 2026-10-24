@@ -227,3 +227,41 @@ test('code spans stay escaped, and a NUL in the text can’t stand in for one (#
     '<p><code>Step 7</code> and <span class="term" tabindex="0" data-term="s">Step 7</span></p>',
   );
 });
+
+// #218: a review’s ![alt](url) showed as “!” and a link to the image. The URLs are the ones the image block allows
+// (server/index.mjs, imageOrigins): Postbox’s own media, and Wikimedia’s.
+test('#218: ![alt](url) is an image, loaded lazily and without a referrer', () => {
+  assert.equal(
+    md('![The title page](https://upload.wikimedia.org/title.png)'),
+    '<p><img class="md-img" src="https://upload.wikimedia.org/title.png" alt="The title page" loading="lazy" referrerpolicy="no-referrer"></p>',
+  );
+  // A title after the address is dropped; the alt text and address stay escaped.
+  assert.match(
+    md('![a "b" <c>](https://upload.wikimedia.org/x.png "A title")'),
+    /src="https:\/\/upload\.wikimedia\.org\/x\.png" alt="a &quot;b&quot; &lt;c&gt;"/,
+  );
+  // Postbox’s own media, plain http on this computer, moves to the page’s origin as an image block’s does (#180).
+  assert.match(md('![t](http://127.0.0.1:4191/media/t.svg)', { pageOrigin: 'http://localhost:4191' }), /src="http:\/\/localhost:4191\/media\/t\.svg"/);
+  assert.match(md('![t](http://127.0.0.1:4191/media/t.svg)'), /src="http:\/\/127\.0\.0\.1:4191\/media\/t\.svg"/);
+  // An image inside a link is a linked image.
+  assert.match(md('[![t](https://upload.wikimedia.org/t.png)](https://example.com)'), /<a href="https:\/\/example\.com"[^>]*><img class="md-img"/);
+});
+
+test('#218: an image Postbox can’t load says so in its place, with its alt text', () => {
+  for (const src of ['../screenshots/review-block.png', 'javascript:alert(1)', 'http://example.com/x.png', 'data:image/png;base64,AAAA'])
+    assert.equal(
+      md(`![The review block](${src})`),
+      '<p><span class="md-img-failed">This image couldn’t load: its address isn’t a full https address. It shows: The review block</span></p>',
+      src,
+    );
+  assert.equal(md('![](x.png)'), '<p><span class="md-img-failed">This image couldn’t load: its address isn’t a full https address.</span></p>');
+  // A “!” before anything else is text.
+  assert.equal(md('Wow![1] and ![no address]'), '<p>Wow![1] and ![no address]</p>');
+});
+
+test('#218: a link’s text holds no link, since an <a> can’t hold another', () => {
+  assert.equal(
+    md('[see [the docs](https://a.example) here](https://b.example)'),
+    '<p><a href="https://b.example" target="_blank" rel="noopener noreferrer">see [the docs](https://a.example) here</a></p>',
+  );
+});

@@ -68,7 +68,8 @@ export const obj =
     if (v === null || typeof v !== 'object' || Array.isArray(v)) return errs.push(`${path} must be an object, not ${typeName(v)}.`);
     for (const k of required) if (v[k] === undefined) errs.push(`${path}.${k} is required.`);
     for (const [k, val] of Object.entries(v)) {
-      if (!(k in fields)) {
+      // Own fields only: “constructor” or “__proto__” is a name every object inherits, not a field (#39).
+      if (!Object.hasOwn(fields, k)) {
         errs.push(`${path} has an unknown field “${k}”.`);
         continue;
       }

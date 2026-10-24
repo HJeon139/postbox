@@ -114,6 +114,15 @@
       }
     },
     {
+      "includes": ["app/js/review.mjs"],
+      "linter": {
+        "rules": {
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 340 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 275 } } }
+        }
+      }
+    },
+    {
       "includes": ["app/js/sheets.mjs"],
       "linter": {
         "rules": {
@@ -283,6 +292,10 @@
     {
       "includes": ["shared/diagram-lint.mjs"],
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 54 } } } } }
+    },
+    {
+      "includes": ["shared/markdown-inline.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 65 } } } } }
     },
     {
       "includes": ["shared/markdown.mjs"],

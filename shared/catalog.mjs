@@ -6,8 +6,9 @@
 // and a collapsed "Show the raw block" instead.
 
 import { LIMITS } from './limits.mjs';
+import { ANCHOR, anchorError } from './review-comments.mjs';
 import { bool, id, int, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
-import { isSafeUrl } from './urls.mjs';
+import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 
 /** The newest version of each component this app can render. */
 export const CATALOG = Object.freeze({
@@ -190,7 +191,7 @@ const SCHEMAS = {
     check(b, errs, opts) {
       if (typeof b.src !== 'string') return;
       // https from an allowed origin; plain http only for Postbox itself on this machine.
-      const local = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(b.src);
+      const local = LOCAL_HTTP.test(b.src);
       if (!isSafeUrl(b.src, { schemes: local ? ['http:'] : ['https:'], origins: opts.imageOrigins })) {
         errs.push(`src must be an https address from an allowed origin (${(opts.imageOrigins ?? []).join(', ') || 'none configured'}).`);
       }
@@ -213,7 +214,8 @@ const SCHEMAS = {
         obj(
           {
             id: id(),
-            line: int({ min: 1, max: 200000 }),
+            // A line, or a selection with its quote (#179), as a comment is (review-comments.mjs).
+            ...ANCHOR,
             anchor: str({ min: 1, max: 80 }),
             status: oneOf('open', 'resolved'),
             comments: list(obj({ author: str({ min: 1, max: 64 }), text: str({ min: 1, max: 4000 }) }, ['author', 'text']), { min: 1, max: 50 }),
@@ -228,6 +230,10 @@ const SCHEMAS = {
     check(b, errs) {
       if (b.format === 'app' && !b.appId) errs.push('An app review needs appId.');
       if (b.format && b.format !== 'app' && typeof b.content !== 'string') errs.push(`A ${b.format} review needs content.`);
+      for (const [i, t] of (b.threads ?? []).entries()) {
+        const why = anchorError(t);
+        if (why) errs.push(`threads[${i}]: ${why}`);
+      }
     },
   },
   app: {

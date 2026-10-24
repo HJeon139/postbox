@@ -5,9 +5,9 @@
 
 import { writeFile } from 'node:fs/promises';
 import { sleep } from '../cdp.mjs';
+import { review } from './driver-review.mjs';
+import { ITEM, J } from './selectors.mjs';
 
-const J = JSON.stringify;
-const ITEM = (key) => `document.querySelector('[data-key=${J(key)}]')`;
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
 export const JOBS_ANSWERS = { stop: ['Stop it too', 'Stop them too'], keep: ['Keep running'] };
@@ -169,27 +169,8 @@ export function driver(page) {
       if (button) await clickAt(byText(ITEM(key), 'button, a[href], [role=button]', button), `the button “${button}”`);
     },
 
-    /**
-     * Answers a review block as a person does: a draft comment on each line (its gutter button, the box, “Add draft
-     * comment”), then the verdict, then Submit review. Request changes and Comment need a comment to say what.
-     * @param {string} key  @param {{ verdict?: string, comments?: { line: string, text: string }[] }} review
-     */
-    async review(key, { verdict = 'comment', comments = [] } = {}) {
-      const names = { approve: 'Approve', request_changes: 'Request changes', comment: 'Comment' };
-      if (!names[verdict]) throw new Error(`A review’s verdict is approve, request_changes or comment, not “${verdict}”.`);
-      if (verdict !== 'approve' && !comments.length) throw new Error('Request changes and Comment need at least one comment on a line, saying what to change.');
-      if (!(await ev(`!!${ITEM(key)}?.querySelector('[aria-label="Verdict"]')`))) throw new Error('That item isn’t a review waiting for an answer.');
-      for (const { line, text } of comments) {
-        const n = String(line)
-          .replace(/^line\s*/i, '')
-          .trim();
-        await clickAt(`${ITEM(key)}?.querySelector(${J(`button[aria-label="Comment on line ${n}"]`)})`, `line ${n}’s comment button`);
-        const box = `${ITEM(key)}?.querySelector(${J(`textarea[aria-label="Comment on line ${n}"]`)})`;
-        await typeInto(box, String(text), `the comment box on line ${n}`);
-        await clickAt(byText(ITEM(key), 'button', 'Add draft comment'), '“Add draft comment”');
-      }
-      await clickAt(byText(`${ITEM(key)}?.querySelector('[aria-label="Verdict"]')`, '[role=radio]', names[verdict]), `the verdict “${names[verdict]}”`);
-      await clickAt(byText(ITEM(key), 'button', 'Submit review'), '“Submit review”');
+    review(key, opts) {
+      return review({ ev, clickAt, byText, typeInto }, key, opts);
     },
 
     /**

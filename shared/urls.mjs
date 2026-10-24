@@ -23,6 +23,9 @@ export function isSafeUrl(url, { schemes = DEFAULT_SCHEMES, origins } = {}) {
   return true;
 }
 
+/** Plain http to this computer, the one place an image may be http: Postbox’s own media. */
+export const LOCAL_HTTP = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//;
+
 const LOOPBACK = new Set(['127.0.0.1', 'localhost']);
 /**
  * A URL of Postbox’s own, which names 127.0.0.1 or localhost, moved to the page’s origin. Postbox answers at both, and

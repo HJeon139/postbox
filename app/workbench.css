@@ -320,6 +320,9 @@ pb-ring .dot.still { animation: none; }
 .md h3 { font-size: 14px; font-weight: 650; margin-top: 4px; }
 .md code { background: var(--chip); border: 1px solid var(--line); padding: 0 4px; border-radius: 4px; }
 .md blockquote { margin: 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--line); color: var(--dim); }
+/* A Markdown image (#218): no wider than its column. One that can’t load, or whose address isn’t one, says so instead. */
+.md img.md-img { max-width: 100%; height: auto; border-radius: 6px; vertical-align: middle; }
+.md .md-img-failed, .md .img-failed { display: inline-flex; font-size: 12px; color: var(--alert-ink); }
 .caret { display: inline-block; width: 7px; height: 15px; vertical-align: -2px; margin-left: 2px; background: var(--accent); border-radius: 1px; animation: pb-breathe 1s steps(2) infinite; }
 .shot .caret { animation: none; }
 
@@ -608,6 +611,25 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .status-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 0 7px; height: 18px; border-radius: 999px; border: 1px solid var(--line); }
 .status-tag.ok { color: var(--good); } .status-tag.open { color: var(--accent); } .status-tag.draft { color: var(--dim); border-style: dashed; }
 .review-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* A review takes the transcript’s width, past the reading column, while its agent’s name and work line keep to it
+   (#179). Its prose keeps a readable measure (.md p, .md li). */
+.col.turn:has(> .block.rv-wide) { max-width: none; }
+.col.turn:has(> .block.rv-wide) > :not(.block) { width: 100%; max-width: 760px; margin-inline: auto; }
+/* Preview: the draft as it reads, with each thread after the part it’s on, and the Comment button beside a selection. */
+.rv-doc.rv-preview { display: block; padding: 12px 16px 16px; }
+.rv-preview:focus:not(:focus-visible) { outline: none; }
+.rv-preview .rv-thread { margin: 0; max-width: 72ch; }
+.rv-preview .rv-sel { position: absolute; z-index: 2; }
+.rv-preview .md > *, .rv-preview .rv-fig { cursor: text; }
+::highlight(rv-quote) { background-color: var(--mark); }
+.rv-quote { color: var(--dim); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 48ch; }
+/* Full screen: the review’s own box, fixed over the window; the block keeps its height in the conversation. */
+.rv-box.rv-full { position: fixed; inset: 0; z-index: 34; overflow: auto; background: var(--panel); overscroll-behavior: contain;
+  animation: pb-full-in .14s ease-out; }
+@media (prefers-reduced-motion: reduce) { .rv-box.rv-full { animation: none; } }
+.rv-box.rv-full > .block-head, .rv-box.rv-full > .review-bar { position: sticky; z-index: 3; background: var(--panel); }
+.rv-box.rv-full > .block-head { top: 0; }
+.rv-box.rv-full > .review-bar { bottom: 0; }
 .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
 .seg button { all: unset; padding: 0 11px; height: 30px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; border-right: 1px solid var(--line-strong); }
 .seg button:last-child { border-right: 0; }
