@@ -152,7 +152,7 @@ const SCHEMA = obj({
     found: list(obj({ ref: 'ref:c', check: 'check', issue: int, count: n, refs: { item: 'ref:ti', max: MAX_REFS } })),
     notRun: list(obj({ check: 'check', missing: list(en(INPUTS)) })),
   }),
-  reactions: list(obj({ ref: 'ref:r', emoji: en(EMOJIS), on: ITEM, detectMs: ms })),
+  reactions: list(obj({ ref: 'ref:r', emoji: en(EMOJIS), on: ITEM, by: (v) => v === 'person' || AGENT(v), detectMs: ms })),
   labels: list(
     obj({
       on: 'ref:cr',

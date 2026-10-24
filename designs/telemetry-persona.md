@@ -108,7 +108,7 @@ Each requirement has an id for the wave plan and its tests. **Why** gives its re
   Why: the checks read streams, and today only fixtures record them.
 - **R8. Live checks.** At report time, Postbox runs every check whose inputs a live room has (state, threads, streams, events and transcripts) over the room’s facts. Each check in `CHECKS` declares the inputs it needs. Checks that need the UAT’s browser probes or the page’s console (such as `topbar-title-cut`, `full-screen-noop`, `unreadable-app-marks` and `page-errors`) are listed as not run, with the reason, instead of passing.
   Why: the checks already catch known defect classes with their issue numbers. A check that couldn’t run must say so, not look green ([Wu 2026](#ref-silent): tell “empty” from “access denied”).
-- **R9. Your flags are reactions.** Telemetry reads the Slack-style reactions of #251 (👍 👎 🚩 ❓ ✅): 🚩 on a message, block or app is a flag on that item, and the others are feedback on it. The collector records each with its item and time; the time from the item to your reaction is the time to detect. Reactions reach the agents as feedback, as #251 decides, whether or not the room is recorded, and under principle 7: a reaction on a message in a topic or side thread reaches only the agents in that thread, and one in the conversation reaches its agents. Blocked by #251 (built in #252), which must behave that way.
+- **R9. Flags are reactions, yours and the agents’.** Telemetry reads the Slack-style reactions of #251 (👍 👎 🚩 ❓ ✅): 🚩 on a message, block or app is a flag on that item, and the others are feedback on it. Agents react too, with Postbox’s `react` tool, to any message, block or app in their conversation, their own included, and an agent’s 🚩 is a flag like yours (decided by the person on 24 October 2026). The collector records each with its item, who made it (you, or the agent’s pseudonym) and its time; the time from the item to the reaction is the time to detect. Reactions reach the agents as feedback whether or not the room is recorded. Yours follow principle 7: a reaction on a message in a topic or side thread reaches only the agents in that thread, and one in the conversation reaches its agents. An agent’s reaches only the agent whose message it is, and none when it reacted to its own. No reaction wakes an agent.
   Why: people catch most silent failures by reading the output ([Wu 2026](#ref-silent)). A reaction pins exactly the message you mean, with no typing and no model to guess which one; the first round’s flags in words needed the persona to pin them, and it sometimes pinned the wrong message.
 - **R10. The collector reports its own gaps.** A turn with no stream recorded, a turn still running when the report is drafted, a transcript it couldn’t read, a check that threw: each is a gap in the record, with its reason, never a lower count.
   Why: a missing stream otherwise reads as a quiet, healthy turn ([Wu 2026](#ref-silent): watch the watchers).
@@ -148,7 +148,7 @@ erDiagram
   | Block or app | A ref (`i1`…); catalog type; revisions; answered or not; time to answer; versions (apps); check failures by check id |
   | Work | Files changed and lines, in log buckets (0, 1–9, 10–99…), never names or extensions; commands run; commits; pushes |
   | Check finding | Check id; issue number; count; refs of the items and turns it names |
-  | Reaction | The emoji, from #251’s fixed set; the ref it’s on; time to detect |
+  | Reaction | The emoji, from #251’s fixed set; the ref it’s on; who made it (you, or an agent’s pseudonym); time to detect |
 
   Refs are Postbox’s own ordinals, numbered over the whole room, never item ids, block ids, thread ids or handles: an agent chooses its block ids and the person chooses handles, so either can carry project words. Counts, sizes, tokens, costs and durations are in log buckets (0, 1–9, 10–99… for counts; under 1 s, 1–9 s, 10–59 s, minutes, hours for durations; cents to the nearest power of ten), not exact. Times are relative to when recording started, never clock times.
   Why: everything here is Postbox’s vocabulary, a bucket or a Postbox ref, so the person’s project can’t be in it. File names, command lines, MCP server names, handles and instructions are the person’s and stay out. Buckets keep an exact number from identifying a change or carrying a value, and relative times keep the person’s time zone and working hours out.
@@ -323,6 +323,12 @@ Why: the research says one-shot labeling and attribution are unreliable ([Who&Wh
 | Where the report shows (R18) | A Telemetry view in the right pane, like Work, that stays and reopens saved reports | A sheet, which closes; a review block in the transcript, which asks and reaches every agent |
 | How Telemetry shares the pane with Work (R18) | Telemetry swaps in for Work, and closing it brings Work back if Work was open | Opening either closing the other, which broke “a conversation keeps Work open until you close it” |
 | What the classifier labels (R13) | Only checks and 🚩 in a live room, with no classes for the person’s messages; in UAT runs only, it may also propose unflagged failures, kept under `telemetry` and never filed | Classifying each of the person’s messages; proposals in live rooms |
+
+**24 October 2026,** by the person, when agents were given reactions:
+
+| Decision | Chosen | Instead of |
+|---|---|---|
+| Who can flag (R9) | You and the agents: an agent’s 🚩, made with the `react` tool, is a flag like yours, and its reaction reaches only the agent whose message it is | Only your 🚩 as a flag |
 
 Settled while revising the spec, without a ruling: no free text from any model (R14 dropped); the rating dropped (R21); fingerprints and refs from Postbox’s vocabulary only (R12, R19); the classifier’s bounds (R3); proposals’ refs and budgets (R3, R13, R16); a report draft kept across reloads (R18).
 

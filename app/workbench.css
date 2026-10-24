@@ -751,6 +751,9 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .turn.me .reactions { justify-content: flex-end; }
 .react-chip { font: inherit; font-size: 13px; line-height: 1; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 999px; background: var(--panel); color: var(--text); cursor: pointer; }
 .react-chip:hover { background: var(--sunk); }
+/* Only agents reacted: the same button, quieter, until you add yours. */
+.react-chip.theirs { border-color: var(--line); }
+.react-who { margin-left: 4px; font-size: 12px; color: var(--dim); }
 .react-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Sent back from a topic thread. */
