@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { POSTBOX_TIMEOUT_MS } from '../server/adapters/setup.mjs';
+import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
@@ -55,8 +56,9 @@ const settle = async (rt) => {
 };
 
 // Claude Code drops the call at POSTBOX_TIMEOUT_MS (the MCP server’s timeout, #217), so an answer after it would go
-// nowhere. node:test’s mock timers stand in for the clock, so the test doesn’t wait 25 hours.
-test('#220 a card nobody answers expires at POSTBOX_TIMEOUT_MS, says how long it waited, and the call is refused', async (t) => {
+// nowhere; the card expires a minute before, at CARD_WAIT_MS. node:test’s mock timers stand in for the clock, so the
+// test doesn’t wait 25 hours.
+test('#220 a card nobody answers expires at CARD_WAIT_MS, says how long it waited, and the call is refused', async (t) => {
   const { store, rt, adapter, t: thread, se } = await setup();
   t.mock.timers.enable({ apis: ['setTimeout'] });
   /** @type {any} */
@@ -68,15 +70,43 @@ test('#220 a card nobody answers expires at POSTBOX_TIMEOUT_MS, says how long it
   const card = () => store.items(thread.id).find((i) => i.kind === 'permission');
   for (let i = 0; i < 50 && !card(); i++) await new Promise(setImmediate);
   assert.equal(card()?.status, 'open');
-  t.mock.timers.tick(POSTBOX_TIMEOUT_MS - 1);
+  t.mock.timers.tick(CARD_WAIT_MS - 1);
   assert.equal(card().status, 'open', 'still open a moment before');
   t.mock.timers.tick(1);
   for (let i = 0; i < 50 && !answer; i++) await new Promise(setImmediate);
   assert.equal(card().status, 'expired');
-  assert.equal(card().waitedMs, POSTBOX_TIMEOUT_MS);
+  assert.equal(card().waitedMs, CARD_WAIT_MS);
   assert.deepEqual(answer, { allow: false, message: 'Nobody answered within 25 hours, so the request expired. Ask again if you still need it.' });
   assert.equal(store.state.sessions[se.id].needs, null, 'it no longer needs you');
   assert.throws(() => rt.act(thread.id, card().id, 'allow'), /already answered/);
+  t.mock.timers.reset();
+  await settle(rt);
+});
+
+// Claude Code’s clock for the call starts when it sends it, the card’s only once the call reaches Postbox. With the same
+// length on both, Claude Code gave up first, and for that moment the card took an answer that went nowhere.
+test('#220 a card expires before Claude Code’s deadline for the call, even when the call took a while to arrive', async (t) => {
+  const { store, rt, adapter, t: thread } = await setup();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  /** @type {any} */
+  let answer = null;
+  adapter.next.push(async (c) => {
+    answer = await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'npm test' } });
+  });
+  rt.sendMessage(thread.id, { text: 'run the tests' });
+  const card = () => store.items(thread.id).find((i) => i.kind === 'permission');
+  for (let i = 0; i < 50 && !card(); i++) await new Promise(setImmediate);
+  // The call left Claude Code 30 seconds before the card was made (a slow trip), so its deadline is that much sooner.
+  const trip = 30 * 1000;
+  /** @type {string|undefined} */
+  let atDeadline;
+  setTimeout(() => {
+    atDeadline = card().status;
+  }, POSTBOX_TIMEOUT_MS - trip);
+  t.mock.timers.tick(POSTBOX_TIMEOUT_MS);
+  assert.equal(atDeadline, 'expired', 'the card had expired when Claude Code gave up on the call');
+  for (let i = 0; i < 50 && !answer; i++) await new Promise(setImmediate);
+  assert.equal(answer?.allow, false, 'and the no reached the call');
   t.mock.timers.reset();
   await settle(rt);
 });

@@ -20,7 +20,7 @@ In ask mode (and when auto mode can’t decide) you approve exactly what will ru
 - **Edit…:** opens the command (or, for other tools, the input as JSON) to change, then **Allow with this edit** runs what you wrote, with the call’s other settings (its description, timeout, background flag) kept. It isn’t offered for an input too large to show in full. JSON that doesn’t parse says so, and nothing is sent. Escape cancels; Cmd+Enter or Ctrl+Enter allows.
 - **Don’t allow…:** asks why, optionally; Enter refuses. The agent reads your reason.
 - Once answered, the card says how (“Always allowed (Bash(npm test:*))”, “Allowed with your edit”, with what ran, or “Not allowed”, with your reason), and a line in your voice says the same.
-- The agent needs you until you answer; Stop answers no and marks the card expired. A card nobody answers for 25 hours, the time Claude Code waits for the call, expires too, and says “Expired: nobody answered within 25 hours” ([#220](https://github.com/HJeon139/postbox/issues/220)).
+- The agent needs you until you answer; Stop answers no and marks the card expired. A card nobody answers for 25 hours (a minute short of the time Claude Code waits for the call, so the no still reaches it) expires too, and says “Expired: nobody answered within 25 hours” ([#220](https://github.com/HJeon139/postbox/issues/220)).
 - Only a Claude Code agent asks this way. An Agent SDK, Kiro, Codex or Antigravity agent isn’t offered Postbox’s permission_prompt tool, and one that calls it anyway is told at once that it isn’t for it, with no card.
 - Every control works by keyboard; after an answer, focus goes back to the composer.
 
