@@ -225,6 +225,10 @@ test('#120 permission cards from a host: one answered after a minute, and one op
   assert.ok(triggersFired(f, ['remote-card-while-disconnected'])['remote-card-while-disconnected']);
   f.hosts.faults = [{ fault: 'kill-ssh', label: 'host1', at: 20_000, recovered: true }];
   assert.equal(triggersFired(f, ['remote-card-while-disconnected'])['remote-card-while-disconnected'], false);
+  // A kill host2 never noticed (it read Connected throughout) didn’t put the card across a drop.
+  f.hosts.faults = [{ fault: 'kill-ssh', label: 'host2', at: 20_000, recovered: null, unseen: true }];
+  assert.equal(triggersFired(f, ['remote-card-while-disconnected'])['remote-card-while-disconnected'], false);
+  assert.equal(triggersFired(f, ['fault-kill-ssh'])['fault-kill-ssh'], false);
 });
 
 test('#120 a turn on each machine, a wake across machines, and an attachment read from its copy on the host', () => {

@@ -234,6 +234,7 @@ async function main() {
   // Host mode’s record of its hosts (tools/uat/hosts-run.mjs), which its checks and triggers read as facts.hosts.
   const hr = hosts.length ? createHostRun({ hosts, placement, launcher: scenario.launcher, root: ROOT, stamp, data: paths.data, log }) : null;
   Object.assign(run, { hr, history, page, postbox });
+  if (hr) hr.hostStates = history.hostStates;
   const findings = new Map(); // key → finding
   const timeline = [];
   const facts = {
@@ -513,7 +514,8 @@ async function main() {
       const idle = !obs.states.some((s) => /: (?:think|tool|gen)\b/.test(s));
       if (waiting.length && (a.type === 'next_phase' || a.type === 'done' || (a.type === 'wait' && idle)) && pushedBack !== waiting.join('\n')) {
         pushedBack = waiting.join('\n');
-        actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first.`;
+        // The same again goes ahead, so a scenario that says to leave a card open (for a minute, say) still can.
+        actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first, or, to leave ${waiting.length === 1 ? 'it' : 'them'} waiting on purpose, as the scenario says to, ask for the same again: the second time it goes ahead.`;
         log(`action held: ${waiting.length} waiting on the person`);
         continue;
       }

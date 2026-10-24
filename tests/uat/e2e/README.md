@@ -311,7 +311,7 @@ The triggers, for `remotehosts` and for P0’s Stop phase on a host:
 - `kill-daemon` kills `host.mjs serve` there.
 - `restart-postbox` stops the run’s Postbox as Ctrl-C does, starts it again on the same data, and reloads the page.
 
-Each is recorded with what Postbox showed after: the host’s states and how long each took, and the agents’ rows. The run waits until each host it touched reads Connected again, or 3 minutes. A permission card raised while disconnected is a kill-ssh while the card waits, then the answer after the reconnect.
+Each is recorded with what Postbox showed after: the host’s states and how long each took, and the agents’ rows; for `kill-ssh`, also which processes it killed. The states come from Postbox’s event stream as each change arrived, as well as from reads of the state, so a drop and a reconnect that both fall between two reads still show. The run waits until each host it touched reads Connected again, or 3 minutes. A host that never read anything but Connected wasn’t cut off, so its fault counts for nothing: not as recovered, and not for a card answered across a drop. A permission card raised while disconnected is a kill-ssh while the card waits, then the answer after the reconnect.
 
 **At the end** (`tools/uat/hosts-end.mjs`), over every host:
 1. Its `~/.postbox-remote/turns` against the turns Postbox recorded there.

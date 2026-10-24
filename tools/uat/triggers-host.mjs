@@ -152,7 +152,8 @@ export const HOST_TRIGGERS = {
         .filter((it) => answeredCard(it))
         .flatMap((it) =>
           faultsOf(f, 'kill-ssh')
-            .filter((x) => x.label === labelOf(f, it.remote.hostId) && x.at > it.at && x.at < it.answeredAt)
+            // Only a kill that cut the host off counts: one it never noticed shows nothing about a card across a drop.
+            .filter((x) => x.recovered === true && x.label === labelOf(f, it.remote.hostId) && x.at > it.at && x.at < it.answeredAt)
             .map((x) => ({
               at: it.answeredAt,
               evidence: `@${it.handle}’s card “${it.summary}” was open when ${x.label}’s ssh was killed, and was answered ${it.status}.`,

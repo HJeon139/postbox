@@ -18,7 +18,7 @@ import { launcherScript, linesOf, measureOn, onHost, processesOf, SCRIPTS, UUID,
  * @typedef {{ hosts: RunHost[], placement: Record<string, string>, launcher: string|null, root: string, stamp: string,
  *   log: (line: string) => void, record: any, postbox: any, kit: any, api: (p: string) => Promise<any>, samples: Map<string, any>,
  *   trees: Map<string, Map<string, import('./hosts-ssh.mjs').HostProc>>, cleaning?: Promise<void>, ending?: Promise<void>,
- *   starting?: Promise<void> }} HostRun
+ *   starting?: Promise<void>, hostStates?: () => { at: number, id: string, state: string|null }[] }} HostRun
  *   trees: every process seen under each host turn (hosts-watch.mjs), by “PID start”
  */
 

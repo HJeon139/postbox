@@ -38,13 +38,17 @@ const remoteOf = (r) => ({ hostId: r.hostId ?? null, turn: r.turn, rtTurn: r.rtT
 const jobOf = (j) => ({ id: String(j?.id ?? ''), state: j?.state ?? null, kept: j?.kept === true, turnId: j?.turnId ?? null });
 
 /**
- * Follows a Postbox server’s event stream (/api/stream) from its first event, keeping the events the checks read.
+ * Follows a Postbox server’s event stream (/api/stream) from its first event, keeping the events the checks read,
+ * and, apart from them, each host’s status as it changed, with when it arrived (#120): a host-mode fault is judged
+ * by these, since a drop and its reconnect can both come between two reads of the state.
  * @param {string} origin
- * @returns {{ events: () => any[], close: () => void }}
+ * @returns {{ events: () => any[], hostStates: () => { at: number, id: string, state: string|null }[], close: () => void }}
  */
 export function followEvents(origin) {
   /** @type {any[]} */
   const kept = [];
+  /** @type {{ at: number, id: string, state: string|null }[]} */
+  const hostStates = [];
   let last = 0;
   const abort = new AbortController();
   const take = (frame) => {
@@ -58,6 +62,13 @@ export function followEvents(origin) {
     }
     if (!Number.isFinite(seq) || seq === null || seq <= last) return;
     last = seq;
+    if (type === 'host.status') {
+      try {
+        const d = JSON.parse(data);
+        if (typeof d?.id === 'string') hostStates.push({ at: Date.now(), id: d.id, state: d.status?.state ?? null });
+      } catch {}
+      return;
+    }
     if (type !== 'item.add' && type !== 'item.patch' && type !== 'item.move' && type !== 'session') return;
     try {
       const e = keepEvent(seq, type, JSON.parse(data));
@@ -85,7 +96,7 @@ export function followEvents(origin) {
       if (!abort.signal.aborted) await new Promise((ok) => setTimeout(ok, 1000).unref());
     }
   })();
-  return { events: () => kept, close: () => abort.abort() };
+  return { events: () => kept, hostStates: () => hostStates, close: () => abort.abort() };
 }
 
 /** Parses JSON Lines, skipping a line that doesn’t parse (the last one, if the file was being written). */

@@ -9,18 +9,19 @@
 //   turn’s ID in a command line finds them. A Stop with nothing seen under its turn beforehand can’t be judged, and
 //   says so;
 // - fault(): what the tester breaks on purpose, kill-ssh, kill-daemon or restart-postbox, and what Postbox showed
-//   after, until each host it touched reads Connected again or 3 minutes pass.
+//   after, until each host it touched reads Connected again or 3 minutes pass (tools/uat/hosts-recovery.mjs); for
+//   kill-ssh, also which processes it killed.
 
 import { spawnSync } from 'node:child_process';
 import { sleep } from '../cdp.mjs';
 import { localListeners, newListeners, remoteListeners, treeOf } from './hosts-probe.mjs';
+import { recovery, says } from './hosts-recovery.mjs';
 import { measureOn, onHost, parseTree, SCRIPTS, stillRunning, turnTrees } from './hosts-ssh.mjs';
 import { remoteTurns } from './remote-facts.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);
 const LISTENER_EVERY_MS = 60_000;
 const LISTENER_SAMPLES = 5;
-const RECOVER_MS = 180_000;
 /** After Stop, the daemon’s grace before SIGKILL is 10 s; the probe waits past it. */
 const STOP_SETTLED_MS = 15_000;
 const TREE_EVERY_MS = 5000;
@@ -206,35 +207,7 @@ const rowsOf = (hr, labels) =>
     .then((rows) => (rows ?? []).filter((r) => Object.entries(hr.placement).some(([h, w]) => labels.includes(w) && r.includes(`@${h}`))))
     .catch(() => []);
 
-/**
- * Follows a host’s status after a fault until it reads Connected again (recovered), fails, or 3 minutes pass. A host
- * nothing needs may stay disconnected: that isn’t judged (recovered null).
- * @param {HostRun} hr @param {import('./hosts-run.mjs').RunHost} h @param {number} at
- */
-async function recovery(hr, h, at) {
-  const states = [];
-  let down = false;
-  for (const end = at + RECOVER_MS; Date.now() < end; await sleep(250)) {
-    const st = (await hr.api('/api/state').catch(() => ({})))?.state;
-    const s = st?.hostStatus?.[/** @type {string} */ (h.id)];
-    const state = s?.state ?? 'unknown';
-    if (states.at(-1)?.state !== state) states.push({ state, ms: Date.now() - at, failure: s?.failure?.message ?? null });
-    if (state !== 'connected') down = true;
-    if (state === 'connected' && (down || Date.now() - at > 5000)) return { states, recovered: true };
-    if (state === 'failed') return { states, recovered: false };
-    const needed = Object.entries(hr.placement).some(
-      ([handle, w]) => w === h.label && sessionsOf(st, handle).some((se) => BUSY.has(se.state) || se.state === 'needs'),
-    );
-    if (state === 'disconnected' && !needed && Date.now() - at > 20_000) return { states, recovered: null };
-  }
-  return { states, recovered: false };
-}
-
-/** How a recovery reads, for the tester and the record. */
-const says = (label, { states, recovered }, rows) =>
-  `${label} read ${states.map((s) => `${s.state} at ${(s.ms / 1000).toFixed(1)} s${s.failure ? ` (“${s.failure}”)` : ''}`).join(', then ') || 'nothing'}${recovered === null ? '; nothing needed it, so it stayed disconnected' : recovered ? '' : '; it didn’t read Connected again in 3 minutes'}.${rows.length ? ` The sidebar: ${rows.map((r) => `“${r}”`).join('; ')}.` : ''}`;
-
-/** Kills the run’s Postbox’s ssh to a host. @param {HostRun} hr @param {import('./hosts-run.mjs').RunHost} h */
+/** Kills the run’s Postbox’s ssh to a host, and says which processes. @param {HostRun} hr @param {import('./hosts-run.mjs').RunHost} h */
 function killSsh(hr, h) {
   const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,args='], { encoding: 'utf8' }).stdout;
   const mine = treeOf(ps, hr.postbox.pid);
@@ -243,7 +216,7 @@ function killSsh(hr, h) {
     .map((l) => /^\s*(\d+)\s+\d+\s+(.*)$/.exec(l))
     .filter((m) => m && mine.has(m[1]) && /^(?:\S*\/)?ssh\s/.test(m[2]) && m[2].split(/\s+/).includes(h.destination));
   for (const m of ssh) process.kill(Number(m?.[1]), 'SIGKILL');
-  return ssh.length;
+  return ssh.map((m) => `${m?.[1]} ${String(m?.[2]).slice(0, 160)}`);
 }
 
 /**
@@ -256,7 +229,9 @@ export async function fault(hr, { fault: kind, target }, page) {
   if (!h) throw new Error(`${kind} needs a target: ${hr.hosts.map((x) => x.label).join(' or ')}.`);
   const at = Date.now();
   let hit;
-  if (kind === 'kill-ssh') hit = killSsh(hr, h);
+  /** @type {string[]} */
+  let killed = [];
+  if (kind === 'kill-ssh') hit = (killed = killSsh(hr, h)).length;
   else if (kind === 'kill-daemon') {
     const r = await onHost(h.destination, SCRIPTS.killDaemon);
     if (r.code !== 0) throw new Error(`Couldn’t kill Postbox’s daemon on ${h.label}: ${r.stderr || `pkill exited ${r.code}`}`);
@@ -269,7 +244,7 @@ export async function fault(hr, { fault: kind, target }, page) {
   }
   const r = await recovery(hr, h, at);
   const shown = says(h.label, r, await rowsOf(hr, [h.label]));
-  hr.record.faults.push({ fault: kind, label: h.label, at, ...r, shown });
+  hr.record.faults.push({ fault: kind, label: h.label, at, ...r, shown, ...(killed.length ? { killed } : {}) });
   hr.log(`fault ${kind} on ${h.label}: ${shown}`);
   return `Killed ${what}. ${shown}`;
 }
