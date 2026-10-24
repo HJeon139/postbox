@@ -514,7 +514,7 @@ export class KiroCliAdapter {
     const persona = ctx.persona;
     const cwd = await this.folderFor(persona, ctx.project);
     const prompt = formatMessage(message, ctx.pathOf);
-    const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
+    const guide = agentGuide({ ...ctx, persona, session, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
     const folders = [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
     const first = await this.run({ ctx, cwd, folders, prompt, guide, sessionId: ctx.state.kiroSessionId ?? null });
     // A session Kiro no longer has (its history was cleared, or the persona moved between your setup and
