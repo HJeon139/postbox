@@ -197,9 +197,10 @@ const whose = (it) =>
       : 'a message';
 
 /**
- * The person’s reactions in one thread that this agent hasn’t been told of, as catch-up lines, oldest first; each is told
- * once. Only the agents answering in that thread hear them (principle 7): the conversation’s in its catch-up, a topic or
- * side thread’s in threadCatchUp. One on the agent’s own message says so.
+ * The reactions in one thread that this agent hasn’t been told of, as catch-up lines, oldest first; each is told once.
+ * The person’s are heard by the agents answering in that thread (principle 7): the conversation’s in its catch-up, a
+ * topic or side thread’s in threadCatchUp. One on the agent’s own message says so. An agent’s reaction is heard only by
+ * the agent whose message it is, and not when it reacted to its own.
  * @param {any} rt @param {any} se  the agent @param {string} threadId
  * @returns {string[]}
  */
@@ -208,10 +209,13 @@ export function reactionLines(rt, se, threadId) {
   // What was told last: the newest reaction’s time, and which reactions had it, so one made in the same millisecond
   // is still told, once.
   const was = now.reactionsTold?.[threadId] ?? { at: se.startedAt ?? 0, keys: [] };
-  const key = (it, r) => `${it.id} ${r.emoji}`;
+  const key = (it, r) => `${it.id} ${r.emoji}${r.by ? ` ${r.by}` : ''}`;
+  const hears = (it, r) => !r.by || (it.sessionId === se.id && r.by !== se.id);
   const told = rt.store
     .items(threadId)
-    .flatMap((it) => (it.reactions ?? []).filter((r) => r.at > was.at || (r.at === was.at && !was.keys.includes(key(it, r)))).map((r) => ({ it, r })))
+    .flatMap((it) =>
+      (it.reactions ?? []).filter((r) => hears(it, r) && (r.at > was.at || (r.at === was.at && !was.keys.includes(key(it, r))))).map((r) => ({ it, r })),
+    )
     .sort((a, b) => a.r.at - b.r.at);
   if (!told.length) return [];
   const at = told.at(-1).r.at;
@@ -227,6 +231,8 @@ export function reactionLines(rt, se, threadId) {
     );
     // “You” is the person in a catch-up, as in “You: …”; the agent’s own message is named, and marked as its own.
     const mine = it.sessionId && it.sessionId === se.id ? ' (yours: take it as feedback)' : '';
+    // An agent’s reaction is to this agent’s own message, and is feedback from a teammate.
+    if (r.by) return `@${r.handle} reacted ${r.emoji} to your ${it.kind === 'block' ? 'block' : 'message'} at ${when}${words ? `: “${words}”` : ''}`;
     return `You reacted ${r.emoji} to ${whose(it)}${mine} at ${when}${words ? `: “${words}”` : ''}`;
   });
 }
