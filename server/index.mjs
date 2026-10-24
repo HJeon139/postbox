@@ -10,7 +10,7 @@ import { realpathSync } from 'node:fs';
 import { mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
-import { extname, join, normalize, relative, resolve, sep } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
@@ -21,6 +21,7 @@ import { PROBES, registerBackends } from './backends.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
+import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
@@ -566,27 +567,6 @@ export async function start({
     };
     store.emit('file', f);
     return { id, name, size, type: f.type, sha256 };
-  }
-
-  async function listFolder(project, sub) {
-    if (!project) throw httpError(404, 'That project doesn’t exist.');
-    const root = await realpath(project.folder);
-    const target = await realpath(resolve(root, sub)).catch(() => null);
-    // The picker can’t leave the project’s folder, even through symbolic links.
-    if (!target || (target !== root && !target.startsWith(root + sep))) throw httpError(403, 'That’s outside the project’s folder.');
-    const entries = await readdir(target, { withFileTypes: true });
-    const list = [];
-    for (const e of entries.filter((x) => !x.name.startsWith('.')).slice(0, 500)) {
-      const full = join(target, e.name);
-      const s = await stat(full).catch(() => null);
-      if (!s) continue;
-      // A symbolic link that leads out of the folder is marked, so the picker says so instead of opening it (#28).
-      const to = e.isSymbolicLink() ? await realpath(full).catch(() => null) : null;
-      const outside = !!to && to !== root && !to.startsWith(root + sep);
-      list.push({ name: e.name, path: relative(root, full), dir: s.isDirectory(), size: s.size, ...(outside ? { outside } : {}) });
-    }
-    list.sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
-    return { root: project.folder, path: relative(root, target), entries: list };
   }
 
   if (listen)
