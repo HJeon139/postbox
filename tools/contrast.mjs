@@ -1,8 +1,9 @@
 // Checks WCAG 2.1 contrast for the Workbench tokens in both themes.
-// Usage: node tools/contrast.mjs [path/to/workbench.css]
+// Usage: node tools/contrast.mjs [path/to/workbench.css], by default the app's (app/workbench.css), which is what ships;
+// the Stage 1 mockups' copy (mockups/workbench.css) has fallen behind it and is checked only when named.
 import { readFileSync } from 'node:fs';
 
-const css = readFileSync(process.argv[2] ?? new URL('../mockups/workbench.css', import.meta.url), 'utf8');
+const css = readFileSync(process.argv[2] ?? new URL('../app/workbench.css', import.meta.url), 'utf8');
 
 function block(selector) {
   const start = css.indexOf(selector + ' {');
@@ -47,6 +48,9 @@ const checks = [
   ['dim', 'chip', 4.5],
   ['accent', 'bg', 4.5],
   ['accent', 'panel', 4.5],
+  // A chosen chip’s label and an on toggle’s knob, and a selected segment on a sunk field (#181).
+  ['accent', 'chip', 4.5],
+  ['accent', 'sunk', 4.5],
   ['on-ink', 'on', 4.5],
   ['good', 'bg', 4.5],
   ['good', 'panel', 4.5],
@@ -70,6 +74,7 @@ const checks = [
   ['stage-dim', 'stage-chip', 4.5],
   ['accent', 'stage-bg', 4.5],
   ['accent', 'stage-panel', 4.5],
+  ['accent', 'stage-chip', 4.5],
   ['stage-label', 'stage-panel', 4.5],
   ['stage-edge', 'bg', 3],
   ['stage-edge', 'stage-panel', 3],
@@ -96,6 +101,11 @@ const checks = [
   // A reaction’s amber outline on its wash (#251).
   ['accent', 'mark', 3],
   ['good', 'diff-add', 3],
+  // The head of an overview card that needs you: its name, where it is, and the state line (#8).
+  ['text', 'needs-band', 4.5],
+  ['dim', 'needs-band', 4.5],
+  ['accent', 'needs-band', 4.5],
+  ['alert-ink', 'needs-band', 4.5],
   ['alert-ink', 'diff-del', 3],
 ];
 

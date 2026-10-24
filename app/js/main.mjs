@@ -1,16 +1,17 @@
-// Boot, routing, color mode, notifications, keyboard shortcuts and hover-card content.
+// Boot, routing, color mode, notifications and hover-card content. Keyboard shortcuts are in keys.mjs.
 
 import './ring.mjs';
 import { onThemeChange } from './apps.mjs';
 import { client, connect, hrefOf, itemsOf, load, needsYou, threadsOf } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
+import './focus-clear.mjs';
 import { hoverContent } from './hover-content.mjs';
+import './keys.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { paintStateWords, ringFor } from './ring.mjs';
-import { openPalette } from './sheets.mjs';
-import { mountEmptyProject, mountOverview, mountRail, mountThreads, nextNeedsYou, railHidden, toggleRail, topbar } from './shell.mjs';
-import { focusComposer, mountComposer, mountTranscript } from './thread.mjs';
+import { mountEmptyProject, mountOverview, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
+import { mountComposer, mountTranscript } from './thread.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention, toast } from './ui.mjs';
 
 const root = $('#root');
@@ -250,42 +251,6 @@ function notify(d) {
     timeout: 12000,
   });
 }
-
-// ── Keyboard ────────────────────────────────────────────────────────────────────────────
-
-document.addEventListener('keydown', (e) => {
-  const mod = e.metaKey || e.ctrlKey;
-  if (e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'j') {
-    e.preventDefault();
-    nextNeedsYou();
-    return;
-  }
-  // ⌘\ shows or hides the sidebar.
-  if (mod && e.key === '\\') {
-    e.preventDefault();
-    toggleRail();
-    return;
-  }
-  if (mod && e.key.toLowerCase() === 'k') {
-    e.preventDefault();
-    openPalette();
-    return;
-  }
-  // Alt+↑/↓ moves between turns and blocks; Alt+End returns to the composer.
-  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-    const items = [...document.querySelectorAll('#main > .item')];
-    if (!items.length) return;
-    e.preventDefault();
-    const at = items.findIndex((n) => n.contains(document.activeElement));
-    const next = items[at < 0 ? items.length - 1 : Math.max(0, Math.min(items.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))];
-    next.focus();
-    next.scrollIntoView({ block: 'nearest' });
-  }
-  if (e.altKey && e.key === 'End') {
-    e.preventDefault();
-    focusComposer();
-  }
-});
 
 // ── Hover cards: citations and glossary terms ───────────────────────────────────────────
 

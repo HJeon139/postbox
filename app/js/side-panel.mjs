@@ -126,7 +126,7 @@ function summarizeButton(sideId, parent) {
  */
 function copyLink(threadId, topic) {
   const b = h(
-    'button.btn.sm.ghost',
+    'button.btn.sm',
     {
       type: 'button',
       onclick: async () => {
