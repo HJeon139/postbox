@@ -13,6 +13,52 @@ import { fakeClock, lines, makeBroker, makeHome, until } from './remote-broker-f
 
 // ── Codex approvals ──
 
+// Recorded shapes: the requests server/adapters/codex.mjs answers in codexApproval.
+const RECORDED = [
+  '{"method":"turn/started","params":{"turn":{"id":"u1"}}}',
+  '{"id":7,"method":"item/commandExecution/requestApproval","params":{"itemId":"i1","command":"rm -rf build"}}',
+  '{"id":8,"method":"item/fileChange/requestApproval","params":{"itemId":"i2"}}',
+  '{"id":"e9","method":"mcpServer/elicitation/request","params":{"serverName":"github","message":"Allow?"}}',
+  '{"id":3,"result":{}}',
+  '',
+].join('\n');
+
+/**
+ * The first test’s second daemon, after the first one closed: what it knows from the records, and what it watches.
+ * @param {ReturnType<typeof makeHome>} h @param {ReturnType<typeof fakeClock>} clock @param {any} k @param {string} out @param {number} wait
+ */
+async function codexRestarted(h, clock, k, out, wait) {
+  // A restarted daemon knows when it first saw a request, and what it declined.
+  await appendFile(out, '{"id":11,"method":"item/commandExecution/requestApproval","params":{}}\n');
+  await clock.tick(1000);
+  await clock.tick(30_000);
+  k.b.close();
+  const again = makeBroker(h, { now: clock.now, timers: clock.timers, codexPollMs: 1000, settings: () => ({ ...HOST_DEFAULTS, permissionWaitMax: wait }) });
+  await again.b.load([{ turn: 'cx', state: 'running' }]);
+  assert.deepEqual(again.writes, [], 'requests 7 and e9 were declined already, and 11 is new');
+  await clock.tick(wait - 30_000 - 1);
+  assert.deepEqual(again.writes, []);
+  // The fake clock runs a timer at the end of its tick, so the next look is a poll interval on, still well before
+  // permissionWaitMax from this daemon’s start.
+  await clock.tick(1000);
+  assert.deepEqual(
+    again.writes.map((w) => JSON.parse(w.line).id),
+    [11],
+    'declined permissionWaitMax after the first daemon saw it',
+  );
+  // A turn that has ended isn’t watched any more.
+  writeFileSync(h.p.turn('cx', TURN_FILES.exit), JSON.stringify({ code: 0, signal: null, at: 1 }));
+  await clock.tick(1000);
+  assert.deepEqual(again.b.pending.watches, []);
+  // Only held Codex turns are watched.
+  h.turn('cc');
+  await again.b.started('cc');
+  assert.deepEqual(again.b.pending.watches, []);
+  again.b.close();
+  assert.equal(codexPromptId(7), 'codex:7');
+  assert.equal(codexPromptId('x'.repeat(200)), null);
+}
+
 test('Codex: a request nobody answers is declined on the held stdin at permissionWaitMax, and Postbox hears it expired', async () => {
   const h = makeHome();
   const clock = fakeClock();
@@ -22,18 +68,7 @@ test('Codex: a request nobody answers is declined on the held stdin at permissio
     const inn = h.p.turn('cx', TURN_FILES.in);
     const wait = 60_000;
     const k = makeBroker(h, { now: clock.now, timers: clock.timers, codexPollMs: 1000, settings: () => ({ ...HOST_DEFAULTS, permissionWaitMax: wait }) });
-    // Recorded shapes: the requests server/adapters/codex.mjs answers in codexApproval.
-    writeFileSync(
-      out,
-      [
-        '{"method":"turn/started","params":{"turn":{"id":"u1"}}}',
-        '{"id":7,"method":"item/commandExecution/requestApproval","params":{"itemId":"i1","command":"rm -rf build"}}',
-        '{"id":8,"method":"item/fileChange/requestApproval","params":{"itemId":"i2"}}',
-        '{"id":"e9","method":"mcpServer/elicitation/request","params":{"serverName":"github","message":"Allow?"}}',
-        '{"id":3,"result":{}}',
-        '',
-      ].join('\n'),
-    );
+    writeFileSync(out, RECORDED);
     await k.b.started('cx');
     assert.deepEqual(k.b.pending.watches, ['cx']);
     // Postbox answers 8 through the daemon’s write; the runner appends it to in.jsonl.
@@ -71,35 +106,7 @@ test('Codex: a request nobody answers is declined on the held stdin at permissio
     await appendFile(out, '{"method":"turn/completed","params":{"turn":{"status":"completed"}}}\n');
     await clock.tick(wait);
     assert.equal(k.writes.length, 2);
-    // A restarted daemon knows when it first saw a request, and what it declined.
-    await appendFile(out, '{"id":11,"method":"item/commandExecution/requestApproval","params":{}}\n');
-    await clock.tick(1000);
-    await clock.tick(30_000);
-    k.b.close();
-    const again = makeBroker(h, { now: clock.now, timers: clock.timers, codexPollMs: 1000, settings: () => ({ ...HOST_DEFAULTS, permissionWaitMax: wait }) });
-    await again.b.load([{ turn: 'cx', state: 'running' }]);
-    assert.deepEqual(again.writes, [], 'requests 7 and e9 were declined already, and 11 is new');
-    await clock.tick(wait - 30_000 - 1);
-    assert.deepEqual(again.writes, []);
-    // The fake clock runs a timer at the end of its tick, so the next look is a poll interval on, still well before
-    // permissionWaitMax from this daemon’s start.
-    await clock.tick(1000);
-    assert.deepEqual(
-      again.writes.map((w) => JSON.parse(w.line).id),
-      [11],
-      'declined permissionWaitMax after the first daemon saw it',
-    );
-    // A turn that has ended isn’t watched any more.
-    writeFileSync(h.p.turn('cx', TURN_FILES.exit), JSON.stringify({ code: 0, signal: null, at: 1 }));
-    await clock.tick(1000);
-    assert.deepEqual(again.b.pending.watches, []);
-    // Only held Codex turns are watched.
-    h.turn('cc');
-    await again.b.started('cc');
-    assert.deepEqual(again.b.pending.watches, []);
-    again.b.close();
-    assert.equal(codexPromptId(7), 'codex:7');
-    assert.equal(codexPromptId('x'.repeat(200)), null);
+    await codexRestarted(h, clock, k, out, wait);
   } finally {
     h.done();
   }

@@ -112,6 +112,54 @@ test('Stop ends a turn’s waiting prompts, and an answer for them is refused', 
   }
 });
 
+/**
+ * The restarts after an expiry that wasn’t written down (the test below), from the records it left.
+ * @param {ReturnType<typeof makeHome>} h @param {ReturnType<typeof fakeClock>} clock @param {object} opts @param {string} file @param {number} wait
+ */
+async function afterUnrecordedEnd(h, clock, opts, file, wait) {
+  // A restart from those records: nothing said p1 ended, so it waits again, and Postbox is shown it. No shim waits for
+  // it (the shim sent its notice, and resends only p2), so at permissionWaitMax from when it was asked, when any shim
+  // would have given up, it ends.
+  const again = makeBroker(h, opts);
+  await again.b.load([{ turn: 't1', state: 'running' }]);
+  assert.deepEqual(
+    (await again.hello()).map((m) => [m.type, m.id]),
+    [
+      ['prompt', 'p1'],
+      ['prompt', 'p2'],
+    ],
+  );
+  const s2 = connectShim(again.b, 't1');
+  await s2.next('welcome');
+  s2.send('permission', { id: 'p2', request: REQUEST });
+  await sleep(20);
+  await clock.tick(wait);
+  await until(() => again.sent.length, 'p1’s expiry');
+  assert.deepEqual(
+    again.sent.map((m) => [m.type, m.id, m.reason]),
+    [['prompt-expired', 'p1', 'expired']],
+    'p2’s shim still waits on it, and ends it itself',
+  );
+  assert.deepEqual(
+    again.b.pending.prompts.map((q) => q.id),
+    ['p2'],
+  );
+  assert.equal((await again.post('answer', { turn: 't1', prompt: 'p1', result: { behavior: 'deny', message: 'late' } })).errors[0]?.code, 'no-prompt');
+  again.b.close();
+  // Restarted past that point, the prompts nobody has sent again are ended at the hello, not shown.
+  const third = makeBroker(h, opts);
+  writeFileSync(file, `${JSON.stringify({ op: 'prompt', id: 'p3', request: REQUEST, at: clock.now() - wait })}\n`, { flag: 'a' });
+  await third.b.load([{ turn: 't1', state: 'running' }]);
+  assert.deepEqual(
+    (await third.hello()).map((m) => [m.type, m.id]),
+    [
+      ['prompt-expired', 'p2'],
+      ['prompt-expired', 'p3'],
+    ],
+  );
+  third.b.close();
+}
+
 test('an expiry the broker can’t write down still ends the prompt, unanswerable, and Postbox hears an error, not prompt-expired', async () => {
   const h = makeHome();
   const clock = fakeClock();
@@ -151,47 +199,7 @@ test('an expiry the broker can’t write down still ends the prompt, unanswerabl
     rmSync(file, { recursive: true });
     writeFileSync(file, before);
     k.b.close();
-    // A restart from those records: nothing said p1 ended, so it waits again, and Postbox is shown it. No shim waits for
-    // it (the shim sent its notice, and resends only p2), so at permissionWaitMax from when it was asked, when any shim
-    // would have given up, it ends.
-    const again = makeBroker(h, opts);
-    await again.b.load([{ turn: 't1', state: 'running' }]);
-    assert.deepEqual(
-      (await again.hello()).map((m) => [m.type, m.id]),
-      [
-        ['prompt', 'p1'],
-        ['prompt', 'p2'],
-      ],
-    );
-    const s2 = connectShim(again.b, 't1');
-    await s2.next('welcome');
-    s2.send('permission', { id: 'p2', request: REQUEST });
-    await sleep(20);
-    await clock.tick(wait);
-    await until(() => again.sent.length, 'p1’s expiry');
-    assert.deepEqual(
-      again.sent.map((m) => [m.type, m.id, m.reason]),
-      [['prompt-expired', 'p1', 'expired']],
-      'p2’s shim still waits on it, and ends it itself',
-    );
-    assert.deepEqual(
-      again.b.pending.prompts.map((q) => q.id),
-      ['p2'],
-    );
-    assert.equal((await again.post('answer', { turn: 't1', prompt: 'p1', result: { behavior: 'deny', message: 'late' } })).errors[0]?.code, 'no-prompt');
-    again.b.close();
-    // Restarted past that point, the prompts nobody has sent again are ended at the hello, not shown.
-    const third = makeBroker(h, opts);
-    writeFileSync(file, `${JSON.stringify({ op: 'prompt', id: 'p3', request: REQUEST, at: clock.now() - wait })}\n`, { flag: 'a' });
-    await third.b.load([{ turn: 't1', state: 'running' }]);
-    assert.deepEqual(
-      (await third.hello()).map((m) => [m.type, m.id]),
-      [
-        ['prompt-expired', 'p2'],
-        ['prompt-expired', 'p3'],
-      ],
-    );
-    third.b.close();
+    await afterUnrecordedEnd(h, clock, opts, file, wait);
   } finally {
     h.done();
   }

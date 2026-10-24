@@ -137,6 +137,19 @@ test('an answer is on disk before the shim hears it, and an expiry before Postbo
   }
 });
 
+/** Postbox’s reply to each call, while tools.jsonl can’t be appended to: each fails, and Postbox hears why. */
+async function repliesNotTaken(k, ids) {
+  for (const id of ids) {
+    const failed = await k.post('reply', { turn: 't1', id, ok: true, text: `answer ${id}` });
+    assert.equal(failed.errors.length, 1, `Postbox hears ${id}’s reply wasn’t taken`);
+    assert.equal(failed.errors[0].code, 'internal');
+    assert.match(
+      failed.errors[0].text,
+      new RegExp(`^Postbox’s daemon on this host couldn’t write down the reply to call ${id} in turn t1, so it wasn’t taken: `),
+    );
+  }
+}
+
 test('a reply the broker can’t write down doesn’t reach the shim: Postbox hears an error, the call waits, and a later reply goes', async () => {
   const h = makeHome();
   try {
@@ -150,15 +163,7 @@ test('a reply the broker can’t write down doesn’t reach the shim: Postbox he
     await until(() => k.sent.length === 2, 'the tools');
     // tools.jsonl can’t be appended to from here on: it’s a folder.
     blockFile(file);
-    for (const id of ['c1', 'c2']) {
-      const failed = await k.post('reply', { turn: 't1', id, ok: true, text: `answer ${id}` });
-      assert.equal(failed.errors.length, 1, `Postbox hears ${id}’s reply wasn’t taken`);
-      assert.equal(failed.errors[0].code, 'internal');
-      assert.match(
-        failed.errors[0].text,
-        new RegExp(`^Postbox’s daemon on this host couldn’t write down the reply to call ${id} in turn t1, so it wasn’t taken: `),
-      );
-    }
+    await repliesNotTaken(k, ['c1', 'c2']);
     await sleep(20);
     assert.deepEqual(
       s.got.filter((m) => m.type === 'result' && m.id === 'c1'),

@@ -16,13 +16,8 @@ import { BLOCK, BOOT, sleep, TOKEN, until, VERSION } from './remote-broker-fixtu
 
 // ── Through the daemon ──
 
-test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn’s calls, and a held-stdin write still goes', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'pbbd-'));
-  const p = hostPaths(home, VERSION);
-  mkdirSync(p.root, { recursive: true, mode: 0o700 });
-  writeFileSync(p.token, TOKEN, { mode: 0o600 });
-  const work = join(home, 'work');
-  mkdirSync(work);
+/** The daemon in-process, with fake runners: a held stdin’s writes are kept in `writes`. @param {string} home */
+function inProcessDaemon(home) {
   const alive = new Set();
   const writes = [];
   let pid = 4000;
@@ -57,6 +52,35 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
     pollMs: 10,
     stopGraceMs: 60_000,
   });
+  return { daemon, writes };
+}
+
+/** A shim, over a socket-shaped pair, as accept() sees one: what it got, and a function that sends. @param {any} daemon */
+function socketShim(daemon) {
+  const toDaemon = new PassThrough();
+  const fromDaemon = new PassThrough();
+  daemon.accept(/** @type {any} */ (Duplex.from({ readable: toDaemon, writable: fromDaemon })));
+  const got = [];
+  let buf = '';
+  fromDaemon.on('data', (d) => {
+    buf += d;
+    for (let nl = buf.indexOf('\n'); nl !== -1; nl = buf.indexOf('\n')) {
+      got.push(JSON.parse(buf.slice(0, nl)));
+      buf = buf.slice(nl + 1);
+    }
+  });
+  const shimSend = (type, body) => toDaemon.write(encode(message('shim-to-daemon', type, body)));
+  return { got, shimSend };
+}
+
+test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn’s calls, and a held-stdin write still goes', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pbbd-'));
+  const p = hostPaths(home, VERSION);
+  mkdirSync(p.root, { recursive: true, mode: 0o700 });
+  writeFileSync(p.token, TOKEN, { mode: 0o600 });
+  const work = join(home, 'work');
+  mkdirSync(work);
+  const { daemon, writes } = inProcessDaemon(home);
   try {
     await daemon.start();
     const input = new PassThrough();
@@ -69,20 +93,7 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
     send('snapshot', { turn: 't1', home: 'th', threads: [{ id: 'th', items: [{ id: 'i1', line: 'You: hi', text: 'You: hi' }] }] });
     send('start', { turn: 't1', harness: 'claude-code', folder: work, argv: [], env: {}, stdin: 'file', files: [{ name: MESSAGE_FILE, text: '{}\n' }] });
     await msgs.next('started');
-    // A shim, over a socket-shaped pair, as accept() sees one.
-    const toDaemon = new PassThrough();
-    const fromDaemon = new PassThrough();
-    daemon.accept(/** @type {any} */ (Duplex.from({ readable: toDaemon, writable: fromDaemon })));
-    const got = [];
-    let buf = '';
-    fromDaemon.on('data', (d) => {
-      buf += d;
-      for (let nl = buf.indexOf('\n'); nl !== -1; nl = buf.indexOf('\n')) {
-        got.push(JSON.parse(buf.slice(0, nl)));
-        buf = buf.slice(nl + 1);
-      }
-    });
-    const shimSend = (type, body) => toDaemon.write(encode(message('shim-to-daemon', type, body)));
+    const { got, shimSend } = socketShim(daemon);
     shimSend('hello', { token: TOKEN, turn: 't1' });
     await until(() => got.find((m) => m.type === 'welcome'), 'the welcome');
     assert.equal(got[0].permissionWaitMax, 60_000, 'the setting from Postbox’s hello');
