@@ -584,10 +584,12 @@ function renderItem(it, prev, ctx) {
         h('span.voice', icon('thread', 'i-sm'), it.text),
         it.quote ? h('span.app-says', 'The app’s summary: ', h('q', it.quote)) : null,
       );
-    case 'shared':
+    case 'shared': {
       // A reply or a summary sent back from a topic or side thread, by you or by an agent you asked (#128). Its agents
-      // read it at the start of their next turn.
-      return h(
+      // read it at the start of their next turn. It’s drawn as an agent’s reply is (#99), with the glossary of the
+      // thread it was written in while that thread is there, and its terms look their cards up there too.
+      const from = S().threads[it.fromThreadId] ? it.fromThreadId : ctx.threadId;
+      const node = h(
         'div.col.turn',
         h(
           'div.shared-card',
@@ -602,9 +604,14 @@ function renderItem(it, prev, ctx) {
             ),
             S().threads[it.fromThreadId] ? h('a.small', { href: hrefOf(it.fromThreadId) }, 'Open thread') : null,
           ),
-          h('div.md', { html: trusted(renderMarkdown(it.text, { mentions: handles() })) }),
+          h('div.md', { html: trusted(agentMarkdown(it, from)), dataset: { thread: from } }),
         ),
       );
+      const box = node.querySelector('.shared-card > .md');
+      markTerms(box, from);
+      queueMicrotask(() => enhanceMarkdown(box));
+      return node;
+    }
     case 'system':
       return systemLine(it, ctx);
     case 'sidelink':
