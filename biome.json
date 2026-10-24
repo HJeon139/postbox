@@ -68,7 +68,7 @@
       "includes": ["app/js/agents.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 394 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 372 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 158 } } }
         }
       }
@@ -117,8 +117,8 @@
       "includes": ["app/js/sheets.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1395 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 277 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1387 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 250 } } }
         }
       }
     },
@@ -135,8 +135,8 @@
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 2505 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 806 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 2484 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 791 } } }
         }
       }
     },
@@ -157,8 +157,8 @@
       "includes": ["app/js/work.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 897 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 414 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 863 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 396 } } }
         }
       }
     },
@@ -207,7 +207,7 @@
     },
     {
       "includes": ["server/adapters/claude-code.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 94 } } } } }
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 92 } } } } }
     },
     {
       "includes": ["server/adapters/claude-stream.mjs"],
@@ -222,7 +222,7 @@
       "includes": ["server/adapters/codex.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 413 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 399 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 130 } } }
         }
       }
@@ -231,7 +231,7 @@
       "includes": ["server/adapters/kiro-cli.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 581 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 558 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 154 } } }
         }
       }
@@ -253,8 +253,8 @@
       "includes": ["server/index.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 696 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 454 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 688 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 447 } } }
         }
       }
     },
@@ -262,7 +262,7 @@
       "includes": ["server/ledger.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 701 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 667 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 62 } } }
         }
       }
@@ -271,7 +271,7 @@
       "includes": ["server/runtime.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3461 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3459 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 194 } } }
         }
       }
@@ -305,13 +305,13 @@
       "includes": ["shared/work.mjs"],
       "linter": {
         "rules": {
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 74 } } }
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 70 } } }
         }
       }
     },
     {
       "includes": ["tests/antigravity-cli.test.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 598 } } } } }
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 590 } } } } }
     },
     {
       "includes": ["tests/claude-code.test.mjs"],
@@ -319,7 +319,7 @@
     },
     {
       "includes": ["tests/codex.test.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 356 } } } } }
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 316 } } } } }
     },
     {
       "includes": ["tests/commands.test.mjs"],
