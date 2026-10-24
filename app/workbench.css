@@ -651,8 +651,11 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .composer-box:focus-within { border-color: var(--accent); }
 .composer-box textarea { flex: 1; border: 0; background: transparent; resize: none; min-height: 30px; max-height: 200px; padding: 5px 4px; line-height: 1.4; outline: none; }
 .composer-box textarea::placeholder { color: var(--dim); }
-.composer .hint { font-size: 11.5px; line-height: 1.3; color: var(--dim); display: flex; gap: 14px; flex-wrap: wrap; }
+/* Two lines, with no gap between them, whatever it says: every composer’s box then sits as high as the next (#116). */
+.composer .hint { font-size: 11.5px; line-height: 1.3; min-height: 2.6em; color: var(--dim); display: flex; gap: 0 14px; flex-wrap: wrap; }
 .composer .hint b { color: var(--text); font-weight: 500; }
+/* A “mock” tag after a name fits the hint’s line, so it doesn’t make the line taller. */
+.composer .hint .mock-tag { line-height: 12px; vertical-align: top; }
 .attachments { display: flex; flex-wrap: wrap; gap: 6px; }
 .att { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 9px; border-radius: 6px; background: var(--chip); border: 1px solid var(--line); font-size: 12px; }
 .att .thumb { width: 18px; height: 18px; border-radius: 3px; background: var(--line); display: grid; place-items: center; color: var(--dim); }
@@ -735,7 +738,10 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 @media (max-width: 767px) { .rp-handle { display: none; } }
 .sidepanel .sp-head, .workpane .wp-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); min-height: 52px; }
 .sidepanel .sp-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-.sidepanel .sp-foot { padding: 10px 12px; border-top: 1px solid var(--line); }
+/* The composer brings its own padding, the same as the conversation’s, so the two line up (#116). The foot keeps the
+   top edge in place of the composer’s, so it spans a full-screen panel too. */
+.sidepanel .sp-foot { border-top: 1px solid var(--line); }
+.sidepanel .sp-foot > .composer { border-top: 0; }
 /* Topic threads: the message they branched from sits at the top of the panel. */
 .thread-root { display: flex; flex-direction: column; gap: 6px; padding: 0 0 12px; border-bottom: 1px solid var(--line); }
 .thread-root .md { font-size: 13px; }

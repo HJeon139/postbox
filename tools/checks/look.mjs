@@ -4,6 +4,7 @@
 //   - #8: an overview card that needs you has a look of its own, a heavier amber top edge and a tinted head band,
 //     not the 1 px amber outline of a button.
 //   - #199: nothing with a border that wraps to a second line has fully rounded (pill) ends.
+//   - #116: the composer in a topic thread and in a side thread is as tall as the conversation’s, and sits as high.
 //
 //   node tools/checks/look.mjs            (ONLY=#8 runs the cases whose name has that in it)
 //
@@ -217,6 +218,59 @@ for (const width of [1280, 375])
       assert.ok(pill >= 1.8, `the compaction line doesn’t wrap at ${width} px, so this checks nothing`);
     }
     assert.deepEqual(await page.evaluate(PILLS), []);
+  });
+
+// ── #116: every composer lines up with the conversation’s ───────────────────────────────
+
+const room = rt.createThread({ projectId: project.id, title: 'Composer heights', personaIds: [persona('researcher').id, persona('critic').id] });
+const [researcher, critic] = rt.sessionsIn(room.id);
+for (let i = 1; i <= 30; i++) rt.addItem(room.id, { kind: 'user', text: `Question ${i}: what does the observation step add?` });
+const root = rt.addItem(room.id, {
+  kind: 'agent',
+  sessionId: researcher.id,
+  personaId: researcher.personaId,
+  handle: researcher.handle,
+  text: 'The observation grounds the plan.',
+  status: 'done',
+});
+// The last speaker makes the conversation’s hint two lines (“Replying to @researcher”).
+rt.putThread({ ...store.state.threads[room.id], lastSpeaker: researcher.id });
+const topic = rt.startTopic(room.id, root.id).threadId;
+// A side thread as agentWake makes one (server/side-threads.mjs), without starting a turn.
+const side = rt.putThread({
+  ...{ id: 'th_lookside', projectId: project.id, title: '@critic ↔ @researcher', kind: 'side', parentId: room.id, pair: 'critic|researcher' },
+  ...{ woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
+});
+rt.addItem(side.id, {
+  kind: 'agent',
+  sessionId: critic.id,
+  personaId: critic.personaId,
+  handle: critic.handle,
+  text: 'Can you check the schema?',
+  status: 'done',
+});
+const BOXES = `[...document.querySelectorAll('.composer-box')].map((b) => { const r = b.getBoundingClientRect(); return { where: b.closest('.sidepanel') ? 'panel' : 'conversation', top: r.top, height: r.height }; })`;
+for (const width of [1280, 375])
+  await check(`#116 at ${width} px: the composers of a topic thread and a side thread are as tall as the conversation’s and sit as high`, async () => {
+    await page.size(width, 900, { theme: 'dark' });
+    const seen = [];
+    for (const panel of [topic, side.id]) {
+      await open(`#/t/${room.id}/side/${panel}`);
+      await page.waitFor(`document.querySelectorAll('.composer-box').length === 2`);
+      await settle();
+      const [main, other] = await page.evaluate(BOXES);
+      assert.equal(other.where, 'panel');
+      seen.push(other);
+      assert.ok(
+        Math.abs(other.height - main.height) < 1,
+        `the ${store.state.threads[panel].kind} thread’s box is ${other.height} px tall, the conversation’s ${main.height}`,
+      );
+      assert.ok(
+        Math.abs(other.top - main.top) < 1,
+        `the ${store.state.threads[panel].kind} thread’s box starts at ${other.top} px, the conversation’s at ${main.top}`,
+      );
+    }
+    assert.ok(Math.abs(seen[0].top - seen[1].top) < 1, `the topic thread’s box starts at ${seen[0].top} px, the side thread’s at ${seen[1].top}`);
   });
 
 await page.close();
