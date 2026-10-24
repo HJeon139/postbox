@@ -34,7 +34,7 @@ import { KNOWN_TOOLS, seed } from './seed.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
-import { watchTelemetry } from './telemetry.mjs';
+import { recordingOff, watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -313,9 +313,9 @@ export async function start({
           defaultEffort: DEFAULT_EFFORT,
           permissionModes: PERMISSION_MODES,
           demo,
-          // Whether Postbox looked for real backends, and the Claude Code it found (null if none): without it, the
-          // overview says how to install it (#12).
+          // Whether Postbox looked for real backends, and the Claude Code it found: if none, the overview says how (#12).
           realBackends: real,
+          recordingOff: recordingOff(rt),
           versions: config.versions,
           build: config.build,
           corpus: corpus.stats(),

@@ -8,32 +8,16 @@
 // Every clone, worktree and installed copy now shares one default folder, so a run claims it with a lock: a second
 // Postbox on the same folder would append to the same log, and delete segments the first is still writing.
 
-import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readlink, rename, rm, rmdir, symlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { CLONE_ROOT, moveBesideClones, planCloneMove, restoreAside } from './home-clones.mjs';
 
 /** The person’s Postbox folder: POSTBOX_HOME, else ~/.postbox. */
 export const postboxHome = (env = process.env, home = homedir()) => (env.POSTBOX_HOME ? resolve(env.POSTBOX_HOME) : join(home, '.postbox'));
 
 const STORE_FILE = /^(store\.json|snapshot\.json|events-\d+\.jsonl)$/;
 const LOCK = 'postbox.lock';
-
-/**
- * Where a clone’s telemetry lives (designs/telemetry-persona.md, R11): a folder of its own in the person’s Postbox
- * folder, keyed by the clone’s data folder as the file system finds it (through links, case-folded where names are),
- * never the clone’s data/, which is often inside the folder its agents work in.
- */
-export function cloneTelemetry(dataDir, home = postboxHome()) {
-  let p = resolve(dataDir);
-  try {
-    p = realpathSync(p);
-  } catch {}
-  if (['darwin', 'win32'].includes(process.platform)) p = p.toLowerCase();
-  return join(home, `telemetry-clone-${createHash('sha256').update(p).digest('hex').slice(0, 12)}`);
-}
 
 /** Whether a folder, or the folder a link leads to, holds conversations: an event log or a snapshot. */
 export function holdsStore(dir) {
@@ -125,50 +109,37 @@ export async function moveData({ root, env = process.env, home = homedir() }) {
   };
   if (inside(to, from) || inside(from, to)) throw new Error(`${to} and ${from} are inside one another, so Postbox can’t move one into the other.`);
   if (await readlink(to).catch(() => null)) throw new Error(`${to} is a link. Set POSTBOX_HOME to the folder it leads to, and run this again.`);
-  // Claimed first, before anything moves: a Postbox still running on data/ stops it here.
+  const there = await readdir(to).catch(() => null);
+  if (there?.length)
+    throw new Error(`${to} already has files in it, so Postbox won’t mix the two. Move them aside first, or keep using ${from} with --data ${from}.`);
   const release = lockData(from);
+  /** @type {string|null} */
+  let leftover = null;
   try {
-    await restoreAside(to);
-    const all = await readdir(to).catch(() => null);
-    // Clones’ telemetry folders are Postbox’s own, not the person’s files: the data goes in beside them.
-    const there = all?.filter((n) => !CLONE_ROOT.test(n));
-    if (there?.length)
-      throw new Error(`${to} already has files in it, so Postbox won’t mix the two. Move them aside first, or keep using ${from} with --data ${from}.`);
-    // Named before the move, while data/ is still itself: after it, data/ is a link to the new folder.
-    const own = cloneTelemetry(from, to);
-    const plan = all?.length ? planCloneMove({ from, to, own }) : null;
-    const { leftover } = plan ? await moveBesideClones({ from, to, own, carry: plan.carry }) : await moveWhole(from, to, !!all);
-    // The lock moved with the folder.
-    rmSync(join(to, LOCK), { force: true });
-    await symlink(to, from);
-    return { from, to, leftover };
+    if (there) await rmdir(to);
+    await mkdir(dirname(to), { recursive: true });
+    try {
+      await rename(from, to);
+    } catch (e) {
+      if (e.code !== 'EXDEV') throw e;
+      // The home folder is on another disk. The copy goes beside it and is renamed into place once whole, so a copy cut
+      // short never looks like a store; the original is set aside only after that, and removed last.
+      const partial = `${to}.partial`;
+      await rm(partial, { recursive: true, force: true });
+      await cp(from, partial, { recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false });
+      await rename(partial, to);
+      const old = `${from}.moved`;
+      await rename(from, old);
+      await rm(old, { recursive: true }).catch(() => {
+        leftover = old;
+      });
+    }
   } catch (e) {
     release();
     throw e;
   }
-}
-
-/** The data folder moved whole into an empty or missing home folder, across disks if it must. */
-async function moveWhole(from, to, exists) {
-  /** @type {string|null} */
-  let leftover = null;
-  if (exists) await rmdir(to);
-  await mkdir(dirname(to), { recursive: true });
-  try {
-    await rename(from, to);
-  } catch (e) {
-    if (e.code !== 'EXDEV') throw e;
-    // The home folder is on another disk. The copy goes beside it and is renamed into place once whole, so a copy cut
-    // short never looks like a store; the original is set aside only after that, and removed last.
-    const partial = `${to}.partial`;
-    await rm(partial, { recursive: true, force: true });
-    await cp(from, partial, { recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false });
-    await rename(partial, to);
-    const old = `${from}.moved`;
-    await rename(from, old);
-    await rm(old, { recursive: true }).catch(() => {
-      leftover = old;
-    });
-  }
-  return { leftover };
+  // The lock moved with the folder.
+  rmSync(join(to, LOCK), { force: true });
+  await symlink(to, from);
+  return { from, to, leftover };
 }

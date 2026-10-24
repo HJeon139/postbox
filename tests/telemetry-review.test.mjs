@@ -2,13 +2,23 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
-import { cloneTelemetry, moveData, postboxHome } from '../server/home.mjs';
-import { KEEP_MS, lostOf, startRecording, sweep, sweepClones, telemetryRoot, watchTelemetry } from '../server/telemetry.mjs';
+import { KEEP_MS, lostOf, recordingOff, startRecording, sweep, telemetryRoot, watchTelemetry } from '../server/telemetry.mjs';
 import { issuePreview } from '../server/telemetry-file.mjs';
 import { draftView, vocabOf } from '../server/telemetry-report.mjs';
 import { telemetryRoute } from '../server/telemetry-routes.mjs';
@@ -30,11 +40,7 @@ function tamper(dir, edit, metaEdit = (m) => m) {
   writeFileSync(join(dir, 'meta.json'), JSON.stringify({ ...metaEdit(meta), hash: sha(text) }));
 }
 
-test('round 2, 1: a clone’s telemetry has a folder of its own, and the sweep takes only conversation folders', async () => {
-  const clone = fileURLToPath(new URL('../data', import.meta.url));
-  const root = telemetryRoot({ config: {}, store: { dir: clone } });
-  assert.notEqual(root, join(postboxHome(), 'telemetry'));
-  assert.ok(root.startsWith(postboxHome()));
+test('round 2, 1: the sweep takes only conversation folders', async () => {
   const f = await flaggedRoom();
   const other = join(f.data, 'telemetry', 'notes');
   mkdirSync(other);
@@ -144,51 +150,12 @@ test('round 3, 1: a finding’s issue is its check’s own, or the report fails 
   f.stop();
 });
 
-test('round 3, 2: Record this room makes the telemetry folder’s parents, as a clone’s first ~/.postbox', async () => {
+test('round 3, 2: Record this room makes the telemetry folder’s parents, as for a first ~/.postbox', async () => {
   const f = setup();
   f.rt.config.telemetryRoot = join(f.data, 'never', 'made', 'telemetry');
   assert.doesNotThrow(() => startRecording(f.rt, f.t.id));
   assert.ok(existsSync(join(f.data, 'never', 'made', 'telemetry', f.t.id, 'recording')));
   f.stop();
-});
-
-test('round 3, 3: --move-data carries this clone’s telemetry into telemetry/ and puts other clones’ back', async () => {
-  const base = mkdtempSync(join(tmpdir(), 'pb-clone-move-'));
-  const root = join(base, 'postbox');
-  const home = join(base, 'home');
-  mkdirSync(join(root, 'data'), { recursive: true });
-  writeFileSync(join(root, 'data', 'events-1.jsonl'), '');
-  const to = join(home, '.postbox');
-  const own = cloneTelemetry(join(root, 'data'), to);
-  const other = join(to, 'telemetry-clone-0123456789ab');
-  mkdirSync(join(own, 'th_mine', 'reports', 'rep_a'), { recursive: true });
-  mkdirSync(join(other, 'th_theirs'), { recursive: true });
-  await moveData({ root, env: {}, home });
-  assert.ok(existsSync(join(to, 'telemetry', 'th_mine', 'reports', 'rep_a')));
-  assert.ok(!existsSync(own));
-  assert.ok(existsSync(join(other, 'th_theirs')));
-  rmSync(base, { recursive: true, force: true });
-});
-
-test('round 3, 3: other clones’ telemetry folders are aged, without deleting their conversations or reports', async () => {
-  const f = await flaggedRoom();
-  const home = mkdtempSync(join(tmpdir(), 'pb-clones-'));
-  const clone = join(home, 'telemetry-clone-0123456789ab', 'th_someone');
-  mkdirSync(join(clone, 'recording', 'streams'), { recursive: true });
-  mkdirSync(join(clone, 'reports', 'rep_x'), { recursive: true });
-  const stream = join(clone, 'recording', 'streams', 'old.jsonl');
-  writeFileSync(stream, '{}\n');
-  const old = (Date.now() - KEEP_MS - 864e5) / 1000;
-  utimesSync(stream, old, old);
-  const events = join(clone, 'recording', 'events.jsonl');
-  const line = `${JSON.stringify({ seq: 1, t: Date.now() - KEEP_MS - 864e5 })}\n`;
-  writeFileSync(events, line);
-  sweepClones(f.rt, Date.now(), home);
-  assert.ok(!existsSync(stream));
-  assert.equal(readFileSync(events, 'utf8'), line, 'a clone that may be running keeps its events.jsonl as it wrote it');
-  assert.ok(existsSync(join(clone, 'reports', 'rep_x')), 'saved reports stay');
-  f.stop();
-  rmSync(home, { recursive: true, force: true });
 });
 
 test('round 3, 4: Save runs the check on what it derives; a template that let room text in is refused', async () => {
@@ -218,28 +185,6 @@ test('round 3, 4: a sweep that throws as a whole is caught at start, and a later
   assert.equal(lostOf(f.rt).sweep, false);
 });
 
-test('round 3, 3: Postbox ages other clones’ folders when it starts, from the person’s Postbox folder', async () => {
-  const f = setup();
-  f.stop();
-  const home = mkdtempSync(join(tmpdir(), 'pb-home-clones-'));
-  const stream = join(home, 'telemetry-clone-0123456789ab', 'th_someone', 'recording', 'streams', 'old.jsonl');
-  mkdirSync(join(stream, '..'), { recursive: true });
-  writeFileSync(stream, '{}\n');
-  const old = (Date.now() - KEEP_MS - 864e5) / 1000;
-  utimesSync(stream, old, old);
-  const was = process.env.POSTBOX_HOME;
-  process.env.POSTBOX_HOME = home;
-  try {
-    delete f.rt.config.telemetryRoot;
-    watchTelemetry(f.rt)();
-  } finally {
-    if (was === undefined) delete process.env.POSTBOX_HOME;
-    else process.env.POSTBOX_HOME = was;
-  }
-  assert.ok(!existsSync(stream));
-  rmSync(home, { recursive: true, force: true });
-});
-
 test('round 4, 3: a room whose turn failed saves and files: the failed-turn row has no issue field', async () => {
   const f = setup({ record: true, answer: labelEach() });
   f.adapter.next.push(async () => {
@@ -254,4 +199,32 @@ test('round 4, 3: a room whose turn failed saves and files: the failed-turn row 
   const key = savedReports(f.rt, f.t.id)[0].findings.find((x) => x.key === 'failed-turn').key;
   assert.match(issuePreview(f.rt, f.t.id, id, key).text, /Live room: /);
   f.stop();
+});
+
+test('ruling: a clone on its own data/ can’t record and says to move its data first; a moved clone records into ~/.postbox', async () => {
+  const base = mkdtempSync(join(tmpdir(), 'pb-clone-rule-'));
+  const clone = join(base, 'postbox', 'data');
+  const home = join(base, 'home', '.postbox');
+  mkdirSync(clone, { recursive: true });
+  const f = setup();
+  delete f.rt.config.telemetryRoot;
+  f.rt.config.cloneData = clone;
+  f.rt.store.dir = clone;
+  assert.match(recordingOff(f.rt), /--move-data first/);
+  assert.equal(telemetryRoot(f.rt), null);
+  assert.throws(() => startRecording(f.rt, f.t.id), /--move-data first/);
+  assert.ok(!existsSync(join(clone, 'telemetry')), 'nothing written in data/');
+  // After --move-data: data/ is a link to the person’s Postbox folder, which the store now runs from.
+  rmSync(clone, { recursive: true });
+  mkdirSync(home, { recursive: true });
+  symlinkSync(home, clone);
+  for (const dir of [home, clone]) {
+    f.rt.store.dir = dir;
+    assert.equal(recordingOff(f.rt), null);
+    assert.equal(realpathSync(join(telemetryRoot(f.rt), '..')), realpathSync(home));
+  }
+  startRecording(f.rt, f.t.id);
+  assert.ok(existsSync(join(home, 'telemetry', f.t.id, 'recording')));
+  f.stop();
+  rmSync(base, { recursive: true, force: true });
 });

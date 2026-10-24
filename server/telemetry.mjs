@@ -5,14 +5,13 @@
 // (thread.recording), which only the header shows; no agent reads it. The whole folder goes with the conversation (after
 // Undo’s window); recording/ goes at once with Delete recordings, and each stream 30 days after it was last written.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setStreamTap } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
-import { cloneTelemetry } from './home.mjs';
 import { keepEvent } from './room-events.mjs';
-import { sweep, sweepClones } from './telemetry-sweep.mjs';
+import { sweep } from './telemetry-sweep.mjs';
 
 /** How long a recording is kept, at most (R11). */
 export const KEEP_MS = 30 * 864e5;
@@ -22,16 +21,28 @@ const SWEEP_MS = 864e5;
 const CLONE_DATA = fileURLToPath(new URL('../data', import.meta.url));
 
 /**
- * <data folder>/telemetry: --data’s or ~/.postbox’s, or the tests’ own. Never a clone’s data/, which is often inside
- * the folder its agents work in: a clone gets a folder of its own in ~/.postbox, keyed by its data folder, so its
- * sweep never meets the home install’s conversations, nor another clone’s.
+ * Why this Postbox can’t record, or null (R11): its conversations are in a clone’s own data/, a real folder rather than
+ * the link --move-data leaves, so recordings would sit in the folder its agents work in. --data and a moved clone
+ * record as any install does.
+ * @param {any} rt @returns {string|null}
  */
+export function recordingOff(rt) {
+  if (rt.config.telemetryRoot || !rt.store.dir) return null;
+  let own = false;
+  try {
+    // The tests name a clone’s data/ of their own (config.cloneData), as they name the telemetry folder.
+    const clone = rt.config.cloneData ?? CLONE_DATA;
+    own = !lstatSync(clone).isSymbolicLink() && realpathSync(rt.store.dir) === realpathSync(clone);
+  } catch {}
+  return own
+    ? 'This Postbox keeps its conversations in its own data/ folder, which is often inside the folder its agents work in. Move your data with --move-data first, then record.'
+    : null;
+}
+
+/** <data folder>/telemetry: --data’s, ~/.postbox’s (a moved clone’s too, through its link), or the tests’ own. */
 export const telemetryRoot = (rt) => {
   if (rt.config.telemetryRoot) return rt.config.telemetryRoot;
-  if (!rt.store.dir) return null;
-  // Compared as the file system finds them, so a clone reached through a link is still a clone.
-  if (real(rt.store.dir) !== real(CLONE_DATA)) return join(rt.store.dir, 'telemetry');
-  return cloneTelemetry(CLONE_DATA);
+  return rt.store.dir && !recordingOff(rt) ? join(rt.store.dir, 'telemetry') : null;
 };
 /** What a conversation’s folder is named: its id, and nothing else the sweep would take for one. */
 export const CONV_DIR = /^th_[A-Za-z0-9]{1,32}$/;
@@ -40,7 +51,7 @@ export const CONV_DIR = /^th_[A-Za-z0-9]{1,32}$/;
 export function folder(rt, ...parts) {
   const root = telemetryRoot(rt);
   if (!root) throw httpError(409, 'Postbox has no data folder to keep recordings in.');
-  // The root’s own parents too: a clone’s user may never have had a ~/.postbox.
+  // The root’s own parents too, when they’re missing, as a first ~/.postbox.
   if (!existsSync(root)) mkdirSync(root, { recursive: true, mode: 0o700 });
   let p = root;
   for (const part of parts) {
@@ -80,6 +91,8 @@ export function within(p, folder) {
 export function startRecording(rt, threadId) {
   const conv = convOf(rt, threadId);
   if (!conv || conv.kind === 'topic' || conv.kind === 'side') throw httpError(404, 'That conversation doesn’t exist.');
+  const off = recordingOff(rt);
+  if (off) throw httpError(409, off);
   if (conv.recording?.on) return { ok: true, recording: conv.recording };
   const project = rt.s.projects[conv.projectId]?.folder;
   const root = telemetryRoot(rt);
@@ -212,7 +225,6 @@ export function watchTelemetry(rt) {
     lostOf(rt).sweep = false;
     try {
       sweep(rt);
-      if (!rt.config.telemetryRoot) sweepClones(rt);
     } catch {
       lostOf(rt).sweep = true;
     }
@@ -237,7 +249,7 @@ function purgeRoom(rt, convId) {
   }
 }
 
-export { sweep, sweepClones };
+export { sweep };
 
 /** Whether a session’s turn is still running, so its stream isn’t whole yet (R10). */
 export const running = (rt, t) => rt.turns.get(t.sessionId)?.id === t.turnId;

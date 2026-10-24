@@ -25,12 +25,20 @@ export function telemetryItems(t) {
           desc: 'What’s recorded stays until you delete it',
           run: () => api(`/api/threads/${t.id}/telemetry/stop`, {}).catch(fail('Couldn’t stop recording')),
         }
-      : {
-          label: 'Record this room',
-          icon: 'clock',
-          desc: 'For a report you review. Nothing in the room changes',
-          run: () => api(`/api/threads/${t.id}/telemetry/record`, {}).catch(fail('Couldn’t start recording')),
-        },
+      : client.config?.recordingOff
+        ? // A clone on its own data/ can’t record (R11): the item says so, and why, rather than going away.
+          {
+            label: 'Record this room',
+            icon: 'clock',
+            desc: 'Off: move your data with --move-data first',
+            run: () => toast({ title: 'Recording is off here', text: client.config.recordingOff }),
+          }
+        : {
+            label: 'Record this room',
+            icon: 'clock',
+            desc: 'For a report you review. Nothing in the room changes',
+            run: () => api(`/api/threads/${t.id}/telemetry/record`, {}).catch(fail('Couldn’t start recording')),
+          },
     ...(rec
       ? [
           {
