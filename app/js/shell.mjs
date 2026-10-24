@@ -12,6 +12,7 @@ import { openPermissions } from './permissions.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
+import { recordingBadge, telemetryItems } from './telemetry.mjs';
 import { closeWork, menuAnchor, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
 export { railHidden, toggleRail };
@@ -126,7 +127,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       project
         ? [icon('right', `i-sm${up}`), h(`a.crumb${up}`, { href: `#/p/${project.id}` }, project.name)]
         : [icon('right', `i-sm${up}`), h(t || title ? `a.crumb${up}` : 'span.title', t || title ? { href: '#/' } : {}, 'Overview')],
-      title ? [icon('right', 'i-sm'), h('span.title', title)] : null,
+      title ? [icon('right', 'i-sm'), h('span.title', title), recordingBadge(t)] : null,
     ),
     present,
     t
@@ -153,8 +154,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
             {
               type: 'button',
               id: 'work-button',
-              'aria-pressed': String(route().work),
-              onclick: () => (route().work ? closeWork(t.id) : openWork(t.id)),
+              'aria-pressed': String(route().slot === 'work'),
+              onclick: () => (route().slot === 'work' ? closeWork(t.id) : openWork(t.id)),
             },
             icon('file', 'i-sm'),
             // The visible word is its name; on a phone it’s hidden from sight but still read, and the icon stays.
@@ -1118,18 +1119,14 @@ function conversationMenu(anchor, shown) {
         desc: room ? 'It joins the room' : 'This conversation becomes a room',
         run: () => openNewAgent({ threadId: t.id }),
       },
-      {
-        label: 'Work',
-        icon: 'file',
-        desc: 'What its agents changed, ran and published',
-        run: () => openWork(t.id),
-      },
+      { label: 'Work', icon: 'file', desc: 'What its agents changed, ran and published', run: () => openWork(t.id) },
       {
         label: 'Permissions…',
         icon: 'gear',
         desc: room ? 'An agent’s mode, rules and folders here' : 'Its mode, rules and folders here',
         run: () => openPermissions({ threadId: t.id }),
       },
+      ...telemetryItems(t),
       'hr',
       ...agentLines(t),
       ...(t.kind === 'side' || t.kind === 'topic'

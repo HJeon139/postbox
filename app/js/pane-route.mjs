@@ -44,5 +44,6 @@ export function canonical(r, current = null) {
   const side = r.sideId ?? (here ? null : sideRemembered(r.threadId));
   const work = r.work || workRemembered(r.threadId);
   if (side === r.sideId && work === r.work) return null;
-  return paneHref(r.threadId, { side, work, turn: r.turn, full: r.full, at: r.at });
+  // Telemetry stays in Work’s place over a remembered Work, so a reload restores it (R18).
+  return paneHref(r.threadId, { side, work, telemetry: r.telemetry, turn: r.turn, full: r.full, at: r.at });
 }

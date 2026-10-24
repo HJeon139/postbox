@@ -23,6 +23,8 @@ let dataDir = '';
 /** The conversation, its topic thread, and another conversation, by id. */
 export const ids = { conv: '', topic: '', other: '' };
 export const conv = (r) => `#/t/${ids.conv}${r}`;
+/** The server under test, for a check that seeds it (check-telemetry.mjs). */
+export const server = () => app;
 
 /** Starts the server and the page, on the conversation. */
 export async function begin(name, port, chromePort) {
