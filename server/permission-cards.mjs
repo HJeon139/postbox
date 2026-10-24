@@ -1,6 +1,7 @@
 // Permission cards and refusal cards: a call that waits for your answer, and a call Claude Code refused without asking.
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
+import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor } from './permission-rules.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
@@ -8,7 +9,8 @@ import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 // ── Permission prompts ─────────────────────────────────────────────────────────────
 // A real agent in “ask” mode stops before anything risky, such as running a command. Postbox shows a card
 // in the thread, the agent needs you, and the tool call waits for your answer. Ending the turn, or Stop,
-// turns any open card into “expired” and answers no.
+// turns any open card into “expired” and answers no. So does a card left for POSTBOX_TIMEOUT_MS: Claude Code gives up
+// on the call then (server/adapters/setup.mjs), and an answer after it would go nowhere (#220).
 
 /**
  * input is the call’s input, which Edit changes; suggestions are Claude Code’s own (`permission_suggestions`, the
@@ -62,8 +64,21 @@ export function askPerson(
   });
   rt.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
   return new Promise((resolve) => {
-    rt.permissionWaits.set(it.id, { resolve, threadId: turn.threadId, sessionId });
+    const timer = setTimeout(() => expireWait(rt, it.id), POSTBOX_TIMEOUT_MS);
+    timer.unref?.();
+    rt.permissionWaits.set(it.id, { resolve, threadId: turn.threadId, sessionId, timer });
   });
+}
+
+/**
+ * A card nobody answered for POSTBOX_TIMEOUT_MS (#220): Claude Code has given up on the call, so the card expires and
+ * says how long it waited, and a call still waiting (the SDK’s, which has no such limit) is refused.
+ * @param {any} rt @param {string} itemId
+ */
+export function expireWait(rt, itemId) {
+  const hours = POSTBOX_TIMEOUT_MS / 3600000;
+  const message = `Nobody answered within ${hours} hours, so the request expired. Ask again if you still need it.`;
+  return rt.settlePermission(itemId, 'expired', message, {}, { waitedMs: POSTBOX_TIMEOUT_MS });
 }
 
 /**
@@ -100,6 +115,7 @@ export function readsRules(rt, backend) {
 export function settlePermission(rt, itemId, status, message, answer = {}, patch = {}) {
   const w = rt.permissionWaits.get(itemId);
   if (!w) return false;
+  clearTimeout(w.timer);
   rt.permissionWaits.delete(itemId);
   rt.patchItem(w.threadId, itemId, { status, answeredAt: Date.now(), ...patch });
   const se = rt.s.sessions[w.sessionId];

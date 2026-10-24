@@ -16,6 +16,9 @@ const PERMISSION_DONE = {
   denied: 'Not allowed',
   expired: 'Expired: the turn ended before you answered',
 };
+/** What an answered card says. One left until Claude Code gave up on the call says how long it waited (#220). */
+const doneText = (it) =>
+  it.waitedMs ? `Expired: nobody answered within ${Math.round(it.waitedMs / 3600000)} hours` : (PERMISSION_DONE[it.status] ?? it.status);
 /**
  * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
  * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.
@@ -176,7 +179,7 @@ export function permissionBlock(it, ctx) {
         ? h(
             'span.answered-note',
             icon(done ? 'check' : 'x', 'i-sm'),
-            PERMISSION_DONE[it.status] ?? it.status,
+            doneText(it),
             it.status === 'allowed-always' && it.always ? ` (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')})` : '',
           )
         : null,

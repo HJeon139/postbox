@@ -1,5 +1,5 @@
 // Permission cards and refusal cards (server/permission-cards.mjs): what they offer for a call no one rule can allow
-// (#238).
+// (#238), and how long a card waits (#220).
 
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { POSTBOX_TIMEOUT_MS } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
@@ -108,4 +109,48 @@ test('#238 a permission card for a chained command offers no Always allow, since
   rt.act(t.id, card.id, 'allow');
   await settle(rt);
   assert.equal(answer.allow, true, 'Allow still answers the waiting call');
+});
+
+// Claude Code drops the call at POSTBOX_TIMEOUT_MS (the MCP server’s timeout, #217), so an answer after it would go
+// nowhere. node:test’s mock timers stand in for the clock, so the test doesn’t wait 25 hours.
+test('#220 a card nobody answers expires at POSTBOX_TIMEOUT_MS, says how long it waited, and the call is refused', async (t) => {
+  const { store, rt, adapter, t: thread, se } = await setup();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  /** @type {any} */
+  let answer = null;
+  adapter.next.push(async (c) => {
+    answer = await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'npm test' } });
+  });
+  rt.sendMessage(thread.id, { text: 'run the tests' });
+  const card = () => store.items(thread.id).find((i) => i.kind === 'permission');
+  for (let i = 0; i < 50 && !card(); i++) await new Promise(setImmediate);
+  assert.equal(card()?.status, 'open');
+  t.mock.timers.tick(POSTBOX_TIMEOUT_MS - 1);
+  assert.equal(card().status, 'open', 'still open a moment before');
+  t.mock.timers.tick(1);
+  for (let i = 0; i < 50 && !answer; i++) await new Promise(setImmediate);
+  assert.equal(card().status, 'expired');
+  assert.equal(card().waitedMs, POSTBOX_TIMEOUT_MS);
+  assert.deepEqual(answer, { allow: false, message: 'Nobody answered within 25 hours, so the request expired. Ask again if you still need it.' });
+  assert.equal(store.state.sessions[se.id].needs, null, 'it no longer needs you');
+  assert.throws(() => rt.act(thread.id, card().id, 'allow'), /already answered/);
+  t.mock.timers.reset();
+  await settle(rt);
+});
+
+test('#220 a card answered before the wait ends keeps its answer when the wait would have ended', async (t) => {
+  const { store, rt, adapter, t: thread } = await setup();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  adapter.next.push(async (c) => {
+    await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'npm test' } });
+  });
+  rt.sendMessage(thread.id, { text: 'run the tests' });
+  const card = () => store.items(thread.id).find((i) => i.kind === 'permission');
+  for (let i = 0; i < 50 && !card(); i++) await new Promise(setImmediate);
+  rt.act(thread.id, card().id, 'allow');
+  t.mock.timers.tick(POSTBOX_TIMEOUT_MS);
+  assert.equal(card().status, 'allowed', 'the expiry never fires on an answered card');
+  assert.equal(card().waitedMs, undefined);
+  t.mock.timers.reset();
+  await settle(rt);
 });
