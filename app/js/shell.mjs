@@ -9,9 +9,12 @@ import { agentsSection, joinedWhy, openAgentPanel, openAsks, openAsksEl } from '
 import { api, busy, client, hrefOf, liveSessions, needsYou, sessionsOf, stopSession, threadState, threadsOf, topicsOf, whereOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
+import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDelete, confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import { closeWork, menuAnchor, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
+
+export { railHidden, toggleRail };
 
 const S = () => client.state;
 
@@ -92,8 +95,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
           {
             type: 'button',
             id: 'rail-toggle',
-            'aria-label': railHidden() ? 'Show the sidebar' : 'Hide the sidebar',
-            'aria-pressed': String(!railHidden()),
+            'aria-label': railShown() ? 'Hide the sidebar' : 'Show the sidebar',
+            'aria-pressed': String(railShown()),
             'aria-keyshortcuts': 'Meta+Backslash',
             onclick: toggleRail,
           },
@@ -254,28 +257,6 @@ function buildLine() {
     { 'aria-label': `Postbox version ${b.version}${b.commit ? `, commit ${b.commit}` : ''}` },
     `v${b.version}${b.commit ? ` · ${b.commit}` : ''}`,
   );
-}
-
-export function railHidden() {
-  try {
-    return localStorage.getItem('pb-rail') === 'hidden';
-  } catch {
-    return false;
-  }
-}
-
-/** Shows or hides the rail (⌘\), and remembers it. */
-export function toggleRail() {
-  const hide = !railHidden();
-  try {
-    localStorage.setItem('pb-rail', hide ? 'hidden' : 'shown');
-  } catch {}
-  document.querySelector('.app')?.classList.toggle('rail-hidden', hide);
-  const b = document.getElementById('rail-toggle');
-  if (b) {
-    b.setAttribute('aria-label', hide ? 'Show the sidebar' : 'Hide the sidebar');
-    b.setAttribute('aria-pressed', String(!hide));
-  }
 }
 
 /** ⌃J: go to the next agent that needs you, and focus what it’s waiting on. */
