@@ -37,7 +37,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -46,7 +46,7 @@ import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { effortOf, modelOf, POSTBOX_SERVER, setupOf } from './setup.mjs';
+import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
 export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list' });
@@ -573,10 +573,10 @@ export class KiroCliAdapter {
         child.stderr.on('data', (d) => {
           stderr = (stderr + d).slice(-4000);
         });
-        const record = this.env.POSTBOX_KIRO_RECORD ? join(this.env.POSTBOX_KIRO_RECORD, `${Date.now()}-${persona.handle}.jsonl`) : null;
+        const record = recorderFor(ctx, this.env.POSTBOX_KIRO_RECORD, 'kiro-cli');
         createInterface({ input: child.stdout }).on('line', (line) => {
           if (!line.trim()) return;
-          if (record) appendFileSync(record, `${line}\n`);
+          record(line);
           let e;
           try {
             e = JSON.parse(line);

@@ -25,7 +25,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -34,7 +34,7 @@ import { createStreamMapper, forkPointMissing, resultError, windowFor } from './
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
-import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
+import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, recorderFor, settingsFor, setupOf, writeRules } from './setup.mjs';
 
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
 // settings, or auto, and an agent you set to ask could end up not asking. (manual is the CLI’s name for default.)
@@ -246,10 +246,10 @@ export class ClaudeCodeAdapter {
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);
       });
-      const record = process.env.POSTBOX_CLAUDE_RECORD ? join(process.env.POSTBOX_CLAUDE_RECORD, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
+      const record = recorderFor(ctx, process.env.POSTBOX_CLAUDE_RECORD, 'claude-code');
       createInterface({ input: child.stdout }).on('line', (line) => {
         if (!line.trim()) return;
-        if (record) appendFileSync(record, `${line}\n`);
+        record(line);
         let e;
         try {
           e = JSON.parse(line);
