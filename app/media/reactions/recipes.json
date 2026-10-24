@@ -1,0 +1,197 @@
+{
+ "approve": {
+  "id": "lab-74b669a3d69f",
+  "emoji": "👍",
+  "chosen": "2026-10-24T16:36:23.206Z",
+  "files": [
+   "approve-128.png",
+   "approve-64.png",
+   "approve-original.png"
+  ],
+  "contrast": {
+   "light": 2.69,
+   "dark": 15.15,
+   "worst": 2.69
+  },
+  "recipe": {
+   "prompt": "A perforated postage stamp with a big heart in the middle and a little wavy postmark, quaint and simple. Simplified into a few clean, bold shapes. Touches of sage green. Muted earthy colors with one clear accent. Drawn as a small embroidered patch with satin stitching and a stitched cream border. One object only, centered, filling about two thirds of the square frame. On a flat plain medium grey background with nothing else on it. Big readable shapes, so it still works as a small emoji.",
+   "style": "embroidered-patch",
+   "subject_id": "heart-postage",
+   "subject": "a perforated postage stamp with a big heart in the middle and a little wavy postmark",
+   "terms": {
+    "phrasing": 1,
+    "ink": "sage green",
+    "mood": "quaint",
+    "look": 0,
+    "ink_family": "green",
+    "detail": null,
+    "palette": 2,
+    "legibility": 2,
+    "framing": 0,
+    "abstraction": 2
+   },
+   "seed": 570560817,
+   "guidance": 4,
+   "steps": 28,
+   "size": 128,
+   "refs": [],
+   "model": "black-forest-labs/FLUX.2-dev"
+  }
+ },
+ "disapprove": {
+  "id": "lab-0e5c4cbe67da",
+  "emoji": "👎",
+  "chosen": "2026-10-24T16:37:15.081Z",
+  "files": [
+   "disapprove-128.png",
+   "disapprove-64.png",
+   "disapprove-original.png"
+  ],
+  "contrast": {
+   "light": 3.72,
+   "dark": 16.55,
+   "worst": 3.72
+  },
+  "recipe": {
+   "prompt": "An icon of a red rubber stamp ring with one bold diagonal slash across it, like a no entry sign, cozy in feel. Bright cheerful colors and strong contrast, with a crisp cream border.. Abstract and stylized, reduced to its basic forms. Touches of vermilion. Drawn as a cute illustrated sticker from a stationery shop, colored pencil over gouache. A thin even cream white die cut sticker border around its whole silhouette. Centered alone in the square frame, filling most of it with a little margin. On a flat plain medium grey background with nothing else on it. It must stand out on both a white and a near black background.",
+   "style": "sticker",
+   "subject_id": "slash-stamp",
+   "subject": "a red rubber stamp ring with one bold diagonal slash across it, like a no entry sign",
+   "terms": {
+    "ink": "vermilion",
+    "mood": "cozy",
+    "look": 4,
+    "ink_family": "red",
+    "detail": null,
+    "palette": 2,
+    "legibility": 4,
+    "framing": 2,
+    "abstraction": 3
+   },
+   "seed": 1603745149,
+   "guidance": 4,
+   "steps": 28,
+   "size": 128,
+   "refs": [
+    "images/old-e1bc0e33f449.png"
+   ],
+   "model": "black-forest-labs/FLUX.2-dev"
+  }
+ },
+ "flag": {
+  "id": "lab-f578ce8acec4",
+  "emoji": "🚩",
+  "chosen": "2026-10-24T16:37:55.755Z",
+  "files": [
+   "flag-128.png",
+   "flag-64.png",
+   "flag-original.png"
+  ],
+  "contrast": {
+   "light": 2.27,
+   "dark": 15.96,
+   "worst": 2.27
+  },
+  "recipe": {
+   "prompt": "An icon of a small red triangular pennant on a pin stuck into a cream envelope, storybook in feel. Its accent color is bright coral. Bright, clear colors that stay vivid on both light and dark backgrounds.. Drawn as a small embroidered patch with satin stitching and a stitched cream border. Pared back almost to a pictogram, but still hand drawn. Centered alone in the square frame, filling most of it, with a little room around the edges. On a flat plain medium grey background with nothing else on it. A strong, simple outline that still reads at a tiny emoji size.",
+   "style": "embroidered-patch",
+   "subject_id": "pennant-pin",
+   "subject": "a small red triangular pennant on a pin stuck into a cream envelope",
+   "terms": {
+    "ink": "bright coral",
+    "mood": "storybook",
+    "look": 0,
+    "ink_family": "orange",
+    "detail": null,
+    "palette": 0,
+    "legibility": 3,
+    "framing": 3,
+    "abstraction": 4
+   },
+   "seed": 396248151,
+   "guidance": 3.5,
+   "steps": 28,
+   "size": 128,
+   "refs": [],
+   "model": "black-forest-labs/FLUX.2-dev"
+  }
+ },
+ "unclear": {
+  "id": "lab-a8d0f711379d",
+  "emoji": "❓",
+  "chosen": "2026-10-24T16:37:59.876Z",
+  "files": [
+   "unclear-128.png",
+   "unclear-64.png",
+   "unclear-original.png"
+  ],
+  "contrast": {
+   "light": 13.04,
+   "dark": 11.87,
+   "worst": 11.87
+  },
+  "recipe": {
+   "prompt": "A kraft paper envelope with an unreadable scribbled address and one big question mark across the front. A few bright, saturated colors with plenty of contrast.. Pared back almost to a pictogram, but still hand drawn. Its accent color is bright purple. Drawn as a cute embroidered patch, tight satin stitches in a few thread colors. One object only, centered, filling about two thirds of the square frame. On a flat plain medium grey background with nothing else on it. A strong, simple outline that still reads at a tiny emoji size.",
+   "style": "embroidered-patch",
+   "subject_id": "smudged-address",
+   "subject": "a kraft paper envelope with an unreadable scribbled address and one big question mark across the front",
+   "terms": {
+    "phrasing": 2,
+    "ink": "bright purple",
+    "mood": "warm and friendly",
+    "look": 1,
+    "ink_family": "purple",
+    "detail": null,
+    "palette": 1,
+    "legibility": 3,
+    "framing": 0,
+    "abstraction": 4
+   },
+   "seed": 1356083644,
+   "guidance": 4.5,
+   "steps": 28,
+   "size": 128,
+   "refs": [],
+   "model": "black-forest-labs/FLUX.2-dev"
+  }
+ },
+ "done": {
+  "id": "lab-6e3327f3f2b7",
+  "emoji": "✅",
+  "chosen": "2026-10-24T16:38:43.376Z",
+  "files": [
+   "done-128.png",
+   "done-64.png",
+   "done-original.png"
+  ],
+  "contrast": {
+   "light": 15.49,
+   "dark": 11.98,
+   "worst": 11.98
+  },
+  "recipe": {
+   "prompt": "A whimsical picture of a round wax seal pressed with a bold check mark. Only one or two small details, nothing busy.. Touches of turquoise. A few bright, saturated colors with plenty of contrast.. Drawn as a cute embroidered patch, tight satin stitches in a few thread colors. Centered alone in the square frame, filling most of it, with a little room around the edges. On a flat plain medium grey background with nothing else on it. A strong, simple outline that still reads at a tiny emoji size.",
+   "style": "embroidered-patch",
+   "subject_id": "check-seal",
+   "subject": "a round wax seal pressed with a bold check mark",
+   "terms": {
+    "phrasing": 1,
+    "ink": "turquoise",
+    "mood": "whimsical",
+    "look": 1,
+    "ink_family": "teal",
+    "detail": 1,
+    "palette": 1,
+    "legibility": 3,
+    "framing": 3,
+    "abstraction": 0
+   },
+   "seed": 924688338,
+   "guidance": 4.5,
+   "steps": 28,
+   "size": 128,
+   "refs": [],
+   "model": "black-forest-labs/FLUX.2-dev"
+  }
+ }
+}
