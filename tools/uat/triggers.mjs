@@ -11,14 +11,11 @@
 //   facts.probes     what the runner saw on the page: a notice that Postbox refused an answer as stale (#123)
 
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
+import { NEEDS_TRIGGERS } from '../../server/room-checks-needs.mjs';
+import { clip as clipTo } from '../../shared/text.mjs';
 import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 
-const clip = (s, n = 120) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
+const clip = (s, n = 120) => clipTo(s, n);
 const timeOf = (ts) => {
   const n = typeof ts === 'string' ? Date.parse(ts) : Number.NaN;
   return Number.isFinite(n) ? n : null;
@@ -236,6 +233,7 @@ export const TRIGGERS = {
         })),
   },
   ...TELEMETRY_TRIGGERS,
+  ...NEEDS_TRIGGERS,
 };
 
 /**

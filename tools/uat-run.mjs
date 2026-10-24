@@ -30,7 +30,9 @@ import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
 import { agyTokens, kiroCredits, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
+import { goToNeedsStep } from './uat/driver-needs.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
+import { newProbes } from './uat/probes.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { reviewFindings } from './uat/review.mjs';
 import { readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
@@ -259,10 +261,7 @@ async function main() {
     transcripts: [],
     console: page.logs,
     apps: {},
-    // stale: the page’s notices that Postbox refused an answer as stale (#123); interrupts: how the runner answered
-    // Stop’s question about background jobs (#126). The triggers read both. panels, panes and drafts: what the Agents
-    // section, the right pane and full screen showed (#105, #146).
-    probes: { fullScreen: [], attachments: [], answers: [], stale: [], interrupts: [], panels: [], panes: [], drafts: [] },
+    probes: newProbes(),
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
@@ -525,6 +524,7 @@ async function main() {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
         if (a.type === 'telemetry') actionResult = await tm.telemetryAction(td, a, key, tel);
+        else if (a.type === 'go_to_needs') actionResult = await goToNeedsStep({ d, page, api, keys, facts, step }, a);
         else if (a.type === 'send') {
           await d.send(a.text ?? '');
           // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
@@ -847,7 +847,7 @@ async function recheck(dir) {
       events: readHistory(dir),
       console: page.logs,
       apps: {},
-      probes: { fullScreen: [], attachments: [], answers: [], ...(saved.probes ?? {}) },
+      probes: { ...newProbes(), ...(saved.probes ?? {}) },
       samples: saved.samples ?? [],
       ui: {},
       ...userSetup(join(dir, 'workspace')),
