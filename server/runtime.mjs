@@ -54,6 +54,7 @@ import {
   wakeAgent,
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
+import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
@@ -613,7 +614,8 @@ export class Runtime {
     const slash = message.slash === true;
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
-      message = { ...message, context: [...se.context, ...(message.context ?? [])] };
+      // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
+      message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
       this.updateSession(sessionId, { context: [] });
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
@@ -672,6 +674,7 @@ export class Runtime {
     turn.allowOnce = se.allowOnce ?? [];
     this.updateSession(sessionId, {
       allowOnce: [],
+      endingSubagents: [],
       glimpse: '',
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
@@ -1225,9 +1228,11 @@ export class Runtime {
    * Stop from the page (#129): with background jobs running, it asks first whether to stop them too, and the ask
    * shows in the conversation (se.stopAsk) until you answer, dismiss it, or the turn ends.
    * turnId: the turn the ask was about. An answer to an ask about a turn that has ended since stops nothing.
-   * @param {string} sessionId @param {{ jobs?: 'stop' | 'keep' | null, turnId?: string | null }} [choice]
+   * subagent: End on that subagent’s row instead (#229), which tells the agent to stop it.
+   * @param {string} sessionId @param {{ jobs?: 'stop' | 'keep' | null, turnId?: string | null, subagent?: string | null }} [choice]
    */
-  requestStop(sessionId, { jobs = null, turnId = null } = {}) {
+  requestStop(sessionId, { jobs = null, turnId = null, subagent = null } = {}) {
+    if (subagent) return endSubagent(this, sessionId, String(subagent));
     const se = this.session(sessionId);
     const turn = this.turns.get(sessionId);
     if (!turn) return { stopped: false };

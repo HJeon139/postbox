@@ -18,6 +18,7 @@ import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { offersBring } from './side-threads.mjs';
+import { withUrgent } from './subagent-end.mjs';
 
 const PROTOCOL = '2025-06-18';
 const count = (k) => k.toLocaleString('en-US');
@@ -264,7 +265,9 @@ async function one(rt, sessionId, msg, turnToken) {
         // An app’s code and data files may come from files in the agent’s folder, which Postbox reads itself (#54).
         const app = name === 'show_app' || name === 'update_app' ? await rt.appFiles(sessionId, args) : { args };
         const r = await tools[name](app.args, app.files ? { files: app.files } : {});
-        return reply({ content: [{ type: 'text', text: r.results ? JSON.stringify(r.results) : r.message }], isError: r.ok === false && !r.waiting });
+        // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
+        const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message);
+        return reply({ content: [{ type: 'text', text }], isError: r.ok === false && !r.waiting });
       } catch (e) {
         if (e instanceof AgentFileError) return reply({ content: [{ type: 'text', text: e.message }], isError: true });
         return reply({ content: [{ type: 'text', text: e.userMessage ?? e.message }], isError: true });

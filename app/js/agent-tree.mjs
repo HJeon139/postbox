@@ -2,7 +2,7 @@
 // side or topic thread, and the subagents at work in its turn (#73), which are its only children: there are no forks
 // (#228).
 
-import { busy, client, hrefOf, stopSession } from './client.mjs';
+import { api, busy, client, hrefOf, stopSession } from './client.mjs';
 import { fill, h } from './dom.mjs';
 import { stateWord } from './ring.mjs';
 import { navigate, say, toast } from './ui.mjs';
@@ -52,11 +52,13 @@ export function subagentNow(sub) {
 }
 
 /**
- * The subagents under an agent’s row, after its side-thread entries (#73). Each entry is kept and changed in place as
- * the subagent works, so its ring keeps turning and the entries beside it (and a focused Stop) aren’t rebuilt.
+ * The subagents under an agent’s row, after its side-thread entries (#73), each with End (#229). Each entry is kept and
+ * changed in place as the subagent works, so its ring keeps turning and the entries beside it (and a focused End or
+ * Stop) aren’t rebuilt.
  * @param {HTMLElement} list @param {number} after how many entries come first @param {{ sub: any, depth: number }[]} subs
+ * @param {any} se  the agent they work for
  */
-export function paintSubagents(list, after, subs) {
+export function paintSubagents(list, after, subs, se) {
   const keyOf = (/** @type {any} */ sub) => String(sub.id ?? sub.name);
   /** @type {Map<string, HTMLElement>} */
   const had = new Map(
@@ -71,6 +73,7 @@ export function paintSubagents(list, after, subs) {
         { dataset: { subagent: keyOf(sub) } },
         h('span.ring-slot', { 'aria-hidden': 'true' }, h('pb-ring', { size: 'xs' })),
         h('span.name', h('span.sub-head'), h('span.sub-now')),
+        h('button.btn.sm.ghost.sub-end', { type: 'button', onclick: () => endSubagent(se.id, /** @type {HTMLElement} */ (li)) }, 'End'),
       );
     }
     li.dataset.depth = String(Math.min(depth, 3));
@@ -83,11 +86,43 @@ export function paintSubagents(list, after, subs) {
     const asked = sub.asked && sub.asked !== sub.name ? sub.asked : null;
     fill(li.querySelector('.sub-head'), h('b', sub.name), ` · ${sub.bg ? 'subagent in the background' : 'subagent'}`, asked ? `: ${asked}` : '');
     const now = /** @type {HTMLElement} */ (li.querySelector('.sub-now'));
-    if (now.textContent !== subagentNow(sub)) now.textContent = subagentNow(sub);
-    now.className = `sub-now${sub.said ? ' said' : sub.thinking ? ' thinking' : ''}`;
+    // Ended by the person: it reads “ending” until it or the turn ends, since only its agent can stop it (#229).
+    const ending = !!sub.id && (S().sessions[se.id]?.endingSubagents ?? []).includes(sub.id);
+    const line = ending ? `Ending: @${se.handle} was told to stop it` : subagentNow(sub);
+    if (now.textContent !== line) now.textContent = line;
+    now.className = `sub-now${ending ? '' : sub.said ? ' said' : sub.thinking ? ' thinking' : ''}`;
+    const end = /** @type {HTMLButtonElement} */ (li.querySelector('.sub-end'));
+    end.hidden = !sub.id || ending;
+    end.setAttribute('aria-label', `End @${se.handle}’s subagent ‘${asked ?? sub.name}’`);
+    li.dataset.subId = sub.id ?? '';
     if (list.children[after + i] !== li) list.insertBefore(li, list.children[after + i] ?? null);
   });
   for (const li of had.values()) li.remove();
+}
+
+/**
+ * End on a subagent’s row (#229): its agent is told to stop it and not use its result. Focus moves to the next
+ * subagent’s End, else the agent’s row, since this one now reads “ending”.
+ * @param {string} sessionId @param {HTMLElement} li
+ */
+function endSubagent(sessionId, li) {
+  const next = /** @type {HTMLElement | null} */ (li.nextElementSibling?.querySelector('.sub-end:not([hidden])') ?? null);
+  const row = /** @type {HTMLElement | null} */ (li.closest('li.agent-row')?.querySelector('.agent-btn') ?? null);
+  const name = li.querySelector('.sub-head b')?.textContent ?? 'the subagent';
+  // The next row can go meanwhile (its subagent ended): then focus goes to the agent’s row.
+  const move = () => /** @type {HTMLElement | null} */ (next?.isConnected ? next : row)?.focus();
+  api(`/api/sessions/${sessionId}/stop`, { subagent: li.dataset.subId }).then(
+    () => {
+      move();
+      say(`Told the agent to stop ${name} and not use its result.`);
+    },
+    // It finished first (409): nothing to end, and nothing wrong. Anything else did go wrong.
+    (e) => {
+      move();
+      if (e.status === 409) say(`${name} had already finished.`);
+      else toast({ title: `Couldn’t end ${name}`, text: e.message, level: 'blocking' });
+    },
+  );
 }
 
 /** One nested entry: where it is (a link that opens the side thread), who woke it, its state, and its Stop. */

@@ -111,7 +111,7 @@ function paintRow(n, se, fresh = false) {
     subs.dataset.sig = treeSig(tree);
     subs.replaceChildren(...tree.map(treeEntry), ...subs.querySelectorAll(':scope > li.subagent'));
   }
-  paintSubagents(subs, tree.length, subagents);
+  paintSubagents(subs, tree.length, subagents, se);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
   fill(

@@ -393,7 +393,7 @@ export async function start({
     }
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/(stop|archive|restore|undo-delete)$/)) && req.method === 'POST') {
       const action = {
-        stop: () => rt.requestStop(m[1], { jobs: body.jobs ?? null, turnId: body.turnId ?? null }),
+        stop: () => rt.requestStop(m[1], { jobs: body.jobs ?? null, turnId: body.turnId ?? null, subagent: body.subagent ?? null }),
         archive: () => rt.archive(m[1]),
         restore: () => rt.restore(m[1]),
         'undo-delete': () => rt.undoDelete(m[1]),

@@ -2,7 +2,7 @@
 // and clicks, at 1280 and 375 px: the rows in the sidebar, and a topic thread’s line of who is in it (#228); changing
 // the model, effort, permission mode and shell in two clicks; the scope each control says; the links, Stop, Compact
 // and Archive; the rings in the top bar, which open the same panel where the sidebar is hidden; and the subagents at
-// work in the tree and the working row, from a recorded stream (#73).
+// work in the tree and the working row, from a recorded stream (#73), with End on each, by keyboard (#229).
 //
 //   node tools/check-agents.mjs
 //
@@ -478,6 +478,36 @@ await check('a subagent at work is a child in the agent tree, with what it was a
   } finally {
     r.go();
   }
+});
+
+await check('End on a subagent’s row, by keyboard, tells its agent and reads “ending”; focus moves to the next row (#229)', async () => {
+  const NESTED = 'toolu_014cQVtisPCNL6gRibMij5jM';
+  const r = replayNext('subagent-tree', (e) => e.type === 'user' && e.message?.content?.some?.((b) => b.tool_use_id === NESTED));
+  await open(`#/t/${planning.id}`);
+  try {
+    rt.sendMessage(planning.id, { text: '@indexer count the words, with a subagent' });
+    await until(() => r.held, 'the replay to reach its pause');
+    await page.synced(store.state.seq);
+    const ends = `[...${row('indexer')}.closest('.agent-row').querySelectorAll('.agent-sub.subagent .sub-end')]`;
+    await page.waitFor(`${ends}.length === 2`, { label: 'End on each subagent' });
+    assert.equal(await page.evaluate(`${ends}[0].getAttribute('aria-label')`), 'End @indexer’s subagent ‘Reader’');
+    const first = store.state.sessions[indexer.id].subagents[0].id;
+    await focus(`${ends}[0]`);
+    await press('Enter');
+    await until(() => (store.state.sessions[indexer.id].endingSubagents ?? []).includes(first), 'the subagent to be ending');
+    assert.ok(store.state.sessions[indexer.id].context.some((x) => x.startsWith('[Postbox] URGENT: the person ended your subagent')));
+    await page.waitFor(`document.activeElement?.getAttribute('aria-label') === 'End @indexer’s subagent ‘Nested checker’'`, { label: 'focus on the next End' });
+    await page.synced(store.state.seq);
+    await page.waitFor(
+      `${row('indexer')}.closest('.agent-row').querySelector('.agent-sub.subagent .sub-now').textContent === 'Ending: @indexer was told to stop it'`,
+      {
+        label: 'the row to read ending',
+      },
+    );
+  } finally {
+    r.go();
+  }
+  await until(() => store.state.sessions[indexer.id].state === 'idle', 'the turn to end');
 });
 
 await check('at 1280 px, a ring in the top bar opens the same panel, and Escape returns to the ring', async () => {
