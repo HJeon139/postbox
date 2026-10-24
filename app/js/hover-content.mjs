@@ -42,16 +42,22 @@ export function hoverContent(trigger) {
     };
   }
   const t = client.state.threads[threadId];
-  const g = { ...(client.state.glossary[t?.parentId] ?? {}), ...(client.state.glossary[threadId] ?? {}) }[trigger.dataset.term];
+  const glossary = { ...(client.state.glossary[t?.parentId] ?? {}), ...(client.state.glossary[threadId] ?? {}) };
+  const g = Object.hasOwn(glossary, trigger.dataset.term) ? glossary[trigger.dataset.term] : null;
   if (!g)
     return {
       label: 'Not defined yet',
       head: [h('span.label', 'Glossary'), h('b', trigger.textContent)],
       body: [h('p.dim', 'Not defined yet. The agent has been asked to define it.')],
     };
+  // The terms in a definition link too (#103), all but its own. Its thread goes with it, so they look up the same
+  // glossary from inside the card.
+  const terms = Object.values(glossary).filter((x) => x.key !== g.key);
+  const definition = mdNode(g.definition, { glossary: terms.map((x) => ({ key: x.key, term: x.term })) });
+  if (threadId) definition.dataset.thread = threadId;
   return {
     label: `Glossary: ${g.term}`,
     head: [h('span.label', 'Glossary'), h('b', g.term)],
-    body: [mdNode(g.definition), h('span.small.dim', `Defined by @${g.by}${g.source ? ` · ${g.source}` : ''}`)],
+    body: [definition, h('span.small.dim', `Defined by @${g.by}${g.source ? ` · ${g.source}` : ''}`)],
   };
 }
