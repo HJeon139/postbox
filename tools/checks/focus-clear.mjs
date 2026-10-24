@@ -158,12 +158,17 @@ for (const width of [1280, 375]) {
   });
   await check(`#232 at ${width} px: a click on a message under the composer doesn’t move the view`, async () => {
     await nearTheEnd(width);
-    // A point in a message, at its edge, just above the composer, in a message that runs on under it.
+    // The long reply, scrolled so its last 40 px are under the composer, whatever the fonts make its height and the
+    // blocks' after it; then a point at its edge, just above the composer.
     const at = await page.evaluate(`(() => {
       const top = document.getElementById('composer-input').closest('.composer').getBoundingClientRect().top;
-      const n = [...document.querySelectorAll('#main > .item')].find((i) => { const r = i.getBoundingClientRect(); return r.top < top - 12 && r.bottom > top; });
-      return n ? { x: n.getBoundingClientRect().left + 4, y: top - 6 } : null;
+      const n = [...document.querySelectorAll('#main > .item')].find((i) => i.textContent.includes('Shelf note 6'));
+      if (!n) return null;
+      scrollBy(0, n.getBoundingClientRect().bottom - top - 40);
+      const r = n.getBoundingClientRect();
+      return r.top < top - 12 && r.bottom > top ? { x: r.left + 4, y: top - 6 } : null;
     })()`);
+    await settle();
     assert.ok(at, 'no message runs on under the composer');
     const before = await page.evaluate('scrollY');
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])

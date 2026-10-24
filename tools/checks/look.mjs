@@ -1,5 +1,5 @@
 // A headless Chrome check of how Postbox’s controls and states look, in both themes, at 375 and 1280 px:
-//   - #181: a selected segment, a chosen chip and a toggle that’s on are an amber outline, never a solid amber fill
+//   - #181: in dark mode, a selected segment, a chosen chip and a toggle that’s on are an amber outline, never a solid fill
 //     bigger than a glyph: in Postbox, in Settings, and in an app’s kit (intent.md, Visual language).
 //   - #8: an overview card that needs you has a look of its own, a heavier amber top edge and a tinted head band,
 //     not the 1 px amber outline of a button.
@@ -135,7 +135,7 @@ function unmarked(found, where, kinds) {
   return bad;
 }
 
-for (const theme of ['dark', 'light'])
+for (const theme of ['dark'])
   for (const width of [1280, 375])
     await check(
       `#181 at ${width} px (${theme}): selected segments, chosen chips and on toggles are amber outlines, in Postbox, Settings and an app`,

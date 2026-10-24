@@ -643,6 +643,11 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .seg button { all: unset; padding: 0 11px; height: 30px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; border-right: 1px solid var(--line-strong); }
 .seg button:last-child { border-right: 0; }
 .seg button[aria-pressed="true"], .seg button[aria-checked="true"] { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
+/* Light mode keeps its fills (#181; the person's ruling, 24 October 2026): the outline is for dark, where a fill glares. */
+:root[data-theme="light"] .chip[aria-pressed="true"], :root[data-theme="light"] .chip[aria-checked="true"], :root[data-theme="light"] .chip.on { background: var(--on); color: var(--on-ink); border-color: var(--on); box-shadow: none; }
+:root[data-theme="light"] .toggle[aria-checked="true"] .track { background: var(--on); border-color: var(--on); }
+:root[data-theme="light"] .toggle[aria-checked="true"] .track::after { background: var(--on-ink); }
+:root[data-theme="light"] .seg button[aria-pressed="true"], :root[data-theme="light"] .seg button[aria-checked="true"] { background: var(--on); color: var(--on-ink); box-shadow: none; }
 .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ───────── Composer ───────── */
