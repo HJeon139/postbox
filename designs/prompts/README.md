@@ -4,6 +4,8 @@ Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139
 
 The plan follows the triage of 22 October 2026 (#64’s last two comments), the wave 4 plan the two integrating sessions agreed on 23 October 2026, and the wave 5 plan the person approved the same day.
 
+**Issue state is the source of truth for who's on what.** The triage session labels every issue a wave session takes `in progress`, and comments with its PR. Issues waiting on the person are labeled `needs decision`, and real dependencies are GitHub "Blocked by" links. Contributors outside these sessions pick up work by CONTRIBUTING.md's saved searches.
+
 **Who integrates wave 5.** The triage session integrates and merges all eight sessions, and writes this page. The architectural review session reviews each pull request before it merges. (In wave 4 the reviewing session wrote this page and integrated three of its sessions. It isn’t running now.)
 
 A pull request merges once it’s approved and green. A CI failure that’s one of the known flaky checks, in a check the pull request doesn’t touch, doesn’t block it when its own checks pass locally (the person’s rule, 23 October 2026).
