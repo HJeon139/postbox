@@ -260,11 +260,12 @@ export function toolAskBlock(it, ctx) {
       'div.block-head',
       open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
       h('span.title.grow', { id: titleId }, `@${it.handle} asks you to turn on “${it.label}”`),
-      h('span.kind', 'Turned off · ', h('span.tool-name', it.tool)),
+      // Turned on from the card, the agent panel or the persona sheet (#237): the card says what’s true now.
+      h('span.kind', it.status === 'on' ? 'Turned on · ' : 'Turned off · ', h('span.tool-name', it.tool)),
     ),
     h(
       'div.block-body',
-      h('p', `It’s turned off for @${it.handle} in Postbox, so it can’t use it here.`),
+      h('p', it.status === 'on' ? `It was turned off for @${it.handle} in Postbox.` : `It’s turned off for @${it.handle} in Postbox, so it can’t use it here.`),
       it.why ? h('p.small', h('b', `@${it.handle}: `), it.why) : null,
       open
         ? h(

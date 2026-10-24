@@ -70,7 +70,7 @@ import {
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
-import { askForTool } from './tool-ask.mjs';
+import { askForTool, settleToolAsks } from './tool-ask.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -2847,6 +2847,8 @@ export class Runtime {
       version: (p.version ?? 1) + 1,
     };
     this.store.emit('persona', next);
+    // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
+    if (patch.tools !== undefined) settleToolAsks(this, next);
     return next;
   }
 
