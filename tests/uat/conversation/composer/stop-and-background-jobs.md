@@ -16,11 +16,12 @@ An agent can start a command in the background (Bash with `run_in_background`, a
 - Stop, with a job running, asks “@developer has 1 background job running. Stop it too?” with **Stop it too**, **Keep running**, and an × (Don’t stop). Focus moves to Stop it too. Nothing stops until you answer.
   - Escape, or ×, closes the ask; the agent carries on, and focus goes back to Stop.
   - **Stop it too** stops the agent and its jobs. Their steps read “Stopped”.
-  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop. The agent’s next turn is told the job is still running and where its output is, and to leave a progress step that follows it running. The progress steps that were running when you chose Keep running stay running, not stalled, while a job you kept runs on; a step a later turn leaves running stalls as usual. When the last kept job ends, those steps read as stalled, and the agent’s next turn is told to close them. Postbox never kills a job you kept (#164):
+  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop, and the reply reads “Stopped by you at hh:mm · its background work kept running” (#249). The agent’s next turn is told the job is still running, that you stopped the turn but kept the job, that its CLI may say the job was stopped though it wasn’t, and where its output is, and to leave a progress step that follows it running. The progress steps that were running when you chose Keep running stay running, not stalled, while a job you kept runs on; a step a later turn leaves running stalls as usual. When the last kept job ends, those steps read as stalled, and the agent’s next turn is told to close them. Postbox never kills a job you kept (#164):
     - When it can’t tell which of the agent’s processes is the job, it keeps them all running. The job row says “Postbox couldn’t tell which of 2 processes is this job, so it kept them all running; stopping the job stops them all.”, the agent hears the same, and the job’s Stop stops them all ([screenshot](../../screenshots/kept-job-unsure.png)).
+    - Two such jobs in one turn are kept with the same processes, so stopping either stops both. The other one’s step reads “Stopped: Postbox couldn’t tell its processes from those of the background job “…”, so stopping that job stopped this one too.”, never “done” (#167).
     - When the job has no process left to keep, its step reads “Stopped: Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.”
 - Stop with no background job running stops at once, without asking.
-- **Send now** (or a message sent with Send now from the queue) stops the agent without asking, and keeps its jobs running.
+- **Send now** (or a message sent with Send now from the queue) stops the agent without asking, and keeps its jobs running. The reply it interrupted reads “Interrupted by Send now at hh:mm”, not “Stopped by you” (#215), and the agent hears that Send now ended its turn but not its jobs.
 - After Stop, the agent reads “· stopping” beside its name until its process has exited, usually within a second or two, then “Stopped by you”. A message you send meanwhile appears at once and the agent starts on it when the old process has gone.
 - A job’s own Stop stops it; its step reads “Stopped”, and the agent hears about it on its next turn.
 
@@ -33,9 +34,11 @@ With a real agent:
 2. Give a Claude Code agent the Shell tool. Ask it: “Use the Bash tool with run_in_background set to true to run exactly: sleep 300; echo done. Then reply started.”
 3. Check the job row appears under its reply, with Stop.
 4. Press Stop in the composer. Check the ask, then press Escape: the agent is still working.
-5. Press Stop again and choose Keep running. Check the agent reads “stopping”, then “Stopped by you”, and the job row stays. In a terminal, `ps axo pid,ppid,pgid,command | grep 'sleep 300'` still lists it.
+5. Press Stop again and choose Keep running. Check the agent reads “stopping”, then “Stopped by you”, the reply reads “Stopped by you at hh:mm · its background work kept running”, and the job row stays. Ask the agent whether the job is still running: it should say it is. In a terminal, `ps axo pid,ppid,pgid,command | grep 'sleep 300'` still lists it.
 6. Press the job row’s Stop. Check the row goes, the step reads “Stopped”, and `ps` no longer lists it.
 7. Repeat steps 2 to 4, and choose Stop it too. Check the job row goes, and `ps` lists neither the CLI nor the job.
 8. Ask it: “Use the Bash tool with run_in_background set to true to run exactly: cd /tmp && for i in $(seq 1 60); do date >> pbx-heartbeat.log; sleep 5; done. Then wait for it with the Bash tool: sleep 120.” While it waits, press Stop and choose Keep running. Check the job row stays, and `tail -f /tmp/pbx-heartbeat.log` keeps growing (#164: Claude Code runs the job without its `cd`, which Postbox once failed to match, and killed). Then press the job row’s Stop.
+
+9. Repeat step 2, and while the agent works, send “Reply with one line of status.” and choose Send now on it in the queue. Check the interrupted reply reads “Interrupted by Send now at hh:mm”, the job row stays, and the agent’s answer says the job is still running. Then press the job row’s Stop.
 
 **Pass if:** every step behaves as described, and after each Stop no `claude -p` process of that agent is left running.

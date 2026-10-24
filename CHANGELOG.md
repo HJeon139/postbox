@@ -2,6 +2,46 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.26.0 (2026-10-24)
+
+### Features
+
+- **reactions:** draw each reaction with its icon
+
+### Fixes
+
+- **reactions:** the UAT's telemetry driver finds a reaction by its icon, and every icon is checked
+
+## 0.25.1 (2026-10-24)
+
+### Fixes
+
+- **stop:** four review fixes: a stopped kept job, Send now's sender, shared groups, a stray kill
+- **stop:** a stopped reply's tag grows to two lines where its words wrap, not out of its pill
+- **stop:** stopping one of two kept jobs that share processes ends the other as stopped
+- **stop:** say why a reply stopped, and tell the agent its kept jobs weren't stopped
+
+## 0.25.0 (2026-10-24)
+
+### Features
+
+- **telemetry:** record every UAT run, and put Telemetry in Work's place
+- **telemetry:** keep recordings per conversation, bound the classifier, and prove the gate
+- **telemetry:** open the report in a Telemetry view beside the room
+- **telemetry:** record a room, and gate its report, unlisted
+
+### Fixes
+
+- **telemetry:** a clone on its own data/ can't record, per the person's ruling on #239
+- **telemetry:** the fourth review's findings on #239
+- **telemetry:** the third review's findings on #239
+- **telemetry:** the second review's findings on #239
+- **telemetry:** the review's page findings on #239, and a browser check
+- **telemetry:** the review's server findings on #239
+- **telemetry:** react 🚩 once per item at the end of a UAT run
+- **telemetry:** fixes from the first UAT runs
+- **telemetry:** read only Postbox's own tool results in recording-visible
+
 ## 0.24.0 (2026-10-24)
 
 ### Features

@@ -749,8 +749,13 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 /* The person’s reactions under a message (#251): each one a button that takes it back. */
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; }
 .turn.me .reactions { justify-content: flex-end; }
-.react-chip { font: inherit; font-size: 13px; line-height: 1; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 999px; background: var(--panel); color: var(--text); cursor: pointer; }
-.react-chip:hover { background: var(--sunk); }
+/* Each is drawn with its icon (app/media/reactions) on a light amber wash, the person’s own: an amber fill would sink the
+   orange, mustard and red in the icons. */
+.react-chip { display: inline-flex; align-items: center; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 999px; background: var(--mark); cursor: pointer; }
+.react-chip:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.react-icon { display: block; flex: none; width: 20px; height: 20px; }
+/* The icons’ espresso outline only shows on light: on dark, a thin rim keeps their green and orange badges off the wash. */
+:root:not([data-theme="light"]) .react-icon { filter: drop-shadow(1px 0 0 var(--dim)) drop-shadow(-1px 0 0 var(--dim)) drop-shadow(0 1px 0 var(--dim)) drop-shadow(0 -1px 0 var(--dim)); }
 .react-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Sent back from a topic thread. */
@@ -978,8 +983,9 @@ html.pb-sandbox body { margin: 0; }
 .menu button.mi { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; width: 100%; color: var(--text); }
 .menu button.mi:hover, .menu button.mi.active, .menu button.mi:focus-visible { border-color: var(--accent); background: var(--sunk); outline: none; }
 .menu .mi .i, .menu .mi pb-ring { flex: none; }
-.stopped-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; height: 18px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); align-self: flex-start; }
-.stopped-tag::before { content: ""; width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
+/* A stopped reply’s tag (#215): one line where it fits, and taller, not overflowing, where its words wrap (375 px). */
+.stopped-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; line-height: 14px; min-height: 18px; max-width: 100%; box-sizing: border-box; padding: 1px 7px; border: 1px solid var(--line); border-radius: 9px; color: var(--dim); align-self: flex-start; }
+.stopped-tag::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
 .prompt:hover { border-color: var(--accent) !important; }
 .prompt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hovercard { position: fixed; }
@@ -1224,3 +1230,27 @@ code.wc-name { font-size: 12px; }
 .qp-switch[aria-checked="true"] .track::after { transform: translateX(12px); background: var(--accent); }
 .qp-tool .help { padding-left: 38px; }
 .qp-actions { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* Telemetry (designs/telemetry-persona.md): the header’s word while a conversation records, and the Telemetry view. */
+.rec-badge { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.tv-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; overflow: auto; }
+.tv-h { font-size: 14px; margin: 6px 0 0; }
+.tv-summary { border-collapse: collapse; font-size: 13px; }
+.tv-summary th, .tv-summary td { text-align: left; padding: 3px 10px 3px 0; border-bottom: 1px solid var(--line); }
+.tv-summary th { font-weight: 500; color: var(--dim); }
+.tv-lines { list-style: none; margin: 0; padding: 0; font-size: 12.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
+.tv-lines li { display: grid; grid-template-columns: 34px 1fr auto; gap: 6px; align-items: start; padding: 2px 6px; }
+.tv-lines .tv-n { color: var(--dim); text-align: right; user-select: none; }
+.tv-lines .tv-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); }
+.tv-lines li.out .tv-text { text-decoration: line-through; color: var(--dim); }
+.tv-hash { overflow-wrap: anywhere; }
+.tv-saved { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.tv-findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.tv-findings li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.tv-issue { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; font-size: 12.5px; background: var(--sunk); padding: 10px; border-radius: 8px; }
+.tv-actions { display: flex; gap: 8px; }
+/* Full screen (R18): the same view over the window, at the message column’s width, the summary beside the bytes. */
+.telemetry-view.tv-full .tv-body { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); align-content: start; gap: 12px 20px; max-width: 1040px; width: 100%; margin: 0 auto; }
+.telemetry-view.tv-full .tv-body > :not(.tv-summary) { grid-column: 2; }
+.telemetry-view.tv-full .tv-summary { grid-column: 1; grid-row: 1 / span 6; align-self: start; }
+@media (max-width: 760px) { .telemetry-view.tv-full .tv-body { grid-template-columns: minmax(0, 1fr); } .telemetry-view.tv-full .tv-body > *, .telemetry-view.tv-full .tv-summary { grid-column: 1; grid-row: auto; } }

@@ -8,6 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseMentions } from '../../shared/text.mjs';
+import { TELEMETRY_ACTION } from './telemetry-action.mjs';
 
 /**
  * How the person’s Claude Code signs in, taken from their user settings, so the tester keeps it while it leaves the
@@ -122,9 +123,11 @@ export const SCHEMA = {
             'fullscreen_draft',
             'restore',
             'next_phase',
+            'telemetry',
             'done',
           ],
         },
+        telemetry: TELEMETRY_ACTION,
         text: { type: 'string', description: 'send, send_then_stop, thread, thread_reply, attach_screenshot: the message to write.' },
         item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
@@ -210,6 +213,7 @@ Then choose one action:
 - jobs {answer}: answer Postbox’s question about an agent’s background jobs, when it’s on screen: stop (“Stop it too”) or keep (“Keep running”).
 - wait {seconds}: when an agent is still working.
 - stop: press Stop on a reply that is currently working, if one is visible.
+- telemetry {telemetry: {do, …}, item?}: record (Record this room in the ⋯ menu; you get the header), stop, react {emoji} to item, report {history} (Telemetry report… then Make report; you get every line of the report and its hash), leave_out {line}, save, file {finding} (File issue: you get the text it showed and what Postbox did with it).
 - next_phase: when this phase’s goal is met, or blocked after two honest tries.
 - done: after the last phase.
 
