@@ -50,7 +50,7 @@ import {
 import { readCapped } from './read-capped.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import { localBackends, notHere, placedPatch, placement, runsHere } from './remote/placement.mjs';
+import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { runShell } from './shell.mjs';
 import {
@@ -707,11 +707,7 @@ export class Runtime {
     const ctx = this.turnContext(se, turn);
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
-      // A backend registered for hosts only (its CLI isn’t here) never runs here: one placed here since is refused.
-      if (!hostId && !runsHere(this, persona?.backend ?? 'mock')) {
-        const text = `@${se.handle}’s turn didn’t start: ${notHere(this, persona?.backend ?? 'mock')}`;
-        throw Object.assign(new Error(text), { userMessage: text });
-      }
+      if (!hostId) refuseHere(this, se, persona);
       return adapter.deliver(this.s.sessions[sessionId], hostId ? await this.remote.prepare(turn, ctx, message) : message, ctx);
     });
     turn.exited = run.then(
@@ -2544,13 +2540,7 @@ export class Runtime {
     const persona = se ? this.personaFor(se) : null;
     const project = this.s.projects[t.projectId] ?? null;
     const adapter = persona ? this.adapters.get(persona.backend) : null;
-    const hostId = persona?.remote?.hostId ?? null;
-    if (hostId) {
-      const host = this.s.hosts?.[hostId]?.name ?? 'its host';
-      // Its own folder is left out: it’s where the agent works, and that’s on the host.
-      const here = { ...persona, folder: '' };
-      return { folder: (adapter?.folderFor ? await adapter.folderFor(here, project) : project?.folder) || null, host };
-    }
+    if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
     if (adapter?.folderFor) return { folder: await adapter.folderFor(persona, project), host: null };
     return { folder: persona?.folder || project?.folder || null, host: null };
   }
@@ -3018,27 +3008,22 @@ export class Runtime {
     return localBackends(this);
   }
 
-  /** @param {string} id */
   host(id) {
     return host(this, id);
   }
 
-  /** @param {{ name?: unknown, settings?: unknown }} [opts] */
   addHost(opts) {
     return addHost(this, opts);
   }
 
-  /** @param {string} id @param {{ name?: unknown, settings?: unknown }} [patch] */
   updateHost(id, patch) {
     return updateHost(this, id, patch);
   }
 
-  /** @param {string} id @param {{ waitMs?: number }} [opts] */
   removeHost(id, opts) {
     return removeHost(this, id, opts);
   }
 
-  /** @param {string} id */
   hostStatus(id) {
     return hostStatus(this, id);
   }
@@ -3047,22 +3032,18 @@ export class Runtime {
     return watchHosts(this);
   }
 
-  /** @param {string} id */
   describeHostInstall(id) {
     return describeHostInstall(this, id);
   }
 
-  /** @param {string} id */
   installHost(id) {
     return installHost(this, id);
   }
 
-  /** @param {string} id @param {{ takeover?: unknown }} [opts] */
   retryHost(id, opts) {
     return retryHost(this, id, opts);
   }
 
-  /** @param {string} projectId @param {string} hostId @param {unknown} folder */
   setProjectHostFolder(projectId, hostId, folder) {
     return setProjectHostFolder(this, projectId, hostId, folder);
   }

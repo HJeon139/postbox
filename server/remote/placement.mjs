@@ -74,6 +74,30 @@ function checkHarness(rt, h, backend) {
 }
 
 /**
+ * Refuses a turn here whose backend was registered for hosts only (its CLI isn’t here): an agent placed here since
+ * its backend’s CLI went. A turn on a host doesn’t call this.
+ * @param {any} rt @param {any} se @param {any} persona
+ */
+export function refuseHere(rt, se, persona) {
+  if (runsHere(rt, persona?.backend ?? 'mock')) return;
+  const text = `@${se.handle}’s turn didn’t start: ${notHere(rt, persona?.backend ?? 'mock')}`;
+  throw Object.assign(new Error(text), { userMessage: text });
+}
+
+/**
+ * Where `!` commands run for an agent on a host (#67): on this computer even so, in the project’s folder here, else
+ * the workspace of its own the agent would have here, never a path on the host; `host` names the host.
+ * @param {any} rt @param {any} persona @param {any} project @param {any} adapter
+ * @returns {Promise<{ folder: string|null, host: string }>}
+ */
+export async function hereFolder(rt, persona, project, adapter) {
+  const host = rt.s.hosts?.[persona.remote.hostId]?.name ?? 'its host';
+  // Its own folder is left out: it’s where the agent works, and that’s on the host.
+  const here = { ...persona, folder: '' };
+  return { folder: (adapter?.folderFor ? await adapter.folderFor(here, project) : project?.folder) || null, host };
+}
+
+/**
  * A persona’s patch with where it runs checked (#120): when that changes, and when its backend does, since only some
  * backends run on a host. On this computer, its backend’s CLI must be here (one that runs only on a host is
  * registered all the same).
