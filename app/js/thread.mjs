@@ -15,6 +15,7 @@ import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from 
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
+import { jobRows, stoppedTag } from './reply-stop.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -492,7 +493,7 @@ function renderItem(it, prev, ctx) {
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
-        it.status === 'stopped' ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
+        it.status === 'stopped' ? stoppedTag(it) : null,
         it.status === 'failed'
           ? h(
               'div.callout',
@@ -711,46 +712,6 @@ function stepRow(s) {
     dur,
   );
 }
-
-/**
- * The background jobs a reply started that are still running (#129), outside the folded steps so you can see them, each
- * with its own Stop. The call returned at once, so without this the step would read done while the job runs on.
- */
-function jobRows(it, steps) {
-  const jobs = steps.filter((s) => s.job && s.state === 'running');
-  if (!jobs.length || !it.sessionId) return null;
-  return h(
-    'ul.bg-jobs',
-    { 'aria-label': 'Background jobs' },
-    jobs.map((s) =>
-      h(
-        'li',
-        h('span.g.g-running', { role: 'img', 'aria-label': 'running' }),
-        // What Postbox kept running for it, when it couldn’t tell which process was the job (#164).
-        h('span.grow', h('span.dim', 'Background job · '), h('span.mono', s.label), s.detail ? h('span.job-note', s.detail) : null),
-        h(
-          'button.btn.sm',
-          {
-            type: 'button',
-            'aria-label': `Stop the background job “${s.label}”`,
-            onclick: (e) => {
-              const b = e.currentTarget;
-              b.disabled = true;
-              api(`/api/sessions/${it.sessionId}/jobs/${encodeURIComponent(s.job)}/stop`, {})
-                .then(() => say(`Stopped the background job “${s.label}”.`))
-                .catch((err) => {
-                  b.disabled = false;
-                  toast({ title: 'Couldn’t stop the job', text: err.message, level: 'blocking' });
-                });
-            },
-          },
-          'Stop',
-        ),
-      ),
-    ),
-  );
-}
-
 const fileSize = (size) => (size > 1e6 ? `${(size / 1e6).toFixed(1)} MB` : `${Math.ceil(size / 1000)} KB`);
 
 /**
