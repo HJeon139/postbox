@@ -2,6 +2,25 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.29.0 (2026-10-24)
+
+### Features
+
+- **threads:** Summarize back from a side thread, as from a topic thread
+- **composer:** ask “Did you mean @critic?” when a draft names an agent without its @
+
+### Fixes
+
+- **composer:** shorter thread hints, so a thread's composer sits as high as the conversation's
+- **threads:** a summary's review_block wakes no one either
+- **threads:** keep a queued summary pending while its turn starts
+- **threads:** say on the sender line when a scheduled wake started the turn
+- **threads:** give each wake an agent sends from another turn its own sender line
+- **telemetry:** count agents' wake chains from each wake's message, now that wakes have no line
+- **threads:** one line per side thread in the conversation, not one per wake
+- **composer:** say whom a message that mentions an agent wakes, not who it replies to
+- **thread:** give a later turn of the same agent its own sender line, with what woke it
+
 ## 0.28.1 (2026-10-24)
 
 ### Fixes
