@@ -146,19 +146,33 @@ test('#120 e2e: a remote Claude Code turn streams the host’s lines, shows its 
   }
 });
 
-test('#120 e2e: Postbox restarts mid-turn, attaches to the turn still on the host, and no line is applied twice', async () => {
-  // The reference: the same stream, applied in one go.
+/** The reference for a restart: the reply the recorded stream makes, applied in one go. */
+async function inOneGo() {
   const ref = postbox({ d: createFakeDaemon({ autoEnd: false }) });
-  let expected;
   try {
     const turn = await running(ref);
     ref.d.end(turn);
     await settled(ref);
-    expected = replies(ref).map((i) => [i.status, i.text]);
+    return replies(ref).map((i) => [i.status, i.text]);
   } finally {
     await ref.done();
     rmSync(ref.dataDir, { recursive: true, force: true });
   }
+}
+
+/** A Postbox starting up on a store as server/index.mjs does, as far as remote turns go. @param {any} p @param {Store} store */
+function startUp(p, store) {
+  for (const se of Object.values(store.state.sessions))
+    if (['think', 'gen', 'tool', 'stopping'].includes(se.state)) p.rt.updateSession(se.id, { state: 'idle', currentStep: 'Interrupted by a restart' });
+  for (const [threadId, list] of Object.entries(store.state.items))
+    for (const it of list) if (it.status === 'streaming') p.rt.patchItem(threadId, it.id, { status: 'stopped' });
+  p.rt.expireStalePermissions();
+  p.rt.restoreRemoteTurns();
+  p.rt.watchHosts();
+}
+
+test('#120 e2e: Postbox restarts mid-turn, attaches to the turn still on the host, and no line is applied twice', async () => {
+  const expected = await inOneGo();
 
   // The turn has run its command and written part of its reply when Postbox stops.
   const all = fixtureLines();
@@ -188,13 +202,7 @@ test('#120 e2e: Postbox restarts mid-turn, attaches to the turn still on the hos
 
     // A new Postbox on the same store, starting up as server/index.mjs does.
     second = postbox({ store, d, dataDir });
-    for (const se of Object.values(store.state.sessions))
-      if (['think', 'gen', 'tool', 'stopping'].includes(se.state)) second.rt.updateSession(se.id, { state: 'idle', currentStep: 'Interrupted by a restart' });
-    for (const [threadId, list] of Object.entries(store.state.items))
-      for (const it of list) if (it.status === 'streaming') second.rt.patchItem(threadId, it.id, { status: 'stopped' });
-    second.rt.expireStalePermissions();
-    second.rt.restoreRemoteTurns();
-    second.rt.watchHosts();
+    startUp(second, store);
     await until(() => d.received.filter((m) => m.type === 'read' && m.turn === turn).length >= 2, 'the attach’s read');
     assert.equal(d.received.filter((m) => m.type === 'read' && m.turn === turn).at(-1).from, 0, 'replayed from the start');
     assert.equal(starts(d).length, 1, 'attached, not started again');
