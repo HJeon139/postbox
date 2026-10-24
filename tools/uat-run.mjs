@@ -25,9 +25,6 @@ import { homedir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { agyVersion, findAgy } from '../server/adapters/antigravity-cli.mjs';
-import { codexModels, codexVersion, findCodex } from '../server/adapters/codex.mjs';
-import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
@@ -37,6 +34,7 @@ import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
+import { seedAgents } from './uat/seed.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
 import { withoutPreset } from './uat/verdicts.mjs';
@@ -190,71 +188,7 @@ async function main() {
   const origin = `http://127.0.0.1:${port}`;
   // The runner must talk to its own fresh Postbox, never to one that’s already running there.
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
-  // A fresh install has one generic agent, so the scenario's agents are seeded from agents.json: every
-  // persona in personas.json, since scenarios bring more agents (@critic) into topic threads than they start with.
-  const personas = JSON.parse(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
-  let codexDefaultModel = null;
-  if (Object.values(scenario.backends).some((b) => b.backend === 'codex')) {
-    const v = await codexVersion(findCodex());
-    if (!v) throw new Error('This scenario puts agents on Codex, and the Codex CLI is not installed here (or set POSTBOX_CODEX_BIN).');
-    codexDefaultModel = (await codexModels(findCodex()))[0] ?? null;
-    log(`Codex ${v}${codexDefaultModel ? ` · default model ${codexDefaultModel}` : ''}.`);
-  }
-  // An agent the scenario puts on another backend runs there with the model it names. A Kiro agent is Isolated: it
-  // runs with Postbox’s own Kiro home, so the run never writes into the person’s ~/.kiro, and the Kiro checks can
-  // tell the person’s steering and servers from Postbox’s (#57).
-  const onBackend = (p) => {
-    const b = scenario.backends[p.handle];
-    return b
-      ? {
-          ...p,
-          backend: b.backend,
-          ...(scenario.permissionModes[p.handle] ? { permissionMode: scenario.permissionModes[p.handle] } : {}),
-          ...(b.model ? { model: b.model } : b.backend === 'codex' && codexDefaultModel ? { model: codexDefaultModel } : {}),
-          ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}),
-        }
-      : p;
-  };
-  // Claude agents run on the run’s model, unless the scenario keeps the persona’s and --force-agent-model doesn’t override it.
-  const fast = (p) => {
-    if ((scenario.models === 'persona' && !opt['force-agent-model']) || scenario.backends[p.handle]) return p;
-    return {
-      ...p,
-      ...(opt['agent-model'] !== 'persona' ? { model: opt['agent-model'] } : {}),
-      ...(opt['agent-effort'] !== 'persona' ? { effort: opt['agent-effort'] } : {}),
-    };
-  };
-  const agents = [
-    ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
-    ...personas.filter((p) => !scenario.agents.includes(p.handle)),
-  ]
-    .map(fast)
-    .map(onBackend);
-  if (opt.release) log('A release run: the release-only backends are on.');
-  // Postbox registers the Kiro CLI only when it can run it, and seeding an agent on a backend it doesn’t have fails.
-  // The same for the Antigravity CLI, which a release run alone may use (releaseGate). It always runs with the
-  // person’s own agy setup: it has no Isolated mode (server/adapters/antigravity-cli.mjs).
-  if (Object.values(scenario.backends).some((b) => b.backend === 'antigravity-cli')) {
-    const v = await agyVersion(findAgy());
-    if (!v) throw new Error('This scenario puts agents on the Antigravity CLI, and agy isn’t installed here (or set POSTBOX_AGY_BIN).');
-    log(`Antigravity CLI ${v}, on a free tier: this run uses its quota.`);
-  }
-  if (Object.values(scenario.backends).some((b) => b.backend === 'kiro-cli')) {
-    const v = await kiroVersion(findKiro());
-    if (!v) throw new Error('This scenario puts agents on the Kiro CLI, and kiro-cli isn’t installed here (or set POSTBOX_KIRO_BIN).');
-    log(
-      `Kiro CLI ${v}: ${Object.entries(scenario.backends)
-        .map(([h, b]) => `@${h} on ${b.backend}${b.model ? ` (${b.model})` : ''}`)
-        .join(', ')}.`,
-    );
-  }
-  await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
-  // What the agents ran on, for the report: a fast run’s findings about agent choices aren’t the default model’s.
-  const agentModels = agents.map((p) => `@${p.handle} ${p.model ?? 'its default model'}${p.effort ? `, ${p.effort} effort` : ''}`).join('; ');
-  log(`Agents: ${agentModels}.`);
-  // The effort the scenario’s Claude agents run at, for run.json: a `- models: persona` run keeps each persona’s own.
-  const efforts = [...new Set(agents.filter((p) => scenario.agents.includes(p.handle) && !scenario.backends[p.handle]).map((p) => p.effort ?? null))];
-  const agentEffort = efforts.length > 1 ? efforts.map((e) => e ?? 'default').join('/') : (efforts[0] ?? null);
+  const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
     cwd: ROOT,
     env: {
