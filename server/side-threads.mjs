@@ -184,8 +184,10 @@ function needsCard(rt, from, parent, it, text) {
   });
 }
 
-/** wake_agent { handle, message }, the tool, for the session rt.toolsFor made it for. */
+/** wake_agent { handle, message }, the tool, for the session rt.toolsFor made it for. A summary’s turn wakes no one (#225). */
 export function wakeAgent(rt, sessionId, { handle, message }) {
+  if (rt.turns.get(sessionId)?.summarizeTo)
+    return { ok: false, message: 'A summary for the conversation wakes no one: finish it, and the person decides the rest.' };
   return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
 }
 

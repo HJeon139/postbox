@@ -1084,11 +1084,11 @@ export class Runtime {
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
-    // An agent that @-mentions another agent wakes it.
+    // An agent that @-mentions another agent wakes it, except in a summary sent back, which wakes no one (#225).
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
     // Mentioning the agent that just wrote to you wakes it only if you ask it to check again.
     const replyTo = turn.replyTo ? this.s.sessions[turn.replyTo]?.handle?.toLowerCase() : null;
-    for (const h of parseMentions(turn.said, this.handles())) {
+    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
       const hl = h.toLowerCase();
       if (hl === se.handle.toLowerCase() || hl === replyTo) continue;
       if (hl === turn.from && !/again|once more|loop/i.test(turn.said)) continue;
@@ -1605,8 +1605,8 @@ export class Runtime {
   shareToConversation(topicId, itemId) {
     return shareToConversation(this, topicId, itemId);
   }
-  summarizeBack(topicId) {
-    return summarizeBack(this, topicId);
+  summarizeBack(topicId, opts) {
+    return summarizeBack(this, topicId, opts);
   }
   summarizing(topicId) {
     return summarizing(this, topicId);

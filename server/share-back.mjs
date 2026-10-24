@@ -2,7 +2,7 @@
 // Summarize back, which asks the thread’s agent for a summary and posts it there. The conversation’s agents read it
 // at their next turn; nothing wakes them. Functions take the Runtime first (architecture.md, “What a move may change”).
 
-import { httpError } from './helpers.mjs';
+import { clip, httpError } from './helpers.mjs';
 import { threadPersona } from './side-threads.mjs';
 
 /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
@@ -19,12 +19,19 @@ export function shareToConversation(rt, topicId, itemId) {
   return rt.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text });
 }
 
-/** “Summarize back”: the topic’s agent writes a short summary, which is posted in the conversation. */
-export function summarizeBack(rt, topicId) {
+/**
+ * “Summarize back” (#93, #225): an agent of a topic or side thread writes a short summary, which is posted in the
+ * conversation, marked as from that thread. The person starts it, and nothing else comes back (intent.md, principle 7).
+ * It wakes no one, so it doesn’t count against the wake limit: a summary’s @-mentions wake no one (endTurn), and nor
+ * does its wake_agent (wakeAgent, server/side-threads.mjs).
+ * @param {any} rt @param {string} topicId @param {{ handle?: unknown } | null} [opts]  handle: in a side thread, the agent to write it
+ */
+export function summarizeBack(rt, topicId, opts) {
   const topic = rt.thread(topicId);
-  if (topic.kind !== 'topic') throw httpError(409, 'Only a topic thread can be summarized back.');
-  // The thread’s agent: the one that spoke last there, else the one it started with (#228).
-  const p = threadPersona(rt, topic);
+  // Any JSON may come: a value that isn’t an object has no handle.
+  const handle = opts?.handle ?? null;
+  if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only a topic or side thread can be summarized back.');
+  const p = summaryWriter(rt, topic, handle);
   const se = p && rt.sideSession(topic, p.id, 'you');
   if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
   // One at a time, so a second click or a second tab can’t post it twice (#93).
@@ -33,18 +40,37 @@ export function summarizeBack(rt, topicId) {
   // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
   rt.putThread({ ...topic, summaryPending: { sessionId: se.id, at: Date.now() } });
   rt.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
+  const what = topic.kind === 'side' ? 'side thread' : 'topic thread';
   rt.deliver(
     se.id,
     {
       kind: 'notice',
-      text: 'Summarize this topic thread for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.',
+      text: `Summarize this ${what} for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.`,
     },
     { summarizeTo: topic.parentId, threadId: topicId },
   );
   return { ok: true };
 }
 
-/** Whether a summarize turn is running or queued in a topic thread. */
+/**
+ * Who writes a thread’s summary. A topic thread’s agent: the one that spoke last there, else the one it started with
+ * (#228). A side thread’s two (#225): the one the person names, else the one that started it, by waking the other.
+ * @param {any} rt @param {any} t @param {unknown} handle
+ */
+function summaryWriter(rt, t, handle) {
+  if (handle != null && typeof handle !== 'string') throw httpError(400, 'Name the agent to write the summary by its handle, such as “critic”.');
+  const name = handle?.trim().replace(/^@/, '').toLowerCase();
+  if (t.kind === 'topic') {
+    if (name) throw httpError(400, 'A topic thread’s summary is written by its own agent: leave out the agent’s name.');
+    return threadPersona(rt, t);
+  }
+  const pair = String(t.pair ?? '').split('|');
+  const chosen = name ? pair.find((x) => x.toLowerCase() === name) : pair.find((x) => x !== t.woke);
+  if (name && !chosen) throw httpError(400, `@${clip(name, 40)} isn’t in this side thread. Name ${pair.map((x) => `@${x}`).join(' or ')}.`);
+  return rt.personaByHandle(chosen ?? t.woke ?? '');
+}
+
+/** Whether a summarize turn is running or queued in a topic or side thread. */
 export function summarizing(rt, topicId) {
   return (
     [...rt.turns.values()].some((x) => (x.threadId === topicId && x.summarizeTo) || x.pending.some((p) => p.summarizeTo && p.threadId === topicId)) ||

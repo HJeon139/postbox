@@ -141,10 +141,6 @@
       }
     },
     {
-      "includes": ["app/js/side-panel.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 82 } } } } }
-    },
-    {
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
