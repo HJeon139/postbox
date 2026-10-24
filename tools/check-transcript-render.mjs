@@ -47,8 +47,9 @@ try {
   // ── #99: a reply shared back from a topic thread ──
   // The formula is the one wave 2’s SciFact UAT saw as source in the conversation’s copy (#99).
   const { threadId: topic } = rt.startTopic(thread.id, say('The scores are in.').id);
-  // A term defined in the topic thread, where the summary was written, and not in the conversation.
-  rt.toolsFor(rt.sessionsIn(topic)[0].id).define_term({ term: 'label weight', definition: 'How many of the 300 claims carry a label.' });
+  // A term defined in the topic thread, where the summary was written, and not in the conversation. The topic has no
+  // session of its own (#228): the agent’s one session answers there, in a turn that speaks in the topic.
+  rt.toolsFor(se.id, { threadId: topic }).define_term({ term: 'label weight', definition: 'How many of the 300 claims carry a label.' });
   const shared = rt.shareText(thread.id, {
     fromThreadId: topic,
     handle: 'analyst',
