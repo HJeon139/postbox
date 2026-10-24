@@ -89,6 +89,8 @@ export function driver(page) {
   return {
     clickAt,
     press,
+    // What tools/uat/driver-hosts.mjs drives the Hosts tab and a persona’s Runs on with (#120).
+    kit: { ev, clickAt, press, page },
 
     async newProject(name, folder) {
       await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
