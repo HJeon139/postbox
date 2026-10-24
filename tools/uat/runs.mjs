@@ -7,6 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { agentsSpent } from './cost.mjs';
 import { isTargeted, parseScenario } from './scenario.mjs';
 
 /**
@@ -115,7 +116,7 @@ export function reportFacts(md) {
  *   tester: { spent: number }, facts: any, coverage: any[], now?: number, git?: (args: string[], cwd: string) => string|null }} r
  */
 export function runRecord({ root, dir, scenario, name, opt, started, steps, cap, startPhase = 1, tester, facts, coverage, now = Date.now(), git = gitOut }) {
-  const agents = (facts.streams ?? []).flatMap((s) => s.events.filter((e) => e?.type === 'result')).reduce((a, e) => a + (e.total_cost_usd ?? 0), 0);
+  const agents = agentsSpent(facts.streams ?? []);
   const flag = (k) => (typeof opt[k] === 'string' && opt[k] ? /** @type {string} */ (opt[k]) : null);
   return {
     run: basename(dir),

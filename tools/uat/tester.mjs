@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { sessionTotal } from './cost.mjs';
 import { TELEMETRY_ACTION } from './telemetry-action.mjs';
 import { STOP_AFTER_MAX_S, WAIT_MAX_S } from './turns.mjs';
 
@@ -312,9 +313,9 @@ export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2 }) {
 }
 
 /**
- * @param {{ cwd: string, model: string, budgetUsd: number, log: (line: string) => void }} opts
+ * @param {{ cwd: string, model: string, budgetUsd: number, log: (line: string) => void, run?: typeof spawn }} opts  run: a fake spawn, in tests
  */
-export function createTester({ cwd, model, budgetUsd, log }) {
+export function createTester({ cwd, model, budgetUsd, log, run = spawn }) {
   let session = null;
   let spent = 0;
   const ask = (prompt, system) =>
@@ -338,7 +339,7 @@ export function createTester({ cwd, model, budgetUsd, log }) {
         String(Math.max(0.5, budgetUsd - spent)),
         ...(session ? ['--resume', session] : ['--system-prompt', system]),
       ];
-      const child = spawn(process.env.POSTBOX_CLAUDE_BIN ?? 'claude', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = run(process.env.POSTBOX_CLAUDE_BIN ?? 'claude', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
       let out = '';
       let err = '';
       child.stdout.on('data', (d) => (out += d));
@@ -347,7 +348,8 @@ export function createTester({ cwd, model, budgetUsd, log }) {
       child.on('close', () => {
         try {
           const r = JSON.parse(out);
-          spent += r.total_cost_usd ?? 0;
+          // The session is resumed every step, so its result’s total is the running one (tools/uat/cost.mjs).
+          spent = sessionTotal(spent, r);
           session = r.session_id ?? session;
           if (r.is_error || !r.structured_output) return reject(new Error(r.result || 'The tester gave no answer.'));
           resolve(r.structured_output);

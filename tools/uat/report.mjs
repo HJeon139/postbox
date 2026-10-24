@@ -5,13 +5,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
+import { agentsSpent } from './cost.mjs';
 import { writeJsonAtomic } from './runs.mjs';
 import { coverageSection } from './triggers.mjs';
 import { mergePeopleVerdicts } from './verdicts.mjs';
 
 export async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, coverage = [], rechecked = false }) {
   const title = (n) => issues.find((i) => i.number === n)?.title ?? '(closed, or not in the list)';
-  const agentCost = facts.streams.flatMap((s) => s.events.filter((e) => e.type === 'result')).reduce((a, e) => a + (e.total_cost_usd ?? 0), 0);
+  const agentCost = agentsSpent(facts.streams);
   // Kiro reports credits, not dollars: they’re listed beside the agents’ cost when a run had Kiro turns.
   const credits = kiroCredits(facts.kiroStreams ?? []);
   // Antigravity reports tokens, and its free tier is what a release run spends (#143).

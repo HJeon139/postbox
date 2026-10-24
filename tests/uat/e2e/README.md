@@ -239,7 +239,7 @@ A run needs Claude Code installed and signed in, Chrome, and network access for 
 Each run writes to `uat-runs/<time>-<scenario>/` in the main checkout, which git ignores, or to `POSTBOX_UAT_RUNS` when it’s set. A run started in a worktree still lands there (the runner finds the main checkout through git’s common dir), so deleting the worktree doesn’t delete the run: the wave 1 and 2 runs were lost that way, with their findings unreviewed. `--recheck` takes any run folder. A run holds:
 - `report.md`: coverage (for a targeted run), the issues caught again, new findings with their verdicts, and the timeline
 - `findings.json`: every finding with its verdict, the timeline, and what the runner probed
-- `run.json`: what a refit reads, so it needn’t parse the report: the scenario and its kind, the branch and commit, the model the agents ran on (from their streams) and their effort when the runner knows it, the tester’s model, the steps and the cap, the minutes, the cost, and the coverage
+- `run.json`: what a refit reads, so it needn’t parse the report: the scenario and its kind, the branch and commit, the model the agents ran on (from their streams) and their effort when the runner knows it, the tester’s model, the steps and the cap, the minutes, the cost, and the coverage. The cost counts each agent turn and tester step once: a result’s `total_cost_usd` is its Claude Code session’s running total, so the runner takes each turn’s total less its session’s last one (`tools/uat/cost.mjs`). Runs recorded before that added the totals, which counts every earlier turn of a resumed session again: their agents’ and tester’s costs are too high, the more so the longer their sessions ran.
 - `run.log`
 - `shots/`: screenshots of every block and app the tester saw
 - `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/` and Antigravity turns in `streams/agy/` (release runs)
@@ -365,7 +365,7 @@ The tester also judged the agents’ work, catching a renaming that leaked ident
 - The tester wasn’t told when the run pressed Stop.
 - The runner talked to whatever already held its port.
 
-A run costs real usage: about $30 to $45 for agents, and $5 to $7 for the tester, over 30 to 70 minutes.
+A run costs real usage: about $30 to $45 for agents, and $5 to $7 for the tester, over 30 to 70 minutes, as those runs added their costs up (see `run.json`, above: added that way, they’re too high).
 
 To apply improved checks to a finished run without running agents again:
 
