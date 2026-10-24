@@ -48,6 +48,7 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
 
 /**
  * The person’s answer: on (tick the tool for the persona) or off (leave it). Either way the agent hears it and goes on.
+ * On goes through the persona, as the agent panel’s switch does, so settleToolAsks answers this card with any other.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {string} action
  */
 export function resolveToolAsk(rt, threadId, itemId, action) {
@@ -55,19 +56,37 @@ export function resolveToolAsk(rt, threadId, itemId, action) {
   if (it?.kind !== 'toolask' || it.status !== 'open') throw httpError(409, 'That was already answered.');
   if (action !== 'on' && action !== 'off') throw httpError(400, 'A request for a tool takes “on” or “off”.');
   const persona = rt.persona(it.personaId);
-  if (action === 'on') {
-    if (!persona) throw httpError(404, 'That agent doesn’t exist any more.');
-    rt.updatePersona(persona.id, { tools: [...new Set([...(persona.tools ?? []), it.tool])] });
-  }
-  rt.patchItem(threadId, itemId, { status: action, answeredAt: Date.now() });
+  if (action === 'off') return answered(rt, threadId, it, 'off');
+  if (!persona) throw httpError(404, 'That agent doesn’t exist any more.');
+  rt.updatePersona(persona.id, { tools: [...new Set([...(persona.tools ?? []), it.tool])] });
+  return { ok: true };
+}
+
+/**
+ * The persona’s Tools changed (Runtime.updatePersona: the agent panel, the persona sheet or a card’s button): every
+ * open card that asked for a tool it now has is answered on, in every conversation, so none waits for a setting
+ * that’s already on (#237).
+ * @param {any} rt @param {{ id: string, tools?: string[] }} persona
+ */
+export function settleToolAsks(rt, persona) {
+  const has = new Set(persona.tools ?? []);
+  for (const [threadId, items] of Object.entries(rt.s.items))
+    for (const it of items)
+      if (it.kind === 'toolask' && it.personaId === persona.id && it.status === 'open' && has.has(it.tool)) answered(rt, threadId, it, 'on');
+}
+
+/** A card answered on or off: it says so, the agent no longer needs you for it, and it hears the answer. */
+function answered(rt, threadId, it, action) {
+  rt.patchItem(threadId, it.id, { status: action, answeredAt: Date.now() });
   rt.addItem(threadId, {
     kind: 'voice',
     text: action === 'on' ? `Turned on “${it.label}” for @${it.handle}` : `Kept “${it.label}” off for @${it.handle}`,
   });
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
-  if (se.needs?.itemId === itemId) rt.updateSession(se.id, { needs: null, state: rt.turns.has(se.id) ? se.state : 'idle' });
-  if (!se.archived && !se.deleting)
+  if (se.needs?.itemId === it.id) rt.updateSession(se.id, { needs: null, state: rt.turns.has(se.id) ? se.state : 'idle' });
+  // Not in a conversation you’re deleting: the persona changed elsewhere, and a turn there would outlive it.
+  if (!se.archived && !se.deleting && !rt.s.threads[threadId]?.deleting && !rt.s.threads[se.threadId]?.deleting)
     rt.deliver(se.id, {
       kind: 'notice',
       text:
