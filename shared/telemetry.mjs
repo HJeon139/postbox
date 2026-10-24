@@ -64,7 +64,7 @@ export function labelsOf(answer, { asked, sent, turns, failed = null, proposals 
     (l.turn === undefined || l.turn === null || (typeof l.turn === 'string' && named.has(l.turn)));
   const pick = (l) => ({ mast: l.mast, area: l.area, attribution: l.attribution, confidence: l.confidence, ...(l.turn ? { turn: l.turn } : {}) });
   const labels = asked.map(({ ref: on, refs }, i) => {
-    // The newest 60 are the window, as boundedInput sends them.
+    // The last 60 are the window, as boundedInput sends them: agents’ flags come first, so they go first (#270).
     const why = i < asked.length - MAX_LABELS || !sent.has(on) ? 'over-budget' : (failed ?? (fine(byRef.get(on), new Set(refs)) ? null : 'rejected'));
     return why ? { on, label: UNLABELED, reason: why } : { on, ...pick(byRef.get(on)) };
   });
@@ -152,7 +152,7 @@ const SCHEMA = obj({
     found: list(obj({ ref: 'ref:c', check: 'check', issue: int, count: n, refs: { item: 'ref:ti', max: MAX_REFS } })),
     notRun: list(obj({ check: 'check', missing: list(en(INPUTS)) })),
   }),
-  reactions: list(obj({ ref: 'ref:r', emoji: en(EMOJIS), on: ITEM, detectMs: ms })),
+  reactions: list(obj({ ref: 'ref:r', emoji: en(EMOJIS), on: ITEM, by: (v) => v === 'person' || AGENT(v), detectMs: ms })),
   labels: list(
     obj({
       on: 'ref:cr',
