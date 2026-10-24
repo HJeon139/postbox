@@ -100,7 +100,29 @@ export function sameProcess(record, opts = {}) {
   const boot = bootId(opts);
   if (boot === null || boot !== record.bootId) return false;
   const start = startTime(record.pid, opts);
-  return start !== null && start === record.startTime;
+  return start !== null && start === record.startTime && !zombie(record.pid, opts);
+}
+
+/**
+ * Whether a process has exited and waits only to be reaped (state Z, or X once it’s being reaped): signal 0 still reaches
+ * it and its start time still reads, but it runs nothing. A container whose PID 1 doesn’t reap leaves a killed daemon
+ * like this for good, and counting it as alive would stop a new one from ever starting. False when it can’t tell.
+ * @param {number} pid @param {ProcOpts} [opts]
+ */
+export function zombie(pid, { readFile = readFileSync, run = runProgram, platform = process.platform } = {}) {
+  try {
+    if (platform !== 'darwin') {
+      const text = readFile(`/proc/${pid}/stat`, 'utf8');
+      const state = text
+        .slice(text.lastIndexOf(')') + 1)
+        .trim()
+        .split(/\s+/)[0];
+      return state === 'Z' || state === 'X';
+    }
+    return /^[ZX]/.test(run('/bin/ps', ['-o', 'state=', '-p', String(pid)]).trim());
+  } catch {
+    return false;
+  }
 }
 
 // ── The start lock’s owner ──

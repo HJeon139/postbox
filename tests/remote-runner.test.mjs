@@ -6,7 +6,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { PROGRAMS } from '../server/remote/host/paths.mjs';
-import { bootId, listProcesses, liveGroups, parsePs, parseStartTime, parseStat, sameProcess, startTime, toolGroups } from '../server/remote/host/proc.mjs';
+import {
+  bootId,
+  listProcesses,
+  liveGroups,
+  parsePs,
+  parseStartTime,
+  parseStat,
+  sameProcess,
+  startTime,
+  toolGroups,
+  zombie,
+} from '../server/remote/host/proc.mjs';
 import { launchRunner, logindFacts } from '../server/remote/host/runner.mjs';
 import { hostPaths } from '../shared/remote-protocol.mjs';
 
@@ -160,6 +171,12 @@ test('proc: sameProcess needs the PID alive and both the boot ID and the start t
   assert.equal(sameProcess(rec, opts), true);
   assert.equal(sameProcess({ ...rec, startTime: 98766 }, opts), false, 'another process with the same PID');
   assert.equal(sameProcess({ ...rec, bootId: id.replace('c', 'd') }, opts), false, 'another boot');
+  // A zombie still takes signal 0 and keeps its start time, but it runs nothing: a killed daemon nobody reaps.
+  const asZombie = STAT.replace(/\) [A-Z] /, ') Z ');
+  assert.notEqual(asZombie, STAT, 'the fixture names a state to change');
+  assert.equal(sameProcess(rec, { ...opts, readFile: (p) => ({ ...files, '/proc/4321/stat': asZombie })[p] }), false, 'a zombie isn’t alive');
+  assert.equal(zombie(4321, { platform: 'darwin', run: () => 'Z\n' }), true, 'on macOS, ps’s state');
+  assert.equal(zombie(4321, { platform: 'darwin', run: () => 'S+\n' }), false);
   const gone = Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
   assert.equal(
     sameProcess(rec, {
