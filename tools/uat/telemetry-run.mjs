@@ -134,7 +134,14 @@ function readJsonLines(file) {
  * @param {{ td: ReturnType<typeof import('./telemetry-driver.mjs').telemetryDriver>, flags: any[], dir: string, shown: any, log: (l: string) => void }} o
  */
 export async function finishTelemetry({ td, flags, dir, data, main, shown, log }) {
-  for (const f of flags)
+  // One 🚩 per item: a second on the same item would take the first back.
+  const reacted = new Set();
+  for (const f of flags) {
+    if (reacted.has(f.item)) {
+      f.reacted = true;
+      continue;
+    }
+    reacted.add(f.item);
     await td.react(f.item, '🚩').then(
       () => {
         f.reacted = true;
@@ -144,6 +151,7 @@ export async function finishTelemetry({ td, flags, dir, data, main, shown, log }
         log(`Couldn’t react 🚩 to ${f.item} for “${f.key}”: ${e.message}`);
       },
     );
+  }
   const view = await td.report({ history: true });
   shown.views.push({ at: Date.now(), hash: view.hash, lines: view.lines.length });
   await td.save();
