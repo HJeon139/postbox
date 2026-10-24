@@ -139,7 +139,7 @@
       "includes": ["app/js/shell.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1178 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1159 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 139 } } }
         }
       }
@@ -444,13 +444,13 @@
       "linter": {
         "rules": {
           "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 948 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 517 } } }
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 515 } } }
         }
       }
     },
     {
       "includes": ["server/room-checks.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1207 } } } } }
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1203 } } } } }
     },
     {
       "includes": ["tools/uat/driver.mjs"],
@@ -473,7 +473,7 @@
       "includes": ["tools/uat/triggers.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 428 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 426 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 102 } } }
         }
       }

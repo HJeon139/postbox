@@ -1,8 +1,9 @@
 // Keyboard shortcuts: ⌃J to the next that needs you, ⌘\ for the sidebar, ⌘K for the palette, and Alt+↑/↓ and
 // Alt+End to move through turns and blocks and back to the composer.
 
+import { nextNeedsYou } from './needs-nav.mjs';
 import { openPalette } from './sheets.mjs';
-import { nextNeedsYou, toggleRail } from './shell.mjs';
+import { toggleRail } from './shell.mjs';
 import { focusComposer } from './thread.mjs';
 
 document.addEventListener('keydown', (e) => {
