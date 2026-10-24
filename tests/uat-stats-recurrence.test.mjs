@@ -8,6 +8,8 @@ const runs = [
   {
     run: '2026-10-22T01-01-16-scifact',
     findings: [
+      // The run that filed an issue is part of its recurrence count.
+      { source: 'tester', title: 'Filed finding', verdict: 'confirmed', filed: 106 },
       check(63),
       check(63, { key: 'again' }),
       check(106),
@@ -43,7 +45,7 @@ test('recurrence counts duplicate verdicts once per run, with the runs after eac
   assert.deepEqual(
     recurrence(runs, issues).map((x) => [x.issue, x.state, x.priority, x.runs, x.findings, x.after]),
     [
-      [106, 'OPEN', 'P1', 3, 3, 0],
+      [106, 'OPEN', 'P1', 3, 4, 0],
       // #63 closed at 16:16 on 23 October: only the run after that counts.
       [63, 'CLOSED', 'P1', 1, 1, 1],
       [156, 'OPEN', null, 1, 1, 0],
@@ -64,9 +66,9 @@ test('the table keeps its columns: issue, state, priority, runs, findings, runs 
   assert.deepEqual(RECURRENCE_COLUMNS, ['Issue', 'State', 'Priority', 'Runs', 'Findings', 'Runs after close']);
   const [, head, first, second, third] = recurrenceTable(recurrence(runs, issues));
   assert.equal(head, '  Issue  State   Priority  Runs  Findings  Runs after close');
-  assert.equal(first, '  #106   open    P1        3     3         0');
+  assert.equal(first, '  #106   open    P1        3     4         0');
   assert.equal(second, '  #63    closed  P1        1     1         1');
   assert.equal(third, '  #156   open    —         1     1         0');
-  assert.equal(recurrenceTable(recurrence(runs))[2], '  #106   ?      —         3     3         ?');
+  assert.equal(recurrenceTable(recurrence(runs))[2], '  #106   ?      —         3     4         ?');
   assert.deepEqual(recurrenceTable([]), ['Recurrence by issue: no run caught a known issue again.']);
 });

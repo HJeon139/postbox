@@ -177,9 +177,9 @@ const runTime = (run) => {
 };
 
 /**
- * Each issue a run caught again, as tests/uat/e2e/README.md (“Recurring findings”) counts them: findings whose verdict
- * is duplicate by verdictOf(), each issue once per run; measurements and coverage rows aren’t defects. A closed
- * issue’s row counts only what came back after it closed: a run from before it closed, or one without its fix
+ * Each issue a run caught again, as tests/uat/e2e/README.md (“Recurring findings”) counts them: duplicate findings and
+ * confirmed findings that filed an issue, each issue once per run; measurements and coverage rows aren’t defects. A
+ * closed issue’s row counts only what came back after it closed: a run from before it closed, or one without its fix
  * (closedIssue.hasFix false), caught the defect as it was, not a recurrence (#213). Without gh, nothing is known about
  * closing, so every run counts. Sorted by runs, then findings.
  * @param {{ run: string, findings: any[] }[]} runs
@@ -190,8 +190,15 @@ export function recurrence(runs, issues = new Map()) {
   const rows = new Map();
   for (const r of runs)
     for (const f of r.findings ?? []) {
-      const n = f.duplicateOf ?? f.issue;
-      if (verdictOf(f) !== 'duplicate' || f.check === 'coverage-gap' || f.closedIssue?.hasFix === false || !Number.isInteger(n)) continue;
+      const verdict = verdictOf(f);
+      const n = verdict === 'duplicate' ? (f.duplicateOf ?? f.issue) : verdict === 'confirmed' ? f.filed : null;
+      if (
+        (verdict !== 'duplicate' && verdict !== 'confirmed') ||
+        f.check === 'coverage-gap' ||
+        (verdict === 'duplicate' && f.closedIssue?.hasFix === false) ||
+        !Number.isInteger(n)
+      )
+        continue;
       const closed = issues.get(n)?.closedAt ? Date.parse(String(issues.get(n)?.closedAt)) : null;
       const at = runTime(r.run);
       if (closed !== null && at !== null && at <= closed) continue;
