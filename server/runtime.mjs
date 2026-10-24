@@ -13,7 +13,7 @@ import { commentAt } from '../shared/review-comments.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
-import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
+import { listProcesses } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
@@ -37,6 +37,7 @@ import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unread
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { parseDataset } from './corpus.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
+import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
@@ -86,8 +87,6 @@ export const PERMISSION_MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
 const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
-/** How often Postbox checks whether a background job it kept running has ended (#129). */
-const KEPT_POLL_MS = 5000;
 /** The background jobs Postbox keeps on a session, at most. */
 const MAX_JOBS = 50;
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
@@ -1398,63 +1397,22 @@ export class Runtime {
 
   /** The kept jobs, everywhere. */
   keptJobs() {
-    return Object.values(this.s.sessions).flatMap((se) => (se.jobs ?? []).filter((j) => j.kept && keptGroupsOf(j).length));
+    return keptJobs(this);
   }
 
-  /** Checks on the jobs Postbox kept running, until none is left: one whose process group is gone has ended. */
   watchKept() {
-    if (this.keptPoll) return;
-    this.keptPoll = setInterval(() => this.pollKept(), KEPT_POLL_MS);
-    this.keptPoll.unref?.();
+    return watchKept(this);
   }
-  async pollKept() {
-    if (!this.keptJobs().length) return;
-    const procs = await this.listProcesses().catch(() => null);
-    if (!procs) return;
-    for (const j of this.keptJobs()) if (!liveGroups(j, procs).length) this.endJob(j.sessionId, j.id, 'done');
-    if (!this.keptJobs().length && this.keptPoll) {
-      clearInterval(this.keptPoll);
-      this.keptPoll = null;
-    }
+  pollKept() {
+    return pollKept(this);
   }
 
-  /** Stops a session’s kept jobs, when it’s deleted for good or Postbox shuts down: nothing else would know of them. */
-  async stopKeptJobs(sessionIds, why) {
-    const jobs = this.keptJobs().filter((j) => sessionIds.includes(j.sessionId));
-    if (!jobs.length) return;
-    const procs = await this.listProcesses().catch(() => []);
-    for (const j of jobs) {
-      for (const g of liveGroups(j, procs)) stopPgid(g.pgid, { kill: this.signalProcess });
-      this.endJob(j.sessionId, j.id, 'stopped', why);
-    }
+  stopKeptJobs(sessionIds, why) {
+    return stopKeptJobs(this, sessionIds, why);
   }
 
-  /**
-   * A background job’s own Stop (#129). One Postbox kept running is signaled by its process group; one still under its
-   * agent’s CLI is found there by the adapter, and the CLI reports how it ended.
-   */
-  async stopJob(sessionId, jobId) {
-    const se = this.session(sessionId);
-    const job = (se.jobs ?? []).find((j) => j.id === jobId);
-    if (!job) throw httpError(409, 'That background job already ended.');
-    if (job.kept) {
-      // Only the groups still the job’s: one that ended may have left its id to another process.
-      for (const g of liveGroups(job, await this.listProcesses().catch(() => []))) stopPgid(g.pgid, { kill: this.signalProcess });
-      this.endJob(sessionId, jobId, 'stopped', null, { by: 'you' });
-      return { ok: true };
-    }
-    const turn = this.turns.get(sessionId);
-    const stopJob = turn?.id === job.turnId ? turn.control?.stopJob : null;
-    if (typeof stopJob !== 'function') throw httpError(409, `Postbox can’t reach that job’s process. Stop @${se.handle} to stop it.`);
-    const mark = (stopping) =>
-      this.updateSession(sessionId, { jobs: (this.s.sessions[sessionId]?.jobs ?? []).map((j) => (j.id === jobId ? { ...j, stopping } : j)) });
-    mark(true);
-    const pgid = await stopJob({ id: job.id, command: job.command });
-    if (!pgid) {
-      mark(false);
-      throw httpError(409, `Postbox couldn’t find that job’s process. Stop @${se.handle} to stop it.`);
-    }
-    return { ok: true };
+  stopJob(sessionId, jobId) {
+    return stopJob(this, sessionId, jobId);
   }
 
   /**
@@ -3634,36 +3592,6 @@ export function stopAskText(handle, n) {
 const KEEP_LOST = 'Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.';
 /** What the person and the agent are told when Postbox couldn’t tell which of a turn’s processes a kept job was (#164). */
 const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is this job, so it kept them all running; stopping the job stops them all.`;
-
-/**
- * A kept job’s process groups, with their leaders’ command lines when it was kept (#164). A job kept before those were
- * recorded has only its pgid. Bounded and checked: these come from an adapter, or from saved state.
- * @param {{ pgid?: unknown, groups?: unknown }} job
- * @returns {{ pgid: number, command: string|null }[]}
- */
-function keptGroupsOf(job) {
-  const ok = (n) => Number.isInteger(n) && n > 1;
-  if (Array.isArray(job.groups))
-    return job.groups
-      .filter((g) => ok(g?.pgid))
-      .slice(0, 20)
-      .map((g) => ({ pgid: g.pgid, command: typeof g.command === 'string' ? g.command.slice(0, 8000) : null }));
-  return ok(job.pgid) ? [{ pgid: /** @type {number} */ (job.pgid), command: null }] : [];
-}
-
-/**
- * A kept job’s groups that are still its own: something is in them, and the leader, if still there, is the process it
- * was when the job was kept (or, for a job from before that was recorded, runs the job’s command). A group can’t lose
- * its id while anything is in it, but once it’s empty the id can go to another.
- * @param {{ pgid?: number, groups?: unknown, command: string }} job @param {import('./adapters/process-group.mjs').Proc[]} procs
- */
-function liveGroups(job, procs) {
-  return keptGroupsOf(job).filter((g) => {
-    const members = procs.filter((p) => p.pgid === g.pgid);
-    const leader = members.find((p) => p.pid === g.pgid);
-    return members.length > 0 && (!leader || (g.command !== null ? leader.command === g.command : runsCommand(leader, job.command)));
-  });
-}
 
 /**
  * A permission card’s detail, and for a write outside Postbox (#112) that it is one, and its draft, which the card shows
