@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.28.0 (2026-10-24)
+
+### Features
+
+- **overview:** give a card that needs you a look of its own
+
+### Fixes
+
+- **look:** light mode keeps its fills, and focus-clear places its message under the composer
+- **contrast:** check the app's stylesheet when none is named
+- **a11y:** keep what has focus clear of the sticky composer
+- **ui:** mark every text button as a control, with a border or an underline
+- **composer:** line up the thread panel's composer with the conversation's
+- **ui:** give boxes that wrap a card's corners, not pill ends
+- **ui:** show selected segments, chosen chips and on toggles as amber outlines
+
 ## 0.27.1 (2026-10-24)
 
 ### Fixes
