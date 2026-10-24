@@ -133,7 +133,7 @@ test('#110: read_conversation reads another thread of the same conversation by i
   await settle(rt);
   const side = sideOf(store, t);
   const tools = rt.toolsFor(alpha.id);
-  assert.match(tools.read_conversation({ thread: side.id }).message, /You \(@alpha\): The plan is X\.\n\n@beta: ok/);
+  assert.match(tools.read_conversation({ thread: side.id }).message, /\] You \(@alpha\): The plan is X\.\n\n\[it_\w+\] @beta: ok/);
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id] });
   const r = tools.read_conversation({ thread: other.id });
   assert.equal(r.ok, false);

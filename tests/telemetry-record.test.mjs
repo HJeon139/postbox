@@ -39,7 +39,7 @@ async function inputs(recorded) {
   await settle(f.rt);
   f.stop();
   const ids = new Map();
-  const stable = (s) => s.replace(/\b[a-z]{2,5}_[A-Za-z0-9]{6,}\b/g, (m) => ids.get(m) ?? ids.set(m, `id${ids.size}`).get(m)).replace(/\d\d:\d\d/g, 'HH:MM');
+  const stable = (s) => s.replace(/\b[a-z]{2,5}_[A-Za-z0-9]{1,8}\b/g, (m) => ids.get(m) ?? ids.set(m, `id${ids.size}`).get(m)).replace(/\d\d:\d\d/g, 'HH:MM');
   return f.adapter.calls.map((c) => stable(JSON.stringify({ handle: c.handle, message: c.message, state: c.state })));
 }
 

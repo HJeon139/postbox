@@ -131,6 +131,12 @@ test('U3: the telemetry checks pass on a clean run, and each fires on its own de
     { key: 'y', item: 'it_not_yet' },
   ];
   assert.deepEqual(fired(moved), ['flag-misplaced']);
+  // An agent’s 🚩 on the item isn’t the runner’s (#270).
+  const theirs = structuredClone(facts);
+  const it = theirs.state.items[theirs.threads[0]][0];
+  it.reactions = [{ emoji: '🚩', at: 1, by: 'se_beta', handle: 'beta' }];
+  theirs.telemetry.flags = [{ key: 'z', item: it.id, reacted: true }];
+  assert.deepEqual(fired(theirs), ['flag-misplaced']);
   const open = structuredClone(facts);
   open.telemetry.modes.push({ path: 'a/report.json', dir: false, mode: 0o644 });
   assert.deepEqual(fired(open), ['telemetry-at-rest']);
