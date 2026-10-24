@@ -1,7 +1,7 @@
 // What the host’s shim (shim.mjs, #120) says to the harness on stdout, one JSON-RPC message per line, and the words
 // in it: the answer to initialize, a queued tool’s text, and how long a wait was. It logs only to stderr.
 
-/** The same answer to initialize as the laptop’s server/mcp.mjs; tests/remote-shim.test.mjs compares them. */
+/** The same answer to initialize as the laptop’s server/mcp.mjs; tests/integration/remote-shim.test.mjs compares them. */
 const PROTOCOL = '2025-06-18';
 export const INITIALIZE = {
   protocolVersion: PROTOCOL,

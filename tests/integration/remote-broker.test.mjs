@@ -2,7 +2,7 @@
 // functions (tests/integration/host.mjs’s realDaemon) serving its Unix socket, the real shim (`node shim.mjs <turn>`)
 // speaking JSON-RPC as a harness would, and the real runner on the stand-in harness for a held Codex turn, in a temp
 // POSTBOX_REMOTE_HOME. Postbox is a pair of PassThrough streams. The broker’s rules, with fakes, are unit-tested in
-// tests/remote-broker.test.mjs.
+// tests/remote-broker*.test.mjs.
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
