@@ -35,7 +35,7 @@ export function hostPaths(home, version) {
     lock: `${root}/locks/${version}.lock`,
     token: `${root}/token`,
     turns: `${root}/turns`,
-    /** @param {string} turn @param {string} [file]  one of TURN_FILES’ values, or MESSAGE_FILE */
+    /** @param {string} turn @param {string} [file]  one of TURN_FILES’ values, MESSAGE_FILE, or `${ATTACHMENTS_DIR}/<name>` */
     turn(turn, file) {
       if (!TURN_RE.test(turn)) throw new TypeError(`“${clip(turn)}” isn’t a turn ID.`);
       return `${root}/turns/${turn}${file ? `/${file}` : ''}`;

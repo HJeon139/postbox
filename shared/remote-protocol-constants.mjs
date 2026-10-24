@@ -33,6 +33,14 @@ export const REMOTE_LIMITS = Object.freeze({
   files: 8,
   fileBytes: 4 * MiB,
   filesBytes: 8 * MiB,
+  /**
+   * The person’s files one `start` carries (start.attachments), and their size as decoded bytes, one and in all. They
+   * go as base64, a third larger, so a start with files, argv and env at their limits (8 + 1 + 2 MiB) and attachments
+   * at theirs (4/3 of 3.5 MiB, under 4.7) still fits in lineBytes.
+   */
+  attachments: 16,
+  attachmentBytes: 3 * MiB,
+  attachmentsBytes: 3.5 * MiB,
   /** An error’s or a problem’s message, and a permission denial’s. */
   messageChars: LIMITS.prompt,
   problems: 32,
@@ -161,6 +169,9 @@ export const TURN_FILES = Object.freeze({
 
 /** The turn’s message, one stream-json user message, which a `file` stdin reads. Sent in `start.files`. */
 export const MESSAGE_FILE = 'message.jsonl';
+
+/** The folder in a turn’s folder that `start.attachments` land in, each as `attachments/<name>`. */
+export const ATTACHMENTS_DIR = 'attachments';
 
 /** Folders under REMOTE_DIR are created with this mode, files with FILE_MODE (the design’s “Security”). */
 export const DIR_MODE = 0o700;

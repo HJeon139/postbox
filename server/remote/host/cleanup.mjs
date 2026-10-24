@@ -9,9 +9,10 @@
 //   out.jsonl. The protocol acks out.jsonl only; in.jsonl holds Postbox’s own writes, each confirmed by `written`, and
 //   matters only for rebuilding a Codex turn that’s still running, so it goes with out.jsonl. `.ack` stays, holding
 //   out.jsonl’s size, so welcome.turns and a `read` still answer for the turn.
-// - The turn’s other files go when it ends: the message, the snapshot, any other file start.files carried, and the
-//   agent file. exit.json, runner.json, start.json and `.ack` stay, as do prompts.jsonl and tools.jsonl (the broker’s
-//   queue for Postbox, which may still owe a reply after the turn ends), until the folder goes.
+// - The turn’s other files go when it ends: the message, the snapshot, any other file start.files carried, the
+//   attachments start.attachments carried (and their folder), and the agent file. exit.json, runner.json, start.json
+//   and `.ack` stay, as do prompts.jsonl and tools.jsonl (the broker’s queue for Postbox, which may still owe a reply
+//   after the turn ends), until the folder goes.
 // - A turn folder whose newest file is older than logRetention is deleted whole, acked or not, unless its runner is
 //   still running: the runner holds its logs open, and it’s still Postbox’s turn.
 // - A log over logMaxBytes. For a running turn, out.jsonl and in.jsonl can’t be cut safely: Postbox addresses lines by

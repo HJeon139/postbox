@@ -1,7 +1,7 @@
 // The protocol’s checks on single values (shared/remote-protocol.mjs): IDs, numbers, text, lists and host paths.
 // Each returns the error to show, or '' when the value is fine, so a message’s checks chain with ||.
 
-import { REMOTE_DIR, REMOTE_LIMITS, TURN_FILES } from './remote-protocol-constants.mjs';
+import { ATTACHMENTS_DIR, REMOTE_DIR, REMOTE_LIMITS, TURN_FILES } from './remote-protocol-constants.mjs';
 import { checkHostPath } from './remote-settings.mjs';
 
 /** @template T @typedef {{ ok: true, msg: T } | { ok: false, error: string }} Result */
@@ -16,7 +16,8 @@ export const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const SIGNAL_RE = /^SIG[A-Z0-9]{2,10}$/;
 export const LOGS = Object.freeze(['out', 'in']);
 export const TURN_STATES = Object.freeze(['running', 'ended', 'interrupted']);
-export const RESERVED = new Set([...Object.values(TURN_FILES)]);
+/** Names in a turn’s folder that start.files can’t take: its own files, and the folder attachments land in. */
+export const RESERVED = new Set([...Object.values(TURN_FILES), ATTACHMENTS_DIR]);
 
 export const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 export const clip = (v, n = 60) => {

@@ -2,7 +2,7 @@
 // past logRetention, with the agent file a turn’s start wrote.
 
 import { promises as fsp } from 'node:fs';
-import { FILE_MODE, TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protocol.mjs';
+import { ATTACHMENTS_DIR, FILE_MODE, TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protocol.mjs';
 import {
   ACK_FILE,
   AGENT_RECORD,
@@ -116,6 +116,22 @@ async function capRunning(cl, turn, dir, logMaxBytes, done) {
   }
 }
 
+/**
+ * The person’s files the start carried, in the turn folder’s ATTACHMENTS_DIR: each one unlinked, then the folder. Only
+ * a real folder: a link in its place is a file to tidyEnded, unlinked there, never followed.
+ * @param {Cleanup} cl @param {string} dir
+ */
+async function dropAttachments(cl, dir) {
+  const at = `${dir}/${ATTACHMENTS_DIR}`;
+  if (!(await lstat(at))?.isDirectory()) return;
+  for (const name of await fsp.readdir(at).catch(() => [])) {
+    const f = await lstat(`${at}/${name}`);
+    if (f && !f.isDirectory()) await unlink(cl, `${at}/${name}`);
+  }
+  // A folder the agent made in it keeps it until the turn folder goes, at logRetention.
+  await fsp.rmdir(at).catch((e) => cl.log(`Couldn’t delete ${at}: ${e.message}`));
+}
+
 /** Ended: the turn’s own files go, and its logs once Postbox has acked all of out.jsonl. @param {Cleanup} cl @param {string} turn @param {string} dir @param {Swept} done */
 async function tidyEnded(cl, turn, dir, done) {
   await dropAgentFile(cl, turn, dir);
@@ -125,6 +141,7 @@ async function tidyEnded(cl, turn, dir, done) {
     const f = await lstat(`${dir}/${name}`);
     if (f && !f.isDirectory()) await unlink(cl, `${dir}/${name}`);
   }
+  await dropAttachments(cl, dir);
   const outSize = await sizeOf(`${dir}/${TURN_FILES.out}`);
   const acked = (await readAck(cl, turn)) ?? 0;
   const there = await Promise.all(LOGS.map((f) => lstat(`${dir}/${f}`)));

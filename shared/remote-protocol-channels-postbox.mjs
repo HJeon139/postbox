@@ -25,6 +25,7 @@ import { HARNESSES, MESSAGE_FILE, REMOTE_LIMITS, STDIN_KINDS, TOOL_ROUTES } from
 import {
   checkAgentFile,
   checkArgv,
+  checkAttachments,
   checkDecision,
   checkEnv,
   checkError,
@@ -45,9 +46,9 @@ export const POSTBOX_CHANNELS = {
       token(m.token, 'hello.token') ||
       opt(m.takeover, (v) => bool(v, 'hello.takeover')) ||
       opt(m.settings, (v) => checkSettings(v)),
-    /** { turn, harness, folder, argv, env, stdin, files, agentFile? } */
+    /** { turn, harness, folder, argv, env, stdin, files, agentFile?, attachments? } */
     start: (m) =>
-      fields(m, 'start', ['turn', 'harness', 'folder', 'argv', 'env', 'stdin', 'files'], ['agentFile']) ||
+      fields(m, 'start', ['turn', 'harness', 'folder', 'argv', 'env', 'stdin', 'files'], ['agentFile', 'attachments']) ||
       turnId(m.turn, 'start.turn') ||
       oneOf(m.harness, 'start.harness', HARNESSES) ||
       hostPath(m.folder, 'start.folder') ||
@@ -58,7 +59,8 @@ export const POSTBOX_CHANNELS = {
       (m.stdin === 'file' && !m.files.some((f) => f.name === MESSAGE_FILE)
         ? `A turn that reads its stdin from a file must send ${MESSAGE_FILE} in start.files.`
         : '') ||
-      opt(m.agentFile, (v) => (m.harness === 'kiro-cli' ? checkAgentFile(v) : `start.agentFile is only for kiro-cli; this start is for ${m.harness}.`)),
+      opt(m.agentFile, (v) => (m.harness === 'kiro-cli' ? checkAgentFile(v) : `start.agentFile is only for kiro-cli; this start is for ${m.harness}.`)) ||
+      opt(m.attachments, (v) => checkAttachments(v)),
     /** { turn, home, threads: [{ id, items: SnapshotItem[] }] }: the whole snapshot, replacing any before. */
     snapshot: (m) =>
       fields(m, 'snapshot', ['turn', 'home', 'threads']) ||

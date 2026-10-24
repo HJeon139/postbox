@@ -1,5 +1,6 @@
 // The protocol’s checks on the parts of messages that more than one message carries (shared/remote-protocol.mjs):
-// argv, env, files, settings, an exit, snapshot items, a permission request and its decision, and an error.
+// argv, env, files, attachments, settings, an exit, snapshot items, a permission request and its decision, and an
+// error.
 
 import {
   clip,
@@ -88,6 +89,40 @@ export function checkFiles(v) {
     unique(
       v.map((f) => f.name),
       'start.files',
+      'file',
+    )
+  );
+}
+
+/** Base64’s alphabet, with `=` only at the end: with a length that’s a multiple of 4, RFC 4648’s padded form. */
+const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** The bytes a base64 string decodes to, without decoding it. @param {string} s */
+const base64Bytes = (s) => (s.length / 4) * 3 - (s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0);
+
+/**
+ * start.attachments: the person’s files, which the daemon writes under the turn folder’s ATTACHMENTS_DIR. Each is a
+ * plain name and its bytes as base64, so any file crosses, NUL and all; the limits count the decoded bytes.
+ */
+export function checkAttachments(v) {
+  let total = 0;
+  return (
+    list(v, 'start.attachments', REMOTE_LIMITS.attachments, (f, i) => {
+      const at = `start.attachments[${i}]`;
+      const e = fields(f, at, ['name', 'base64']);
+      if (e) return e;
+      if (typeof f.name !== 'string' || !FILE_RE.test(f.name) || f.name.includes('..'))
+        return `${at}.name must be a plain file name: letters, digits, . _ and -, starting with a letter or digit, with no / or ..; got “${clip(f.name)}”.`;
+      if (typeof f.base64 !== 'string' || f.base64.length % 4 !== 0 || !BASE64_RE.test(f.base64))
+        return `${at}.base64 must be the file’s bytes in base64, padded with = to a multiple of 4 characters.`;
+      const n = base64Bytes(f.base64);
+      if (n > REMOTE_LIMITS.attachmentBytes) return `${at} (${f.name}) is ${n} bytes; the limit is ${REMOTE_LIMITS.attachmentBytes}.`;
+      total += n;
+      return total > REMOTE_LIMITS.attachmentsBytes ? `start.attachments are over ${REMOTE_LIMITS.attachmentsBytes} bytes in all.` : '';
+    }) ||
+    unique(
+      v.map((f) => f.name),
+      'start.attachments',
       'file',
     )
   );

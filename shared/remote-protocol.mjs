@@ -29,6 +29,11 @@
 //   folder’s own files. A `file` stdin is the turn’s message file, message.jsonl, which `files` must carry. The one file
 //   that belongs elsewhere is a Kiro agent file, `start.agentFile` (name and text only): the daemon puts it in the
 //   agents folder of the Kiro home the runner will use, from start.env’s KIRO_HOME, its own, or ~/.kiro.
+// - `attachments` (optional) are the person’s files from the turn’s message, which the agent there can’t read on the
+//   laptop: each a plain name and its bytes as base64, so a binary file crosses whole. The daemon writes them under
+//   the turn folder, `attachments/<name>` (ATTACHMENTS_DIR, 0700, each file 0600), and they go with the turn’s other
+//   files when it ends. REMOTE_LIMITS caps how many and their decoded bytes, one and in all; Postbox refuses a
+//   message over a limit before the turn starts, so none is dropped on the way.
 // - `env` names are checked for shape only. Which names may go is the adapter’s `capabilities.remote.env`, checked on
 //   the laptop; the token holder already runs any argv as the host’s user, so a list here would protect nothing.
 // - `welcome` gives the daemon’s home folder, so Postbox can build absolute paths (the default `~/postbox-work/<handle>`
@@ -76,6 +81,7 @@
 
 import { utf8Bytes } from './remote-protocol-checks.mjs';
 import {
+  ATTACHMENTS_DIR,
   DIR_MODE,
   ERROR_CODES,
   FILE_MODE,
@@ -97,6 +103,7 @@ import { createLineReader, createMessageReader } from './remote-protocol-framing
 import { CHANNEL_NAMES, encode, encodedBytes, message, messageTypes, parseLine, VALIDATORS, validateMessage } from './remote-protocol-messages.mjs';
 
 export {
+  ATTACHMENTS_DIR,
   CHANNEL_NAMES,
   createLineReader,
   createMessageReader,

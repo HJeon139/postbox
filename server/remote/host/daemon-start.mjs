@@ -1,9 +1,10 @@
-// A turn’s start (daemon.mjs’s header, #120): the checks, the turn folder and its files, a Kiro agent file where the
-// runner’s Kiro reads agents, start.json, and the runner’s launch, answered `started` once the runner is up.
+// A turn’s start (daemon.mjs’s header, #120): the checks, the turn folder and its files and attachments, a Kiro agent
+// file where the runner’s Kiro reads agents, start.json, and the runner’s launch, answered `started` once the runner
+// is up.
 
 import { promises as fsp } from 'node:fs';
 import { dirname, posix } from 'node:path';
-import { DIR_MODE, FILE_MODE, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
+import { ATTACHMENTS_DIR, DIR_MODE, FILE_MODE, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
 import { RUNNER_START_POLL_MS } from './daemon-constants.mjs';
 import { exists, runnerAlive, writeAtomic } from './daemon-files.mjs';
 import { fail, send } from './daemon-reply.mjs';
@@ -140,7 +141,20 @@ async function workFolder(d, m, failStart) {
 }
 
 /**
- * Writes the turn’s files, its agent file and start.json, and launches its runner. Whether it launched; if not,
+ * The person’s files a start carries (start.attachments), decoded, in the turn folder’s ATTACHMENTS_DIR: the folder
+ * made here, 0700, and each file new, 0600. The protocol has checked that each name is a plain one, so none lands
+ * outside it, and the turn folder is new, so nothing was there before.
+ * @param {string} dir  the turn folder @param {{ name: string, base64: string }[]} [list]
+ */
+async function writeAttachments(dir, list = []) {
+  if (!list.length) return;
+  const at = `${dir}/${ATTACHMENTS_DIR}`;
+  await fsp.mkdir(at, { mode: DIR_MODE });
+  for (const a of list) await fsp.writeFile(`${at}/${a.name}`, Buffer.from(a.base64, 'base64'), { mode: FILE_MODE, flag: 'wx' });
+}
+
+/**
+ * Writes the turn’s files, its attachments, its agent file and start.json, and launches its runner. Whether it launched; if not,
  * nothing ran, so the folder goes, and the same turn can be started again.
  * @param {Daemon} d @param {any} m @param {{ node: string, dir: string, agents: { dir: string } | null, record: object }} ready
  * @param {FailStart} failStart
@@ -148,6 +162,7 @@ async function workFolder(d, m, failStart) {
 async function launch(d, m, { node, dir, agents, record }, failStart) {
   try {
     for (const f of m.files) await fsp.writeFile(`${dir}/${f.name}`, f.text, { mode: FILE_MODE, flag: 'wx' });
+    await writeAttachments(dir, m.attachments);
     await d.brk.starting?.(m.turn);
     // Outside the turn folder (a Kiro home’s agents folder), recorded in it, so it goes when the turn ends.
     if (m.agentFile && agents && 'dir' in agents) await d.cleanup.writeAgentFile(m.turn, { dir: agents.dir, name: m.agentFile.name, text: m.agentFile.text });
