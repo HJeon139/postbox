@@ -329,8 +329,9 @@ pb-ring .dot.still { animation: none; }
 .caret { display: inline-block; width: 7px; height: 15px; vertical-align: -2px; margin-left: 2px; background: var(--accent); border-radius: 1px; animation: pb-breathe 1s steps(2) infinite; }
 .shot .caret { animation: none; }
 
+/* It wraps when what you sent is long, so it has a card’s corners, not pill ends (#199). */
 .voice { align-self: flex-end; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim);
-  padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; }
+  padding: 3px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .voice b { color: var(--text); font-weight: 500; }
 /* An app’s own summary beside the line Postbox wrote in your voice: the app’s words, set apart from yours (#51). */
 .app-says { align-self: flex-end; max-width: 100%; font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
@@ -867,7 +868,8 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   .tbl td { padding: 7px 8px; }
   .tbl th button { padding: 8px; }
   .tbl td.act { padding: 4px; }
-  .sys .pill { white-space: normal; text-align: center; justify-content: center; flex-wrap: wrap; }
+  /* It wraps here: as tall as its lines, with a card’s corners, not pill ends (#199). */
+  .sys .pill { white-space: normal; text-align: center; justify-content: center; flex-wrap: wrap; height: auto; border-radius: 8px; }
   .composer { padding: 8px 12px 10px; }
   .me-card { max-width: 92%; }
   .form-grid { grid-template-columns: 1fr; }

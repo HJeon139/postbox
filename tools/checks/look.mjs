@@ -3,6 +3,7 @@
 //     bigger than a glyph: in Postbox, in Settings, and in an app’s kit (intent.md, Visual language).
 //   - #8: an overview card that needs you has a look of its own, a heavier amber top edge and a tinted head band,
 //     not the 1 px amber outline of a button.
+//   - #199: nothing with a border that wraps to a second line has fully rounded (pill) ends.
 //
 //   node tools/checks/look.mjs            (ONLY=#8 runs the cases whose name has that in it)
 //
@@ -182,6 +183,41 @@ for (const theme of ['dark', 'light'])
         assert.notEqual(m.working.head, m.band, 'a working card has the needs-you band too');
       },
     );
+
+// ── #199: a box that wraps isn’t a pill ─────────────────────────────────────────────────
+
+// Every bordered element in the conversation that holds more than one line of text and is rounded to a pill.
+const PILLS = `[...document.querySelectorAll('#main *')].flatMap((n) => {
+  const s = getComputedStyle(n);
+  if (s.borderTopStyle === 'none' || parseFloat(s.borderTopWidth) === 0 || !n.offsetHeight) return [];
+  const line = parseFloat(s.lineHeight) || parseFloat(s.fontSize) * 1.2;
+  // scrollHeight: a box held to one line’s height that wraps anyway spills its second line out of it.
+  const lines = (Math.max(n.clientHeight, n.scrollHeight) - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom)) / line;
+  return lines >= 1.8 && parseFloat(s.borderTopLeftRadius) >= n.offsetHeight / 2 ? [n.className + ' (' + n.offsetHeight + ' px tall): ' + n.textContent.slice(0, 40)] : [];
+})`;
+rt.addItem(t.id, {
+  kind: 'voice',
+  text: 'Sent: form · What should happen to the visual-explainer walkthrough from my last turn? Retire it (I’ll replace it with a one-line note)',
+});
+// System lines are pills on one line, and wrap at a narrow width.
+rt.addItem(t.id, { kind: 'system', variant: 'compaction', handle: 'librarian', n: 2, kept: 41000, total: 182000, summary: 'Kept the index plan.' });
+for (const width of [1280, 375])
+  await check(`#199 at ${width} px: a line in your voice or a system line that wraps has a card’s corners, not pill ends`, async () => {
+    await page.size(width, 900, { theme: 'dark' });
+    await open(`#/t/${t.id}`);
+    await page.waitFor(`document.querySelector('.voice')`);
+    const lines = await page.evaluate(
+      `(() => { const v = document.querySelector('.voice'); return Math.round(v.getBoundingClientRect().height / parseFloat(getComputedStyle(v).lineHeight)); })()`,
+    );
+    assert.ok(lines >= 2, `the line in your voice doesn’t wrap at ${width} px, so this checks nothing`);
+    if (width < 768) {
+      const pill = await page.evaluate(
+        `(() => { const p = document.querySelector('#main .sys .pill'); return p.scrollHeight / parseFloat(getComputedStyle(p).lineHeight); })()`,
+      );
+      assert.ok(pill >= 1.8, `the compaction line doesn’t wrap at ${width} px, so this checks nothing`);
+    }
+    assert.deepEqual(await page.evaluate(PILLS), []);
+  });
 
 await page.close();
 await app.close();
