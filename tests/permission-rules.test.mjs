@@ -87,6 +87,54 @@ test('a heredoc whose word is quoted, escaped or has punctuation in it is one co
   assert.equal(rulesFor('Bash', { command: "cat > a.json <<'END-JSON'\n{}\nEND-JSON" }).once, "Bash(cat > a.json <<'END-JSON'\n{}\nEND-JSON)");
 });
 
+// The shell removes a backslash-newline before it reads words, except in single quotes and in a body whose word is
+// quoted (POSIX, “Escape Character”, “Here-Document”), and its quote removal applies to a heredoc’s word: in "",
+// a backslash escapes only $ ` " \ and newline; in '', none. Each command ran as /bin/bash -c (bash 3.2.57) in an
+// empty folder; true where the echo printed RAN, so the shell ran a second command.
+test('a backslash-newline or an escaped quote in or around a heredoc reads as the shell reads it', () => {
+  const C = 'cat >/dev/null';
+  const M = 'echo R""AN >&2';
+  for (const [command, ran] of [
+    [`${C} <<EO\\\nF\na; b\nEOF\n${M}`, true],
+    [`${C} <<EO\\\nF\na; b\nEOF`, false],
+    [`${C} <<EO\\\nF\n$(${M})\nEOF`, true], // the word has no quotes, so the body is expanded
+    [`${C} <<\\\nEOF\na; b\nEOF\n${M}`, true],
+    [`${C} <<\\\n-EOF\n\ta; b\n\tEOF\n${M}`, true],
+    [`${C} <\\\n<EOF\na; b\nEOF`, false],
+    [`${C} <\\\n<\\\n< "a;b"`, false],
+    [`${C} <<EOF \\\n&& ${M}\nhi\nEOF`, true],
+    [`${C} <<EO\\\nF && ${M}\nhi\nEOF`, true],
+    [`${C} <<EO\\\nF; ${M}\nhi\nEOF`, true],
+    [`${C} <<E\\"OF\na; b\nE"OF`, false],
+    [`${C} <<"E\\"OF"\na; b\nE"OF`, false],
+    [`${C} <<"E\\"OF"\na; b\nE"OF\n${M}`, true],
+    [`${C} <<"E\\"OF" && ${M}\na; b\nE"OF`, true],
+    [`${C} <<'E\\'\na; b\nE\\`, false],
+    [`${C} <<'E\\'\na; b\nE\\\n${M}`, true],
+    [`${C} <<"E\\aF"\na; b\nE\\aF\n${M}`, true],
+    [`${C} <<"E\\\nF"\na; b\nEF\n${M}`, true],
+    [`${C} <<'E\\\nF'\na; b\nE\\\nF\n${M}`, false],
+    [`${C} <<A <<B\\\nC\nx\nA\ny\nBC\n${M}`, true],
+    // In an expanded body a backslash-newline joins lines, so EO\⏎F ends it and hi\⏎EOF doesn’t; \\ is a backslash.
+    [`${C} <<EOF\na; b\nEO\\\nF\n${M}`, true],
+    [`${C} <<-EOF\n\ta\n\tEO\\\nF\n${M}`, true],
+    [`${C} <<EOF\nhi\\\nEOF\n${M}`, false],
+    [`${C} <<EOF\nhi\\\\\nEOF\n${M}`, true],
+    [`${C} <<EOF\nhi\nEOF\\\n${M}\nEOF`, false],
+    [`${C} <<EOF\n$\\\n(${M})\nEOF`, true],
+    [`${C} <<'EOF'\na; b\nEO\\\nF\nEOF\n${M}`, true],
+    [`${C} <<'EOF'\nhi\\\nEOF\n${M}`, true],
+    [`${C} <<'EOF'\n$\\\n(${M})\nEOF`, false],
+    // And outside heredocs: an operator or $( that a backslash-newline splits is still one.
+    [`echo $\\\n(${M})`, true],
+    ['echo $(\\\n(1+2))', false],
+    ['echo hi >\\\n| /dev/null', false],
+    ['echo hi 2>\\\n&1', false],
+    ['echo hi &\\\n>/dev/null', false],
+  ])
+    assert.equal(chains(command), ran, command);
+});
+
 test('fetches are allowed by domain, files by path, anything else by tool', () => {
   assert.equal(rulesFor('WebFetch', { url: 'https://example.com/a?b' }).always, 'WebFetch(domain:example.com)');
   assert.equal(rulesFor('Edit', { file_path: '/p/a.md' }).once, 'Edit(/p/a.md)');
