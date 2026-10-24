@@ -14,15 +14,10 @@ import { extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
-import { AgentSdkAdapter } from './adapters/agent-sdk.mjs';
-import { AntigravityCliAdapter } from './adapters/antigravity-cli.mjs';
-import { ClaudeCodeAdapter } from './adapters/claude-code.mjs';
-import { CodexAdapter } from './adapters/codex.mjs';
-import { KiroCliAdapter } from './adapters/kiro-cli.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
-import { PROBES } from './backends.mjs';
+import { PROBES, registerBackends } from './backends.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
@@ -114,27 +109,7 @@ export async function start({
   const blobs = new Blobs(join(dataDir, 'blobs'));
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
-  // The real backends. Those that can run on a host (capabilities.remote: Claude Code, Kiro CLI and Codex) register
-  // without their CLI here too, as host-only (here: false), so an agent can run them there (#120); the rest only when
-  // they can run here. POSTBOX_BACKENDS=mock turns them all off (tests, demo).
-  const real = (probes !== undefined || process.env.POSTBOX_BACKENDS !== 'mock') && !demo;
-  const look = { ...PROBES, ...probes };
-  const workRoot = join(dataDir, 'workspaces');
-  const claude = real ? await look.claude() : null;
-  if (real) adapters.register(new ClaudeCodeAdapter({ workRoot }), { here: !!claude });
-  const sdk = real ? await look.sdk() : null;
-  if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot }));
-  // An Isolated Kiro persona runs with a Kiro home of Postbox’s own (#117), next to the workspaces.
-  const kiro = real ? await look.kiro() : null;
-  if (real)
-    adapters.register(new KiroCliAdapter({ workRoot, isolatedHome: join(dataDir, 'kiro-home'), models: kiro ? await look.kiroModels() : [] }), {
-      here: !!kiro,
-    });
-  // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
-  const agy = real ? await look.agy() : null;
-  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, models: await look.agyModels() }));
-  const codex = real ? await look.codex() : null;
-  if (real) adapters.register(new CodexAdapter({ workRoot, models: codex ? await look.codexModels() : [] }), { here: !!codex });
+  const { real, claude, kiro, agy, codex } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
     origin,
     // Which build this is, shown under Personas in the sidebar.
