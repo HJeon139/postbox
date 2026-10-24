@@ -450,6 +450,11 @@ flowchart LR
   - When several sessions move code out of one file at once, only the integrator lowers that file’s ceilings, once after each merge, in a commit of its own (designs/prompts/README.md, “Length limits”). One writer means no conflicts in `biome.json`, and a ceiling left loose for a while is safe, since nothing can grow past it.
 - Later changes hold the moved code to its carried ceilings, like any other.
 
+**Which module owns which state** in `server/runtime.mjs`’s split (23 October 2026, for [#120](https://github.com/HJeon139/postbox/issues/120)):
+- **The `Runtime` owns its state:** the store’s (`rt.s`), the turns running now (`rt.turns`), the stops it waits on (`rt.exiting`), the open permission cards (`rt.permissionWaits`) and its timers. A concern moved out keeps none of its own. Its functions take the runtime first, read that state through it, and change it only through the runtime’s methods (`updateSession`, `updatePersona`, `patchItem`) or the store’s events, so it can’t disagree with the runtime about a session.
+- **`server/permissions-panel.mjs`** (the permissions panel, #66) is one: it reads the persona, the session, the project and the settings files’ rules (`server/permission-rules.mjs`), and writes a rule to those files, a conversation’s rules and folders to its session (`se.rules`, `se.addDirs`), and a persona’s mode with `updatePersona`. Its bounds moved with it, and so did `PERMISSION_MODES`, which the runtime imports and exports again.
+- **A concern with live state of its own keeps it on one object the runtime holds,** as the remote turns do (`rt.remote`, a `RemoteTurns` from [`server/remote/turns.mjs`](../server/remote/turns.mjs)): the remote turns running now, the stops their hosts haven’t confirmed, and the hosts Postbox needs. Its functions, in `server/remote/turns-*.mjs`, take that object first. The hosts’ own records stay in the store (`s.hosts`, `s.hostStatus`), changed by `server/remote/host-admin.mjs` and `host-status.mjs`, which keep no state.
+
 **Revisit when** the overrides are gone, or ceilings left loose after a file shrank become common: then a test that each ceiling equals its file’s size makes the lowering automatic.
 
 ## 16. Remote hosts
