@@ -200,6 +200,45 @@ async function answerRequest(ctx, host, send, msg) {
   if (!host?.answered(msg.id)) send(reply);
 }
 
+/**
+ * Opens the turn’s Codex thread (a fork at the saved point, a resume, or a new one), saves it, and starts the turn.
+ * Returns turn/start’s answer, and the model it named.
+ * @param {any} ctx @param {(method: string, params?: any) => Promise<any>} request @param {(payload: any) => void} send
+ * @param {string} cwd @param {any} session @param {any} message
+ */
+async function startTurn(ctx, request, send, cwd, session, message) {
+  await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
+  send({ method: 'initialized', params: {} });
+  const permissions = codexPermissions(ctx.persona, cwd);
+  const model = codexModelOf(ctx.persona);
+  const fork = ctx.state.fork ?? ctx.state.forkFrom;
+  const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
+  const opened =
+    fork?.turnId && sourceThreadId
+      ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true })
+      : sourceThreadId
+        ? await request('thread/resume', { threadId: sourceThreadId, cwd })
+        : await request('thread/start', { cwd, ...(model ? { model } : {}) });
+  const threadId = sourceThreadId;
+  const id = opened?.thread?.id ?? threadId;
+  if (!id) throw new Error('Codex app-server did not return a thread id.');
+  ctx.state.codexThreadId = id;
+  ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
+  // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
+  const guide = agentGuide({ persona: ctx.persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null });
+  const inputText = formatMessage(message, ctx.pathOf);
+  const started = await request('turn/start', {
+    threadId: id,
+    input: [{ type: 'text', text: inputText }],
+    settings: { developer_instructions: guide },
+    ...(model ? { model } : {}),
+    effort: codexEffortOf(ctx.persona),
+    cwd,
+    ...permissions,
+  });
+  return { started, model };
+}
+
 export class CodexAdapter {
   name = 'codex';
   /**
@@ -363,35 +402,7 @@ export class CodexAdapter {
         };
         return await pickUp(host, ctx, { ended, exited: () => exited, resume, answer, fail });
       }
-      await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
-      send({ method: 'initialized', params: {} });
-      const permissions = codexPermissions(ctx.persona, cwd);
-      const model = codexModelOf(ctx.persona);
-      const fork = ctx.state.fork ?? ctx.state.forkFrom;
-      const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
-      const opened =
-        fork?.turnId && sourceThreadId
-          ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true })
-          : sourceThreadId
-            ? await request('thread/resume', { threadId: sourceThreadId, cwd })
-            : await request('thread/start', { cwd, ...(model ? { model } : {}) });
-      const threadId = sourceThreadId;
-      const id = opened?.thread?.id ?? threadId;
-      if (!id) throw new Error('Codex app-server did not return a thread id.');
-      ctx.state.codexThreadId = id;
-      ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
-      // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
-      const guide = agentGuide({ persona: ctx.persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null });
-      const inputText = formatMessage(message, ctx.pathOf);
-      const started = await request('turn/start', {
-        threadId: id,
-        input: [{ type: 'text', text: inputText }],
-        settings: { developer_instructions: guide },
-        ...(model ? { model } : {}),
-        effort: codexEffortOf(ctx.persona),
-        cwd,
-        ...permissions,
-      });
+      const { started, model } = await startTurn(ctx, request, send, cwd, session, message);
       activeTurnId = started?.turn?.id ?? activeTurnId;
       ctx.reported?.({
         ...(started?.turn?.model || model ? { model: started?.turn?.model ?? model } : {}),
