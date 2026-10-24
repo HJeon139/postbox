@@ -77,6 +77,33 @@ export function forkPoint(state) {
   return from ? { claudeSessionId: from } : null;
 }
 
+/**
+ * Reads the CLI’s stream-json from `child` into `mapper`, saving each line under POSTBOX_CLAUDE_RECORD when it’s set, and
+ * the session ID when the init event names a new one.
+ * @param {any} ctx @param {any} child @param {ReturnType<typeof createStreamMapper>} mapper
+ */
+function readStream(ctx, child, mapper) {
+  const record = process.env.POSTBOX_CLAUDE_RECORD ? join(process.env.POSTBOX_CLAUDE_RECORD, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
+  createInterface({ input: child.stdout }).on('line', (line) => {
+    if (!line.trim()) return;
+    if (record) appendFileSync(record, `${line}\n`);
+    let e;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      return; // not every line has to be JSON (a warning, say)
+    }
+    try {
+      mapper.push(e);
+    } catch (err) {
+      console.error(`Postbox couldn’t read a Claude Code event: ${err.message}`);
+    }
+    if (e.type === 'system' && e.subtype === 'init' && e.session_id && e.session_id !== ctx.state.claudeSessionId) {
+      ctx.saveState({ claudeSessionId: e.session_id });
+    }
+  });
+}
+
 export class ClaudeCodeAdapter {
   name = 'claude-code';
   capabilities = CLAUDE_CODE_CAPABILITIES;
@@ -221,25 +248,7 @@ export class ClaudeCodeAdapter {
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);
       });
-      const record = process.env.POSTBOX_CLAUDE_RECORD ? join(process.env.POSTBOX_CLAUDE_RECORD, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
-      createInterface({ input: child.stdout }).on('line', (line) => {
-        if (!line.trim()) return;
-        if (record) appendFileSync(record, `${line}\n`);
-        let e;
-        try {
-          e = JSON.parse(line);
-        } catch {
-          return; // not every line has to be JSON (a warning, say)
-        }
-        try {
-          mapper.push(e);
-        } catch (err) {
-          console.error(`Postbox couldn’t read a Claude Code event: ${err.message}`);
-        }
-        if (e.type === 'system' && e.subtype === 'init' && e.session_id && e.session_id !== ctx.state.claudeSessionId) {
-          ctx.saveState({ claudeSessionId: e.session_id });
-        }
-      });
+      readStream(ctx, child, mapper);
       const done = (code) => {
         if (finished) return;
         finished = true;
