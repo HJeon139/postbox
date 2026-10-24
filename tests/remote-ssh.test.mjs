@@ -99,7 +99,8 @@ test('connect starts ssh with pipes, sends hello with the token and the host-enf
   assert.equal(ssh.calls.length, 1);
   assert.equal(ssh.calls[0].program, 'ssh');
   assert.deepEqual(ssh.calls[0].args, c.args);
-  assert.deepEqual(ssh.calls[0].options, { stdio: ['pipe', 'pipe', 'pipe'] });
+  // A process group of its own, so a ProxyCommand ssh starts ends with it.
+  assert.deepEqual(ssh.calls[0].options, { stdio: ['pipe', 'pipe', 'pipe'], detached: true });
   const hello = daemon.received[0];
   assert.equal(hello.type, 'hello');
   assert.equal(hello.version, PROTOCOL_VERSION);

@@ -14,6 +14,13 @@ const STDERR_KEEP = 16 * 1024;
 export const WELCOME_TIMEOUT = 2 * 60 * 1000;
 /** How long ssh has to exit after close() before it gets SIGKILL. */
 const KILL_GRACE = 5000;
+/**
+ * How long ssh’s stdout and stderr have to end once ssh has exited. A ProxyCommand (a bastion’s nc, a VPN’s proxy)
+ * inherits ssh’s stderr, and can outlive a killed ssh by a minute or more (a VPN’s proxy held it 38 s, recorded on a
+ * killed ssh to a Linux host), so 'close', which waits for every holder of the pipes, would leave a dead connection
+ * reading as open, and its messages going nowhere.
+ */
+const EXIT_GRACE = 1000;
 
 /**
  * @typedef {{ stdin: import('node:stream').Writable, stdout: import('node:stream').Readable,
@@ -29,7 +36,7 @@ const KILL_GRACE = 5000;
  *   clearTimer: (t: any) => void, welcomeTimeout: number, args: string[], hello: object, events: EventEmitter,
  *   state: 'new' | 'connecting' | 'open' | 'closed', child: SshChild | null, stderr: string, reason: SshFailure | null,
  *   closedByUs: boolean, opening: Promise<any> | null,
- *   waiting: { resolve: (w: any) => void, reject: (e: SshFailure) => void } | null, welcomeTimer: any, killTimer: any,
+ *   waiting: { resolve: (w: any) => void, reject: (e: SshFailure) => void } | null, welcomeTimer: any, killTimer: any, exitTimer: any,
  *   reader: { push(chunk: Uint8Array | string): void, end(): void } }} Conn
  *   reason: why it ended, once known before ssh exits (a refused hello, a timeout).
  */
@@ -84,6 +91,7 @@ export function createSshConnection({
     waiting: null,
     welcomeTimer: null,
     killTimer: null,
+    exitTimer: null,
     reader: /** @type {any} */ (null),
   };
   c.reader = createMessageReader('daemon-to-postbox', {
@@ -175,9 +183,10 @@ function connect(c) {
   c.opening = new Promise((resolve, reject) => {
     c.waiting = { resolve, reject };
   });
-  // ssh is the person’s program, found on PATH as a terminal would; no shell starts it.
+  // ssh is the person’s program, found on PATH as a terminal would; no shell starts it. It leads a process group, with
+  // what it starts (a ProxyCommand), so that ends with it (endGroup).
   try {
-    c.child = c.spawn(c.program, c.args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    c.child = c.spawn(c.program, c.args, { stdio: ['pipe', 'pipe', 'pipe'], detached: true });
   } catch (e) {
     c.state = 'closed';
     settle(c, failure('failed', c.destination, { why: `Postbox couldn’t start ssh: ${e.message}` }));
@@ -208,11 +217,36 @@ function listen(c, child) {
     });
     ended(c, null, null);
   });
+  // ssh exited: what it started goes too, and the connection ends once stdout and stderr have, or EXIT_GRACE after.
+  child.on('exit', (code, signal) => {
+    endGroup(child);
+    c.exitTimer ??= c.setTimer(() => {
+      child.stdout.destroy?.();
+      child.stderr.destroy?.();
+      finish(c, code, signal);
+    }, EXIT_GRACE);
+  });
   // 'close' comes after stdout and stderr have ended, so stderr is complete when it’s classified.
   child.on('close', (code, signal) => {
-    c.reader.end();
-    ended(c, code, signal);
+    if (c.exitTimer) c.clearTimer(c.exitTimer);
+    finish(c, code, signal);
   });
+}
+
+/** The end of ssh’s output, then the connection’s. @param {Conn} c @param {number | null} code @param {string | null} signal */
+function finish(c, code, signal) {
+  if (c.state === 'closed') return;
+  c.reader.end();
+  ended(c, code, signal);
+}
+
+/** Ends what ssh started and left in its process group (a ProxyCommand), once ssh has exited. @param {SshChild} child */
+function endGroup(child) {
+  const pid = /** @type {any} */ (child).pid;
+  if (!Number.isSafeInteger(pid) || pid < 2) return;
+  try {
+    process.kill(-pid, 'SIGTERM');
+  } catch {} // nothing left in it
 }
 
 /** @param {Conn} c @param {{ type: string, [field: string]: any }} msg */
