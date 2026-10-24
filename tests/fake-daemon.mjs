@@ -25,10 +25,15 @@
 //   d.checks               each signInCheck a `check` ran, as the argv its connection’s hello sent
 //   d.removes              how many `remove`s it was sent
 // and readMessages(stream) on Postbox’s side, to await what the daemon sent.
+//
+// The protocol’s side of it is fake-daemon-handlers.mjs, and readMessages is fake-daemon-reader.mjs’s.
 
 import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
-import { createMessageReader, encode, HARNESSES, message, PROTOCOL_VERSION, utf8Bytes } from '../shared/remote-protocol.mjs';
+import { createMessageReader, HARNESSES } from '../shared/remote-protocol.mjs';
+import { close, fail, finish, followers, HANDLERS, hello, key, makeTurn, push, send, sendEnded, sendLine, size } from './fake-daemon-handlers.mjs';
+
+export { readMessages } from './fake-daemon-reader.mjs';
 
 const FIXTURES = new URL('./fixtures/claude-code/', import.meta.url);
 
@@ -46,10 +51,10 @@ export function fixtureLines(name = 'permission-allow') {
 export const FIXTURE_PROMPT = JSON.parse(readFileSync(new URL('permission-prompts.json', FIXTURES), 'utf8')).prompts[0];
 
 /**
- * @typedef {{ offset: number, next: number, text: string }} Line
- * @typedef {{ turn: string, harness: string, stdin: string, start: object | null, out: Line[], in: Line[],
- *             exit: { code: number | null, signal: string | null, at: number } | null, interrupted: boolean,
- *             acked: number, writes: string[], snapshot: object | null, snapshotItems: object[] }} FakeTurn
+ * @typedef {import('./fake-daemon-handlers.mjs').Line} Line
+ * @typedef {import('./fake-daemon-handlers.mjs').FakeTurn} FakeTurn
+ * @typedef {import('./fake-daemon-handlers.mjs').Conn} Conn
+ * @typedef {import('./fake-daemon-handlers.mjs').FakeState} FakeState
  */
 
 /**
@@ -66,7 +71,47 @@ export const FIXTURE_PROMPT = JSON.parse(readFileSync(new URL('permission-prompt
  *   remove: how `remove` goes: removed (the default, as the real daemon’s: turns stopped, `removed`, closed), refuse
  *   (the daemon’s error when it won’t delete the folder), silent (no answer) or drop (the connection ends first).
  */
-export function createFakeDaemon({
+export function createFakeDaemon(opts = {}) {
+  const d = fakeState(opts);
+  connect(d);
+  return Object.assign(
+    {
+      get stdin() {
+        return d.current.stdin;
+      },
+      get stdout() {
+        return d.current.stdout;
+      },
+      connect: () => connect(d),
+      drop() {
+        close(d, d.current);
+      },
+      received: d.received,
+      sent: d.sent,
+      errors: d.errors,
+      turns: d.turns,
+      stops: d.stops,
+      answers: d.answers,
+      replies: d.replies,
+      checks: d.checks,
+      get removes() {
+        return d.removes;
+      },
+      /** What’s still waiting for Postbox, as (turn, id) pairs. */
+      get queued() {
+        return {
+          tools: [...d.tools.values()].map(({ turn, id }) => ({ turn, id })),
+          prompts: [...d.prompts.values()].map(({ turn, id }) => ({ turn, id })),
+        };
+      },
+    },
+    turnMethods(d),
+    shimMethods(d),
+  );
+}
+
+/** @param {Parameters<typeof createFakeDaemon>[0]} [opts] @returns {FakeState} */
+function fakeState({
   token = FAKE_TOKEN,
   lines = fixtureLines(),
   autoEnd = true,
@@ -80,399 +125,157 @@ export function createFakeDaemon({
   check = () => ({ code: 0 }),
   remove: removing = 'removed',
 } = {}) {
-  /** @type {Map<string, FakeTurn>} */
-  const turns = new Map();
-  /** @type {Map<string, object>} snapshots sent before their turn’s start */
-  const pending = new Map();
-  // What waits for Postbox, keyed by key(turn, id): a prompt’s or a tool call’s identity is both.
-  /** @type {Map<string, { turn: string, id: string, name: string, args: object }>} */
-  const tools = new Map();
-  /** @type {Map<string, { turn: string, id: string, request: object }>} */
-  const prompts = new Map();
-  /** @type {{ turn: string, id: string, result: object }[]} the answers that reached a waiting prompt */
-  const answers = [];
-  /** @type {{ turn: string, id: string, ok: boolean, text: string }[]} the replies that reached a queued tool */
-  const replies = [];
-  const key = (turn, id) => `${turn}\n${id}`;
-  const received = [];
-  const sent = [];
-  const errors = [];
-  const stops = [];
-  /** @type {string[][]} */
-  const checks = [];
-  let removes = 0;
-  let ids = 0;
-  /** @type {Set<Conn>} */
-  const conns = new Set();
-  /** @type {Conn | null} the connection that said hello and drives the daemon */
-  let driver = null;
-  /** @type {Conn} */
-  let current;
-
-  /** @typedef {{ stdin: PassThrough, stdout: PassThrough, ready: boolean, closed: boolean, follows: Map<string, true>, held?: { turn: string, log: string }[], settings?: any }} Conn */
-
-  const send = (c, type, body) => {
-    if (c.closed) return;
-    const msg = message('daemon-to-postbox', type, body);
-    sent.push(msg);
-    c.stdout.write(encode(msg));
-  };
-  const fail = (c, code, text, re, turn) => send(c, 'error', { code, message: text, ...(re ? { re } : {}), ...(turn ? { turn } : {}) });
-  const close = (c) => {
-    if (c.closed) return;
-    c.closed = true;
-    c.follows.clear();
-    if (driver === c) driver = null;
-    conns.delete(c);
-    c.stdout.end();
-  };
-
-  const makeTurn = (turn, harness, stdin, outLines) => {
-    /** @type {FakeTurn} */
-    const t = { turn, harness, stdin, start: null, out: [], in: [], exit: null, interrupted: false, acked: 0, writes: [], snapshot: null, snapshotItems: [] };
-    for (const text of outLines) push(t.out, text);
-    turns.set(turn, t);
-    return t;
-  };
-  const size = (log) => log.at(-1)?.next ?? 0;
-  const push = (log, text) => {
-    const offset = size(log);
-    const line = { offset, next: offset + utf8Bytes(text) + 1, text };
-    log.push(line);
-    return line;
-  };
-  const followers = (turn, log) => [...conns].filter((c) => c.follows.has(`${turn}:${log}`));
-  const sendLine = (c, t, log, l) => send(c, 'line', { turn: t.turn, ...(log === 'in' ? { log } : {}), offset: l.offset, next: l.next, text: l.text });
-  const sendEnded = (c, t) => send(c, 'ended', { turn: t.turn, exit: t.exit, size: size(t.out) });
-  const finish = (t, how) => {
-    if (t.exit || t.interrupted) return;
-    t.exit = { code: how.code, signal: how.signal, at: now() };
-    for (const c of followers(t.turn, 'out')) {
-      sendEnded(c, t);
-      c.follows.delete(`${t.turn}:out`);
-    }
-  };
-  const turnState = (t) => (t.exit ? 'ended' : t.interrupted ? 'interrupted' : 'running');
-
-  /** What the daemon does with each of Postbox’s messages, once hello has passed. */
-  const handlers = {
-    start(c, m) {
-      if (!harnesses.includes(m.harness)) return fail(c, 'no-harness', `${m.harness} isn’t installed on this host.`, 'start', m.turn);
-      if (turns.has(m.turn)) return fail(c, 'turn-exists', `There’s already a turn ${m.turn} on this host.`, 'start', m.turn);
-      const t = makeTurn(m.turn, m.harness, m.stdin, lines);
-      t.start = m;
-      t.snapshot = pending.get(m.turn) ?? null;
-      pending.delete(m.turn);
-      send(c, 'started', { turn: m.turn });
-      if (autoEnd) finish(t, exit);
-    },
-    snapshot(_c, m) {
-      const t = turns.get(m.turn);
-      if (t) t.snapshot = m;
-      else pending.set(m.turn, m);
-    },
-    'snapshot-items'(c, m) {
-      const t = turns.get(m.turn);
-      if (!t) return fail(c, 'no-turn', `There’s no turn ${m.turn} on this host.`, 'snapshot-items', m.turn);
-      t.snapshotItems.push(m);
-    },
-    read(c, m) {
-      const t = turns.get(m.turn);
-      if (!t) return fail(c, 'no-turn', `There’s no turn ${m.turn} on this host.`, 'read', m.turn);
-      const log = m.log ?? 'out';
-      const all = log === 'in' ? t.in : t.out;
-      if (m.from !== size(all) && !all.some((l) => l.offset === m.from))
-        return fail(c, 'bad-offset', `${m.from} isn’t the start of a line in ${m.turn}’s ${log} log.`, 'read', m.turn);
-      for (const l of all) if (l.offset >= m.from) sendLine(c, t, log, l);
-      // As the real daemon does: once the first pass has sent what the log had (daemon.mjs’s follow).
-      if (holdCaughtUp.includes(log)) c.held = [...(c.held ?? []), { turn: t.turn, log }];
-      else send(c, 'caught-up', { turn: t.turn, log, size: size(all) });
-      if (log === 'out' && (t.exit || t.interrupted)) sendEnded(c, t);
-      else c.follows.set(`${t.turn}:${log}`, true);
-    },
-    write(c, m) {
-      const t = turns.get(m.turn);
-      if (!t) return fail(c, 'no-turn', `There’s no turn ${m.turn} on this host.`, 'write', m.turn);
-      if (t.stdin !== 'held') return fail(c, 'not-held', `Turn ${m.turn}’s stdin isn’t held, so it takes no lines.`, 'write', m.turn);
-      if (t.exit || t.interrupted) return fail(c, 'turn-ended', `Turn ${m.turn} has ended.`, 'write', m.turn);
-      t.writes.push(m.line);
-      const l = push(t.in, m.line);
-      send(c, 'written', { turn: t.turn, upTo: l.next });
-      for (const f of followers(t.turn, 'in')) sendLine(f, t, 'in', l);
-    },
-    answer(c, m) {
-      if (!prompts.delete(key(m.turn, m.prompt))) return fail(c, 'no-prompt', `Prompt ${m.prompt} of turn ${m.turn} isn’t waiting any more.`, 'answer', m.turn);
-      answers.push({ turn: m.turn, id: m.prompt, result: m.result });
-    },
-    reply(c, m) {
-      if (!tools.delete(key(m.turn, m.id))) return fail(c, 'no-tool', `Tool call ${m.id} of turn ${m.turn} isn’t queued.`, 'reply', m.turn);
-      replies.push({ turn: m.turn, id: m.id, ok: m.ok, text: m.text });
-    },
-    stop(c, m) {
-      const t = turns.get(m.turn);
-      if (!t) return fail(c, 'no-turn', `There’s no turn ${m.turn} on this host.`, 'stop', m.turn);
-      stops.push(m.turn);
-      const reading = c.follows.has(`${m.turn}:out`);
-      finish(t, stopExit);
-      // As the real daemon’s quiet follower: a connection that isn’t reading the turn hears its `ended` on its own.
-      if (!reading) sendEnded(c, t);
-    },
-    ack(c, m) {
-      const t = turns.get(m.turn);
-      if (!t) return fail(c, 'no-turn', `There’s no turn ${m.turn} on this host.`, 'ack', m.turn);
-      if (m.upTo > size(t.out)) return fail(c, 'bad-offset', `${m.upTo} is past the end of ${m.turn}’s log.`, 'ack', m.turn);
-      t.acked = Math.max(t.acked, m.upTo);
-    },
-    // As the real daemon does: the signInCheck this connection’s hello sent, or no-check.
-    async check(c) {
-      const argv = c.settings?.signInCheck;
-      if (!argv) return fail(c, 'no-check', 'This host has no signInCheck in its settings.', 'check');
-      checks.push(argv);
-      const { code } = await check(argv);
-      send(c, 'checked', { ok: code === 0, code, at: now() });
-    },
-    remove(c) {
-      removes++;
-      if (removing === 'silent') return;
-      if (removing === 'drop') return close(c);
-      // cleanup.mjs’s rootProblem, word for word but the path.
-      if (removing === 'refuse')
-        return fail(c, 'internal', '/home/user/.postbox-remote isn’t a folder (it’s a link or a file), so Postbox won’t delete anything in it.', 'remove');
-      for (const t of turns.values()) finish(t, stopExit);
-      turns.clear();
-      send(c, 'removed', {});
-      close(c);
-    },
-  };
-
-  const hello = (c, m) => {
-    if (m.version !== PROTOCOL_VERSION)
-      return fail(
-        c,
-        'version',
-        `This host’s daemon speaks protocol ${PROTOCOL_VERSION}, and Postbox sent ${m.version}. Install this Postbox’s version on the host.`,
-        'hello',
-      );
-    if (m.token !== token) return fail(c, 'bad-token', 'The token doesn’t match the host’s. Reinstall Postbox on the host.', 'hello');
-    if (driver && driver !== c) {
-      if (!m.takeover) return fail(c, 'busy', 'Another Postbox is using this host. Take over to use it from here.', 'hello');
-      fail(driver, 'taken-over', 'Another Postbox took over this host.');
-      close(driver);
-    }
-    driver = c;
-    c.ready = true;
-    c.settings = m.settings ?? {};
-    send(c, 'welcome', {
-      version: PROTOCOL_VERSION,
-      home,
-      node: { path: '/usr/bin/node', version: 'v22.12.0' },
-      harnesses: HARNESSES.map((name) =>
-        harnesses.includes(name)
-          ? { name, path: `${home}/.local/bin/${name === 'claude-code' ? 'claude' : name}`, version: name === 'claude-code' ? '2.1.296' : null, looked: [] }
-          : { name, path: null, version: null, looked: [`${home}/.local/bin`, '/usr/local/bin'] },
-      ),
-      problems,
-      turns: [...turns.values()].map((t) => ({ turn: t.turn, harness: t.harness, state: turnState(t), size: size(t.out), exit: t.exit })),
-    });
-    for (const q of tools.values()) send(c, 'tool', { turn: q.turn, id: q.id, name: q.name, args: q.args });
-    for (const p of prompts.values()) send(c, 'prompt', { id: p.id, turn: p.turn, request: p.request });
-  };
-
-  const connect = () => {
-    /** @type {Conn} */
-    const c = { stdin: new PassThrough(), stdout: new PassThrough(), ready: false, closed: false, follows: new Map() };
-    const reader = createMessageReader('postbox-to-daemon', {
-      onMessage(m) {
-        received.push(m);
-        if (m.type === 'hello') return hello(c, m);
-        if (!c.ready) return fail(c, 'not-ready', 'Say hello with the host’s token first.', m.type);
-        handlers[m.type](c, m);
-      },
-      onError(e) {
-        errors.push(e);
-        fail(c, 'bad-message', e.message);
-      },
-    });
-    c.stdin.on('data', (b) => reader.push(b));
-    c.stdin.on('end', () => {
-      reader.end();
-      close(c);
-    });
-    conns.add(c);
-    current = c;
-    return { stdin: c.stdin, stdout: c.stdout };
-  };
-  connect();
-
-  const need = (turn) => {
-    const t = turns.get(turn);
-    if (!t) throw new Error(`The fake daemon has no turn ${turn}.`);
-    return t;
-  };
-  const toDriver = (fn) => driver && !driver.closed && fn(driver);
-
   return {
-    get stdin() {
-      return current.stdin;
+    token,
+    lines,
+    autoEnd,
+    exit,
+    stopExit,
+    home,
+    now,
+    harnesses,
+    problems,
+    holdCaughtUp,
+    check,
+    removing,
+    turns: new Map(),
+    pending: new Map(),
+    tools: new Map(),
+    prompts: new Map(),
+    answers: [],
+    replies: [],
+    received: [],
+    sent: [],
+    errors: [],
+    stops: [],
+    checks: [],
+    removes: 0,
+    ids: 0,
+    conns: new Set(),
+    driver: null,
+    current: /** @type {any} */ (null),
+  };
+}
+
+/** A new connection beside the current one, which becomes the current one. @param {FakeState} d */
+function connect(d) {
+  /** @type {Conn} */
+  const c = { stdin: new PassThrough(), stdout: new PassThrough(), ready: false, closed: false, follows: new Map() };
+  const reader = createMessageReader('postbox-to-daemon', {
+    onMessage(m) {
+      d.received.push(m);
+      if (m.type === 'hello') return hello(d, c, m);
+      if (!c.ready) return fail(d, c, 'not-ready', 'Say hello with the host’s token first.', m.type);
+      HANDLERS[m.type](d, c, m);
     },
-    get stdout() {
-      return current.stdout;
+    onError(e) {
+      d.errors.push(e);
+      fail(d, c, 'bad-message', e.message);
     },
-    connect,
-    drop() {
-      close(current);
-    },
-    received,
-    sent,
-    errors,
-    turns,
-    stops,
-    answers,
-    replies,
-    checks,
-    get removes() {
-      return removes;
-    },
+  });
+  c.stdin.on('data', (b) => reader.push(b));
+  c.stdin.on('end', () => {
+    reader.end();
+    close(d, c);
+  });
+  d.conns.add(c);
+  d.current = c;
+  return { stdin: c.stdin, stdout: c.stdout };
+}
+
+/** @param {FakeState} d @param {string} turn */
+function need(d, turn) {
+  const t = d.turns.get(turn);
+  if (!t) throw new Error(`The fake daemon has no turn ${turn}.`);
+  return t;
+}
+
+/** @param {FakeState} d @param {(c: Conn) => void} fn */
+const toDriver = (d, fn) => d.driver && !d.driver.closed && fn(d.driver);
+
+/** What a test does to the fake’s turns. @param {FakeState} d */
+function turnMethods(d) {
+  return {
     /**
      * A turn already on the host: running, ended (with `exit`) or interrupted.
      * @param {string} turn @param {{ harness?: string, stdin?: string, lines?: string[], exit?: { code: number | null, signal: string | null } | null, interrupted?: boolean }} [o]
      */
-    addTurn(turn, { harness = 'claude-code', stdin = 'file', lines: l = lines, exit: e = null, interrupted = false } = {}) {
-      const t = makeTurn(turn, harness, stdin, l);
-      if (e) t.exit = { code: e.code, signal: e.signal, at: now() };
+    addTurn(turn, { harness = 'claude-code', stdin = 'file', lines: l = d.lines, exit: e = null, interrupted = false } = {}) {
+      const t = makeTurn(d, turn, harness, stdin, l);
+      if (e) t.exit = { code: e.code, signal: e.signal, at: d.now() };
       t.interrupted = interrupted;
       return t;
     },
     /** @param {string} turn @param {string} text */
     append(turn, text) {
-      const t = need(turn);
+      const t = need(d, turn);
       const l = push(t.out, text);
-      for (const c of followers(turn, 'out')) sendLine(c, t, 'out', l);
+      for (const c of followers(d, turn, 'out')) sendLine(d, c, t, 'out', l);
     },
     /** @param {string} turn @param {string} text */
     appendIn(turn, text) {
-      const t = need(turn);
+      const t = need(d, turn);
       const l = push(t.in, text);
-      for (const c of followers(turn, 'in')) sendLine(c, t, 'in', l);
+      for (const c of followers(d, turn, 'in')) sendLine(d, c, t, 'in', l);
     },
     /** Sends the `caught-up` a read held back (holdCaughtUp), at the log’s size now. @param {string} turn @param {'out' | 'in'} log */
     caughtUp(turn, log) {
-      const t = need(turn);
-      for (const c of conns) {
+      const t = need(d, turn);
+      for (const c of d.conns) {
         const i = (c.held ?? []).findIndex((h) => h.turn === turn && h.log === log);
         if (i === -1) continue;
         c.held.splice(i, 1);
-        send(c, 'caught-up', { turn, log, size: size(log === 'in' ? t.in : t.out) });
+        send(d, c, 'caught-up', { turn, log, size: size(log === 'in' ? t.in : t.out) });
       }
     },
     /** @param {string} turn @param {{ code: number | null, signal: string | null }} [how] */
-    end(turn, how = exit) {
-      finish(need(turn), how);
+    end(turn, how = d.exit) {
+      finish(d, need(d, turn), how);
     },
     /** @param {string} turn */
     interrupt(turn) {
-      const t = need(turn);
+      const t = need(d, turn);
       if (t.exit || t.interrupted) return;
       t.interrupted = true;
-      for (const c of followers(turn, 'out')) {
-        sendEnded(c, t);
+      for (const c of followers(d, turn, 'out')) {
+        sendEnded(d, c, t);
         c.follows.delete(`${turn}:out`);
       }
     },
+  };
+}
+
+/** What a test has the fake’s shims do. @param {FakeState} d */
+function shimMethods(d) {
+  return {
     /** @param {string} turn @param {string} name @param {object} args @param {string} [id]  the shim’s ID; a fresh one by default */
-    tool(turn, name, args, id = `tool-${++ids}`) {
-      if (tools.has(key(turn, id))) throw new Error(`The fake daemon already has tool call ${id} for turn ${turn}.`);
-      tools.set(key(turn, id), { turn, id, name, args });
-      toDriver((c) => send(c, 'tool', { turn, id, name, args }));
+    tool(turn, name, args, id = `tool-${++d.ids}`) {
+      if (d.tools.has(key(turn, id))) throw new Error(`The fake daemon already has tool call ${id} for turn ${turn}.`);
+      d.tools.set(key(turn, id), { turn, id, name, args });
+      toDriver(d, (c) => send(d, c, 'tool', { turn, id, name, args }));
       return id;
     },
     /** @param {string} turn @param {object} [request] @param {string} [id]  the shim’s ID; a fresh one by default */
-    prompt(turn, request = FIXTURE_PROMPT, id = `prompt-${++ids}`) {
-      if (prompts.has(key(turn, id))) throw new Error(`The fake daemon already has prompt ${id} for turn ${turn}.`);
-      prompts.set(key(turn, id), { turn, id, request });
-      toDriver((c) => send(c, 'prompt', { id, turn, request }));
+    prompt(turn, request = FIXTURE_PROMPT, id = `prompt-${++d.ids}`) {
+      if (d.prompts.has(key(turn, id))) throw new Error(`The fake daemon already has prompt ${id} for turn ${turn}.`);
+      d.prompts.set(key(turn, id), { turn, id, request });
+      toDriver(d, (c) => send(d, c, 'prompt', { id, turn, request }));
       return id;
     },
     /** The host denied a waiting prompt at permissionWaitMax. @param {string} turn @param {string} id */
     expire(turn, id) {
-      if (!prompts.delete(key(turn, id))) throw new Error(`The fake daemon has no prompt ${id} for turn ${turn}.`);
-      toDriver((c) => send(c, 'prompt-expired', { id, turn, at: now() }));
+      if (!d.prompts.delete(key(turn, id))) throw new Error(`The fake daemon has no prompt ${id} for turn ${turn}.`);
+      toDriver(d, (c) => send(d, c, 'prompt-expired', { id, turn, at: d.now() }));
     },
     /**
      * A waiting prompt ended, but the daemon couldn’t write that down (the broker’s endPrompt): Postbox hears an error
      * naming the prompt, not prompt-expired. @param {string} turn @param {string} id
      */
     expireUnrecorded(turn, id) {
-      if (!prompts.delete(key(turn, id))) throw new Error(`The fake daemon has no prompt ${id} for turn ${turn}.`);
-      toDriver((c) =>
-        send(c, 'error', { code: 'internal', re: 'prompt-expired', turn, id, message: `Couldn’t write down that prompt ${id} in turn ${turn} expired.` }),
+      if (!d.prompts.delete(key(turn, id))) throw new Error(`The fake daemon has no prompt ${id} for turn ${turn}.`);
+      toDriver(d, (c) =>
+        send(d, c, 'error', { code: 'internal', re: 'prompt-expired', turn, id, message: `Couldn’t write down that prompt ${id} in turn ${turn} expired.` }),
       );
-    },
-    /** What’s still waiting for Postbox, as (turn, id) pairs. */
-    get queued() {
-      return {
-        tools: [...tools.values()].map(({ turn, id }) => ({ turn, id })),
-        prompts: [...prompts.values()].map(({ turn, id }) => ({ turn, id })),
-      };
-    },
-  };
-}
-
-/**
- * Postbox’s side of the fake: reads the daemon’s messages from a stream, validated.
- * @param {import('node:stream').Readable} stream
- * @returns {{ messages: any[], errors: any[], next: (type: string, timeoutMs?: number) => Promise<any>, ended: Promise<void> }}
- *   next(type) resolves with the first message of that type not already taken by an earlier next(), and rejects if
- *   none comes within timeoutMs (1 s by default), naming what did come.
- */
-export function readMessages(stream) {
-  const messages = [];
-  const errors = [];
-  const taken = new Set();
-  /** @type {{ type: string, resolve: (m: any) => void, timer: NodeJS.Timeout }[]} */
-  const waiting = [];
-  const offer = () => {
-    for (const w of [...waiting]) {
-      const i = messages.findIndex((m, j) => !taken.has(j) && m.type === w.type);
-      if (i === -1) continue;
-      taken.add(i);
-      waiting.splice(waiting.indexOf(w), 1);
-      clearTimeout(w.timer);
-      w.resolve(messages[i]);
-    }
-  };
-  const reader = createMessageReader('daemon-to-postbox', {
-    onMessage(m) {
-      messages.push(m);
-      offer();
-    },
-    onError: (e) => errors.push(e),
-  });
-  stream.on('data', (b) => reader.push(b));
-  const ended = new Promise((resolve) =>
-    stream.on('end', () => {
-      reader.end();
-      resolve();
-    }),
-  );
-  return {
-    messages,
-    errors,
-    ended,
-    next(type, timeoutMs = 1000) {
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          waiting.splice(
-            waiting.findIndex((w) => w.timer === timer),
-            1,
-          );
-          reject(new Error(`No ${type} from the fake daemon within ${timeoutMs} ms; it sent ${messages.map((m) => m.type).join(', ') || 'nothing'}.`));
-        }, timeoutMs);
-        // Left ref’d: the daemon under test unrefs its own timers and file watches (a real one is kept up by its
-        // socket), so on Linux, where nothing else is pending, an unref’d wait let the event loop drain mid-test.
-        waiting.push({ type, resolve, timer });
-        offer();
-      });
     },
   };
 }
