@@ -44,9 +44,9 @@ try {
     'it shows the command to run in a terminal, with Copy',
   );
   await click(`#ho-${id}-retry`);
-  await until(() => fake.calls.some((c) => c[0] === 'retry'));
+  await until(() => fake.calls.some((c) => c[0] === 'connect'));
   check(
-    JSON.stringify(fake.calls.find((c) => c[0] === 'retry')) === JSON.stringify(['retry', id, { takeover: false }]),
+    JSON.stringify(fake.calls.find((c) => c[0] === 'connect')) === JSON.stringify(['connect', id, { takeover: false }]),
     'Reconnect retries, without taking over',
   );
   await audit('a failed sign-in');
@@ -77,12 +77,12 @@ try {
     'Take over asks first, saying another Postbox is driving the host',
     take?.text,
   );
-  check(!fake.calls.some((c) => c[0] === 'retry' && c[2].takeover), 'asking takes nothing over');
+  check(!fake.calls.some((c) => c[0] === 'connect' && c[2].takeover), 'asking takes nothing over');
   await audit('the takeover confirm');
   await click('#ho-takeover-go');
-  await until(() => fake.calls.some((c) => c[0] === 'retry' && c[2].takeover));
+  await until(() => fake.calls.some((c) => c[0] === 'connect' && c[2].takeover));
   check(
-    fake.calls.some((c) => c[0] === 'retry' && c[1] === id && c[2].takeover === true),
+    fake.calls.some((c) => c[0] === 'connect' && c[1] === id && c[2].takeover === true),
     'Take over retries with takeover: true',
   );
   await waitFor(`!document.getElementById('ho-takeover-go')`, 'the confirm to close');

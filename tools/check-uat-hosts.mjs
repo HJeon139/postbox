@@ -49,14 +49,13 @@ class FakeHosts extends EventEmitter {
     return this.statuses.get(id) ?? null;
   }
   link(id) {
-    return Object.assign(new EventEmitter(), {
-      connected: this.statuses.get(id)?.state === 'connected',
-      send: () => false,
-      retry: () => {
-        this.calls.push(['retry', id]);
-        this.set(id, { state: 'connected', welcome: WELCOME, lastHeard: Date.now() });
-      },
-    });
+    return Object.assign(new EventEmitter(), { connected: this.statuses.get(id)?.state === 'connected', send: () => false });
+  }
+  /** The person’s Retry or Reconnect, which connects as the manager’s does. */
+  async connect(id) {
+    this.calls.push(['connect', id]);
+    this.set(id, { state: 'connected', welcome: WELCOME, lastHeard: Date.now() });
+    return WELCOME;
   }
   describeInstall(id) {
     return describeInstall(app.store.state.hosts[id], { version: VERSION, dataDir });

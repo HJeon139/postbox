@@ -174,8 +174,9 @@ function methods(k) {
       if (!k.closed) k.rec.wake();
     },
     /**
-     * The person asked to reconnect: try at once, whatever stopped it. takeover: replace the Postbox that has the
-     * host (after a `busy`), for the next session only.
+     * The person asked to reconnect: try at once, whatever stopped it, if the host is needed (the host manager’s
+     * connect() makes it needed for that attempt). takeover: replace the Postbox that has the host (after a `busy`),
+     * for the next session only.
      * @param {{ takeover?: boolean }} [o]
      */
     retry({ takeover: take = false } = {}) {

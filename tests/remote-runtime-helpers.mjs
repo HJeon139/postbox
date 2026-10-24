@@ -64,7 +64,6 @@ export class FakeHosts extends EventEmitter {
           }
           return true;
         },
-        retry: (o) => this.calls.push(['retry', id, o]),
       });
     this.links.set(id, link);
     return link;
@@ -72,6 +71,10 @@ export class FakeHosts extends EventEmitter {
   async refresh(id) {
     this.calls.push(['refresh', id]);
     return false;
+  }
+  /** The person’s Retry, Reconnect or Take over. */
+  async connect(id, o) {
+    this.calls.push(['connect', id, o]);
   }
   /** As install.mjs’s installHost answers, token and all; installError, when set, is thrown instead. */
   async install(id) {

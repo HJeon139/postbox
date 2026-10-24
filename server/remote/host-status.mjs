@@ -76,20 +76,22 @@ export async function installHost(rt, id) {
 }
 
 /**
- * Connects to a host again now, after a failure only the person could fix (a sign-in, a host key) or to stop waiting
- * out the backoff. takeover: replace the other Postbox that’s connected to it (busy).
+ * Connects to a host now, as the person asked (Retry, Reconnect, Take over): after a failure only they could fix (a
+ * sign-in, a host key), to stop waiting out the backoff, or for a host nothing needs, which gets one welcome and then
+ * idles. takeover: replace the other Postbox that’s connected to it (busy). The card follows in its status.
  * @param {any} rt @param {string} id @param {{ takeover?: unknown }} [opts]
  */
 export function retryHost(rt, id, { takeover = false } = {}) {
   host(rt, id);
   if (typeof takeover !== 'boolean') throw httpError(422, 'takeover is true or false.');
-  let link;
+  const hosts = hostManager(rt);
   try {
-    link = hostManager(rt).link(id);
+    hosts.link(id);
   } catch (e) {
     throw hostRefusal(e);
   }
-  link.retry({ takeover });
+  // How it went is the host’s status: connected with its welcome, or its failure with the next step.
+  hosts.connect(id, { takeover }).catch(() => {});
   publishHostStatus(rt, id);
   return { ok: true };
 }

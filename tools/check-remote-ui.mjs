@@ -42,7 +42,10 @@ class FakeHosts extends EventEmitter {
     this.emit('status', id, status);
   }
   link() {
-    return Object.assign(new EventEmitter(), { connected: true, send: () => true, retry() {} });
+    return Object.assign(new EventEmitter(), { connected: true, send: () => true });
+  }
+  async connect(id) {
+    return this.statuses.get(id)?.welcome ?? null;
   }
   async ensureWelcome(id) {
     return this.statuses.get(id)?.welcome ?? { home: '/home/user', turns: [] };

@@ -117,9 +117,12 @@ test('hosts: install keeps the token, so the host links and connects; forget clo
     assert.match(what.text, /Install Postbox’s host program on host\.example\.com\?/);
     const r = await s.mgr.install('h1');
     assert.deepEqual(r, { token: FAKE_TOKEN, installed: true, version: VERSION });
-    assert.equal(s.statuses.at(-1)?.state, 'disconnected', 'installed, and nothing needs it yet');
+    // Installed, it connects for its welcome, though nothing needs it.
+    await until(() => s.mgr.status('h1').state === 'connected', 'connected after the install');
     const welcome = await s.mgr.ensureWelcome('h1');
     assert.equal(welcome.home, '/home/user');
+    s.clock.advance(IDLE_GRACE_MS);
+    await until(() => s.mgr.status('h1').state === 'disconnected', 'idle after the grace');
     const l = s.mgr.link('h1');
     assert.equal(await s.mgr.forget('h1'), true);
     assert.equal(l.state, 'closed');

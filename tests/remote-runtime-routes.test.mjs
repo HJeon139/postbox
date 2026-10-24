@@ -68,8 +68,8 @@ test('#120: the page adds a host, sets a project’s folder on it, installs, ret
   assert.equal(odd.status, 422);
   assert.deepEqual(fake.calls, [
     ['install', id],
-    ['retry', id, { takeover: true }],
-    ['retry', id, { takeover: false }],
+    ['connect', id, { takeover: true }],
+    ['connect', id, { takeover: false }],
   ]);
 
   fake.statuses.set(id, { state: 'connected', failure: null, welcome: null, lastHeard: 5 });

@@ -156,11 +156,16 @@ export const disconnected = (l) =>
     l.on('state', on);
   });
 
-/** @param {Manager} m @param {string} id @param {unknown} why */
-export function need(m, id, why) {
+/** Counts one more need for that reason, and nothing else. @param {Manager} m @param {string} id @param {unknown} why */
+function count(m, id, why) {
   const r = m.reasons.get(id) ?? new Map();
   r.set(why, (r.get(why) ?? 0) + 1);
   m.reasons.set(id, r);
+}
+
+/** @param {Manager} m @param {string} id @param {unknown} why */
+export function need(m, id, why) {
+  count(m, id, why);
   try {
     linkOf(m, id);
   } catch (e) {
@@ -190,27 +195,56 @@ export async function ensureWelcome(m, id) {
   const why = Symbol('welcome');
   need(m, id, why);
   try {
-    return await new Promise((resolve, reject) => {
-      const off = () => {
-        l.off('connected', onConnected);
-        l.off('failure', onFailure);
-        l.off('error', onFailure);
-      };
-      const onConnected = (w) => {
-        off();
-        resolve(w);
-      };
-      const onFailure = (f) => {
-        off();
-        reject(f);
-      };
-      l.on('connected', onConnected);
-      l.on('failure', onFailure);
-      l.on('error', onFailure);
-      if (l.state === 'waiting') l.wake();
-      else l.need();
-    });
+    const welcome = nextWelcome(l);
+    if (l.state === 'waiting') l.wake();
+    else l.need();
+    return await welcome;
   } finally {
     release(m, id, why);
   }
 }
+
+/**
+ * The person asked to connect (Install, Retry, Reconnect): the host connects now, whatever stopped it and though
+ * nothing needs it, for one welcome at least, so its card shows what the daemon found there; then it idles after the
+ * grace period, as any host nothing needs. takeover: that session replaces the other Postbox connected to it (busy).
+ * Rejects as link() throws, or with the attempt’s SshFailure; a sign-in or a host key stops it again, until the
+ * person asks again.
+ * @param {Manager} m @param {string} id @param {{ takeover?: boolean }} [o] @returns {Promise<any>}
+ */
+export async function connectNow(m, id, { takeover = false } = {}) {
+  const l = linkOf(m, id);
+  if (l.connected) return l.welcome;
+  const why = Symbol('asked');
+  // Needed for this attempt, so the link’s retry() goes ahead; counted, not need()ed, so the attempt that opens is
+  // retry()’s, with its takeover.
+  count(m, id, why);
+  try {
+    const welcome = nextWelcome(l);
+    l.retry({ takeover });
+    return await welcome;
+  } finally {
+    release(m, id, why);
+  }
+}
+
+/** The link’s next welcome, or the failure of its next attempt. @param {HostLink} l @returns {Promise<any>} */
+const nextWelcome = (l) =>
+  new Promise((resolve, reject) => {
+    const off = () => {
+      l.off('connected', onConnected);
+      l.off('failure', onFailure);
+      l.off('error', onFailure);
+    };
+    const onConnected = (/** @type {any} */ w) => {
+      off();
+      resolve(w);
+    };
+    const onFailure = (/** @type {any} */ f) => {
+      off();
+      reject(f);
+    };
+    l.on('connected', onConnected);
+    l.on('failure', onFailure);
+    l.on('error', onFailure);
+  });

@@ -45,7 +45,11 @@ class FakeHosts extends EventEmitter {
   }
   link(id) {
     if (this.noToken.has(id)) throw Object.assign(failure('not-installed', app.store.state.hosts[id].name), { code: 'not-installed' });
-    return Object.assign(new EventEmitter(), { connected: false, send: () => false, retry: (o) => this.calls.push(['retry', id, o]) });
+    return Object.assign(new EventEmitter(), { connected: false, send: () => false });
+  }
+  /** The person’s Retry, Reconnect or Take over. */
+  async connect(id, o) {
+    this.calls.push(['connect', id, o]);
   }
   describeInstall(id) {
     return describeInstall(app.store.state.hosts[id], { version: VERSION, dataDir });

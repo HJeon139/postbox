@@ -24,6 +24,8 @@
 //   every configured host with a token (hostIds), and any with a link or a reason, is tried at once, its link made if
 //   need be; not one stopped by a failure only the person can fix (FAILURE_KINDS’ retry: false, such as a sign-in or
 //   a host key). One nothing needs gets a fresh welcome before it idles again.
+// - connect(hostId): the person asked (Install, Retry, Reconnect), so the host connects now, whatever stopped it and
+//   though nothing needs it (a link only redials while it’s needed), for one welcome; then it idles as above.
 // - signInCheck(hostId): runs the host’s signInCheck there, through the daemon (`check`, answered by `checked`), as an
 //   argument list with no shell. null when the host has none (the default). Sign-in needed resumes on its own only
 //   when it passes (D2); without one, the turn waits for the person.
@@ -38,7 +40,7 @@
 // hosts-requests.mjs (the sign-in check and Remove, through the daemon).
 
 import { EventEmitter } from 'node:events';
-import { disconnected, dropLink, dropRenamed, ensureWelcome, isNeeded, isRenamed, linkOf, need, release } from './hosts-links.mjs';
+import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
 import { describeInstall, forgetToken, installHost } from './install.mjs';
@@ -119,6 +121,12 @@ function linkMethods(m) {
      * @param {string} hostId @returns {Promise<any>}
      */
     ensureWelcome: (hostId) => ensureWelcome(m, hostId),
+    /**
+     * The person asked to connect (Retry, Reconnect, Take over): now, whatever stopped it and though nothing needs
+     * it, for one welcome; then it may idle. Resolves with the welcome; rejects as link() throws, or with the failure.
+     * @param {string} hostId @param {{ takeover?: boolean }} [o] @returns {Promise<any>}
+     */
+    connect: (hostId, o) => connectNow(m, hostId, o),
     /** @param {string} hostId @returns {HostStatus} */
     status: (hostId) => statusOf(m, hostId),
     /**
@@ -154,8 +162,8 @@ function hostMethods(m) {
      */
     describeInstall: (hostId) => describeInstall(hostOf(m, hostId), { version: m.version, dataDir: m.dataDir }),
     /**
-     * Installs this Postbox on the host (install.mjs’s installHost), once the person has confirmed. Its link then
-     * tries again; one made with another token is replaced.
+     * Installs this Postbox on the host (install.mjs’s installHost), once the person has confirmed. It then connects,
+     * as connect() does, so its card shows what the daemon found; a link made with another token is replaced.
      * @param {string} hostId @returns {ReturnType<typeof installHost>}
      */
     install: (hostId) => install(m, hostId),
@@ -207,10 +215,9 @@ async function install(m, hostId) {
   m.tokens.set(hostId, r.token);
   const e = m.links.get(hostId);
   if (e && e.token !== r.token) dropLink(m, hostId);
-  else e?.link.retry();
-  // A turn or a prompt that waited for the install connects now.
-  if (isNeeded(m, hostId)) linkOf(m, hostId).need();
   update(m, hostId);
+  // The person installed it: it connects now, for its welcome, and for a turn or a prompt that waited for the install.
+  connectNow(m, hostId).catch(() => {});
   return r;
 }
 
