@@ -77,9 +77,10 @@ try {
   await page.size(1280, 900, { theme: 'dark' });
 
   // 2. Its link scrolls to the app that replaced it, and moves focus there.
-  await ev(`${item('lab')}.scrollIntoView({ block: 'center' })`);
-  await sleep(300);
-  const hidden = await ev(`(() => { const r = ${item('metro')}.getBoundingClientRect(); return r.top >= innerHeight || r.bottom <= 0; })()`);
+  // Within a time budget, not after a fixed wait: under load, with events held back (check-all.mjs --lag), the window’s
+  // return to 1280 px can still be settling 300 ms later, with the map in view (#162).
+  const offScreen = `(() => { ${item('lab')}.scrollIntoView({ block: 'center' }); const r = ${item('metro')}.getBoundingClientRect(); return r.top >= innerHeight || r.bottom <= 0; })()`;
+  const hidden = await until(() => ev(offScreen), 'the map to be off screen', 5000).catch(() => false);
   check(hidden, 'the map starts off screen');
   await ev(`[...${item('lab')}.querySelectorAll('button')].find((b) => b.textContent === 'Go to Metro map').click()`);
   await sleep(300);
