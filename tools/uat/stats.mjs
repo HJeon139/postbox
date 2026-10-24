@@ -217,7 +217,7 @@ export const RECURRENCE_COLUMNS = ['Issue', 'State', 'Priority', 'Runs', 'Findin
 
 /** The recurrence table, as lines of text. @param {ReturnType<typeof recurrence>} rows */
 export function recurrenceTable(rows) {
-  if (!rows.length) return ['Recurrence by issue: no run caught a known issue again.'];
+  if (!rows.length) return ['Recurrence by issue: no run filed or caught a known issue.'];
   const cells = rows.map((x) => [`#${x.issue}`, x.state?.toLowerCase() ?? '?', x.priority ?? '—', x.runs, x.findings, x.after ?? '?'].map(String));
   const width = RECURRENCE_COLUMNS.map((c, i) => Math.max(c.length, ...cells.map((r) => r[i].length)));
   const line = (r) => `  ${r.map((c, i) => c.padEnd(width[i])).join('  ')}`.trimEnd();
