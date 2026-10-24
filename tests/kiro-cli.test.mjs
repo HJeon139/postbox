@@ -8,7 +8,6 @@ import { test } from 'node:test';
 import {
   createKiroMapper,
   exitError,
-  KIRO_CAPABILITIES,
   KIRO_PUBLISHING,
   KiroCliAdapter,
   kiroAgent,
@@ -192,19 +191,6 @@ test('the models Kiro lists, in Postbox’s spelling, bounded; nothing from an a
     undefined,
     'Claude’s list, when Kiro listed none',
   );
-});
-
-test('Kiro says how it runs on a remote host: no stdin, only KIRO_HOME, its agent file, an open tool call as work', () => {
-  assert.deepEqual(KIRO_CAPABILITIES.remote, {
-    stdin: 'none',
-    env: ['KIRO_HOME'],
-    server: 'agent-file',
-    work: 'open-tool-call',
-    signInError: null,
-  });
-  const a = new KiroCliAdapter({ workRoot: '/nowhere', isolatedHome: '/nowhere/kiro', models: ['gpt-5.6-terra'] });
-  assert.equal(a.capabilities.remote, KIRO_CAPABILITIES.remote, 'the models don’t replace it');
-  assert.deepEqual(JSON.parse(JSON.stringify(a.capabilities)).remote, KIRO_CAPABILITIES.remote);
 });
 
 test('the arguments: v3, stream-json, the turn’s agent, model and effort always, the message after --', () => {

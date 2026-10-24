@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkRemoteMessage, KiroCliAdapter, kiroRemoteEnv, REMOTE_ARGV_NOTE } from '../server/adapters/kiro-cli.mjs';
+import { checkRemoteMessage, KIRO_CAPABILITIES, KiroCliAdapter, kiroRemoteEnv, REMOTE_ARGV_NOTE } from '../server/adapters/kiro-cli.mjs';
 import { createMessageReader, encode, message, PROTOCOL_VERSION, REMOTE_LIMITS } from '../shared/remote-protocol.mjs';
 import { createFakeDaemon, FAKE_TOKEN } from './fake-daemon.mjs';
 
@@ -75,16 +75,9 @@ const play = (d, start, name, code = 0) => {
 let turnIds = 0;
 const nextId = () => `kiro-turn-${++turnIds}`;
 
-async function setup({ persona = {}, state = {}, remote = {} } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'pb-kiro-remote-'));
-  const d = createFakeDaemon({ lines: [], autoEnd: false, home: HOME });
-  const link = connectTo(d);
-  await until(() => link.welcome, 'the welcome');
-  const turn = nextId();
-  /** turns: every turn ID the runtime gave; startsAtNext: how many starts the daemon had when nextTurn was called */
-  const calls = { text: '', activity: [], saved: {}, kill: [], list: 0, spawn: 0, turns: [turn], startsAtNext: [] };
-  const abort = new AbortController();
-  const adapter = new KiroCliAdapter({
+/** The adapter, with a local spawn, kill and ps that record each call: a remote turn never spawns here. */
+function fakeAdapter(root, calls) {
+  return new KiroCliAdapter({
     workRoot: join(root, 'work'),
     isolatedHome: join(root, 'home'),
     env: { SECRET: 'laptop', KIRO_HOME: '/Users/me/.kiro' },
@@ -102,6 +95,18 @@ async function setup({ persona = {}, state = {}, remote = {} } = {}) {
       return [];
     },
   });
+}
+
+async function setup({ persona = {}, state = {}, remote = {} } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'pb-kiro-remote-'));
+  const d = createFakeDaemon({ lines: [], autoEnd: false, home: HOME });
+  const link = connectTo(d);
+  await until(() => link.welcome, 'the welcome');
+  const turn = nextId();
+  /** turns: every turn ID the runtime gave; startsAtNext: how many starts the daemon had when nextTurn was called */
+  const calls = { text: '', activity: [], saved: {}, kill: [], list: 0, spawn: 0, turns: [turn], startsAtNext: [] };
+  const abort = new AbortController();
+  const adapter = fakeAdapter(root, calls);
   const ctx = {
     signal: abort.signal,
     mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
@@ -266,4 +271,17 @@ test('#120: Stop on a remote Kiro turn sends the daemon’s stop and never calls
   assert.deepEqual(d.stops, [start.turn]);
   assert.deepEqual(calls.kill, [], 'no local signal, in particular not to a negative process ID');
   assert.equal(calls.list, 0);
+});
+
+test('Kiro says how it runs on a remote host: no stdin, only KIRO_HOME, its agent file, an open tool call as work', () => {
+  assert.deepEqual(KIRO_CAPABILITIES.remote, {
+    stdin: 'none',
+    env: ['KIRO_HOME'],
+    server: 'agent-file',
+    work: 'open-tool-call',
+    signInError: null,
+  });
+  const a = new KiroCliAdapter({ workRoot: '/nowhere', isolatedHome: '/nowhere/kiro', models: ['gpt-5.6-terra'] });
+  assert.equal(a.capabilities.remote, KIRO_CAPABILITIES.remote, 'the models don’t replace it');
+  assert.deepEqual(JSON.parse(JSON.stringify(a.capabilities)).remote, KIRO_CAPABILITIES.remote);
 });
