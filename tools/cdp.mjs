@@ -13,26 +13,25 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // longer than the 12 s this used to allow (run 39977434749).
 const START_MS = 45000;
 
+/** The test Chrome’s command line: headless, on its own DevTools port and a fresh profile. */
+const flags = (port, profile) => [
+  '--headless=new',
+  `--remote-debugging-port=${port}`,
+  `--user-data-dir=${profile}`,
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--hide-scrollbars',
+  '--force-color-profile=srgb',
+  // A machine’s force-installed extensions load even into this fresh profile, and as their workers start they
+  // cancel the page’s first requests (net::ERR_ABORTED before anything is sent), so a check sometimes never sees
+  // the page load. CI’s runners have none; this makes a laptop run match. It touches only this test browser.
+  '--disable-extensions',
+  'about:blank',
+];
+
 export async function launch({ port = 9333 } = {}) {
   const profile = join(tmpdir(), `pb-cdp-${process.pid}-${port}`);
-  const chrome = spawn(
-    CHROME,
-    [
-      '--headless=new',
-      `--remote-debugging-port=${port}`,
-      `--user-data-dir=${profile}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--hide-scrollbars',
-      '--force-color-profile=srgb',
-      // A machine’s force-installed extensions load even into this fresh profile, and as their workers start they
-      // cancel the page’s first requests (net::ERR_ABORTED before anything is sent), so a check sometimes never sees
-      // the page load. CI’s runners have none; this makes a laptop run match. It touches only this test browser.
-      '--disable-extensions',
-      'about:blank',
-    ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
-  );
+  const chrome = spawn(CHROME, flags(port, profile), { stdio: ['ignore', 'ignore', 'pipe'] });
   // What Chrome last said, and whether it ended, to say why when it doesn’t start.
   let said = '';
   chrome.stderr.on('data', (d) => {
