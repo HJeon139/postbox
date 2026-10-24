@@ -1,6 +1,8 @@
 // A headless Chrome check of the cards Postbox draws for permissions, driven with real clicks:
 // - #237: a card asking for a tool that’s off answers itself when the tool is turned on from the agent’s quick panel,
 //   says it’s on, and the agent carries on.
+// - #238: a refusal card for a chained command offers no Allow once or Always allow, and says why and what to do; one
+//   for a single command still offers both.
 //
 //   node tools/checks/permission-cards.mjs
 //
@@ -54,6 +56,7 @@ async function click(expr) {
     await page.send('Input.dispatchMouseEvent', { type: t, x: r.x, y: r.y, button: t === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
   await settle();
 }
+const text = (expr) => page.evaluate(`(${expr})?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
 const byText = (sel, text) => `[...document.querySelectorAll(${JSON.stringify(sel)})].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
 // A time budget, not a count of tries: with other checks running beside it, a count runs out (#162).
 const until = async (fn, label, timeout = 15000) => {
@@ -107,6 +110,30 @@ await check('#237 Shell turned on from the quick panel answers the card that ask
   assert.equal(heard.at(-1).kind, 'notice');
   assert.match(heard.at(-1).text, /turned on shell/);
   assert.equal(store.state.sessions[se.id].needs, null, 'it no longer needs you');
+});
+
+await check('#238 a refused chained command offers no Allow once or Always allow, and says why; a single command still does', async () => {
+  const refuse = (command, label) =>
+    script.push(async (ctx) => {
+      ctx.denied({ toolUseId: `tu-${label}`, tool: 'Bash', input: { command }, label, reason: '[Data Exfiltration]', reasonType: 'classifier' });
+    });
+  refuse('cd src && python -m pytest -q 2>&1 | tail -20', 'Run the chained tests');
+  refuse('python -m pytest -q', 'Run the single tests');
+  rt.sendMessage(thread.id, { text: 'Run the tests twice.' });
+  rt.sendMessage(thread.id, { text: 'And again.' });
+  const chained = byText('.transcript .block', 'tried to run the chained tests');
+  const single = byText('.transcript .block', 'tried to run the single tests');
+  await page.waitFor(`!!(${chained})?.querySelector('.block-foot') && !!(${single})?.querySelector('.block-foot')`, { label: 'both cards' });
+  await until(() => rt.turns.size === 0, 'the turns to end');
+  await page.synced(store.state.seq);
+  const buttons = (card) => page.evaluate(`[...(${card}).querySelectorAll('.block-foot button')].map((b) => b.textContent)`);
+  assert.deepEqual(await buttons(chained), ['Leave it']);
+  assert.match(
+    await text(`${chained}.querySelector('.block-body')`),
+    /Claude Code checks each part of a chained command \(joined by &&, \|\|, ;, \| or &, or inside \$\( \)\) against its rules on its own/,
+  );
+  assert.match(await text(`${chained}.querySelector('.block-body')`), /ask @tester to run the parts as separate commands/);
+  assert.deepEqual(await buttons(single), ['Allow once and retry', 'Always allow commands that start with “python -m”', 'Leave it']);
 });
 
 const errors = page.logs.filter((l) => l.startsWith('exception'));
