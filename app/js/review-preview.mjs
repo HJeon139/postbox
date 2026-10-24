@@ -124,7 +124,7 @@ function selecting(root, md, lines, env) {
   });
   root.addEventListener('click', (e) => {
     const t = /** @type {Element} */ (e.target);
-    const whole = t.closest('.rv-fig, .md-math[data-display], img.md-img, .md-img-failed');
+    const whole = t.closest('.rv-fig, .md-math[data-display], img.md-img, .md-img-failed, .img-failed');
     if (selected || !whole || !md.contains(whole) || t.closest('a, button') || !getSelection()?.isCollapsed) return;
     const m = whole.closest('[data-sl]');
     if (m instanceof HTMLElement) env.pick(+(m.dataset.sl ?? 0));

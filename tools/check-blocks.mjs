@@ -189,6 +189,15 @@ try {
     );
   }
 
+  // An image that failed is commented on whole, as a diagram is: a click on it in Preview opens Lines at its line (#179).
+  await page.evaluate('getSelection().removeAllRanges()');
+  const spot = await page.evaluate(
+    `(() => { const el = ${BLOCK('pictures')}.querySelector('.img-failed'); el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + 4, y: r.top + r.height / 2 }; })()`,
+  );
+  for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, ...spot, button: 'left', clickCount: 1 });
+  const box = await until(() => page.evaluate(`document.activeElement?.tagName === 'TEXTAREA' && document.activeElement.getAttribute('aria-label')`), 5000);
+  check(box === 'Comment on line 5', `a click on a review’s image that failed opens Lines at its line, with its comment box (${box})`);
+
   // The missing image’s 404, and the policy refusing the image from elsewhere, are the expected errors.
   const logs = page.logs.filter((l) => !/not-there\.svg|status of 404|example\.com\/elsewhere\.png/.test(l));
   check(!logs.length, `no errors in the page${logs.length ? `: ${logs.join('; ')}` : ''}`);
