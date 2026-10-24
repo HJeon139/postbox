@@ -1,14 +1,14 @@
 // OpenAI Codex app-server backend. Each Postbox session owns a persistent app-server thread; the local
 // `codex` installation supplies sign-in, configuration, sandboxing and the model catalog.
 import { spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { draftOf } from '../write-guard.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { effortOf, POSTBOX_SERVER } from './setup.mjs';
+import { effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 
 // Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false).
 export const CODEX_CAPABILITIES = Object.freeze({ resume: true, fork: true, permissions: 'none', tools: 'none', isolation: false });
@@ -268,12 +268,8 @@ export class CodexAdapter {
       child.once('close', r);
       child.once('error', r);
     });
-    /** @type {string|null} */
-    let recordFile = null;
-    if (process.env.POSTBOX_CODEX_RECORD) {
-      mkdirSync(process.env.POSTBOX_CODEX_RECORD, { recursive: true });
-      recordFile = `${process.env.POSTBOX_CODEX_RECORD}/${Date.now()}-${ctx.persona.handle}.jsonl`;
-    }
+    if (process.env.POSTBOX_CODEX_RECORD) mkdirSync(process.env.POSTBOX_CODEX_RECORD, { recursive: true });
+    const record = recorderFor(ctx, process.env.POSTBOX_CODEX_RECORD, 'codex');
     let stderr = '';
     child.stderr.on('data', (chunk) => {
       stderr = (stderr + chunk).slice(-4000);
@@ -313,7 +309,7 @@ export class CodexAdapter {
       } catch {
         return;
       }
-      if (recordFile) appendFileSync(recordFile, `${line}\n`);
+      record(line);
       if (msg.id != null && pending.has(msg.id)) {
         const item = pending.get(msg.id);
         pending.delete(msg.id);

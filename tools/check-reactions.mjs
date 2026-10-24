@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { begin, check, click, end, fresh, page, press, settle } from './pane-check.mjs';
+import { reactItem } from './uat/telemetry-driver.mjs';
 
 /** Enter as a person presses it: with the character, which is what activates a button or a menu item. */
 async function enter() {
@@ -39,6 +40,9 @@ await check('#251 a reaction by mouse shows under the reply, and the server keep
   await page.waitFor(menuItem('Not good'), { label: 'the reactions menu' });
   assert.deepEqual(await checked(), ['false', 'false', 'false', 'false', 'false']);
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.menu .react-icon')].map((i) => i.alt)`), ['👍', '👎', '🚩', '❓', '✅']);
+  // Every icon loads, and the UAT's telemetry driver finds each reaction by its emoji (#263).
+  await page.waitFor(`[...document.querySelectorAll('.menu .react-icon')].every((i) => i.complete && i.naturalWidth === 64)`, { label: 'all five icons' });
+  for (const e of ['👍', '👎', '🚩', '❓', '✅']) assert.ok(await page.evaluate(`!!${reactItem(e)}`), `the driver finds ${e}`);
   await click(menuItem('Not good'));
   await page.waitFor(`!!${REPLY}.querySelector('.reactions .react-chip')`, { label: 'the reaction under the reply' });
   assert.deepEqual(await chips(), ['👎']);

@@ -4,8 +4,10 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { spokenSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
+import { rememberWork } from './work-memory.mjs';
 
 export { initHoverCards } from './hovercards.mjs';
+export { rememberWork, workRemembered } from './work-memory.mjs';
 
 // ── Navigation ──────────────────────────────────────────────────────────────────────────
 // Routes: #/ (overview), #/t/<threadId>, and #/t/<threadId>/side/<sideThreadId> with a thread in the right pane.
@@ -19,14 +21,18 @@ export function route() {
   const m = path.match(/^#\/t\/([^/]+)(?:\/side\/([^/]+)|\/(work)(?:\/([^/]+))?)?/);
   if (m) {
     const q = new URLSearchParams(query);
-    // Only a view that’s there can be full screen: Work, or the thread when one is open.
+    // Only a view that’s there can be full screen: Work, Telemetry, or the thread when one is open.
     const f = q.get('full');
-    const full = f === 'work' || (f === 'thread' && m[2]) ? f : null;
+    const full = f === 'work' || f === 'telemetry' || (f === 'thread' && m[2]) ? f : null;
+    const telemetry = full === 'telemetry' || q.has('telemetry');
     return {
       view: 'thread',
       threadId: m[1],
       sideId: m[2] ?? null,
       work: full === 'work' || q.has('work'),
+      // Telemetry swaps in for Work in its slot; Work stays in the address, and comes back when Telemetry closes (R18).
+      telemetry,
+      slot: telemetry ? 'telemetry' : full === 'work' || q.has('work') ? 'work' : null,
       turn: q.get('turn') || m[4] || null,
       full,
       at: q.get('at') || null,
@@ -47,12 +53,13 @@ export function navigate(hash, { replace = false } = {}) {
  * A conversation’s address with its right pane: a thread (side), and its Work, scrolled to a turn, either view full
  * screen (full: 'work' or 'thread'; true means Work), or full-screen Work with one item open (at).
  * @param {string} threadId
- * @param {{ side?: string|null, work?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null }} [pane]
+ * @param {{ side?: string|null, work?: boolean, telemetry?: boolean, turn?: string|null, full?: boolean|string|null, at?: string|null }} [pane]
  */
-export function paneHref(threadId, { side = null, work = false, turn = null, full = null, at = null } = {}) {
+export function paneHref(threadId, { side = null, work = false, telemetry = false, turn = null, full = null, at = null } = {}) {
   const f = full === true ? 'work' : full || null;
   const q = [
     work || f === 'work' ? 'work' : '',
+    telemetry || f === 'telemetry' ? 'telemetry' : '',
     turn ? `turn=${encodeURIComponent(turn)}` : '',
     f ? `full=${f}` : '',
     at ? `at=${encodeURIComponent(at)}` : '',
@@ -60,24 +67,6 @@ export function paneHref(threadId, { side = null, work = false, turn = null, ful
   return `#/t/${threadId}${side ? `/side/${side}` : ''}${q.length ? `?${q.join('&')}` : ''}`;
 }
 
-// A conversation keeps its Work open until you close it, in this browser: a link to the conversation or one of its
-// threads opens Work beside it again. Opening and closing it replace the address rather than add to the history,
-// like the rail, so Back goes to where you were, not to the pane as it was.
-const workKey = (threadId) => `pb-work-${threadId}`;
-/** Whether Work was left open in a conversation. */
-export function workRemembered(threadId) {
-  try {
-    return localStorage.getItem(workKey(threadId)) === '1';
-  } catch {
-    return false;
-  }
-}
-export function rememberWork(threadId, open) {
-  try {
-    if (open) localStorage.setItem(workKey(threadId), '1');
-    else localStorage.removeItem(workKey(threadId));
-  } catch {}
-}
 /**
  * Opens a conversation’s Work in its right pane, beside the thread open there. turn scrolls it to a turn’s line;
  * full shows it full screen, at opens one item there. Asked again for what’s already open, it goes there
@@ -97,7 +86,7 @@ export function openWork(threadId, { turn = null, full = false, at = null } = {}
 export function closeWork(threadId) {
   const r = route();
   rememberWork(threadId, false);
-  navigate(paneHref(threadId, { side: r.threadId === threadId ? r.sideId : null }), { replace: true });
+  navigate(paneHref(threadId, { side: r.threadId === threadId ? r.sideId : null, telemetry: r.threadId === threadId && r.telemetry }), { replace: true });
 }
 /**
  * Shows a view of the open conversation’s pane full screen (kind 'work' or 'thread'), or brings it back to the pane
@@ -108,7 +97,7 @@ export function closeWork(threadId) {
 export function setPaneFull(kind, { turn = null, at = null } = {}) {
   const r = route();
   if (r.view !== 'thread') return;
-  navigate(paneHref(r.threadId, { side: r.sideId, work: r.work, full: kind, turn, at }), { replace: true });
+  navigate(paneHref(r.threadId, { side: r.sideId, work: r.work, telemetry: r.telemetry, full: kind, turn, at }), { replace: true });
 }
 
 // ── Toasts ──────────────────────────────────────────────────────────────────────────────

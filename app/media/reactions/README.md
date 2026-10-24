@@ -16,4 +16,7 @@ icon a thin `--dim` rim there. On dark they stand out on their own.
 
 Made locally with FLUX.2 [dev] (`black-forest-labs/FLUX.2-dev`), 28 steps. `recipes.json` has each icon’s full recipe:
 prompt, seed, guidance and terms, with its contrast as measured when it was chosen. FLUX.2 [dev] is under Black Forest
-Labs’ FLUX [dev] Non-Commercial License; its model card allows commercial use of the outputs.
+Labs’ FLUX [dev] Non-Commercial License; its model card allows commercial use of the outputs. On 24 October 2026 the
+person confirmed that Postbox ships FLUX.2 [dev] outputs (the earlier set) under its Apache-2.0 license (#263). The
+128 px files are kept as the source for larger sizes; the page uses the 64 px ones, which are sharp at 20 px up to a 3×
+screen.
