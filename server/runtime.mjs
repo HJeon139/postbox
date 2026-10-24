@@ -54,7 +54,7 @@ import {
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
 import { reviewBlock } from './review-comments.mjs';
-import { clearSummaryPending, markSummaryPending, summarizeBack, summarizing } from './share-back.mjs';
+import { clearSummaryPending, markSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -71,7 +71,6 @@ import {
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
-import { shareThreadText, shareTopicReply } from './thread-sharing.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 
@@ -1591,7 +1590,7 @@ export class Runtime {
   }
 
   shareToConversation(topicId, itemId) {
-    return shareTopicReply(this, topicId, itemId);
+    return shareToConversation(this, topicId, itemId);
   }
   summarizeBack(topicId, opts) {
     return summarizeBack(this, topicId, opts);
@@ -1603,7 +1602,7 @@ export class Runtime {
     return clearSummaryPending(this, topicId, ended);
   }
   shareText(threadId, opts) {
-    return shareThreadText(this, threadId, opts);
+    return shareText(this, threadId, opts);
   }
 
   // ── Shared memory in a conversation ────────────────────────────────────────────────

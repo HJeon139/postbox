@@ -1913,9 +1913,9 @@ export function mountComposer(threadId, { side = false } = {}) {
                   // Who it reaches, in a room and in a topic or side thread too, and the @ a name may lack (#134).
                   addressLine(threadId, ta.value, { room: topic || side || members.length > 1, addAt }),
                   topic
-                    ? h('span', 'Replies stay in this thread. @ brings in another agent.')
+                    ? h('span', 'Replies stay here · @ brings in another agent')
                     : side
-                      ? h('span', 'Anything you send here adds you to this side thread.')
+                      ? h('span', 'Sending adds you to this side thread')
                       : [
                           h('span', 'Enter to send · Shift+Enter for a new line'),
                           h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),

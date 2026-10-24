@@ -72,6 +72,24 @@ test('#225: a summary’s wake_agent wakes no one either, and the agent is told 
   assert.equal(store.state.threads[t.id].hops, hops);
 });
 
+test('#225: nor does a summary’s review_block, which would wake the block’s agent and post on its block', async () => {
+  const { store, rt, adapter, t, side, beta } = await sideThread();
+  const block = { id: 'plan', type: 'review', version: 1, title: 'plan.md', fallback: 'The plan', format: 'markdown', content: 'One.\nTwo.' };
+  assert.equal(rt.toolsFor(beta.id).show_block({ block }).ok, true);
+  let said = null;
+  adapter.next.push(async (c) => {
+    said = c.tools.review_block({ blockId: 'plan', comments: [{ line: 1, text: 'Shorter.' }] });
+    c.text('Two chapters differ.');
+  });
+  const before = adapter.calls.length;
+  rt.summarizeBack(side.id);
+  await settle(rt);
+  assert.equal(said?.ok, false);
+  assert.match(said?.message ?? '', /wakes no one/);
+  assert.equal(adapter.calls.length, before + 1, 'only the summary’s own turn ran');
+  assert.equal(store.items(t.id).find((i) => i.kind === 'block')?.block.threads, undefined, 'no comment on the block');
+});
+
 /**
  * Asks for the summary while the agent that writes it is busy in the thread, so it waits behind that turn, and returns
  * whether it was still pending once its own turn had started. The person’s message there keeps the agent busy.
