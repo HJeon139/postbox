@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.19.0 (2026-10-24)
+
+### Features
+
+- **agents:** End on a subagent's row tells its agent to stop it
+
+### Fixes
+
+- **side-threads:** one session per agent per conversation, and no forks
+
 ## 0.18.0 (2026-10-24)
 
 ### Features
