@@ -80,6 +80,15 @@ export function savedReports(rt, threadId) {
     .sort((a, b) => b.at - a.at);
 }
 
+/** Discards a report not yet saved: its draft goes, and nothing was written but the draft (R18). */
+export function discardDraft(rt, threadId, id) {
+  const conv = convOf(rt, threadId);
+  const draft = readDraft(rt, conv.id, id);
+  if (draft.saved) throw httpError(409, 'This report is saved already. Delete it from the saved reports instead.');
+  rmSync(join(recFolder(rt, conv.id, 'drafts'), `${id}.json`), { force: true });
+  return { ok: true };
+}
+
 /** Deletes a saved report. */
 export function deleteReport(rt, threadId, id) {
   const conv = convOf(rt, threadId);

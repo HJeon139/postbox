@@ -35,6 +35,9 @@ const said = (it, ref) => {
  * @returns {{ input: string, sent: Set<string> }}
  */
 export function boundedInput(o) {
+  // In a UAT run every turn’s row goes, for proposals, and labeled items give way first. If the rows alone are past
+  // the budget, as in a very long run, the report makes no proposals and is bounded as a live room’s is.
+  if (o.proposals && classifierInput({ ...o, asked: [] }).length > MAX_INPUT) return boundedInput({ ...o, proposals: false });
   let sent = o.asked.slice(-MAX_LABELS);
   for (;;) {
     const named = new Set(sent.flatMap((a) => a.named ?? a.refs));

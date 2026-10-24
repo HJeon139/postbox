@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { convOf, deleteRecordings, startRecording, stopRecording, telemetryRoot } from './telemetry.mjs';
 import { fileIssue, issuePreview } from './telemetry-file.mjs';
 import { draftView, makeReport } from './telemetry-report.mjs';
-import { deleteReport, savedReports, saveReport, setLeftOut } from './telemetry-save.mjs';
+import { deleteReport, discardDraft, savedReports, saveReport, setLeftOut } from './telemetry-save.mjs';
 
 const done = (status, body) => ({ status, body });
 
@@ -44,6 +44,7 @@ export async function telemetryRoute(rt, path, method, body) {
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/leave-out$/)) && method === 'POST')
     return done(200, setLeftOut(rt, m[1], m[2], b));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/save$/)) && method === 'POST') return done(200, saveReport(rt, m[1], m[2], b));
+  if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/discard$/)) && method === 'POST') return done(200, discardDraft(rt, m[1], m[2]));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/issues\/([^/]+)$/)) && method === 'GET')
     return done(200, issuePreview(rt, convOf(rt, m[1])?.id, m[2], decodeURIComponent(m[3])));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/issues\/([^/]+)$/)) && method === 'POST')

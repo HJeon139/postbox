@@ -34,6 +34,7 @@ import { toPlainText } from '../shared/markdown.mjs';
 import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from './adapters/setup.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
+import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 
@@ -824,6 +825,7 @@ export const CHECKS = [
   },
   // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): server/room-checks-backends.mjs.
   ...BACKEND_CHECKS,
+  ...TELEMETRY_CHECKS,
   {
     // Two processes in one Claude Code session (#126): a turn that started while the session’s previous turn was still
     // making requests, or a stopped turn whose process went on calling Postbox’s tools after Stop. Claude Code turns

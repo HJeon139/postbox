@@ -1219,3 +1219,9 @@ code.wc-name { font-size: 12px; }
 .tv-findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .tv-findings li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
 .tv-issue { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; font-size: 12.5px; background: var(--sunk); padding: 10px; border-radius: 8px; }
+.tv-actions { display: flex; gap: 8px; }
+/* Full screen (R18): the same view over the window, at the message column’s width, the summary beside the bytes. */
+.telemetry-view.tv-full .tv-body { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); align-content: start; gap: 12px 20px; max-width: 1040px; width: 100%; margin: 0 auto; }
+.telemetry-view.tv-full .tv-body > :not(.tv-summary) { grid-column: 2; }
+.telemetry-view.tv-full .tv-summary { grid-column: 1; grid-row: 1 / span 6; align-self: start; }
+@media (max-width: 760px) { .telemetry-view.tv-full .tv-body { grid-template-columns: minmax(0, 1fr); } .telemetry-view.tv-full .tv-body > *, .telemetry-view.tv-full .tv-summary { grid-column: 1; grid-row: auto; } }

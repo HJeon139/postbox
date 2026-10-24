@@ -73,6 +73,11 @@ export function parseScenario(md) {
     // `- models: persona` keeps each persona’s own model and effort, for scenarios that measure what agents choose
     // (M1’s exit check, #63). Without it, a run puts the agents on the fast model it’s given (--agent-model).
     models: meta.models === 'persona' ? 'persona' : 'run',
+    // Telemetry (designs/telemetry-persona.md, U2): `- seed: canaries` plants the run’s canaries in the workspace,
+    // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario.
+    seed: meta.seed ?? null,
+    gh: meta.gh === 'none' ? 'none' : 'yes',
+    telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- \w+: /.test(l)).join('\n'),
     steps: count(meta.steps),
     phases: phases.map(phaseOf),

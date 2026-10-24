@@ -19,7 +19,7 @@ import { collect, tierA } from './telemetry-record.mjs';
 const BY_BACKEND = { 'kiro-cli': 'kiroStreams', 'antigravity-cli': 'agyStreams', codex: 'codexStreams' };
 
 /** What the final check needs: Postbox’s check ids, this build’s version and commit, and the refs this report issued. */
-export const vocabOf = (rt, draft) => ({ checkIds: CHECKS.map((c) => c.id), build: rt.config.build ?? {}, refs: draft?.refs ?? [] });
+export const vocabOf = (rt, draft) => ({ checkIds: CHECKS.map((c) => c.id), build: rt.config.build ?? {}, refs: draft?.refs ?? [], uat: draft?.uat === true });
 
 /** A draft’s bytes, as shown and saved: its report less the lines left out, and their hash. */
 export function bytesOf(draft) {
@@ -78,7 +78,11 @@ function askedOf(c, itemRefs, rows, reactions) {
   const turnOf = new Map(c.items.filter((it) => c.byItem.has(it.id) && c.byTurn.has(it.turnId)).map((it) => [c.byItem.get(it.id), c.byTurn.get(it.turnId)]));
   const withTurns = (refs) => [...new Set([...refs, ...refs.map((r) => turnOf.get(r)).filter(Boolean)])];
   return [
-    ...rows.map((k) => ({ ref: k.ref, item: k.refs.find((x) => x.startsWith('i')) ?? null, refs: k.refs, named: withTurns(k.refs) })),
+    ...rows.map((k) => {
+      // A check that cites more than five offers its earliest five (R16), by ordinal: refs number the room in order.
+      const refs = [...k.refs].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))).slice(0, BEFORE + 1);
+      return { ref: k.ref, item: refs.find((x) => x.startsWith('i')) ?? null, refs, named: withTurns(refs) };
+    }),
     ...reactions
       .filter((r) => r.emoji === FLAG)
       .map((r) => {
@@ -87,6 +91,12 @@ function askedOf(c, itemRefs, rows, reactions) {
         return { ref: r.ref, item: r.on, refs, named: withTurns(refs) };
       }),
   ];
+}
+
+/** Why the classifier had no say in a label, if it didn’t: no classifier, a failed call, or refs over budget (R3). */
+function outcomeOf(r, sent, asked) {
+  const failed = !sent.size ? null : !r.called ? 'no-classifier' : r.answer ? null : 'failed-call';
+  return { failed, why: [...(failed ? [failed] : []), ...(sent.size < asked.length ? ['over-budget'] : [])] };
 }
 
 /**
@@ -109,10 +119,9 @@ export async function makeReport(rt, threadId, { history = false } = {}) {
   const record = { ...a, checks: { found: checks.rows, notRun: live.notRun } };
   const { input, sent } = boundedInput({ record, asked, items: c.items, byItem: c.byItem, proposals });
   const r = sent.size || proposals ? await classify(rt, conv.id, input) : { answer: null, costUsd: null, called: false };
-  const failed = !sent.size ? null : !r.called ? 'no-classifier' : r.answer ? null : 'failed-call';
+  const { failed, why } = outcomeOf(r, sent, asked);
   const turns = new Set(c.byTurn.values());
   const gated = labelsOf(r.answer, { asked, sent, turns, failed, proposals });
-  const why = [...(failed ? [failed] : []), ...(sent.size < asked.length ? ['over-budget'] : [])];
   const build = rt.config.build ?? {};
   const ended = conv.recording.on ? Date.now() : (conv.recording.stoppedAt ?? Date.now());
   const report = blurred(
@@ -130,7 +139,7 @@ export async function makeReport(rt, threadId, { history = false } = {}) {
     }),
   );
   const refs = [...itemRefs, ...turns, ...checks.rows.map((k) => k.ref), ...a.reactions.map((x) => x.ref)];
-  const problems = finalCheck(report, vocabOf(rt, { refs }));
+  const problems = finalCheck(report, vocabOf(rt, { refs, uat: proposals }));
   if (problems.length)
     throw httpError(422, `Postbox couldn’t make the report: ${problems.length} fields failed its final check (${problems.slice(0, 5).join(', ')}).`);
   const draft = {
@@ -143,6 +152,7 @@ export async function makeReport(rt, threadId, { history = false } = {}) {
     input,
     costUsd: r.costUsd,
     called: r.called,
+    uat: proposals,
     at: Date.now(),
   };
   write(join(recFolder(rt, conv.id, 'drafts'), `${report.id}.json`), JSON.stringify(draft));

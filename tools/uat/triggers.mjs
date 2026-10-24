@@ -3,17 +3,15 @@
 // says whether the run reached the code path at all. A P0 run that never made Postbox refuse an update over an unread
 // answer hasn’t tested #123’s fix, however clean its checks are.
 //
-// A phase names its triggers (`- triggers: wake-full-text` in tests/uat/e2e/scenarios/p0.md). The runner moves on
-// once they’ve all happened, or at the phase’s step cap, when it records a coverage gap and the report says the fix
-// went untested.
-//
-// Each trigger reads:
+// A phase names its triggers (`- triggers: wake-full-text` in tests/uat/e2e/scenarios/p0.md). The runner moves on once
+// they’ve all happened, or at the phase’s step cap, when it records a coverage gap. Each trigger reads:
 //   facts.state      items: an allowed wake request and what the woken agent got (#108)
 //   facts.streams    each agent turn’s raw stream: Postbox’s tool calls and what Postbox answered (#123, #125)
 //   facts.events     the history: sessions’ background jobs and Stop’s question about them (#126)
 //   facts.probes     what the runner saw on the page: a notice that Postbox refused an answer as stale (#123)
 
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
+import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 
 const clip = (s, n = 120) => {
   const t = String(s ?? '')
@@ -237,6 +235,7 @@ export const TRIGGERS = {
           evidence: `Background job ${j.id} was kept running when its turn was interrupted, with no question from Stop (event ${j.keptAt}).`,
         })),
   },
+  ...TELEMETRY_TRIGGERS,
 };
 
 /**

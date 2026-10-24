@@ -146,7 +146,7 @@ function view(threadId) {
     fetch(`/api/threads/${threadId}/view`, { method: 'POST' }).catch(() => {});
     // A thread open in the panel is being read too.
     const side = route().sideId;
-    if (side && side !== 'telemetry') fetch(`/api/threads/${side}/view`, { method: 'POST' }).catch(() => {});
+    if (side) fetch(`/api/threads/${side}/view`, { method: 'POST' }).catch(() => {});
   };
   ping();
   viewTimer = setInterval(ping, 10000);

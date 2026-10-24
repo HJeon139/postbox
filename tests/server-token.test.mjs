@@ -50,6 +50,7 @@ const WRITE_ROUTES = {
   'DELETE ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)$': ['/api/threads/th_none/telemetry/reports/rep_none'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/leave-out$': ['/api/threads/th_none/telemetry/reports/rep_none/leave-out'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/save$': ['/api/threads/th_none/telemetry/reports/rep_none/save'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/discard$': ['/api/threads/th_none/telemetry/reports/rep_none/discard'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/issues\\/([^/]+)$': ['/api/threads/th_none/telemetry/reports/rep_none/issues/x'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/view$': ['/api/threads/th_none/view'],
   'PATCH ^\\/api\\/threads\\/([^/]+)\\/queue\\/([^/]+)$': ['/api/threads/th_none/queue/q_none'],

@@ -165,14 +165,15 @@ const SCHEMA = obj({
  * Every field of a report that isn’t Postbox’s vocabulary, a ref, an id or a number where the schema says, as paths:
  * empty when the report may be saved. Never the values.
  * @param {any} report
- * @param {{ checkIds: string[], build?: { version?: string|null, commit?: string|null }, refs: Iterable<string> }} vocab  the
+ * @param {{ checkIds: string[], build?: { version?: string|null, commit?: string|null }, refs: Iterable<string>, uat?: boolean }} vocab  the
  *   check ids Postbox has (server/room-checks.mjs); its own version and commit, since a report names this build and
- *   nothing else in those fields; and the refs it issued for this report
+ *   nothing else in those fields; the refs it issued for this report; and whether the runner started this as a UAT run
  * @returns {string[]}
  */
-export function finalCheck(report, { checkIds, build = {}, refs }) {
+export function finalCheck(report, { checkIds, build = {}, refs, uat = false }) {
   /** @type {string[]} */
-  const out = [];
+  // Proposals are a UAT run’s only, as the runner starts it; a live room’s report holds none (R13, R16).
+  const out = !uat && report?.proposed?.length ? ['proposed'] : [];
   const issued = new Set(refs);
   const check = (spec, v, path) => {
     if (spec === 'check') return checkIds.includes(v) || out.push(path);

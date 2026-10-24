@@ -6,11 +6,9 @@
 
 import { api, client } from './client.mjs';
 import { h, icon } from './dom.mjs';
-import { navigate, openDialog, paneHref, route, toast } from './ui.mjs';
+import { navigate, openDialog, paneHref, route, setPaneFull, toast } from './ui.mjs';
 
 const S = () => client.state;
-/** The right pane’s slot for the Telemetry view: the side id it opens under (pane.mjs). */
-export const TELEMETRY = 'telemetry';
 const fail = (title) => (e) => toast({ title, text: e.message, level: 'blocking' });
 const time = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
@@ -38,7 +36,7 @@ export function telemetryItems(t) {
             label: 'Telemetry report…',
             icon: 'list',
             desc: 'Opens the Telemetry view beside the conversation',
-            run: () => navigate(`#/t/${t.id}/side/${TELEMETRY}`),
+            run: () => openTelemetry(t.id),
           },
           { label: 'Delete recordings…', icon: 'trash', danger: true, desc: 'At once. Saved reports stay', run: () => confirmDeleteRecordings(t) },
         ]
@@ -62,6 +60,13 @@ function confirmDeleteRecordings(t) {
   });
 }
 
+/** Opens the Telemetry view in Work’s place, beside the thread open there; Work comes back when it closes (R18). */
+function openTelemetry(convId) {
+  const r = route();
+  const here = r.view === 'thread' && r.threadId === convId;
+  navigate(paneHref(convId, { side: here ? r.sideId : null, work: here && r.work, telemetry: true }), { replace: here });
+}
+
 /** The header’s word for a recording conversation (R5): “Recording since 14:02”, kept up to date. */
 export function recordingBadge(t) {
   const badge = h('span.rec-badge', { id: 'recording-badge', role: 'status' });
@@ -76,20 +81,29 @@ export function recordingBadge(t) {
 }
 
 /**
- * The Telemetry view, in the right pane’s thread slot (pane.mjs): its head names it and closes it, like a thread’s.
+ * The Telemetry view, in Work’s slot of the right pane (pane.mjs): its head names it, takes it full screen, and closes
+ * it, which brings Work back if Work was open. Closing keeps an unsaved draft; Discard deletes it (R18).
  * @param {string} convId
  */
 export function mountTelemetryView(convId) {
   const body = h('div.sp-body.tv-body');
   const close = h(
     'button.btn.icon.sm',
-    { type: 'button', 'aria-label': 'Close Telemetry', onclick: () => navigate(paneHref(convId, { work: route().work })) },
+    {
+      type: 'button',
+      'aria-label': 'Close Telemetry',
+      onclick: () => {
+        const r = route();
+        navigate(paneHref(convId, { side: r.sideId, work: r.work }), { replace: true });
+      },
+    },
     icon('x'),
   );
+  const fullBtn = h('button.btn.icon.sm', { type: 'button', id: 'telemetry-full', 'aria-label': 'Full screen' }, icon('expand'));
   const el = h(
     'aside.sidepanel.telemetry-view',
-    { 'aria-labelledby': 'sp-title' },
-    h('div.sp-head', h('h2.sp-title', { id: 'sp-title' }, 'Telemetry'), close),
+    { 'aria-labelledby': 'tv-title' },
+    h('div.sp-head', h('h2.sp-title', { id: 'tv-title' }, 'Telemetry'), fullBtn, close),
     body,
   );
   const load = () =>
@@ -101,7 +115,11 @@ export function mountTelemetryView(convId) {
       .catch(fail('Couldn’t open Telemetry'));
   load();
   const off = client.on((ch) => (ch.type === 'thread' && ch.data.id === convId && !body.querySelector('.tv-lines') ? load() : null));
-  return { el, destroy: off, focus: () => close.focus() };
+  const setFull = (on) => {
+    el.classList.toggle('tv-full', !!on);
+    return fullBtn;
+  };
+  return { el, fullBtn, setFull, destroy: off, focus: () => close.focus(), exitFull: () => setPaneFull(null) };
 }
 
 /** Before a report: whether to include the history (R2), and Make report. */
@@ -176,7 +194,12 @@ function draftView(convId, d, load) {
     h('p.small', 'These are the exact bytes Postbox would save, and nothing leaves this computer when you save them. Leave out any line you don’t want in it.'),
     lines,
     h('p.small.mono.tv-hash', `${d.bytes.length.toLocaleString('en-US')} bytes · sha256 ${d.hash}`),
-    h('button.btn.send', { type: 'button', onclick: () => api(`${at}/save`, { hash: d.hash }).then(load, fail('Couldn’t save it')) }, 'Save report'),
+    h(
+      'div.tv-actions',
+      h('button.btn.send', { type: 'button', onclick: () => api(`${at}/save`, { hash: d.hash }).then(load, fail('Couldn’t save it')) }, 'Save report'),
+      h('button.btn', { type: 'button', onclick: () => api(`${at}/discard`, {}).then(load, fail('Couldn’t discard it')) }, 'Discard'),
+    ),
+    h('p.small', 'Closing the view keeps this report as it is until you save or discard it.'),
   ];
 }
 
