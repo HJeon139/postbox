@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.18.0 (2026-10-24)
+
+### Features
+
+- **work:** list what each turn did under its last reply, each row opening Work at it
+
+### Fixes
+
+- **work:** say which time the reply's activity line and the turn's list show
+- **ledger:** record commits and branches a command makes, from git before and after it
+
 ## 0.17.0 (2026-10-24)
 
 ### Features
