@@ -10,7 +10,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chains } from '../../server/command-chains.mjs';
+import { chains } from '../../shared/command-chains.mjs';
 import { clip, itemsOf, resultText } from './trigger-facts.mjs';
 
 const blocks = (e) => (Array.isArray(e?.message?.content) ? e.message.content : []);
