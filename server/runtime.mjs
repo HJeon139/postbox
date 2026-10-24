@@ -58,6 +58,7 @@ import {
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
+import { shareThreadText, shareTopicReply } from './thread-sharing.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
@@ -1561,16 +1562,7 @@ export class Runtime {
 
   /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
   shareToConversation(topicId, itemId) {
-    const topic = this.thread(topicId);
-    if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only messages in a topic or side thread can be sent to the conversation.');
-    const it = this.store.item(topicId, itemId);
-    if (!it?.text) throw httpError(404, 'That reply has no text to send.');
-    if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
-    // Part of a summary still being written: the whole summary is posted when it’s done (#93).
-    if ([...this.turns.values()].some((x) => x.id === it.turnId && x.summarizeTo))
-      throw httpError(409, 'This reply is part of a summary that’s still being written. It’s posted in the conversation when it’s done.');
-    this.patchItem(topicId, itemId, { sharedAt: Date.now() });
-    return this.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text });
+    return shareTopicReply(this, topicId, itemId);
   }
 
   /** “Summarize back”: the topic’s agent writes a short summary, which is posted in the conversation. */
@@ -1617,11 +1609,8 @@ export class Runtime {
    * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
    * bring_to_conversation, because the person asked it to (#128).
    */
-  shareText(threadId, { fromThreadId, handle, text, summary = false, agent = false }) {
-    const from = this.s.threads[fromThreadId];
-    // The conversation’s agents read it at the start of their next turn, with everything else they missed.
-    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary, ...(agent ? { agent } : {}) });
-    return it;
+  shareText(threadId, { fromThreadId, handle, text, summary = false, agent = false, question = undefined }) {
+    return shareThreadText(this, threadId, { fromThreadId, handle, text, summary, agent, question });
   }
 
   // ── Shared memory in a conversation ────────────────────────────────────────────────
@@ -1719,7 +1708,7 @@ export class Runtime {
         return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
-        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
+        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${i.question ? `You asked: “${clipText(i.question, n)}” ` : ''}${text(i.text)}`;
       case 'system':
         if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
         if (i.variant === 'joined') return `@${i.to} joined`;
