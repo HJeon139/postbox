@@ -1708,7 +1708,7 @@ export class Runtime {
         return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
-        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${i.question ? `You asked: “${clipText(i.question, n)}” ` : ''}${text(i.text)}`;
+        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${i.question ? `You asked: “${text(i.question)}” ` : ''}${text(i.text)}`;
       case 'system':
         if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
         if (i.variant === 'joined') return `@${i.to} joined`;

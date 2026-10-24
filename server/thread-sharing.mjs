@@ -1,3 +1,7 @@
+// Sharing from a topic or side thread into its conversation (#128): Send to conversation, and what Summarize back and
+// bring_to_conversation post. A reply keeps the question it answers (#111). Functions take the Runtime first, as
+// server/side-threads.mjs’s do.
+
 import { httpError } from './helpers.mjs';
 
 /**

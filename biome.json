@@ -280,7 +280,7 @@
       "includes": ["server/runtime.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3408 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3397 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 194 } } }
         }
       }
