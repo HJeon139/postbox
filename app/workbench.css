@@ -770,12 +770,13 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; }
 .turn.me .reactions { justify-content: flex-end; }
 /* Each is drawn with its icon (app/media/reactions) on a light amber wash, the person’s own: an amber fill would sink the
-   orange, mustard and red in the icons. */
+   red slash, the coral flag and the yellow envelope. */
 .react-chip { display: inline-flex; align-items: center; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 999px; background: var(--mark); cursor: pointer; }
 .react-chip:hover { box-shadow: inset 0 0 0 1px var(--accent); }
 .react-icon { display: block; flex: none; width: 20px; height: 20px; }
-/* The icons’ espresso outline only shows on light: on dark, a thin rim keeps their green and orange badges off the wash. */
-:root:not([data-theme="light"]) .react-icon { filter: drop-shadow(1px 0 0 var(--dim)) drop-shadow(-1px 0 0 var(--dim)) drop-shadow(0 1px 0 var(--dim)) drop-shadow(0 -1px 0 var(--dim)); }
+/* The icons’ cream borders vanish on light: a thin rim keeps each one’s shape off the wash and the panel (at least 3:1,
+   as on dark). */
+:root[data-theme="light"] .react-icon { filter: drop-shadow(1px 0 0 var(--dim)) drop-shadow(-1px 0 0 var(--dim)) drop-shadow(0 1px 0 var(--dim)) drop-shadow(0 -1px 0 var(--dim)); }
 /* Only agents reacted: the same button, quieter, until you add yours. */
 .react-chip.theirs { border-color: var(--line); background: var(--panel); }
 .react-who { margin-left: 4px; font-size: 12px; color: var(--dim); }
