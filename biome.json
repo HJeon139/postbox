@@ -462,6 +462,10 @@
       }
     },
     {
+      "includes": ["tools/uat/report.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 95 } } } } }
+    },
+    {
       "includes": ["tools/uat/review.mjs"],
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 60 } } } } }
     },
