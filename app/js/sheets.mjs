@@ -8,6 +8,7 @@ import { ago, fill, h, icon, plural } from './dom.mjs';
 import { hostsPanel } from './hosts.mjs';
 import { openPermissions } from './permissions.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
+import { connect } from './sheets-settings.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
@@ -1201,19 +1202,6 @@ export function openSettings(tab = 'appearance', personaId = null) {
       ),
     ];
   };
-  const connect = () => [
-    h(
-      'p',
-      'Real agents reach Postbox’s UI tools over MCP. Postbox connects each backend it runs, with a token for each turn, so only an agent turn Postbox started can call them.',
-    ),
-    h(
-      'dl.facts',
-      h('dt', 'Adapters'),
-      h('dd', client.config.adapters.join(', ')),
-      h('dt', 'Corpus'),
-      h('dd', `${plural(client.config.corpus.passages, 'passage')} in ${plural(client.config.corpus.books.length, 'book')}`),
-    ),
-  ];
   paint();
   const dlg = openDialog({ title: 'Settings', size: 'lg', body: [tabs, panel] });
 }
