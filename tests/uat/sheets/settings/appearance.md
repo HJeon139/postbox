@@ -11,6 +11,7 @@ Light and dark, following the system unless you choose.
 ## Expected functionality
 
 - System, Light, Dark; saved in Postbox; agent apps switch live.
+- In dark mode, the chosen mode is an amber outline with an amber label, not a solid amber fill (#181). Light mode keeps its fill.
 
 ## Steps to reproduce
 

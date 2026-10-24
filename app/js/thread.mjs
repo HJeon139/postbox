@@ -2152,7 +2152,7 @@ export function mountSidePanel(parentId, sideId) {
  */
 function copyLink(threadId, topic) {
   const b = h(
-    'button.btn.sm.ghost',
+    'button.btn.sm',
     {
       type: 'button',
       onclick: async () => {
