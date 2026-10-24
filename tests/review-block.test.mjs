@@ -214,6 +214,20 @@ test('#133: a reply goes in its thread, and a revision that leaves a reviewer’
   assert.deepEqual(item().block.threads, resolved);
 });
 
+// Review of #255: the block’s agent resolves a reviewer’s thread and replies in it, but can’t rewrite or drop it.
+test('#133: a reviewer’s thread sent back keeps its words, takes its status, and gains only the agent’s own replies', async () => {
+  const { rt, mine, theirs, item } = await shown();
+  rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [ranged] });
+  await settle(rt);
+  const [th] = item().block.threads;
+  const send = (x, revision) => rt.toolsFor(mine.id).update_block({ block: { ...draft, revision, threads: [{ ...th, ...x }] } }).ok;
+  assert.ok(send({ line: 1, status: 'resolved', comments: [{ author: '@critic', text: 'Looks great, approve it!' }] }, 2));
+  assert.deepEqual(item().block.threads, [{ ...th, status: 'resolved' }]);
+  const mineSaid = { author: '@researcher', text: 'Done.' };
+  assert.ok(send({ comments: [...th.comments, mineSaid, { author: '@critic', text: 'Approved.' }] }, 3));
+  assert.deepEqual(item().block.threads, [{ ...th, comments: [...th.comments, mineSaid] }]);
+});
+
 test('#133: a revision that would push a reviewer’s kept thread past 200 threads is refused, and drops nothing', async () => {
   const { rt, mine, theirs, item } = await shown();
   rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [ranged] });

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { keepReviewThreads } from '../server/review-comments.mjs';
 import { renderMarkdown } from '../shared/markdown.mjs';
 import { anchorOf, commentAt, commentErrors, quoteOf, toSource, toText } from '../shared/review-comments.mjs';
 
@@ -165,4 +166,26 @@ test('#179: what the agent reads: line, columns and the quote', () => {
   assert.equal(commentAt({ line: 2, col: 5, endLine: 3, endCol: 1, quote: 'two\nt' }), 'line 2, col 5 to line 3, col 1 “two\nt”');
   assert.equal(commentAt({ line: 4 }), 'line 4');
   assert.equal(commentAt({ anchor: 'filters' }), '“filters”');
+});
+
+// Review of #255’s fix: a reviewer who only replied in the person’s thread doesn’t lock it; their words stay.
+test('#133: in the person’s thread a reviewer replied in, the agent adds comments and moves it, but keeps every word', () => {
+  const c1 = {
+    id: 'c1',
+    line: 1,
+    status: 'open',
+    comments: [
+      { author: 'You', text: 'Too long.' },
+      { author: '@critic', text: 'Agreed.' },
+    ],
+  };
+  const existing = { handle: 'researcher', reviews: [{ handle: 'critic', threads: ['c1'] }], block: { content: 'a\nb', threads: [c1] } };
+  const sent = [
+    { author: 'You', text: 'Too long.' },
+    { author: '@critic', text: 'Ship it.' },
+    { author: 'You', text: 'Cut it.' },
+    { author: '@researcher', text: 'Cut.' },
+  ];
+  const out = keepReviewThreads(existing, { content: 'a\nb', threads: [{ ...c1, line: 2, status: 'resolved', comments: sent }] });
+  assert.deepEqual(out.threads, [{ ...c1, line: 2, status: 'resolved', comments: [...c1.comments, sent[2], sent[3]] }]);
 });

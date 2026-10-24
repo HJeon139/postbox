@@ -74,20 +74,38 @@ export function reviewBlock(rt, sessionId, args) {
 
 /**
  * A review update keeps the threads review_block added that it leaves out, each following its quote, or its line’s
- * text, into the new text. The block’s agent resolves a reviewer’s thread; it can’t drop one, so the caller validates
- * the result: kept threads can take it past the catalog’s limit.
+ * text, into the new text. The block’s agent resolves a reviewer’s thread; it can’t drop one, or change what anyone
+ * said in it: a thread a reviewer took part in that it sends back keeps its stored comments, takes its status, and
+ * gains the update’s new comments after them, except any in another agent’s name. One a reviewer started keeps its
+ * place too. So the caller validates the result: kept threads can take it past the catalog’s limit.
  * @param {any} existing  the block item as it was @param {any} block  the update, validated
  */
 export function keepReviewThreads(existing, block) {
   const theirs = new Set((existing.reviews ?? []).flatMap((r) => r.threads));
-  const sent = new Set((block.threads ?? []).map((t) => t.id));
-  const left = (existing.block.threads ?? []).filter((t) => theirs.has(t.id) && !sent.has(t.id));
-  if (!left.length) return block;
+  const stored = new Map((existing.block.threads ?? []).filter((t) => theirs.has(t.id)).map((t) => [t.id, t]));
+  if (!stored.size) return block;
   const moves = typeof existing.block.content === 'string' && typeof block.content === 'string' && existing.block.content !== block.content;
   const was = moves ? splitLines(existing.block.content) : [];
   const now = moves ? splitLines(block.content) : [];
-  const kept = moves ? left.map((t) => follow(t, block.content, was, now)) : left;
-  return { ...block, threads: [...(block.threads ?? []), ...kept] };
+  const placed = (t) => (moves ? follow(t, block.content, was, now) : t);
+  const agent = (c) => c.author.startsWith('@') && c.author !== `@${existing.handle}`;
+  const key = (c) => JSON.stringify([c.author, c.text]);
+  const sent = (block.threads ?? []).map((t) => {
+    const before = stored.get(t.id);
+    if (!before) return t;
+    const said = new Map();
+    for (const c of before.comments) said.set(key(c), (said.get(key(c)) ?? 0) + 1);
+    const added = t.comments.filter((c) => {
+      const n = said.get(key(c)) ?? 0;
+      if (n) said.set(key(c), n - 1);
+      return !n && !agent(c);
+    });
+    const { comments: _, status: __, ...place } = agent(before.comments[0]) ? placed(before) : t;
+    return { ...place, id: t.id, status: t.status, comments: [...before.comments, ...added] };
+  });
+  const ids = new Set(sent.map((t) => t.id));
+  const left = [...stored.values()].filter((t) => !ids.has(t.id)).map(placed);
+  return { ...block, threads: [...sent, ...left] };
 }
 
 /**
