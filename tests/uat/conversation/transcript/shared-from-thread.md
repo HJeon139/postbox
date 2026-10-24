@@ -11,6 +11,7 @@ Results from a side topic come back to the main conversation only when you choos
 ## Expected functionality
 
 - Shows “From the thread …” or “Summary of the thread …”, who wrote it, the text, and Open thread.
+- The text is drawn as an agent’s reply is: math and Mermaid diagrams render, and the conversation’s glossary terms link (#99).
 - The conversation’s agents read it at the start of their next turn; it doesn’t wake them.
 
 ## Steps to reproduce

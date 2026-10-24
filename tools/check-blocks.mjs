@@ -6,6 +6,7 @@
 // And the image block (#180): the demo’s title page, from Postbox’s own media, loads with the page opened at
 // 127.0.0.1 and at localhost, and an image that fails says so, in place of a broken image. The same holds for a review’s
 // Markdown images (#218).
+// And the code block (#41): its header shows the filename, and its code is highlighted, line numbers intact.
 //
 //   node tools/check-blocks.mjs
 //
@@ -56,6 +57,15 @@ const scripts = {
     const content = `# Pictures\n\n![The title page](${media('middlemarch-title.svg')})\n\n![A missing page](${media('not-there.svg')})\n\n![A page from elsewhere](https://example.com/elsewhere.png)`;
     ctx.tools.show_block({ block: { ...review, id: 'pictures', title: 'pictures.md', fallback: 'A draft with pictures', content } });
   },
+};
+// The block from #41’s report ({ title: "The schema", filename: "schema.ts", language: "ts" }), with a comment that
+// spans two lines, and one with a filename and no title.
+const TS = '/* Where a passage sits\n   in its book. */\nexport function span(p) {\n  return { start: p.start, end: 18342, unit: "char" };\n}';
+const PY = '# Offsets, not pages\ndef span(p):\n    return (p.start, 18342)';
+const codeBlock = (id, extra) => ({ id, type: 'code', version: 1, fallback: 'The passage offsets', ...extra });
+scripts.code = (ctx) => {
+  ctx.tools.show_block({ block: codeBlock('schema', { title: 'The schema', filename: 'schema.ts', language: 'ts', code: TS }) });
+  ctx.tools.show_block({ block: codeBlock('offsets', { filename: 'offsets.py', language: 'python', code: PY }) });
 };
 const agent = {
   name: 'mock',
@@ -188,6 +198,31 @@ try {
       `a review’s Markdown image that fails, or comes from an origin Postbox doesn’t allow, says so, at ${host} (${said?.join(' · ')})`,
     );
   }
+
+  // ── The code block (#41) ──
+  rt.sendMessage(thread.id, { text: 'code' });
+  await until(() => itemOf('offsets') && !rt.turns.size);
+  await page.synced(store.state.seq);
+  await page.waitFor(`${BLOCK('offsets')}?.querySelector('pre')`, { label: 'the code blocks' });
+  const code = (id) =>
+    page.evaluate(`(() => { const b = ${BLOCK(id)}; const pre = b.querySelector('pre'); const of = (c) => [...pre.querySelectorAll(c)].map((n) => n.textContent);
+      return { title: b.querySelector('.block-head .title').textContent, file: b.querySelector('.block-head .code-file')?.offsetWidth > 0,
+        name: b.getAttribute('aria-labelledby') && document.getElementById(b.getAttribute('aria-labelledby'))?.textContent,
+        text: [...pre.childNodes].filter((n) => !n.classList?.contains('ln')).map((n) => n.textContent).join(''), lines: of('.ln').length,
+        kw: of('.kw'), str: of('.str'), num: of('.num-t'), fn: of('.fn'), com: of('.com') }; })()`);
+  const ts = await code('schema');
+  check(ts.title === 'The schema schema.ts' && ts.file, `the header shows the title and the filename (“${ts.title}”)`);
+  check(ts.name === 'The schema schema.ts', `the block’s accessible name carries the filename (“${ts.name}”)`);
+  check(ts.text === TS && ts.lines === 5, `the code reads as sent, with a number on each of its 5 lines (${ts.lines})`);
+  const want = { kw: 'export,function,return', str: '"char"', num: '18342', fn: 'span', com: '/* Where a passage sits,   in its book. */' };
+  const got = { kw: ts.kw.join(), str: ts.str.join(), num: ts.num.join(), fn: ts.fn.join(), com: ts.com.join() };
+  check(
+    JSON.stringify(got) === JSON.stringify(want),
+    `TypeScript is highlighted: keywords, a string, a number, a function and a comment (${JSON.stringify(got)})`,
+  );
+  const py = await code('offsets');
+  check(py.title === 'offsets.py' && py.file, `with no title, the filename is the title (“${py.title}”)`);
+  check(py.com.join() === '# Offsets, not pages' && py.kw.join() === 'def,return' && py.fn.join() === 'span', `Python is highlighted (${JSON.stringify(py)})`);
 
   // An image that failed is commented on whole, as a diagram is: a click on it in Preview opens Lines at its line (#179).
   await page.evaluate('getSelection().removeAllRanges()');
