@@ -3,6 +3,7 @@
 // in the message’s actions has the reactions to choose from, each checked when yours is on. The agents answering where
 // it is hear yours at their next turn, and an agent’s is heard by the agent whose message it is. A reaction repaints
 // only its own row: the item, an app’s frame among them, isn’t drawn again.
+// Each reaction is drawn with its icon (app/media/reactions), and its emoji is the icon’s text.
 
 import { REACTIONS } from '/shared/reactions.mjs';
 import { api, client } from './client.mjs';
@@ -10,6 +11,15 @@ import { h } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 const said = new Map(REACTIONS);
+const DRAWN = new Map([
+  ['👍', 'approve'],
+  ['👎', 'disapprove'],
+  ['🚩', 'flag'],
+  ['❓', 'unclear'],
+  ['✅', 'done'],
+]);
+/** A reaction’s icon, which says its emoji to a screen reader. */
+const drawn = (emoji) => h('img.react-icon', { src: `/media/reactions/reaction-${DRAWN.get(emoji)}-64.png`, alt: emoji, width: 20, height: 20 });
 /** The act that reacts: server/reactions.mjs, REACT. */
 const REACT = '@react';
 
@@ -42,7 +52,7 @@ function row(it, threadId) {
           title: yours ? 'Take yours back' : 'Add yours',
           onclick: () => react(threadId, it.id, emoji),
         },
-        emoji,
+        drawn(emoji),
         // Who else reacted, in words; yours alone needs none.
         agents.length ? h('span.react-who', agents.join(', ')) : null,
       );
@@ -68,7 +78,7 @@ export function reactTo(bar, node, it, ctx) {
         const on = new Set((client.state.items[ctx.threadId]?.find((x) => x.id === it.id)?.reactions ?? []).filter((r) => !r.by).map((r) => r.emoji));
         const menu = openMenu(
           button,
-          REACTIONS.map(([emoji, label]) => ({ label: `${emoji} ${label}`, run: () => react(ctx.threadId, it.id, emoji) })),
+          REACTIONS.map(([emoji, label]) => ({ icon: drawn(emoji), label, run: () => react(ctx.threadId, it.id, emoji) })),
           { label: 'Reactions' },
         );
         // Each is a choice you turn on or off, and says which way it is.
