@@ -175,6 +175,9 @@ export function readRun(dir, { scenarios } = {}) {
     cost: { agents: agentsUsd, tester: testerUsd, kiroCredits: saved.cost?.kiroCredits ?? rep.kiroCredits ?? null },
     coverage: saved.coverage ?? findings.coverage ?? null,
     findings: Array.isArray(findings.findings) ? findings.findings : [],
+    // Telemetry (designs/telemetry-persona.md, U5): the run’s block, and the classifier’s proposals, never filed.
+    telemetry: saved.telemetry ?? null,
+    proposals: Array.isArray(findings.telemetry?.proposals) ? findings.telemetry.proposals : [],
   };
 }
 
@@ -191,7 +194,9 @@ export function readRuns(roots, opts = {}) {
   const unreadable = [];
   for (const root of roots) {
     if (!existsSync(root)) continue;
-    for (const name of readdirSync(root).sort()) {
+    // A Postbox folder’s telemetry/ holds each conversation’s saved reports, each a live run (R20).
+    const live = (name) => (existsSync(join(root, name, 'reports')) ? readdirSync(join(root, name, 'reports')).map((id) => join(name, 'reports', id)) : [name]);
+    for (const name of readdirSync(root).sort().flatMap(live)) {
       const dir = join(root, name);
       if (!statSync(dir).isDirectory() || out.has(name)) continue;
       let r = null;
