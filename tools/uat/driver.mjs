@@ -6,7 +6,7 @@
 import { writeFile } from 'node:fs/promises';
 import { sleep } from '../cdp.mjs';
 import { review } from './driver-review.mjs';
-import { ITEM, J } from './selectors.mjs';
+import { byText, ITEM, J } from './selectors.mjs';
 
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
@@ -37,9 +37,6 @@ export function driver(page) {
       await page.send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: 'left', clickCount: 1 });
     await sleep(250);
   }
-  // Matches a control by its visible text or its label, since icon buttons (Expand table) have only a label.
-  const byText = (scope, sel, text) =>
-    `[...(${scope}?.querySelectorAll(${J(sel)}) ?? [])].find((e) => e.offsetParent !== null && (e.textContent + ' ' + (e.getAttribute('aria-label') ?? '')).replace(/\\s+/g, ' ').trim().toLowerCase().includes(${J(String(text).toLowerCase())}))`;
   const press = async (key) => {
     const codes = { Enter: 13, Escape: 27, Tab: 9 };
     for (const type of ['keyDown', 'keyUp'])
