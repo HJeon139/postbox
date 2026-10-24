@@ -3,7 +3,7 @@
 //   says it’s on, and the agent carries on.
 // - #238: a refusal card for a chained command offers no Allow once or Always allow, and says why and what to do; one
 //   for a single command still offers both.
-// - #220: a permission card nobody answered for POSTBOX_TIMEOUT_MS says it expired and how long it waited.
+// - #220: a permission card nobody answered for CARD_WAIT_MS says it expired and how long it waited.
 //
 //   node tools/checks/permission-cards.mjs
 //
@@ -147,7 +147,7 @@ await check('#220 a permission card nobody answered for 25 hours says it expired
   const ask = byText('.transcript .block', 'run the slow tests?');
   await page.waitFor(`!!(${ask})?.querySelector('.block-foot')`, { label: 'the card' });
   const card = store.items(thread.id).find((i) => i.kind === 'permission' && i.status === 'open');
-  // What the card’s timer does at POSTBOX_TIMEOUT_MS; the server’s tests run that timer on an injected clock.
+  // What the card’s timer does at CARD_WAIT_MS; the server’s tests run that timer on an injected clock.
   expireWait(rt, card.id);
   await page.waitFor(`/Expired/.test((${ask})?.innerText ?? '')`, { label: 'the expired card' });
   assert.equal(await text(`${ask}.querySelector('.answered-note')`), 'Expired: nobody answered within 25 hours');

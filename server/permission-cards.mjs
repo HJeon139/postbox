@@ -9,8 +9,12 @@ import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 // ── Permission prompts ─────────────────────────────────────────────────────────────
 // A real agent in “ask” mode stops before anything risky, such as running a command. Postbox shows a card
 // in the thread, the agent needs you, and the tool call waits for your answer. Ending the turn, or Stop,
-// turns any open card into “expired” and answers no. So does a card left for POSTBOX_TIMEOUT_MS: Claude Code gives up
-// on the call then (server/adapters/setup.mjs), and an answer after it would go nowhere (#220).
+// turns any open card into “expired” and answers no. So does a card left for CARD_WAIT_MS (#220): Claude Code gives up
+// on the call at POSTBOX_TIMEOUT_MS (server/adapters/setup.mjs), timed from when it sent the call, and an answer after
+// that would go nowhere. The card’s wait starts later, when the call arrives, so it ends a margin early, while Claude
+// Code still waits, and the no reaches the call. A minute is far more than a call takes to reach Postbox.
+const EXPIRY_MARGIN_MS = 60 * 1000;
+export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
 
 /**
  * input is the call’s input, which Edit changes; suggestions are Claude Code’s own (`permission_suggestions`, the
@@ -64,21 +68,22 @@ export function askPerson(
   });
   rt.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
   return new Promise((resolve) => {
-    const timer = setTimeout(() => expireWait(rt, it.id), POSTBOX_TIMEOUT_MS);
+    const timer = setTimeout(() => expireWait(rt, it.id), CARD_WAIT_MS);
     timer.unref?.();
     rt.permissionWaits.set(it.id, { resolve, threadId: turn.threadId, sessionId, timer });
   });
 }
 
 /**
- * A card nobody answered for POSTBOX_TIMEOUT_MS (#220): Claude Code has given up on the call, so the card expires and
- * says how long it waited, and a call still waiting (the SDK’s, which has no such limit) is refused.
+ * A card nobody answered for CARD_WAIT_MS (#220): Claude Code is about to give up on the call, so the card expires and
+ * says how long it waited, in whole hours as the card shows it, and the call is refused (the SDK’s too, which has no
+ * such limit).
  * @param {any} rt @param {string} itemId
  */
 export function expireWait(rt, itemId) {
-  const hours = POSTBOX_TIMEOUT_MS / 3600000;
+  const hours = Math.round(CARD_WAIT_MS / 3600000);
   const message = `Nobody answered within ${hours} hours, so the request expired. Ask again if you still need it.`;
-  return rt.settlePermission(itemId, 'expired', message, {}, { waitedMs: POSTBOX_TIMEOUT_MS });
+  return rt.settlePermission(itemId, 'expired', message, {}, { waitedMs: CARD_WAIT_MS });
 }
 
 /**
