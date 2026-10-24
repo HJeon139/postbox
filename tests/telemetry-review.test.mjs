@@ -2,18 +2,19 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { postboxHome } from '../server/home.mjs';
-import { KEEP_MS, lostOf, sweep, telemetryRoot, watchTelemetry } from '../server/telemetry.mjs';
+import { cloneTelemetry, moveData, postboxHome } from '../server/home.mjs';
+import { KEEP_MS, lostOf, startRecording, sweep, sweepClones, telemetryRoot, watchTelemetry } from '../server/telemetry.mjs';
 import { issuePreview } from '../server/telemetry-file.mjs';
 import { draftView, vocabOf } from '../server/telemetry-report.mjs';
 import { telemetryRoute } from '../server/telemetry-routes.mjs';
-import { deleteReport, derivedProblems, findingsOf, runOf, savedReports, saveReport } from '../server/telemetry-save.mjs';
+import { deleteReport, derivedProblems, findingsOf, runOf, savedReports, saveReport, TEMPLATES } from '../server/telemetry-save.mjs';
 import { finalCheck } from '../shared/telemetry.mjs';
-import { CANARIES, flaggedRoom, report } from './telemetry-fixture.mjs';
+import { CANARIES, flaggedRoom, report, setup } from './telemetry-fixture.mjs';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 async function saved(f) {
@@ -125,4 +126,107 @@ test('should-fix: a broken saved report can be deleted; a stray file in drafts/ 
   assert.deepEqual(finalCheck(room(1.5), vocabOf(f.rt, draft)), []);
   assert.ok(finalCheck(room(123456.7), vocabOf(f.rt, draft)).includes('room.initiativeEntropy'));
   f.stop();
+});
+
+test('round 3, 1: a finding’s issue is its check’s own, or the report fails the final check', async () => {
+  const f = await flaggedRoom();
+  const { draft } = await report(f);
+  const found = draft.report.checks.found[0];
+  assert.ok(Number.isInteger(found.issue), 'the fixture’s finding has its check’s issue');
+  const withIssue = (n) => ({ ...draft.report, checks: { ...draft.report.checks, found: [{ ...found, issue: n }] } });
+  assert.deepEqual(finalCheck(withIssue(found.issue), vocabOf(f.rt, draft)), []);
+  assert.ok(finalCheck(withIssue(4242424), vocabOf(f.rt, draft)).includes('checks.found[0].issue'));
+  f.stop();
+});
+
+test('round 3, 2: Record this room makes the telemetry folder’s parents, as a clone’s first ~/.postbox', async () => {
+  const f = setup();
+  f.rt.config.telemetryRoot = join(f.data, 'never', 'made', 'telemetry');
+  assert.doesNotThrow(() => startRecording(f.rt, f.t.id));
+  assert.ok(existsSync(join(f.data, 'never', 'made', 'telemetry', f.t.id, 'recording')));
+  f.stop();
+});
+
+test('round 3, 3: --move-data carries this clone’s telemetry into telemetry/ and puts other clones’ back', async () => {
+  const base = mkdtempSync(join(tmpdir(), 'pb-clone-move-'));
+  const root = join(base, 'postbox');
+  const home = join(base, 'home');
+  mkdirSync(join(root, 'data'), { recursive: true });
+  writeFileSync(join(root, 'data', 'events-1.jsonl'), '');
+  const to = join(home, '.postbox');
+  const own = cloneTelemetry(join(root, 'data'), to);
+  const other = join(to, 'telemetry-clone-0123456789ab');
+  mkdirSync(join(own, 'th_mine', 'reports', 'rep_a'), { recursive: true });
+  mkdirSync(join(other, 'th_theirs'), { recursive: true });
+  await moveData({ root, env: {}, home });
+  assert.ok(existsSync(join(to, 'telemetry', 'th_mine', 'reports', 'rep_a')));
+  assert.ok(!existsSync(own));
+  assert.ok(existsSync(join(other, 'th_theirs')));
+  rmSync(base, { recursive: true, force: true });
+});
+
+test('round 3, 3: other clones’ telemetry folders are aged, without deleting their conversations or reports', async () => {
+  const f = await flaggedRoom();
+  const home = mkdtempSync(join(tmpdir(), 'pb-clones-'));
+  const clone = join(home, 'telemetry-clone-0123456789ab', 'th_someone');
+  mkdirSync(join(clone, 'recording', 'streams'), { recursive: true });
+  mkdirSync(join(clone, 'reports', 'rep_x'), { recursive: true });
+  const stream = join(clone, 'recording', 'streams', 'old.jsonl');
+  writeFileSync(stream, '{}\n');
+  const old = (Date.now() - KEEP_MS - 864e5) / 1000;
+  utimesSync(stream, old, old);
+  sweepClones(f.rt, Date.now(), home);
+  assert.ok(!existsSync(stream));
+  assert.ok(existsSync(join(clone, 'reports', 'rep_x')), 'saved reports stay');
+  f.stop();
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('round 3, 4: Save runs the check on what it derives; a template that let room text in is refused', async () => {
+  const f = await flaggedRoom();
+  const { id } = await report(f);
+  const real = TEMPLATES.findingsOf;
+  TEMPLATES.findingsOf = (r) => real(r).map((x) => ({ ...x, title: `Live room: ${CANARIES.phrase}` }));
+  try {
+    assert.throws(() => saveReport(f.rt, f.t.id, id, { hash: draftView(f.rt, f.t.id, id).hash }), /derived from the report fails/);
+  } finally {
+    TEMPLATES.findingsOf = real;
+  }
+  assert.ok(!existsSync(join(f.data, 'telemetry', f.t.id, 'reports', id)));
+  f.stop();
+});
+
+test('round 3, 4: a sweep that throws as a whole is caught at start, and a later clean one clears the gap', async () => {
+  const f = setup();
+  f.stop();
+  const file = join(f.data, 'not-a-folder');
+  writeFileSync(file, 'x');
+  f.rt.config.telemetryRoot = file;
+  assert.doesNotThrow(() => watchTelemetry(f.rt)());
+  assert.equal(lostOf(f.rt).sweep, true);
+  f.rt.config.telemetryRoot = join(f.data, 'telemetry');
+  watchTelemetry(f.rt)();
+  assert.equal(lostOf(f.rt).sweep, false);
+});
+
+test('round 3, 3: Postbox ages other clones’ folders when it starts, from the person’s Postbox folder', async () => {
+  const f = setup();
+  f.stop();
+  const home = mkdtempSync(join(tmpdir(), 'pb-home-clones-'));
+  const stream = join(home, 'telemetry-clone-0123456789ab', 'th_someone', 'recording', 'streams', 'old.jsonl');
+  mkdirSync(join(stream, '..'), { recursive: true });
+  writeFileSync(stream, '{}\n');
+  const old = (Date.now() - KEEP_MS - 864e5) / 1000;
+  utimesSync(stream, old, old);
+  const was = process.env.POSTBOX_HOME;
+  process.env.POSTBOX_HOME = home;
+  try {
+    delete f.rt.config.telemetryRoot;
+    watchTelemetry(f.rt)();
+  } finally {
+    if (was === undefined) delete process.env.POSTBOX_HOME;
+    else process.env.POSTBOX_HOME = was;
+  }
+  assert.ok(!existsSync(stream));
+  rmSync(home, { recursive: true, force: true });
 });

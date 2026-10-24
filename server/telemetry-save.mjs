@@ -10,7 +10,6 @@ import { finalCheck } from '../shared/telemetry.mjs';
 import { jsonLines } from '../shared/telemetry-bytes.mjs';
 import { FLAG } from '../shared/telemetry-vocab.mjs';
 import { httpError } from './helpers.mjs';
-import { CHECKS } from './room-checks.mjs';
 import { convOf, recFolder, reportFolder, telemetryRoot, write } from './telemetry.mjs';
 import { bytesOf, draftView, readDraft, vocabOf } from './telemetry-report.mjs';
 
@@ -45,8 +44,8 @@ export function saveReport(rt, threadId, id, { hash } = {}) {
   if (hash !== now) throw httpError(409, 'The report changed since you looked at it. Look at it again, then save.');
   const problems = finalCheck(report, vocabOf(rt, draft));
   if (problems.length) throw httpError(422, `The report fails the final check (${problems.slice(0, 3).join(', ')}).`);
-  const run = runOf(report);
-  const findings = { scenario: 'A live room', day: report.recording?.day ?? null, findings: findingsOf(report), timeline: [] };
+  const run = TEMPLATES.runOf(report);
+  const findings = { scenario: 'A live room', day: report.recording?.day ?? null, findings: TEMPLATES.findingsOf(report), timeline: [] };
   // The same check on what’s derived from it: every string in them is one of the report’s, or a template over them (R19).
   const derived = [...derivedProblems(run, report, 'run.json'), ...derivedProblems(findings, report, 'findings.json')];
   if (derived.length) throw httpError(422, `A file derived from the report fails the final check (${derived.slice(0, 3).join(', ')}).`);
@@ -54,7 +53,8 @@ export function saveReport(rt, threadId, id, { hash } = {}) {
   write(join(dir, 'report.json'), text);
   write(join(dir, 'run.json'), `${JSON.stringify(run, null, 2)}\n`);
   write(join(dir, 'findings.json'), `${JSON.stringify(findings, null, 2)}\n`);
-  // What File issue checks the bytes against later: their hash, the refs issued, and the build they were saved by.
+  // What File issue checks the bytes against later: their hash, the refs issued, and whether a UAT run made them. The
+  // build is always the running one’s, never a file’s.
   write(join(dir, 'meta.json'), JSON.stringify({ hash: now, refs: draft.refs ?? [], uat: draft.uat === true }));
   draft.saved = { at: Date.now(), hash: now };
   write(join(recFolder(rt, conv.id, 'drafts'), `${id}.json`), JSON.stringify(draft));
@@ -80,7 +80,7 @@ export function savedBytes(rt, convId, id) {
     throw httpError(409, 'This report’s file doesn’t parse. Delete it.');
   }
   // The build is the running one, never a file’s word for it: meta.json sits beside report.json, as easy to edit.
-  const problems = finalCheck(report, { checkIds: CHECKS.map((c) => c.id), build: rt.config.build ?? {}, refs: meta.refs ?? [], uat: meta.uat === true });
+  const problems = finalCheck(report, { ...vocabOf(rt, { refs: meta.refs, uat: meta.uat === true }) });
   if (problems.length)
     throw httpError(
       422,
@@ -89,15 +89,21 @@ export function savedBytes(rt, convId, id) {
   return { text, hash: sha(text), report };
 }
 
-/** Strings in a file derived from the report that aren’t the report’s own or a fixed template’s, as paths. */
+/** The fixed words and templates a derived file may add to the report’s own strings (R19). */
+const FIXED = new Set(['A live room', 'live', 'check', 'flag']);
+const TEMPLATE = /^(Live room: (check [a-z0-9-]+|a flag|(none|FM-\d\.\d) in [a-z-]+)|flag-r\d{1,5})$/;
+
+/**
+ * Strings in a file derived from the report that aren’t the report’s own, a fixed word, or a fixed template over its
+ * enums, as paths. It doesn’t use the templates that made the file, so a template that let room text in is caught.
+ */
 export function derivedProblems(obj, report, name) {
-  const ok = new Set(['A live room', 'live', 'check', 'flag']);
+  const ok = new Set(FIXED);
   const walk = (v) => (typeof v === 'string' ? ok.add(v) : v && typeof v === 'object' ? Object.values(v).forEach(walk) : null);
   walk(report);
-  for (const f of findingsOf(report)) for (const s of [f.title, f.key]) ok.add(s);
   const out = [];
   const check = (v, path) => {
-    if (typeof v === 'string' && !ok.has(v)) out.push(path);
+    if (typeof v === 'string' && !ok.has(v) && !TEMPLATE.test(v)) out.push(path);
     else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) check(x, `${path}.${k}`);
   };
   check(obj, name);
@@ -206,3 +212,6 @@ export function findingsOf(report) {
     });
   return [...checks, ...flags];
 }
+
+/** The templates Save derives run.json and findings.json with; a test swaps one to show the check after them holds. */
+export const TEMPLATES = { runOf, findingsOf };

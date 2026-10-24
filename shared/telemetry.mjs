@@ -172,12 +172,12 @@ const SCHEMA = obj({
  * Every field of a report that isn’t Postbox’s vocabulary, a ref, an id or a number where the schema says, as paths:
  * empty when the report may be saved. Never the values.
  * @param {any} report
- * @param {{ checkIds: string[], build?: { version?: string|null, commit?: string|null }, refs: Iterable<string>, uat?: boolean }} vocab  the
+ * @param {{ checkIds: string[], build?: { version?: string|null, commit?: string|null }, refs: Iterable<string>, uat?: boolean, checkIssues?: Record<string, number|null> }} vocab  the
  *   check ids Postbox has (server/room-checks.mjs); its own version and commit, since a report names this build and
  *   nothing else in those fields; the refs it issued for this report; and whether the runner started this as a UAT run
  * @returns {string[]}
  */
-export function finalCheck(report, { checkIds, build = {}, refs, uat = false }) {
+export function finalCheck(report, { checkIds, checkIssues = {}, build = {}, refs, uat = false }) {
   /** @type {string[]} */
   // Proposals are a UAT run’s only, as the runner starts it; a live room’s report holds none (R13, R16).
   const out = !uat && report?.proposed?.length ? ['proposed'] : [];
@@ -209,6 +209,10 @@ export function finalCheck(report, { checkIds, build = {}, refs, uat = false }) 
     }
   };
   check(SCHEMA, report, '');
+  // A finding’s issue is its check’s own, from Postbox’s list, or none: any other number could carry bits, or point
+  // File issue at a false duplicate.
+  for (const [i, k] of (Array.isArray(report?.checks?.found) ? report.checks.found : []).entries())
+    if (k?.issue !== undefined && k.issue !== checkIssues?.[k.check]) out.push(`checks.found[${i}].issue`);
   // The bound on what labels carry (R16) holds only with at most 60 labels: the gate counts them itself.
   if (Array.isArray(report?.labels) && report.labels.filter((l) => !l?.label).length > MAX_LABELS) out.push('labels (more than 60)');
   return out;

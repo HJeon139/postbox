@@ -8,16 +8,46 @@
 // Every clone, worktree and installed copy now shares one default folder, so a run claims it with a lock: a second
 // Postbox on the same folder would append to the same log, and delete segments the first is still writing.
 
+import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readlink, rename, rm, rmdir, symlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 /** The person’s Postbox folder: POSTBOX_HOME, else ~/.postbox. */
 export const postboxHome = (env = process.env, home = homedir()) => (env.POSTBOX_HOME ? resolve(env.POSTBOX_HOME) : join(home, '.postbox'));
 
 const STORE_FILE = /^(store\.json|snapshot\.json|events-\d+\.jsonl)$/;
 const LOCK = 'postbox.lock';
+
+/**
+ * Where a clone’s telemetry lives (designs/telemetry-persona.md, R11): a folder of its own in the person’s Postbox
+ * folder, keyed by the clone’s data folder as the file system finds it (through links, case-folded where names are),
+ * never the clone’s data/, which is often inside the folder its agents work in.
+ */
+export function cloneTelemetry(dataDir, home = postboxHome()) {
+  let p = resolve(dataDir);
+  try {
+    p = realpathSync(p);
+  } catch {}
+  if (['darwin', 'win32'].includes(process.platform)) p = p.toLowerCase();
+  return join(home, `telemetry-clone-${createHash('sha256').update(p).digest('hex').slice(0, 12)}`);
+}
+const CLONE_ROOT = /^telemetry-clone-[0-9a-f]{12}$/;
+
+/** After a move: this clone’s telemetry joins <to>/telemetry, conversation by conversation; the others go back. */
+async function carryClones(aside, to, own) {
+  for (const n of await readdir(aside)) {
+    if (n !== basename(own)) {
+      await rename(join(aside, n), join(to, n));
+      continue;
+    }
+    await mkdir(join(to, 'telemetry'), { recursive: true, mode: 0o700 });
+    for (const conv of await readdir(join(aside, n))) await rename(join(aside, n, conv), join(to, 'telemetry', conv)).catch(() => {});
+    await rm(join(aside, n), { recursive: true, force: true });
+  }
+  await rmdir(aside).catch(() => {});
+}
 
 /** Whether a folder, or the folder a link leads to, holds conversations: an event log or a snapshot. */
 export function holdsStore(dir) {
@@ -109,9 +139,18 @@ export async function moveData({ root, env = process.env, home = homedir() }) {
   };
   if (inside(to, from) || inside(from, to)) throw new Error(`${to} and ${from} are inside one another, so Postbox can’t move one into the other.`);
   if (await readlink(to).catch(() => null)) throw new Error(`${to} is a link. Set POSTBOX_HOME to the folder it leads to, and run this again.`);
-  const there = await readdir(to).catch(() => null);
+  const all = await readdir(to).catch(() => null);
+  // Clones’ telemetry folders are Postbox’s own, not the person’s files: set aside for the move, then this clone’s
+  // recordings join the moved data’s telemetry/, and every other clone’s goes back.
+  const clones = (all ?? []).filter((n) => CLONE_ROOT.test(n));
+  const there = all?.filter((n) => !CLONE_ROOT.test(n));
   if (there?.length)
     throw new Error(`${to} already has files in it, so Postbox won’t mix the two. Move them aside first, or keep using ${from} with --data ${from}.`);
+  const aside = `${to}.clones`;
+  // Named before the move, while data/ is still itself: after it, data/ is a link to the new folder.
+  const own = cloneTelemetry(from, to);
+  if (clones.length) await mkdir(aside, { recursive: true });
+  for (const n of clones) await rename(join(to, n), join(aside, n));
   const release = lockData(from);
   /** @type {string|null} */
   let leftover = null;
@@ -141,5 +180,6 @@ export async function moveData({ root, env = process.env, home = homedir() }) {
   // The lock moved with the folder.
   rmSync(join(to, LOCK), { force: true });
   await symlink(to, from);
+  if (clones.length) await carryClones(aside, to, own);
   return { from, to, leftover };
 }

@@ -19,7 +19,13 @@ import { collect, tierA } from './telemetry-record.mjs';
 const BY_BACKEND = { 'kiro-cli': 'kiroStreams', 'antigravity-cli': 'agyStreams', codex: 'codexStreams' };
 
 /** What the final check needs: Postbox’s check ids, this build’s version and commit, and the refs this report issued. */
-export const vocabOf = (rt, draft) => ({ checkIds: CHECKS.map((c) => c.id), build: rt.config.build ?? {}, refs: draft?.refs ?? [], uat: draft?.uat === true });
+export const vocabOf = (rt, draft) => ({
+  checkIds: CHECKS.map((c) => c.id),
+  checkIssues: Object.fromEntries(CHECKS.map((c) => [c.id, c.issue ?? null])),
+  build: rt.config.build ?? {},
+  refs: draft?.refs ?? [],
+  uat: draft?.uat === true,
+});
 
 /** A draft’s bytes, as shown and saved: its report less the lines left out, and their hash. */
 export function bytesOf(draft) {
