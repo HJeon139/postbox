@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { collect, tierA } from '../server/telemetry-record.mjs';
-import { settle, setup, sideOf } from './side-threads-fixture.mjs';
+import { held, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
 
 test('#135: a woken turn that opens with a block, or proposes a teammate, says what woke it, and keeps to its own turn', async () => {
   const { store, rt, adapter, t, alpha } = setup();
@@ -62,6 +62,10 @@ test('#114: a fix request that sends agents back and forth shows one line for th
   rt.resolveHop(t.id, card.id, true);
   await settle(rt);
   assert.equal(store.items(sideOf(store, t).id).filter((x) => x.kind === 'agent').length, 8, 'four wakes, each answered');
+  // The wake you allowed is from the turn that asked for it (#135).
+  const allowed = store.items(sideOf(store, t).id).findLast((x) => x.handle === 'alpha');
+  assert.ok(store.items(t.id).some((x) => x.kind === 'agent' && x.handle === 'alpha' && x.turnId === card.fromTurnId));
+  assert.equal(allowed.fromTurnId, card.fromTurnId);
   // What the conversation shows besides the messages: the side thread’s line, updated in place, and the card with
   // your answer to it.
   const lines = store.items(t.id).filter((x) => !['user', 'agent', 'block', 'shared'].includes(x.kind));
@@ -82,4 +86,35 @@ test('#114: with no line per wake, a telemetry report still counts the room’s 
   const conv = store.state.threads[t.id];
   const { room } = tierA(rt, collect(rt, conv, join(tmpdir(), 'pb-no-recording'), { history: true }));
   assert.deepEqual([room.wakeChains, room.longestWakeChain], [1, 2]);
+});
+
+test('#135: an agent that wakes a busy agent from two turns in a row sends two messages, each from its own turn', async () => {
+  const { store, rt, adapter, t, alpha, beta } = setup();
+  // beta is busy, so alpha’s two wakes, one by wake_agent and one by an @-mention, sit together in the side thread
+  // until beta answers. Each keeps the turn it came from, so the second one gets its own sender line.
+  const busy = held();
+  adapter.next.push(busy.step);
+  adapter.next.push(async (c) => {
+    c.tools.wake_agent({ handle: 'beta', message: 'Check revision 3.' });
+    c.text('Asked beta.');
+  });
+  adapter.next.push(async (c) => c.text('@beta and the totals, please.'));
+  rt.sendMessage(t.id, { text: '@beta draft the notes' });
+  for (const text of ['@alpha get revision 3 checked', '@alpha the totals too']) {
+    rt.sendMessage(t.id, { text });
+    for (let i = 0; i < 200 && rt.turns.has(alpha.id); i++) await sleep(5);
+  }
+  assert.ok(rt.turns.has(beta.id), 'beta is still busy');
+  busy.release();
+  await settle(rt);
+  // alpha’s two turns you started; beta’s two answers start two more.
+  const turns = store
+    .items(t.id)
+    .filter((x) => x.kind === 'agent' && x.handle === 'alpha')
+    .map((x) => x.turnId)
+    .slice(0, 2);
+  const [first, second] = store.items(sideOf(store, t).id);
+  assert.deepEqual([first.handle, second.handle], ['alpha', 'alpha']);
+  assert.notEqual(turns[0], turns[1]);
+  assert.deepEqual([first.fromTurnId, second.fromTurnId], turns);
 });

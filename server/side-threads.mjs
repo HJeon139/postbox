@@ -14,7 +14,7 @@ export const HOP_LIMIT = 3;
  * wake when its turn ends, as any message to a busy agent waits. A persona the conversation doesn’t have needs the
  * person: a card asks to add it. After HOP_LIMIT wakes in a row without you, the next one waits for your confirm.
  */
-export function agentWake(rt, fromSessionId, handle, text, { confirmed = false, replyIn = undefined } = {}) {
+export function agentWake(rt, fromSessionId, handle, text, { confirmed = false, replyIn = undefined, fromTurnId = rt.turns.get(fromSessionId)?.id } = {}) {
   const from = rt.s.sessions[fromSessionId];
   const p = rt.personaByHandle(handle);
   if (!from || !p) return { ok: false, message: `There’s no agent called @${handle}.` };
@@ -26,12 +26,12 @@ export function agentWake(rt, fromSessionId, handle, text, { confirmed = false, 
   if (target?.id === from.id) return { ok: false, message: `@${p.handle} is you: just carry on.` };
   // Where the waker speaks now, so the answer comes back there: a turn in a topic thread gets it in that thread.
   const back = replyIn === undefined ? replyInOf(rt, from) : replyIn;
-  if (!target) return askToAdd(rt, from, parent, p, text, back);
-  if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) return askToWake(rt, from, parent, p, text, back);
-  const hops = (parent.hops ?? 0) + 1;
-  rt.putThread({ ...rt.s.threads[parent.id], hops });
+  if (!target) return askToAdd(rt, from, parent, p, { text, replyIn: back, fromTurnId });
+  if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) return askToWake(rt, from, parent, p, { text, replyIn: back, fromTurnId });
+  const hop = (parent.hops ?? 0) + 1;
+  rt.putThread({ ...rt.s.threads[parent.id], hops: hop });
   // The exchange happens in a side thread; your thread shows one line that links to it, which counts each wake in place
-  // of a line of its own (#114). The wake’s message keeps its number in the chain (hop), for telemetry’s wake chains.
+  // of a line of its own (#114). Its message keeps its number in the chain (hop), for telemetry, and its turn (#135).
   const pair = [from.handle, p.handle].sort().join('|');
   let side = Object.values(rt.s.threads).find((x) => x.kind === 'side' && x.parentId === parent.id && x.pair === pair);
   if (!side) {
@@ -53,7 +53,7 @@ export function agentWake(rt, fromSessionId, handle, text, { confirmed = false, 
     });
     rt.addItem(parent.id, { kind: 'sidelink', sideThreadId: side.id, from: from.handle, to: p.handle, count: 0 });
   }
-  const said = rt.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop: hops });
+  const it = rt.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop, fromTurnId });
   rt.recordAgentMessage(from.id, 'to', p.handle, text);
   // The woken agent answers from its session in the conversation, so it remembers the exchange (#110). Busy, it takes
   // the wake when its turn ends, from the side thread’s queue, where the person sees it and can cancel it: a fork would
@@ -66,7 +66,7 @@ export function agentWake(rt, fromSessionId, handle, text, { confirmed = false, 
     from: from.handle,
     fromSessionId: from.id,
     text,
-    itemId: said.id,
+    itemId: it.id,
     sessionIds: [target.id],
     replyIn: back,
     at: Date.now(),
@@ -120,7 +120,7 @@ export function dropWakes(rt, se, how = 'stopped') {
 }
 
 /** The card for a wake past the limit (#108), which waits for the person’s Allow. */
-function askToWake(rt, from, parent, p, text, replyIn) {
+function askToWake(rt, from, parent, p, wake) {
   if (openCard(rt, parent)) return busyCard(p);
   const n = (parent.hops ?? 0) + 1;
   // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
@@ -129,11 +129,10 @@ function askToWake(rt, from, parent, p, text, replyIn) {
     fromSessionId: from.id,
     from: from.handle,
     to: p.handle,
-    reason: clip(text, 200),
-    text,
+    reason: clip(wake.text, 200),
+    ...wake,
     status: 'open',
     n,
-    replyIn,
   });
   needsCard(rt, from, parent, it, `@${from.handle} wants to wake @${p.handle}`);
   rt.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${n} since your last message.`);
@@ -145,7 +144,7 @@ function askToWake(rt, from, parent, p, text, replyIn) {
  * adds it, with a note, and delivers the wake; Decline tells the agent (resolveHop). One whose session here is
  * archived needs the person to restore it.
  */
-function askToAdd(rt, from, parent, p, text, replyIn) {
+function askToAdd(rt, from, parent, p, wake) {
   if (rt.sessionsIn(parent.id).some((x) => x.personaId === p.id))
     return { ok: false, message: `@${p.handle}’s session in this conversation is archived, so it can’t be woken. Ask the person to restore it.` };
   if (openCard(rt, parent)) return busyCard(p);
@@ -155,10 +154,9 @@ function askToAdd(rt, from, parent, p, text, replyIn) {
     fromSessionId: from.id,
     from: from.handle,
     to: p.handle,
-    reason: clip(text, 200),
-    text,
+    reason: clip(wake.text, 200),
+    ...wake,
     status: 'open',
-    replyIn,
   });
   needsCard(rt, from, parent, it, `@${from.handle} wants to add @${p.handle}`);
   rt.notify('blocking', from, `Add @${p.handle} to this conversation?`, `@${from.handle} wants to wake it.`);
@@ -274,7 +272,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
     rt.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
   }
   // A request stored before #108 kept only the preview.
-  if (allow) rt.agentWake(it.fromSessionId, it.to, it.text ?? it.reason, { confirmed: true, replyIn: it.replyIn ?? null });
+  if (allow) rt.agentWake(it.fromSessionId, it.to, it.text ?? it.reason, { confirmed: true, replyIn: it.replyIn ?? null, fromTurnId: it.fromTurnId ?? null });
   else if (from && !from.archived)
     rt.deliver(
       from.id,

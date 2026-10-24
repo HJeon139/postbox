@@ -6,7 +6,7 @@
 //     leaving the child closes only the child, a cycle (U → U:13 → U) and a fourth level open nothing, and the cards
 //     stay on screen at 375 px (#103);
 //   • a later turn of the same agent gets its own sender line, with its time and what woke it, while one turn’s items
-//     share one (#135).
+//     share one; so does each wake it sent from a turn of its own, in a side thread (#135).
 //
 //   node tools/check-transcript-render.mjs
 //
@@ -244,6 +244,32 @@ try {
     `#135 the next turn of the same agent has its own sender line, its time and what woke it (“${second}”)`,
   );
   check(/^@analyst.*\[time\]$/.test(one ?? '') && two === '', `#135 one turn’s two items share one sender line (“${one}”, “${two}”)`);
+
+  const whoOf = (id) =>
+    `[...document.querySelectorAll('.transcript[data-thread="${id}"] > .item')].filter((n) => n.querySelector('.md p')).map((n) => n.querySelector('.who')?.innerText.replace(/\\s+/g, ' ').trim() ?? '')`;
+  // Two wakes from two turns of @analyst, sent while @reviewer was busy, sit together in the side thread, as agentWake
+  // records them: each says the turn it came from.
+  for (const [n, text] of ['Check the totals.', 'And the dates, please.'].entries())
+    rt.addItem(side.id, {
+      kind: 'agent',
+      sessionId: an.id,
+      personaId: an.personaId,
+      handle: 'analyst',
+      text,
+      status: 'done',
+      hop: n + 1,
+      fromTurnId: `turn_135_${n}`,
+    });
+  await page.synced(store.state.seq);
+  await page.evaluate(`location.hash = '#/t/${room.id}/side/${side.id}'`);
+  await page.waitFor(`[...document.querySelectorAll('.transcript[data-thread="${side.id}"] .md p')].some((p) => p.textContent === 'And the dates, please.')`, {
+    label: 'the side thread',
+  });
+  const wakes = (await page.evaluate(whoOf(side.id))).slice(-2);
+  check(
+    wakes.every((x) => /^@analyst/.test(x)),
+    `#135 two wakes from two turns of the same agent each have a sender line in the side thread (${JSON.stringify(wakes)})`,
+  );
 
   check(!page.logs.length, `no errors in the page${page.logs.length ? `: ${page.logs.join('; ')}` : ''}`);
 } finally {

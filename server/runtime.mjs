@@ -1092,7 +1092,7 @@ export class Runtime {
       if (hl === se.handle.toLowerCase() || hl === replyTo) continue;
       if (hl === turn.from && !/again|once more|loop/i.test(turn.said)) continue;
       // Its turn has ended, so where it spoke comes from the turn: an answer goes back to a topic thread it spoke in.
-      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null });
+      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id });
       if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
     }
     // A reply to an agent that woke this one goes back to it.

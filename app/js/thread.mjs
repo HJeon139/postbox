@@ -26,9 +26,10 @@ export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
 const speaker = (it) => (it.kind === 'user' ? 'you' : it.kind === 'agent' || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null);
-// One turn’s items share a sender line; a later turn of the same agent gets its own (#135). An item from before turns
-// were kept, or one no turn made, goes with the one before it, as it always did.
-const sameTurn = (a, b) => !a.turnId || !b.turnId || a.turnId === b.turnId;
+// One turn’s items share a sender line; a later turn of the same agent gets its own, and so does a wake it sent from
+// another turn (its fromTurnId) (#135). An item from before turns were kept, or no turn made, goes with the one before.
+const turnOf = (it) => it.turnId ?? it.fromTurnId;
+const sameTurn = (a, b) => !turnOf(a) || !turnOf(b) || turnOf(a) === turnOf(b);
 // What woke the turn, when another agent did (#135): “woken by @critic”, or “after @researcher replied in a side thread”.
 const wokeText = ({ by, reply, in: at }) =>
   reply ? `after @${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}` : `woken by @${by}`;
