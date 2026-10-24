@@ -45,145 +45,176 @@ import { createReconnector, createSshConnection, failure as sshFailure } from '.
 export function createHostLink({ host, version, token, takeover = false, needed, spawn, program, setTimer, clearTimer, delay, welcomeTimeout }) {
   const events = new EventEmitter();
   events.setMaxListeners(0);
-  const destination = host.name;
-  /** @type {any} the latest welcome */
-  let welcome = null;
-  let closed = false;
-  let takeoverNext = takeover;
-  /** @type {SshConnection | null} the session that has had its welcome, while it’s open */
-  let current = null;
-  const isNeeded = needed ?? (() => events.listenerCount('message') > 0);
-  /** @type {Map<SshConnection, { flush: () => void }>} each session not yet closed, with its held messages */
-  const sessions = new Map();
-
-  /** A new session, whose messages are held until the link has said 'connected' for it. */
-  const open = () => {
-    const c = createSshConnection({
-      destination,
-      settings: host.settings,
-      version,
-      token,
-      takeover: takeoverNext,
-      ...(spawn ? { spawn } : {}),
-      ...(program ? { program } : {}),
-      ...(setTimer ? { setTimer } : {}),
-      ...(clearTimer ? { clearTimer } : {}),
-      ...(welcomeTimeout ? { welcomeTimeout } : {}),
-    });
-    /** @type {any[] | null} held until 'connected'; null once passed on */
-    let held = [];
-    sessions.set(c, {
-      flush() {
-        const msgs = held ?? [];
-        held = null;
-        for (const m of msgs) if (current === c) events.emit('message', m);
-      },
-    });
-    c.on('message', (m) => {
-      if (held) held.push(m);
-      else if (current === c) events.emit('message', m);
-    });
-    c.on('bad-line', (e) => events.emit('bad-line', e));
-    c.once('close', () => {
-      sessions.delete(c);
-      if (current === c) current = null;
-    });
-    return c;
+  /** @type {Link} */
+  const k = {
+    host,
+    version,
+    token,
+    destination: host.name,
+    session: { spawn, program, setTimer, clearTimer, welcomeTimeout },
+    events,
+    welcome: null,
+    closed: false,
+    takeoverNext: takeover,
+    current: null,
+    isNeeded: needed ?? (() => events.listenerCount('message') > 0),
+    sessions: new Map(),
+    rec: /** @type {any} */ (null),
   };
-
-  const rec = createReconnector({
-    open,
-    needed: () => !closed && isNeeded(),
+  k.rec = createReconnector({
+    open: () => open(k),
+    needed: () => !k.closed && k.isNeeded(),
     ...(setTimer ? { setTimer } : {}),
     ...(clearTimer ? { clearTimer } : {}),
     ...(delay ? { delay } : {}),
   });
-  rec.on('open', (/** @type {SshConnection} */ c, w) => {
-    current = c;
-    welcome = w;
-    takeoverNext = false;
-    events.emit('connected', w);
-    sessions.get(c)?.flush();
-  });
-  rec.on('failure', (/** @type {SshFailure} */ f) => events.emit('failure', f));
-  rec.on('state', (/** @type {string} */ s) => {
-    if (s !== 'open') current = null;
-    events.emit('state', s);
-    if (s === 'stopped') giveUp(rec.failure);
-  });
-
-  /** @param {SshFailure | null} f */
-  const giveUp = (f) => {
-    if (events.listenerCount('error')) events.emit('error', f ?? sshFailure('failed', destination, { why: 'Postbox stopped connecting.' }));
-  };
-
+  follow(k);
   return withGetters(
     events,
     {
       /** The latest welcome, or null before the first. */
-      welcome: () => welcome,
+      welcome: () => k.welcome,
       /** Why the last attempt failed or the last session dropped (an SshFailure), until a session opens. */
-      failure: () => rec.failure,
+      failure: () => k.rec.failure,
       /** idle, connecting, open, waiting (for a retry) or stopped (for the person); closed after close(). */
-      state: () => (closed ? 'closed' : rec.state),
+      state: () => (k.closed ? 'closed' : k.rec.state),
       /** Whether a session with a welcome is open now. */
-      connected: () => current !== null,
+      connected: () => k.current !== null,
     },
-    {
-      /**
-       * Sends one postbox-to-daemon message on the current session. True once written; false with no session (and
-       * asks for one), for a message the session refuses, or after close(). Never throws.
-       * @param {{ type: string, [field: string]: any }} msg
-       */
-      send(msg) {
-        if (closed) return false;
-        const c = current;
-        if (!c) {
-          rec.need();
-          return false;
-        }
-        try {
-          c.send(msg); // false from it is backpressure: the line is still queued on ssh’s stdin
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      /** Postbox needs the host now (a turn starts, a prompt waits): connect unless connected, waiting or stopped. */
-      need: () => {
-        if (!closed) rec.need();
-      },
-      /** The laptop woke (D2): try at once, unless a failure only the person can fix stopped it. */
-      wake: () => {
-        if (!closed) rec.wake();
-      },
-      /**
-       * The person asked to reconnect: try at once, whatever stopped it. takeover: replace the Postbox that has the
-       * host (after a `busy`), for the next session only.
-       * @param {{ takeover?: boolean }} [o]
-       */
-      retry({ takeover: take = false } = {}) {
-        if (closed) return;
-        if (take) takeoverNext = true;
-        rec.retry();
-      },
-      /**
-       * Closes the current session without giving up, when nothing needs the host (hosts.mjs): the link is idle until a
-       * send, need() or wake() opens another, so the host’s daemon can exit at its idleTimeout. Turns go on.
-       */
-      idle() {
-        if (!closed) current?.close();
-      },
-      /** Stops reconnecting and closes the session; turns go on on the host. Listeners for 'error' hear it. */
-      close() {
-        if (closed) return;
-        closed = true;
-        current = null;
-        rec.dispose();
-        giveUp(sshFailure('failed', destination, { why: 'Postbox closed its connection to the host.' }));
-      },
-    },
+    methods(k),
   );
+}
+
+/**
+ * A link’s state, which each step below takes.
+ * @typedef {{ host: Pick<import('../../shared/remote-settings.mjs').Host, 'name' | 'settings'>, version: string, token: string,
+ *   destination: string,
+ *   session: { spawn?: import('./ssh.mjs').SpawnLike, program?: string, setTimer?: (fn: () => void, ms: number) => any,
+ *     clearTimer?: (t: any) => void, welcomeTimeout?: number },
+ *   events: EventEmitter, welcome: any, closed: boolean, takeoverNext: boolean, current: SshConnection | null,
+ *   isNeeded: () => boolean, sessions: Map<SshConnection, { flush: () => void }>,
+ *   rec: ReturnType<typeof createReconnector> }} Link
+ *   welcome: the latest. current: the session that has had its welcome, while it’s open. sessions: each session not
+ *   yet closed, with its held messages.
+ */
+
+/** A new session, whose messages are held until the link has said 'connected' for it. @param {Link} k */
+function open(k) {
+  const { spawn, program, setTimer, clearTimer, welcomeTimeout } = k.session;
+  const c = createSshConnection({
+    destination: k.destination,
+    settings: k.host.settings,
+    version: k.version,
+    token: k.token,
+    takeover: k.takeoverNext,
+    ...(spawn ? { spawn } : {}),
+    ...(program ? { program } : {}),
+    ...(setTimer ? { setTimer } : {}),
+    ...(clearTimer ? { clearTimer } : {}),
+    ...(welcomeTimeout ? { welcomeTimeout } : {}),
+  });
+  /** @type {any[] | null} held until 'connected'; null once passed on */
+  let held = [];
+  k.sessions.set(c, {
+    flush() {
+      const msgs = held ?? [];
+      held = null;
+      for (const m of msgs) if (k.current === c) k.events.emit('message', m);
+    },
+  });
+  c.on('message', (m) => {
+    if (held) held.push(m);
+    else if (k.current === c) k.events.emit('message', m);
+  });
+  c.on('bad-line', (e) => k.events.emit('bad-line', e));
+  c.once('close', () => {
+    k.sessions.delete(c);
+    if (k.current === c) k.current = null;
+  });
+  return c;
+}
+
+/** Passes the reconnector’s news on. @param {Link} k */
+function follow(k) {
+  k.rec.on('open', (/** @type {SshConnection} */ c, w) => {
+    k.current = c;
+    k.welcome = w;
+    k.takeoverNext = false;
+    k.events.emit('connected', w);
+    k.sessions.get(c)?.flush();
+  });
+  k.rec.on('failure', (/** @type {SshFailure} */ f) => k.events.emit('failure', f));
+  k.rec.on('state', (/** @type {string} */ s) => {
+    if (s !== 'open') k.current = null;
+    k.events.emit('state', s);
+    if (s === 'stopped') giveUp(k, k.rec.failure);
+  });
+}
+
+/** @param {Link} k @param {SshFailure | null} f */
+function giveUp(k, f) {
+  if (k.events.listenerCount('error')) k.events.emit('error', f ?? sshFailure('failed', k.destination, { why: 'Postbox stopped connecting.' }));
+}
+
+/** The link’s methods. @param {Link} k */
+function methods(k) {
+  return {
+    /**
+     * Sends one postbox-to-daemon message on the current session. True once written; false with no session (and
+     * asks for one), for a message the session refuses, or after close(). Never throws.
+     * @param {{ type: string, [field: string]: any }} msg
+     */
+    send: (msg) => send(k, msg),
+    /** Postbox needs the host now (a turn starts, a prompt waits): connect unless connected, waiting or stopped. */
+    need: () => {
+      if (!k.closed) k.rec.need();
+    },
+    /** The laptop woke (D2): try at once, unless a failure only the person can fix stopped it. */
+    wake: () => {
+      if (!k.closed) k.rec.wake();
+    },
+    /**
+     * The person asked to reconnect: try at once, whatever stopped it. takeover: replace the Postbox that has the
+     * host (after a `busy`), for the next session only.
+     * @param {{ takeover?: boolean }} [o]
+     */
+    retry({ takeover: take = false } = {}) {
+      if (k.closed) return;
+      if (take) k.takeoverNext = true;
+      k.rec.retry();
+    },
+    /**
+     * Closes the current session without giving up, when nothing needs the host (hosts.mjs): the link is idle until a
+     * send, need() or wake() opens another, so the host’s daemon can exit at its idleTimeout. Turns go on.
+     */
+    idle() {
+      if (!k.closed) k.current?.close();
+    },
+    /** Stops reconnecting and closes the session; turns go on on the host. Listeners for 'error' hear it. */
+    close() {
+      if (k.closed) return;
+      k.closed = true;
+      k.current = null;
+      k.rec.dispose();
+      giveUp(k, sshFailure('failed', k.destination, { why: 'Postbox closed its connection to the host.' }));
+    },
+  };
+}
+
+/** @param {Link} k @param {{ type: string, [field: string]: any }} msg */
+function send(k, msg) {
+  if (k.closed) return false;
+  const c = k.current;
+  if (!c) {
+    k.rec.need();
+    return false;
+  }
+  try {
+    c.send(msg); // false from it is backpressure: the line is still queued on ssh’s stdin
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
