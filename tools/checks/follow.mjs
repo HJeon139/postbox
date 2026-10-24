@@ -168,8 +168,8 @@ await check('#49 in the side panel: an app in a topic thread moves there, and th
   const { t } = room('Follows in a panel', 'follow-panel-root', 2);
   const root = store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, root.id);
-  const fork = rt.sessionsIn(threadId)[0];
-  rt.toolsFor(fork.id).show_app({ id: 'follow-panel', title: 'Panel explorer', code: APP('v1'), permissions: [] });
+  const fork = rt.sessionsIn(t.id)[0]; // its one session answers in the thread (#228), so the app shows there
+  rt.toolsFor(fork.id, /** @type {any} */ ({ threadId })).show_app({ id: 'follow-panel', title: 'Panel explorer', code: APP('v1'), permissions: [] });
   const item = store.items(threadId).find((i) => i.kind === 'block' && i.block.id === 'follow-panel');
   for (let i = 0; i < 16; i++)
     rt.addItem(threadId, { kind: 'agent', sessionId: fork.id, personaId: fork.personaId, handle: fork.handle, text: LONG(300 + i), status: 'done' });

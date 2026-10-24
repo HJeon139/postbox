@@ -85,8 +85,8 @@ test('#128: an agent the person asked posts to the conversation from a side or t
   assert.equal(result.ok, true, result.message);
   const shared = store.items(t.id).find((x) => x.kind === 'shared');
   assert.deepEqual([shared.fromThreadId, shared.handle, shared.text, shared.agent], [side.id, 'beta', 'The details, for the main chat.', true]);
-  // It wakes no one, and isn’t an agent wake: the count is the one wake that started the side thread.
-  assert.equal(store.state.threads[t.id].hops, 1);
+  // It wakes no one, and isn’t an agent wake; and your message there started the conversation’s wake count again.
+  assert.equal(store.state.threads[t.id].hops, 0);
   assert.match(
     rt.describeItem(shared, store.state.sessions[alpha.id]),
     /Shared from the thread “@alpha ↔ @beta”, by @beta in a turn the person started: The details/,
@@ -198,7 +198,7 @@ test('#151: Retry sends a failed turn again as it was asked, so an agent’s tur
   assert.equal(store.items(t.id).filter((x) => x.kind === 'shared').length, 0);
 });
 
-test('#128: from a side thread of a topic thread, bring_to_conversation posts in the conversation, not the topic', async () => {
+test('#128, #228: a wake from a turn in a topic thread opens its side thread in the conversation, and posts go there', async () => {
   const { store, rt, adapter, t, beta } = setup();
   adapter.next.push(async (c) => c.text('Hi.'));
   rt.sendMessage(t.id, { text: '@beta start' });
@@ -208,11 +208,10 @@ test('#128: from a side thread of a topic thread, bring_to_conversation posts in
   adapter.next.push(async (c) => c.text('ok'));
   rt.sendMessage(topic.id, { text: '@beta here' });
   await settle(rt);
-  // The topic’s agent wakes another: their side thread hangs off the topic thread.
-  const forked = rt.sessionsIn(topic.id).find((x) => x.personaId === beta.personaId);
-  rt.agentWake(forked.id, 'alpha', 'Check it.');
+  // @beta answered there from its one session in the conversation, so a wake it makes opens a side thread there.
+  rt.agentWake(beta.id, 'alpha', 'Check it.');
   await settle(rt);
-  const side = Object.values(store.state.threads).find((x) => x.kind === 'side' && x.parentId === topic.id);
+  const side = Object.values(store.state.threads).find((x) => x.kind === 'side' && x.parentId === t.id);
   let result;
   adapter.next.push(async (c) => {
     result = c.tools.bring_to_conversation({ text: 'For the main chat.' });

@@ -58,6 +58,7 @@ const { values: opt } = parseArgs({
     // personas.json’s settings for every scenario.
     'agent-model': { type: 'string', default: 'claude-haiku-5-5' },
     'agent-effort': { type: 'string', default: 'low' },
+    'force-agent-model': { type: 'boolean', default: false },
     recheck: { type: 'string' },
     // After a run, verify the findings that have no verdict (--verify no skips it), and file the confirmed ones that no
     // open issue covers (--file no verifies without filing).
@@ -213,10 +214,9 @@ async function main() {
         }
       : p;
   };
-  // Claude agents run on the run’s model and effort, unless the scenario or the command line keeps the persona’s. An
-  // agent on another backend keeps the model its scenario names.
+  // Claude agents run on the run’s model, unless the scenario keeps the persona’s and --force-agent-model doesn’t override it.
   const fast = (p) => {
-    if (scenario.models === 'persona' || scenario.backends[p.handle]) return p;
+    if ((scenario.models === 'persona' && !opt['force-agent-model']) || scenario.backends[p.handle]) return p;
     return {
       ...p,
       ...(opt['agent-model'] !== 'persona' ? { model: opt['agent-model'] } : {}),

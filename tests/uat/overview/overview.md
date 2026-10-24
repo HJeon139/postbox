@@ -10,8 +10,8 @@ Dispatch mode: several agents work in the background, and you need to see which 
 
 ## Expected functionality
 
-- A card for each session that needs you or is working, what needs you first. A side or topic thread’s fork gets one too while it’s waiting or working.
-- Below them, under Idle, each idle conversation is one row: its agents’ rings and names, project · conversation, its last message, and when (#3). A conversation that has a card above isn’t listed again, and idle forks aren’t listed. The row opens the conversation, and its ⋯ has Open conversation and Archive conversation, which takes it and its agents off the overview (#101).
+- A card for each session that needs you or is working, what needs you first.
+- Below them, under Idle, each idle conversation is one row: its agents’ rings and names, project · conversation, its last message, and when (#3). A conversation that has a card above isn’t listed again. The row opens the conversation, and its ⋯ has Open conversation and Archive conversation, which takes it and its agents off the overview (#101).
 - At 1280 × 900 with the demo at its end (three agents need you, one works), every card is above the fold.
 - The header counts live sessions, projects, how many need you and how many finished.
 - New agent opens the new-agent sheet.
