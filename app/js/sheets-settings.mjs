@@ -1,8 +1,37 @@
-// Tabs of Settings (app/js/sheets.mjs, openSettings) that stand on their own: Backends, which says how real agents
-// reach Postbox’s tools and what this computer has.
+// Tabs of Settings (app/js/sheets.mjs, openSettings) that stand on their own: Appearance, light or dark, and
+// Backends, which says how real agents reach Postbox’s tools and what this computer has.
 
-import { client } from './client.mjs';
+import { api, client } from './client.mjs';
 import { h, plural } from './dom.mjs';
+
+const S = () => client.state;
+
+/** @param {() => void} paint  repaints the tabs, once the choice is saved */
+export const appearance = (paint) => {
+  const pref = S().settings.theme ?? 'system';
+  return [
+    h(
+      'div.field',
+      h('span.label', 'Mode'),
+      h(
+        'div.seg',
+        { role: 'radiogroup', 'aria-label': 'Mode' },
+        [
+          ['system', 'System'],
+          ['light', 'Light'],
+          ['dark', 'Dark'],
+        ].map(([v, l]) =>
+          h(
+            'button',
+            { type: 'button', role: 'radio', 'aria-checked': String(pref === v), onclick: () => api('/api/settings', { theme: v }, 'PUT').then(paint) },
+            l,
+          ),
+        ),
+      ),
+    ),
+    h('p.small.dim', 'System follows your computer’s setting. The choice is saved in Postbox, so it follows you to other browsers.'),
+  ];
+};
 
 export const connect = () => [
   h(

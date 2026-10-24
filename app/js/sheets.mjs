@@ -8,7 +8,7 @@ import { ago, fill, h, icon, plural } from './dom.mjs';
 import { hostsPanel } from './hosts.mjs';
 import { openPermissions } from './permissions.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
-import { connect } from './sheets-settings.mjs';
+import { appearance, connect } from './sheets-settings.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
@@ -926,32 +926,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
         ),
       ),
     );
-    fill(panel, ...{ appearance, personas, projects, hosts: () => [hostsPanel()], connect }[cur]());
-  };
-  const appearance = () => {
-    const pref = S().settings.theme ?? 'system';
-    return [
-      h(
-        'div.field',
-        h('span.label', 'Mode'),
-        h(
-          'div.seg',
-          { role: 'radiogroup', 'aria-label': 'Mode' },
-          [
-            ['system', 'System'],
-            ['light', 'Light'],
-            ['dark', 'Dark'],
-          ].map(([v, l]) =>
-            h(
-              'button',
-              { type: 'button', role: 'radio', 'aria-checked': String(pref === v), onclick: () => api('/api/settings', { theme: v }, 'PUT').then(paint) },
-              l,
-            ),
-          ),
-        ),
-      ),
-      h('p.small.dim', 'System follows your computer’s setting. The choice is saved in Postbox, so it follows you to other browsers.'),
-    ];
+    fill(panel, ...{ appearance: () => appearance(paint), personas, projects, hosts: () => [hostsPanel()], connect }[cur]());
   };
   const personas = () => {
     const list = Object.values(S().personas);
