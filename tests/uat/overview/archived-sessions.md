@@ -10,7 +10,7 @@ Archiving is the safe default for finished work; this is where it comes back fro
 
 ## Expected functionality
 
-- One row per conversation: the agents archived in it (its side threads’ forks too), project · conversation, and when they were archived. A conversation archived whole, one that sat idle as long as Settings › Projects says, and an agent archived on its own from its menu are all here.
+- One row per conversation: the agents archived in it. Forks from before #228, retired when Postbox started, aren’t listed: they can’t come back, since each agent answers from its one session in the conversation, project · conversation, and when they were archived. A conversation archived whole, one that sat idle as long as Settings › Projects says, and an agent archived on its own from its menu are all here.
 - Archive keeps everything: the transcript, apps, files and the agent’s backend session, so Restore picks up where it left off. Nothing here is deleted on a timer; Delete conversation in the conversation’s ⋯ still works on an archived one.
 - Restore brings back every agent the row lists, and the conversation returns to the overview and the sidebar. Open shows the conversation read-only.
 

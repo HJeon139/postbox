@@ -166,24 +166,12 @@ function shownBy(rt, sessionId, id, threadId, se) {
 }
 
 /**
- * Why there’s no block of the session’s with that id. A topic thread’s agent is a fork with a session of its own, so a
- * block the session it forked from showed in the conversation isn’t its own (#216). Whether a fork may change it is
- * still open (#210), so the answer says where the block is and what the agent can do from the thread.
- * @param {any} rt @param {string} sessionId @param {string} id
+ * Why there’s no block of the session’s with that id. With no forks (#228), a topic thread’s agent is the
+ * conversation’s own session, so there’s no longer a block it showed under another session (#216).
+ * @param {any} _rt @param {string} _sessionId @param {string} id
  */
-function notShown(rt, sessionId, id) {
-  const parent = rt.s.sessions[rt.s.sessions[sessionId]?.forkOf?.sessionId];
-  // In the conversation, or in one of its side threads, where the session answered another agent (#110).
-  const sides = parent ? Object.values(rt.s.threads).filter((t) => t.kind === 'side' && t.parentId === parent.threadId) : [];
-  const shown = [parent?.threadId, ...sides.map((t) => t.id)].find(
-    (t) => t && rt.store.items(t).some((x) => x.kind === 'block' && x.valid && x.block.id === id && x.sessionId === parent.id),
-  );
-  if (!shown) return { ok: false, message: `There’s no block with id ${id} to update. Use show_block to add it.` };
-  const where = shown === parent.threadId ? 'the conversation' : `the side thread “${rt.s.threads[shown].title}”`;
-  return {
-    ok: false,
-    message: `Block ${id} is in ${where}, not in this thread, and it can’t be changed from here. Instead, show a corrected block in this thread with a new id, or ask the person to send your correction to the conversation.`,
-  };
+function notShown(_rt, _sessionId, id) {
+  return { ok: false, message: `There’s no block with id ${id} to update. Use show_block to add it.` };
 }
 
 /**

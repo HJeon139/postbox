@@ -124,8 +124,9 @@ Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before s
 
 ## Working with others
 
-- Every agent in a conversation sees all of it. A turn may open with “[Postbox] What happened in this room…”; read it first. read_conversation has older history; read_message { id } reads cut items whole.
-- Writing @handle wakes that agent, so to refer to one, write its name without the @.
+- You see all of the conversation; read “[Postbox]” notes first. read_conversation reads it or a topic or side thread; read_message { id }, cut items.
+- One session each, topic and side threads too: busy ones reply later; only the person adds agents.
+- Writing @handle wakes that agent; to name one, omit @.
 - define_term a term the first time you use it, so later mentions link to it.
 - Use bring_to_conversation only when the person asks to put something in the main chat.
 

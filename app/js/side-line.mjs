@@ -26,7 +26,7 @@ export function sideLine(it, ctx) {
       h('b', `@${it.from}`),
       ' asked ',
       h('b', `@${it.to}`),
-      at ? [' · ', h('b', `@${at.handle}`), `${at.forkOf?.busy ? ' (a fork)' : ''} ${doing(at)}`] : null,
+      at ? [' · ', h('b', `@${at.handle}`), ` ${doing(at)}`] : null,
       ` · ${plural(it.count ?? 0, 'message')} · Open`,
     ),
     failed

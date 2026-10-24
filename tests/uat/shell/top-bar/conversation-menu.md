@@ -14,7 +14,7 @@ Conversations need to be renamed, grown into rooms and deleted without leaving t
 - Add an agent… opens the [new-agent sheet](../../sheets/new-agent.md) joined to this conversation; a direct message becomes a room.
 - Permissions… opens the [permissions panel](../permissions-panel.md) for the agent the composer replies to; in a room, it offers the others.
 - Under Agent (or Agents, in a room), one line per agent: its @name, then its backend, model, effort and state as text, with full model ids (“@indexer · Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle”). Choosing one opens its persona (#60). A mock agent says “mock” after its name (#12).
-- Archive conversation (or Archive room) archives every agent in it, its side threads’ forks too: it leaves the overview and the sidebar, keeps its transcript, and goes under [Archived](../../overview/archived-sessions.md). The toast has Restore. In an archived conversation it’s Restore conversation instead (#101).
+- Archive conversation (or Archive room) archives every agent in it: it leaves the overview and the sidebar, keeps its transcript, and goes under [Archived](../../overview/archived-sessions.md). The toast has Restore. In an archived conversation it’s Restore conversation instead (#101).
 - Delete conversation… (or Delete room…) opens the [delete confirm](../../sheets/delete-conversation.md).
 - A sheet opened from the menu returns focus to ⋯ when it closes, including by Escape (#26).
 
