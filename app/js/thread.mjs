@@ -18,6 +18,7 @@ import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { argvStep, failedOnHost, hostTurnsList, jobHostNote, kiroNotice, ranHere, remoteSig, remoteStale } from './thread-host.mjs';
+import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { workList } from './work-list.mjs';
 
@@ -1926,7 +1927,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     mention.index = Math.min(mention.index, list.length - 1);
     const box =
       mention.kind === '#'
-        ? threadMenu(list)
+        ? threadMenu(list, mention, pick)
         : h(
             'div.menu.mention-menu',
             { role: 'listbox', id: 'mention-list', 'aria-label': 'Agents' },
@@ -1963,32 +1964,6 @@ export function mountComposer(threadId, { side = false } = {}) {
     // A textarea can’t be a combobox; the active option is announced through aria-activedescendant.
     ta.setAttribute('aria-controls', 'mention-list');
     ta.setAttribute('aria-activedescendant', `mention-${mention.index}`);
-  }
-  /** Threads to link, as the menu for #. The link is what Copy link gives, so an agent reads it the same way. */
-  function threadMenu(list) {
-    return h(
-      'div.menu.mention-menu',
-      { role: 'listbox', id: 'mention-list', 'aria-label': 'Threads' },
-      h('div.label', 'Link a thread'),
-      list.map(({ thread: x }, i) =>
-        h(
-          'div.mi',
-          {
-            role: 'option',
-            id: `mention-${i}`,
-            'aria-selected': String(i === mention.index),
-            class: i === mention.index ? 'active' : '',
-            onmousedown: (e) => {
-              e.preventDefault();
-              pick({ thread: x });
-            },
-          },
-          icon('thread', 'i-sm'),
-          h('span.grow', x.title, h('span.d', x.kind === 'side' ? 'Side thread' : 'Topic thread')),
-          i === mention.index ? h('span.k', 'Enter') : null,
-        ),
-      ),
-    );
   }
   function pick(c) {
     if (c.thread) insertText(`[${c.thread.title.replace(/[[\]]/g, '')}](${threadLink(c.thread.id)})`);
