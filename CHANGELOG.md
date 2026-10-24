@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.17.0 (2026-10-24)
+
+### Features
+
+- **apps:** agents retire an app they no longer need with retire_app
+
+### Fixes
+
+- **apps:** the integrator's review fixes for retiring apps and the app check
+- **kit:** review fixes for the text and control checks
+- **apps:** review fixes for retiring an app
+- **kit:** the app check finds controls you can't see or click
+- **kit:** the app check finds text that spills out of its box or over other text
+
 ## 0.16.0 (2026-10-23)
 
 ### Features
