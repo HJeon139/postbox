@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.21.0 (2026-10-24)
+
+### Features
+
+- **uat:** --force-agent-model runs a models: persona scenario on the run's model
+
 ## 0.20.0 (2026-10-24)
 
 ### Features
