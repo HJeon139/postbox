@@ -10,7 +10,7 @@ Data you can sort and act on per row.
 
 ## Expected functionality
 
-- Sortable columns (number columns sort numerically), a row action button per row.
+- Sortable columns (number columns sort numerically), a row action button per row. The row action is an inline action, its label underlined, so it reads as a button and not as one more cell (#182).
 - Large tables scroll inside the block.
 
 ## Steps to reproduce

@@ -27,7 +27,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc -p jsconfig.json",
     "lint:project": "node tools/lint-tokens.mjs && node tools/lint-dom.mjs && node tools/lint-copy.mjs",
-    "check:contrast": "node tools/contrast.mjs app/workbench.css",
+    "check:contrast": "node tools/contrast.mjs",
     "check": "npm run lint && npm run typecheck && npm run lint:project && npm run check:contrast && npm test",
     "check:browser": "node tools/check-all.mjs",
     "shoot:mockups": "node tools/shoot.mjs",
