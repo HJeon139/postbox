@@ -2,139 +2,18 @@
 // the host’s daemon. Run against tests/fake-daemon.mjs, which replays recorded Claude Code streams
 // (tests/fixtures/claude-code/, claude 2.1.296 on this computer: no stream recorded on a host exists yet), through a
 // minimal stand-in for the host link (server/remote/link.mjs): hello, `connected` at the welcome, send() false before.
+// The fixtures are in tests/claude-code-remote-fixture.mjs.
 
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import { shimArgs } from '../server/adapters/adapter.mjs';
+import { AgentSdkAdapter } from '../server/adapters/agent-sdk.mjs';
 import { CLAUDE_CODE_CAPABILITIES, ClaudeCodeAdapter, claudeArgs, remoteClaudeProblem } from '../server/adapters/claude-code.mjs';
-import { createMessageReader, encode, MESSAGE_FILE, message, PROTOCOL_VERSION } from '../shared/remote-protocol.mjs';
-import { createFakeDaemon, FAKE_TOKEN, fixtureLines } from './fake-daemon.mjs';
-
-const VERSION = '0.10.0';
-const HOME = '/home/user';
-const FOLDER = '/home/user/postbox-work/coder';
-const SHIM = `${HOME}/.postbox-remote/${VERSION}/server/remote/host/shim.mjs`;
-const HOUR = 60 * 60 * 1000;
-const until = async (fn, label) => {
-  for (let i = 0; i < 500 && !fn(); i++) await new Promise((r) => setTimeout(r, 2));
-  assert.ok(fn(), `Timed out waiting for ${label}`);
-};
-
-/** The host link, as far as the remote process needs it, over the fake daemon’s streams (as tests/remote-process.test.mjs). */
-function connectTo(d) {
-  const conn = new EventEmitter();
-  conn.setMaxListeners(0);
-  let ready = false;
-  const reader = createMessageReader('daemon-to-postbox', {
-    onMessage(m) {
-      if (m.type === 'welcome') {
-        ready = true;
-        conn.emit('connected');
-      } else conn.emit('message', m);
-    },
-    onError: (e) => assert.fail(`The fake daemon sent a bad line: ${e.message}`),
-  });
-  d.stdout.on('data', (b) => setImmediate(() => reader.push(b)));
-  d.stdin.write(encode(message('postbox-to-daemon', 'hello', { version: PROTOCOL_VERSION, token: FAKE_TOKEN })));
-  return Object.assign(conn, {
-    send(msg) {
-      if (!ready) return false;
-      d.stdin.write(encode(msg));
-      return true;
-    },
-  });
-}
-
-/** A welcome with this host’s claude. @param {{ version?: string|null, path?: string|null }} [claude] */
-const welcomeWith = ({ version = '2.1.296', path = `${HOME}/.local/bin/claude` } = {}) => ({
-  version: PROTOCOL_VERSION,
-  home: HOME,
-  node: { path: '/usr/bin/node', version: 'v22.12.0' },
-  harnesses: [{ name: 'claude-code', path, version: path ? version : null, looked: path ? [] : [`${HOME}/.local/bin`, '/usr/local/bin'] }],
-  problems: [],
-  turns: [],
-});
-
-/** A local kill, ps and spawn that fail the test if they’re ever called. */
-function forbidden() {
-  const calls = [];
-  return {
-    calls,
-    kill: (pid, sig) => {
-      calls.push(['kill', pid, sig]);
-      throw new Error(`The local kill was called with ${pid}, ${sig}.`);
-    },
-    listProcesses: async () => {
-      calls.push(['list']);
-      throw new Error('The local ps was read for a remote turn.');
-    },
-    spawnImpl: (bin) => {
-      calls.push(['spawn', bin]);
-      throw new Error('A remote turn was spawned on this computer.');
-    },
-  };
-}
-
-/** Turn IDs as the runtime allocates them: unique, persisted before deliver (and before nextTurn returns). */
-let turnIds = 0;
-const nextId = () => `cc-turn-${++turnIds}`;
-
-/** A turn context for a remote turn, recording what the adapter did. calls.turns: every turn ID the runtime gave. */
-function remoteCtx(d, { settings = {}, welcome = welcomeWith(), state = {}, remote = {}, addDirs = [] } = {}) {
-  const turn = nextId();
-  const calls = { text: '', saved: {}, turns: [turn], jobs: [], control: [], startsAtNext: [] };
-  const abort = new AbortController();
-  const ctx = {
-    calls,
-    abort,
-    signal: abort.signal,
-    mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
-    // A laptop folder that must never be made for a remote turn.
-    persona: {
-      handle: 'coder',
-      model: 'claude-opus-5-5',
-      permissionMode: 'ask',
-      folder: `/tmp/pb-remote-never-${process.pid}`,
-      description: '',
-      instructions: '',
-    },
-    project: { folder: '/Users/someone/project' },
-    addDirs,
-    handles: ['coder'],
-    state,
-    saveState: (p) => Object.assign(calls.saved, p),
-    pathOf: () => null,
-    text: (t) => {
-      calls.text += t;
-    },
-    activity: () => {},
-    status: () => {},
-    job: (j) => calls.jobs.push(j),
-    control: (c) => calls.control.push(c),
-    remote: {
-      link: connectTo(d),
-      welcome,
-      settings,
-      folder: FOLDER,
-      version: VERSION,
-      turn,
-      async nextTurn() {
-        calls.startsAtNext.push(starts(d).length);
-        const t = nextId();
-        calls.turns.push(t);
-        return t;
-      },
-      ...remote,
-    },
-  };
-  return ctx;
-}
-
-const starts = (d) => d.received.filter((m) => m.type === 'start');
-const argOf = (argv, flag) => argv[argv.indexOf(flag) + 1];
-const serverOf = (argv) => JSON.parse(argOf(argv, '--mcp-config')).mcpServers.postbox;
+import { MockAdapter } from '../server/adapters/mock.mjs';
+import { MESSAGE_FILE } from '../shared/remote-protocol.mjs';
+import { argOf, FOLDER, forbidden, HOME, HOUR, remoteCtx, SHIM, serverOf, starts, until, welcomeWith } from './claude-code-remote-fixture.mjs';
+import { createFakeDaemon, fixtureLines } from './fake-daemon.mjs';
 
 test('#120: a remote turn runs on the host: the stdio shim for Postbox’s server, the host folder, the message as a file, no laptop paths', async () => {
   const d = createFakeDaemon({ lines: fixtureLines('block') });
@@ -318,4 +197,23 @@ test('#120: a turn the person started in a side or topic thread (ctx.remote.brin
   assert.deepEqual(serverOf(start.argv).args, [SHIM, start.turn, '--bring']);
   // Kiro CLI and Codex build theirs with the same helper.
   assert.deepEqual(shimArgs(/** @type {any} */ ({ bring: false }), SHIM, 't1'), [SHIM, 't1']);
+});
+
+test('Claude Code says how it runs on a remote host; the Agent SDK and the mock can’t', () => {
+  // Only the remote shape: left out, the rest reads as forking, reading rules and Claude’s models (adapter.mjs).
+  assert.deepEqual(CLAUDE_CODE_CAPABILITIES, {
+    remote: {
+      stdin: 'file',
+      // The one variable it sets on a host: a resume after an interrupted turn goes on with it (D2).
+      env: ['CLAUDE_CODE_RESUME_INTERRUPTED_TURN'],
+      server: 'mcp-config',
+      work: 'events',
+      signInError: { type: 'result', is_error: true, error: 'authentication_failed' },
+    },
+  });
+  assert.equal(new ClaudeCodeAdapter({ workRoot: '/tmp/pb-test-work' }).capabilities, CLAUDE_CODE_CAPABILITIES);
+  assert.equal(new AgentSdkAdapter({ sdk: {}, workRoot: '/tmp/pb-test-work' }).capabilities?.remote, undefined, 'it runs in Postbox’s process');
+  assert.equal(new MockAdapter().capabilities?.remote, undefined);
+  // It survives /api/state, which serves capabilities as JSON (server/index.mjs, config.backends).
+  assert.deepEqual(JSON.parse(JSON.stringify(CLAUDE_CODE_CAPABILITIES)), CLAUDE_CODE_CAPABILITIES);
 });
