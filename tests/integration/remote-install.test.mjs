@@ -751,6 +751,46 @@ test('a start lock whose owner is dead is broken at once, however new, by an ins
   }
 });
 
+/** The version’s start lock and its break lock, and how to leave each as an owner that died holding it would. @param {any} m */
+function deadLocks(m) {
+  const root = join(m.home, '.postbox-remote');
+  const lock = hostPaths(m.home, VERSION).lock;
+  const brk = `${lock}.break`;
+  const dead = JSON.stringify({ pid: deadPid(), bootId: bootId(), startTime: 1 });
+  const deadLock = () => {
+    mkdirSync(lock, { recursive: true, mode: 0o700 });
+    writeFileSync(join(lock, 'owner'), dead);
+  };
+  const deadBreak = () => {
+    deadLock();
+    mkdirSync(brk, { mode: 0o700 });
+    writeFileSync(join(brk, 'owner'), dead);
+  };
+  return { root, lock, brk, dead, deadLock, deadBreak };
+}
+
+/**
+ * A break lock whose breaker died holding it is broken at once, however new: by an install, and by an attach.
+ * @param {any} m @param {Buffer} tar @param {ReturnType<typeof deadLocks>} locks
+ * @param {(a: ReturnType<typeof attachCounting> | null) => void} track  the attach under way, for the test’s cleanup
+ */
+async function deadBreakerBroken(m, tar, { root, deadBreak }, track) {
+  deadBreak();
+  rmSync(join(root, VERSION), { recursive: true });
+  const again = installOnce(m, tar);
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(again.stdout, `installed ${VERSION}\n`);
+  assert.deepEqual(top(root), [VERSION, 'locks'], 'the dead breaker’s break lock went, and the start lock');
+  deadBreak();
+  const b = attachCounting(m.home);
+  track(b);
+  assert.ok(await until(() => b.state.spawned > 0), 'the attach broke both and started the daemon');
+  assert.equal(b.state.waitsBefore, 0, 'without waiting for them to age');
+  track(null);
+  assert.equal(await b.end(), 69);
+  assert.deepEqual(readdirSync(join(root, 'locks')), []);
+}
+
 test('an install paused while it breaks a dead owner’s start lock keeps <lock>.break past every age: an attach and another install neither break it nor enter, and the attach goes on once it’s free', {
   skip: SKIP,
 }, async () => {
@@ -764,15 +804,9 @@ test('an install paused while it breaks a dead owner’s start lock keeps <lock>
   let resume = () => {};
   try {
     const { tar } = bundle({ version: VERSION });
-    const root = join(m.home, '.postbox-remote');
-    const lock = hostPaths(m.home, VERSION).lock;
-    const brk = `${lock}.break`;
-    const dead = JSON.stringify({ pid: deadPid(), bootId: bootId(), startTime: 1 });
-    const deadLock = () => {
-      mkdirSync(lock, { recursive: true, mode: 0o700 });
-      writeFileSync(join(lock, 'owner'), dead);
-    };
-    deadLock();
+    const locks = deadLocks(m);
+    const { root, lock, brk, dead } = locks;
+    locks.deadLock();
     const { done, pid } = await installPaused(m, tar, go, 'BREAK');
     install = done;
     // Three minutes old, as a suspended install could leave it: past daemon.mjs’s age limits and the script’s minute.
@@ -803,26 +837,7 @@ test('an install paused while it breaks a dead owner’s start lock keeps <lock>
     attach = null;
     assert.equal(await a.end(), 69);
     assert.deepEqual(readdirSync(join(root, 'locks')), [], 'every lock was dropped');
-    // A break lock whose breaker died holding it is broken at once, however new: by an install, and by an attach.
-    const deadBreak = () => {
-      deadLock();
-      mkdirSync(brk, { mode: 0o700 });
-      writeFileSync(join(brk, 'owner'), dead);
-    };
-    deadBreak();
-    rmSync(join(root, VERSION), { recursive: true });
-    const again = installOnce(m, tar);
-    assert.equal(again.status, 0, again.stderr);
-    assert.equal(again.stdout, `installed ${VERSION}\n`);
-    assert.deepEqual(top(root), [VERSION, 'locks'], 'the dead breaker’s break lock went, and the start lock');
-    deadBreak();
-    attach = attachCounting(m.home);
-    const b = attach;
-    assert.ok(await until(() => b.state.spawned > 0), 'the attach broke both and started the daemon');
-    assert.equal(b.state.waitsBefore, 0, 'without waiting for them to age');
-    attach = null;
-    assert.equal(await b.end(), 69);
-    assert.deepEqual(readdirSync(join(root, 'locks')), []);
+    await deadBreakerBroken(m, tar, locks, (a) => (attach = a));
   } finally {
     resume();
     await attach?.end();
