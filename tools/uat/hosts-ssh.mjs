@@ -19,7 +19,7 @@ const ONE = '[.]postbox-remote';
 /** The last line of a measuring script that got to its end. */
 export const END = '--end--';
 /** What the scripts measure with on a host: the runner checks each is there before it sets anything up. */
-export const NEEDS = ['pgrep', 'pkill', 'ps', 'ss', 'sed'];
+export const NEEDS = ['pgrep', 'pkill', 'ps', 'ss', 'sed', 'readlink'];
 
 /** The remote scripts, by what they check. Each prints only what its parser reads. */
 export const SCRIPTS = {
@@ -221,8 +221,9 @@ const DAEMON = /\.postbox-remote\/\S*host[.]mjs (?:serve|attach)/;
  * @param {string} out @returns {{ runners: Map<string, string>, procs: HostProc[] }}
  */
 export function parseTree(out) {
-  const [head, ps] = String(out).split('--ps--');
-  if (ps === undefined) throw new Error('The host’s process list didn’t come back.');
+  const [head, rest] = String(out).split('--ps--');
+  if (rest === undefined) throw new Error('The host’s process list didn’t come back.');
+  const [ps, cwd] = rest.split('--cwd--');
   const runners = new Map(
     linesOf(head).flatMap((l) => {
       const m = /^turn (\S+) (\d+)$/.exec(l);
@@ -234,7 +235,42 @@ export function parseTree(out) {
     return m ? [{ pid: m[1], ppid: m[2], pgid: m[3], sid: m[4], start: m[5].replace(/\s+/g, ' '), args: m[6] }] : [];
   });
   if (!procs.length) throw new Error('ps listed no processes, not even its own.');
-  return { runners, procs };
+  return { runners, procs, inFolder: new Set(linesOf(cwd).filter((l) => /^\d+$/.test(l))) };
+}
+
+/**
+ * SCRIPTS.tree, and then the PIDs of this user’s processes whose working folder is the run’s own on the host
+ * (~/postbox-uat/<run>, as given or with its links resolved), from /proc: what a turn left running there, even one
+ * that left its turn’s tree before anything saw it (a `nohup … &` from a call that returned at once).
+ * @param {string} run  the run’s stamp
+ */
+export function treeScript(run) {
+  const dir = runDir(run);
+  return SCRIPTS.tree.replace(
+    `echo '${END}'`,
+    [
+      `d="${dir}"; real=$(cd "$d" 2>/dev/null && pwd -P)`,
+      "echo '--cwd--'",
+      'for p in /proc/[0-9]*; do',
+      '  c=$(readlink "$p/cwd" 2>/dev/null) || continue',
+      '  for r in "$d" "$real"; do',
+      '    [ -n "$r" ] || continue',
+      '    case "$c" in "$r" | "$r"/*) basename "$p"; break ;; esac',
+      '  done',
+      'done',
+      `echo '${END}'`,
+    ].join('\n'),
+  );
+}
+
+/**
+ * The processes left in the run’s folder (parseTree’s inFolder) that no live turn’s runner has under it: those belong
+ * to a turn still running, such as another agent’s in the same folder.
+ * @param {{ runners: Map<string, string>, procs: HostProc[], inFolder?: Set<string> }} now @returns {HostProc[]}
+ */
+export function leftInFolder(now) {
+  const live = new Set([...turnTrees(now).values()].flat().map((p) => p.pid));
+  return now.procs.filter((p) => now.inFolder?.has(p.pid) && !live.has(p.pid));
 }
 
 /**

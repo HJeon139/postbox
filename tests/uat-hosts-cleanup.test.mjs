@@ -108,3 +108,24 @@ test('#120 UAT Stop: a failed look just before Stop leaves it unjudged, whatever
   fresh.hr.trees = hr.trees;
   assert.equal((await leftBy(fresh.hr, fresh.h, TURN, Date.now(), opts)).left, null);
 });
+
+// After Stop on host1: the turn’s runner, CLI and tool shell are gone, but a loop it started with `nohup … &` from a
+// call that returned at once, before any look saw it, runs on in the run’s folder, as in the fourth live run; and
+// another agent’s turn, still running in the same folder, isn’t the stopped turn’s. PIDs and times made up.
+const OTHER = '11111111-1111-4111-8111-111111111111';
+const AFTER_DETACHED = `turn ${OTHER} 4500
+--ps--
+ 4000     1  4000  4000 Sat Oct 24 05:10:01 2026 /home/user/.local/share/mise/installs/node/22.12.0/bin/node /home/user/.postbox-remote/0.24.0/host.mjs serve
+ 4400     1  4390  4390 Sat Oct 24 05:12:41 2026 bash -c for i in $(seq 1 36); do date >> heartbeat.log; sleep 5; done
+ 4500  4000  4500  4500 Sat Oct 24 05:12:50 2026 /home/user/.local/share/mise/installs/node/22.12.0/bin/node /home/user/.postbox-remote/0.24.0/server/remote/host/runner.mjs ${OTHER}
+ 4501  4500  4501  4500 Sat Oct 24 05:12:51 2026 /home/user/tools/bin/claude -p --output-format stream-json
+--cwd--
+4400
+4501`;
+
+test('#120 UAT Stop: a command the turn detached and left running in the run’s folder counts as left', async () => {
+  const { hr, h } = hostRun();
+  await beforeStop(hr, { measure: ok(TREE_BEFORE) });
+  const got = await leftBy(hr, h, TURN, Date.now(), { measure: ok(AFTER_DETACHED), wait: async () => {} });
+  assert.deepEqual(got, { watched: 4, left: ['4400 bash -c for i in $(seq 1 36); do date >> heartbeat.log; sleep 5; done'] });
+});

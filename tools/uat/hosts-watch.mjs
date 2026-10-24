@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { sleep } from '../cdp.mjs';
 import { localListeners, newListeners, remoteListeners, treeOf } from './hosts-probe.mjs';
 import { recovery, says } from './hosts-recovery.mjs';
-import { measureOn, onHost, parseTree, SCRIPTS, stillRunning, turnTrees } from './hosts-ssh.mjs';
+import { leftInFolder, measureOn, onHost, parseTree, SCRIPTS, stillRunning, treeScript, turnTrees } from './hosts-ssh.mjs';
 import { remoteTurns } from './remote-facts.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);
@@ -191,10 +191,13 @@ export async function leftBy(hr, h, turn, stoppedAt, { measure = measureOn, wait
     };
   if (!seen.length) return { watched: 0, left: null, unmeasured: 'nothing was seen running under the turn before Stop.' };
   await wait(Math.max(0, (stoppedAt ?? 0) + STOP_SETTLED_MS - Date.now()));
-  const { out, why } = await measure(h.destination, SCRIPTS.tree);
+  const { out, why } = await measure(h.destination, treeScript(hr.stamp));
   try {
     if (out === null) throw new Error(why ?? '');
-    return { watched: seen.length, left: stillRunning(seen, parseTree(out)).map((p) => `${p.pid} ${p.args}`) };
+    const now = parseTree(out);
+    // What was seen under the turn, and anything still running in the run’s folder that no live turn has.
+    const left = new Map([...stillRunning(seen, now), ...leftInFolder(now)].map((p) => [p.pid, `${p.pid} ${p.args}`]));
+    return { watched: seen.length, left: [...left.values()] };
   } catch (e) {
     return { watched: seen.length, left: null, unmeasured: `the host’s processes couldn’t be listed: ${e.message}` };
   }

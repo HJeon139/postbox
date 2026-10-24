@@ -20,11 +20,12 @@ import {
   parseTree,
   SCRIPTS,
   stillRunning,
+  treeScript,
   turnTrees,
   workScript,
 } from '../../tools/uat/hosts-ssh.mjs';
 
-const TOOLS = ['id', 'sed', 'head', 'ls', 'rm', 'mkdir', 'rmdir', 'basename', 'dirname', 'cat', 'chmod', 'ps', 'pgrep', 'pkill', 'ss'];
+const TOOLS = ['id', 'sed', 'head', 'ls', 'rm', 'mkdir', 'rmdir', 'basename', 'dirname', 'cat', 'chmod', 'readlink', 'ps', 'pgrep', 'pkill', 'ss'];
 const where = (cmd) => spawnSync('/bin/sh', ['-c', `command -v ${cmd}`], { encoding: 'utf8' }).stdout.trim();
 
 /** A host’s home and the only programs on its PATH: this computer’s, less omit, with fakes in place of some. */
@@ -190,6 +191,31 @@ test('#120 UAT host scripts: Stop’s check finds a tool shell left running afte
     assert.ok(left.some((p) => p.args.startsWith('sleep 300')));
   } finally {
     if (shell) kill(-shell);
+    h.done();
+  }
+});
+
+test('#120 UAT host scripts: after Stop, a process left with its working folder in the run’s own is listed', { skip: LINUX }, async () => {
+  const h = host();
+  let pid = 0;
+  try {
+    assert.equal((await h.run(workScript('r1'))).code, 0);
+    // A command started in the project’s folder, then left on its own, as `nohup … &` leaves one.
+    const left = spawn('/bin/sh', ['-c', 'exec sleep 30'], { cwd: join(h.home, 'postbox-uat', 'r1', 'work'), stdio: 'ignore', detached: true });
+    pid = /** @type {number} */ (left.pid);
+    const elsewhere = spawn('/bin/sh', ['-c', 'exec sleep 30'], { cwd: h.home, stdio: 'ignore', detached: true });
+    try {
+      await new Promise((r) => setTimeout(r, 200));
+      const { out, why } = await h.measure(treeScript('r1'));
+      assert.notEqual(out, null, String(why));
+      const now = parseTree(/** @type {string} */ (out));
+      assert.ok(now.inFolder.has(String(pid)), `the one in the run’s folder: ${[...now.inFolder]}`);
+      assert.equal(now.inFolder.has(String(elsewhere.pid)), false, 'not one elsewhere');
+    } finally {
+      elsewhere.kill('SIGKILL');
+    }
+  } finally {
+    if (pid) process.kill(pid, 'SIGKILL');
     h.done();
   }
 });

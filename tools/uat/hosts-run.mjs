@@ -71,7 +71,7 @@ async function measure(h, script) {
 
 /**
  * Before setup: what the run measures with on each host, what listens here and there, and what of Postbox already
- * runs there. A host without pgrep, pkill, ps, ss or sed stops the run, since its checks would read nothing as
+ * runs there. A host without pgrep, pkill, ps, ss, sed or readlink stops the run, since its checks would read nothing as
  * nothing there. A host where Postbox’s daemon already runs is another Postbox’s, and the run won’t take it over.
  * @param {HostRun} hr
  */
