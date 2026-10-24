@@ -18,10 +18,9 @@
 // (tools/uat/triggers.mjs). Every finding gets a verdict: the verifier’s after the run, or yours (tools/uat-verdict.mjs).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { homedir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -34,8 +33,10 @@ import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { reviewFindings } from './uat/review.mjs';
+import { readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
+import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { coverageSection, gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
 import { mergePeopleVerdicts, withoutPreset } from './uat/verdicts.mjs';
@@ -69,29 +70,13 @@ const { values: opt } = parseArgs({
     release: { type: 'boolean', default: false },
     // Run a compatibility scenario: one with agents on a backend other than Claude’s, such as the Kiro CLI.
     compat: { type: 'boolean', default: false },
+    // Every run records itself and saves one telemetry report (designs/telemetry-persona.md, U4); no opts out.
+    telemetry: { type: 'string', default: 'yes' },
   },
 });
 
 // What verifying and filing need from here (tools/uat/review.mjs).
 const REVIEW = { root: ROOT, testerModel: opt['tester-model'] };
-
-// ── The person’s own Claude Code setup, to spot it leaking into agents (or missing from them) ─────────────
-
-function userSetup(workspace) {
-  const out = { userMcpServers: [], userRulesMarker: null };
-  try {
-    const cfg = JSON.parse(readFileSync(join(homedir(), '.claude.json'), 'utf8'));
-    out.userMcpServers = [...Object.keys(cfg.mcpServers ?? {}), ...Object.keys(cfg.projects?.[workspace]?.mcpServers ?? {})];
-  } catch {}
-  try {
-    out.userRulesMarker =
-      readFileSync(join(homedir(), '.claude', 'CLAUDE.md'), 'utf8')
-        .split('\n')
-        .map((l) => l.replace(/^[-#*\s]+/, '').trim())
-        .find((l) => l.length >= 30) ?? null;
-  } catch {}
-  return out;
-}
 
 const portFree = (port) =>
   new Promise((ok) => {
@@ -100,43 +85,6 @@ const portFree = (port) =>
       .once('listening', () => s.close(() => ok(true)))
       .listen(port, '127.0.0.1');
   });
-
-/** Each agent turn’s raw stream, as recorded by the Claude Code adapter (POSTBOX_CLAUDE_RECORD), by the Kiro CLI
- * adapter (POSTBOX_KIRO_RECORD) in streams/kiro/, or by the Antigravity CLI adapter (POSTBOX_AGY_RECORD) in streams/agy/.
- * A file is named for when its turn’s process started, and its last write is when that process last said anything (#126). */
-function readStreams(folder) {
-  if (!existsSync(folder)) return [];
-  return readdirSync(folder)
-    .filter((f) => f.endsWith('.jsonl'))
-    .map((f) => ({
-      handle: f.replace(/^\d+-/, '').replace(/\.jsonl$/, ''),
-      started: Number(/^(\d+)-/.exec(f)?.[1]) || undefined,
-      ended: statSync(join(folder, f)).mtimeMs,
-      events: readFileSync(join(folder, f), 'utf8')
-        .split('\n')
-        .filter(Boolean)
-        .flatMap((l) => {
-          try {
-            return [JSON.parse(l)];
-          } catch {
-            return [];
-          }
-        }),
-    }));
-}
-
-/** The agents’ own Claude Code transcripts, where injected reminders and settings show up. */
-function readTranscripts(facts, workspace) {
-  return facts.threads
-    .flatMap((t) => facts.state.threads[t]?.members ?? [])
-    .map((id) => facts.state.sessions[id])
-    .filter((se) => se?.backendState?.claudeSessionId)
-    .map((se) => ({ handle: se.handle, file: transcriptOf(workspace, se.backendState.claudeSessionId) }))
-    .filter((t) => existsSync(t.file))
-    .map((t) => ({ handle: t.handle, lines: readFileSync(t.file, 'utf8').split('\n') }));
-}
-
-const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`);
 
 // ── Run ────────────────────────────────────────────────────────────────────────────────────
 
@@ -171,6 +119,7 @@ async function main() {
   // The workspace is a git repository of its own. It lies inside the Postbox checkout, so without one an agent’s
   // git add and commit would land in Postbox’s history; a workroom agent had to notice and make a nested repo.
   spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
+  const canaries = scenario.seed === 'canaries' ? tm.seedCanaries(paths.workspace, dir) : null;
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -263,6 +212,7 @@ async function main() {
       POSTBOX_KIRO_RECORD: paths.kiroStreams,
       POSTBOX_AGY_RECORD: paths.agyStreams,
       POSTBOX_CODEX_RECORD: paths.codexStreams,
+      ...tm.telemetryEnv(scenario, dir, opt),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -328,6 +278,7 @@ async function main() {
     const mainThread = /#\/t\/([^/]+)/.exec(hash)?.[1];
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
+    const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
     const system = systemPrompt({ scenario, issues });
@@ -391,17 +342,9 @@ async function main() {
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
-      facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
-      // The Agents section and the top bar (#105): who has a row, and whether the title or project is cut.
-      facts.ui.agentRows = await page.evaluate(
-        `[...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => (/@([\\w-]+)/.exec(b.textContent) ?? [])[1]).filter(Boolean)`,
-      );
-      facts.ui.topbarCut = await page.evaluate(
-        `innerWidth >= 1200 && [...document.querySelectorAll('header.topbar .title, header.topbar .crumb')].some((n) => n.scrollWidth > n.clientWidth + 1)`,
-      );
-      facts.ui.reviewRawRows = await page.evaluate(
-        `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
-      );
+      const telOpts = { dir, data: paths.data, workspace: paths.workspace, main: mainThread, canaries, flags: tel.flags, shown: tel.shown };
+      if (tm.telemetryOn(opt)) tm.telemetryFacts(facts, { ...telOpts, startedBeforeTurns: tm.runnerRecords(scenario, opt) });
+      Object.assign(facts.ui, await readUi(page));
     };
     const newFindings = (only = null) => {
       const fresh = [];
@@ -547,6 +490,7 @@ async function main() {
         const k = `tester:${f.title.toLowerCase().replace(/\W+/g, '-').slice(0, 60)}`;
         if (!findings.has(k)) {
           findings.set(k, { ...f, source: 'tester', step, phase: ph.title });
+          if (tm.runnerRecords(scenario, opt)) tm.noteFlag(tel.flags, facts.state, facts.threads, f);
           log(`tester ${f.severity} ${f.category}${f.issue ? ` (#${f.issue})` : ''}: ${f.title}`);
         }
       }
@@ -580,7 +524,8 @@ async function main() {
       try {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
-        if (a.type === 'send') {
+        if (a.type === 'telemetry') actionResult = await tm.telemetryAction(td, a, key, tel);
+        else if (a.type === 'send') {
           await d.send(a.text ?? '');
           // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
           // so, so the tester knows where it went. The first mixed-room run wrote “critic: …” and “researcher: …”.
@@ -692,6 +637,8 @@ async function main() {
       }
     }
     await settle();
+    // After the last step, no agent takes another turn: the runner’s 🚩s and its report (U4).
+    if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ td, flags: tel.flags, dir, data: paths.data, main: mainThread, shown: tel.shown, log });
     await refreshFacts();
     newFindings();
     // What the last action caused counts, and every phase with triggers that didn’t all happen is a coverage gap.
@@ -704,16 +651,17 @@ async function main() {
     await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
+    if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     if (opt.verify !== 'no' || opt.file !== 'no') {
       await reviewFindings({ ...REVIEW, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
       await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     }
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
-    writeJsonAtomic(
-      join(dir, 'run.json'),
-      runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
-    );
+    writeJsonAtomic(join(dir, 'run.json'), {
+      ...runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
+      ...(facts.telemetry ? { telemetry: tm.telemetryBlock(facts.telemetry, all) } : {}),
+    });
   } finally {
     history.close();
     await page.close().catch(() => {});
@@ -814,6 +762,7 @@ async function writeReport({ dir, scenario, issues, findings, timeline, started,
     probes: facts.probes,
     samples: facts.samples,
     coverage,
+    ...(facts.telemetryOut ? { telemetry: facts.telemetryOut } : {}),
   });
   if (rechecked) await writeFile(join(dir, 'run.log'), `${readFileSync(join(dir, 'run.log'), 'utf8')}${logLines.join('\n')}\n`);
   else await writeFile(join(dir, 'run.log'), `${logLines.join('\n')}\n`);

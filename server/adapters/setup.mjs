@@ -1,4 +1,5 @@
-// What a real agent loads from the person’s own Claude Code setup (#57), shared by both adapters.
+// What a real agent loads from the person’s own Claude Code setup (#57), shared by both adapters; and where each
+// adapter’s raw stream goes (recorderFor).
 //
 // By default a persona loads the person’s setup, as in their terminal: user, project and local settings, so the
 // same skills, slash commands, plugins, permission rules and MCP servers, claude.ai connectors included (#59).
@@ -14,6 +15,8 @@
 // A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own, and
 // only Postbox’s MCP server: both adapters pass --strict-mcp-config / strictMcpConfig for it.
 
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 /** Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. */
 export const HOST_SOURCES = ['user', 'project', 'local'];
 // Isolated keeps the project’s local file too: that’s where “Always allow” on a refusal card saves its rules
@@ -248,6 +251,31 @@ export function deniedTools(persona) {
   const { canPublish } = setupOf(persona);
   const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
   return [...new Set([...(canPublish ? [] : PUBLISHING_TOOLS), ...Object.entries(TOOL_RULES).flatMap(([id, rules]) => (has.has(id) ? [] : rules))])];
+}
+
+// ── Raw streams ─────────────────────────────────────────────────────────────────────────────
+// Each adapter hands every line its backend streams to recorderFor: it goes to POSTBOX_*_RECORD’s folder when that’s set
+// (test fixtures, the UAT), and to the stream taps, which a recorded room’s telemetry registers (server/telemetry.mjs).
+
+/** @type {Map<any, (ctx: any, line: string, backend: string) => void>} by runtime */
+const taps = new Map();
+/** Registers a runtime’s tap; returns what unregisters it. */
+export function setStreamTap(rt, tap) {
+  taps.set(rt, tap);
+  return () => taps.delete(rt);
+}
+
+/**
+ * What one turn writes each raw line to.
+ * @param {any} ctx  the turn’s context @param {string|undefined} dir  POSTBOX_*_RECORD @param {string} backend
+ * @returns {(line: string) => void}
+ */
+export function recorderFor(ctx, dir, backend) {
+  const file = dir ? join(dir, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
+  return (line) => {
+    if (file) appendFileSync(file, `${line}\n`);
+    for (const tap of taps.values()) tap(ctx, line, backend);
+  };
 }
 
 /** The setup choices for a persona, with the defaults for personas from before they existed. */

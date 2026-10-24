@@ -42,7 +42,6 @@
 // Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_AGY_RECORD=<folder> saves each turn’s raw stream.
 
 import { spawn } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -52,7 +51,7 @@ import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
+import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
 export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false });
@@ -784,10 +783,10 @@ export class AntigravityCliAdapter {
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);
       });
-      const record = this.env.POSTBOX_AGY_RECORD ? join(this.env.POSTBOX_AGY_RECORD, `${Date.now()}-${persona.handle}.jsonl`) : null;
+      const record = recorderFor(ctx, this.env.POSTBOX_AGY_RECORD, 'antigravity-cli');
       createInterface({ input: child.stdout }).on('line', (line) => {
         if (!line.trim()) return;
-        if (record) appendFileSync(record, `${line}\n`);
+        record(line);
         let e;
         try {
           e = JSON.parse(line);
