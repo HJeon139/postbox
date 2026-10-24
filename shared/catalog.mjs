@@ -7,7 +7,7 @@
 
 import { LIMITS } from './limits.mjs';
 import { bool, id, int, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
-import { isSafeUrl } from './urls.mjs';
+import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
 
 /** The newest version of each component this app can render. */
 export const CATALOG = Object.freeze({
@@ -190,7 +190,7 @@ const SCHEMAS = {
     check(b, errs, opts) {
       if (typeof b.src !== 'string') return;
       // https from an allowed origin; plain http only for Postbox itself on this machine.
-      const local = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(b.src);
+      const local = LOCAL_HTTP.test(b.src);
       if (!isSafeUrl(b.src, { schemes: local ? ['http:'] : ['https:'], origins: opts.imageOrigins })) {
         errs.push(`src must be an https address from an allowed origin (${(opts.imageOrigins ?? []).join(', ') || 'none configured'}).`);
       }

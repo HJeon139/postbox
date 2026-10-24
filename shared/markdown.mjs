@@ -5,7 +5,7 @@
 // Supported: paragraphs (a single newline is a line break), # headings, - and 1. lists (nested by
 // indentation), > quotes, ``` fences, ```mermaid diagrams, $$ math blocks (or $$…$$ on one line), $inline math$,
 // LaTeX’s \[display\] and \(inline\) math, pipe tables,
-// ---, `code`, **bold**, *italic*, ~~strikethrough~~, [links](https://…), bare https:// links,
+// ---, `code`, **bold**, *italic*, ~~strikethrough~~, [links](https://…), ![images](https://…), bare https:// links,
 // citation markers [1], term links [label](term:key), glossary auto-links and @mentions.
 // While a reply is streaming, an unclosed fence is drawn as if it were closed.
 //
@@ -38,6 +38,7 @@ export const closesFence = (marker, line) => new RegExp(`^ {0,3}${marker[0]}{${m
  *   glossary?: { key: string, term: string }[],
  *   mentions?: string[],         // handles without the @
  *   folds?: boolean,             // false shows <details> as text, as a review does
+ *   pageOrigin?: string,         // the page’s origin, which Postbox’s own images move to (#180, #218)
  * }} [opts]
  * @returns {string} HTML
  */

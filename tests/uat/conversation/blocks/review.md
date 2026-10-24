@@ -13,6 +13,7 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 - Each line is its own comment target: click it, or Tab to it and press Enter, to open its comment box. A dim mark in the gutter (the line number and a dot, filled once the line has comments) shows every line takes one, without hovering. Screen readers hear “Comment on line 12”.
 - Closing a comment box (Add draft comment, Cancel or Escape) puts focus back on its line.
 - Markdown renders by block, the way it does in a reply: a table is a table, a list keeps its numbering and nesting, a code fence is code and a quote is quoted. Each table row, list item and code line takes its own comment; a table’s delimiter row and a fence’s markers don’t show.
+- A Markdown image (`![alt](address)`) shows as the image, from Postbox’s own media (at `127.0.0.1` or `localhost`) or an origin Postbox allows. One that can’t load, comes from another origin or has no full https address says “This image couldn’t load” in its place, with its alt text (#218).
 - In a diff, an added or removed table row, list item or code line stays in place inside its block, marked added or removed.
 - Comments are drafted, then submitted with a verdict (comment, approve, request changes).
 - When the agent reports what came of an approved draft (“Filed as #105”), the result shows under your answer, and the review stays answered: nothing asks you to approve it again (#106).

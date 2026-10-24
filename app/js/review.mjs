@@ -282,7 +282,7 @@ export function renderReview(b, item, ctx, kit) {
     // column, and its threads right after it. If the rendered rows or items don't match the targets,
     // the block is drawn line by line, as before.
     const blockRows = (g) => {
-      const box = h('div.tx.md', { class: quoted(g.depth), html: trusted(renderMarkdown(g.source, { folds: false })) });
+      const box = h('div.tx.md', { class: quoted(g.depth), html: trusted(renderMarkdown(g.source, { folds: false, pageOrigin: location.origin })) });
       const els = [...box.querySelectorAll(g.type === 'table' ? 'tr' : 'li')];
       const matches =
         els.length === g.units.length && (g.type === 'table' || g.units.every((u, i) => words(els[i].textContent ?? '').startsWith(itemWords(u))));
@@ -394,7 +394,7 @@ export function renderReview(b, item, ctx, kit) {
 
 /** Bold, italic and code inside a review line, without block structure. A fold shows as its source. */
 function inlineMd(t) {
-  return renderMarkdown(t || ' ', { folds: false })
+  return renderMarkdown(t || ' ', { folds: false, pageOrigin: location.origin })
     .replace(/^<p>|<\/p>$/g, '')
     .replace(/^<h\d>|<\/h\d>$/g, '');
 }

@@ -3,8 +3,9 @@
 // text is escaped, as there.
 
 import { mathAt } from './math.mjs';
-import { isSafeUrl } from './urls.mjs';
+import { isSafeUrl, LOCAL_HTTP, onPageOrigin } from './urls.mjs';
 
+const LABEL_MAX = 1000;
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
@@ -50,30 +51,16 @@ export function inline(s, ctx) {
       continue;
     }
 
-    if (c === '[') {
-      const close = s.indexOf(']', i + 1);
-      if (close > -1) {
-        const label = s.slice(i + 1, close);
-        if (s[close + 1] === '(') {
-          const end = matchParen(s, close + 1);
-          if (end > -1) {
-            const target = s.slice(close + 2, end).trim();
-            flush();
-            out += link(label, target, ctx);
-            i = end + 1;
-            continue;
-          }
-        } else if (/^\d{1,3}$/.test(label) && ctx.citations && +label >= 1 && +label <= ctx.citations) {
-          flush();
-          out += `<a class="cite" href="#${escapeHtml(ctx.citeId ?? 'src')}-${+label}" data-cite="${+label}" aria-label="Source ${+label}">${+label}</a>`;
-          i = close + 1;
-          continue;
-        }
-      }
+    const ref = c === '[' || (c === '!' && s[i + 1] === '[') ? bracket(s, i, ctx) : null;
+    if (ref) {
+      flush();
+      out += ref.html;
+      i = ref.end;
+      continue;
     }
 
     // Streaming text can stop right after “https://”, so the full match may not be there yet.
-    const bare = (c === 'h' || c === 'H') && (i === 0 || /[\s(]/.test(s[i - 1])) ? s.slice(i).match(/^https?:\/\/[^\s<>"]+/i) : null;
+    const bare = !ctx.inLink && (c === 'h' || c === 'H') && (i === 0 || /[\s(]/.test(s[i - 1])) ? s.slice(i).match(/^https?:\/\/[^\s<>"]+/i) : null;
     if (bare) {
       const url = bare[0].replace(/[.,;:!?)\]'”’]+$/, '');
       if (isSafeUrl(url)) {
@@ -91,21 +78,66 @@ export function inline(s, ctx) {
   return out;
 }
 
-function matchParen(s, open) {
+/**
+ * The index of what closes the ( at s[open], or another pair such as '[]', counting nested pairs; -1 if none does
+ * before limit.
+ */
+function matchParen(s, open, [a, b] = '()', limit = s.length) {
   let depth = 0;
-  for (let j = open; j < s.length; j++) {
+  for (let j = open; j < Math.min(s.length, limit); j++) {
     if (s[j] === '\\') {
       j++;
       continue;
     }
-    if (s[j] === '(') depth++;
-    else if (s[j] === ')' && --depth === 0) return j;
+    if (s[j] === a) depth++;
+    else if (s[j] === b && --depth === 0) return j;
   }
   return -1;
 }
 
+/**
+ * What starts at s[i], a [ or an image’s !: a link, an image, or the marker of a source that exists. Anything else is
+ * text, and gets null.
+ * @param {string} s @param {number} i @param {any} ctx
+ * @returns {{ html: string, end: number } | null}  end is the index just after it
+ */
+function bracket(s, i, ctx) {
+  const image = s[i] === '!';
+  const open = image ? i + 1 : i;
+  // Brackets nest, so an image can be a link’s text. A label is looked for over the next LABEL_MAX characters only, so
+  // a line of unclosed brackets isn’t scanned to its end from each one.
+  const close = matchParen(s, open, '[]', open + LABEL_MAX);
+  if (close < 0) return null;
+  const label = s.slice(open + 1, close);
+  // A link’s text holds no link, since an <a> can’t hold another.
+  if (s[close + 1] === '(' && !(ctx.inLink && !image)) {
+    const end = matchParen(s, close + 1);
+    if (end < 0) return null;
+    const target = s.slice(close + 2, end).trim();
+    return { html: image ? img(label, target, ctx) : link(label, target, ctx), end: end + 1 };
+  }
+  if (image || !/^\d{1,3}$/.test(label) || !ctx.citations || +label < 1 || +label > ctx.citations) return null;
+  const n = +label;
+  return { html: `<a class="cite" href="#${escapeHtml(ctx.citeId ?? 'src')}-${n}" data-cite="${n}" aria-label="Source ${n}">${n}</a>`, end: close + 1 };
+}
+
+/**
+ * An image (#218): https, or plain http for Postbox’s own media on this computer, moved to the page’s origin as an
+ * image block’s is (#180). The page’s Content-Security-Policy decides which origins load. Any other address is said
+ * in its place, with the alt text.
+ * @param {string} alt @param {string} target  the address, and any title after it @param {{ pageOrigin?: string }} ctx
+ */
+function img(alt, target, ctx) {
+  const src = target.split(/\s+/)[0];
+  const local = LOCAL_HTTP.test(src);
+  if (!isSafeUrl(src, { schemes: local ? ['http:'] : ['https:'] }))
+    return `<span class="md-img-failed">This image couldn’t load: its address isn’t a full https address.${alt ? ` It shows: ${escapeHtml(alt)}` : ''}</span>`;
+  const at = local && ctx.pageOrigin ? onPageOrigin(src, ctx.pageOrigin) : src;
+  return `<img class="md-img" src="${escapeHtml(at)}" alt="${escapeHtml(alt)}" loading="lazy" referrerpolicy="no-referrer">`;
+}
+
 function link(label, target, ctx) {
-  const text = inline(label, { ...ctx, citations: 0 });
+  const text = inline(label, { ...ctx, citations: 0, inLink: true });
   const term = target.match(/^term:([A-Za-z0-9][A-Za-z0-9_.:-]{0,63})$/);
   if (term) return `<span class="term" tabindex="0" data-term="${escapeHtml(term[1])}">${text}</span>`;
   if (isSafeUrl(target)) return `<a href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">${text}</a>`;

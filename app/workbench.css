@@ -319,6 +319,9 @@ pb-ring .dot.still { animation: none; }
 .md h3 { font-size: 14px; font-weight: 650; margin-top: 4px; }
 .md code { background: var(--chip); border: 1px solid var(--line); padding: 0 4px; border-radius: 4px; }
 .md blockquote { margin: 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--line); color: var(--dim); }
+/* A Markdown image (#218): no wider than its column. One that can't load, or whose address isn't one, says so instead. */
+.md img.md-img { max-width: 100%; height: auto; border-radius: 6px; vertical-align: middle; }
+.md .md-img-failed, .md .img-failed { display: inline-flex; font-size: 12px; color: var(--alert-ink); }
 .caret { display: inline-block; width: 7px; height: 15px; vertical-align: -2px; margin-left: 2px; background: var(--accent); border-radius: 1px; animation: pb-breathe 1s steps(2) infinite; }
 .shot .caret { animation: none; }
 
