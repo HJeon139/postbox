@@ -2,6 +2,27 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.25.0 (2026-10-24)
+
+### Features
+
+- **telemetry:** record every UAT run, and put Telemetry in Work's place
+- **telemetry:** keep recordings per conversation, bound the classifier, and prove the gate
+- **telemetry:** open the report in a Telemetry view beside the room
+- **telemetry:** record a room, and gate its report, unlisted
+
+### Fixes
+
+- **telemetry:** a clone on its own data/ can't record, per the person's ruling on #239
+- **telemetry:** the fourth review's findings on #239
+- **telemetry:** the third review's findings on #239
+- **telemetry:** the second review's findings on #239
+- **telemetry:** the review's page findings on #239, and a browser check
+- **telemetry:** the review's server findings on #239
+- **telemetry:** react 🚩 once per item at the end of a UAT run
+- **telemetry:** fixes from the first UAT runs
+- **telemetry:** read only Postbox's own tool results in recording-visible
+
 ## 0.24.0 (2026-10-24)
 
 ### Features
