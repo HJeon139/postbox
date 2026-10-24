@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.20.0 (2026-10-24)
+
+### Features
+
+- **pane:** reopen a thread left open when you come back to its conversation
+- **pane:** resize the right pane from a handle on its left edge
+- **pane:** hide the sidebar while the right pane needs its room
+
+### Fixes
+
+- **pane:** an honest sidebar button beside the pane, and widths without the scroll bar
+- **pane:** keep the sidebar button true, and the sidebar out of the pane's way
+- **pane:** keep the conversation column usable beside the right pane
+
 ## 0.19.0 (2026-10-24)
 
 ### Features
