@@ -118,3 +118,14 @@ test('#135: an agent that wakes a busy agent from two turns in a row sends two m
   assert.notEqual(turns[0], turns[1]);
   assert.deepEqual([first.fromTurnId, second.fromTurnId], turns);
 });
+
+test('#135: a turn a scheduled wake started says so on its replies', async () => {
+  const { store, rt, adapter, t, alpha } = setup();
+  adapter.next.push(async (c) => c.text('Checked the totals again.'));
+  rt.schedule(alpha.id, { inMs: 1000, note: 'Check the totals again.' });
+  await sleep(1100);
+  await settle(rt);
+  const reply = store.items(t.id).findLast((x) => x.kind === 'agent');
+  assert.equal(reply.text, 'Checked the totals again.');
+  assert.deepEqual(reply.woke, { scheduled: true });
+});

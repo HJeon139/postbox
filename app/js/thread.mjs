@@ -30,9 +30,13 @@ const speaker = (it) => (it.kind === 'user' ? 'you' : it.kind === 'agent' || it.
 // another turn (its fromTurnId) (#135). An item from before turns were kept, or no turn made, goes with the one before.
 const turnOf = (it) => it.turnId ?? it.fromTurnId;
 const sameTurn = (a, b) => !turnOf(a) || !turnOf(b) || turnOf(a) === turnOf(b);
-// What woke the turn, when another agent did (#135): “woken by @critic”, or “after @researcher replied in a side thread”.
-const wokeText = ({ by, reply, in: at }) =>
-  reply ? `after @${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}` : `woken by @${by}`;
+// What woke the turn (#135): “woken by @critic”, “after @researcher replied in a side thread”, or its scheduled wake.
+const wokeText = ({ by, reply, in: at, scheduled }) =>
+  scheduled
+    ? 'woken by a scheduled wake'
+    : reply
+      ? `after @${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}`
+      : `woken by @${by}`;
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
 

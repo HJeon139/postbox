@@ -5,8 +5,9 @@
 //   • a glossary term inside a definition opens a card of its own over its parent’s, by mouse and by keyboard;
 //     leaving the child closes only the child, a cycle (U → U:13 → U) and a fourth level open nothing, and the cards
 //     stay on screen at 375 px (#103);
-//   • a later turn of the same agent gets its own sender line, with its time and what woke it, while one turn’s items
-//     share one; so does each wake it sent from a turn of its own, in a side thread (#135).
+//   • a later turn of the same agent gets its own sender line, with its time and what woke it (another agent, or a
+//     scheduled wake), while one turn’s items share one; so does each wake it sent from a turn of its own, in a side
+//     thread (#135).
 //
 //   node tools/check-transcript-render.mjs
 //
@@ -245,8 +246,17 @@ try {
   );
   check(/^@analyst.*\[time\]$/.test(one ?? '') && two === '', `#135 one turn’s two items share one sender line (“${one}”, “${two}”)`);
 
+  // A turn a scheduled wake started says so, as the timer delivers it ({ kind: 'wake', note }, server/adapters/adapter.mjs).
+  const replies = () => store.items(room.id).filter((x) => x.kind === 'agent' && x.handle === 'analyst').length;
+  const had = replies();
+  rt.schedule(an.id, { inMs: 1000, note: 'Look at the totals again.' });
+  await until(() => replies() > had, 5000);
+  await idle();
+  await page.synced(store.state.seq);
   const whoOf = (id) =>
     `[...document.querySelectorAll('.transcript[data-thread="${id}"] > .item')].filter((n) => n.querySelector('.md p')).map((n) => n.querySelector('.who')?.innerText.replace(/\\s+/g, ' ').trim() ?? '')`;
+  const woken = (await page.evaluate(whoOf(room.id))).at(-1);
+  check(/^@analyst.*woken by a scheduled wake/.test(woken ?? ''), `#135 a turn a scheduled wake started says so on its sender line (“${woken}”)`);
   // Two wakes from two turns of @analyst, sent while @reviewer was busy, sit together in the side thread, as agentWake
   // records them: each says the turn it came from.
   for (const [n, text] of ['Check the totals.', 'And the dates, please.'].entries())

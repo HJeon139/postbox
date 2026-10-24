@@ -103,10 +103,11 @@ const count = (n) => n.toLocaleString('en-US');
 const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
 /**
  * What woke a turn, on each item it shows, for its sender line (#135): another agent, with a message, or with its
- * answer to one (endTurn sends that with saidIn, where it answered).
+ * answer to one (endTurn sends that with saidIn, where it answered); or a wake it scheduled.
  */
 const wokeOf = (turn) => {
   const m = turn?.asked?.message;
+  if (m?.kind === 'wake') return { woke: { scheduled: true } };
   return m?.kind === 'agent' ? { woke: { by: String(m.from ?? '').replace(/^@/, ''), ...(m.saidIn ? { reply: true, in: m.saidIn } : {}) } } : {};
 };
 /** What each reply of a turn carries: what woke it, and that a reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check. */
