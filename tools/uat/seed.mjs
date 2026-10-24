@@ -31,12 +31,14 @@ const onBackend = (scenario, codexDefaultModel, p) => {
     ? {
         ...p,
         backend: b.backend,
-        ...(scenario.permissionModes[p.handle] ? { permissionMode: scenario.permissionModes[p.handle] } : {}),
         ...(b.model ? { model: b.model } : b.backend === 'codex' && codexDefaultModel ? { model: codexDefaultModel } : {}),
         ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}),
       }
     : p;
 };
+// An agent the scenario gives a permission mode (`- permission_modes:`) starts in it, on whichever backend it runs:
+// remotehosts’ @critic asks before it runs anything, on Claude Code (#120).
+const withMode = (scenario, p) => (scenario.permissionModes[p.handle] ? { ...p, permissionMode: scenario.permissionModes[p.handle] } : p);
 // Claude agents run on the run’s model, unless the scenario keeps the persona’s and --force-agent-model doesn’t override it.
 const fast = (scenario, opt, p) => {
   if ((scenario.models === 'persona' && !opt['force-agent-model']) || scenario.backends[p.handle]) return p;
@@ -85,7 +87,8 @@ export async function seedAgents({ scenario, opt, root, data, log }) {
     ...personas.filter((p) => !scenario.agents.includes(p.handle)),
   ]
     .map((p) => fast(scenario, opt, p))
-    .map((p) => onBackend(scenario, codexDefaultModel, p));
+    .map((p) => onBackend(scenario, codexDefaultModel, p))
+    .map((p) => withMode(scenario, p));
   await checkClis(scenario, opt, log);
   await writeFile(join(data, 'agents.json'), JSON.stringify(agents, null, 2));
   // What the agents ran on, for the report: a fast run’s findings about agent choices aren’t the default model’s.
