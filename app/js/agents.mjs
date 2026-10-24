@@ -13,6 +13,7 @@
 import { BACKEND_NAMES, chipEffort, chipModel } from '/shared/agent-facts.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { everyMinute, hostSection, modelOptions } from './agent-host.mjs';
+import { toolSwitch } from './agent-tools.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
@@ -385,37 +386,4 @@ function modeChoice(se, p, done, failed) {
     // In the backend’s own words where it reads the modes differently (Kiro, Codex), as the persona sheet says it.
     h('span.help', modeHelp(p.backend, MODES.find(([id]) => id === value) ?? MODES[0])),
   ];
-}
-
-/** A tool as a switch, on the persona: on means not denied; the permission mode still decides (TOOL_RULES). */
-function toolSwitch(se, p, id, name, off, done, failed) {
-  const on = (p.tools ?? []).includes(id);
-  const helpId = `qp-tool-${id.replace(/\W/g, '-')}`;
-  return h(
-    'div.qp-tool',
-    h(
-      'button.qp-switch',
-      {
-        type: 'button',
-        role: 'switch',
-        'aria-checked': String(on),
-        'aria-label': `${name}, for @${se.handle} everywhere`,
-        'aria-describedby': helpId,
-        onclick: () => {
-          // From the persona as it is now, not as it was when the panel painted: another switch may have changed it.
-          const now = S().personas[se.personaId]?.tools ?? [];
-          const was = now.includes(id);
-          const tools = was ? now.filter((x) => x !== id) : [...now, id];
-          api(`/api/personas/${se.personaId}`, { tools }, 'PATCH').then(
-            () => done(`${name}: ${was ? 'off' : 'on'} for @${se.handle} in every conversation, from their next turns.`),
-            failed,
-          );
-        },
-      },
-      h('span.track', { 'aria-hidden': 'true' }),
-      h('span', name),
-      h('span.dim.small', { 'aria-hidden': 'true' }, on ? 'On' : 'Off'),
-    ),
-    h('span.help', { id: helpId }, off),
-  );
 }
