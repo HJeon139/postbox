@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.24.0 (2026-10-24)
+
+### Features
+
+- **review:** let an agent comment on another agent's review block
+- **review:** preview a draft whole, comment on a selection, and go wide or full screen
+
+### Fixes
+
+- **review:** the block's agent can't rewrite or drop a reviewer's comments in a thread it sends back
+- **review:** a click on an image that failed to load opens Lines at its line
+- **review:** refuse a revision that would push a reviewer's kept thread past 200
+- **review:** keep focus on the Comment button when the selection is heard again
+- **review:** draw a review's Markdown images
+
 ## 0.23.0 (2026-10-24)
 
 ### Features
