@@ -73,6 +73,7 @@ import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
+import { settleSubagentSteps } from './turn-steps.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -1372,23 +1373,8 @@ export class Runtime {
     }
   }
 
-  /**
-   * A subagent that worked in the background, and its own calls, still running when its turn ends: nothing will say
-   * how they ended now (Stop, or its CLI exited without saying), so they read as stopped (#73).
-   */
   settleSubagentSteps(turn) {
-    const open = new Set((turn.steps ?? []).filter((s) => s.kind === 'agent' && s.state === 'running').map((s) => s.id));
-    if (!open.size) return;
-    for (let grew = true; grew; ) {
-      grew = false;
-      for (const s of turn.steps)
-        if (s.state === 'running' && !s.job && s.parent && open.has(s.parent) && !open.has(s.id)) {
-          open.add(s.id);
-          grew = true;
-        }
-    }
-    turn.steps = turn.steps.map((s) => (open.has(s.id) ? { ...s, state: 'stopped', detail: 'its turn ended before it finished' } : s));
-    if (turn.first) this.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+    return settleSubagentSteps(this, turn);
   }
 
   /** The keys (`item:step`) of a session’s progress steps running in a thread. */
