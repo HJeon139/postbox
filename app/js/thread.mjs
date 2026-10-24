@@ -24,6 +24,12 @@ export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
 const speaker = (it) => (it.kind === 'user' ? 'you' : it.kind === 'agent' || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null);
+// One turn’s items share a sender line; a later turn of the same agent gets its own (#135). An item from before turns
+// were kept, or one no turn made, goes with the one before it, as it always did.
+const sameTurn = (a, b) => !a.turnId || !b.turnId || a.turnId === b.turnId;
+// What woke the turn, when another agent did (#135): “woken by @critic”, or “after @researcher replied in a side thread”.
+const wokeText = ({ by, reply, in: at }) =>
+  reply ? `after @${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}` : `woken by @${by}`;
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
 
@@ -378,7 +384,8 @@ const who = (it, { you = false } = {}) => {
   const ring = se ? ringFor(se, 'xs') : h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' });
   if (se) ring.dataset.session = se.id;
   const state = se ? h('span.who-state', { dataset: { session: se.id, item: it.id }, 'aria-live': 'off' }) : null;
-  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
+  const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
+  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
@@ -447,7 +454,7 @@ function messageActions(node, it, ctx) {
 }
 
 function renderItem(it, prev, ctx) {
-  const showWho = !(prev && speaker(prev) && speaker(prev) === speaker(it) && prev.kind !== 'voice');
+  const showWho = !(prev && speaker(prev) && speaker(prev) === speaker(it) && prev.kind !== 'voice' && sameTurn(prev, it));
   switch (it.kind) {
     case 'user': {
       return h(

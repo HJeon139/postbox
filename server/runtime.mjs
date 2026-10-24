@@ -103,6 +103,16 @@ const count = (n) => n.toLocaleString('en-US');
  */
 const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
 /**
+ * What woke a turn, on each item it shows, for its sender line (#135): another agent, with a message, or with its
+ * answer to one (endTurn sends that with saidIn, where it answered).
+ */
+const wokeOf = (turn) => {
+  const m = turn?.asked?.message;
+  return m?.kind === 'agent' ? { woke: { by: String(m.from ?? '').replace(/^@/, ''), ...(m.saidIn ? { reply: true, in: m.saidIn } : {}) } } : {};
+};
+/** What each reply of a turn carries: what woke it, and that a reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check. */
+const replyMarks = (turn) => ({ ...(turn.kind === 'lint' ? { lintReply: true } : {}), ...wokeOf(turn) });
+/**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
  * read_message takes, so the agent can read the rest (#109).
  */
@@ -709,8 +719,7 @@ export class Runtime {
           text: '',
           status: 'streaming',
           activity: turn.first ? null : { steps: [...turn.steps] },
-          // A reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check.
-          ...(turn.kind === 'lint' ? { lintReply: true } : {}),
+          ...replyMarks(turn),
         });
         // The text before a tool call or a block is finished; only the newest segment shows the caret.
         if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
@@ -1089,7 +1098,7 @@ export class Runtime {
     }
     // A reply to an agent that woke this one goes back to it.
     if (turn.replyTo && this.s.sessions[turn.replyTo] && !this.s.sessions[turn.replyTo].archived) {
-      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)' }, { threadId: turn.replyIn });
+      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)', saidIn: turn.threadId }, { threadId: turn.replyIn });
       this.recordAgentMessage(se.id, 'to', this.s.sessions[turn.replyTo].handle, turn.said);
       this.recordAgentMessage(turn.replyTo, 'from', se.handle, turn.said);
     }
@@ -3447,7 +3456,16 @@ export class Runtime {
         const it = rt.addItem(
           threadId(),
           v.ok
-            ? { kind: 'block', sessionId, handle: se().handle, turnId: turn?.id ?? null, valid: true, block: v.block, answered: false }
+            ? {
+                kind: 'block',
+                sessionId,
+                handle: se().handle,
+                turnId: turn?.id ?? null,
+                valid: true,
+                block: v.block,
+                answered: false,
+                ...wokeOf(turn),
+              }
             : {
                 kind: 'block',
                 sessionId,
@@ -3539,6 +3557,9 @@ export class Runtime {
           kind: 'proposal',
           sessionId,
           handle: se().handle,
+          // Its turn’s, so it shares that turn’s sender line and no other (#135).
+          turnId: turn?.id ?? null,
+          ...wokeOf(turn),
           status: 'open',
           proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend },
           extraTools: tools.filter((t) => !mine.has(t)),

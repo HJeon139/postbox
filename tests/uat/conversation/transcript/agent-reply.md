@@ -11,6 +11,7 @@ The agent’s answer, streamed as it’s written, in Markdown.
 ## Expected functionality
 
 - Speaker line: ring, @name, “mock” for a mock agent (#12), status word while it works, time.
+- One speaker line per turn: the items of one turn (text split by a block or a tool call) share it, and a later turn of the same agent gets its own, with its time. A turn another agent started says so: “woken by @critic”, or “after @researcher replied in a side thread” (#135).
 - Text streams with a caret; only the newest segment of a turn shows the caret.
 - A screen reader hears the reply through the live region a sentence at a time, once each sentence is finished, as plain text: no code ticks, emphasis or heading marks, list bullets or link addresses, and no code blocks. A table is read a row at a time, as its cells, without its delimiter row. A dot inside a word (`converter.py`, `v0.13.0`, `6.21371`, “e.g.”) stays in its sentence, and nothing before it is lost (#196).
 - Raw HTML is shown as text, never rendered; links open in a new tab with noopener.
