@@ -1,16 +1,16 @@
 // Leaving lines out of a telemetry report, and saving it (designs/telemetry-persona.md, R18–R20). Postbox applies Leave
 // out to the bytes itself, re-runs the final check and shows the new hash; Save writes exactly the bytes whose hash you
-// were shown to telemetry/reports/<id>/report.json in the data folder, then run.json and findings.json, derived from it
+// were shown to telemetry/<conversation id>/reports/<id>/report.json in the data folder, then run.json and findings.json, derived from it
 // by fixed templates over its enums, so every string in them is Postbox’s. Nothing goes over the network.
 
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { finalCheck } from '../shared/telemetry.mjs';
 import { jsonLines } from '../shared/telemetry-bytes.mjs';
 import { FLAG } from '../shared/telemetry-vocab.mjs';
 import { httpError } from './helpers.mjs';
-import { convOf, folder, reportIndex, telemetryRoot, write, writeIndex } from './telemetry.mjs';
+import { convOf, recFolder, reportFolder, telemetryRoot, write } from './telemetry.mjs';
 import { bytesOf, draftView, readDraft, vocabOf } from './telemetry-report.mjs';
 
 const sha = (text) => createHash('sha256').update(text).digest('hex');
@@ -21,12 +21,15 @@ export function setLeftOut(rt, threadId, id, { line, out }) {
   const draft = readDraft(rt, conv.id, id);
   if (draft.saved) throw httpError(409, 'This report is saved already.');
   const n = Number(line);
-  const lines = jsonLines(draft.report).text.split('\n').length;
+  const shown = jsonLines(draft.report);
+  const lines = shown.text.split('\n').length;
   if (!Number.isInteger(n) || n < 1 || n > lines) throw httpError(422, `The report has lines 1 to ${lines}.`);
+  if (shown.fixed.has(n - 1))
+    throw httpError(422, 'That line only opens or closes a part of the report, or says what it is. Leave out the lines in it instead.');
   draft.leftOut = out ? [...new Set([...(draft.leftOut ?? []), n])] : (draft.leftOut ?? []).filter((x) => x !== n);
-  const problems = finalCheck(bytesOf(draft).report, vocabOf(rt));
+  const problems = finalCheck(bytesOf(draft).report, vocabOf(rt, draft));
   if (problems.length) throw httpError(422, `Leaving that out fails the final check (${problems.slice(0, 3).join(', ')}).`);
-  write(join(folder(rt, conv.id), 'drafts', `${id}.json`), JSON.stringify(draft));
+  write(join(recFolder(rt, conv.id, 'drafts'), `${id}.json`), JSON.stringify(draft));
   return draftView(rt, conv.id, id);
 }
 
@@ -39,25 +42,24 @@ export function saveReport(rt, threadId, id, { hash } = {}) {
   const draft = readDraft(rt, conv.id, id);
   const { report, text, hash: now } = bytesOf(draft);
   if (hash !== now) throw httpError(409, 'The report changed since you looked at it. Look at it again, then save.');
-  const problems = finalCheck(report, vocabOf(rt));
+  const problems = finalCheck(report, vocabOf(rt, draft));
   if (problems.length) throw httpError(422, `The report fails the final check (${problems.slice(0, 3).join(', ')}).`);
-  const dir = folder(rt, 'reports', id);
+  const dir = reportFolder(rt, conv.id, id);
   write(join(dir, 'report.json'), text);
   write(join(dir, 'run.json'), `${JSON.stringify(runOf(report), null, 2)}\n`);
   write(
     join(dir, 'findings.json'),
-    `${JSON.stringify({ scenario: 'A live room', started: report.recording?.started ?? null, findings: findingsOf(report), timeline: [] }, null, 2)}\n`,
+    `${JSON.stringify({ scenario: 'A live room', day: report.recording?.day ?? null, findings: findingsOf(report), timeline: [] }, null, 2)}\n`,
   );
-  writeIndex(rt, { ...reportIndex(rt), [id]: conv.id });
   draft.saved = { at: Date.now(), hash: now };
-  write(join(folder(rt, conv.id), 'drafts', `${id}.json`), JSON.stringify(draft));
+  write(join(recFolder(rt, conv.id, 'drafts'), `${id}.json`), JSON.stringify(draft));
   return { ok: true, id, hash: now };
 }
 
 /** A saved report’s bytes and their hash, read back from report.json: what File issue sends from. */
-export function savedBytes(rt, id) {
-  if (!/^rep_[A-Za-z0-9]{1,16}$/.test(String(id))) throw httpError(404, 'There’s no such report.');
-  const file = join(folder(rt, 'reports'), id, 'report.json');
+export function savedBytes(rt, convId, id) {
+  if (!convId || !/^rep_[A-Za-z0-9]{1,16}$/.test(String(id))) throw httpError(404, 'There’s no such report.');
+  const file = join(telemetryRoot(rt) ?? '', convId, 'reports', id, 'report.json');
   if (!existsSync(file)) throw httpError(404, 'That report isn’t saved.');
   const text = readFileSync(file, 'utf8');
   return { text, hash: sha(text), report: JSON.parse(text) };
@@ -67,13 +69,13 @@ export function savedBytes(rt, id) {
 export function savedReports(rt, threadId) {
   const conv = convOf(rt, threadId);
   const root = telemetryRoot(rt);
-  if (!conv || !root || !existsSync(join(root, 'reports'))) return [];
-  const index = reportIndex(rt);
-  return readdirSync(join(root, 'reports'))
-    .filter((id) => index[id] === conv.id)
+  const dir = conv && root ? join(root, conv.id, 'reports') : null;
+  if (!dir || !existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((id) => existsSync(join(dir, id, 'report.json')))
     .map((id) => {
-      const { hash, report } = savedBytes(rt, id);
-      return { id, hash, at: report.recording?.ended ?? 0, findings: findingsOf(report).map((f) => ({ key: f.key, title: f.title })) };
+      const { hash, report } = savedBytes(rt, conv.id, id);
+      return { id, hash, at: statSync(join(dir, id, 'report.json')).mtimeMs, findings: findingsOf(report).map((f) => ({ key: f.key, title: f.title })) };
     })
     .sort((a, b) => b.at - a.at);
 }
@@ -81,11 +83,8 @@ export function savedReports(rt, threadId) {
 /** Deletes a saved report. */
 export function deleteReport(rt, threadId, id) {
   const conv = convOf(rt, threadId);
-  const index = reportIndex(rt);
-  if (index[id] !== conv?.id) throw httpError(404, 'That report wasn’t saved from this conversation.');
-  rmSync(join(folder(rt, 'reports'), id), { recursive: true, force: true });
-  const { [id]: _gone, ...rest } = index;
-  writeIndex(rt, rest);
+  savedBytes(rt, conv?.id, id);
+  rmSync(join(reportFolder(rt, conv.id), id), { recursive: true, force: true });
   return { ok: true };
 }
 
@@ -99,7 +98,6 @@ function modelOf(report) {
 
 /** run.json for a live report (R20): a run with no steps, so the per-step discovery curve leaves it out. */
 export function runOf(report) {
-  const usd = (report.turns ?? []).reduce((a, t) => a + (t.costUsd ?? 0), 0);
   return {
     run: report.id,
     scenario: 'live',
@@ -112,8 +110,9 @@ export function runOf(report) {
     steps: 0,
     stepCap: 0,
     startPhase: 1,
-    minutes: Math.round(((report.recording?.ended ?? 0) - (report.recording?.started ?? 0)) / 60000),
-    cost: { agents: Math.round(usd * 100) / 100, tester: 0, kiroCredits: null },
+    // A report holds durations and costs in buckets only (R12), so a live run has no exact minutes or spend.
+    minutes: null,
+    cost: { agents: null, tester: 0, kiroCredits: null },
     coverage: null,
   };
 }

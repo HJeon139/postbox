@@ -43,8 +43,8 @@ export function issueText(report, f) {
 }
 
 /** The finding and its issue text, from the saved report on disk. */
-function rendered(rt, id, key) {
-  const { report } = savedBytes(rt, id);
+function rendered(rt, convId, id, key) {
+  const { report } = savedBytes(rt, convId, id);
   const f = findingsOf(report).find((x) => x.key === key);
   if (!f) throw httpError(404, 'That finding isn’t in the saved report.');
   const { title, body } = issueText(report, f);
@@ -53,8 +53,8 @@ function rendered(rt, id, key) {
 }
 
 /** What File issue shows before anything is sent: the exact text, and its hash (R19, step 1). */
-export function issuePreview(rt, id, key) {
-  const { text, hash } = rendered(rt, id, key);
+export function issuePreview(rt, convId, id, key) {
+  const { text, hash } = rendered(rt, convId, id, key);
   return { text, hash };
 }
 
@@ -69,10 +69,10 @@ export const runGh = (args) =>
 /**
  * Sends a finding’s issue, once you’ve seen its text (R19, steps 2 and 3). Returns what the page does next: nothing, or
  * copy this text and open this page.
- * @param {any} rt @param {string} id @param {string} key @param {{ hash?: string }} body
+ * @param {any} rt @param {string} convId @param {string} id @param {string} key @param {{ hash?: string }} body
  */
-export async function fileIssue(rt, id, key, { hash } = {}) {
-  const { f, title, body, text, hash: now } = rendered(rt, id, key);
+export async function fileIssue(rt, convId, id, key, { hash } = {}) {
+  const { f, title, body, text, hash: now } = rendered(rt, convId, id, key);
   if (hash !== now) throw httpError(409, 'The issue’s text isn’t the one you were shown, so Postbox didn’t send it. Look at it again.');
   const gh = rt.gh ?? runGh;
   if ((await gh(['auth', 'status'])).status !== 0) return { ok: true, copy: text, open: NEW_ISSUE, hash: now };

@@ -150,16 +150,17 @@ function draftView(convId, d, load) {
         { class: l.out ? 'out' : '' },
         h('span.tv-n', { 'aria-hidden': 'true' }, String(l.n)),
         h('code.tv-text', l.line),
-        h(
-          'button.btn.sm.ghost',
-          {
-            type: 'button',
-            'aria-pressed': String(l.out),
-            'aria-label': `${l.out ? 'Put back' : 'Leave out'} line ${l.n}`,
-            onclick: () => api(`${at}/leave-out`, { line: l.n, out: !l.out }).then(load, fail('Couldn’t change it')),
-          },
-          l.out ? 'Put back' : 'Leave out',
-        ),
+        l.toggle &&
+          h(
+            'button.btn.sm.ghost',
+            {
+              type: 'button',
+              'aria-pressed': String(l.out),
+              'aria-label': `${l.out ? 'Put back' : 'Leave out'} line ${l.n}`,
+              onclick: () => api(`${at}/leave-out`, { line: l.n, out: !l.out }).then(load, fail('Couldn’t change it')),
+            },
+            l.out ? 'Put back' : 'Leave out',
+          ),
       ),
     ),
   );

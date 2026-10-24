@@ -7,19 +7,19 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { finalCheck, labelsOf } from '../shared/telemetry.mjs';
-import { jsonLines, leaveOut, pruned } from '../shared/telemetry-bytes.mjs';
+import { blurred, jsonLines, leaveOut, pruned } from '../shared/telemetry-bytes.mjs';
 import { FLAG } from '../shared/telemetry-vocab.mjs';
 import { httpError } from './helpers.mjs';
 import { CHECKS, liveChecks } from './room-checks.mjs';
 import { newId } from './store.mjs';
-import { convOf, folder, readLines, write } from './telemetry.mjs';
-import { classifierInput, classify } from './telemetry-classify.mjs';
+import { convOf, readLines, recFolder, write } from './telemetry.mjs';
+import { BEFORE, boundedInput, classify } from './telemetry-classify.mjs';
 import { collect, tierA } from './telemetry-record.mjs';
 
 const BY_BACKEND = { 'kiro-cli': 'kiroStreams', 'antigravity-cli': 'agyStreams', codex: 'codexStreams' };
 
-/** What the final check needs from Postbox itself: its check ids, and this build’s version and commit. */
-export const vocabOf = (rt) => ({ checkIds: CHECKS.map((c) => c.id), build: rt.config.build ?? {} });
+/** What the final check needs: Postbox’s check ids, this build’s version and commit, and the refs this report issued. */
+export const vocabOf = (rt, draft) => ({ checkIds: CHECKS.map((c) => c.id), build: rt.config.build ?? {}, refs: draft?.refs ?? [] });
 
 /** A draft’s bytes, as shown and saved: its report less the lines left out, and their hash. */
 export function bytesOf(draft) {
@@ -70,6 +70,26 @@ function checksOf(c, live) {
 }
 
 /**
+ * The refs to label, oldest first, each with the item it’s about and the refs its finding names, one of which a label’s
+ * earliest decisive turn must be: a check’s own, or the flagged item and the four before it (R16). named adds the turns
+ * those items came from, so the record sent can be trimmed to them (R3).
+ */
+function askedOf(c, itemRefs, rows, reactions) {
+  const turnOf = new Map(c.items.filter((it) => c.byItem.has(it.id) && c.byTurn.has(it.turnId)).map((it) => [c.byItem.get(it.id), c.byTurn.get(it.turnId)]));
+  const withTurns = (refs) => [...new Set([...refs, ...refs.map((r) => turnOf.get(r)).filter(Boolean)])];
+  return [
+    ...rows.map((k) => ({ ref: k.ref, item: k.refs.find((x) => x.startsWith('i')) ?? null, refs: k.refs, named: withTurns(k.refs) })),
+    ...reactions
+      .filter((r) => r.emoji === FLAG)
+      .map((r) => {
+        const at = itemRefs.indexOf(r.on);
+        const refs = itemRefs.slice(Math.max(0, at - BEFORE), at + 1);
+        return { ref: r.ref, item: r.on, refs, named: withTurns(refs) };
+      }),
+  ];
+}
+
+/**
  * Makes a report: the record, the checks, the classifier’s labels through the gate, and the bytes. Returns the draft’s
  * id; the Telemetry view reads it with draftView.
  * @param {any} rt @param {string} threadId @param {{ history?: boolean }} [opts]
@@ -77,35 +97,40 @@ function checksOf(c, live) {
 export async function makeReport(rt, threadId, { history = false } = {}) {
   const conv = convOf(rt, threadId);
   if (!conv?.recording) throw httpError(409, 'This conversation has no recording. Choose Record this room first.');
-  const dir = folder(rt, conv.id);
+  const dir = recFolder(rt, conv.id);
   const c = collect(rt, conv, dir, { history: history === true });
   const facts = liveFacts(rt, c);
   const live = liveChecks(facts);
   const checks = checksOf(c, live);
   const a = tierA(rt, c);
-  const flags = a.reactions.filter((r) => r.emoji === FLAG);
-  const asked = [
-    ...checks.rows.map((k) => ({ ref: k.ref, item: k.refs.find((x) => x.startsWith('i')) ?? null })),
-    ...flags.map((r) => ({ ref: r.ref, item: r.on })),
-  ];
+  const itemRefs = c.items.map((it) => c.byItem.get(it.id)).filter(Boolean);
+  const asked = askedOf(c, itemRefs, checks.rows, a.reactions);
   const proposals = process.env.POSTBOX_TELEMETRY_PROPOSALS === '1';
   const record = { ...a, checks: { found: checks.rows, notRun: live.notRun } };
-  const input = classifierInput({ record, asked, items: c.items, byItem: c.byItem, proposals });
-  const r = asked.length || proposals ? await classify(rt, conv.id, input) : { answer: null, costUsd: null, called: false };
-  const gated = labelsOf(r.answer, { asked: asked.map((x) => x.ref), turns: new Set(c.byTurn.values()), proposals });
+  const { input, sent } = boundedInput({ record, asked, items: c.items, byItem: c.byItem, proposals });
+  const r = sent.size || proposals ? await classify(rt, conv.id, input) : { answer: null, costUsd: null, called: false };
+  const failed = !sent.size ? null : !r.called ? 'no-classifier' : r.answer ? null : 'failed-call';
+  const turns = new Set(c.byTurn.values());
+  const gated = labelsOf(r.answer, { asked, sent, turns, failed, proposals });
+  const why = [...(failed ? [failed] : []), ...(sent.size < asked.length ? ['over-budget'] : [])];
   const build = rt.config.build ?? {};
-  const report = pruned({
-    schema: 'postbox-telemetry-2',
-    id: newId('rep'),
-    postbox: { version: build.version ?? null, commit: build.commit ?? null },
-    recording: { started: conv.recording.since, ended: conv.recording.on ? Date.now() : (conv.recording.stoppedAt ?? Date.now()), history: c.history },
-    ...a,
-    gaps: [...a.gaps, ...checks.threw, ...facts.gaps],
-    checks: { found: checks.rows, notRun: live.notRun },
-    labels: gated.labels,
-    proposed: gated.proposed,
-  });
-  const problems = finalCheck(report, vocabOf(rt));
+  const ended = conv.recording.on ? Date.now() : (conv.recording.stoppedAt ?? Date.now());
+  const report = blurred(
+    pruned({
+      schema: 'postbox-telemetry-2',
+      id: newId('rep'),
+      postbox: { version: build.version ?? null, commit: build.commit ?? null },
+      recording: { day: new Date().toISOString().slice(0, 10), lengthMs: Math.max(0, ended - conv.recording.since), history: c.history },
+      classifier: { called: r.called, costUsd: r.costUsd },
+      ...a,
+      gaps: [...a.gaps, ...checks.threw, ...facts.gaps, ...why.map((reason) => ({ kind: 'classifier', reason }))],
+      checks: { found: checks.rows, notRun: live.notRun },
+      labels: gated.labels,
+      proposed: gated.proposed,
+    }),
+  );
+  const refs = [...itemRefs, ...turns, ...checks.rows.map((k) => k.ref), ...a.reactions.map((x) => x.ref)];
+  const problems = finalCheck(report, vocabOf(rt, { refs }));
   if (problems.length)
     throw httpError(422, `Postbox couldn’t make the report: ${problems.length} fields failed its final check (${problems.slice(0, 5).join(', ')}).`);
   const draft = {
@@ -114,12 +139,13 @@ export async function makeReport(rt, threadId, { history = false } = {}) {
     local: Object.fromEntries(c.local),
     unlabeled: gated.unlabeled,
     labeled: asked.length,
+    refs,
+    input,
     costUsd: r.costUsd,
     called: r.called,
     at: Date.now(),
   };
-  folder(rt, conv.id, 'drafts');
-  write(join(dir, 'drafts', `${report.id}.json`), JSON.stringify(draft));
+  write(join(recFolder(rt, conv.id, 'drafts'), `${report.id}.json`), JSON.stringify(draft));
   return { id: report.id };
 }
 
@@ -127,7 +153,7 @@ export async function makeReport(rt, threadId, { history = false } = {}) {
 export function readDraft(rt, convId, id) {
   if (!/^rep_[A-Za-z0-9]{1,16}$/.test(String(id))) throw httpError(404, 'There’s no such report.');
   try {
-    return JSON.parse(readFileSync(join(folder(rt, convId), 'drafts', `${id}.json`), 'utf8'));
+    return JSON.parse(readFileSync(join(recFolder(rt, convId, 'drafts'), `${id}.json`), 'utf8'));
   } catch {
     throw httpError(404, 'That report isn’t there any more: its recording may have been deleted.');
   }
@@ -140,12 +166,13 @@ export function readDraft(rt, convId, id) {
  */
 export function draftView(rt, convId, id) {
   const draft = readDraft(rt, convId, id);
-  const all = jsonLines(draft.report).text.split('\n');
+  const shown = jsonLines(draft.report);
+  const all = shown.text.split('\n');
   const { text, hash, report } = bytesOf(draft);
   const r = report.room ?? {};
   return {
     id,
-    lines: all.map((line, i) => ({ n: i + 1, line, out: (draft.leftOut ?? []).includes(i + 1) })),
+    lines: all.map((line, i) => ({ n: i + 1, line, out: (draft.leftOut ?? []).includes(i + 1), toggle: !shown.fixed.has(i) })),
     bytes: text,
     hash,
     summary: [

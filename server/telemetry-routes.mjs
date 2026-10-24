@@ -15,9 +15,9 @@ const done = (status, body) => ({ status, body });
 function overview(rt, threadId) {
   const conv = convOf(rt, threadId);
   const root = telemetryRoot(rt);
-  const drafts = conv && root && existsSync(join(root, conv.id, 'drafts')) ? readdirSync(join(root, conv.id, 'drafts')) : [];
-  const open = drafts
-    .map((f) => JSON.parse(readFileSync(join(root ?? '', conv?.id ?? '', 'drafts', f), 'utf8')))
+  const dir = conv && root ? join(root, conv.id, 'recording', 'drafts') : null;
+  const open = (dir && existsSync(dir) ? readdirSync(dir) : [])
+    .map((f) => JSON.parse(readFileSync(join(dir ?? '', f), 'utf8')))
     .filter((d) => !d.saved)
     .sort((a, b) => b.at - a.at)[0];
   return { recording: conv?.recording ?? null, draft: open?.report?.id ?? null, saved: savedReports(rt, threadId) };
@@ -45,8 +45,8 @@ export async function telemetryRoute(rt, path, method, body) {
     return done(200, setLeftOut(rt, m[1], m[2], b));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/save$/)) && method === 'POST') return done(200, saveReport(rt, m[1], m[2], b));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/issues\/([^/]+)$/)) && method === 'GET')
-    return done(200, issuePreview(rt, m[2], decodeURIComponent(m[3])));
+    return done(200, issuePreview(rt, convOf(rt, m[1])?.id, m[2], decodeURIComponent(m[3])));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/issues\/([^/]+)$/)) && method === 'POST')
-    return done(200, await fileIssue(rt, m[2], decodeURIComponent(m[3]), b));
+    return done(200, await fileIssue(rt, convOf(rt, m[1])?.id, m[2], decodeURIComponent(m[3]), b));
   return null;
 }

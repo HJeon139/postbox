@@ -120,10 +120,15 @@ export const BLOCK_TYPES = Object.keys(CATALOG);
 export const WOKE = ['person', 'wake', 'answer', 'schedule', 'postbox', 'unknown'];
 export const ENDED = ['done', 'failed', 'stopped', 'unknown'];
 export const OUTCOMES = ['allowed', 'always', 'edited', 'denied', 'expired', 'open'];
-/** Log buckets for a count, so a number can’t identify a change (R12, Work). */
-export const BUCKETS = ['0', '1-9', '10-99', '100-999', '1000+'];
-export const GAP_KINDS = ['no-stream', 'transcript', 'check'];
-export const GAP_REASONS = ['before-recording', 'not-recorded', 'running', 'unreadable', 'threw'];
+/** Log buckets for a count or size, so an exact number can’t identify a change or carry a value (R12). */
+export const BUCKETS = ['0', '1-9', '10-99', '100-999', '1000-9999', '10000-99999', '100000-999999', '1000000+'];
+/** A duration’s bucket, and a cost’s, in cents to the nearest power of ten (R12). */
+export const DURATIONS = ['under-1s', '1-9s', '10-59s', 'minutes', 'hours'];
+export const COSTS = ['0', 'under-1c', '1c', '10c', '1usd', '10usd', '100usd'];
+export const GAP_KINDS = ['no-stream', 'transcript', 'check', 'classifier'];
+export const GAP_REASONS = ['before-recording', 'not-recorded', 'running', 'unreadable', 'threw', 'over-budget', 'failed-call', 'no-classifier'];
+/** Why a label is unlabeled (R3, R16): the gate rejected its value, or the classifier had no say in it. */
+export const UNLABELED_REASONS = ['rejected', 'over-budget', 'failed-call', 'no-classifier'];
 /** The facts a check may need (server/room-checks.mjs, inputs). */
 export const INPUTS = [
   'state',
@@ -145,4 +150,12 @@ export const INPUTS = [
 ];
 
 /** A count’s bucket. */
-export const bucket = (n) => (!n ? '0' : n < 10 ? '1-9' : n < 100 ? '10-99' : n < 1000 ? '100-999' : '1000+');
+export const bucket = (n) => (!(n > 0) ? '0' : BUCKETS[Math.min(BUCKETS.length - 1, 1 + Math.floor(Math.log10(n) + 1e-9))]);
+/** A duration’s bucket, from milliseconds. */
+export const duration = (ms) => (ms < 1000 ? 'under-1s' : ms < 1e4 ? '1-9s' : ms < 6e4 ? '10-59s' : ms < 36e5 ? 'minutes' : 'hours');
+/** A cost’s bucket: cents to the nearest power of ten. */
+export const cost = (usd) => {
+  if (!(usd > 0)) return '0';
+  const tens = Math.round(Math.log10(usd * 100));
+  return tens < 0 ? 'under-1c' : COSTS[Math.min(COSTS.length - 1, 2 + tens)];
+};

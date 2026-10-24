@@ -1,21 +1,28 @@
 // Recording a room for telemetry (designs/telemetry-persona.md, R1, R5, R7, R10, R11). Unlisted: no agent, session or
 // line in the room. While a conversation records, Postbox keeps each turn’s raw stream for it and its side and topic
-// threads, the turns, and its events, in <data folder>/telemetry/<conversation id>/, folders 0700 and files 0600, never
-// in the project. Its state is on the conversation (thread.recording), which only the header shows; no agent reads it.
-// Recordings go with the conversation (after Undo’s window), at once with Delete recordings, and after 30 days.
+// threads, the turns, and its events, in <Postbox folder>/telemetry/<conversation id>/recording/, and the reports you
+// save beside it in reports/, folders 0700 and files 0600, never in the project. Its state is on the conversation
+// (thread.recording), which only the header shows; no agent reads it. The whole folder goes with the conversation (after
+// Undo’s window); recording/ goes at once with Delete recordings, and each stream 30 days after it was last written.
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { setStreamTap } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
+import { postboxHome } from './home.mjs';
 import { keepEvent } from './room-events.mjs';
 
 /** How long a recording is kept, at most (R11). */
 export const KEEP_MS = 30 * 864e5;
 const SWEEP_MS = 864e5;
 
-/** <data folder>/telemetry, or the folder the tests give. */
-export const telemetryRoot = (rt) => rt.config.telemetryRoot ?? (rt.store.dir ? join(rt.store.dir, 'telemetry') : null);
+/** A clone’s implicit data/ folder, which is often inside the folder its agents work in (R11). */
+const CLONE_DATA = fileURLToPath(new URL('../data', import.meta.url));
+
+/** <data folder>/telemetry: --data’s or ~/.postbox’s, never a clone’s data/ (then ~/.postbox’s), or the tests’ own. */
+export const telemetryRoot = (rt) =>
+  rt.config.telemetryRoot ?? (rt.store.dir ? join(resolve(rt.store.dir) === CLONE_DATA ? postboxHome() : rt.store.dir, 'telemetry') : null);
 
 /** A folder under telemetry/, made owner-only (0700) along the way. */
 export function folder(rt, ...parts) {
@@ -28,6 +35,9 @@ export function folder(rt, ...parts) {
   }
   return p;
 }
+/** A conversation’s recording/, and its reports/ (R11). */
+export const recFolder = (rt, convId, ...parts) => folder(rt, convId, 'recording', ...parts);
+export const reportFolder = (rt, convId, ...parts) => folder(rt, convId, 'reports', ...parts);
 /** Writes or appends a file, owner-only (0600). */
 export const write = (file, text) => writeFileSync(file, text, { mode: 0o600 });
 export const append = (file, text) => appendFileSync(file, text, { mode: 0o600 });
@@ -40,7 +50,15 @@ export function startRecording(rt, threadId) {
   const conv = convOf(rt, threadId);
   if (!conv || conv.kind === 'topic' || conv.kind === 'side') throw httpError(404, 'That conversation doesn’t exist.');
   if (conv.recording?.on) return { ok: true, recording: conv.recording };
-  folder(rt, conv.id, 'streams');
+  const project = rt.s.projects[conv.projectId]?.folder;
+  const root = telemetryRoot(rt);
+  const rel = project && root ? relative(resolve(project), resolve(root)) : '..';
+  if (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+    throw httpError(
+      409,
+      'Postbox keeps recordings in its data folder, which is inside this project’s folder, where its agents could read them. Start Postbox with --data outside the project to record.',
+    );
+  recFolder(rt, conv.id, 'streams');
   const recording = { on: true, since: conv.recording?.since ?? Date.now(), startedAt: Date.now(), stoppedAt: null };
   rt.putThread({ ...conv, recording });
   return { ok: true, recording };
@@ -54,15 +72,15 @@ export function stopRecording(rt, threadId) {
   return { ok: true };
 }
 
-/** Delete recordings, at once (R11). Saved reports stay until you delete them; a room still recording starts afresh. */
+/** Delete recordings: recording/, at once (R11). Saved reports stay until you delete them; a room still recording starts afresh. */
 export function deleteRecordings(rt, threadId) {
   const conv = convOf(rt, threadId);
   if (!conv) throw httpError(404, 'That conversation doesn’t exist.');
   const root = telemetryRoot(rt);
-  if (root) rmSync(join(root, conv.id), { recursive: true, force: true });
+  if (root) rmSync(join(root, conv.id, 'recording'), { recursive: true, force: true });
   const now = Date.now();
   rt.putThread({ ...conv, recording: conv.recording?.on ? { on: true, since: now, startedAt: now, stoppedAt: null } : null });
-  if (conv.recording?.on) folder(rt, conv.id, 'streams');
+  if (conv.recording?.on) recFolder(rt, conv.id, 'streams');
   return { ok: true };
 }
 
@@ -71,7 +89,7 @@ export function recordingDir(rt, threadId) {
   const conv = convOf(rt, threadId);
   if (!conv?.recording?.on || conv.deleting) return null;
   try {
-    return folder(rt, conv.id);
+    return recFolder(rt, conv.id);
   } catch {
     return null;
   }
@@ -97,7 +115,7 @@ function tapFor(rt) {
     if (!file) {
       const sub = { 'kiro-cli': 'kiro', 'antigravity-cli': 'agy', codex: 'codex' }[backend];
       const rel = join('streams', ...(sub ? [sub] : []), `${turn.startedAt}-${turn.id}.jsonl`);
-      folder(rt, rt.lineage(turn.threadId).at(-1), 'streams', ...(sub ? [sub] : []));
+      recFolder(rt, rt.lineage(turn.threadId).at(-1), 'streams', ...(sub ? [sub] : []));
       file = join(dir, rel);
       begun.set(turn.id, file);
       const t = {
@@ -158,47 +176,42 @@ export function watchTelemetry(rt) {
   };
 }
 
-/** A removed conversation’s recordings, and the reports saved from it (R11). */
+/** A removed conversation’s telemetry folder: its recording and the reports saved from it (R11). */
 function purgeRoom(rt, convId) {
   const root = telemetryRoot(rt);
-  if (!root) return;
-  rmSync(join(root, convId), { recursive: true, force: true });
-  const index = reportIndex(rt);
-  for (const [id, room] of Object.entries(index)) if (room === convId) rmSync(join(root, 'reports', id), { recursive: true, force: true });
-  writeIndex(rt, Object.fromEntries(Object.entries(index).filter(([, room]) => room !== convId)));
+  if (root) rmSync(join(root, convId), { recursive: true, force: true });
 }
 
-/** Recordings last written more than 30 days ago are deleted (R11). Saved reports stay until you delete them. */
+/**
+ * Each stream last written more than 30 days ago is deleted, and a recording with no stream left and nothing newer
+ * goes with its ref map (R11). Saved reports stay until you delete them. Returns the paths it deleted.
+ */
 export function sweep(rt, now = Date.now()) {
   const root = telemetryRoot(rt);
   if (!root || !existsSync(root)) return [];
   const gone = [];
   for (const name of readdirSync(root)) {
-    if (name === 'reports') continue;
-    const dir = join(root, name);
-    if (!statSync(dir).isDirectory() || now - newest(dir) <= KEEP_MS) continue;
-    rmSync(dir, { recursive: true, force: true });
-    gone.push(name);
+    const rec = join(root, name, 'recording');
+    if (!existsSync(rec)) continue;
+    const streams = filesIn(join(rec, 'streams'));
+    for (const f of streams.filter((f) => now - statSync(f).mtimeMs > KEEP_MS)) {
+      rmSync(f, { force: true });
+      gone.push(relative(root, f));
+    }
+    const rest = filesIn(rec);
+    const fresh = rest.length ? rest.some((f) => now - statSync(f).mtimeMs <= KEEP_MS) : now - statSync(rec).mtimeMs <= KEEP_MS;
+    if (filesIn(join(rec, 'streams')).length || fresh) continue;
+    rmSync(rec, { recursive: true, force: true });
+    gone.push(relative(root, rec));
   }
   return gone;
 }
 
-/** The newest modification time under a folder. */
-function newest(dir) {
-  let t = statSync(dir).mtimeMs;
-  for (const e of readdirSync(dir, { withFileTypes: true })) t = Math.max(t, e.isDirectory() ? newest(join(dir, e.name)) : statSync(join(dir, e.name)).mtimeMs);
-  return t;
+/** Every file under a folder; none if it’s missing. */
+function filesIn(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesIn(join(dir, e.name)) : [join(dir, e.name)]));
 }
-
-/** Which conversation each saved report came from: reports/index.json, local only (R15). */
-export function reportIndex(rt) {
-  try {
-    return JSON.parse(readFileSync(join(folder(rt, 'reports'), 'index.json'), 'utf8'));
-  } catch {
-    return {};
-  }
-}
-export const writeIndex = (rt, index) => write(join(folder(rt, 'reports'), 'index.json'), JSON.stringify(index));
 
 /** Whether a session’s turn is still running, so its stream isn’t whole yet (R10). */
 export const running = (rt, t) => rt.turns.get(t.sessionId)?.id === t.turnId;
