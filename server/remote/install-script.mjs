@@ -56,8 +56,9 @@ const NODE_CHECK = [
  * Tests only: with POSTBOX_INSTALL_TEST_WAIT set to a path, the script stops just before it takes the lock, makes
  * `<path>.paused`, and waits until the path exists; with POSTBOX_INSTALL_TEST_HOLD, it does the same just after it
  * has taken the lock, making `<path>.held`; with POSTBOX_INSTALL_TEST_BREAK, holding the break lock, between finding
- * the lock stale and removing it, making `<path>.breaking` (tests/integration/remote-install.test.mjs). sshd passes them only if the
- * host’s own configuration says to, and they can only delay this install.
+ * the lock stale and removing it, making `<path>.breaking` (tests/integration/remote-install-lock.test.mjs and
+ * remote-install-break.test.mjs). sshd passes them only if the host’s own configuration says to, and they can only
+ * delay this install.
  */
 export const INSTALL_SCRIPT = `
   set -eu;
