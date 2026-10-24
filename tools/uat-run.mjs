@@ -39,6 +39,7 @@ import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepC
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { coverageSection, gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
+import { sendThenStop, settle as settleTurns } from './uat/turns.mjs';
 import { mergePeopleVerdicts, withoutPreset } from './uat/verdicts.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -374,29 +375,7 @@ async function main() {
       midTurn.push(...newFindings(MID_TURN));
     };
 
-    /** Waits until no agent under test is working, sampling what the screen says meanwhile. */
-    const settle = async () => {
-      const end = Date.now() + Number(opt['turn-timeout']) * 1000;
-      let calm = 0;
-      while (Date.now() < end) {
-        await sleep(1500);
-        const st = (await api('/api/state')).state;
-        const ids = threadsUnderTest(st);
-        const sessions = ids
-          .flatMap((t) => st.threads[t]?.members ?? [])
-          .map((id) => st.sessions[id])
-          .filter(Boolean);
-        const working = sessions.filter((se) => ['think', 'tool', 'gen'].includes(se.state));
-        const checking = Object.values(st.apps).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
-        const thinking = working.filter((se) => se.state !== 'gen').map((se) => se.handle);
-        if (thinking.length) facts.samples.push({ busy: thinking, rows: (await d.working()).length });
-        if (working.length) await midTurnChecks(st);
-        calm = working.length || checking ? 0 : calm + 1;
-        if (calm >= 2) return null;
-      }
-      await d.stopAll();
-      return `An agent was still working after ${opt['turn-timeout']} s, so the run pressed Stop.`;
-    };
+    const settle = () => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt });
 
     const observe = async () => {
       const out = [];
@@ -540,12 +519,8 @@ async function main() {
           );
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
-        } else if (a.type === 'send_then_stop') {
-          await d.send(a.text ?? '');
-          await sleep(Math.max(1, Math.min(10, a.seconds ?? 2)) * 1000);
-          await d.stopAll();
-          actionResult = 'Pressed Stop on the active reply.';
-        } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
+        } else if (a.type === 'send_then_stop') actionResult = await sendThenStop(d, a);
+        else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
         else if (a.type === 'act' || a.type === 'review') {
           // An answer is for the revision the tester read. If the block changed while it decided, a person would see
