@@ -258,8 +258,8 @@ try {
   const woken = (await page.evaluate(whoOf(room.id))).at(-1);
   check(/^@analyst.*woken by a scheduled wake/.test(woken ?? ''), `#135 a turn a scheduled wake started says so on its sender line (“${woken}”)`);
   // Two wakes from two turns of @analyst, sent while @reviewer was busy, sit together in the side thread, as agentWake
-  // records them: each says the turn it came from.
-  for (const [n, text] of ['Check the totals.', 'And the dates, please.'].entries())
+  // records them: each says the turn it came from. A third from the second turn shares its line.
+  for (const [n, text] of ['Check the totals.', 'And the dates, please.', 'And the names.'].entries())
     rt.addItem(side.id, {
       kind: 'agent',
       sessionId: an.id,
@@ -268,17 +268,17 @@ try {
       text,
       status: 'done',
       hop: n + 1,
-      fromTurnId: `turn_135_${n}`,
+      fromTurnId: `turn_135_${Math.min(n, 1)}`,
     });
   await page.synced(store.state.seq);
   await page.evaluate(`location.hash = '#/t/${room.id}/side/${side.id}'`);
-  await page.waitFor(`[...document.querySelectorAll('.transcript[data-thread="${side.id}"] .md p')].some((p) => p.textContent === 'And the dates, please.')`, {
+  await page.waitFor(`[...document.querySelectorAll('.transcript[data-thread="${side.id}"] .md p')].some((p) => p.textContent === 'And the names.')`, {
     label: 'the side thread',
   });
-  const wakes = (await page.evaluate(whoOf(side.id))).slice(-2);
+  const wakes = (await page.evaluate(whoOf(side.id))).slice(-3);
   check(
-    wakes.every((x) => /^@analyst/.test(x)),
-    `#135 two wakes from two turns of the same agent each have a sender line in the side thread (${JSON.stringify(wakes)})`,
+    /^@analyst/.test(wakes[0]) && /^@analyst/.test(wakes[1]) && wakes[2] === '',
+    `#135 two wakes from two turns of the same agent each have a sender line in the side thread, and one turn’s two share it (${JSON.stringify(wakes)})`,
   );
 
   check(!page.logs.length, `no errors in the page${page.logs.length ? `: ${page.logs.join('; ')}` : ''}`);

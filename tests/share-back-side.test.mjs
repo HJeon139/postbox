@@ -78,7 +78,7 @@ async function askWhileBusy({ store, rt, adapter }, threadId, text) {
   const [busy, summary] = [held(), held()];
   adapter.next.push(busy.step, summary.step);
   rt.sendMessage(threadId, { text });
-  await sleep(10);
+  assert.equal(rt.turns.size, 1, 'its agent is busy');
   rt.summarizeBack(threadId);
   busy.release();
   for (let i = 0; i < 200 && !/^Summarize/.test(adapter.calls.at(-1)?.message.text ?? ''); i++) await sleep(5);

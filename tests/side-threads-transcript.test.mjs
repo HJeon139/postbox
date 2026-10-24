@@ -122,8 +122,9 @@ test('#135: an agent that wakes a busy agent from two turns in a row sends two m
 test('#135: a turn a scheduled wake started says so on its replies', async () => {
   const { store, rt, adapter, t, alpha } = setup();
   adapter.next.push(async (c) => c.text('Checked the totals again.'));
-  rt.schedule(alpha.id, { inMs: 1000, note: 'Check the totals again.' });
-  await sleep(1100);
+  const sc = rt.schedule(alpha.id, { inMs: 60000, note: 'Check the totals again.' });
+  // Due now, as the timer fires it.
+  rt.arm({ ...sc, at: Date.now() });
   await settle(rt);
   const reply = store.items(t.id).findLast((x) => x.kind === 'agent');
   assert.equal(reply.text, 'Checked the totals again.');
