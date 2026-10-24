@@ -14,6 +14,7 @@
 //   facts.probes     what the runner saw on the page: a notice that Postbox refused an answer as stale (#123)
 
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
+import { HOST_TRIGGERS } from './triggers-host.mjs';
 import { answeredStop, jobsRecorded, jobTimeline } from './triggers-jobs.mjs';
 
 export { jobTimeline } from './triggers-jobs.mjs';
@@ -168,13 +169,15 @@ export const TRIGGERS = {
           evidence: `Background job ${j.id} was kept running when its turn was interrupted, with no question from Stop (event ${j.keptAt}).`,
         })),
   },
+  ...HOST_TRIGGERS,
 };
 
 /**
  * Names in a scenario’s phases that aren’t triggers, so a run fails before it starts instead of waiting on one.
  * @param {{ phases: { triggers?: string[] }[] }} scenario
  */
-export const unknownTriggers = (scenario) => scenario.phases.flatMap((p) => p.triggers ?? []).filter((t) => !Object.hasOwn(TRIGGERS, t));
+export const unknownTriggers = (scenario) =>
+  scenario.phases.flatMap((p) => [...(p.triggers ?? []), ...(p.hostTriggers ?? [])]).filter((t) => !Object.hasOwn(TRIGGERS, t));
 
 /**
  * Which of these triggers have happened in what the run recorded so far: the first time each did, and its evidence.

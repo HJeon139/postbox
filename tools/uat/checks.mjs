@@ -33,6 +33,7 @@ import { ASKING } from '../../shared/catalog.mjs';
 import { toPlainText } from '../../shared/markdown.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
 import { isolated, KIRO_KIND_TOOL, kiroTurns } from './checks-kiro.mjs';
+import { withRemote } from './checks-remote.mjs';
 
 export { callsFor, LONG_TURN_MS, LONG_TURN_TOOLS } from './block-use.mjs';
 export { kiroCredits } from './checks-kiro.mjs';
@@ -414,7 +415,8 @@ const modelKey = (m) =>
     .replace(/^claude-/, '')
     .replace(/[^a-z0-9]/g, '');
 
-export const CHECKS = [
+// The checks below, with the remote rules for a host-mode run (#120) wrapped around them and added after them.
+export const CHECKS = withRemote([
   {
     id: 'fresh-install-agents',
     issue: 43,
@@ -1378,7 +1380,7 @@ export const CHECKS = [
           evidence: `${d.kept ? 'The draft was kept' : `The draft became ${JSON.stringify(d.draft)}`}; ${d.exited ? 'full screen closed' : 'full screen didn’t close'}; scrolled ${JSON.stringify(d.before)} → ${JSON.stringify(d.after)}.`,
         })),
   },
-];
+]);
 
 /**
  * Runs every check, or only those named; each finding carries its check id and issue number.
