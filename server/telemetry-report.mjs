@@ -87,19 +87,22 @@ function checksOf(c, live) {
 function askedOf(c, itemRefs, rows, reactions) {
   const turnOf = new Map(c.items.filter((it) => c.byItem.has(it.id) && c.byTurn.has(it.turnId)).map((it) => [c.byItem.get(it.id), c.byTurn.get(it.turnId)]));
   const withTurns = (refs) => [...new Set([...refs, ...refs.map((r) => turnOf.get(r)).filter(Boolean)])];
+  const flag = (r) => {
+    const at = itemRefs.indexOf(r.on);
+    const refs = itemRefs.slice(Math.max(0, at - BEFORE), at + 1);
+    return { ref: r.ref, item: r.on, refs, named: withTurns(refs) };
+  };
+  const flags = reactions.filter((r) => r.emoji === FLAG);
+  // The input keeps the last of these when it’s over budget (R3): agents’ flags go first, so many of them never push
+  // out a check’s finding or the person’s own flag.
   return [
+    ...flags.filter((r) => r.by !== 'person').map(flag),
     ...rows.map((k) => {
       // A check that cites more than five offers its earliest five (R16), by ordinal: refs number the room in order.
       const refs = k.refs;
       return { ref: k.ref, item: refs.find((x) => x.startsWith('i')) ?? null, refs, named: withTurns(refs) };
     }),
-    ...reactions
-      .filter((r) => r.emoji === FLAG)
-      .map((r) => {
-        const at = itemRefs.indexOf(r.on);
-        const refs = itemRefs.slice(Math.max(0, at - BEFORE), at + 1);
-        return { ref: r.ref, item: r.on, refs, named: withTurns(refs) };
-      }),
+    ...flags.filter((r) => r.by === 'person').map(flag),
   ];
 }
 

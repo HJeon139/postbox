@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.27.0 (2026-10-24)
+
+### Features
+
+- **reactions:** let agents react to any message, their own included
+
+### Fixes
+
+- **reactions:** flag-misplaced counts only the runner's own 🚩, and two window comments
+- **reactions:** say "you" in words on a shared chip, and the review's telemetry and UAT fixes
+
 ## 0.26.0 (2026-10-24)
 
 ### Features

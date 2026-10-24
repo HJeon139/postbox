@@ -771,6 +771,9 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .react-icon { display: block; flex: none; width: 20px; height: 20px; }
 /* The icons’ espresso outline only shows on light: on dark, a thin rim keeps their green and orange badges off the wash. */
 :root:not([data-theme="light"]) .react-icon { filter: drop-shadow(1px 0 0 var(--dim)) drop-shadow(-1px 0 0 var(--dim)) drop-shadow(0 1px 0 var(--dim)) drop-shadow(0 -1px 0 var(--dim)); }
+/* Only agents reacted: the same button, quieter, until you add yours. */
+.react-chip.theirs { border-color: var(--line); background: var(--panel); }
+.react-who { margin-left: 4px; font-size: 12px; color: var(--dim); }
 .react-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Sent back from a topic thread. */

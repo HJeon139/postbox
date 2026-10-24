@@ -47,7 +47,7 @@ export const TELEMETRY_TRIGGERS = {
     recorded: (f) => !!f.state,
     run: (f) =>
       reactionsIn(f)
-        .filter((r) => r.emoji === FLAG && r.at >= r.item.at)
+        .filter((r) => r.emoji === FLAG && !r.by && r.at >= r.item.at)
         .slice(0, 1)
         .map((r) => ({ at: r.at, evidence: `🚩 on ${r.item.kind} ${r.item.id}, ${Math.round((r.at - r.item.at) / 1000)} s after it.` })),
   },

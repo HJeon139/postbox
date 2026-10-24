@@ -238,8 +238,9 @@ const CHECKS = [
     issue: null,
     run: (f) => {
       const items = (f.threads ?? []).flatMap((id) => f.state?.items?.[id] ?? []);
-      // Only once the runner has reacted, after the last step (U4).
-      const off = f.telemetry.flags.filter((x) => x.reacted && !items.find((it) => it.id === x.item)?.reactions?.some((r) => r.emoji === '🚩'));
+      // Only once the runner has reacted, after the last step (U4); only the runner’s own, as the person: an agent’s 🚩
+      // on the item (#270) isn’t it.
+      const off = f.telemetry.flags.filter((x) => x.reacted && !items.find((it) => it.id === x.item)?.reactions?.some((r) => r.emoji === '🚩' && !r.by));
       return off.length
         ? [{ title: 'A 🚩 isn’t on the item it was put on', evidence: off.map((x) => `the 🚩 for “${x.key}” isn’t on ${x.item}`).join('; ') }]
         : [];

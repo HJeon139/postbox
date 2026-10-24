@@ -7,7 +7,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { begin, check, click, end, fresh, page, press, settle } from './pane-check.mjs';
+import { reactTool } from '../server/reactions.mjs';
+import { begin, check, click, end, fresh, ids, page, press, server, settle } from './pane-check.mjs';
 import { reactItem } from './uat/telemetry-driver.mjs';
 
 /** Enter as a person presses it: with the character, which is what activates a button or a menu item. */
@@ -77,6 +78,24 @@ await check('#251 a reaction on an app adds its row, and its frame isn’t drawn
   await click(menuItem('Done'));
   await page.waitFor(`!!(${APP}).querySelector('.reactions .react-chip')`, { label: 'the reaction under the app' });
   assert.equal(await page.evaluate(`(${APP}).querySelector('iframe').dataset.mark`), 'same', 'the app’s frame was drawn again');
+});
+
+await check('An agent’s reaction shows under the reply with its name in words, and clicking it adds yours beside it', async () => {
+  const { rt, store } = server();
+  const key = await page.evaluate(`${REPLY}.dataset.key`);
+  const agent = rt.sessionsIn(ids.conv).find((s) => s.id !== store.item(ids.conv, key)?.sessionId) ?? rt.sessionsIn(ids.conv)[0];
+  reactTool(rt, agent, { id: key, emoji: '❓' });
+  await page.waitFor(`[...${REPLY}.querySelectorAll('.react-chip')].some((b) => b.textContent.includes('@${agent.handle}'))`, {
+    label: 'the agent’s reaction, named',
+  });
+  const chip = `[...${REPLY}.querySelectorAll('.react-chip')].find((b) => b.querySelector('img')?.alt === '❓')`;
+  assert.match(await page.evaluate(`${chip}.getAttribute('aria-label')`), new RegExp(`from @${agent.handle}: add yours$`));
+  await click(chip);
+  await page.waitFor(`${chip}.getAttribute('aria-label').endsWith('take yours back')`, { label: 'yours added beside it' });
+  assert.match(await page.evaluate(`${chip}.getAttribute('aria-label')`), new RegExp(`from you and @${agent.handle}`));
+  // In words on screen too, not only by its color (principle 5).
+  assert.equal(await page.evaluate(`${chip}.querySelector('.react-who').textContent`), `you and @${agent.handle}`);
+  assert.deepEqual(await onServer(), ['🚩', '❓', '❓']);
 });
 
 await check('#251 axe finds nothing wrong with the reply, its reactions or the menu', async () => {
