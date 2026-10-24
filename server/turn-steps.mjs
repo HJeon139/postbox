@@ -18,3 +18,16 @@ export function settleSubagentSteps(rt, turn) {
   turn.steps = turn.steps.map((s) => (open.has(s.id) ? { ...s, state: 'stopped', detail: 'its turn ended before it finished' } : s));
   if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
 }
+
+/**
+ * Stop settles every step its turn hadn’t finished (#288): the turn takes no more activity, so nothing would say how a
+ * call still running ended, and its reply would read as running. A background job’s step Stop keeps running stays
+ * as it is, since the job runs on; another job’s step reads stopped now, and its end, when its CLI reports it, says how.
+ */
+export function settleStoppedSteps(rt, turn) {
+  settleSubagentSteps(rt, turn);
+  const open = (s) => s.state === 'running' && !(s.job && turn.keepJobs.has(s.job));
+  if (!(turn.steps ?? []).some(open)) return;
+  turn.steps = turn.steps.map((s) => (open(s) ? { ...s, state: 'stopped' } : s));
+  if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+}
