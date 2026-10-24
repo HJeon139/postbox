@@ -14,22 +14,22 @@ import { extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
-import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
-import { AntigravityCliAdapter, agyModels, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
-import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
-import { CodexAdapter, codexModels, codexVersion, findCodex } from './adapters/codex.mjs';
-import { findKiro, KiroCliAdapter, kiroModels, kiroVersion } from './adapters/kiro-cli.mjs';
+import { AgentSdkAdapter } from './adapters/agent-sdk.mjs';
+import { AntigravityCliAdapter } from './adapters/antigravity-cli.mjs';
+import { ClaudeCodeAdapter } from './adapters/claude-code.mjs';
+import { CodexAdapter } from './adapters/codex.mjs';
+import { KiroCliAdapter } from './adapters/kiro-cli.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { PROBES } from './backends.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
 import { dataFolder } from './home.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
-import { createHostManager } from './remote/hosts.mjs';
-import { watchWake } from './remote/wake.mjs';
+import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { ARCHIVE_AFTER_CHOICES, DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
@@ -73,24 +73,9 @@ const MEDIA_TYPES = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', 
 const MEDIA_HEADERS = { 'content-security-policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'" };
 
 /**
- * How Postbox looks for each real backend’s CLI on this computer: its version, or null when it isn’t here, and the
- * models some of them list.
- */
-const PROBES = {
-  claude: () => claudeVersion(findClaude()),
-  sdk: () => loadAgentSdk(),
-  kiro: () => kiroVersion(findKiro()),
-  kiroModels: () => kiroModels(findKiro()),
-  agy: () => agyVersion(findAgy()),
-  agyModels: () => agyModels(findAgy()),
-  codex: () => codexVersion(findCodex()),
-  codexModels: () => codexModels(findCodex()),
-};
-
-/**
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
  *           host?: string, spawnShell?: typeof import('node:child_process').spawn, hosts?: import('./remote/hosts.mjs').HostManager|null,
- *           wake?: Parameters<typeof watchWake>[1], probes?: Partial<typeof PROBES> }} [opts]
+ *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES> }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
@@ -161,18 +146,8 @@ export async function start({
   };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
-  // The hosts’ links (#120), made on first use: the manager reads each host from the runtime as it opens a session, so a
-  // change to its settings reaches the next one.
-  const hosts =
-    given !== undefined
-      ? given
-      : createHostManager({
-          getHost: (id) => rt.s.hosts?.[id] ?? null,
-          // Every configured host, so a wake reconnects each one with a token (D2).
-          hostIds: () => Object.keys(rt.s.hosts ?? {}),
-          dataDir,
-          version: config.build.version,
-        });
+  // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
+  const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
@@ -192,12 +167,9 @@ export async function start({
   // Conversations where nothing has happened for a while archive themselves (#101).
   rt.archiveIdle();
   const archiveSweep = setInterval(() => rt.archiveIdle(), 3600e3).unref();
-  // Turns that were running on a remote host went on there: they’re attached again once the host answers (#120).
-  rt.restoreRemoteTurns();
-  // Each host’s connection, in the state for the page (#120); and when this computer wakes, the hosts reconnect at
-  // once (D2), rather than when a backoff timer that slept too comes round.
-  rt.watchHosts();
-  const stopWake = hosts ? watchWake(() => hosts.wake(), wake) : null;
+  // Turns that went on on their hosts are attached again, each host’s status is kept for the page, and the hosts
+  // reconnect when this computer wakes (#120).
+  const stopWake = startHosts(rt, hosts, wake);
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
@@ -670,8 +642,7 @@ export async function start({
       await rt.stopShellCommands();
       await rt.stopTurns();
       // After the turns, whose Stop goes to their hosts over these links (#120).
-      stopWake?.();
-      await hosts?.close();
+      await stopHosts(hosts, stopWake);
       narrator?.stop();
       if (listen) await new Promise((ok) => server.close(ok));
       await store.flush();
