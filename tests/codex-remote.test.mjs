@@ -13,6 +13,8 @@ import { createMessageReader, encode, hostPaths, message, PROTOCOL_VERSION, utf8
 import { createFakeDaemon, FAKE_TOKEN } from './fake-daemon.mjs';
 
 const FOLDER = '/home/user/postbox-work/critic';
+/** The host’s permissionWaitMax by default (shared/remote-settings.mjs), which the context’s empty settings leave. */
+const WAIT = 24 * 60 * 60 * 1000;
 /** The recorded local turn: responses to requests 1 to 3, then turn/started, a message, a command, turn/completed. */
 const RECORDED = readFileSync(new URL('fixtures/codex-app-server/turn.jsonl', import.meta.url), 'utf8')
   .split('\n')
@@ -149,7 +151,7 @@ function context(link, { attach, abort = new AbortController(), state = {}, aske
 const ready = async (link) => until(() => link.welcome, 'the welcome');
 
 test('#120: remote Codex config names the stdio shim with TOML values, never a URL', () => {
-  const args = codexRemoteConfigArgs('/usr/bin/node', ['/home/user/.postbox-remote/0.10.0/server/remote/host/shim.mjs', 'turn-1']);
+  const args = codexRemoteConfigArgs('/usr/bin/node', ['/home/user/.postbox-remote/0.10.0/server/remote/host/shim.mjs', 'turn-1'], WAIT);
   assert.deepEqual(args, [
     '-c',
     'mcp_servers.postbox.command="/usr/bin/node"',
@@ -159,6 +161,9 @@ test('#120: remote Codex config names the stdio shim with TOML values, never a U
     'mcp_servers.postbox.enabled=true',
     '-c',
     'mcp_servers.postbox.required=true',
+    '-c',
+    // The host’s permissionWaitMax (24 h by default) plus an hour, in seconds, over Codex’s 60-second default.
+    'mcp_servers.postbox.tool_timeout_sec=90000',
   ]);
   assert.ok(!args.some((a) => a.includes('.url=')));
 });
@@ -185,7 +190,8 @@ test('#120: a remote Codex turn starts on the host with a held stdin, the shim a
   assert.equal(start.turn, ctx.remote.turn, 'the turn runs as the runtime’s ID, which it persisted to attach after a restart');
   assert.equal(calls.next, 0);
   const shim = hostPaths('/home/user', '0.10.0').shim;
-  assert.deepEqual(start.argv, ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs('/usr/bin/node', [shim, start.turn])]);
+  assert.deepEqual(start.argv, ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs('/usr/bin/node', [shim, start.turn], WAIT)]);
+  assert.ok(start.argv.includes('mcp_servers.postbox.tool_timeout_sec=90000'), 'Codex waits on the shim past the host’s permissionWaitMax');
   assert.ok(!JSON.stringify(start).includes('127.0.0.1'), 'the laptop’s MCP URL never goes to the host');
   const writes = d.turns.get(start.turn).writes.map((l) => JSON.parse(l));
   assert.deepEqual(
@@ -198,6 +204,21 @@ test('#120: a remote Codex turn starts on the host with a held stdin, the shim a
   assert.equal(calls.saved.codexThreadId, 'thr_postbox_1');
   assert.deepEqual(d.stops, [start.turn], 'the app-server on the host is stopped as the turn ends');
   assert.deepEqual(f.calls, []);
+});
+
+test('#120: a remote Codex turn’s tool timeout follows the host’s own permissionWaitMax', async () => {
+  const d = createFakeDaemon({ autoEnd: false, lines: [] });
+  const link = linkTo(d);
+  await ready(link);
+  const host = codexOnHost(d);
+  const f = forbidden();
+  const adapter = new CodexAdapter({ kill: f.kill, list: f.list });
+  // 30 minutes, plus the hour’s margin: 5400 seconds.
+  const { ctx } = context(link, { remote: { settings: { permissionWaitMax: 30 * 60 * 1000 } } });
+  await adapter.deliver({}, { kind: 'user', text: 'Say hello.' }, ctx);
+  host.stop();
+  const [start] = sent(d, 'start');
+  assert.equal(start.argv.filter((a) => a.includes('tool_timeout_sec')).join(), 'mcp_servers.postbox.tool_timeout_sec=5400');
 });
 
 test('#120: a remote Codex turn needs the runtime’s ctx.remote.turn and version; its shim is under that version; an attach reuses its own turn', async () => {
@@ -218,7 +239,10 @@ test('#120: a remote Codex turn needs the runtime’s ctx.remote.turn and versio
   host.stop();
   const [start] = sent(d, 'start');
   assert.equal(start.turn, ctx.remote.turn);
-  assert.deepEqual(start.argv.slice(3), codexRemoteConfigArgs('/usr/bin/node', ['/home/user/.postbox-remote/0.99.1/server/remote/host/shim.mjs', start.turn]));
+  assert.deepEqual(
+    start.argv.slice(3),
+    codexRemoteConfigArgs('/usr/bin/node', ['/home/user/.postbox-remote/0.99.1/server/remote/host/shim.mjs', start.turn], WAIT),
+  );
   assert.ok(!('version' in adapter), 'the adapter keeps no version of its own');
 });
 

@@ -173,3 +173,16 @@ Each adapter task adds tests with a fake remote process built from recorded stre
 - A wave’s pull requests merge in table order. A later task rebases onto `main`, never onto another task’s branch.
 - Each task passes `npm run check` before hand-off, and `npm run check:browser` too if it touches `app/`. It then gets an adversarial review subagent, as README.md describes.
 - Before any merge, the integrating session reads each new test’s name in the `node --test` output and checks that the test count went up by the number added.
+
+## Follow-ups
+
+Still open after A2:
+
+- **Restoring a live `.break` lock leaves its name vacant for an instant** (daemon.mjs `holdBreak`, install.mjs `unb`): make lock-owner liveness fail closed when a process’s identity facts can’t be read, or use a primitive that never vacates the name.
+- **There’s no “forget a host you can’t reach” action.**
+- **`add_dataset` from a host isn’t supported:** it loads a file on the laptop, which an agent on the host can’t name, and the agent is told so.
+- **Codex and Kiro CLI sign-in expiry isn’t recognized yet.**
+- **A Codex persona saved with a Claude model still shows that model.**
+- **A stop whose start never lands while the link stays up is confirmed only by the next welcome.**
+- **Kiro CLI’s message is visible through `/proc` unless it’s mounted with `hidepid`:** Postbox warns on every remote Kiro CLI turn rather than checking the mount.
+- **`logindFacts` runs synchronously at each hello,** so on a host where `busctl` or `loginctl` hangs it can block the daemon for up to about 10 seconds.

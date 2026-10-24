@@ -14,11 +14,12 @@
 //    (install.mjs), so the lock is outside that folder, and an attach makes nothing in it without the lock. The lock
 //    holds its owner’s record (proc.mjs, “The start lock’s owner”), and is broken only once that owner is gone, or
 //    once it has had no record for LOCK_STALE_MS; its age alone never breaks it, however long an install holds it.
-//    Each holder drops it only while the record in it is still its own.
+//    Each holder drops it only while the record in it is still its own. A stale one is removed under <lock>.break,
+//    which holds its breaker’s record the same way, so a breaker suspended mid-removal keeps it (holdBreak).
 // 3. serve takes the daemon’s own lock for its whole life: daemon.pid, made with O_EXCL, holding its PID, boot ID and
 //    start time. One that names a live process (proc.mjs’s sameProcess) means a daemon is up or starting, and serve
 //    exits; one that doesn’t is from a daemon that died, and is removed (under daemon.pid.break, so two serves that
-//    both find it stale can’t remove a fresh one). Only while it holds daemon.pid does serve connect once more, remove
+//    both find it stale can’t remove a fresh one; it holds its serve’s record, as <lock>.break does). Only while it holds daemon.pid does serve connect once more, remove
 //    a stale socket file (nothing answers: ENOENT or ECONNREFUSED; any other error is reported, and the file is left)
 //    and bind. So the start lock going stale under a slow start can’t start a second daemon.
 // The first attach doesn’t become the daemon itself, though that’s one process fewer: the daemon outlives the attach
@@ -49,7 +50,6 @@ import {
   openSync,
   readFileSync,
   renameSync,
-  rmdirSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -84,7 +84,7 @@ import { hostVersion, PROGRAMS, paths } from './paths.mjs';
 import * as defaultProc from './proc.mjs';
 import { LOCK_OWNER, lockOwnerLive, parseLockOwner } from './proc.mjs';
 import { findPrograms as defaultFindPrograms, NODE_MAJOR } from './programs.mjs';
-import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, sendStdin } from './runner.mjs';
+import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, logindFacts, sendStdin } from './runner.mjs';
 
 /** Stop’s grace period between SIGINT to the turn’s group and SIGKILL (C5: SIGINT ends a Claude Code turn). */
 export const STOP_GRACE_MS = 10_000;
@@ -104,8 +104,13 @@ export const SERVE_START_MS = 10_000;
  * this. The install script’s own grace (find’s -mmin +1) counts whole minutes, so it’s a minute, and cleanup’s is this.
  */
 export const LOCK_STALE_MS = 3 * SERVE_START_MS;
-/** The start lock’s break lock (`<lock>.break`) is held for one removal; one older than this is from one that died. */
+/**
+ * The start lock’s break lock (`<lock>.break`) and daemon.pid.break hold their owner’s record from the moment they’re
+ * there (holdBreak), and are judged by it. One with no record isn’t one being made; it’s held this long all the same,
+ * then broken. (An empty one, which no breaker leaves, is replaced at once: rename(2) replaces an empty folder.)
+ */
 const BREAK_STALE_MS = 5000;
+const PID_BREAK_STALE_MS = 1000;
 /** daemon.log is set aside as daemon.log.1 when it’s over this at serve’s start. */
 const LOG_KEEP_BYTES = 4 * 1024 * 1024;
 /** How long `remove` waits for the turns it stopped to end, past Stop’s grace period. */
@@ -150,12 +155,13 @@ const READ_CHUNK = 64 * 1024;
 /**
  * The daemon, driven by connections. Everything outside the process is injected, so tests run it in-process with
  * PassThrough streams and a temp home.
- * @param {{ home: string, version?: string, now?: () => number, timers?: Timers, spawn?: any, logind?: any,
+ * @param {{ home: string, version?: string, now?: () => number, timers?: Timers, spawn?: any, logind?: () => import('./runner.mjs').LogindFacts,
  *   launchRunner?: LaunchRunner, askRunner?: AskRunner, proc?: Proc, writeRunner?: WriteRunner,
  *   findPrograms?: (o: { home: string, settings: Record<string, any> }) => Promise<import('./programs.mjs').Programs>,
  *   kill?: (pid: number, signal: NodeJS.Signals) => void, log?: (line: string) => void, onIdle?: () => void,
  *   onRemoved?: () => void, pollMs?: number, stopGraceMs?: number, removeWaitMs?: number, runnerStartMs?: number, sweepMs?: number,
  *   broker?: Broker, shim?: ShimSeam, uid?: number, env?: Record<string, string | undefined> }} opts
+ *   logind: runner.mjs’s logindFacts, asked at each hello for the lingering warning and passed to launchRunner.
  *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs). onRemoved: `remove` has
  *   deleted ~/.postbox-remote and said `removed`, so the daemon exits. env: the daemon’s environment, which each runner
  *   inherits (read at each start, for KIRO_HOME).
@@ -166,7 +172,7 @@ export function createDaemon({
   now = Date.now,
   timers = { setTimeout: (fn, ms) => setTimeout(fn, ms).unref(), clearTimeout: (t) => clearTimeout(t) },
   spawn = nodeSpawn,
-  logind,
+  logind = logindFacts,
   launchRunner = defaultLaunchRunner,
   askRunner = defaultAskRunner,
   proc = defaultProc,
@@ -211,7 +217,7 @@ export function createDaemon({
   const stoppedFirst = new Set();
   /** @type {Map<string, Promise<void>>} starts under way, per turn, until they’ve answered */
   const starting = new Map();
-  /** Problems found since the start, beside programs’ (lingering, say), for each welcome. */
+  /** Problems found since the start, beside programs’ (lingering, rechecked at each hello; the log cap), for each welcome. */
   /** @type {Map<string, string>} */
   const problems = new Map();
   /** @type {any} */
@@ -461,6 +467,22 @@ export function createDaemon({
     fail(c, code, `This daemon doesn’t handle ${m.type} yet.`, m.type, m.turn);
   }
 
+  /**
+   * The lingering warning, from the host’s facts, before each welcome, so the first one has it whether or not a turn
+   * has run, and it goes once lingering is on. launchRunner’s rule: a runner goes into a systemd user scope only with
+   * `detach: 'auto'` where logind kills a user’s processes at logout, and only a scoped runner ends at the last logout
+   * (without the scope, a probe saw turns survive with lingering off). Two quick commands, so it’s asked each time.
+   */
+  function checkLinger() {
+    const facts = settings.detach === 'auto' ? logind() : null;
+    if (facts?.killUserProcesses === true && facts.linger === false)
+      problems.set(
+        'no-linger',
+        'Lingering is off for this user, so turns end when the last session on the host ends. Run “loginctl enable-linger” on the host to keep them running.',
+      );
+    else problems.delete('no-linger');
+  }
+
   /** @param {Conn} c @param {any} m */
   async function hello(c, m) {
     if (m.version !== PROTOCOL_VERSION)
@@ -484,6 +506,7 @@ export function createDaemon({
     settings = { ...HOST_DEFAULTS, ...(m.settings ?? {}) };
     programs = await findPrograms({ home, settings });
     if (c.closed) return;
+    checkLinger();
     const turns = await scan();
     const allProblems = [...programs.problems, ...[...problems].map(([code, text]) => ({ code, message: text }))].slice(0, REMOTE_LIMITS.problems);
     await send(c, 'welcome', { version: PROTOCOL_VERSION, home, node: programs.node, harnesses: programs.harnesses, problems: allProblems, turns });
@@ -599,15 +622,8 @@ export function createDaemon({
       // A stop came meanwhile (from the next channel, this one having dropped): nothing runs. Checked just before the
       // launch, so a stop after it waits for the runner and stops it.
       if (stoppedFirst.has(m.turn)) throw Object.assign(new Error('it was stopped before its runner launched.'), { code: 'turn-stopped' });
-      const { pid, scoped, lingerOff } = await launchRunner({ node, turn: m.turn, paths: p, scope: settings.detach, spawn, logind });
+      const { pid, scoped } = await launchRunner({ node, turn: m.turn, paths: p, scope: settings.detach, spawn, logind });
       log(`Started turn ${m.turn} (${m.harness}), runner ${pid}${scoped ? ', in a systemd user scope' : ''}.`);
-      // Only a scoped runner ends at the last logout: without the scope (KillUserProcesses off), a probe saw turns
-      // survive with lingering off.
-      if (scoped && lingerOff)
-        problems.set(
-          'no-linger',
-          'Lingering is off for this user, so turns end when the last session on the host ends. Run “loginctl enable-linger” on the host to keep them running.',
-        );
     } catch (e) {
       // Nothing ran, so the folder goes, and the same turn can be started again.
       await cleanup.dropAgentFile(m.turn).catch(() => {});
@@ -1309,8 +1325,9 @@ export function ensureToken({ p, uid, log }) {
  *   stderr?: { write: (s: string) => any }, home?: string, connect?: (path: string) => import('node:net').Socket,
  *   spawn?: any, now?: () => number, sleep?: (ms: number) => Promise<void>, nodeVersion?: string,
  *   umask?: (mask: number) => number, proc?: LockProc }} MainOpts
- * @typedef {{ bootId: () => string | null, startTime: (pid: number) => number | null, sameProcess: (r: any) => boolean }} LockProc
- *   proc.mjs’s, for the start lock’s and daemon.pid’s owner records
+ * @typedef {{ bootId: () => string | null, startTime: (pid: number) => number | null, sameProcess: (r: any) => boolean, paused?: () => void }} LockProc
+ *   proc.mjs’s, for the start lock’s and daemon.pid’s owner records. paused, tests only: called while a breaker holds
+ *   its break lock, between finding the lock stale and removing it, as a suspended process would be.
  */
 
 /**
@@ -1465,14 +1482,14 @@ function ownerRecord(proc) {
  * again), whether an attach or an install (install.mjs) holds it.
  * @param {string} lock @param {string} me @param {() => number} now @param {LockProc} proc
  */
-function takeLock(lock, me, now, proc) {
+export function takeLock(lock, me, now, proc) {
   mkdirSync(dirname(lock), { recursive: true, mode: DIR_MODE });
   for (let tries = 0; tries < 2; tries++) {
     try {
       mkdirSync(lock, { mode: DIR_MODE });
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      if (lockStale(lock, now, proc) && breakLock(lock, now, proc)) continue;
+      if (lockStale(lock, now, proc) && breakLock(lock, me, now, proc)) continue;
       return false;
     }
     // Written beside it and renamed in, so a reader never sees half a record.
@@ -1490,17 +1507,17 @@ function takeLock(lock, me, now, proc) {
 }
 
 /**
- * Whether a held start lock is stale: its owner is gone, or it has had no owner record for LOCK_STALE_MS. False if
- * it’s gone meanwhile.
- * @param {string} lock @param {() => number} now @param {LockProc} proc
+ * Whether a held start lock (or break lock) is stale: its owner is gone, or it has had no owner record for `grace`
+ * (LOCK_STALE_MS for a start lock). False if it’s gone meanwhile.
+ * @param {string} lock @param {() => number} now @param {LockProc} proc @param {number} [grace]
  */
-function lockStale(lock, now, proc) {
+function lockStale(lock, now, proc, grace = LOCK_STALE_MS) {
   let text;
   try {
     text = readFileSync(`${lock}/${LOCK_OWNER}`, 'utf8');
   } catch {
     try {
-      return now() - statSync(lock).mtimeMs > LOCK_STALE_MS;
+      return now() - statSync(lock).mtimeMs > grace;
     } catch {
       return false;
     }
@@ -1509,23 +1526,21 @@ function lockStale(lock, now, proc) {
 }
 
 /**
- * Removes a stale start lock under `<lock>.break`, judging it once more there: of two attaches (or an install) that
- * both found it stale, the second then finds the fresh lock the first made, and leaves it. A break lock is held for
- * one removal, so one older than BREAK_STALE_MS is from one that died holding it. True if it removed the lock.
- * @param {string} lock @param {() => number} now @param {LockProc} proc
+ * Removes a stale start lock under `<lock>.break` (holdBreak), judging it once more there: of two attaches (or an
+ * install) that both found it stale, the second then finds the fresh lock the first made, and leaves it. True if it
+ * removed the lock.
+ * @param {string} lock @param {string} me @param {() => number} now @param {LockProc} proc
  */
-function breakLock(lock, now, proc) {
+function breakLock(lock, me, now, proc) {
   const brk = `${lock}.break`;
   try {
-    mkdirSync(brk, { mode: DIR_MODE });
+    if (!holdBreak(brk, me, now, proc, BREAK_STALE_MS)) return false;
   } catch {
-    try {
-      if (now() - statSync(brk).mtimeMs > BREAK_STALE_MS) rmdirSync(brk);
-    } catch {}
     return false;
   }
   try {
     if (!lockStale(lock, now, proc)) return false;
+    proc.paused?.();
     const aside = `${lock}.stale.${process.pid}`;
     rmSync(aside, { recursive: true, force: true });
     renameSync(lock, aside);
@@ -1534,18 +1549,62 @@ function breakLock(lock, now, proc) {
   } catch {
     return false;
   } finally {
-    try {
-      rmdirSync(brk);
-    } catch {}
+    dropLock(brk, me);
   }
 }
 
 /**
- * Drops the start lock, only while its owner record is still `me`: one broken and taken by another (say, after this
- * process was suspended past a check) is theirs, and stays. Renamed aside first, so it’s never seen without a record.
+ * Takes a break lock (`<start lock>.break`, daemon.pid.break), held for one stale lock’s removal: a folder holding
+ * its owner record, `me`, as the start lock does. It’s made whole beside its name, with the record in it, and renamed
+ * in, which fails while one is there, so it’s never seen without a record. One that’s held is broken only if it’s
+ * stale (lockStale, with `grace` for one with no record): its breaker died, or its record is garbled. Its age alone
+ * never breaks it, so a breaker suspended between its check and its removal keeps it, and nobody else removes a lock
+ * meanwhile. Broken one way only: renamed aside, judged once more there, and put back if it’s live after all (one
+ * just taken by another that found the same stale one), so two that both found it stale can’t remove a live one.
+ * True if it’s taken; throws if it can’t be made at all.
+ * @param {string} brk @param {string} me @param {() => number} now @param {LockProc} proc @param {number} grace
+ */
+function holdBreak(brk, me, now, proc, grace) {
+  const take = () => {
+    const tmp = `${brk}.new.${process.pid}`;
+    rmSync(tmp, { recursive: true, force: true });
+    try {
+      mkdirSync(tmp, { mode: DIR_MODE });
+      writeFileSync(`${tmp}/${LOCK_OWNER}`, me, { mode: FILE_MODE });
+      renameSync(tmp, brk);
+      return true;
+    } catch (e) {
+      if (e.code === 'EEXIST' || e.code === 'ENOTEMPTY') return false;
+      throw e;
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  };
+  if (take()) return true;
+  if (!lockStale(brk, now, proc, grace)) return false;
+  const aside = `${brk}.gone.${process.pid}`;
+  rmSync(aside, { recursive: true, force: true });
+  try {
+    renameSync(brk, aside);
+  } catch {
+    return false;
+  }
+  if (!lockStale(aside, now, proc, grace)) {
+    try {
+      renameSync(aside, brk);
+    } catch {}
+  }
+  rmSync(aside, { recursive: true, force: true });
+  return take();
+}
+
+/**
+ * Drops the start lock (or a break lock), only while its owner record is still `me`: one broken and taken by another
+ * (say, after this process was suspended past a check) is theirs, and stays. Renamed aside first, so it’s never seen
+ * without a record.
  * @param {string} lock @param {string} me
  */
-function dropLock(lock, me) {
+export function dropLock(lock, me) {
   try {
     if (readFileSync(`${lock}/${LOCK_OWNER}`, 'utf8') !== me) return;
     const aside = `${lock}.free.${process.pid}`;
@@ -1658,7 +1717,7 @@ async function serve({ p, home, say, connect, proc }) {
 /**
  * Takes daemon.pid for this process’s life (the header, step 3): `held` with a release that removes it only while
  * it’s still ours, or why not and the exit code.
- * @param {string} dir @param {{ bootId: () => string | null, startTime: (pid: number) => number | null, sameProcess: (r: any) => boolean }} proc
+ * @param {string} dir @param {LockProc} proc
  * @returns {{ held: true, release: () => void } | { held: false, why: string, code: number }}
  */
 export function takeDaemonLock(dir, proc) {
@@ -1669,13 +1728,14 @@ export function takeDaemonLock(dir, proc) {
   const text = JSON.stringify(me);
   // Written whole beside it, then linked into place, which fails if daemon.pid is there: another serve never reads
   // a half-written one.
-  const tmp = `${file}.${process.pid}.tmp`;
+  const tmp = `${file}.${process.pid}.${++lockTries}.tmp`;
   try {
     writeFileSync(tmp, text, { mode: FILE_MODE });
   } catch (e) {
     return { held: false, why: `Couldn’t write ${tmp}: ${e.message}`, code: EXIT.software };
   }
   const brk = `${file}.break`;
+  let busy = false;
   try {
     for (let tries = 0; tries < 20; tries++) {
       try {
@@ -1697,35 +1757,43 @@ export function takeDaemonLock(dir, proc) {
       const seen = readLockRecord(file);
       if (seen === null) continue;
       if (proc.sameProcess(seen.record)) return { held: false, why: `Daemon ${seen.record.pid} already serves this version; exiting.`, code: EXIT.ok };
-      // Stale: removed under daemon.pid.break, and only if it’s still the one just read, so a serve that found it
-      // stale a moment before another replaced it can’t remove the new one.
+      // Stale: removed under daemon.pid.break, held with this serve’s record as the start lock’s break lock is
+      // (holdBreak), and only if it’s still the one just read, so a serve that found it stale a moment before another
+      // replaced it can’t remove the new one.
       try {
-        mkdirSync(brk, { mode: DIR_MODE });
+        if (!holdBreak(brk, text, Date.now, proc, PID_BREAK_STALE_MS)) {
+          // Another serve is removing it; that takes a moment.
+          busy = true;
+          pause(10);
+          continue;
+        }
       } catch (e) {
-        if (e.code !== 'EEXIST') return { held: false, why: `Couldn’t make ${brk}: ${e.message}`, code: EXIT.software };
-        // It’s held for the moment one removal takes; one older than a second is from a serve that died holding it.
-        try {
-          if (Date.now() - statSync(brk).mtimeMs > 1000) rmdirSync(brk);
-        } catch {}
-        pause(10);
-        continue;
+        return { held: false, why: `Couldn’t make ${brk}: ${e.message}`, code: EXIT.software };
       }
+      busy = false;
       try {
-        if (readLockRecord(file)?.text === seen.text) unlinkSync(file);
+        if (readLockRecord(file)?.text === seen.text) {
+          proc.paused?.();
+          unlinkSync(file);
+        }
       } catch {
       } finally {
-        try {
-          rmdirSync(brk);
-        } catch {}
+        dropLock(brk, text);
       }
     }
-    return { held: false, why: `Couldn’t take ${file}: it kept changing; exiting.`, code: EXIT.unavailable };
+    return {
+      held: false,
+      why: busy ? `Couldn’t take ${file}: another serve held ${brk} throughout; exiting.` : `Couldn’t take ${file}: it kept changing; exiting.`,
+      code: EXIT.unavailable,
+    };
   } finally {
     try {
       unlinkSync(tmp);
     } catch {}
   }
 }
+/** Counts takeDaemonLock’s calls, so each one’s temporary file is its own. */
+let lockTries = 0;
 /** Waits without returning to the event loop, as long as one stale lock’s removal takes. @param {number} ms */
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 

@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { hostPaths } from '../../shared/remote-protocol.mjs';
+import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { codexPromptId } from '../remote/host/broker.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { draftOf } from '../write-guard.mjs';
@@ -12,7 +13,7 @@ import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { AUTO_MODEL, effortOf, POSTBOX_SERVER } from './setup.mjs';
+import { AUTO_MODEL, effortOf, PERMISSION_WAIT_MARGIN_MS, POSTBOX_SERVER } from './setup.mjs';
 
 // Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false).
 // On a remote host (#120), stdin stays open for the JSON-RPC until turn/completed, it sets no variable of its own,
@@ -139,9 +140,17 @@ export function codexConfigArgs(mcpUrl) {
  * help, whose examples include `-c 'sandbox_permissions=["disk-full-read-access"]'`), and `args` is an
  * `array<string>` (Codex’s configuration reference, `mcp_servers.<id>.args`). A JSON array of strings is a TOML inline
  * array of basic strings, as a JSON string is a TOML basic string.
- * @param {string} command @param {string[]} args
+ *
+ * A shim call can wait on Postbox (a dropped link, say) until the host’s permissionWaitMax, when the daemon gives up on
+ * it, so Codex’s own limit on the call comes an hour later, as Claude Code’s shim `timeout` does: else the agent would
+ * get Codex’s timeout instead of the daemon’s answer. Codex cuts every MCP tool call at 60 seconds unless
+ * `tool_timeout_sec` says otherwise: “Override the default 60s per-tool timeout for an MCP server”, a `number` of
+ * seconds (Codex’s configuration reference, `mcp_servers.<id>.tool_timeout_sec`; codex-rs/config/src/mcp_types.rs reads
+ * it as an f64 of seconds, which a TOML integer is too). The laptop’s HTTP server gets none: Codex has no
+ * permission_prompt (CODEX_CAPABILITIES.permissions), and Postbox’s other tools answer at once.
+ * @param {string} command @param {string[]} args @param {number} waitMax  the host’s permissionWaitMax, in milliseconds
  */
-export function codexRemoteConfigArgs(command, args) {
+export function codexRemoteConfigArgs(command, args, waitMax) {
   return [
     '-c',
     `mcp_servers.${POSTBOX_SERVER}.command=${JSON.stringify(command)}`,
@@ -151,6 +160,8 @@ export function codexRemoteConfigArgs(command, args) {
     `mcp_servers.${POSTBOX_SERVER}.enabled=true`,
     '-c',
     `mcp_servers.${POSTBOX_SERVER}.required=true`,
+    '-c',
+    `mcp_servers.${POSTBOX_SERVER}.tool_timeout_sec=${Math.ceil((waitMax + PERMISSION_WAIT_MARGIN_MS) / 1000)}`,
   ];
 }
 
@@ -423,7 +434,8 @@ export class CodexAdapter {
     if (remote) {
       const turn = attach?.turn ?? /** @type {string} */ (remote.turn);
       const shim = hostPaths(remote.welcome.home, remote.version).shim;
-      const args = ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs(remote.welcome.node.path, shimArgs(remote, shim, turn))];
+      const wait = Number.isInteger(remote.settings?.permissionWaitMax) ? remote.settings.permissionWaitMax : defaultHostSettings().permissionWaitMax;
+      const args = ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs(remote.welcome.node.path, shimArgs(remote, shim, turn), wait)];
       // No variable of its own crosses (CODEX_CAPABILITIES.remote.env), and the laptop’s environment never does.
       const spawnRemote = remoteSpawn({
         connection: remote.link,

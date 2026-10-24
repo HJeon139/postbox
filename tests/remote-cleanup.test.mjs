@@ -354,6 +354,8 @@ function daemonSetup({ home = mkdtempSync(join(tmpdir(), 'pbd-')), onRemoved = (
     version: VERSION,
     // The daemon’s own environment, which the runner inherits: KIRO_HOME, for the Kiro home an agent file goes in.
     env,
+    // logind’s facts, which the daemon asks at each hello (the lingering warning): none, as on a host without systemd.
+    logind: () => ({ killUserProcesses: null, linger: null }),
     async launchRunner(o) {
       if (launching) await launching;
       writeFileSync(o.paths.turn(o.turn, TURN_FILES.runner), JSON.stringify({ turn: o.turn, version: VERSION, pid: ++pid, bootId: BOOT, startTime: 1 }));

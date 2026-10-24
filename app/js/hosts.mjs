@@ -112,7 +112,7 @@ const GROUPS = [
         key: 'forwardAgent',
         label: 'Forward your ssh agent',
         kind: 'check',
-        help: 'Lets turns reach other hosts with your keys, while they run. Off by default.',
+        help: 'Lets turns sign in to other machines with the keys in this computer’s ssh agent. It doesn’t copy your private keys to the host, but while Postbox is connected, any process running as your user there, including the agent and the commands it runs, can use your ssh agent to sign in to other machines. Turn it on only for a host you trust that needs it. Off by default.',
       },
       {
         key: 'idleTimeout',

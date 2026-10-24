@@ -4,6 +4,8 @@ One file per UI component, nested the way the interface is. Each says why the co
 
 
 **These docs check each component with the demo’s mock agent. To test the product end to end, with real agents, real data and a tester model playing the person, use the [end-to-end UAT](e2e/README.md).** It’s the one that catches the defects people actually hit.
+
+**Agents on a remote host need a real one:** [the remote hosts checklist](remote-hosts.md) is run by hand, on a Linux host you reach with `ssh`.
 ## How to run a UAT pass
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.

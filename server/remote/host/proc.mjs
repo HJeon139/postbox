@@ -133,7 +133,8 @@ export function zombie(pid, { readFile = readFileSync, run = runProgram, platfor
 // held while its owner is the same process (sameProcess here, `live` in the script), whatever its age. A lock with no
 // record is one just made, held for a grace period (daemon.mjs’s LOCK_STALE_MS), then stale. The script writes the PID
 // alone where there’s no /proc (macOS), as its `live` checks only the PID there; such a record is held while that PID
-// is alive.
+// is alive. The break locks that one stale lock is removed under, `<lock>.break` and daemon.pid.break, hold their
+// breaker’s record the same way and are judged by it (daemon.mjs’s holdBreak, the script’s takeb and unb).
 
 /** The owner record’s name in the start lock’s folder. */
 export const LOCK_OWNER = 'owner';

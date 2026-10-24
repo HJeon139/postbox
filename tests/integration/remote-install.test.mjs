@@ -15,7 +15,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { main } from '../../server/remote/host/daemon.mjs';
 import { hostVersion } from '../../server/remote/host/paths.mjs';
-import { bootId, lockOwnerLive, parseLockOwner, startTime } from '../../server/remote/host/proc.mjs';
+import { bootId, listProcesses, lockOwnerLive, parseLockOwner, sameProcess, startTime } from '../../server/remote/host/proc.mjs';
 import { bundle, describeInstall, installCommand, installHost, readToken } from '../../server/remote/install.mjs';
 import { remoteCommand } from '../../server/remote/ssh.mjs';
 import { encode, hostPaths, message, PROTOCOL_VERSION, validateMessage } from '../../shared/remote-protocol.mjs';
@@ -515,13 +515,14 @@ test('a start lock more than a minute old, from an attach that died holding it, 
 
 /**
  * Starts the install script on `tar` in the background, with one of its test-only pauses: WAIT (POSTBOX_INSTALL_TEST_WAIT),
- * past its first check and before it takes the start lock, or HOLD (POSTBOX_INSTALL_TEST_HOLD), just after it has
- * taken it. It waits there until `go` exists, having made `<go>.paused` or `<go>.held` to say it’s there.
- * @param {ReturnType<typeof machines>} m @param {Buffer} tar @param {string} go @param {'WAIT' | 'HOLD'} [at]
+ * past its first check and before it takes the start lock; HOLD (POSTBOX_INSTALL_TEST_HOLD), just after it has taken
+ * it; or BREAK (POSTBOX_INSTALL_TEST_BREAK), holding `<lock>.break` with a stale start lock found, before it removes
+ * it. It waits there until `go` exists, having made `<go>.paused`, `<go>.held` or `<go>.breaking` to say it’s there.
+ * @param {ReturnType<typeof machines>} m @param {Buffer} tar @param {string} go @param {'WAIT' | 'HOLD' | 'BREAK'} [at]
  */
 async function installPaused(m, tar, go, at = 'WAIT') {
   const child = spawn('/bin/sh', ['-c', installCommand(VERSION)], { env: { ...m.env, [`POSTBOX_INSTALL_TEST_${at}`]: go }, stdio: ['pipe', 'pipe', 'pipe'] });
-  const mark = `${go}.${at === 'WAIT' ? 'paused' : 'held'}`;
+  const mark = `${go}.${{ WAIT: 'paused', HOLD: 'held', BREAK: 'breaking' }[at]}`;
   let stdout = '';
   let stderr = '';
   child.stdout.setEncoding('utf8').on('data', (d) => (stdout += d));
@@ -619,12 +620,13 @@ async function until(f) {
 /**
  * A real attach, daemon.mjs’s own, in this process, counting its waits: it waits while the start lock is held, then
  * takes it and starts `host serve` (a fake child, counted in `spawned`, with the waits before it in `waitsBefore`),
- * holding the lock until `end` makes it exit.
+ * holding the lock until `end` makes it exit. While `hold` is set, its waits last until that settles too.
  */
-function attachCounting(home) {
-  const state = { waits: 0, spawned: 0, waitsBefore: 0 };
+function attachCounting(home, /** @type {Partial<import('../../server/remote/host/daemon.mjs').MainOpts>} */ opts = {}) {
+  const state = { waits: 0, spawned: 0, waitsBefore: 0, hold: /** @type {Promise<void> | null} */ (null) };
   const serve = Object.assign(new EventEmitter(), { unref() {} });
   const running = main({
+    ...opts,
     argv: ['attach'],
     home,
     stdin: new PassThrough(),
@@ -637,9 +639,10 @@ function attachCounting(home) {
         return serve;
       }
     ),
-    sleep: (ms) => {
+    sleep: async (ms) => {
       state.waits++;
-      return new Promise((r) => setTimeout(r, ms));
+      await state.hold;
+      await new Promise((r) => setTimeout(r, ms));
     },
   });
   return {
@@ -650,6 +653,13 @@ function attachCounting(home) {
     },
   };
 }
+
+/**
+ * Whether `owner` is the shell running the install script that `sh -c` (PID `pid`) started: that shell itself where
+ * it execs its last command (bash), or its child where it doesn’t (dash, Linux’s /bin/sh).
+ * @param {number | undefined} owner @param {number | undefined} pid
+ */
+const installShell = (owner, pid) => owner !== undefined && (owner === pid || listProcesses()?.find((p) => p.pid === owner)?.ppid === pid);
 
 /** The start lock’s owner record, parsed, or null if it has none. @param {string} lock */
 const lockOwner = (lock) => (existsSync(join(lock, 'owner')) ? JSON.parse(readFileSync(join(lock, 'owner'), 'utf8')) : null);
@@ -680,10 +690,11 @@ test('an install holding the start lock past both stale times keeps it: a waitin
     assert.equal(a.state.spawned, 0, 'the attach started no daemon');
     assert.equal(existsSync(code), false, 'and made nothing in the version’s folder');
     assert.deepEqual(readdirSync(join(root, 'locks')), [`${VERSION}.lock`], 'nor broke or replaced the lock');
-    assert.equal(lockOwner(lock)?.pid, pid, 'which is still the install’s');
+    const owner = lockOwner(lock);
+    assert.ok(installShell(owner?.pid, pid), 'which is still the install’s');
     // The script’s record is the one proc.mjs checks: PID, boot ID and start time where there’s /proc, else the PID.
     assert.equal(lockOwnerLive(parseLockOwner(readFileSync(join(lock, 'owner'), 'utf8'))), true, 'and names it as alive');
-    if (existsSync('/proc/self/stat')) assert.deepEqual(lockOwner(lock), { pid, bootId: bootId(), startTime: startTime(pid) });
+    if (existsSync('/proc/self/stat')) assert.deepEqual(owner, { pid: owner.pid, bootId: bootId(), startTime: startTime(owner.pid) });
     writeFileSync(hold, '');
     const r = await done;
     assert.equal(r.status, 0, r.stderr);
@@ -734,6 +745,128 @@ test('a start lock whose owner is dead is broken at once, however new, by an ins
     attach = null;
     assert.equal(await a.end(), 69);
     assert.deepEqual(readdirSync(join(root, 'locks')), []);
+  } finally {
+    await attach?.end();
+    rmSync(m.root, { recursive: true, force: true });
+  }
+});
+
+test('an install paused while it breaks a dead owner’s start lock keeps <lock>.break past every age: an attach and another install neither break it nor enter, and the attach goes on once it’s free', {
+  skip: SKIP,
+}, async () => {
+  const m = machines();
+  /** @type {ReturnType<typeof attachCounting> | null} */
+  let attach = null;
+  const go = join(m.root, 'go');
+  /** @type {Promise<unknown> | null} */
+  let install = null;
+  /** @type {() => void} */
+  let resume = () => {};
+  try {
+    const { tar } = bundle({ version: VERSION });
+    const root = join(m.home, '.postbox-remote');
+    const lock = hostPaths(m.home, VERSION).lock;
+    const brk = `${lock}.break`;
+    const dead = JSON.stringify({ pid: deadPid(), bootId: bootId(), startTime: 1 });
+    const deadLock = () => {
+      mkdirSync(lock, { recursive: true, mode: 0o700 });
+      writeFileSync(join(lock, 'owner'), dead);
+    };
+    deadLock();
+    const { done, pid } = await installPaused(m, tar, go, 'BREAK');
+    install = done;
+    // Three minutes old, as a suspended install could leave it: past daemon.mjs’s age limits and the script’s minute.
+    const old = new Date(Date.now() - 3 * 60_000);
+    utimesSync(brk, old, old);
+    attach = attachCounting(m.home);
+    const a = attach;
+    await until(() => a.state.waits >= 20 || a.state.spawned > 0);
+    assert.equal(a.state.spawned, 0, 'the attach started no daemon');
+    assert.equal(readFileSync(join(lock, 'owner'), 'utf8'), dead, 'nor broke the start lock under the paused install');
+    const r = installOnce(m, tar);
+    assert.equal(r.status, 75, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, new RegExp(`Postbox ${V} is starting on this host; install again in a moment`));
+    const breaker = parseLockOwner(readFileSync(join(brk, 'owner'), 'utf8'));
+    assert.ok(installShell(breaker?.pid, pid) && lockOwnerLive(breaker), 'the break lock is still the paused install’s');
+    assert.equal(existsSync(join(root, VERSION)), false, 'and nothing was installed');
+    // The attach waits on, so the install, once it goes on, takes the lock it frees rather than racing it.
+    a.state.hold = new Promise((r) => (resume = () => r(undefined)));
+    const waits = a.state.waits;
+    await until(() => a.state.waits > waits);
+    writeFileSync(go, '');
+    const first = await done;
+    resume();
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(first.stdout, `installed ${VERSION}\n`);
+    assert.ok(await until(() => a.state.spawned > 0), 'the attach went on once the install was done');
+    assert.equal(lockOwner(lock)?.pid, process.pid);
+    attach = null;
+    assert.equal(await a.end(), 69);
+    assert.deepEqual(readdirSync(join(root, 'locks')), [], 'every lock was dropped');
+    // A break lock whose breaker died holding it is broken at once, however new: by an install, and by an attach.
+    const deadBreak = () => {
+      deadLock();
+      mkdirSync(brk, { mode: 0o700 });
+      writeFileSync(join(brk, 'owner'), dead);
+    };
+    deadBreak();
+    rmSync(join(root, VERSION), { recursive: true });
+    const again = installOnce(m, tar);
+    assert.equal(again.status, 0, again.stderr);
+    assert.equal(again.stdout, `installed ${VERSION}\n`);
+    assert.deepEqual(top(root), [VERSION, 'locks'], 'the dead breaker’s break lock went, and the start lock');
+    deadBreak();
+    attach = attachCounting(m.home);
+    const b = attach;
+    assert.ok(await until(() => b.state.spawned > 0), 'the attach broke both and started the daemon');
+    assert.equal(b.state.waitsBefore, 0, 'without waiting for them to age');
+    attach = null;
+    assert.equal(await b.end(), 69);
+    assert.deepEqual(readdirSync(join(root, 'locks')), []);
+  } finally {
+    resume();
+    await attach?.end();
+    writeFileSync(go, '');
+    await install;
+    rmSync(m.root, { recursive: true, force: true });
+  }
+});
+
+test('an attach paused while it breaks a dead owner’s start lock keeps <lock>.break past every age: an install neither breaks it nor enters', {
+  skip: SKIP,
+}, async () => {
+  const m = machines();
+  /** @type {ReturnType<typeof attachCounting> | null} */
+  let attach = null;
+  try {
+    const { tar } = bundle({ version: VERSION });
+    const root = join(m.home, '.postbox-remote');
+    const lock = hostPaths(m.home, VERSION).lock;
+    const brk = `${lock}.break`;
+    const dead = JSON.stringify({ pid: deadPid(), bootId: bootId(), startTime: 1 });
+    mkdirSync(lock, { recursive: true, mode: 0o700 });
+    writeFileSync(join(lock, 'owner'), dead);
+    const read = (/** @type {string} */ f) => (existsSync(f) ? readFileSync(f, 'utf8') : null);
+    /** What an install did and found while the attach was paused. @type {any} */
+    let during = null;
+    const paused = () => {
+      const old = new Date(Date.now() - 3 * 60_000);
+      utimesSync(brk, old, old);
+      const r = installOnce(m, tar);
+      during = { status: r.status, out: `${r.stdout}${r.stderr}`, lock: read(join(lock, 'owner')), brk: read(join(brk, 'owner')) };
+    };
+    attach = attachCounting(m.home, { proc: { bootId, startTime, sameProcess, paused } });
+    const a = attach;
+    assert.ok(await until(() => a.state.spawned > 0), 'the paused attach went on and started the daemon');
+    assert.ok(during, 'it paused');
+    assert.equal(during.status, 75, during.out);
+    assert.equal(during.lock, dead, 'the install didn’t break the start lock under the paused attach');
+    assert.deepEqual(JSON.parse(during.brk ?? 'null'), { pid: process.pid, bootId: bootId(), startTime: startTime(process.pid) }, 'nor its break lock');
+    assert.equal(existsSync(join(root, VERSION, 'manifest.sha256')), false, 'and installed nothing');
+    attach = null;
+    assert.equal(await a.end(), 69);
+    assert.deepEqual(readdirSync(join(root, 'locks')), [], 'every lock was dropped');
+    assert.equal(installOnce(m, tar).stdout, `installed ${VERSION}\n`, 'and the next install goes on');
   } finally {
     await attach?.end();
     rmSync(m.root, { recursive: true, force: true });

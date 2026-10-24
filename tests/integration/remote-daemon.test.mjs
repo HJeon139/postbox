@@ -4,12 +4,12 @@
 // tests/remote-daemon.test.mjs.
 
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { connect, createServer } from 'node:net';
 import { test } from 'node:test';
-import { HOST_ENTRY } from '../../server/remote/host/daemon.mjs';
-import { bootId, startTime } from '../../server/remote/host/proc.mjs';
+import { HOST_ENTRY, takeDaemonLock } from '../../server/remote/host/daemon.mjs';
+import { bootId, sameProcess, startTime } from '../../server/remote/host/proc.mjs';
 import { gone, HARNESS, makeHost, NO_UNIX, read, realDaemon, sleep, TURN, until } from './host.mjs';
 
 test('daemon and runner: start, held-stdin writes, the liveness check and Stop, over runner.mjs’s own socket', { skip: NO_UNIX }, async () => {
@@ -219,6 +219,46 @@ test('serve: four started at once make one daemon, and the others exit 0', { ski
     assert.equal(JSON.parse(readFileSync(lockFile(h), 'utf8')).pid, left.child.pid, 'the one still running holds daemon.pid');
   } finally {
     for (const s of all) s.stop();
+    rmSync(h.home, { recursive: true, force: true });
+  }
+});
+
+test('serve: one paused while it removes a dead daemon’s daemon.pid keeps daemon.pid.break past its age; another serve neither breaks it nor starts, and one after starts', {
+  skip: NO_UNIX,
+}, async () => {
+  const h = makeServeHost();
+  const dead = JSON.stringify({ pid: 2 ** 22 + 1, bootId: bootId(), startTime: 1 });
+  writeFileSync(lockFile(h), dead);
+  const brk = `${lockFile(h)}.break`;
+  const read = (/** @type {string} */ f) => (existsSync(f) ? readFileSync(f, 'utf8') : null);
+  /** What another serve did and found while this one was paused. @type {any} */
+  let during = null;
+  const paused = () => {
+    // A minute old, far past daemon.pid.break’s age limit.
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(brk, old, old);
+    const r = spawnSync(process.execPath, [HOST_ENTRY, 'serve'], { env: h.env, encoding: 'utf8', timeout: 5000 });
+    during = { status: r.status, err: r.stderr, pid: read(lockFile(h)), brk: read(`${brk}/owner`) };
+  };
+  const me = { pid: process.pid, bootId: bootId(), startTime: startTime(process.pid) };
+  const a = takeDaemonLock(h.p.code, { bootId, startTime, sameProcess, paused });
+  let s = null;
+  try {
+    assert.ok(during, 'it paused');
+    assert.equal(during.status, 69, during.err);
+    assert.match(during.err, /daemon\.pid\.break/);
+    assert.equal(during.pid, dead, 'the other serve didn’t remove the dead daemon’s daemon.pid');
+    assert.deepEqual(JSON.parse(during.brk ?? 'null'), me, 'nor break the paused serve’s break lock');
+    assert.equal(await answers(h.p.socket), false, 'and no daemon started');
+    assert.equal(a.held, true, 'the paused serve went on and took daemon.pid');
+    assert.deepEqual(JSON.parse(readFileSync(lockFile(h), 'utf8')), me);
+    if (a.held) a.release();
+    assert.deepEqual(readdirSync(h.p.code), [], 'it dropped daemon.pid and its break lock');
+    s = serve(h);
+    await until(() => answers(h.p.socket), 'the next daemon to answer', 5000);
+  } finally {
+    if (a.held) a.release();
+    s?.stop();
     rmSync(h.home, { recursive: true, force: true });
   }
 });

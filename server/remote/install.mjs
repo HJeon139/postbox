@@ -246,12 +246,15 @@ const NODE_CHECK = [
  * this can’t take stops it with 75 (an attach is starting the daemon; install again in a moment), unless it’s `dead`:
  * its owner record names a process that isn’t `live`, or it has had no record for more than a minute (daemon.mjs’s
  * LOCK_STALE_MS is shorter). That one is removed, as takeLock does: under `<lock>.break`, judged once more there, set
- * aside and removed; a break lock this can’t take stops it with 75 too, and one more than a minute old is from one
- * that died holding it. The age tests are find’s -mmin +1, which GNU, BSD and BusyBox find have (POSIX find has only
- * -mtime); a find without it finds nothing, so the lock counts as held. Age alone never breaks a lock whose owner is
- * live. The lock is dropped when the script exits, whichever way (the EXIT trap), only while it’s still `mine`: its
- * record is `me` (or still the temporary one this shell was writing), so a lock another broke and took is left to
- * them. With it held, a daemon.pid or a turn’s runner.json of that version naming a live process stops it with 75
+ * aside and removed. The break lock holds `me` too, from the moment it’s there (`takeb`: made beside it with the
+ * record in it, then moved in; one that’s there already makes mv put it inside instead, so it isn’t `mine`, and it
+ * goes). One this can’t take stops it with 75, unless it’s `dead` by the same rules, its breaker gone (`unb`: moved
+ * aside, judged once more there, and put back if it’s live after all), and then this tries once more. The age tests
+ * are find’s -mmin +1, which GNU, BSD and BusyBox find have (POSIX find has only -mtime); a find without it finds
+ * nothing, so the lock counts as held. Age alone never breaks a lock or a break lock whose owner is live, so one
+ * suspended while it removes a stale lock keeps its break lock, and nobody else removes a lock meanwhile. Each is
+ * dropped when the script exits, whichever way (the EXIT trap), only while it’s still `mine`: its record is `me` (or
+ * still the temporary one this shell was writing), so a lock another broke and took is left to them. With it held, a daemon.pid or a turn’s runner.json of that version naming a live process stops it with 75
  * too; no daemon can start meanwhile, and no turn without a daemon. A record sed can’t read counts as live, so a
  * missing tool refuses rather than replaces. `live` is proc.mjs’s sameProcess in sh: the PID is alive and, where
  * there’s /proc, the boot ID and start time (stat’s field 22, counted after the command name’s last paren) are the
@@ -260,7 +263,8 @@ const NODE_CHECK = [
  *
  * Tests only: with POSTBOX_INSTALL_TEST_WAIT set to a path, the script stops just before it takes the lock, makes
  * `<path>.paused`, and waits until the path exists; with POSTBOX_INSTALL_TEST_HOLD, it does the same just after it
- * has taken the lock, making `<path>.held` (tests/integration/remote-install.test.mjs). sshd passes them only if the
+ * has taken the lock, making `<path>.held`; with POSTBOX_INSTALL_TEST_BREAK, holding the break lock, between finding
+ * the lock stale and removing it, making `<path>.breaking` (tests/integration/remote-install.test.mjs). sshd passes them only if the
  * host’s own configuration says to, and they can only delay this install.
  */
 export const INSTALL_SCRIPT = `
@@ -305,9 +309,12 @@ export const INSTALL_SCRIPT = `
   shift 19;
   me="{\\"pid\\":$$,\\"bootId\\":\\"$(cat /proc/sys/kernel/random/boot_id)\\",\\"startTime\\":$1}"; };
   self;
-  dead() { if [ -f "$lk/${LOCK_OWNER}" ]; then if live "$lk/${LOCK_OWNER}"; then return 1; fi; return 0; fi; [ -n "$(find "$lk" -prune -mmin +1 2>/dev/null)" ]; };
-  mine() { [ -n "$h" ] && { [ "$(cat "$lk/${LOCK_OWNER}" 2>/dev/null)" = "$me" ] || [ -e "$lk/.${LOCK_OWNER}.$$" ]; }; };
-  clean() { cd /; rm -rf "$t"; if mine; then mv "$lk" "$lk.free.$$" && rm -rf "$lk.free.$$" || true; fi; if [ -n "$hb" ]; then rmdir "$lk.break" 2>/dev/null || true; fi; };
+  dead() { if [ -f "$1/${LOCK_OWNER}" ]; then if live "$1/${LOCK_OWNER}"; then return 1; fi; return 0; fi; [ -n "$(find "$1" -prune -mmin +1 2>/dev/null)" ]; };
+  mine() { [ "$(cat "$1/${LOCK_OWNER}" 2>/dev/null)" = "$me" ] || [ -e "$1/.${LOCK_OWNER}.$$" ]; };
+  drop() { if mine "$1"; then rm -rf "$1.free.$$"; mv "$1" "$1.free.$$" && rm -rf "$1.free.$$" || true; fi; };
+  takeb() { q=$lk.break.new.$$; rm -rf "$q"; mkdir "$q" && printf "%s\\n" "$me" > "$q/${LOCK_OWNER}" && mv "$q" "$lk.break" 2>/dev/null && mine "$lk.break" && return 0; rm -rf "$q" "$lk.break/\${q##*/}"; return 1; };
+  unb() { g=$lk.break.gone.$$; dead "$lk.break" || return 0; rm -rf "$g"; mv "$lk.break" "$g" 2>/dev/null || return 0; if dead "$g" || [ -e "$lk.break" ]; then rm -rf "$g"; else mv "$g" "$lk.break" 2>/dev/null || rm -rf "$g"; fi; };
+  clean() { cd /; rm -rf "$t"; if [ -n "$h" ]; then drop "$lk"; fi; if [ -n "$hb" ]; then drop "$lk.break"; fi; };
   trap clean EXIT;
   mkdir -p "$r";
   chmod 700 "$r";
@@ -336,12 +343,11 @@ export const INSTALL_SCRIPT = `
   if [ -n "\${POSTBOX_INSTALL_TEST_WAIT:-}" ]; then : > "$POSTBOX_INSTALL_TEST_WAIT.paused"; until [ -e "$POSTBOX_INSTALL_TEST_WAIT" ]; do sleep 1; done; fi;
   mkdir -p "$r/locks";
   chmod 700 "$r/locks";
-  if [ -n "$(find "$lk.break" -prune -mmin +1 2>/dev/null)" ]; then rmdir "$lk.break" 2>/dev/null || true; fi;
   if mkdir "$lk" 2>/dev/null; then :;
-  elif dead && mkdir "$lk.break" 2>/dev/null; then
+  elif dead "$lk" && { takeb || { unb; takeb; }; }; then
   hb=1;
-  if dead; then mv "$lk" "$lk.stale.$$" 2>/dev/null || true; rm -rf "$lk.stale.$$"; fi;
-  rmdir "$lk.break" 2>/dev/null || true;
+  if dead "$lk"; then if [ -n "\${POSTBOX_INSTALL_TEST_BREAK:-}" ]; then : > "$POSTBOX_INSTALL_TEST_BREAK.breaking"; until [ -e "$POSTBOX_INSTALL_TEST_BREAK" ]; do sleep 1; done; fi; mv "$lk" "$lk.stale.$$" 2>/dev/null || true; rm -rf "$lk.stale.$$"; fi;
+  drop "$lk.break";
   hb="";
   mkdir "$lk" 2>/dev/null || starting;
   else starting; fi;

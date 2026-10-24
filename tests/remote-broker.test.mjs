@@ -1301,6 +1301,8 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
   const daemon = createDaemon({
     home,
     version: VERSION,
+    // logind’s facts, which the daemon asks at each hello (the lingering warning): none, as on a host without systemd.
+    logind: () => ({ killUserProcesses: null, linger: null }),
     async launchRunner(o) {
       writeFileSync(o.paths.turn(o.turn, TURN_FILES.runner), JSON.stringify({ turn: o.turn, version: VERSION, pid: ++pid, bootId: BOOT, startTime: 1 }), {
         mode: 0o600,
