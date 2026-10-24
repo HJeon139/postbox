@@ -29,7 +29,8 @@ const CLONE_DATA = fileURLToPath(new URL('../data', import.meta.url));
 export const telemetryRoot = (rt) => {
   if (rt.config.telemetryRoot) return rt.config.telemetryRoot;
   if (!rt.store.dir) return null;
-  if (resolve(rt.store.dir) !== CLONE_DATA) return join(rt.store.dir, 'telemetry');
+  // Compared as the file system finds them, so a clone reached through a link is still a clone.
+  if (real(rt.store.dir) !== real(CLONE_DATA)) return join(rt.store.dir, 'telemetry');
   return cloneTelemetry(CLONE_DATA);
 };
 /** What a conversation’s folder is named: its id, and nothing else the sweep would take for one. */

@@ -8,8 +8,9 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs
 import { join } from 'node:path';
 import { finalCheck } from '../shared/telemetry.mjs';
 import { jsonLines } from '../shared/telemetry-bytes.mjs';
-import { FLAG } from '../shared/telemetry-vocab.mjs';
+import { AREAS, FLAG, MAST } from '../shared/telemetry-vocab.mjs';
 import { httpError } from './helpers.mjs';
+import { CHECKS } from './room-checks.mjs';
 import { convOf, recFolder, reportFolder, telemetryRoot, write } from './telemetry.mjs';
 import { bytesOf, draftView, readDraft, vocabOf } from './telemetry-report.mjs';
 
@@ -91,7 +92,13 @@ export function savedBytes(rt, convId, id) {
 
 /** The fixed words and templates a derived file may add to the report’s own strings (R19). */
 const FIXED = new Set(['A live room', 'live', 'check', 'flag']);
-const TEMPLATE = /^(Live room: (check [a-z0-9-]+|a flag|(none|FM-\d\.\d) in [a-z-]+)|flag-r\d{1,5})$/;
+/** Every title the templates can make, with each slot one of Postbox’s check ids or the MAST and area enums. */
+const TITLES = new Set([
+  'Live room: a flag',
+  ...CHECKS.map((c) => `Live room: check ${c.id}`),
+  ...MAST.flatMap((m) => AREAS.map((a) => `Live room: ${m} in ${a}`)),
+]);
+const TEMPLATE = { test: (v) => TITLES.has(v) || /^flag-r[1-9]\d{0,4}$/.test(v) };
 
 /**
  * Strings in a file derived from the report that aren’t the report’s own, a fixed word, or a fixed template over its

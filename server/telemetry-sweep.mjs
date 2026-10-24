@@ -39,7 +39,8 @@ export function sweepClones(rt, now = Date.now(), home = postboxHome()) {
     if (!/^telemetry-clone-[0-9a-f]{12}$/.test(n) || root === own) continue;
     for (const name of readdirSync(root).filter((x) => CONV_DIR.test(x)))
       try {
-        gone.push(...sweepOne(rt, root, name, now, { orphans: false }).map((p) => join(n, p)));
+        // A clone may be running: its events.jsonl is its to rewrite, never ours.
+        gone.push(...sweepOne(rt, root, name, now, { orphans: false, events: false }).map((p) => join(n, p)));
       } catch {
         lostOf(rt).sweep = true;
       }
@@ -47,8 +48,11 @@ export function sweepClones(rt, now = Date.now(), home = postboxHome()) {
   return gone;
 }
 
-/** The 30-day rule for one conversation’s folder: what it deleted. orphans: a folder whose conversation is gone goes too. */
-function sweepOne(rt, root, name, now, { orphans = true } = {}) {
+/**
+ * The 30-day rule for one conversation’s folder: what it deleted. orphans: a folder whose conversation is gone goes
+ * too; events: old events are taken out of events.jsonl, which only the Postbox that writes it may do.
+ */
+function sweepOne(rt, root, name, now, { orphans = true, events = true } = {}) {
   if (orphans && !rt.s.threads[name]) {
     rmSync(join(root, name), { recursive: true, force: true });
     return [name];
@@ -61,7 +65,7 @@ function sweepOne(rt, root, name, now, { orphans = true } = {}) {
     rmSync(f, { force: true });
     gone.push(relative(root, f));
   }
-  ageEvents(join(rec, 'events.jsonl'), now);
+  if (events) ageEvents(join(rec, 'events.jsonl'), now);
   const rest = filesIn(rec);
   const fresh = rest.length ? rest.some((f) => now - statSync(f).mtimeMs <= KEEP_MS) : now - statSync(rec).mtimeMs <= KEEP_MS;
   if (filesIn(join(rec, 'streams')).length || fresh) return gone;

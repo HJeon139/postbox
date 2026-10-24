@@ -73,7 +73,8 @@ function checksOf(c, live) {
     const refs = [...new Set(fs.map((f) => c.byItem.get(f.key) ?? c.byTurn.get(f.key)).filter(Boolean))]
       .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
       .slice(0, MAX_REFS);
-    return { ref: `c${i + 1}`, check, issue: fs[0].issue ?? null, count: fs.length, refs };
+    // A check with no issue (failed-turn) has no issue field: the schema holds an issue to its check’s number.
+    return { ref: `c${i + 1}`, check, ...(Number.isInteger(fs[0].issue) ? { issue: fs[0].issue } : {}), count: fs.length, refs };
   });
   return { rows, threw: threw.map((f) => ({ kind: 'check', check: f.check, reason: 'threw' })) };
 }

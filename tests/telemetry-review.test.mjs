@@ -14,7 +14,7 @@ import { draftView, vocabOf } from '../server/telemetry-report.mjs';
 import { telemetryRoute } from '../server/telemetry-routes.mjs';
 import { deleteReport, derivedProblems, findingsOf, runOf, savedReports, saveReport, TEMPLATES } from '../server/telemetry-save.mjs';
 import { finalCheck } from '../shared/telemetry.mjs';
-import { CANARIES, flaggedRoom, report, setup } from './telemetry-fixture.mjs';
+import { CANARIES, flaggedRoom, labelEach, report, settle, setup } from './telemetry-fixture.mjs';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 async function saved(f) {
@@ -109,6 +109,11 @@ test('round 2, 5: run.json and findings.json are checked at Save: a string that 
   assert.deepEqual(derivedProblems(findings, draft.report, 'findings.json'), []);
   findings.findings[0].title = `Live room: ${CANARIES.phrase}`;
   assert.deepEqual(derivedProblems(findings, draft.report, 'findings.json'), ['findings.json.findings.0.title']);
+  // A slot holds only a check id or an enum: a slug that looks like one doesn’t pass.
+  for (const title of ['Live room: check zorvex-quillmorph', 'Live room: FM-9.9 in checks', 'Live room: none in zorvex']) {
+    findings.findings[0].title = title;
+    assert.deepEqual(derivedProblems(findings, draft.report, 'findings.json'), ['findings.json.findings.0.title'], title);
+  }
   f.stop();
 });
 
@@ -175,8 +180,12 @@ test('round 3, 3: other clones’ telemetry folders are aged, without deleting t
   writeFileSync(stream, '{}\n');
   const old = (Date.now() - KEEP_MS - 864e5) / 1000;
   utimesSync(stream, old, old);
+  const events = join(clone, 'recording', 'events.jsonl');
+  const line = `${JSON.stringify({ seq: 1, t: Date.now() - KEEP_MS - 864e5 })}\n`;
+  writeFileSync(events, line);
   sweepClones(f.rt, Date.now(), home);
   assert.ok(!existsSync(stream));
+  assert.equal(readFileSync(events, 'utf8'), line, 'a clone that may be running keeps its events.jsonl as it wrote it');
   assert.ok(existsSync(join(clone, 'reports', 'rep_x')), 'saved reports stay');
   f.stop();
   rmSync(home, { recursive: true, force: true });
@@ -229,4 +238,20 @@ test('round 3, 3: Postbox ages other clones’ folders when it starts, from the 
   }
   assert.ok(!existsSync(stream));
   rmSync(home, { recursive: true, force: true });
+});
+
+test('round 4, 3: a room whose turn failed saves and files: the failed-turn row has no issue field', async () => {
+  const f = setup({ record: true, answer: labelEach() });
+  f.adapter.next.push(async () => {
+    throw new Error('boom');
+  });
+  f.rt.sendMessage(f.t.id, { text: '@alpha go' });
+  await settle(f.rt);
+  const { id, draft } = await report(f);
+  const row = draft.report.checks.found.find((k) => k.check === 'failed-turn');
+  assert.ok(row && !('issue' in row));
+  saveReport(f.rt, f.t.id, id, { hash: draftView(f.rt, f.t.id, id).hash });
+  const key = savedReports(f.rt, f.t.id)[0].findings.find((x) => x.key === 'failed-turn').key;
+  assert.match(issuePreview(f.rt, f.t.id, id, key).text, /Live room: /);
+  f.stop();
 });
