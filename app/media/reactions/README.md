@@ -15,7 +15,7 @@ are kept as the source for larger sizes.
 ## How they were made
 
 Generated locally with FLUX.2 [dev] (`black-forest-labs/FLUX.2-dev`, 28 steps) and chosen by the person on 24 October
-2026. `recipes.json` holds each one’s full recipe: its prompt, seed, guidance, terms and style references.
+2026. `recipes.json` holds each one’s full recipe: its prompt, seed, guidance and terms, and, for disapprove, its image reference.
 
 | Icon | Style | Seed | Guidance |
 |---|---|---|---|
@@ -26,8 +26,8 @@ Generated locally with FLUX.2 [dev] (`black-forest-labs/FLUX.2-dev`, 28 steps) a
 | done | embroidered patch | 924688338 | 4.5 |
 
 FLUX.2 [dev] is under Black Forest Labs’ FLUX [dev] Non-Commercial License; its model card allows commercial use of
-the outputs. Whether this set ships under Postbox’s Apache-2.0 license is for the person to confirm. Their confirmation
-on #263 covered the earlier set.
+the outputs. The person confirmed on 24 October 2026 that Postbox ships this set under its Apache-2.0 license, and that
+the disapprove icon’s image reference is their own (#282).
 
 ## Contrast
 
