@@ -16,7 +16,8 @@ const glossaryOf = (threadId) => {
 };
 
 export function agentMarkdown(it, threadId) {
-  return renderMarkdown(it.text ?? '', {
+  const text = it.kind === 'shared' && it.question ? `**You asked:** “${it.question}”\n\n${it.text ?? ''}` : (it.text ?? '');
+  return renderMarkdown(text, {
     streaming: it.status === 'streaming',
     citations: it.sources?.length ?? 0,
     citeId: `src-${it.id}`,
