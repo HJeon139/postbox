@@ -31,6 +31,7 @@ import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { ARCHIVE_AFTER_CHOICES, DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
+import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
 
@@ -391,26 +392,9 @@ export async function start({
       rt.retry(m[1], m[2]);
       return send(res, 200, { ok: true });
     }
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/(stop|archive|restore|undo-delete)$/)) && req.method === 'POST') {
-      const action = {
-        stop: () => rt.requestStop(m[1], { jobs: body.jobs ?? null, turnId: body.turnId ?? null, subagent: body.subagent ?? null }),
-        archive: () => rt.archive(m[1]),
-        restore: () => rt.restore(m[1]),
-        'undo-delete': () => rt.undoDelete(m[1]),
-      }[m[2]];
-      rt.session(m[1]);
-      return send(res, 200, { ok: true, result: action() ?? null });
-    }
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteSession(m[1]));
-    // Stop’s ask about background jobs, dismissed, and a background job’s own Stop (#129).
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/stop-ask$/)) && req.method === 'DELETE') {
-      rt.dismissStopAsk(m[1]);
-      return send(res, 200, { ok: true });
-    }
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/jobs\/([^/]+)\/stop$/)) && req.method === 'POST')
-      return send(res, 200, await rt.stopJob(m[1], decodeURIComponent(m[2])));
-    // The composer’s commands (#67): /model and /effort for this conversation, an agent’s skill as its turn, and !.
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/run$/)) && req.method === 'POST') return send(res, 200, await rt.setSessionRun(m[1], body));
+    // A session’s own actions: Stop, archive, restore, delete, its jobs and its run (server/session-routes.mjs).
+    const sessionDid = await sessionRoute(rt, path, req.method, body);
+    if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell$/)) && req.method === 'POST') {
       shellAllowed(req);
