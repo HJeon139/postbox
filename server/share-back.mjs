@@ -79,9 +79,15 @@ export function summarizing(rt, topicId) {
   );
 }
 
-export function clearSummaryPending(rt, topicId) {
+/**
+ * The thread’s summary isn’t pending any more, unless one is still running or queued. ended: a turn that just ended,
+ * whose summary queued behind it starts next (takePending), so it stays pending through the handoff.
+ * @param {any} rt @param {string} topicId @param {any} [ended]
+ */
+export function clearSummaryPending(rt, topicId, ended = null) {
   const t = rt.s.threads[topicId];
-  if (t?.summaryPending && !rt.summarizing(topicId)) rt.putThread({ ...t, summaryPending: null });
+  const next = ended?.pending.some((p) => p.summarizeTo && p.threadId === topicId);
+  if (t?.summaryPending && !next && !rt.summarizing(topicId)) rt.putThread({ ...t, summaryPending: null });
 }
 
 /**

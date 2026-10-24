@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { settle, setup, sideOf } from './side-threads-fixture.mjs';
+import { held, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
 
 /** A side thread between alpha, who started it, and beta, who answered. */
 async function sideThread() {
@@ -68,4 +68,39 @@ test('#225: a summary’s wake_agent wakes no one either, and the agent is told 
   assert.match(said?.message ?? '', /wakes no one/);
   assert.equal(adapter.calls.length, before + 1, 'only the summary’s own turn ran');
   assert.equal(store.state.threads[t.id].hops, hops);
+});
+
+/**
+ * Asks for the summary while the agent that writes it is busy in the thread, so it waits behind that turn, and returns
+ * whether it was still pending once its own turn had started. The person’s message there keeps the agent busy.
+ */
+async function askWhileBusy({ store, rt, adapter }, threadId, text) {
+  const [busy, summary] = [held(), held()];
+  adapter.next.push(busy.step, summary.step);
+  rt.sendMessage(threadId, { text });
+  await sleep(10);
+  rt.summarizeBack(threadId);
+  busy.release();
+  for (let i = 0; i < 200 && !/^Summarize/.test(adapter.calls.at(-1)?.message.text ?? ''); i++) await sleep(5);
+  assert.match(adapter.calls.at(-1)?.message.text ?? '', /^Summarize this/, 'the summary’s turn started');
+  const pending = !!store.state.threads[threadId].summaryPending;
+  summary.release();
+  await settle(rt);
+  assert.equal(store.state.threads[threadId].summaryPending, null, 'done once the summary is written');
+  return pending;
+}
+
+test('#225: asked while its agent is busy in the side thread, Summarize back stays pending until the summary is written', async () => {
+  const f = await sideThread();
+  assert.equal(await askWhileBusy(f, f.side.id, '@alpha one more thing'), true, 'pending while the summary is written');
+  assert.equal(f.store.items(f.t.id).at(-1).summary, true);
+});
+
+test('#93: so it does in a topic thread', async () => {
+  const f = setup();
+  f.rt.sendMessage(f.t.id, { text: '@alpha which editions differ?' });
+  await settle(f.rt);
+  const { threadId: topic } = f.rt.startTopic(f.t.id, f.store.items(f.t.id).find((x) => x.kind === 'agent').id);
+  assert.equal(await askWhileBusy(f, topic, 'One more thing'), true, 'pending while the summary is written');
+  assert.equal(f.store.items(f.t.id).at(-1).summary, true);
 });

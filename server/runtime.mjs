@@ -984,9 +984,9 @@ export class Runtime {
       for (const it of items)
         if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
     }
-    // Posted or not, the summary isn’t pending any more, so Summarize back works again. Any turn ending clears
-    // one a restart left behind, too.
-    this.clearSummaryPending(turn.threadId);
+    // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
+    // turn (#225). Any turn ending clears one a restart left behind, too.
+    this.clearSummaryPending(turn.threadId, turn);
     if (err && err.name !== 'AbortError') {
       // Its progress steps still running show as stalled, as at any turn’s end (#98).
       this.stallLeftRunning(turn, se, 'failed');
@@ -1579,8 +1579,8 @@ export class Runtime {
   summarizing(topicId) {
     return summarizing(this, topicId);
   }
-  clearSummaryPending(topicId) {
-    return clearSummaryPending(this, topicId);
+  clearSummaryPending(topicId, ended) {
+    return clearSummaryPending(this, topicId, ended);
   }
   shareText(threadId, opts) {
     return shareText(this, threadId, opts);

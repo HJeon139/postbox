@@ -1,7 +1,8 @@
 // A headless Chrome check of Summarize back in a side thread (#225), by keyboard: the panel’s Summarize back opens a
 // menu of the thread’s two agents, the one that started it first; the agent picked writes the summary in the side
 // thread, and it’s posted in the conversation as a summary from that thread. Its @-mention of the other agent wakes
-// no one, and the wake limit doesn’t move.
+// no one, and the wake limit doesn’t move. Asked while that agent is busy in the side thread, it waits behind that turn,
+// and the button waits until the summary is posted.
 //
 //   node tools/checks/side-summary.mjs
 //
@@ -12,6 +13,7 @@ import { rm } from 'node:fs/promises';
 import { finish, record } from '../harness.mjs';
 import {
   app,
+  busy,
   check,
   claudeHome,
   dataDir,
@@ -19,6 +21,7 @@ import {
   open,
   page,
   press,
+  release,
   researcher,
   room,
   rt,
@@ -32,6 +35,7 @@ import {
 } from '../side-threads-kit.mjs';
 
 await page.size(1280, 900);
+const BUTTON = `[...document.querySelectorAll('.sidepanel .sp-head button')].find((b) => b.textContent === 'Summarize back')`;
 const idle = () => until(() => !rt.turns.size && !rt.exiting.size, 'the agents to finish');
 const expect = (ok, what) => {
   if (!ok) throw new Error(what);
@@ -45,7 +49,6 @@ await check('#225 Summarize back in a side thread: pick who writes it, and the s
   await idle();
   const side = sideOf();
   await open(`#/t/${room.id}/side/${side.id}`);
-  const BUTTON = `[...document.querySelectorAll('.sidepanel .sp-head button')].find((b) => b.textContent === 'Summarize back')`;
   await page.waitFor(`${BUTTON} && !${BUTTON}.disabled`, { label: 'Summarize back in the side thread' });
   await page.evaluate(`${BUTTON}.focus()`);
   await press('Enter');
@@ -74,6 +77,36 @@ await check('#225 Summarize back in a side thread: pick who writes it, and the s
     `[...document.querySelectorAll('#main .shared-card')].map((c) => c.textContent.replace(/\\s+/g, ' ').trim()).find((t) => t.includes('1908')) ?? ''`,
   );
   expect(card.startsWith('Summary of the thread “@indexer ↔ @researcher” · @indexer'), `The conversation shows “${card}”`);
+});
+
+await check('#225 Summarize back asked while its agent is busy in the side thread waits until the summary is posted', async () => {
+  // The person asks @indexer one more thing in the side thread, and that turn holds, so the summary waits behind it.
+  const side = sideOf();
+  rt.sendMessage(side.id, { text: '@indexer one more thing' });
+  await until(() => busy(indexer.id), '@indexer at work');
+  await open(`#/t/${room.id}/side/${side.id}`);
+  await page.waitFor(`${BUTTON} && !${BUTTON}.disabled`, { label: 'Summarize back in the side thread' });
+  await page.evaluate(`${BUTTON}.focus()`);
+  await press('Enter');
+  await press('Enter');
+  await until(() => store.state.threads[side.id].summaryPending, 'the request on the server');
+  // The turn it waited for ends, and the summary’s own turn starts: the button still waits.
+  const before = turns.length;
+  release(indexer.id);
+  await until(() => turns.length > before && /^Summarize/.test(turns.at(-1).text), 'the summary’s turn');
+  await page.synced(store.state.seq);
+  await settle();
+  // Waiting, the button is labelled “Summary requested…”.
+  const was = await page.evaluate(
+    `(({ disabled, textContent }) => [disabled, textContent])(document.querySelector('.sidepanel .sp-head [aria-haspopup=menu]'))`,
+  );
+  expect(was[0] && was[1] === 'Summary requested…', `Summarize back could be asked again while the summary was being written: ${JSON.stringify(was)}`);
+  release(indexer.id);
+  await idle();
+  await page.synced(store.state.seq);
+  await page.waitFor(`${BUTTON} && !${BUTTON}.disabled`, { label: 'Summarize back once the summary is posted' });
+  const last = store.items(room.id).at(-1);
+  expect(last.kind === 'shared' && last.summary && last.fromThreadId === side.id, 'The summary wasn’t posted in the conversation');
 });
 
 await page.close();
