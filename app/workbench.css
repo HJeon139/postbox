@@ -428,7 +428,7 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; background: var(--chip);
   border: 1px solid var(--line-strong); cursor: pointer; font-size: 13px; color: var(--text); }
 .chip:hover { border-color: var(--accent); }
-/* Chosen, a selected segment and a toggle that’s on: an amber outline, like a checked box, never a solid fill (#181). */
+/* Chosen, a selected segment and a toggle that’s on, in dark mode: an amber outline, like a checked box, never a solid fill (#181). */
 .chip[aria-pressed="true"], .chip[aria-checked="true"], .chip.on { color: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
 .chip.sm { height: 24px; padding: 0 9px; font-size: 12px; }
 .chip .i-check { width: 12px; height: 12px; }
