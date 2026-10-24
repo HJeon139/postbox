@@ -39,7 +39,11 @@ export function hostOf(m, id) {
   return h;
 }
 
-/** The host’s token on this laptop, or null; read as install.mjs’s readToken reads it. @param {Manager} m @param {string} id */
+/**
+ * The host’s token on this laptop, or null; read as install.mjs’s readToken reads it. A token is kept once read; none
+ * isn’t, so one that appears in the data folder later is found (a forget under way says null itself).
+ * @param {Manager} m @param {string} id
+ */
 export function tokenOf(m, id) {
   if (m.tokens.has(id)) return m.tokens.get(id) ?? null;
   /** @type {string | null} */
@@ -53,7 +57,7 @@ export function tokenOf(m, id) {
   } catch (e) {
     if (e.code !== 'ENOENT') throw e;
   }
-  m.tokens.set(id, token);
+  if (token) m.tokens.set(id, token);
   return token;
 }
 

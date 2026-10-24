@@ -20,10 +20,10 @@ const S = () => client.state;
 
 /**
  * The Hosts tab’s state, kept across repaints: the host being edited and the editor’s values (draft), each field’s
- * error, the form’s, whether it’s saving, and the Add a host field.
+ * error, the form’s, whether it’s saving, the Add a host field, and the host just added, whose Install… gets focus.
  * @typedef {{ name: string, v: Record<string, any>, folders: Record<string, string> }} Draft
  * @typedef {{ root: HTMLElement, editing: string | null, draft: Draft | null, errors: Record<string, string>, formError: string,
- *   saving: boolean, addName: string, addError: string, paint: () => void }} Panel
+ *   saving: boolean, addName: string, addError: string, added: string | null, paint: () => void }} Panel
  */
 
 /**
@@ -42,6 +42,7 @@ export function hostsPanel() {
     saving: false,
     addName: '',
     addError: '',
+    added: null,
     paint: () => keepFocus(root, () => fill(root, ...view(p))),
   };
   listen(p);
@@ -60,6 +61,7 @@ function listen(p) {
     seen = true;
     if (ch.type === 'host.status') paintStatus(p, ch.data?.id);
     else if (['host', 'project', 'persona', 'load'].includes(ch.type)) p.paint();
+    focusAdded(p);
   });
   // “Last heard from” moves on with the clock.
   const tick = setInterval(() => {
@@ -179,12 +181,26 @@ const add = (p) => {
       p.addName = '';
       p.addError = '';
       toast({ title: `Added ${made.name}`, text: 'Install Postbox there before an agent runs on it.' });
+      p.added = made.id;
       p.paint();
-      document.getElementById(`ho-${made.id}-install`)?.focus();
+      focusAdded(p);
     })
     .catch((e) => {
       p.addError = e.message;
       p.paint();
       document.getElementById('ho-add')?.focus();
     });
+};
+
+/**
+ * A host just added: its Install… gets focus once its card shows it, since its status can reach the page just after
+ * the host does. Not if you’ve moved on from Add a host meanwhile.
+ * @param {Panel} p
+ */
+const focusAdded = (p) => {
+  const el = p.added ? document.getElementById(`ho-${p.added}-install`) : null;
+  if (!el) return;
+  p.added = null;
+  const at = document.activeElement;
+  if (!at || at === document.body || at.closest('.ho-add')) el.focus();
 };

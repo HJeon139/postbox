@@ -1,7 +1,8 @@
 // Checks the Hosts tab of Settings (#120) in headless Chrome: adding a host, a refused destination with the server’s
 // own message, installing with describeInstall’s exact text first, a failed install’s next step, and editing its
 // settings and a project’s folder there. Each step is checked at 375 and 1280 px, with axe. Its status as the host
-// manager reports it, and removing a host, are tools/check-hosts-status.mjs.
+// manager reports it, and removing a host, are tools/check-hosts-status.mjs; a host just added, with the real
+// manager, is tools/check-hosts-add.mjs.
 //
 //   node tools/check-hosts.mjs
 //

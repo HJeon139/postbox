@@ -1,6 +1,6 @@
 // What the person’s actions on a host do (#120; server/remote/hosts.mjs and host-status.mjs), with the real host
-// manager in a runtime over the fake daemon: Install, Retry and Reconnect connect it now, though nothing needs it,
-// for one welcome, then it idles.
+// manager in a runtime over the fake daemon: a host just added has a status (not installed, so its card offers
+// Install…), and Install, Retry and Reconnect connect it now, though nothing needs it, for one welcome, then it idles.
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -66,6 +66,23 @@ function rig({ daemon = createFakeDaemon({ autoEnd: false }), spawn } = {}) {
   };
   return { rt, store, hosts, daemon, clock, dialed, status, done };
 }
+
+test('#120: a host just added is not installed, at once, so its card offers Install…; one added after startup too', async () => {
+  const r = rig();
+  try {
+    const h = r.rt.addHost({ name: 'host.example.com' });
+    await sleep(0);
+    assert.equal(r.status(h.id)?.state, 'not-installed');
+    assert.equal(r.status(h.id)?.failure, null, 'no token here, which isn’t a failure of the link');
+    // Renamed, still not installed: its status stays.
+    r.rt.updateHost(h.id, { name: 'build.example.com' });
+    await sleep(0);
+    assert.equal(r.status(h.id)?.state, 'not-installed');
+    assert.equal(r.dialed.length, 0, 'nothing dialed');
+  } finally {
+    r.done();
+  }
+});
 
 test('#120: Install connects the host for one welcome, so its card shows what the daemon found; then it idles', async () => {
   const r = rig();

@@ -33,9 +33,10 @@ export function hostStatus(rt, id) {
 
 /**
  * Keeps each host’s status in the state for the page (s.hostStatus), as other live state reaches it: what the host
- * manager says now, then at each 'status' it emits. One from before a restart is replaced, since its link is gone.
- * Any change is published, lastHeard too: the manager emits a change to lastHeard alone at most every
- * HEARD_EVERY_MS, though every message moves it.
+ * manager says now, then at each 'status' it emits, and whenever a host is added or changed, so every configured
+ * host has one from the start (a host just added has no token here, so it’s not installed, and its card offers
+ * Install…). One from before a restart is replaced, since its link is gone. Any change is published, lastHeard too:
+ * the manager emits a change to lastHeard alone at most every HEARD_EVERY_MS, though every message moves it.
  * @param {any} rt
  */
 export function watchHosts(rt) {
@@ -43,14 +44,25 @@ export function watchHosts(rt) {
   if (!rt.hosts) return;
   for (const id of Object.keys(rt.s.hosts ?? {})) publishHostStatus(rt, id);
   rt.hosts.on('status', (/** @type {string} */ hostId) => publishHostStatus(rt, hostId));
+  // After the 'host' event has reached every listener, so the page hears of the host before its status.
+  rt.store.subscribe((/** @type {any} */ ev) => ev.type === 'host' && queueMicrotask(() => publishLater(rt, ev.data?.id)));
+}
+
+/** Out of an event, where a throw would reach nothing that could say so. @param {any} rt @param {string|undefined} id */
+function publishLater(rt, id) {
+  try {
+    publishHostStatus(rt, id);
+  } catch (e) {
+    console.error(`Postbox couldn’t read a host’s status: ${e?.message ?? e}`);
+  }
 }
 
 /** @param {any} rt @param {string|undefined} id */
 function publishHostStatus(rt, id) {
   if (!id || !rt.s.hosts?.[id]) return;
   const status = hostStatus(rt, id);
-  const was = rt.s.hostStatus?.[id];
-  if (was !== undefined && JSON.stringify(status) === JSON.stringify(was)) return;
+  const was = rt.s.hostStatus?.[id] ?? null;
+  if (JSON.stringify(status) === JSON.stringify(was)) return;
   rt.store.emit('host.status', { id, status });
 }
 

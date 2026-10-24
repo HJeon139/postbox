@@ -6,8 +6,10 @@
 //
 //   node tools/check-uat-hosts.mjs
 //
-// It starts its own fresh Postbox with a fake host manager (no ssh, no host): a host has no status until something
-// sets one, as the real manager’s doesn’t, and installing makes it Disconnected. PB_PORT and PB_CHROME_PORT move it (4920 and 9520 by default). It reports through tools/harness.mjs.
+// It starts its own fresh Postbox with a fake host manager (no ssh, no host): a host just added is not installed, as
+// the real manager says of one with no token here, unless `quiet` holds its status back (as a Postbox before that fix
+// did, which the driver still copes with); installing makes it Disconnected. PB_PORT and PB_CHROME_PORT move it (4920
+// and 9520 by default). It reports through tools/harness.mjs.
 
 import { EventEmitter } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -40,13 +42,16 @@ class FakeHosts extends EventEmitter {
     this.calls = [];
     /** @type {Map<string, any>} */
     this.statuses = new Map();
+    /** No status for a host until one is set. */
+    this.quiet = false;
   }
   set(id, status) {
     this.statuses.set(id, { failure: null, welcome: null, lastHeard: null, ...status });
     this.emit('status', id, this.statuses.get(id));
   }
   status(id) {
-    return this.statuses.get(id) ?? null;
+    const fresh = !this.quiet && app.store.state.hosts?.[id] ? { state: 'not-installed', failure: null, welcome: null, lastHeard: null } : null;
+    return this.statuses.get(id) ?? fresh;
   }
   link(id) {
     return Object.assign(new EventEmitter(), { connected: this.statuses.get(id)?.state === 'connected', send: () => false });
@@ -147,18 +152,21 @@ try {
     await closeAll(kit);
     check(/must be an absolute path on the host/.test(String(refused)), 'the refusal is the editor’s', String(refused));
   });
-  await step('a host just added has no Install…, so install() opens the confirm, reads it, and installs', async () => {
+  await step('a host just added offers Install…, so install() presses it, reads the confirm, and installs', async () => {
     const shown = await install(kit, id);
     const expected = describeInstall(S().hosts[id], { version: VERSION, dataDir }).text;
-    check(shown.installOffered === false && /Not connected yet/.test(shown.card), 'it says the card offered no Install…', JSON.stringify(shown.card));
+    check(shown.installOffered === true && /Not installed/.test(shown.card), 'the card offered Install…', JSON.stringify(shown.card));
     check(shown.confirm === expected && shown.commands.length > 0, 'it read the confirm’s text and commands', shown.confirm);
     return fake.calls.some((c) => c[0] === 'install' && c[1] === id);
   });
   let id2 = '';
-  await step('a host whose card offers Install… is installed from it', async () => {
+  await step('a host with no status has no Install…, so install() opens the confirm itself, and says so', async () => {
+    fake.quiet = true;
     id2 = await addHost(kit, 'build.example.com');
-    fake.set(id2, { state: 'not-installed' });
-    return (await install(kit, id2)).installOffered === true;
+    const shown = await install(kit, id2);
+    fake.quiet = false;
+    check(/Not connected yet/.test(shown.card), 'its card had no status', JSON.stringify(shown.card));
+    return shown.installOffered === false && fake.calls.some((c) => c[0] === 'install' && c[1] === id2);
   });
   await step('placePersona sets an agent’s Runs on to a host, and back to this computer', async () => {
     await placePersona(kit, 'coder', id);
