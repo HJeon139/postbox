@@ -978,8 +978,9 @@ html.pb-sandbox body { margin: 0; }
 .menu button.mi { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; width: 100%; color: var(--text); }
 .menu button.mi:hover, .menu button.mi.active, .menu button.mi:focus-visible { border-color: var(--accent); background: var(--sunk); outline: none; }
 .menu .mi .i, .menu .mi pb-ring { flex: none; }
-.stopped-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; height: 18px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); align-self: flex-start; }
-.stopped-tag::before { content: ""; width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
+/* A stopped reply’s tag (#215): one line where it fits, and taller, not overflowing, where its words wrap (375 px). */
+.stopped-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; line-height: 14px; min-height: 18px; max-width: 100%; box-sizing: border-box; padding: 1px 7px; border: 1px solid var(--line); border-radius: 9px; color: var(--dim); align-self: flex-start; }
+.stopped-tag::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
 .prompt:hover { border-color: var(--accent) !important; }
 .prompt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hovercard { position: fixed; }
