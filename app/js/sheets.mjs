@@ -7,6 +7,7 @@ import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
 import { hostsPanel } from './hosts.mjs';
 import { openPermissions } from './permissions.mjs';
+import { placeField, saveRefused } from './sheets-place.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
@@ -272,7 +273,9 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           ),
       h('span.help', { id: `${idp}-b-help` }, BACKENDS.find(([id]) => id === st.backend)?.[2] ?? ''),
     ),
-    real && capsOf(st.backend).remote && (hosts.length || !local.has(st.backend)) ? placeField(st, paint, { idp, hosts, here: local.has(st.backend) }) : null,
+    real && capsOf(st.backend).remote && (hosts.length || !local.has(st.backend))
+      ? placeField(st, paint, { idp, hosts, here: local.has(st.backend), name: BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend })
+      : null,
     real
       ? h(
           'div.field',
@@ -405,59 +408,6 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
     // CLI) has nothing true to show here.
     real && capsOf(st.backend).permissions !== 'none' ? mcpField(st, paint, { idp, personaId, projectId }) : null,
   ];
-}
-
-/**
- * Runs on (#120): this computer, or one of the hosts (state.hosts), for a backend that can run on a host
- * (capabilities.remote). One that isn’t on this computer (capabilities.local false) is offered only for a host.
- * Before you save, it says what the host’s daemon reported about the backend’s CLI there; the server checks again,
- * and its refusal shows here too (st.placeError).
- * @param {any} st @param {() => void} paint @param {{ idp: string, hosts: any[], here: boolean }} o
- */
-function placeField(st, paint, { idp, hosts, here }) {
-  const name = BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend;
-  const host = st.remote ? S().hosts?.[st.remote] : null;
-  const welcome = st.remote ? S().hostStatus?.[st.remote]?.welcome : null;
-  const found = Array.isArray(welcome?.harnesses) ? welcome.harnesses.find((x) => x?.name === st.backend) : undefined;
-  const missing = host && Array.isArray(welcome?.harnesses) && !found?.path;
-  const help = !hosts.length
-    ? `${name} isn’t on this computer. Add a host under Settings, Hosts, to run it there.`
-    : host
-      ? `Its turns run on ${host.name}, over your own ssh; Postbox and its tools stay on this computer.${here ? '' : ` ${name} isn’t on this computer, so it runs only on a host.`}`
-      : 'Its turns run here. A host runs them on another machine, over your own ssh.';
-  return h(
-    'div.field',
-    hosts.length ? h('label.label', { for: `${idp}-where` }, 'Runs on') : h('span.label', 'Runs on'),
-    hosts.length
-      ? h(
-          'div.select-wrap',
-          h(
-            'select.select',
-            {
-              id: `${idp}-where`,
-              'aria-describedby': `${idp}-where-help`,
-              onchange: (e) => {
-                st.remote = e.target.value || null;
-                st.placeError = null;
-                paint();
-              },
-            },
-            h('option', { value: '', selected: !st.remote, disabled: !here }, here ? 'This computer' : `This computer (${name} isn’t here)`),
-            hosts.map((x) => h('option', { value: x.id, selected: st.remote === x.id }, x.name)),
-          ),
-          icon('down'),
-        )
-      : h('span', 'No host yet'),
-    h('span.help', { id: `${idp}-where-help` }, help),
-    missing
-      ? h(
-          'span.err',
-          icon('warn'),
-          `${name} wasn’t found on ${host.name}${found?.looked?.length ? `: Postbox’s daemon looked in ${found.looked.join(', ')}` : ''}. Install it there, or set its path in the host’s settings.`,
-        )
-      : null,
-    st.placeError ? h('span.err', { role: 'alert', id: `${idp}-where-err` }, icon('warn'), st.placeError) : null,
-  );
 }
 
 // What the Tools checklist means on real backends (#5): server/adapters/setup.mjs, TOOL_RULES, and kiro-cli.mjs, KIRO_TOOL_RULES.
@@ -1164,16 +1114,8 @@ export function openSettings(tab = 'appearance', personaId = null) {
                   });
                   back();
                 })
-                .catch((e) => {
-                  // Where it runs changed: the server’s refusal (a host without that CLI, a turn under way) shows
-                  // under Runs on (#120). Anything else is a toast.
-                  if (run.backend !== (p.backend ?? 'mock') || (run.remote ?? null) !== (p.remote?.hostId ?? null)) {
-                    run.placeError = e.message;
-                    paintRun();
-                    if (!runBox.querySelector('#pe-where-err')) toast({ title: 'Couldn’t save', text: e.message, level: 'blocking' });
-                    else runBox.querySelector('#pe-where')?.focus();
-                  } else toast({ title: 'Couldn’t save', text: e.message, level: 'blocking' });
-                }),
+                // Where it runs changed: the server’s refusal shows under Runs on (#120).
+                .catch((e) => saveRefused(e, run, p, paintRun, runBox)),
           },
           'Save',
         ),
