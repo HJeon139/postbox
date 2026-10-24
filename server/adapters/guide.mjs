@@ -143,11 +143,12 @@ Plain English, sentence case, American spelling, curly quotes and apostrophes (�
 }
 
 /**
- * Whether an event is the person’s review (a verdict). An app’s isn’t, whatever its values hold: Postbox counted what
- * it sent, and its values aren’t the person’s words (#51).
+ * Whether an event is a review’s: the person’s (a verdict) or another agent’s (from). An app’s isn’t, whatever its
+ * values hold: Postbox counted what it sent, and its values aren’t the person’s words (#51).
  * @param {any} event
  */
-const isReview = (event) => !event.sent && typeof event.values?.verdict === 'string' && Array.isArray(event.values?.comments);
+const isReview = (event) =>
+  !event.sent && (typeof event.from === 'string' || typeof event.values?.verdict === 'string') && Array.isArray(event.values?.comments);
 
 /**
  * Writes one Postbox message as the text of a turn for the agent.
@@ -172,13 +173,17 @@ function formatBody(message, pathOf) {
     }
     case 'event':
       return [
-        `[Postbox] The person acted in block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`,
+        `[Postbox] ${message.event.from ? `@${message.event.from} reviewed your` : 'The person acted in'} block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`,
         // A review’s comments, as the history gives them (#179): “line 12, col 5–23 “the quoted text”: the comment”.
         isReview(message.event)
           ? message.event.values.comments
               .filter((c) => c && typeof c === 'object')
               .map((c) => `- ${commentAt(c)}: ${c.text}`)
               .join('\n')
+          : '',
+        // Another agent’s review (#133): its comments are on the block now, and the person still decides.
+        message.event.from
+          ? 'Each comment is on the block now, by its threadId. Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.'
           : '',
         // From an app (#51): what Postbox counted, and the app’s own summary, which the person didn’t write.
         message.event.sent ? `What Postbox counted in it: ${message.event.sent}` : '',

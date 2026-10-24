@@ -1,7 +1,7 @@
 // The MCP server: Postbox’s UI tools over JSON-RPC 2.0 (MCP’s Streamable HTTP transport, JSON responses).
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
-// and gets show_block, update_block, show_app, update_app, retire_app, define_term, propose_agent, schedule_wake,
+// and gets show_block, update_block, review_block, show_app, update_app, retire_app, define_term, propose_agent, schedule_wake,
 // wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search and add_dataset.
 // Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
 // carrying { blockId, action, values }.
@@ -16,6 +16,7 @@
 
 import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
+import { REVIEW_BLOCK_DEF } from './review-comments.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { offersBring } from './side-threads.mjs';
 
@@ -42,6 +43,7 @@ export const TOOL_DEFS = [
     description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form, confirm or review (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, such as “Filed as #105”, keeps the block answered, and changes nothing else. To close a choice, form, confirm or review that’s wrong, handled or stale, answered or not, call update_block with block: { id, withdraw: why } (up to ${n('outcome')} characters): the person sees it closed with your reason, and it stops waiting on them. Don’t ask again just to say a block is done. A choice, form, confirm or review that asks again moves to the newest point in the conversation, with a line where it was; other blocks update in place. Each update makes the block’s next revision, and the person’s answer names the revision it’s for. An update over an answer you haven’t read yet (it waits until your turn ends), whether it asks again or sets outcome, is refused, and the reply says what they answered: read it, then update. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
+  REVIEW_BLOCK_DEF,
   {
     name: 'show_app',
     description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). Images load from data: URLs, or from <origin>/media/<name> for a file you copy into the folder $POSTBOX_MEDIA names (never into Postbox’s own folder). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}.`,

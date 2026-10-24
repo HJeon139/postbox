@@ -40,6 +40,7 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
+import { reviewBlock } from './review-comments.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -600,6 +601,8 @@ export class Runtime {
     const turn = {
       id: newId('turn'),
       kind: message.kind,
+      // Another agent’s review of a block of this agent’s (#133): an event the person didn’t send.
+      reviewer: message.kind === 'event' ? (message.event?.from ?? null) : null,
       from:
         message.kind === 'agent'
           ? String(message.from ?? '')
@@ -644,7 +647,7 @@ export class Runtime {
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
       state: 'think',
-      needs: message.kind === 'event' || message.kind === 'user' ? null : se.needs,
+      needs: (message.kind === 'event' && !message.event?.from) || message.kind === 'user' ? null : se.needs,
       currentStep: 'Thinking',
       finishedAt: null,
     });
@@ -984,11 +987,12 @@ export class Runtime {
     }
     // Only this turn’s asking blocks make the agent need you. Older ones you left open stay open, and the
     // client shows them quietly (“1 open review”), so moving on clears needs-you (#69). A turn you didn’t start
-    // (a lint or app-check pass, another agent’s wake) isn’t moving on: the block it was waiting on still counts.
+    // (a lint or app-check pass, another agent’s wake or review) isn’t moving on: the block it was waiting on still counts.
     const open = items.filter(
       (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
     );
-    const waiting = se.needs?.kind === 'block' && turn.kind !== 'user' && turn.kind !== 'event' ? items.find((it) => it.id === se.needs?.itemId) : null;
+    const waiting =
+      se.needs?.kind === 'block' && turn.kind !== 'user' && (turn.kind !== 'event' || turn.reviewer) ? items.find((it) => it.id === se.needs?.itemId) : null;
     if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
@@ -3510,6 +3514,7 @@ export class Runtime {
       update_block(args) {
         return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment });
       },
+      review_block: (args) => reviewBlock(rt, sessionId, args),
       /**
        * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
        * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call

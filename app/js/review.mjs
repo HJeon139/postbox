@@ -8,7 +8,7 @@ import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
-import { threadBox as threadsFor } from './review-threads.mjs';
+import { reviewersOf, threadBox as threadsFor } from './review-threads.mjs';
 import { fullScreen, seg, setView, viewOf } from './review-view.mjs';
 
 // ── Review ──────────────────────────────────────────────────────────────────────────────
@@ -280,6 +280,7 @@ export function renderReview(b, item, ctx, kit) {
           b.threads?.length ? h('b', `${resolved} of ${b.threads.length} resolved`) : null,
           b.threads?.length && d.comments.length ? ' · ' : '',
           d.comments.length ? h('b', plural(d.comments.length, 'draft comment')) : b.threads?.length ? '' : h('span.dim', 'No comments yet'),
+          reviewersOf(item, b),
         ),
         h('span.grow'),
         h(

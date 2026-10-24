@@ -3,7 +3,7 @@
 // in Preview and in Lines, and an agent’s comment shows its handle (#133). Split out of app/js/review.mjs.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
-import { h, icon, trusted } from './dom.mjs';
+import { h, icon, plural, trusted } from './dom.mjs';
 
 /** Whether a thread or a comment is on key: an app’s part, or a line. */
 const on = (b, x, key) => (b.format === 'app' ? x.anchor === key : x.line === key);
@@ -113,4 +113,23 @@ function composer(key, { b, d, closeComposer }) {
       ),
     ),
   );
+}
+
+const VERDICTS = { comment: 'Comment', approve: 'Approve', request_changes: 'Request changes' };
+/**
+ * Who else reviewed the draft (#133), for its review bar: “2 comments from @critic (Request changes)”. Their comments
+ * are threads on it; their verdict doesn’t answer it. @param {any} item @param {any} b
+ */
+export function reviewersOf(item, b) {
+  /** @type {Map<string, { n: number, verdict?: string, revision: number }>} */
+  const by = new Map();
+  for (const r of item.reviews ?? []) {
+    const was = by.get(r.handle);
+    by.set(r.handle, { n: (was?.n ?? 0) + r.threads.length, verdict: r.verdict ?? was?.verdict, revision: r.revision });
+  }
+  const said = [...by].map(([handle, r]) => {
+    const on = r.revision !== (b.revision ?? 1) ? `, on v${r.revision}` : '';
+    return `${plural(r.n, 'comment')} from @${handle}${r.verdict ? ` (${VERDICTS[r.verdict] ?? r.verdict})` : ''}${on}`;
+  });
+  return said.length ? h('span.rv-reviewers', ' · ', said.join(' · ')) : null;
 }

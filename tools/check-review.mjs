@@ -7,7 +7,9 @@
 //     adding the comment brings focus back to the text, which is marked; the agent gets its line, columns and quote;
 //   • a click on a diagram in Preview, which can’t be selected inside, opens Lines at its lines, with their comment
 //     box; a click on text stays in Preview;
-//   • full screen opens and closes from the keyboard, with focus kept.
+//   • full screen opens and closes from the keyboard, with focus kept;
+//   • another agent’s comments (review_block, #133) show on their lines with its name, the review bar says who
+//     reviewed it, and the block still waits on the person.
 //
 //   node tools/check-review.mjs
 //
@@ -58,7 +60,9 @@ const agent = {
   name: 'mock',
   async deliver(_session, message, ctx) {
     calls.push(message);
-    if (message.kind === 'user' && message.text === 'review') ctx.tools.show_block({ block: review });
+    if (message.kind === 'user' && message.text.endsWith('review')) ctx.tools.show_block({ block: review });
+    if (message.kind === 'user' && message.text.endsWith('revise'))
+      ctx.tools.update_block({ block: { ...review, revision: 2, content: `${DRAFT}\n\nOne more line.`, previous: DRAFT } });
   },
 };
 
@@ -90,7 +94,9 @@ try {
   const { rt, store } = app;
   const project = Object.values(rt.s.projects)[0];
   const persona = rt.createPersona({ handle: 'drafter' });
-  const thread = rt.createThread({ projectId: project.id, title: 'Review checks', personaIds: [persona.id] });
+  const reader = rt.createPersona({ handle: 'reader' });
+  const thread = rt.createThread({ projectId: project.id, title: 'Review checks', personaIds: [persona.id, reader.id] });
+  const sessionOf = (handle) => rt.sessionsIn(thread.id).find((x) => x.handle === handle);
   const itemOf = (id) => rt.store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === id);
   let id = '';
   const block = () => `document.querySelector('[data-block-item="${id}"]')`;
@@ -102,16 +108,17 @@ try {
       diagram: !!b.querySelector('figure.diagram iframe[data-sized]'), math: b.querySelectorAll('.md-math.rendered').length,
       focus: document.activeElement === document.body ? 'body' : document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent?.slice(0, 40) || '' }; })()`);
   // A frame off screen isn’t drawn (Chrome throttles it), so the diagram is brought into view, as reading it would.
+  // Mermaid and KaTeX load on first use, a few megabytes, which a busy runner can take a while over.
   const drawn = (mode) =>
     until(async () => {
       await page.evaluate(`${block()}?.querySelector('figure.diagram, .rv-fig, figure.md-mermaid')?.scrollIntoView({ block: 'center' })`);
       const s = await shown();
       return s?.mode === mode && s.diagram && s.math >= 2 && s;
-    });
+    }, 20000);
 
   await page.size(1280, 900);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
-  rt.sendMessage(thread.id, { text: 'review' });
+  rt.sendMessage(thread.id, { text: '@drafter review' });
   await until(() => itemOf('notes') && !rt.turns.size);
   id = itemOf('notes').id;
   await page.synced(store.state.seq);
@@ -189,7 +196,7 @@ try {
   await page.reload();
   await page.synced(store.state.seq);
   const kept = await drawn('Lines');
-  check(!!kept, `the choice of Lines holds across a reload (${kept?.mode})`);
+  check(!!kept, `the choice of Lines holds across a reload (${JSON.stringify(kept || (await shown()))})`);
   await page.evaluate(`${radio('View', 'Preview')}.click()`);
   await page.reload();
   await page.synced(store.state.seq);
@@ -252,7 +259,9 @@ try {
   );
 
   // ── Full screen, from the keyboard ──
-  rt.toolsFor(rt.sessionsIn(thread.id)[0].id).update_block({ block: { ...review, revision: 2, content: `${DRAFT}\n\nOne more line.`, previous: DRAFT } });
+  // @drafter revises it in a turn of its own, so it needs you for revision 2.
+  rt.sendMessage(thread.id, { text: '@drafter revise' });
+  await until(() => itemOf('notes').revision === 2 && !rt.turns.size);
   await page.synced(store.state.seq);
   await page.waitFor(`!${block()}.querySelector('.answered-note')`, { label: 'revision 2' });
   await page.evaluate(`${block()}.querySelector('button[aria-label="Full screen"]').focus()`);
@@ -274,6 +283,37 @@ try {
     page.evaluate(`!${block()}.querySelector('.rv-box.rv-full') && document.activeElement?.getAttribute('aria-label') === 'Full screen'`),
   );
   check(!!closed, 'Escape closes it, with focus back on Full screen');
+
+  // ── Another agent’s review ──
+  const needed = JSON.stringify(store.state.sessions[sessionOf('drafter').id].needs);
+  check(JSON.parse(needed)?.itemId === id, `@drafter needs you for revision 2 (${needed})`);
+  const said = rt.toolsFor(sessionOf('reader').id).review_block({
+    blockId: 'notes',
+    verdict: 'request_changes',
+    comments: [
+      { line: 1, text: 'A clearer title.' },
+      { line: 10, col: 11, endLine: 10, endCol: 19, quote: 'low price', text: 'Give the number.' },
+    ],
+  });
+  check(said.ok, `@reader comments on @drafter’s review (${said.message})`);
+  await until(() => !rt.turns.size);
+  await page.synced(store.state.seq);
+  await page.evaluate(`${radio('View', 'Lines')}.click()`);
+  const theirs = await until(() =>
+    page.evaluate(`(() => { const b = ${block()};
+      const on = (n) => [...b.querySelectorAll('.rv-thread')].find((x) => x.querySelector('.meta b')?.textContent === '@reader' && x.textContent.includes(n));
+      const t1 = on('A clearer title.'), t2 = on('Give the number.');
+      return t1 && t2 && { bar: b.querySelector('.review-bar .rv-reviewers')?.textContent ?? '', quote: t2.querySelector('q.rv-quote')?.textContent,
+        first: t1.previousElementSibling?.querySelector('.g-mark')?.dataset.line, open: !![...b.querySelectorAll('button')].find((x) => x.textContent === 'Submit review') }; })()`),
+  );
+  check(theirs?.first === '1' && theirs.quote === 'low price', `its comments show on their lines, with its name and quote (${JSON.stringify(theirs)})`);
+  check(
+    theirs?.bar === ' · 2 comments from @reader (Request changes)' && theirs.open,
+    `the review bar says who reviewed it, and it still waits on you (“${theirs?.bar}”)`,
+  );
+  // Its event is a turn the person didn’t start, so it leaves what @drafter needs from you as it was.
+  const needs = JSON.stringify(store.state.sessions[sessionOf('drafter').id].needs);
+  check(needs === needed && calls.some((m) => m.event?.from === 'reader'), `@drafter hears it, and what it needs from you doesn’t change (${needs})`);
 
   // ── Dark ──
   await page.size(1280, 900, { theme: 'dark' });

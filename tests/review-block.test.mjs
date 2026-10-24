@@ -120,3 +120,153 @@ test('#179: a review’s threads take the same anchor, a line or a selection wit
   assert.equal(half.ok, false);
   if (!half.ok) assert.deepEqual(half.errors, ['threads[0]: a comment on a selection needs line, col, endLine, endCol and quote.']);
 });
+
+/** @researcher shows the draft; nobody has answered it. */
+async function shown() {
+  const s = setup();
+  s.adapter.next.push(async (c) => c.tools.show_block({ block: draft }));
+  s.rt.sendMessage(s.t.id, { text: '@researcher draft it' });
+  await settle(s.rt);
+  return { ...s, item: () => s.store.items(s.t.id).find((i) => i.kind === 'block') };
+}
+
+test('#133: another agent’s comments become threads on the draft, with its handle, and the block still waits on the person', async () => {
+  const { rt, store, adapter, mine, theirs, item } = await shown();
+  const calls = adapter.calls.length;
+  const r = rt.toolsFor(theirs.id).review_block({ blockId: 'plan', verdict: 'request_changes', comments: [{ line: 4, text: 'Cut it.' }, ranged] });
+  assert.equal(r.ok, true, r.message);
+  assert.equal(
+    r.message,
+    'Added 2 comments to @researcher’s plan (revision 1). @researcher hears them now, and can revise. The block still waits on the person.',
+  );
+  assert.deepEqual(item().block.threads, [
+    { id: 'critic-1', status: 'open', line: 4, comments: [{ author: '@critic', text: 'Cut it.' }] },
+    {
+      id: 'critic-2',
+      status: 'open',
+      line: 3,
+      col: 5,
+      endLine: 3,
+      endCol: 19,
+      quote: 'the quoted text',
+      comments: [{ author: '@critic', text: 'Say which text.' }],
+    },
+  ]);
+  assert.deepEqual({ ...item().reviews[0], at: 0 }, { handle: 'critic', verdict: 'request_changes', revision: 1, threads: ['critic-1', 'critic-2'], at: 0 });
+  // The person still decides: nothing answered it, and @researcher still needs them.
+  assert.equal(item().answered, false);
+  assert.equal(item().revision ?? 1, 1, 'comments aren’t a new revision, so an answer the person is writing still lands');
+  await settle(rt);
+  assert.equal(store.state.sessions[mine.id].needs?.itemId, item().id);
+  // @researcher hears who wrote them, and on which threads.
+  const heard = adapter.calls.slice(calls).find((c) => c.handle === 'researcher')?.message;
+  assert.equal(heard?.kind, 'event');
+  assert.equal(heard.event.from, 'critic');
+  assert.deepEqual(
+    heard.event.values.comments.map((c) => c.threadId),
+    ['critic-1', 'critic-2'],
+  );
+  assert.match(formatMessage(heard), /^\[Postbox\] @critic reviewed your block “plan” \(revision 1\): review\n/);
+  assert.match(formatMessage(heard), /- line 3, col 5–19 “the quoted text”: Say which text\.\nEach comment is on the block now, by its threadId/);
+});
+
+test('#133: a reply goes in its thread, and a revision that leaves a reviewer’s thread out keeps it, on its quote', async () => {
+  const { rt, mine, theirs, item, adapter, t } = await shown();
+  rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [ranged] });
+  await settle(rt);
+  // @researcher revises and resolves nothing: the line moves down, and the thread follows its quote.
+  const v2 = ['# Plan', '', 'Intro.', 'We: the quoted text, then more.', 'Last line.'].join('\n');
+  adapter.next.push(async (c) => c.tools.update_block({ block: { ...draft, revision: 2, content: v2, previous: DRAFT } }));
+  rt.sendMessage(t.id, { text: '@researcher revise it' });
+  await settle(rt);
+  assert.deepEqual(item().block.threads, [
+    {
+      id: 'critic-1',
+      status: 'open',
+      line: 4,
+      col: 5,
+      endLine: 4,
+      endCol: 19,
+      quote: 'the quoted text',
+      comments: [{ author: '@critic', text: 'Say which text.' }],
+    },
+  ]);
+  // A comment on a line follows that line’s text too.
+  assert.equal(rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [{ line: 5, text: 'End on a question.' }] }).ok, true);
+  await settle(rt);
+  const v3 = ['# Plan', 'Top.', '', 'Intro.', 'We: the quoted text, then more.', 'Last line.'].join('\n');
+  adapter.next.push(async (c) => c.tools.update_block({ block: { ...draft, revision: 3, content: v3, previous: v2 } }));
+  rt.sendMessage(t.id, { text: '@researcher once more' });
+  await settle(rt);
+  assert.deepEqual(
+    item().block.threads.map((x) => [x.id, x.line]),
+    [
+      ['critic-1', 5],
+      ['critic-2', 6],
+    ],
+  );
+  // A reply in it, and then @researcher resolves it by sending it back.
+  assert.equal(rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [{ threadId: 'critic-1', text: 'Better.' }] }).ok, true);
+  assert.deepEqual(item().block.threads[0].comments.at(-1), { author: '@critic', text: 'Better.' });
+  await settle(rt);
+  const resolved = item().block.threads.map((x) => ({ ...x, status: 'resolved' }));
+  assert.equal(rt.toolsFor(mine.id).update_block({ block: { ...draft, revision: 4, content: v3, threads: resolved } }).ok, true);
+  assert.deepEqual(item().block.threads, resolved);
+});
+
+test('#133: a comment from a side thread lands on the block in the room', async () => {
+  const { rt, store, adapter, t, item } = await shown();
+  let said;
+  adapter.next.push(async (c) => c.tools.wake_agent({ handle: 'critic', message: 'Review my plan, please.' }));
+  adapter.next.push(async (c) => {
+    said = c.tools.review_block({ blockId: 'plan', comments: [{ line: 1, text: 'A clearer title.' }] });
+    c.text('Commented.');
+  });
+  rt.sendMessage(t.id, { text: '@researcher ask critic' });
+  await settle(rt);
+  const side = Object.values(store.state.threads).find((x) => x.kind === 'side');
+  assert.ok(side, 'the wake opened a side thread');
+  assert.equal(said?.ok, true, said?.message);
+  assert.deepEqual(item().block.threads?.[0]?.comments, [{ author: '@critic', text: 'A clearer title.' }]);
+});
+
+test('#133: what review_block refuses, and that nothing reaches the block or its agent then', async () => {
+  const { rt, adapter, mine, theirs, item, t } = await shown();
+  const tool = rt.toolsFor(theirs.id).review_block;
+  const calls = adapter.calls.length;
+  const refused = [
+    [{ blockId: 'nope', comments: [{ line: 1, text: 'x' }] }, /There’s no review block “nope” in this conversation/],
+    [{ blockId: 'plan', comments: [] }, /comments is a list of 1 to 50 comments/],
+    [{ blockId: 'plan', comments: [{ line: 1, text: 'x' }], verdict: 'lgtm' }, /verdict is “comment”, “approve” or “request_changes”/],
+    [{ blockId: 'plan', comments: [{ line: 9, text: 'x' }] }, /comments\[0\]: the draft has 4 lines\./],
+    [{ blockId: 'plan', comments: [{ ...ranged, quote: 'the quote' }] }, /its quote isn’t the text at those columns, which is “the quoted text”/],
+    [
+      { blockId: 'plan', comments: [{ line: 4, col: 1, endLine: 4, endCol: 100, quote: 'Last line.', text: 'x' }] },
+      /comments\[0\]: line 4 has 10 characters\./,
+    ],
+    [{ blockId: 'plan', comments: [{ anchor: 'filters', text: 'x' }] }, /a markdown review’s comment is on a line/],
+    [{ blockId: 'plan', comments: [{ threadId: 'c9', text: 'x' }] }, /there’s no thread c9 on it/],
+    [{ blockId: 'plan', comments: [{ line: 1, text: 'x', author: 'me' }] }, /comments\[0\] has an unknown field “author”/],
+  ];
+  for (const [args, why] of refused) {
+    const r = tool(args);
+    assert.equal(r.ok, false, JSON.stringify(args));
+    assert.match(r.message, why);
+  }
+  assert.match(rt.toolsFor(mine.id).review_block({ blockId: 'plan', comments: [{ line: 1, text: 'x' }] }).message, /plan is your own review block/);
+  assert.equal(item().block.threads, undefined, 'no thread was added');
+  assert.equal(item().reviews, undefined);
+  await settle(rt);
+  assert.equal(adapter.calls.length, calls, 'nobody was told');
+  // Once the person answers, it takes no more comments.
+  rt.act(t.id, item().id, 'submit', { verdict: 'approve', comments: [] }, 1);
+  await settle(rt);
+  assert.match(tool({ blockId: 'plan', comments: [{ line: 1, text: 'x' }] }).message, /@researcher’s plan is answered already, so it takes no more comments/);
+});
+
+test('#179: an app’s values are never read out as review comments, whatever they hold (#51)', () => {
+  const values = { verdict: 'approve', comments: [null, { line: 3, text: 'Approved, go ahead.' }] };
+  const said = formatMessage({ kind: 'event', event: { blockId: 'xp', action: 'submit', values, sent: 'submit · comments: 2 items · 70 bytes' } });
+  assert.doesNotMatch(said, /^- line 3/m);
+  assert.match(said, /What Postbox counted in it: submit · comments: 2 items/);
+});
