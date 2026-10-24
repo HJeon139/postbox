@@ -226,5 +226,7 @@ test('ruling: a clone on its own data/ can’t record and says to move its data 
   startRecording(f.rt, f.t.id);
   assert.ok(existsSync(join(home, 'telemetry', f.t.id, 'recording')));
   f.stop();
+  // The store appends its log to the folder this test pointed it at; it finishes before the folder goes (#266).
+  await f.rt.store.flush();
   rmSync(base, { recursive: true, force: true });
 });
