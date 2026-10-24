@@ -106,6 +106,14 @@ const add = (into, f) => {
   into.deleted += f.deleted ?? 0;
 };
 const sumTokens = (t) => (t ? (t.input ?? 0) + (t.output ?? 0) + (t.cacheRead ?? 0) + (t.cacheWrite ?? 0) : 0);
+const sum = (ts) => ({
+  turns: ts.length,
+  ms: ts.reduce((n, t) => n + (t.ms ?? 0), 0),
+  toolCalls: ts.reduce((n, t) => n + (t.toolCalls ?? 0), 0),
+  costUsd: ts.reduce((n, t) => n + (t.costUsd ?? 0), 0),
+  tokens: ts.reduce((n, t) => n + sumTokens(t.tokens), 0),
+  priced: ts.some((t) => typeof t.costUsd === 'number'),
+});
 
 /**
  * Where a file stands: the state git reports for it now, with “outside” for a file git doesn’t follow (outside a
@@ -195,15 +203,6 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
   const lastingTurn = new Set([...changes, ...commits, ...pushes, ...external, ...publishes, ...edits].map((e) => e.turnId));
   const tried = new Set([...changes, ...commands].map((e) => e.turnId));
   const idle = turns.filter((t) => tried.has(t.id) && !lastingTurn.has(t.id));
-
-  const sum = (ts) => ({
-    turns: ts.length,
-    ms: ts.reduce((n, t) => n + (t.ms ?? 0), 0),
-    toolCalls: ts.reduce((n, t) => n + (t.toolCalls ?? 0), 0),
-    costUsd: ts.reduce((n, t) => n + (t.costUsd ?? 0), 0),
-    tokens: ts.reduce((n, t) => n + sumTokens(t.tokens), 0),
-    priced: ts.some((t) => typeof t.costUsd === 'number'),
-  });
   return {
     files,
     total,
