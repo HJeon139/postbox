@@ -2,7 +2,7 @@
 // The router is called with fake requests (start({ listen: false })), since tests can’t open sockets.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -43,6 +43,15 @@ const WRITE_ROUTES = {
   'POST ^\\/api\\/threads\\/([^/]+)\\/undo-delete$': ['/api/threads/th_none/undo-delete'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/(archive|restore)$': ['/api/threads/th_none/archive', '/api/threads/th_none/restore'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/messages$': ['/api/threads/th_none/messages'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/record$': ['/api/threads/th_none/telemetry/record'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/stop$': ['/api/threads/th_none/telemetry/stop'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/delete$': ['/api/threads/th_none/telemetry/delete'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports$': ['/api/threads/th_none/telemetry/reports'],
+  'DELETE ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)$': ['/api/threads/th_none/telemetry/reports/rep_none'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/leave-out$': ['/api/threads/th_none/telemetry/reports/rep_none/leave-out'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/save$': ['/api/threads/th_none/telemetry/reports/rep_none/save'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/discard$': ['/api/threads/th_none/telemetry/reports/rep_none/discard'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/telemetry\\/reports\\/([^/]+)\\/issues\\/([^/]+)$': ['/api/threads/th_none/telemetry/reports/rep_none/issues/x'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/view$': ['/api/threads/th_none/view'],
   'PATCH ^\\/api\\/threads\\/([^/]+)\\/queue\\/([^/]+)$': ['/api/threads/th_none/queue/q_none'],
   'DELETE ^\\/api\\/threads\\/([^/]+)\\/queue\\/([^/]+)$': ['/api/threads/th_none/queue/q_none'],
@@ -88,14 +97,19 @@ const WRITE_ROUTES = {
   'POST /api/demo/speed': ['/api/demo/speed'],
 };
 
-/** The write routes server/index.mjs has: each line that tests a path and a method other than GET. */
+/**
+ * The write routes server/index.mjs has, and the route modules its route() calls (server/*-routes.mjs): each line that
+ * tests a path and a method other than GET.
+ */
 async function routesInSource() {
-  const src = await readFile(fileURLToPath(new URL('../server/index.mjs', import.meta.url)), 'utf8');
+  const dir = fileURLToPath(new URL('../server/', import.meta.url));
+  const files = ['index.mjs', ...(await readdir(dir)).filter((f) => f.endsWith('-routes.mjs'))];
+  const src = (await Promise.all(files.map((f) => readFile(join(dir, f), 'utf8')))).join('\n');
   const found = [];
   const unread = [];
   for (const line of src.split('\n')) {
-    if (!/req\.method === '(POST|PATCH|PUT|DELETE)'/.test(line) || /const body =/.test(line)) continue;
-    const method = line.match(/req\.method === '(POST|PATCH|PUT|DELETE)'/)[1];
+    if (!/(?:req\.)?method === '(POST|PATCH|PUT|DELETE)'/.test(line) || /const body =/.test(line)) continue;
+    const method = line.match(/(?:req\.)?method === '(POST|PATCH|PUT|DELETE)'/)[1];
     const path = line.match(/path === '([^']+)'/)?.[1] ?? line.match(/path\.match\(\/(.+?)\/\)\)/)?.[1];
     if (path) found.push(`${method} ${path}`);
     else unread.push(line.trim());

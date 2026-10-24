@@ -313,7 +313,8 @@ export function report(runs, { resamples = 2000, roots = [], unfinished = 0, unr
   ];
   if (!runs.length) return [...out, 'No finished runs: nothing to fit.'];
   const model = (r) => r.agents?.model ?? 'unknown model';
-  const groups = [['All runs', runs]];
+  // Live reports count toward recurrence only: no verifier judged them, and a live room has no steps (R20).
+  const groups = [['All runs', runs.filter((r) => r.kind !== 'live')]];
   for (const kind of ['exploratory', 'targeted']) {
     const of = runs.filter((r) => r.kind === kind);
     if (!of.length) continue;
