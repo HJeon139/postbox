@@ -30,8 +30,8 @@ export function agentWake(rt, fromSessionId, handle, text, { confirmed = false, 
   if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) return askToWake(rt, from, parent, p, text, back);
   const hops = (parent.hops ?? 0) + 1;
   rt.putThread({ ...rt.s.threads[parent.id], hops });
-  rt.addItem(parent.id, { kind: 'system', variant: 'wake', from: from.handle, to: p.handle, n: hops, limit: HOP_LIMIT });
-  // The exchange happens in a side thread; your thread shows one line that links to it.
+  // The exchange happens in a side thread; your thread shows one line that links to it, which counts each wake in place
+  // of a line of its own (#114).
   const pair = [from.handle, p.handle].sort().join('|');
   let side = Object.values(rt.s.threads).find((x) => x.kind === 'side' && x.parentId === parent.id && x.pair === pair);
   if (!side) {

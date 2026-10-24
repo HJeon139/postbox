@@ -452,13 +452,13 @@ export class Runtime {
     // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
     const away = t.kind === 'side' || t.kind === 'topic';
     if (away) {
-      for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you'), woke: true });
+      for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you') });
       if (!targets.length) {
         // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
         const p = threadPersona(this, t);
         const se = p && this.sideSession(t, p.id, 'you');
         if (!se) throw httpError(409, `No agent is in this ${t.kind === 'side' ? 'side thread' : 'thread'}. @-mention one to bring it in.`);
-        targets.push({ se, woke: false });
+        targets.push({ se });
       }
     }
     // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
@@ -466,13 +466,13 @@ export class Runtime {
     if (archived && !away) throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
     for (const p of away ? [] : mentioned) {
       const joined = !this.sessionsIn(threadId).some((x) => x.personaId === p.id);
-      targets.push({ se: this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }), woke: true });
+      targets.push({ se: this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }) });
     }
     if (!targets.length) {
       const members = this.sessionsIn(threadId).filter((x) => !x.archived);
       const last = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
       if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
-      targets.push({ se: last, woke: false });
+      targets.push({ se: last });
     }
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
@@ -492,8 +492,8 @@ export class Runtime {
     const conv = this.lineage(threadId).at(-1);
     this.putThread({ ...this.s.threads[conv], hops: 0 });
     const refs = this.threadRefs(threadId, text);
-    for (const { se, woke } of targets) {
-      if (woke) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
+    // An agent you @-mentioned gets no “You woke” line: your message’s mention says so (#114).
+    for (const { se } of targets) {
       this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id, ...(refs.length ? { context: refs } : {}) }, { threadId });
     }
     return { item };
@@ -545,7 +545,7 @@ export class Runtime {
     return this.postAndDeliver(
       threadId,
       q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se && !x.se.archived),
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
     );
   }
 
@@ -580,7 +580,7 @@ export class Runtime {
     this.postAndDeliver(
       threadId,
       q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se && !x.se.archived),
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
     );
   }
 

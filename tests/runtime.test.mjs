@@ -79,7 +79,7 @@ test('@-mentioning an agent that isn’t in the thread brings it in and turns th
   rt.sendMessage(t.id, { text: '@beta take a look' });
   await settle(rt);
   assert.equal(store.state.threads[t.id].kind, 'room');
-  assert.ok(store.items(t.id).some((i) => i.kind === 'system' && i.variant === 'wake' && i.to === 'beta'));
+  assert.ok(!store.items(t.id).some((i) => i.kind === 'system'), 'your mention is the record of the wake, with no line of its own (#114)');
 });
 
 test('a message sent mid-reply is queued, then delivered when the agent finishes', async () => {
@@ -2030,7 +2030,7 @@ test('#153 an app is still its title alone', async () => {
   rt.sendMessage(t.id, { text: '@beta look' });
   await settle(rt);
   const ctx = adapter.calls.at(-1).message.context.join('\n');
-  assert.match(ctx, /@alpha showed an app “Explorer”\n/);
+  assert.match(ctx, /@alpha showed an app “Explorer”(\n|$)/);
   assert.doesNotMatch(ctx, /Secret code/);
   assert.ok(store.items(t.id).some((i) => i.kind === 'block'));
 });

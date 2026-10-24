@@ -128,7 +128,7 @@ sequenceDiagram
 |---|---|
 | `@name` wakes an agent; agents can wake each other | It uses one familiar gesture for people and agents alike. |
 | An agent can schedule its own wake-up (“check back when the index finishes”) | The schedule shows as a line in the thread, with Cancel. |
-| Each wake shows as a line in the thread, such as “@indexer woke @researcher” | You can always see who started what. |
+| Each exchange between agents shows as one line in the thread, its side thread’s link, such as “@indexer asked @researcher · 4 messages”, which updates in place however often they wake each other. Your own @-mention is the record of the agents you wake | You can always see who started what. Changed on 24 October 2026 (#114): a line for every wake, and “You woke @x” under your own mention, crowded the conversation; one fix request made seven. |
 | After 3 agent-to-agent wakes in a row, the next waits for your confirm | This stops two agents from looping on each other. |
 | An agent replying to another agent doesn’t wake it again by mentioning it; mentioning the agent that just wrote to it wakes it only if the reply asks it to check again. Only one wake waits for your confirm at a time | Found while building Stage 2: a polite “Thanks @researcher” was enough to start a loop. |
 | Two tiers of “needs you”: blocking (waiting on a block, failed, stuck) pulses and notifies; informational (`@me`, finished) shows a still badge | If everything pulses, the pulse means nothing. |
