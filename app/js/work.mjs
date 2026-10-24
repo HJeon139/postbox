@@ -16,6 +16,7 @@ import { commandLabel } from '/shared/work-list.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
 import { closeWork, keepFocus, openDialog, openWork, toast } from './ui.mjs';
+import { watchGit } from './work-git.mjs';
 import { backgroundNote, editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
 
@@ -40,52 +41,6 @@ const GLYPH = { running: 'running', done: 'done', failed: 'failed', denied: 'fai
 
 /** The line of counts for files and lines (“3 files · +40 −12”). */
 const counts = (t) => [plural(t.files, 'file'), signedEl(t.added, t.deleted)];
-/**
- * Where each change stands, asked of git when Work opens and again once a turn ends, a commit or push lands, or a
- * file is restored. Calls back everyone listening on every answer; the pane’s two forms share one.
- * @param {string} threadId
- */
-function watchGit(threadId) {
-  const g = { data: /** @type {any} */ (null), error: '' };
-  const listeners = new Set();
-  let timer = 0;
-  let stopped = false;
-  const load = async () => {
-    try {
-      const r = await fetch(`/api/threads/${threadId}/work/git`, { cache: 'no-store' });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error ?? `The server answered ${r.status}.`);
-      g.data = data;
-      g.error = '';
-    } catch (e) {
-      g.error = e.message;
-    }
-    if (!stopped) for (const fn of [...listeners]) fn();
-  };
-  const off = client.on((ch) => {
-    if ((ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === threadId) {
-      // A turn that ended, a commit or a restore changes where files stand: ask git again, once things settle.
-      const done = ch.type === 'work.patch' ? ch.data.patch.status || ch.data.patch.restored : ['commit', 'push', 'restore'].includes(ch.data.entry.kind);
-      if (done) {
-        clearTimeout(timer);
-        timer = setTimeout(load, 800);
-      }
-    }
-  });
-  load();
-  return Object.assign(g, {
-    /** @param {() => void} fn  @returns {() => void} */
-    listen(fn) {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
-    stop() {
-      stopped = true;
-      off();
-      clearTimeout(timer);
-    },
-  });
-}
 
 /**
  * The whole Work view: Work’s full form, shown when Work in the pane goes full screen.
