@@ -123,7 +123,7 @@ export function dropRenamed(m, id) {
 
 /** @param {Manager} m @param {string} id @returns {HostLink} */
 export function linkOf(m, id) {
-  if (m.closed) throw new Error('Postbox has closed its host connections.');
+  if (m.closed) throw Object.assign(new Error('Postbox has closed its host connections.'), { code: 'closed' });
   const host = hostOf(m, id);
   dropRenamed(m, id);
   const e = m.links.get(id);

@@ -64,7 +64,22 @@ export function releaseHost(rts, hostId) {
   rts.hosts?.release(hostId, 'turn');
 }
 
-/** @param {RemoteTurns} rts @param {string} hostId */
+/** Why the manager may have no link to give: it’s closing its links (Postbox shuts down), or the host isn’t installed or is gone. */
+const NO_LINK = new Set(['closed', 'not-installed', 'no-host', 'host-renamed-busy']);
+
+/**
+ * The host’s link, to send on, or null when the manager has none to give (NO_LINK). A send over null is false, so
+ * nothing throws out of an answer or a reply as Postbox shuts down: an answer stays on its card, and goes when the
+ * daemon, which keeps the prompt, sends it again after the next start’s hello (turns-prompts.mjs, onPrompt).
+ * @param {RemoteTurns} rts @param {string} hostId
+ */
 export function linkOf(rts, hostId) {
-  return rts.needed.get(hostId)?.link ?? rts.hosts?.link(hostId);
+  const held = rts.needed.get(hostId)?.link;
+  if (held) return held;
+  try {
+    return rts.hosts?.link(hostId) ?? null;
+  } catch (e) {
+    if (NO_LINK.has(e?.code)) return null;
+    throw e;
+  }
 }

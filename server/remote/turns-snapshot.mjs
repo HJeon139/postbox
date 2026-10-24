@@ -3,6 +3,7 @@
 // snapshot-items while the turn runs.
 
 import { encodedBytes, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { linkOf } from './turns-need.mjs';
 import { SNAPSHOT_FLUSH_MS, send } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
@@ -41,7 +42,7 @@ function itemOf(rts, i, se) {
 /** @param {RemoteTurns} rts @param {Live} live @param {string} turn */
 export function sendSnapshot(rts, live, turn) {
   const se = rts.rt.s.sessions[live.sessionId];
-  const link = live.link ?? rts.hosts?.link(live.hostId);
+  const link = live.link ?? linkOf(rts, live.hostId);
   if (!se || !link) return false;
   const sent = send(link, 'snapshot', { turn, ...snapshotOf(rts, se) });
   // Not sent: it goes in full at the next welcome.
