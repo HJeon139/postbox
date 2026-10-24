@@ -29,9 +29,14 @@ const flags = (port, profile) => [
   'about:blank',
 ];
 
-export async function launch({ port = 9333 } = {}) {
+/**
+ * Starts a headless Chrome and opens its page. detached: Chrome runs in a process group of its own, so a terminal’s
+ * Ctrl-C doesn’t stop it under a script that still needs its page to clean up (tools/uat-run.mjs).
+ * @param {{ port?: number, detached?: boolean }} [o]
+ */
+export async function launch({ port = 9333, detached = false } = {}) {
   const profile = join(tmpdir(), `pb-cdp-${process.pid}-${port}`);
-  const chrome = spawn(CHROME, flags(port, profile), { stdio: ['ignore', 'ignore', 'pipe'] });
+  const chrome = spawn(CHROME, flags(port, profile), { stdio: ['ignore', 'ignore', 'pipe'], detached });
   // What Chrome last said, and whether it ended, to say why when it doesn’t start.
   let said = '';
   chrome.stderr.on('data', (d) => {

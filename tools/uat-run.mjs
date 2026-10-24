@@ -35,11 +35,11 @@ import { launch, sleep } from './cdp.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
-import { cleanUp, endHosts } from './uat/hosts-end.mjs';
+import { endHosts } from './uat/hosts-end.mjs';
 import { hostMode } from './uat/hosts-options.mjs';
 import { createHostRun, readHosts, startHosts } from './uat/hosts-run.mjs';
 import { forHosts } from './uat/hosts-scenario.mjs';
-import { afterStep, fault, sample } from './uat/hosts-watch.mjs';
+import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { agentsSpent, writeReport } from './uat/report.mjs';
@@ -47,6 +47,7 @@ import { reviewFindings } from './uat/review.mjs';
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
+import { onStopSignal, runStop } from './uat/stop.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
 import { withoutPreset } from './uat/verdicts.mjs';
@@ -209,6 +210,10 @@ async function main() {
   // The runner must talk to its own fresh Postbox, never to one that’s already running there.
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
+  // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
+  const run = { log };
+  const stop = runStop(run);
+  const signals = onStopSignal(stop, { log });
   const postbox = await startPostbox({
     root: ROOT,
     port,
@@ -225,9 +230,10 @@ async function main() {
   const { api } = postbox;
   // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
   const history = followEvents(origin);
-  const page = await launch({ port: Number(opt['chrome-port']) });
+  const page = await launch({ port: Number(opt['chrome-port']), detached: true });
   // Host mode’s record of its hosts (tools/uat/hosts-run.mjs), which its checks and triggers read as facts.hosts.
   const hr = hosts.length ? createHostRun({ hosts, placement, launcher: scenario.launcher, root: ROOT, stamp, data: paths.data, log }) : null;
+  Object.assign(run, { hr, history, page, postbox });
   const findings = new Map(); // key → finding
   const timeline = [];
   const facts = {
@@ -258,7 +264,7 @@ async function main() {
     await page.goto(`${origin}/`);
     const state0 = (await api('/api/state')).state;
     facts.startPersonas = Object.values(state0.personas).filter((p) => !p.retired);
-    const d = driver(page);
+    const d = driver(page, { beforeStop: () => beforeStop(hr) });
     await d.newProject(scenario.project, paths.workspace);
     if (hr) await startHosts(hr, { postbox, api, kit: d.kit, dir, project: scenario.project });
     const hash = await d.newConversation(scenario.project, scenario.conversation, scenario.agents);
@@ -436,6 +442,7 @@ async function main() {
     };
 
     for (let step = 1; step <= steps; step++) {
+      if (signals.stopping) throw new Error('The run was stopped by a signal.');
       const timedOut = await settle();
       await refreshFacts();
       if (hr) await afterStep(hr, facts);
@@ -668,10 +675,7 @@ async function main() {
       runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
     );
   } finally {
-    if (hr) await cleanUp(hr).catch((e) => log(`Couldn’t clean the hosts up: ${e.message}`));
-    history.close();
-    await page.close().catch(() => {});
-    postbox.kill();
+    await stop();
   }
 }
 
@@ -842,5 +846,6 @@ async function recheck(dir) {
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
   (opt.recheck ? recheck(opt.recheck) : main()).catch((e) => {
     console.error(`UAT run failed: ${e.stack ?? e.message}`);
-    process.exit(1);
+    // A run stopped by a signal exits as stopped (130, tools/uat/stop.mjs), whatever it failed with meanwhile.
+    process.exit(process.exitCode || 1);
   });

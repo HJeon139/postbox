@@ -51,11 +51,12 @@ const signIn = () => {
       writeFileSync(signInFile, JSON.stringify(s), { mode: 0o600 });
       const remove = () => rmSync(dir, { recursive: true, force: true });
       process.once('exit', remove);
-      // Ctrl+C or a kill skips 'exit': remove it, then let the signal end the run as it would have.
+      // Ctrl+C or a kill skips 'exit': remove it, then let the signal end the run as it would have, unless the
+      // run handles the signal itself (tools/uat/stop.mjs) and exits once it has cleaned up, which runs 'exit'.
       for (const sig of ['SIGINT', 'SIGTERM'])
         process.once(sig, () => {
           remove();
-          process.kill(process.pid, sig);
+          if (!process.listenerCount(sig)) process.kill(process.pid, sig);
         });
     }
   }

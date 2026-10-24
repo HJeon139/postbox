@@ -452,8 +452,8 @@
       "includes": ["tools/uat/driver.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 463 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 391 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 454 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 383 } } }
         }
       }
     },

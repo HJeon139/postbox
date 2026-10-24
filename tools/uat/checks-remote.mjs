@@ -116,6 +116,10 @@ function ranOnItsHost(f) {
 function turnsListed(f) {
   if (!f.hosts?.listed) return [];
   return (f.hosts.hosts ?? []).flatMap((h) => {
+    if (f.hosts.listed[h.label] === null)
+      return [
+        { key: `unlisted:${h.label}`, title: `The turns on ${h.label} couldn’t be listed`, evidence: 'The runner’s ssh to it failed at the end of the run.' },
+      ];
     const listed = new Set(f.hosts.listed[h.label] ?? []);
     const before = new Set(f.hosts.before?.[h.label] ?? []);
     const recorded = hostTurnIds(f, h.id);
@@ -144,7 +148,10 @@ function turnsListed(f) {
   });
 }
 
-/** The end-of-run checks over each host: nothing left after the idle timeout, and nothing after Remove. */
+/**
+ * The end-of-run checks over each host: nothing left after the idle timeout, and nothing after Remove. What couldn’t
+ * be listed there fails as that: an unmeasured host isn’t a clean one.
+ */
 function hostDoneWhen(f) {
   return (f.hosts?.hosts ?? []).flatMap((h) => {
     const idle = f.hosts.idle?.[h.label];
@@ -159,6 +166,12 @@ function hostDoneWhen(f) {
         verdict: 'measurement',
         note: 'Not a defect: what this run didn’t check.',
       });
+    else if (idle && idle.left === null)
+      out.push({
+        key: `idle-unmeasured:${h.label}`,
+        title: `What ran on ${h.label} after its idle timeout couldn’t be listed`,
+        evidence: idle.unmeasured ?? '',
+      });
     else if (idle?.left?.length)
       out.push({
         key: `idle:${h.label}`,
@@ -172,7 +185,9 @@ function hostDoneWhen(f) {
         title: `~/.postbox-remote was still on ${h.label} after Remove`,
         evidence: `test -e ~/.postbox-remote held after “${String(removed.confirm ?? '').slice(0, 120)}”.`,
       });
-    if (removed?.left?.length)
+    if (removed && !removed.error && removed.left === null)
+      out.push({ key: `remove-unmeasured:${h.label}`, title: `What ran on ${h.label} after Remove couldn’t be listed`, evidence: removed.unmeasured ?? '' });
+    else if (removed?.left?.length)
       out.push({ key: `remove-left:${h.label}`, title: `Postbox still ran on ${h.label} after Remove`, evidence: list(removed.left, 4) });
     return out;
   });
@@ -189,11 +204,11 @@ export const REMOTE_CHECKS = [
     issue: 120,
     run: (f) =>
       (f.hosts?.listeners?.samples ?? [])
-        .filter((s) => s.run?.length)
+        .filter((s) => s.run?.length || s.error)
         .map((s) => ({
-          key: `${s.where}:${s.run.join(',')}`,
-          title: `A new TCP listener during a turn, on ${s.where === 'local' ? 'this computer' : s.where}`,
-          evidence: `Not there before setup, and the run’s own: ${list(s.run, 4)}.`,
+          key: s.error ? `unmeasured:${s.where}:${s.at}` : `${s.where}:${s.run.join(',')}`,
+          title: `${s.error ? 'The listeners couldn’t be read during a turn' : 'A new TCP listener during a turn'}, on ${s.where === 'local' ? 'this computer' : s.where}`,
+          evidence: s.error ?? `Not there before setup, and the run’s own: ${list(s.run, 4)}.`,
         })),
   },
   {
@@ -201,6 +216,16 @@ export const REMOTE_CHECKS = [
     issue: 120,
     run: (f) =>
       (f.hosts?.stops ?? []).flatMap((x) => [
+        // What Stop left can be told only from what was seen under the turn before it (hosts-watch.mjs).
+        ...(x.left === null
+          ? [
+              {
+                key: `unmeasured:${x.turnId}`,
+                title: 'What a Stop on a host left running couldn’t be told',
+                evidence: `After @${x.handle}’s Stop, on ${x.label}: ${x.unmeasured ?? 'the host couldn’t be looked at'}`,
+              },
+            ]
+          : []),
         ...(x.left?.length
           ? [
               {

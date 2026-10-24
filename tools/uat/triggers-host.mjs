@@ -124,8 +124,11 @@ export const HOST_TRIGGERS = {
     recorded: hostRun,
     run: (f) =>
       (f.hosts?.stops ?? [])
-        .filter((x) => x.jobs > 0 && Array.isArray(x.left) && !x.left.length)
-        .map((x) => ({ at: x.at ?? null, evidence: `After @${x.handle}’s Stop, nothing of host turn ${x.turn} ran on ${x.label}.` })),
+        .filter((x) => x.jobs > 0 && x.watched > 0 && Array.isArray(x.left) && !x.left.length)
+        .map((x) => ({
+          at: x.at ?? null,
+          evidence: `After @${x.handle}’s Stop, none of the ${x.watched} processes seen under host turn ${x.turn} ran on ${x.label}.`,
+        })),
   },
   'fault-kill-ssh': {
     issue: 120,

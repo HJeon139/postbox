@@ -7,57 +7,8 @@ import { test } from 'node:test';
 import { runChecks } from '../tools/uat/checks.mjs';
 import { keepEvent } from '../tools/uat/history.mjs';
 import { triggersFired } from '../tools/uat/triggers.mjs';
+import { facts, HT, remote, T } from './uat-hosts-facts.mjs';
 
-const T = { r1: 'tu_r1', c1: 'tu_c1', d1: 'tu_d1' };
-const HT = { r1: '11111111-1111-4111-8111-111111111111', c1: '22222222-2222-4222-8222-222222222222' };
-const remote = (hostId, rtTurn, turn) => ({ hostId, rtTurn, turn, state: 'done' });
-
-/** Three agents: @researcher on host1, @critic on host2, @developer here, each with a turn that ran where it’s placed. */
-function facts(over = {}) {
-  const items = [
-    { id: 'i1', kind: 'agent', handle: 'researcher', sessionId: 's1', turnId: T.r1, status: 'done', at: 1000 },
-    { id: 'i2', kind: 'agent', handle: 'critic', sessionId: 's2', turnId: T.c1, status: 'done', at: 2000 },
-    { id: 'i3', kind: 'agent', handle: 'developer', sessionId: 's3', turnId: T.d1, status: 'done', at: 3000 },
-  ];
-  return {
-    state: {
-      threads: { t1: { id: 't1', title: 'Across machines', kind: 'thread', members: ['s1', 's2', 's3'] } },
-      items: { t1: items },
-      sessions: {
-        s1: { id: 's1', handle: 'researcher', state: 'idle', remoteTurn: remote('ho_1', T.r1, HT.r1) },
-        s2: { id: 's2', handle: 'critic', state: 'idle' },
-        s3: { id: 's3', handle: 'developer', state: 'idle' },
-      },
-      personas: {},
-      work: {},
-      apps: {},
-    },
-    threads: ['t1'],
-    events: [{ seq: 5, type: 'session', data: { id: 's2', state: 'tool', remoteTurn: remote('ho_2', T.c1, HT.c1) } }],
-    streams: [],
-    transcripts: [],
-    console: [],
-    apps: {},
-    probes: {},
-    samples: [],
-    ui: {},
-    userMcpServers: [],
-    hosts: {
-      hosts: [
-        { label: 'host1', id: 'ho_1', destination: 'a.example.com' },
-        { label: 'host2', id: 'ho_2', destination: 'b.example.com' },
-      ],
-      placement: { researcher: 'host1', critic: 'host2', developer: 'local' },
-      laptopData: '/Users/user/uat-runs/x/data',
-      setup: [],
-      listeners: { baseline: {}, samples: [] },
-      stops: [],
-      faults: [],
-      before: {},
-    },
-    ...over,
-  };
-}
 const of = (f, check) => runChecks(f, { only: [check] });
 const init = (extra = {}) => ({ type: 'system', subtype: 'init', session_id: 'x', tools: [], mcp_servers: [], ...extra });
 const edit = (id, path) => ({
@@ -154,6 +105,12 @@ test('#120 host-turns-listed: each host’s ~/.postbox-remote/turns against the 
   );
   assert.match(got[0].evidence, new RegExp(HT.r1));
   assert.match(got[1].evidence, new RegExp(stray));
+  // A host whose turns couldn’t be listed fails as that, never as a host with none.
+  f.hosts.listed.host1 = null;
+  assert.deepEqual(
+    of(f, 'host-turns-listed').map((x) => x.key),
+    ['unlisted:host1'],
+  );
 });
 
 test('#120 host-done-when: nothing of Postbox after the idle timeout, and no ~/.postbox-remote after Remove', () => {
@@ -174,16 +131,49 @@ test('#120 host-done-when: nothing of Postbox after the idle timeout, and no ~/.
     of(f, 'host-done-when').map((x) => x.key),
     ['idle:host1', 'remove:host1', 'idle-skipped:host2', 'remove:host2'],
   );
+  // What couldn’t be listed (pgrep missing, ssh failing) fails as that, never as nothing running.
+  f.hosts.idle.host1 = { left: null, waited: 200_000, unmeasured: 'sh: 1: pgrep: not found' };
+  f.hosts.removed.host1 = { confirm: 'Remove a.example.com?', exists: false, left: null, unmeasured: 'sh: 1: pgrep: not found' };
+  const got = of(f, 'host-done-when');
+  assert.deepEqual(
+    got.map((x) => [x.key, x.verdict ?? null]),
+    [
+      ['idle-unmeasured:host1', null],
+      ['remove-unmeasured:host1', null],
+      ['idle-skipped:host2', 'measurement'],
+      ['remove:host2', null],
+    ],
+  );
+  assert.match(got[0].evidence, /pgrep: not found/);
 });
 
 test('#120 a Stop on a host: nothing of the turn left there, and the composer said beforehand that its jobs stop with it', () => {
   const f = facts();
   const note = 'Stop also stops @researcher’s background job on a.example.com: a job on a host stops with its turn.';
-  f.hosts.stops = [{ handle: 'researcher', label: 'host1', turn: HT.r1, jobs: 1, note, left: [] }];
+  f.hosts.stops = [{ handle: 'researcher', label: 'host1', turnId: T.r1, turn: HT.r1, jobs: 1, note, watched: 4, left: [] }];
   assert.deepEqual(of(f, 'remote-stop-left-processes'), []);
   const fired = triggersFired(f, ['remote-stop-says-jobs', 'remote-stop-no-process-left']);
   assert.ok(fired['remote-stop-says-jobs'] && fired['remote-stop-no-process-left']);
-  f.hosts.stops = [{ handle: 'researcher', label: 'host1', turn: HT.r1, jobs: 1, note: null, left: ['4300 sleep 180'] }];
+  // Nothing seen under the turn before Stop: it can’t be told what was left, which fails, and the trigger waits.
+  f.hosts.stops = [
+    {
+      handle: 'researcher',
+      label: 'host1',
+      turnId: T.r1,
+      turn: HT.r1,
+      jobs: 1,
+      note,
+      watched: 0,
+      left: null,
+      unmeasured: 'nothing was seen running under the turn before Stop.',
+    },
+  ];
+  assert.deepEqual(
+    of(f, 'remote-stop-left-processes').map((x) => x.key),
+    [`unmeasured:${T.r1}`],
+  );
+  assert.equal(triggersFired(f, ['remote-stop-no-process-left'])['remote-stop-no-process-left'], false);
+  f.hosts.stops = [{ handle: 'researcher', label: 'host1', turnId: T.r1, turn: HT.r1, jobs: 1, note: null, watched: 4, left: ['4300 sleep 180'] }];
   assert.deepEqual(
     of(f, 'remote-stop-left-processes').map((x) => x.key),
     [`left:${HT.r1}`, `silent:${HT.r1}`],
@@ -273,10 +263,11 @@ test('#120 setup and listeners: a host just added with no Install, and a new lis
   f.hosts.listeners.samples = [
     { where: 'host1', at: 1, added: ['127.0.0.1:27452 (pid 1555)'], run: [] },
     { where: 'local', at: 2, added: ['127.0.0.1:5000 (pid 300)'], run: ['127.0.0.1:5000 (pid 300)'] },
+    { where: 'host2', at: 3, error: 'Couldn’t read the listeners on the host: sh: 1: ss: not found' },
   ];
   assert.deepEqual(
     of(f, 'host-listeners').map((x) => x.title),
-    ['A new TCP listener during a turn, on this computer'],
+    ['A new TCP listener during a turn, on this computer', 'The listeners couldn’t be read during a turn, on host2'],
   );
 });
 

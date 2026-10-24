@@ -10,12 +10,16 @@ import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { addHost, closeAll, editHost, install, placePersona } from './driver-hosts.mjs';
 import { addrs, localListeners, remoteListeners } from './hosts-probe.mjs';
-import { launcherScript, linesOf, onHost, processesOf, SCRIPTS, UUID, workScript } from './hosts-ssh.mjs';
+import { launcherScript, linesOf, measureOn, onHost, processesOf, SCRIPTS, UUID, workScript } from './hosts-ssh.mjs';
 
 /**
- * @typedef {{ label: string, destination: string, settings: Record<string, any>, id: string|null, home: string|null }} RunHost
+ * @typedef {{ label: string, destination: string, settings: Record<string, any>, id: string|null, home: string|null,
+ *   made: { parent: boolean } | null }} RunHost  made: the run made its folder there (and ~/postbox-uat too, if parent)
  * @typedef {{ hosts: RunHost[], placement: Record<string, string>, launcher: string|null, root: string, stamp: string,
- *   log: (line: string) => void, record: any, postbox: any, kit: any, api: (p: string) => Promise<any>, samples: Map<string, any> }} HostRun
+ *   log: (line: string) => void, record: any, postbox: any, kit: any, api: (p: string) => Promise<any>, samples: Map<string, any>,
+ *   trees: Map<string, Map<string, import('./hosts-ssh.mjs').HostProc>>, cleaning?: Promise<void>, ending?: Promise<void>,
+ *   starting?: Promise<void> }} HostRun
+ *   trees: every process seen under each host turn (hosts-watch.mjs), by “PID start”
  */
 
 /**
@@ -25,7 +29,7 @@ import { launcherScript, linesOf, onHost, processesOf, SCRIPTS, UUID, workScript
  * @returns {HostRun}
  */
 export function createHostRun({ hosts, placement, launcher, root, stamp, data, log }) {
-  const list = hosts.map((h) => ({ ...h, id: null, home: null }));
+  const list = hosts.map((h) => ({ ...h, id: null, home: null, made: null }));
   return {
     hosts: list,
     placement,
@@ -37,6 +41,7 @@ export function createHostRun({ hosts, placement, launcher, root, stamp, data, l
     kit: null,
     api: async () => ({}),
     samples: new Map(),
+    trees: new Map(),
     record: {
       hosts: list.map((h) => ({ label: h.label, destination: h.destination, id: null })),
       placement,
@@ -57,16 +62,29 @@ export async function must(h, script) {
   return r.stdout;
 }
 
+/** A measuring script’s output on a host, or throws: what it measures with is missing, or ssh failed. @param {RunHost} h @param {string} script */
+async function measure(h, script) {
+  const { out, why } = await measureOn(h.destination, script);
+  if (out === null) throw new Error(`The runner couldn’t measure on ${h.label} (${h.destination}): ${why}`);
+  return out;
+}
+
 /**
- * Before setup: what listens here and on each host, and what of Postbox already runs there. A host where Postbox’s
- * daemon already runs is another Postbox’s, and the run won’t take it over.
+ * Before setup: what the run measures with on each host, what listens here and there, and what of Postbox already
+ * runs there. A host without pgrep, pkill, ps, ss or sed stops the run, since its checks would read nothing as
+ * nothing there. A host where Postbox’s daemon already runs is another Postbox’s, and the run won’t take it over.
  * @param {HostRun} hr
  */
 export async function baseline(hr) {
   hr.record.listeners.baseline.local = addrs(localListeners(hr.postbox?.pid));
   for (const h of hr.hosts) {
+    const missing = linesOf(await measure(h, SCRIPTS.preflight)).map((l) => l.replace(/^missing /, ''));
+    if (missing.length)
+      throw new Error(
+        `${h.label} (${h.destination}) has no ${missing.join(', ')} on its PATH, which the run’s checks there need. Install it there, or leave the host out.`,
+      );
     h.home = (await must(h, SCRIPTS.home)).trim();
-    const running = processesOf(await must(h, SCRIPTS.processes));
+    const running = processesOf(await measure(h, SCRIPTS.processes));
     if (running.length)
       throw new Error(
         `Postbox already runs on ${h.label} (${h.destination}), so another Postbox may be using it: ${running.slice(0, 3).join('; ')}. Stop it there first.`,
@@ -96,10 +114,24 @@ async function putLauncher(hr, h) {
       `P0’s launcher needs Node and Claude Code on ${h.label}, and the runner found ${node ? 'no Claude Code' : 'no Node'} there. Pass --host-setting ${h.label}.${node ? 'claudePath' : 'nodePath'}=<its path there>.`,
     );
   const launcher = readFileSync(resolve(hr.root, /** @type {string} */ (hr.launcher)), 'utf8');
-  const wrapper = (await must(h, launcherScript({ launcher, node, claude: real }))).trim();
+  const wrapper = (await must(h, launcherScript({ launcher, node, claude: real, run: hr.stamp }))).trim();
   await editHost(hr.kit, /** @type {string} */ (h.id), { claudePath: wrapper });
   hr.log(`${h.label}: P0’s launcher at ${wrapper}, run by ${node}, in front of ${real}.`);
   return wrapper;
+}
+
+/**
+ * Makes the run’s own folder on a host (workScript). It counts as the run’s before the script runs, so a folder made
+ * by a script whose reply ssh lost is still cleanUp’s to remove; only workScript’s refusal of one that was there
+ * already (exit 3) says it isn’t. ~/postbox-uat counts as the run’s only once the script says it made it.
+ * @param {HostRun} hr @param {RunHost} h @param {{ run?: typeof onHost }} [o]
+ */
+export async function makeRunFolder(hr, h, { run = onHost } = {}) {
+  h.made = { parent: false };
+  const r = await run(h.destination, workScript(hr.stamp));
+  if (r.code === 3) h.made = null;
+  if (r.code !== 0) throw new Error(`The runner’s ssh to ${h.label} failed (exit ${r.code}): ${r.stderr || r.stdout.slice(-300)}`);
+  h.made = { parent: linesOf(r.stdout).includes('made') };
 }
 
 /**
@@ -111,8 +143,8 @@ async function putLauncher(hr, h) {
 async function setUpHost(hr, h, projectId) {
   h.id = await addHost(hr.kit, h.destination);
   /** @type {any} */ (hr.record.hosts.find((x) => x.label === h.label)).id = h.id;
-  await must(h, workScript(hr.stamp));
-  await editHost(hr.kit, h.id, h.settings, { project: projectId, folder: `${h.home}/postbox-uat/${hr.stamp}` });
+  await makeRunFolder(hr, h);
+  await editHost(hr.kit, h.id, h.settings, { project: projectId, folder: `${h.home}/postbox-uat/${hr.stamp}/work` });
   const shown = await install(hr.kit, h.id);
   hr.log(`${h.label}: ${shown.installOffered ? 'Install…' : 'no Install… on its card, so the runner opened the confirm'}; it said: ${shown.confirm}`);
   const placed = Object.values(hr.placement).includes(h.label);
@@ -121,12 +153,20 @@ async function setUpHost(hr, h, projectId) {
 }
 
 /**
- * Sets every host up, then puts each placed agent on its host.
+ * Sets every host up, then puts each placed agent on its host. A run that’s stopping (cleanUp, tools/uat/hosts-end.mjs)
+ * sets nothing more up: its cleanup waits for this, so what this already set up is removed.
  * @param {HostRun} hr @param {string} projectId
  */
 export async function setUp(hr, projectId) {
-  for (const h of hr.hosts) await setUpHost(hr, h, projectId);
+  const going = () => {
+    if (hr.cleaning) throw new Error('The run is stopping, so it sets no more hosts up.');
+  };
+  for (const h of hr.hosts) {
+    going();
+    await setUpHost(hr, h, projectId);
+  }
   for (const [handle, label] of Object.entries(hr.placement)) {
+    going();
     if (label === 'local') continue;
     await placePersona(hr.kit, handle, hr.hosts.find((h) => h.label === label)?.id ?? null);
     hr.log(`@${handle} runs on ${label}.`);
@@ -140,10 +180,13 @@ export async function setUp(hr, projectId) {
  */
 export async function startHosts(hr, { postbox, api, kit, dir, project }) {
   Object.assign(hr, { postbox, api, kit });
-  await baseline(hr);
-  const pr = Object.values((await api('/api/state')).state?.projects ?? {}).find((p) => p.name === project);
-  if (!pr) throw new Error(`The project “${project}” wasn’t made, so the hosts can’t have its folder.`);
-  await setUp(hr, pr.id);
+  hr.starting = (async () => {
+    await baseline(hr);
+    const pr = Object.values((await api('/api/state')).state?.projects ?? {}).find((p) => p.name === project);
+    if (!pr) throw new Error(`The project “${project}” wasn’t made, so the hosts can’t have its folder.`);
+    await setUp(hr, pr.id);
+  })();
+  await hr.starting;
   await saveHosts(hr, dir);
 }
 

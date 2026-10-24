@@ -5,7 +5,7 @@
 // listed, not judged: a shared machine’s come and go. The parsers are pure.
 
 import { spawnSync } from 'node:child_process';
-import { hostListeners, onHost, SCRIPTS } from './hosts-ssh.mjs';
+import { hostListeners, measureOn, SCRIPTS } from './hosts-ssh.mjs';
 
 /** `lsof -F pn`’s records: one { addr, pid } per listening address. @param {string} out */
 export function parseLsof(out) {
@@ -30,18 +30,30 @@ export function treeOf(out, root) {
   return seen;
 }
 
-/** This computer’s listeners now, with which the run’s Postbox and its children hold. @param {number|undefined} root */
-export function localListeners(root) {
-  const lsof = spawnSync('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pn'], { encoding: 'utf8' });
-  const ps = spawnSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' });
+/**
+ * This computer’s listeners now, with which the run’s Postbox and its children hold. Throws when lsof or ps can’t say:
+ * lsof exits 1 both when it found nothing and for an error, which it says on stderr (its warnings aside).
+ * @param {number|undefined} root @param {{ run?: typeof spawnSync }} [o]
+ */
+export function localListeners(root, { run = spawnSync } = {}) {
+  const lsof = run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pn'], { encoding: 'utf8' });
+  const complaints = String(lsof.stderr ?? '')
+    .split('\n')
+    .filter((l) => l.trim() && !/WARNING/.test(l));
+  const none = lsof.status === 1 && !String(lsof.stdout ?? '').trim() && !complaints.length;
+  if (lsof.error || (lsof.status !== 0 && !none))
+    throw new Error(`Couldn’t read this computer’s listeners with lsof: ${lsof.error?.message ?? (String(lsof.stderr ?? '').trim() || `exit ${lsof.status}`)}`);
+  const ps = run('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' });
+  if (ps.error || ps.status !== 0)
+    throw new Error(`Couldn’t list this computer’s processes with ps: ${ps.error?.message ?? (String(ps.stderr ?? '').trim() || `exit ${ps.status}`)}`);
   return Object.assign(parseLsof(lsof.stdout), { run: root ? treeOf(ps.stdout, root) : new Set() });
 }
 
-/** A host’s listeners now. @param {string} destination */
+/** A host’s listeners now. Throws when ss or ps there couldn’t say. @param {string} destination */
 export async function remoteListeners(destination) {
-  const r = await onHost(destination, SCRIPTS.listeners);
-  if (r.code !== 0 && !r.stdout) throw new Error(`Couldn’t read the listeners on the host: ${r.stderr || `ssh exited ${r.code}`}`);
-  return hostListeners(r.stdout);
+  const { out, why } = await measureOn(destination, SCRIPTS.listeners);
+  if (out === null) throw new Error(`Couldn’t read the listeners on the host: ${why}`);
+  return hostListeners(out);
 }
 
 /**

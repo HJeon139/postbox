@@ -7,14 +7,27 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { hostMode, hostsOf, placementOf, refusal, settingValue } from '../tools/uat/hosts-options.mjs';
-import { newListeners, parseLsof, treeOf } from '../tools/uat/hosts-probe.mjs';
+import { localListeners, newListeners, parseLsof, treeOf } from '../tools/uat/hosts-probe.mjs';
 import { forHosts } from '../tools/uat/hosts-scenario.mjs';
-import { hostListeners, launcherScript, onHost, processesOf, SCRIPTS, sshArgs, turnScript } from '../tools/uat/hosts-ssh.mjs';
+import {
+  cleanUpScript,
+  hostListeners,
+  launcherScript,
+  onHost,
+  parseTree,
+  processesOf,
+  SCRIPTS,
+  sshArgs,
+  stillRunning,
+  turnTrees,
+  upToEnd,
+  workScript,
+} from '../tools/uat/hosts-ssh.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { unknownTriggers } from '../tools/uat/triggers.mjs';
+import { TREE_AFTER, TREE_BEFORE, TURN } from './uat-hosts-facts.mjs';
 
 const scenario = (name) => parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8'));
-const TURN = '0f8e2c1a-4b5d-4e6f-8a9b-0c1d2e3f4a5b';
 
 test('#120 host mode: --host makes host1, host2… in order, each destination checked as the server checks it', () => {
   const hosts = hostsOf({ host: ['a.example.com', 'user@b.example.com'] });
@@ -130,22 +143,44 @@ test('#120 host mode: the runner’s ssh is an argument list in BatchMode whose 
   assert.equal(calls[0].input, `${SCRIPTS.removed}\n`);
 });
 
-test('#120 host mode: scripts never match themselves, and take only a checked turn ID or plain paths', () => {
+test('#120 host mode: scripts never match themselves, and take only a checked run stamp or plain paths', () => {
   assert.match(SCRIPTS.processes, /'\[\.\]postbox-remote'/);
-  const s = turnScript(TURN);
-  assert.match(s, /\.postbox-remote\/turns\/0f8e2c1a-/);
-  // pgrep’s pattern names the turn, but not as the turn: “[0]f8e…” doesn’t match its own argument.
-  assert.match(s, /pgrep -a -u "\$\(id -u\)" -f '\[0\]f8e2c1a-/);
-  assert.throws(() => turnScript('x; rm -rf ~'), /isn’t a turn ID/);
   const l = launcherScript({
     launcher: '#!/usr/bin/env node\nconsole.log(1)\n',
     node: '/home/user/.local/share/mise/installs/node/22.12.0/bin/node',
     claude: '/home/user/tools/bin/claude',
+    run: '2026-10-24T05-12-33',
   });
   assert.match(l, /POSTBOX_UAT_REAL_CLAUDE='\/home\/user\/tools\/bin\/claude'/);
-  assert.match(l, /exec '\/home\/user\/\.local\/share\/mise\/installs\/node\/22\.12\.0\/bin\/node' "\$HOME\/postbox-uat\/bin\/claude-launcher\.mjs" "\$@"/);
-  assert.throws(() => launcherScript({ launcher: '', node: "/a'b", claude: '/c' }), /won’t quote/);
-  assert.throws(() => launcherScript({ launcher: 'x\nPOSTBOX_UAT_END\n', node: '/n', claude: '/c' }), /line that ends it/);
+  // The launcher goes in the run’s own folder, never in a ~/postbox-uat/bin another run shares.
+  assert.match(
+    l,
+    /exec '\/home\/user\/\.local\/share\/mise\/installs\/node\/22\.12\.0\/bin\/node' "\$HOME\/postbox-uat\/2026-10-24T05-12-33\/bin\/claude-launcher\.mjs" "\$@"/,
+  );
+  assert.doesNotMatch(l, /postbox-uat\/bin/);
+  assert.throws(() => launcherScript({ launcher: '', node: "/a'b", claude: '/c', run: 'r' }), /won’t quote/);
+  assert.throws(() => launcherScript({ launcher: 'x\nPOSTBOX_UAT_END\n', node: '/n', claude: '/c', run: 'r' }), /line that ends it/);
+  for (const bad of ['x; rm -rf ~', '../up', ''])
+    for (const make of [workScript, cleanUpScript, (run) => launcherScript({ launcher: '', node: '/n', claude: '/c', run })])
+      assert.throws(() => make(bad), /isn’t a run’s stamp/);
+  // Cleanup removes the run’s own folder, and its parent only with rmdir, only when the run made it.
+  assert.deepEqual(cleanUpScript('r1').split('\n'), [
+    'rm -rf -- "$HOME/postbox-uat/r1"',
+    'if [ -e "$HOME/postbox-uat/r1" ]; then echo "~/postbox-uat/r1 is still there." >&2; exit 1; fi',
+    'echo removed',
+  ]);
+  assert.match(cleanUpScript('r1', { parent: true }), /^rmdir "\$HOME\/postbox-uat" 2>\/dev\/null$/m);
+});
+
+test('#120 host mode: a measuring script counts only when it got to its end', () => {
+  assert.equal(upToEnd({ code: 0, stdout: '4100 node host.mjs serve\n--end--\n' }), '4100 node host.mjs serve');
+  assert.equal(upToEnd({ code: 0, stdout: '--end--\n' }), '');
+  // pgrep missing: sh says so on stderr and the script exits before its end; ssh failing exits 255.
+  assert.equal(upToEnd({ code: 127, stdout: '' }), null);
+  assert.equal(upToEnd({ code: 0, stdout: '' }), null);
+  assert.equal(upToEnd({ code: 255, stdout: '--end--\n' }), null);
+  assert.throws(() => hostListeners('--ps--\n 4100 4100 node runner.mjs'), /ss printed nothing/);
+  assert.throws(() => hostListeners('State  Recv-Q Send-Q Local Address:Port'), /ss printed nothing/);
 });
 
 // Shaped as a probe of a Linux host recorded `ss -ltnp` (iproute2, its header’s “PortProcess” run together, and a
@@ -172,6 +207,36 @@ test('#120 host mode: a host’s listeners, and which the run’s own processes 
   assert.deepEqual(newListeners(['0.0.0.0:22', '127.0.0.1:8123', '127.0.0.1:27452'], now), { added: [], run: [] });
   // Another process’s new listener is listed, not the run’s.
   assert.deepEqual(newListeners(['0.0.0.0:22', '127.0.0.1:8123'], now), { added: ['127.0.0.1:27452 (pid 1555)'], run: [] });
+});
+
+test('#120 host mode: this computer’s listeners fail closed when lsof or ps can’t say', () => {
+  const ok = (stdout) => ({ status: 0, stdout, stderr: '' });
+  const run = (lsof, ps = ok('  100     1\n')) => /** @type {any} */ ((cmd) => (cmd === 'lsof' ? lsof : ps));
+  assert.deepEqual([...localListeners(100, { run: run(ok('p100\nn127.0.0.1:4900\n')) })], [{ addr: '127.0.0.1:4900', pids: ['100'] }]);
+  // lsof exits 1 when it finds nothing to list.
+  assert.deepEqual([...localListeners(100, { run: run({ status: 1, stdout: '', stderr: '' }) })], []);
+  const missing = { status: null, stdout: '', stderr: '', error: Object.assign(new Error('spawnSync lsof ENOENT'), { code: 'ENOENT' }) };
+  assert.throws(() => localListeners(100, { run: run(missing) }), /Couldn’t read this computer’s listeners with lsof: spawnSync lsof ENOENT/);
+  assert.throws(() => localListeners(100, { run: run({ status: 1, stdout: '', stderr: 'lsof: unacceptable port' }) }), /unacceptable port/);
+  assert.throws(() => localListeners(100, { run: run(ok(''), { status: 1, stdout: '', stderr: 'ps: bad option' }) }), /with ps: ps: bad option/);
+});
+
+test('#120 host mode: a Stop on a host is judged by every process seen under its turn, not its session or ID', () => {
+  const trees = turnTrees(parseTree(TREE_BEFORE));
+  assert.deepEqual(
+    trees.get(TURN)?.map((p) => p.pid),
+    ['4100', '4200', '4300', '4301'],
+  );
+  assert.equal(trees.get(TURN)?.[2].start, 'Sat Oct 24 05:12:40 2026');
+  const left = stillRunning(/** @type {any} */ (trees.get(TURN)), parseTree(TREE_AFTER)).map((p) => p.pid);
+  // The shell by its PID and start time, the new sleep and the nohup’d command by its group or session; not the
+  // daemon, not the PID that was reused, not the user’s own shell.
+  assert.deepEqual(left, ['4300', '4302', '4310']);
+  assert.deepEqual(stillRunning(/** @type {any} */ (trees.get(TURN)), parseTree(`--ps--\n${TREE_AFTER.split('\n')[1]}`)), []);
+  // A runner.json whose PID is now another process’s isn’t a turn’s runner.
+  assert.equal(turnTrees(parseTree(`turn ${TURN} 5000\n${TREE_BEFORE.split('\n').slice(1).join('\n')}`)).size, 0);
+  assert.throws(() => parseTree(`turn ${TURN} 4100\n`), /didn’t come back/);
+  assert.throws(() => parseTree('--ps--\n'), /listed no processes/);
 });
 
 test('#120 host mode: this computer’s listeners from lsof, and the run’s Postbox’s process tree from ps', () => {

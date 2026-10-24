@@ -1,14 +1,20 @@
 // A host-mode run while it goes on (#120; tools/uat/hosts-run.mjs has the record it adds to):
-// - sample(): while agents work, what Stop says beforehand for an agent on a host with background jobs, and, at most
-//   once a minute per machine, what listens (tools/uat/hosts-probe.mjs);
-// - afterStep(): after each step, a Stop on an agent on a host, and what of its turn was left running there;
+// - sample(): while agents work, what Stop says beforehand for an agent on a host with background jobs; at most every
+//   5 s per host, every process under each turn’s runner there (hosts-ssh.mjs, turnTrees), and beforeStop() once
+//   more just before the runner presses Stop; and, at most once a minute per machine, what listens
+//   (tools/uat/hosts-probe.mjs);
+// - afterStep(): after each step, a Stop on an agent on a host, and which of the processes seen under its turn still
+//   run there, by PID and start time, or by the group or session they were in: Claude Code’s tool shells lead
+//   sessions of their own, and outlive a killed CLI as children of PID 1, so neither the runner’s session nor the
+//   turn’s ID in a command line finds them. A Stop with nothing seen under its turn beforehand can’t be judged, and
+//   says so;
 // - fault(): what the tester breaks on purpose, kill-ssh, kill-daemon or restart-postbox, and what Postbox showed
 //   after, until each host it touched reads Connected again or 3 minutes pass.
 
 import { spawnSync } from 'node:child_process';
 import { sleep } from '../cdp.mjs';
 import { localListeners, newListeners, remoteListeners, treeOf } from './hosts-probe.mjs';
-import { onHost, processesOf, SCRIPTS, turnScript } from './hosts-ssh.mjs';
+import { measureOn, onHost, parseTree, SCRIPTS, stillRunning, turnTrees } from './hosts-ssh.mjs';
 import { remoteTurns } from './remote-facts.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);
@@ -17,6 +23,7 @@ const LISTENER_SAMPLES = 5;
 const RECOVER_MS = 180_000;
 /** After Stop, the daemon’s grace before SIGKILL is 10 s; the probe waits past it. */
 const STOP_SETTLED_MS = 15_000;
+const TREE_EVERY_MS = 5000;
 
 /** @typedef {import('./hosts-run.mjs').HostRun} HostRun */
 
@@ -53,7 +60,52 @@ export async function sample(hr, st) {
       .filter(([h]) => busy(h))
       .map(([, w]) => w),
   );
-  for (const where of places) await listenersNow(hr, where).catch((e) => hr.log(`Couldn’t read ${where}’s listeners: ${e.message}`));
+  for (const where of places)
+    await listenersNow(hr, where).catch((e) => {
+      // A measurement that couldn’t be made is a finding (checks-remote.mjs), never a sample with nothing new.
+      hr.record.listeners.samples.push({ where, at: Date.now(), error: e.message });
+      hr.log(`Couldn’t read ${where}’s listeners: ${e.message}`);
+    });
+  for (const h of hr.hosts) if (places.has(h.label)) await watchTrees(hr, h);
+}
+
+/**
+ * Adds what runs under each turn’s runner on a host to what the run has seen there, at most every 5 s unless now.
+ * Each process is kept by PID and start time, so one that outlives its parent is still known.
+ * @param {HostRun} hr @param {import('./hosts-run.mjs').RunHost} h @param {{ now?: boolean, measure?: typeof measureOn }} [o]
+ * @returns {Promise<{ ok: boolean, why: string|null }>}
+ */
+async function watchTrees(hr, h, { now = false, measure = measureOn } = {}) {
+  const key = `tree:${h.label}`;
+  if (!now && Date.now() - (hr.samples.get(key) ?? 0) < TREE_EVERY_MS) return { ok: true, why: null };
+  hr.samples.set(key, Date.now());
+  const { out, why } = await measure(h.destination, SCRIPTS.tree);
+  let trees;
+  try {
+    if (out === null) throw new Error(why ?? '');
+    trees = turnTrees(parseTree(out));
+  } catch (e) {
+    hr.log(`Couldn’t list the turns’ processes on ${h.label}: ${e.message}`);
+    return { ok: false, why: e.message };
+  }
+  for (const [turn, procs] of trees) {
+    const seen = hr.trees.get(turn) ?? new Map();
+    for (const p of procs) seen.set(`${p.pid} ${p.start}`, p);
+    hr.trees.set(turn, seen);
+  }
+  return { ok: true, why: null };
+}
+
+/**
+ * Just before the runner presses Stop: what runs under each turn on every host an agent is on, and whether that look
+ * worked. A Stop after a look that failed can’t be judged from older ones (leftBy), since what started since is
+ * unknown, until a later look before Stop works.
+ * @param {HostRun|null} hr @param {{ measure?: typeof measureOn }} [o]
+ */
+export async function beforeStop(hr, { measure = measureOn } = {}) {
+  if (!hr) return;
+  const placed = new Set(Object.values(hr.placement));
+  for (const h of hr.hosts) if (placed.has(h.label)) hr.samples.set(`forced:${h.label}`, await watchTrees(hr, h, { now: true, measure }));
 }
 
 /**
@@ -108,18 +160,43 @@ export async function afterStep(hr, facts) {
         at: it.stoppedAt ?? null,
         note: before.note ?? null,
         jobs: before.jobs ?? 0,
-        left: null,
+        ...(await leftBy(hr, h, rec?.turn, it.stoppedAt)),
       };
-      if (rec && h) {
-        await sleep(Math.max(0, (it.stoppedAt ?? 0) + STOP_SETTLED_MS - Date.now()));
-        const r = await onHost(h.destination, turnScript(rec.turn));
-        x.left = r.code === 0 ? processesOf(r.stdout) : null;
-      }
       hr.record.stops.push(x);
       hr.log(
-        `Stop on @${it.handle} (${where}): ${x.jobs} jobs; ${x.left === null ? 'couldn’t look on the host' : x.left.length ? `left running: ${x.left.join('; ')}` : 'nothing left on the host'}.`,
+        `Stop on @${it.handle} (${where}): ${x.jobs} jobs; ${x.left === null ? `couldn’t tell what was left: ${x.unmeasured}` : x.left.length ? `left running: ${x.left.join('; ')}` : `none of the ${x.watched} processes seen under the turn left on the host`}.`,
       );
     }
+}
+
+/**
+ * What of a stopped host turn still runs once the daemon’s grace has passed: which processes seen under it do, or
+ * null and why it can’t be told, as when the last look at the host before Stop failed or there was none.
+ * @param {HostRun} hr @param {import('./hosts-run.mjs').RunHost|undefined} h @param {string|undefined} turn @param {number|undefined} stoppedAt
+ * @param {{ measure?: typeof measureOn, wait?: (ms: number) => Promise<unknown> }} [o]
+ * @returns {Promise<{ watched: number, left: string[]|null, unmeasured?: string }>}
+ */
+export async function leftBy(hr, h, turn, stoppedAt, { measure = measureOn, wait = sleep } = {}) {
+  if (!h || !turn) return { watched: 0, left: null, unmeasured: 'Postbox recorded no turn on a host for it.' };
+  const seen = [...(hr.trees.get(turn)?.values() ?? [])];
+  const forced = hr.samples.get(`forced:${h.label}`);
+  if (!forced?.ok)
+    return {
+      watched: seen.length,
+      left: null,
+      unmeasured: forced
+        ? `the look at the host just before Stop failed (${forced.why}), so what started since is unknown.`
+        : 'nothing looked at the host just before Stop.',
+    };
+  if (!seen.length) return { watched: 0, left: null, unmeasured: 'nothing was seen running under the turn before Stop.' };
+  await wait(Math.max(0, (stoppedAt ?? 0) + STOP_SETTLED_MS - Date.now()));
+  const { out, why } = await measure(h.destination, SCRIPTS.tree);
+  try {
+    if (out === null) throw new Error(why ?? '');
+    return { watched: seen.length, left: stillRunning(seen, parseTree(out)).map((p) => `${p.pid} ${p.args}`) };
+  } catch (e) {
+    return { watched: seen.length, left: null, unmeasured: `the host’s processes couldn’t be listed: ${e.message}` };
+  }
 }
 
 /** The agents’ rows in the sidebar, for the agents on these hosts. @param {HostRun} hr @param {string[]} labels */
@@ -180,8 +257,11 @@ export async function fault(hr, { fault: kind, target }, page) {
   const at = Date.now();
   let hit;
   if (kind === 'kill-ssh') hit = killSsh(hr, h);
-  else if (kind === 'kill-daemon') hit = (await onHost(h.destination, SCRIPTS.killDaemon)).stdout.trim() === 'killed' ? 1 : 0;
-  else throw new Error(`A fault is kill-ssh, kill-daemon or restart-postbox, not “${kind}”.`);
+  else if (kind === 'kill-daemon') {
+    const r = await onHost(h.destination, SCRIPTS.killDaemon);
+    if (r.code !== 0) throw new Error(`Couldn’t kill Postbox’s daemon on ${h.label}: ${r.stderr || `pkill exited ${r.code}`}`);
+    hit = r.stdout.trim() === 'killed' ? 1 : 0;
+  } else throw new Error(`A fault is kill-ssh, kill-daemon or restart-postbox, not “${kind}”.`);
   const what = kind === 'kill-ssh' ? `Postbox’s ssh to ${h.label}` : `Postbox’s daemon on ${h.label}`;
   if (!hit) {
     hr.record.faults.push({ fault: kind, label: h.label, at, states: [], recovered: null, shown: `There was no ${what} to kill.` });

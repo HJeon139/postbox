@@ -1,6 +1,8 @@
 // The run’s own Postbox (tools/uat-run.mjs): a fresh server on the run’s port and data folder, recording every agent
-// turn’s stream, with its output in the run’s log. Stopping the run stops it too. A host-mode run’s restart fault
-// (#120) stops it and starts it again on the same data, as Ctrl-C and a start without --fresh would.
+// turn’s stream, with its output in the run’s log. It runs in a process group of its own, so a terminal’s Ctrl-C
+// reaches the runner, not it: the runner cleans its hosts up through it first, then stops it (tools/uat/stop.mjs).
+// The runner’s exit stops it in any case. A host-mode run’s restart fault (#120) stops it and starts it again on
+// the same data, as Ctrl-C and a start without --fresh would.
 
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
@@ -17,6 +19,7 @@ function spawnServer(pb, fresh) {
     cwd: pb.root,
     env: { ...process.env, ...pb.env },
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   });
   server.stdout?.on('data', (d) => pb.log(`postbox: ${String(d).trim()}`));
   server.stderr?.on('data', (d) => pb.log(`postbox (stderr): ${String(d).trim()}`));
@@ -48,13 +51,11 @@ export async function startPostbox({ root, port, data, env, log }) {
   /** @type {Run} */
   const pb = { root, port, data, env, log, server: null, exited: null, origin: `http://127.0.0.1:${port}` };
   spawnServer(pb, true);
-  // Stopping the run stops its Postbox too, and with it the agents' turns: an orphaned server keeps agents running,
+  // The run’s end stops its Postbox too, and with it the agents’ turns here: an orphaned server keeps agents running,
   // and spending, after the run is gone.
-  for (const sig of ['SIGINT', 'SIGTERM'])
-    process.once(sig, () => {
-      if (pb.exited === null) pb.server?.kill('SIGTERM');
-      process.exit(130);
-    });
+  process.once('exit', () => {
+    if (pb.exited === null) pb.server?.kill('SIGTERM');
+  });
   const api = async (p) => {
     if (pb.exited !== null) throw new Error(`Postbox exited (code ${pb.exited}); see run.log.`);
     return (await fetch(pb.origin + p)).json();
