@@ -1,17 +1,8 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
-import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import {
-  CODEX_CAPABILITIES,
-  CodexAdapter,
-  codexApproval,
-  codexConfigArgs,
-  codexModelOf,
-  codexPermissions,
-  createCodexMapper,
-} from '../server/adapters/codex.mjs';
+import { CODEX_CAPABILITIES, CodexAdapter, codexApproval, codexConfigArgs, codexPermissions, createCodexMapper } from '../server/adapters/codex.mjs';
+import { fakeAppServer } from './codex-fixture.mjs';
 
 test('Codex reports the capabilities its app-server implements', () => {
   assert.deepEqual(CODEX_CAPABILITIES, {
@@ -196,52 +187,6 @@ test('the recorded app-server stream maps text and command activity to Postbox',
   assert.deepEqual(calls.checkpoint, { turnId: 'turn_postbox_1', threadId: 'thr_postbox_1' });
 });
 
-function fakeAppServer(seen, { hold = false, error = null, then = 'complete' } = {}) {
-  const child = new EventEmitter();
-  child.stdout = new PassThrough();
-  child.stderr = new PassThrough();
-  child.stdin = new PassThrough();
-  child.kill = () => {
-    child.emit('close', 0);
-    return true;
-  };
-  let buffer = '';
-  child.stdin.on('data', (chunk) => {
-    buffer += chunk.toString();
-    let n;
-    while ((n = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, n);
-      buffer = buffer.slice(n + 1);
-      if (!line) continue;
-      const req = JSON.parse(line);
-      seen.push(req);
-      if (req.method === 'initialize') child.stdout.write(`${JSON.stringify({ id: req.id, result: {} })}\n`);
-      if (['thread/start', 'thread/resume', 'thread/fork'].includes(req.method)) {
-        const id = req.method === 'thread/fork' ? 'thr_branch' : req.method === 'thread/resume' ? req.params.threadId : 'thr_fake';
-        child.stdout.write(`${JSON.stringify({ id: req.id, result: { thread: { id } } })}\n`);
-      }
-      if (req.method === 'turn/start') {
-        child.stdout.write(`${JSON.stringify({ id: req.id, result: { turn: { id: 'turn_fake', status: 'inProgress' } } })}\n`);
-        if (hold) continue;
-        // A turn that fails: Codex reports why in an error notification, then ends the turn as failed, or exits.
-        if (error)
-          setImmediate(() => {
-            child.stdout.write(`${JSON.stringify({ method: 'error', params: { error: { message: error } } })}\n`);
-            if (then === 'complete')
-              child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'failed' } } })}\n`);
-            else child.emit('close', 1);
-          });
-        else
-          setImmediate(() => {
-            child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
-            child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
-          });
-      }
-    }
-  });
-  return child;
-}
-
 test('a turn starts and saves a Codex thread and supplies Postbox instructions', async () => {
   const seen = [];
   const calls = { text: '', saved: {}, checkpoints: [] };
@@ -276,40 +221,6 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
   assert.equal(turn.params.input[0].text, 'Say hello.');
   assert.match(turn.params.settings.developer_instructions, /Postbox/);
   assert.equal(turn.params.sandboxPolicy.type, 'workspaceWrite');
-});
-
-test('Codex is sent only a model it runs: auto, the mock and Claude’s models name none, so Codex uses its own default (#120)', () => {
-  assert.equal(codexModelOf({ model: 'gpt-5.6-terra' }), 'gpt-5.6-terra');
-  for (const model of ['auto', 'mock', 'claude-opus-5-5', 'claude-haiku-5-5', '', undefined]) assert.equal(codexModelOf({ model }), null, String(model));
-  // The model field offers auto after what the CLI lists, and alone with no list (Codex only on a host), never
-  // falling back to Claude’s models.
-  assert.deepEqual(new CodexAdapter({ workRoot: '/nowhere', models: ['gpt-5.6-terra'] }).capabilities.models, ['gpt-5.6-terra', 'auto']);
-  assert.deepEqual(new CodexAdapter({ workRoot: '/nowhere' }).capabilities.models, ['auto']);
-});
-
-test('a Codex persona with Claude’s default model (made before Postbox had Codex’s list) starts its thread and turn naming no model', async () => {
-  const seen = [];
-  const adapter = new CodexAdapter({ workRoot: '/tmp/postbox-codex-test', spawnImpl: () => fakeAppServer(seen) });
-  const reported = [];
-  const ctx = {
-    persona: { handle: 'critic', model: 'claude-opus-5-5', effort: 'medium', permissionMode: 'acceptEdits' },
-    project: { folder: '/tmp/postbox-codex-test/project' },
-    handles: ['critic'],
-    state: {},
-    signal: new AbortController().signal,
-    mcpUrl: 'http://127.0.0.1:1/mcp?session=s1',
-    text: () => {},
-    activity: () => {},
-    status: () => {},
-    saveState: () => {},
-    checkpoint: () => {},
-    reported: (r) => reported.push(r),
-    pathOf: () => null,
-  };
-  await adapter.deliver({}, { kind: 'user', text: 'Say hello.' }, ctx);
-  assert.ok(!('model' in seen.find((x) => x.method === 'thread/start').params));
-  assert.ok(!('model' in seen.find((x) => x.method === 'turn/start').params));
-  assert.deepEqual(reported, [{ effort: 'medium' }], 'no model to report when Codex names none');
 });
 
 test('a topic thread forks Codex history at the saved completed-turn checkpoint', async () => {
