@@ -262,11 +262,7 @@ async function one(rt, sessionId, msg, turnToken) {
     case 'ping':
       return reply({});
     case 'tools/list':
-      return reply({
-        tools: TOOL_DEFS.filter(
-          (t) => (t.name !== 'bring_to_conversation' || inThread(rt, sessionId, turnToken)) && (t.name !== 'permission_prompt' || asksByPrompt(rt, sessionId)),
-        ),
-      });
+      return reply({ tools: TOOL_DEFS.filter((t) => offered(rt, sessionId, turnToken, t.name)) });
     case 'tools/call': {
       if (!rt.s.sessions[sessionId]) return fail(-32602, 'Unknown Postbox session. Connect with /mcp?session=<id>.');
       if (turnToken === null)
@@ -299,8 +295,12 @@ async function one(rt, sessionId, msg, turnToken) {
   }
 }
 
-/** Whether the session’s turn is one bring_to_conversation is offered to (#128): the person’s, in a side or topic thread. */
-function inThread(rt, sessionId, turnToken) {
+/**
+ * Whether tools/list offers a tool: bring_to_conversation only to the person’s turn in a side or topic thread (#128),
+ * permission_prompt only to a backend that asks through it (server/permission-prompt.mjs), and every other tool always.
+ */
+function offered(rt, sessionId, turnToken, name) {
   const turn = rt.turns.get(sessionId);
-  return turn?.token === turnToken && offersBring(rt, turn);
+  if (name === 'bring_to_conversation') return turn?.token === turnToken && offersBring(rt, turn);
+  return name !== 'permission_prompt' || asksByPrompt(rt, sessionId);
 }
