@@ -47,6 +47,7 @@ import {
 import { describeTool } from './adapters/claude-stream.mjs';
 import { commandSeen, commandStarted, folderWatch, turnEnded } from './ledger-commands.mjs';
 import { clip, gitState, pushed, recordCommit, rootOf, runGit, tracked } from './ledger-git.mjs';
+import { hostEdit, hostFolder, hostOf, onHost } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
 
 /**
@@ -125,9 +126,6 @@ function memoryBlobs() {
 const sameSnap = (a, b) => Boolean(a?.exists) === Boolean(b?.exists) && (!a?.exists || (a.sha256 && a.sha256 === b?.sha256));
 const known = (s) => !s?.exists || Boolean(s.sha256);
 const fail = (status, message) => Object.assign(new Error(message), { status });
-/** The refusal for a file on a host: Postbox never read it, so it has no diff and nothing to put back. */
-const onHost = (e) =>
-  fail(409, `${e.rel} is on ${e.host?.name ?? 'a host'}, and Postbox doesn’t keep copies of files on a host: it has no diff of it and can’t restore it.`);
 
 export class Ledger {
   /**
@@ -235,28 +233,9 @@ export class Ledger {
     });
   }
 
-  /**
-   * The host a turn runs on, { id, name }, or null for this computer: the runtime has made the turn remote
-   * (turn.remote), its persona runs on a host, or its session’s host turn is this one.
-   * @param {any} turn @param {any} se
-   */
+  /** The host a turn runs on (server/ledger-remote.mjs). */
   hostOf(turn, se) {
-    const now = this.s.sessions?.[se.id] ?? se;
-    const r = now.remoteTurn;
-    const id = [turn.remote?.hostId, this.s.personas?.[now.personaId]?.remote?.hostId, r?.rtTurn === turn.id ? r.hostId : null].find(
-      (x) => typeof x === 'string' && x,
-    );
-    if (!id) return null;
-    return { id, name: clip(this.s.hosts?.[id]?.name ?? 'its host', 200) };
-  }
-  /** The folder a host turn works in, once the runtime has given it one. */
-  hostFolder(turn) {
-    const w = turn.work;
-    if (!w.folder) {
-      const r = this.s.sessions?.[w.se.id]?.remoteTurn;
-      if (r?.rtTurn === turn.id && typeof r.folder === 'string' && isAbsolute(r.folder)) w.folder = resolve(r.folder);
-    }
-    return w.folder;
+    return hostOf(this, turn, se);
   }
 
   base(turn, extra = {}) {
@@ -275,7 +254,7 @@ export class Ledger {
     const w = turn.work;
     if (!w || w.ended || !id || w.calls.has(id)) return;
     w.toolCalls += 1;
-    if (w.host) this.hostFolder(turn);
+    if (w.host) hostFolder(this, turn);
     /** @type {{ name: string, input: any, who: string|null, at: number, path: string|null }} */
     const call = { name, input, who, at: this.now(), path: null };
     w.calls.set(id, call);
@@ -402,7 +381,7 @@ export class Ledger {
     /** @type {any} */
     const r = result && typeof result === 'object' ? result : null;
     if (call.path && w.host) {
-      if (!isError && !w.denied.has(id)) this.hostEdit(turn, call);
+      if (!isError && !w.denied.has(id)) hostEdit(this, turn, call);
       return;
     }
     if (call.path) {
@@ -430,34 +409,6 @@ export class Ledger {
         result: clip(text, 2000),
         endedAt: this.now(),
       });
-  }
-
-  /**
-   * An edit on a host, as a step: which file, how many edits this turn, and that Postbox kept no copy of it.
-   * @param {any} turn @param {{ who: string|null, path: string|null }} call
-   */
-  hostEdit(turn, { who, path }) {
-    const w = turn.work;
-    if (!path) return;
-    const id = w.edits.get(path);
-    const e = id ? this.entry(w.convId, id) : null;
-    if (e) {
-      this.patch(w.convId, e.id, { tools: (e.tools ?? 1) + 1, at: this.now() });
-      return;
-    }
-    const entry = this.add(
-      w.convId,
-      this.base(turn, {
-        kind: 'edit',
-        id: newId('we'),
-        who,
-        path: clip(path, 4000),
-        rel: clip(this.display(path, w), 500),
-        outside: Boolean(w.folder) && !this.inside(path, w),
-        tools: 1,
-      }),
-    );
-    w.edits.set(path, entry.id);
   }
 
   async commandEnded(turn, cmdId, { isError, text, r, vcsCwd }) {
