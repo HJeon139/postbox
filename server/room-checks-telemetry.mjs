@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { POSTBOX_SERVER } from './adapters/setup.mjs';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
@@ -100,21 +101,25 @@ function secretsOf(f, t) {
   return out.filter(([, v]) => String(v).length >= 6);
 }
 
-/** Postbox’s own words about telemetry, as its UI says them, and the fields its recorder adds. */
-const OWN_WORDS = [/Recording since/, /Record this room/, /Stop recording/, /Telemetry report/, /Delete recordings/, /"recording"\s*:/, /telemetry\//i];
+/** Postbox’s own words about telemetry, as its UI says them, and the field its recorder adds. */
+const OWN_WORDS = [/Recording since/, /Record this room/, /Stop recording/, /Telemetry report/, /Delete recordings/, /"recording"\s*:/];
 
-/** The parts of a turn’s input that Postbox writes: [Postbox] lines and its tools’ results. */
+/** The parts of a turn’s input that Postbox writes: [Postbox] lines, and its own tools’ results (not a command’s). */
 function postboxWritten(streams) {
   const out = [];
-  for (const s of streams ?? [])
+  for (const s of streams ?? []) {
+    const ours = new Set();
     for (const e of s.events ?? []) {
+      if (e.type === 'assistant')
+        for (const b of e.message?.content ?? []) if (b?.type === 'tool_use' && String(b.name).startsWith(`mcp__${POSTBOX_SERVER}__`)) ours.add(b.id);
       if (e.type !== 'user') continue;
       const content = typeof e.message?.content === 'string' ? [{ type: 'text', text: e.message.content }] : (e.message?.content ?? []);
       for (const b of content) {
-        if (b?.type === 'tool_result') out.push({ handle: s.handle, text: JSON.stringify(b.content ?? '') });
+        if (b?.type === 'tool_result' && ours.has(b.tool_use_id)) out.push({ handle: s.handle, text: JSON.stringify(b.content ?? '') });
         else if (b?.type === 'text') for (const l of String(b.text).split('\n')) if (l.startsWith('[Postbox]')) out.push({ handle: s.handle, text: l });
       }
     }
+  }
   return out;
 }
 

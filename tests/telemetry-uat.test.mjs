@@ -111,6 +111,18 @@ test('U3: the telemetry checks pass on a clean run, and each fires on its own de
   const seen = structuredClone(facts);
   seen.streams = [{ handle: 'alpha', events: [{ type: 'user', message: { content: '[Postbox] Recording since 10:02.' } }] }];
   assert.deepEqual(fired(seen), ['recording-visible']);
+  // A command’s output is the project’s, not Postbox’s: a run folder named …-telemetry/ in a path doesn’t count.
+  const command = structuredClone(facts);
+  command.streams = [
+    {
+      handle: 'alpha',
+      events: [
+        { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'pytest' } }] } },
+        { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'uat-runs/x-telemetry/ws: "recording": Recording since' }] } },
+      ],
+    },
+  ];
+  assert.deepEqual(fired(command), []);
   const moved = structuredClone(facts);
   moved.telemetry.flags = [{ key: 'x', item: 'it_elsewhere' }];
   assert.deepEqual(fired(moved), ['flag-misplaced']);
