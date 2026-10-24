@@ -2,6 +2,7 @@
 // nothing an agent sends becomes markup, a style or an attribute name. Answered blocks turn read-only
 // and show what you chose. Drafts (selections, typed text, review comments) survive re-renders.
 
+import './md-images.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
