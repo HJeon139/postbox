@@ -1,6 +1,6 @@
 // A headless Chrome check of reactions (#251): the person reacts to an agent’s reply by mouse and by keyboard, sees
-// each reaction under it, takes one back by clicking it again, and the server keeps what the page shows; axe is clean
-// on the reply, its reactions and the menu. What the agent hears is tests/reactions.test.mjs’s.
+// each reaction under it, drawn with its icon, takes one back by clicking it again, and the server keeps what the page
+// shows; axe is clean on the reply, its reactions and the menu. What the agent hears is tests/reactions.test.mjs’s.
 //
 //   node tools/check-reactions.mjs        (PB_PORT and PB_CHROME_PORT move it)
 
@@ -22,7 +22,7 @@ await begin('check-reactions', 4954, 10254);
 /** The last agent reply in the conversation: its item, its React button, and its reactions. */
 const REPLY = `[...document.querySelectorAll('#main .item')].filter((n) => n.querySelector('.who b')?.textContent.startsWith('@')).at(-1)`;
 const reactButton = `${REPLY}.querySelector('.msg-actions button[aria-label="React to this message"]')`;
-const chips = () => page.evaluate(`[...${REPLY}.querySelectorAll('.reactions .react-chip')].map((b) => b.textContent)`);
+const chips = () => page.evaluate(`[...${REPLY}.querySelectorAll('.reactions .react-chip img')].map((i) => i.alt)`);
 const menuItem = (label) => `[...document.querySelectorAll('.menu [role=menuitemcheckbox]')].find((b) => b.textContent.includes(${JSON.stringify(label)}))`;
 const checked = () => page.evaluate(`[...document.querySelectorAll('.menu [role=menuitemcheckbox]')].map((b) => b.getAttribute('aria-checked'))`);
 /** The reactions the server keeps on that reply. */
@@ -38,9 +38,11 @@ await check('#251 a reaction by mouse shows under the reply, and the server keep
   await click(reactButton);
   await page.waitFor(menuItem('Not good'), { label: 'the reactions menu' });
   assert.deepEqual(await checked(), ['false', 'false', 'false', 'false', 'false']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.menu .react-icon')].map((i) => i.alt)`), ['👍', '👎', '🚩', '❓', '✅']);
   await click(menuItem('Not good'));
   await page.waitFor(`!!${REPLY}.querySelector('.reactions .react-chip')`, { label: 'the reaction under the reply' });
   assert.deepEqual(await chips(), ['👎']);
+  await page.waitFor(`${REPLY}.querySelector('.react-chip img').naturalWidth === 64`, { label: 'the reaction’s icon' });
   assert.equal(await page.evaluate(`${REPLY}.querySelector('.react-chip').hasAttribute('aria-pressed')`), false);
   assert.deepEqual(await onServer(), ['👎']);
 });
@@ -54,7 +56,7 @@ await check('#251 by keyboard: React opens the menu, Enter picks one, and Enter 
   await enter();
   await page.waitFor(`${REPLY}.querySelectorAll('.reactions .react-chip').length === 2`, { label: 'the second reaction' });
   assert.deepEqual(await chips(), ['👎', '🚩']);
-  await page.evaluate(`[...${REPLY}.querySelectorAll('.react-chip')].find((b) => b.textContent === '👎').focus()`);
+  await page.evaluate(`[...${REPLY}.querySelectorAll('.react-chip')].find((b) => b.querySelector('img').alt === '👎').focus()`);
   await enter();
   await page.waitFor(`${REPLY}.querySelectorAll('.reactions .react-chip').length === 1`, { label: 'the reaction taken back' });
   assert.deepEqual(await chips(), ['🚩']);
