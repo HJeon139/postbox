@@ -1,8 +1,8 @@
-// What a reply shows about Stop: the background jobs it started that are still running, each with its own Stop (#129).
-// Moved from app/js/thread.mjs.
+// What a reply shows about Stop: why it stopped (#215, #249), and the background jobs it started that are still running,
+// each with its own Stop (#129). jobRows moved from app/js/thread.mjs.
 
 import { api } from './client.mjs';
-import { h } from './dom.mjs';
+import { h, timeOf } from './dom.mjs';
 import { say, toast } from './ui.mjs';
 
 /**
@@ -42,4 +42,17 @@ export function jobRows(it, steps) {
       ),
     ),
   );
+}
+
+/**
+ * A stopped reply’s tag: what stopped it, from what the server recorded (stopReason). Send now isn’t your Stop, and Keep
+ * running left its jobs running. A reply stored before the reason was recorded reads as it always did.
+ */
+export function stoppedTag(it) {
+  const at = timeOf(it.stoppedAt ?? it.at);
+  const text =
+    it.stopReason === 'send-now'
+      ? `Interrupted by Send now at ${at}`
+      : `Stopped by you at ${at}${it.stopReason === 'kept-jobs' ? ' · its background work kept running' : ''}`;
+  return h('span.stopped-tag', text);
 }

@@ -470,7 +470,7 @@ export class Runtime {
       return { queued: q };
     }
     // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
-    for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep' });
+    for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
     return this.postAndDeliver(threadId, { text, attachments }, targets);
   }
 
@@ -528,7 +528,7 @@ export class Runtime {
     const q = (t.queue ?? []).find((x) => x.id === queueId);
     if (!q) throw httpError(404, 'That queued message was already sent or removed.');
     this.putThread({ ...t, queue: t.queue.filter((x) => x.id !== queueId) });
-    for (const id of q.sessionIds) this.stop(id, { silent: true, jobs: 'keep' });
+    for (const id of q.sessionIds) this.stop(id, { silent: true, jobs: 'keep', sendNow: true });
     if (q.kind === 'wake') return deliverWake(this, threadId, q);
     return this.postAndDeliver(
       threadId,
@@ -1132,14 +1132,17 @@ export class Runtime {
    * and the session shows as stopping until it has exited: its next turn waits for that (#126).
    * jobs: what happens to the background jobs the turn started (#129): 'stop' them with it, or 'keep' them running,
    * each with its own Stop.
-   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words.
-   * @param {string} sessionId @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' }} [opts]
+   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words. sendNow: your message
+   * with Send now stopped it, which its reply says, as it says when you kept its jobs running (#215, #249).
+   * @param {string} sessionId @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown', sendNow?: boolean }} [opts]
    */
-  stop(sessionId, { silent = false, jobs = 'stop', by = 'you' } = {}) {
+  stop(sessionId, { silent = false, jobs = 'stop', by = 'you', sendNow = false } = {}) {
     const turn = this.turns.get(sessionId);
     if (!turn) return false;
     const keep = jobs === 'keep' ? this.runningJobs(sessionId, turn.id) : [];
     turn.keepJobs = new Set(keep.map((j) => j.id));
+    turn.stopReason = sendNow ? 'send-now' : by === 'shutdown' ? null : keep.length ? 'kept-jobs' : 'stop';
+    const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
     this.exiting.set(sessionId, { turn, held: [], silent });
     // The adapter reads which jobs to keep from the reason; anything else only sees that the turn was aborted.
     turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
@@ -1150,8 +1153,7 @@ export class Runtime {
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', 'You stopped the agent.');
     for (const it of this.store.items(turn.threadId)) {
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming')
-        this.patchItem(turn.threadId, it.id, { status: 'stopped', stoppedAt: Date.now() });
+      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, ended);
     }
     if (!turn.segment && !turn.first) {
       this.addItem(turn.threadId, {
@@ -1161,8 +1163,7 @@ export class Runtime {
         handle: this.s.sessions[sessionId].handle,
         turnId: turn.id,
         text: '',
-        status: 'stopped',
-        stoppedAt: Date.now(),
+        ...ended,
       });
     }
     this.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
@@ -1291,11 +1292,12 @@ export class Runtime {
       const unsure = groups.length > 1 ? keepUnsure(groups.length) : null;
       if (unsure) this.setJobStep(old, { detail: unsure });
       this.ledger.jobUpdate(old, { kept: true });
-      // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running.
+      // Its CLI is gone, so nothing would tell the agent: its next turn hears it’s still running, and why it ran on. Claude
+      // Code, resumed, marks a background command it has no end for as stopped, and says so to the agent (#249).
       // A step that follows it reads as running on (#129): the agent leaves it running, rather than closing it as failed.
       this.tellAgent(
         se.id,
-        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: the person kept it running when your last turn was stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
+        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: ${turn.stopReason === 'send-now' ? 'the person’s message with Send now ended your last turn, but not this job' : 'the person stopped your last turn and kept this job running'}. If your CLI says it was stopped, that’s only because the process that started it has ended: it wasn’t stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
       );
       this.watchKept();
       return;
@@ -1387,6 +1389,11 @@ export class Runtime {
   settleJobs(turn) {
     for (const j of [...(this.s.sessions[turn.sessionId]?.jobs ?? [])])
       if (j.turnId === turn.id && j.state === 'running' && !j.kept) this.endJob(turn.sessionId, j.id, 'stopped', turn.keepJobs.has(j.id) ? KEEP_LOST : null);
+    // Keep running kept none of them after all (KEEP_LOST): its reply doesn’t say they kept running (#249).
+    if (turn.stopReason !== 'kept-jobs' || this.s.sessions[turn.sessionId]?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
+    turn.stopReason = 'stop';
+    for (const it of this.store.items(turn.threadId))
+      if (it.turnId === turn.id && it.stopReason === 'kept-jobs') this.patchItem(turn.threadId, it.id, { stopReason: 'stop' });
   }
 
   /** Context the agent reads at the start of its next turn, as a Postbox notice. */

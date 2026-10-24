@@ -13,7 +13,7 @@ import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from 
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
-import { jobRows } from './reply-stop.mjs';
+import { jobRows, stoppedTag } from './reply-stop.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -484,7 +484,7 @@ function renderItem(it, prev, ctx) {
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
-        it.status === 'stopped' ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
+        it.status === 'stopped' ? stoppedTag(it) : null,
         it.status === 'failed'
           ? h(
               'div.callout',

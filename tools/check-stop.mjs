@@ -5,7 +5,9 @@
 // - Keep running stops the agent (it reads “stopping” until its process exits) and the job stays listed; its own Stop
 //   then stops it;
 // - a kept job Postbox couldn’t tell apart from another process (#164) says so under its row, and its Stop stops both;
-// - Stop it too stops both; the ask’s colors are the tokens’, with amber only on its first choice; at 375 px it fits.
+// - Stop it too stops both; the ask’s colors are the tokens’, with amber only on its first choice; at 375 px it fits;
+// - each stopped reply says why (#215, #249): “Stopped by you”, with its background work kept running after Keep
+//   running, and “Interrupted by Send now” after a queued message’s Send now, whose job keeps running.
 //
 //   node tools/check-stop.mjs
 //
@@ -105,6 +107,11 @@ const until = async (fn, label) => {
   throw new Error(`Timed out waiting for ${label}`);
 };
 const state = () => store.state.sessions[se.id].state;
+// The last stopped reply’s tag, once the page has heard everything the server has said.
+const lastTag = async () => {
+  await page.synced(store.state.seq);
+  return page.evaluate(`[...document.querySelectorAll('.stopped-tag')].at(-1)?.innerText ?? ''`);
+};
 const step = () =>
   store
     .items(room.id)
@@ -186,6 +193,7 @@ await check('#126 #129 Keep running, by keyboard: the agent reads stopping until
   assert.equal(step().state, 'running');
   assert.equal(await page.evaluate(`!!${q('.bg-jobs li button')}`), true, 'still listed, with its own Stop');
   assert.match(store.state.sessions[se.id].context.join('\n'), /bgjob1 .* is still running/);
+  assert.match(await lastTag(), /^Stopped by you at \d\d:\d\d · its background work kept running$/);
 });
 
 await check('#129 the kept job’s own Stop stops its process group, and its step reads stopped', async () => {
@@ -207,6 +215,7 @@ await check('#129 Stop it too stops the agent and its job', async () => {
   await page.waitFor(`!${q('.bg-jobs li')} && !${q('.stop-ask')}`, { label: 'no job row, no ask' });
   assert.equal(step().state, 'stopped');
   assert.deepEqual(store.state.sessions[se.id].jobs, []);
+  assert.match(await lastTag(), /^Stopped by you at \d\d:\d\d$/);
 });
 
 await check('#164 a kept job Postbox couldn’t tell apart says so under its row, and its own Stop stops every process it kept', async () => {
@@ -240,13 +249,25 @@ await check('#164 a kept job Postbox couldn’t tell apart says so under its row
   assert.equal(step().state, 'stopped');
 });
 
-await check('#129 at 375 px the ask and the job row fit without scrolling sideways', async () => {
+await check('#215 a queued message’s Send now: the reply it interrupted says so, and its job keeps running', async () => {
+  await startJob();
+  rt.sendMessage(room.id, { text: 'A one-line status, please.' });
+  await page.waitFor(`!!${q('.queued')}`, { label: 'the queued message' });
+  await click(q('.queued .btn.sm:not(.ghost)'));
+  await until(() => state() === 'idle' && store.state.sessions[se.id].jobs.some((j) => j.kept), 'the next turn, with the job kept');
+  assert.match(await lastTag(), /^Interrupted by Send now at \d\d:\d\d$/);
+  assert.equal(await page.evaluate(`!!${q('.bg-jobs li button')}`), true, 'still listed, with its own Stop');
+  await click(q('.bg-jobs li button'));
+  await page.waitFor(`!${q('.bg-jobs li')}`, { label: 'the row to go' });
+});
+
+await check('#129 #215 at 375 px the ask, the job row and each stopped reply’s tag fit without scrolling sideways', async () => {
   await page.size(375, 800);
   await startJob();
   await click(q('.composer .btn.stop'));
   await page.waitFor(`!!${q('.stop-ask')}`, { label: 'the ask' });
   const over = await page.evaluate(
-    `[...document.querySelectorAll('.stop-ask, .stop-ask button, .bg-jobs li')].filter((n) => { const b = n.getBoundingClientRect(); return b.right > innerWidth + 1 || b.left < -1; }).map((n) => n.className || n.textContent)`,
+    `[...document.querySelectorAll('.stop-ask, .stop-ask button, .bg-jobs li, .stopped-tag')].filter((n) => { const b = n.getBoundingClientRect(); return b.right > innerWidth + 1 || b.left < -1 || n.scrollHeight > n.clientHeight + 1; }).map((n) => n.className || n.textContent)`,
   );
   assert.deepEqual(over, []);
   await click(q('.stop-ask .btn.send'));
