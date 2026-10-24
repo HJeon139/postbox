@@ -298,6 +298,10 @@
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 54 } } } } }
     },
     {
+      "includes": ["shared/markdown-inline.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 65 } } } } }
+    },
+    {
       "includes": ["shared/markdown.mjs"],
       "linter": {
         "rules": {
