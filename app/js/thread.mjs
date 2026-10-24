@@ -4,6 +4,7 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
+import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
 import { inThreadLine, subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
@@ -20,15 +21,6 @@ import { workList } from './work-list.mjs';
 export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
-const handles = () =>
-  Object.values(S().personas)
-    .filter((p) => !p.retired)
-    .map((p) => p.handle);
-const glossaryOf = (threadId) => {
-  const t = S().threads[threadId];
-  const g = { ...(S().glossary[t?.parentId] ?? {}), ...(S().glossary[threadId] ?? {}) };
-  return g;
-};
 const speaker = (it) => (it.kind === 'user' ? 'you' : it.kind === 'agent' || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null);
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
@@ -373,25 +365,6 @@ function fillWorkRow(row, se) {
     // Each subagent at work, in its own words when it has said something (#73): “reader: Now I’ll read paper 3…”.
     (se.subagents ?? []).map((x) => h('div.work-line.work-sub', h('span', `${x.name}: `), h('span.dim', subagentNow(x)))),
   );
-}
-
-function agentMarkdown(it, threadId) {
-  return renderMarkdown(it.text ?? '', {
-    streaming: it.status === 'streaming',
-    citations: it.sources?.length ?? 0,
-    citeId: `src-${it.id}`,
-    glossary: Object.values(glossaryOf(threadId)).map((g) => ({ key: g.key, term: g.term })),
-    mentions: handles(),
-  });
-}
-
-function markTerms(root, threadId) {
-  const g = glossaryOf(threadId);
-  for (const t of root.querySelectorAll('.term')) {
-    const known = !!g[t.dataset.term];
-    t.classList.toggle('undef', !known);
-    if (!known) t.title = 'Not defined yet. The agent has been asked to define it.';
-  }
 }
 
 const who = (it, { you = false } = {}) => {
