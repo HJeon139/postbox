@@ -13,10 +13,11 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { withAskRules } from '../permission-rules.mjs';
-import { commandsOf, createStreamMapper, describePermission, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
+import { commandsOf, createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
+import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
@@ -233,30 +234,7 @@ export class AgentSdkAdapter {
     if (ctx.signal.aborted) onAbort();
     else ctx.signal.addEventListener('abort', onAbort, { once: true });
 
-    const canUseTool = async (toolName, input, opts = {}) => {
-      // Postbox’s own tools only show things in the thread.
-      if (toolName.startsWith('mcp__postbox__')) return { behavior: 'allow', updatedInput: input };
-      const { summary, detail } = describePermission(toolName, input);
-      // The prompt’s own suggestions go to Always allow (none, when it has none or says a saved rule would grant more
-      // than this call), and its agent id names the subagent that asks (#66).
-      const answer = await ctx.askPermission({
-        tool: toolName,
-        summary,
-        detail,
-        input,
-        suggestions: Array.isArray(opts.suggestions) ? opts.suggestions : [],
-        suppressAlways: opts.suppressAlwaysAllowRule === true,
-        agentId: opts.agentID ?? null,
-        ...(opts.toolUseID ? { toolUseId: opts.toolUseID } : {}),
-      });
-      return answer.allow
-        ? {
-            behavior: 'allow',
-            updatedInput: answer.updatedInput ?? input,
-            ...(answer.updatedPermissions ? { updatedPermissions: answer.updatedPermissions } : {}),
-          }
-        : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
-    };
+    const canUseTool = (toolName, input, opts) => sdkCanUseTool(ctx, toolName, input, opts);
 
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(persona.model), effort: effortOf(persona) });
     ctx.subagentNames?.((ids) => mapper.who(ids));
