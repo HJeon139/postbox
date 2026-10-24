@@ -11,6 +11,7 @@ import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSession
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
+import { reactTo } from './reactions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -284,7 +285,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       paintWorking();
       grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
-      rerender(d.id);
+      if (!d.reaction) rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)
@@ -407,10 +408,9 @@ const who = (it, { you = false } = {}) => {
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
-// topic or side thread (#128): “Send to conversation”. The actions appear on hover and focus, and always on touch screens.
+// topic or side thread (#128): “Send to conversation”. React, under every one (#251). They appear on hover and focus, and always on touch.
 function messageActions(node, it, ctx) {
-  if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent) return;
-  if (it.kind === 'block' && !it.valid) return;
+  if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent || (it.kind === 'block' && !it.valid)) return;
   const bar = h('div.msg-actions');
   if (ctx.kind === 'thread' || ctx.kind === 'room') {
     const topic = it.topicId && S().threads[it.topicId];
@@ -469,7 +469,7 @@ function messageActions(node, it, ctx) {
           ),
     );
   }
-  if (bar.childNodes.length) node.append(bar);
+  node.append(reactTo(bar, node, it, ctx));
 }
 
 function renderItem(it, prev, ctx) {

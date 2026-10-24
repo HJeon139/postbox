@@ -7,6 +7,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
+import { REACT, toggleReaction } from './reactions.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
 
 export const CATCH_UP_CHARS = 16000;
@@ -15,6 +16,8 @@ export const CATCH_UP_CHARS = 16000;
 export function act(rt, threadId, itemId, action, values, revision) {
   const it = rt.store.item(threadId, itemId);
   if (!it) throw httpError(404, 'That block doesn’t exist any more.');
+  // A reaction is an act on any message, block or app (#251), and never answers one.
+  if (action === REACT) return toggleReaction(rt, threadId, itemId, values?.emoji);
   if (it.kind === 'hop') return rt.resolveHop(threadId, itemId, action === 'confirm');
   if (it.kind === 'proposal') return rt.resolveProposal(threadId, itemId, action);
   if (it.kind === 'permission') return rt.resolvePermission(threadId, itemId, action, values);

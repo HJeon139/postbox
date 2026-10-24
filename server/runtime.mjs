@@ -55,7 +55,7 @@ import {
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
-import { settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
+import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
@@ -1681,8 +1681,8 @@ export class Runtime {
       .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
       .map((i) => this.describeItem(i, se))
       .filter(Boolean)
-      // Its topic and side threads with something new, each a line it chooses whether to read (#228).
-      .concat(threadLines(this, se, items[at]?.at ?? 0));
+      // Its topic and side threads with something new, each a line it may read (#228); the person’s new reactions (#251).
+      .concat(threadLines(this, se, items[at]?.at ?? 0), reactionLines(this, se, se.threadId));
     if (!lines.length) return root && `[Postbox] ${root}`;
     const kept = [];
     let size = 0;

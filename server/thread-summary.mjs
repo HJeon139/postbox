@@ -42,6 +42,7 @@ export function threadCatchUp(rt, se, threadId, excludeId) {
     lines.unshift(line);
     size += line.length;
   }
+  lines.push(...reactionLines(rt, se, threadId));
   if (!root && !lines.length) return null;
   const where = `${t.kind === 'topic' ? 'the thread' : 'the side thread'} “${t.title}” (thread ${t.id})`;
   return `[Postbox] You’re answering in ${where}.${root ? ` ${root}` : ''}${lines.length ? `\n\nWhat was said there since you last took part:\n\n${lines.join('\n\n')}` : ''}`;
@@ -183,4 +184,49 @@ export async function summarizeThread(rt, threadId, summarize) {
   const e = typeof cost === 'number' && last.turnId ? rt.ledger.entry(conv, last.turnId) : null;
   if (e && typeof cost === 'number') rt.ledger.patch(conv, e.id, { summaryCostUsd: (e.summaryCostUsd ?? 0) + cost });
   return summary;
+}
+
+// ── Reactions (#251) ────────────────────────────────────────────────────────────────────────────────────
+
+/** Who an item is from, as a catch-up names them. */
+const whose = (it) =>
+  it.kind === 'user'
+    ? 'your own message'
+    : it.handle
+      ? `@${it.handle}’s ${it.kind === 'block' ? (it.block?.type === 'app' ? 'app' : 'block') : 'message'}`
+      : 'a message';
+
+/**
+ * The person’s reactions in one thread that this agent hasn’t been told of, as catch-up lines, oldest first; each is told
+ * once. Only the agents answering in that thread hear them (principle 7): the conversation’s in its catch-up, a topic or
+ * side thread’s in threadCatchUp. One on the agent’s own message says so.
+ * @param {any} rt @param {any} se  the agent @param {string} threadId
+ * @returns {string[]}
+ */
+export function reactionLines(rt, se, threadId) {
+  const now = rt.s.sessions[se.id] ?? se;
+  // What was told last: the newest reaction’s time, and which reactions had it, so one made in the same millisecond
+  // is still told, once.
+  const was = now.reactionsTold?.[threadId] ?? { at: se.startedAt ?? 0, keys: [] };
+  const key = (it, r) => `${it.id} ${r.emoji}`;
+  const told = rt.store
+    .items(threadId)
+    .flatMap((it) => (it.reactions ?? []).filter((r) => r.at > was.at || (r.at === was.at && !was.keys.includes(key(it, r)))).map((r) => ({ it, r })))
+    .sort((a, b) => a.r.at - b.r.at);
+  if (!told.length) return [];
+  const at = told.at(-1).r.at;
+  const keys = [...(at === was.at ? was.keys : []), ...told.filter((x) => x.r.at === at).map((x) => key(x.it, x.r))];
+  rt.updateSession(se.id, { reactionsTold: { ...(now.reactionsTold ?? {}), [threadId]: { at, keys } } });
+  return told.map(({ it, r }) => {
+    const when = new Date(r.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const words = clipText(
+      String(it.kind === 'block' ? (it.block?.title ?? it.block?.fallback ?? '') : (it.text ?? ''))
+        .replace(/\s+/g, ' ')
+        .trim(),
+      80,
+    );
+    // “You” is the person in a catch-up, as in “You: …”; the agent’s own message is named, and marked as its own.
+    const mine = it.sessionId && it.sessionId === se.id ? ' (yours: take it as feedback)' : '';
+    return `You reacted ${r.emoji} to ${whose(it)}${mine} at ${when}${words ? `: “${words}”` : ''}`;
+  });
 }
