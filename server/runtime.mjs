@@ -36,7 +36,7 @@ import {
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { parseDataset } from './corpus.mjs';
-import { clip, clipText, httpError } from './helpers.mjs';
+import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
@@ -108,11 +108,6 @@ const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, re
 const clipItem = (s, n, id) => {
   const t = String(s ?? '');
   return t.length > n ? `${t.slice(0, n)}… (${count(n)} of ${count(t.length)} characters; read_message { id: "${id}" } has the rest)` : t;
-};
-/** Code in a fence longer than any run of backticks in it. */
-const fenced = (code, language = '') => {
-  const ticks = '`'.repeat(Math.max(3, ...[...String(code).matchAll(/`+/g)].map((m) => m[0].length + 1)));
-  return `${ticks}${language}\n${code}\n${ticks}`;
 };
 
 /**
