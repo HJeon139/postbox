@@ -46,7 +46,7 @@ async function press(key, { shift = false, quick = false } = {}) {
 }
 const centerOf = (expr) =>
   page.evaluate(
-    `(() => { const el = ${expr}; if (!el) return null; el.scrollIntoView({ block: 'nearest' }); const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`,
+    `(() => { const el = ${expr}; if (!el) return null; el.scrollIntoView({ block: 'center' }); const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`,
   );
 async function click(expr) {
   const r = await centerOf(expr);

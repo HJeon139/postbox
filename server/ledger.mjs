@@ -10,13 +10,13 @@
 // - Commands: each Bash call exactly as it ran, with its exit, duration and all the output it returned. One run
 //   in the background ends with a task notification, which gives its exit and its output file.
 // - Version control: commits and pushes Claude Code reports on the command’s result (gitOperation), with the
-//   commit’s files and lines from git itself; branches from the command line.
+//   commit’s files and lines from git itself; branches from the command line. Commits and branches it doesn’t
+//   report, such as a commit inside `… && git commit`, from git before and after the command (#156).
 // - Outside Postbox: gh commands and MCP tools that write (create_pull_request, add_issue_comment…), with links.
 // - Effort: each turn’s wall time, tool calls, tokens and spend (the result’s total_cost_usd).
 // Whether a file is uncommitted, committed or pushed is asked of git when the Work view opens: read-only commands,
 // without git’s optional locks, so an agent’s own git never waits on Postbox.
 
-import { execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -32,44 +32,16 @@ import {
   externalTool,
   hunks,
   isBinary,
-  lasting,
   MAX_DIFF_ROWS,
   MAX_FILE_BYTES,
   MAX_OUTPUT_BYTES,
+  READ_TOOLS,
   urlsIn,
 } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
+import { commandSeen, commandStarted, folderWatch, turnEnded } from './ledger-commands.mjs';
+import { clip, gitState, pushed, recordCommit, rootOf, runGit, tracked } from './ledger-git.mjs';
 import { newId } from './store.mjs';
-
-const clip = (s, n) => {
-  const t = String(s ?? '');
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
-/** Git’s state is asked for at most this many files per view; the rest show as uncommitted. */
-const GIT_FILES = 300;
-
-/**
- * Runs git with an argument array, never through a shell. GIT_OPTIONAL_LOCKS=0 keeps `git status` from taking the
- * index lock, so an agent committing at the same moment doesn’t fail on Postbox’s account.
- * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
- */
-export function runGit(cwd, args, { timeoutMs = 10000 } = {}) {
-  return new Promise((done) => {
-    try {
-      execFile(
-        'git',
-        args,
-        { cwd, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } },
-        (err, stdout, stderr) => {
-          const code = err ? (typeof (/** @type {any} */ (err).code) === 'number' ? /** @type {any} */ (err).code : 1) : 0;
-          done({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
-        },
-      );
-    } catch (e) {
-      done({ code: 127, stdout: '', stderr: e.message });
-    }
-  });
-}
 
 /**
  * How the ledger reads and writes the person’s files. Tests pass the same shape over a temp folder.
@@ -163,6 +135,7 @@ export class Ledger {
     this.roots = new Map(); // folder → its repository’s top folder, or null
     this.pushedCache = new Set(); // root:sha known to be on a remote
     this.pending = new Set(); // work that hasn’t finished writing, so tests can wait for it
+    this.folders = folderWatch(); // git folders, to see what a command did there (#156)
   }
 
   get s() {
@@ -277,6 +250,7 @@ export class Ledger {
       f.tools += 1;
       return;
     }
+    if (READ_TOOLS[name]) return this.recordRead(turn, { id, name, input, who });
     if (COMMAND_TOOLS.has(name) && typeof input?.command === 'string') {
       const e = this.add(
         w.convId,
@@ -293,6 +267,7 @@ export class Ledger {
         }),
       );
       w.commands.set(id, e.id);
+      commandStarted(this, turn, e.id);
       return;
     }
     const ext = externalTool(name);
@@ -315,6 +290,49 @@ export class Ledger {
       );
       w.externals.set(id, e.id);
     }
+  }
+
+  /** A file read or searched, or a page fetched or searched for (#195): its path, pattern, URL or query. */
+  recordRead(turn, { id, name, input, who }) {
+    const w = turn.work;
+    const what = input?.[READ_TOOLS[name]];
+    if (typeof what !== 'string' || !what.trim()) return;
+    const path = name === 'Read' ? this.abs(w, what) : null;
+    const where = typeof input.path === 'string' && input.path ? this.display(this.abs(w, input.path), w) : null;
+    this.add(
+      w.convId,
+      this.base(turn, { kind: 'read', id: newId('wg'), toolUseId: id, who, tool: name, what: clip(path ? this.display(path, w) : what, 500), where }),
+    );
+  }
+
+  /**
+   * What the turn showed in the conversation (#195): each app it showed or updated, at its version, and each block it
+   * showed or asked again with. A block that came out invalid showed only its fallback, so it isn’t listed.
+   */
+  recordPublishes(turn) {
+    const w = turn.work;
+    const threads = [...new Set([turn.threadId, w.convId])];
+    for (const threadId of threads)
+      for (const it of this.store.items(threadId)) {
+        if (it.kind !== 'block' || it.turnId !== turn.id || !it.valid) continue;
+        const b = it.block;
+        const app = b.type === 'app' ? this.s.apps?.[b.id] : null;
+        const title = app?.title ?? b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id;
+        this.add(
+          w.convId,
+          this.base(turn, {
+            kind: 'publish',
+            id: newId('wu'),
+            threadId,
+            itemId: it.id,
+            what: app ? 'app' : 'block',
+            type: b.type,
+            blockId: b.id,
+            title: clip(String(title).replace(/\s+/g, ' '), 200),
+            version: app ? app.current : null,
+          }),
+        );
+      }
   }
 
   /** The backend refused a call without running it. */
@@ -350,7 +368,7 @@ export class Ledger {
     }
     const cmdId = w.commands.get(id);
     if (cmdId) {
-      w.pending.push(this.track(this.commandEnded(turn, cmdId, { isError, text, r, vcsCwd })));
+      w.pending.push(this.track(this.commandEnded(turn, cmdId, { isError, text, r, vcsCwd }).then(() => commandSeen(this, turn, cmdId))));
       return;
     }
     const extId = w.externals.get(id);
@@ -432,34 +450,8 @@ export class Ledger {
       );
   }
 
-  /** A commit, with its files and lines from git, so they match `git show --numstat`. */
-  async recordCommit(turn, cmdId, { sha, branch }, cwd, message) {
-    const w = turn.work;
-    const entry = this.add(
-      w.convId,
-      this.base(turn, { kind: 'commit', id: newId('wk'), commandId: cmdId, sha, branch, cwd, message: clip(message, 300), files: [], added: 0, deleted: 0 }),
-    );
-    if (!cwd) return;
-    const r = await this.git(cwd, ['show', '--no-color', '--no-renames', '--numstat', '--format=%H%x1f%s', sha]);
-    if (r.code !== 0) return;
-    const [head, ...rest] = r.stdout.split('\n');
-    const [full, subject] = head.split('\x1f');
-    const files = rest
-      .map((l) => /^(-|\d+)\t(-|\d+)\t(.+)$/.exec(l))
-      .filter(Boolean)
-      .map((m) => ({
-        path: clip(m?.[3], 500),
-        added: m?.[1] === '-' ? 0 : Number(m?.[1]),
-        deleted: m?.[2] === '-' ? 0 : Number(m?.[2]),
-        binary: m?.[1] === '-',
-      }));
-    this.patch(w.convId, entry.id, {
-      sha: /^[0-9a-f]{40}$/.test(full) ? full : sha,
-      message: clip(subject || message, 300),
-      files: files.slice(0, 500),
-      added: files.reduce((n, f) => n + f.added, 0),
-      deleted: files.reduce((n, f) => n + f.deleted, 0),
-    });
+  recordCommit(...a) {
+    return recordCommit(this, ...a);
   }
 
   /** A background command or subagent ended. */
@@ -481,6 +473,7 @@ export class Ledger {
             if (tail) output = { ...(await this.keepOutput(tail.bytes)), cut: tail.cut };
           }
           this.patch(w.convId, cmdId, { state, exit: code, ms: this.now() - e.startedAt, output, endedInBackground: true });
+          await commandSeen(this, turn, cmdId);
         })(),
       ),
     );
@@ -499,13 +492,15 @@ export class Ledger {
     const e = this.entries(convId).find((x) => x.kind === 'command' && x.toolUseId === job.toolUseId);
     if (!e) return;
     if (kept) this.patch(convId, e.id, { keptRunning: true, ...(e.state === 'unknown' ? { state: 'background' } : {}) });
-    else if (state && ['running', 'background', 'unknown'].includes(e.state))
+    else if (state && ['running', 'background', 'unknown'].includes(e.state)) {
+      this.folders.live.delete(e.id); // it ended: a commit made after it isn’t its (#156)
       this.patch(convId, e.id, {
         state: state === 'stopped' || state === 'failed' ? state : 'unknown',
         ms: this.now() - (e.startedAt ?? this.now()),
         leftRunning: false,
         ...(by === 'you' ? { stoppedBy: 'you' } : {}),
       });
+    }
   }
 
   /** What the backend reports the turn’s process has spent so far (its totals run for the process). */
@@ -523,6 +518,8 @@ export class Ledger {
     w.ended = true;
     const run = (async () => {
       await Promise.allSettled(w.pending);
+      turnEnded(this, w);
+      this.recordPublishes(turn);
       for (const f of w.files.values()) {
         const before = await f.before;
         const after = await this.capture(await this.io.read(f.path));
@@ -666,91 +663,17 @@ export class Ledger {
 
   // ── Git, read only ────────────────────────────────────────────────────────────────────
 
-  /** The repository a folder is in (its top folder), or null. A folder with none is asked again after a minute. */
-  async rootOf(dir) {
-    const hit = this.roots.get(dir);
-    if (hit && (hit.root || this.now() - hit.at < 60000)) return hit.root;
-    const r = await this.git(dir, ['rev-parse', '--show-toplevel']);
-    const root = r.code === 0 && r.stdout.trim() ? resolve(r.stdout.trim()) : null;
-    this.roots.set(dir, { root, at: this.now() });
-    return root;
+  rootOf(...a) {
+    return rootOf(this, ...a);
   }
-  /** Whether git tracks a file: null outside a repository. */
-  async tracked(path) {
-    const root = await this.rootOf(dirname(path));
-    if (!root) return null;
-    const r = await this.git(root, ['ls-files', '--error-unmatch', '--', relative(root, path)]);
-    return r.code === 0;
+  tracked(...a) {
+    return tracked(this, ...a);
   }
-  async pushed(root, sha) {
-    const key = `${root}:${sha}`;
-    if (this.pushedCache.has(key)) return true;
-    const r = await this.git(root, ['branch', '-r', '--contains', sha]);
-    const yes = r.code === 0 && r.stdout.trim().length > 0;
-    if (yes) this.pushedCache.add(key);
-    return yes;
+  pushed(...a) {
+    return pushed(this, ...a);
   }
-
-  /**
-   * Where each file and commit stands now: { files: { [id]: { state, commit?, untracked? } }, commits: { [id]: { pushed } },
-   * repos: [{ root, branch, upstream }] }. state is uncommitted, committed, pushed, unchanged, ignored or none (not in git).
-   */
-  async gitState(convId) {
-    const entries = this.entries(convId);
-    const files = entries.filter((e) => e.kind === 'file');
-    const commits = entries.filter((e) => e.kind === 'commit');
-    /** @type {Record<string, any>} */
-    const out = { files: {}, commits: {}, repos: [] };
-    const byRoot = new Map();
-    for (const f of files.slice(-GIT_FILES)) {
-      if (!lasting(f)) {
-        out.files[f.id] = { state: 'unchanged' };
-        continue;
-      }
-      const root = await this.rootOf(dirname(f.path));
-      if (!root) out.files[f.id] = { state: 'none' };
-      else (byRoot.get(root) ?? byRoot.set(root, []).get(root)).push(f);
-    }
-    for (const c of commits) {
-      const root = c.cwd ? await this.rootOf(c.cwd) : null;
-      if (root && !byRoot.has(root)) byRoot.set(root, []);
-    }
-    for (const [root, list] of byRoot) {
-      const st = await this.git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
-      const dirty = new Map();
-      if (st.code === 0) {
-        const parts = st.stdout.split('\0');
-        for (let i = 0; i < parts.length; i++) {
-          const p = parts[i];
-          if (p.length < 4) continue;
-          dirty.set(p.slice(3), p.slice(0, 2));
-          if (p[0] === 'R' || p[0] === 'C') i++; // a rename’s old path follows
-        }
-      }
-      const branch = (await this.git(root, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim() || null;
-      const up = await this.git(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']);
-      out.repos.push({ root, branch, upstream: up.code === 0 ? up.stdout.trim() : null });
-      for (const f of list) {
-        const rel = relative(root, f.path).split(sep).join('/');
-        const code = dirty.get(rel);
-        if (code) {
-          out.files[f.id] = { state: 'uncommitted', ...(code === '??' ? { untracked: true } : {}) };
-          continue;
-        }
-        const last = (await this.git(root, ['log', '-1', '--format=%H', '--', rel])).stdout.trim();
-        if (!last) {
-          const ignored = (await this.git(root, ['check-ignore', '-q', '--', rel])).code === 0;
-          out.files[f.id] = { state: ignored ? 'ignored' : f.after?.exists ? 'uncommitted' : 'unchanged' };
-          continue;
-        }
-        out.files[f.id] = { state: (await this.pushed(root, last)) ? 'pushed' : 'committed', commit: last };
-      }
-    }
-    for (const c of commits) {
-      const root = c.cwd ? await this.rootOf(c.cwd) : null;
-      out.commits[c.id] = { pushed: root ? await this.pushed(root, c.sha) : false };
-    }
-    return out;
+  gitState(...a) {
+    return gitState(this, ...a);
   }
 
   // ── Reading and restoring ─────────────────────────────────────────────────────────────

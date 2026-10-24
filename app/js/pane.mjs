@@ -212,9 +212,9 @@ export function mountPane(convId) {
     el.hidden = !work && !thread;
     el.parentElement?.classList.toggle('has-panel', !el.hidden);
 
-    // Focus that was in a view that closed goes to what opens it: for Work, the top bar’s Work button; for a thread,
-    // its line in the conversation; else the conversation.
-    if (had && !el.contains(document.activeElement)) {
+    // Focus lost with a view that closed goes to what opens it: Work’s button, a thread’s line, else the conversation.
+    // Focus given back outside the pane, as to the turn’s list row that opened Work full screen (#195), stays there.
+    if (had && (!document.activeElement || document.activeElement === document.body)) {
       const button = closing.work ? document.getElementById('work-button') : null;
       const link = closing.thread ? document.querySelector(`#main a[href*="/side/${CSS.escape(closing.thread)}"]`) : null;
       const to = [button, link].find((x) => x instanceof HTMLElement && x.offsetParent);

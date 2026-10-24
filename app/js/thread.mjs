@@ -13,7 +13,8 @@ import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
-import { announceStreaming, navigate, openMenu, openWork, paneHref, say, toast } from './ui.mjs';
+import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
+import { workList } from './work-list.mjs';
 
 const S = () => client.state;
 const handles = () =>
@@ -496,16 +497,16 @@ function renderItem(it, prev, ctx) {
                 'summary',
                 icon('right', 'i-sm'),
                 activityLabel(steps),
-                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s` : '',
+                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
                 running ? ' · running' : '',
               ),
               stepTree(steps),
             )
           : null,
         jobRows(it, steps),
-        // What the turn changed, ran and published, from the work ledger (#132), leading to it.
-        it.work ? workChip(it, ctx) : null,
         it.text || it.status === 'streaming' ? h('div.md') : null,
+        // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
+        it.work ? workChip(it, ctx) : null,
         it.status === 'stopped' ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
         it.status === 'failed'
           ? h(
@@ -563,7 +564,7 @@ function renderItem(it, prev, ctx) {
       if (it.valid && it.block.type === 'app') {
         // Named like any other block (#88). Only the agent that wrote an app can update it, so this is also who
         // made each version.
-        return h('div.wide', showWho ? h('div.col', who(it)) : null, renderAppItem(it, ctx));
+        return h('div.wide', showWho ? h('div.col', who(it)) : null, renderAppItem(it, ctx), it.work ? workChip(it, ctx) : null);
       }
       // revision: the one the person answered (#123); a card’s or table’s action doesn’t say.
       const act = async (action, values, revision) => {
@@ -571,7 +572,7 @@ function renderItem(it, prev, ctx) {
         focusComposer();
         return r;
       };
-      const node = h('div.col.turn', showWho ? who(it) : null, renderBlock(it, { act, threadId: ctx.threadId }));
+      const node = h('div.col.turn', showWho ? who(it) : null, renderBlock(it, { act, threadId: ctx.threadId }), it.work ? workChip(it, ctx) : null);
       if (it.valid && it.block.type === 'review' && it.block.format === 'app') node.dataset.appVersion = String(S().apps[it.block.appId]?.current ?? '');
       return node;
     }
@@ -629,24 +630,12 @@ function renderItem(it, prev, ctx) {
   }
 }
 
-/** A turn’s line from the work ledger (#132), which opens the conversation’s Work in the right pane, at that turn. */
+/** A turn’s line and its list from the work ledger (#132, #195), each leading to the conversation’s Work. */
 function workChip(it, ctx) {
   const t = client.state.threads[ctx.threadId];
   const conv = (t?.kind === 'side' || t?.kind === 'topic') && t.parentId ? t.parentId : ctx.threadId;
-  return h(
-    'a.work-chip',
-    {
-      href: paneHref(conv, { work: true, turn: it.turnId }),
-      'aria-label': `This turn’s work: ${it.work}`,
-      // Beside the thread that’s open, if any: the address is worked out when you choose it.
-      onclick: (e) => {
-        e.preventDefault();
-        openWork(conv, { turn: it.turnId });
-      },
-    },
-    icon('file', 'i-sm'),
-    it.work,
-  );
+  const s = client.state;
+  return workList(it, conv, [s.projects?.[s.threads[conv]?.projectId]?.folder, s.personas?.[s.sessions?.[it.sessionId]?.personaId]?.folder]);
 }
 
 function failureText(msg = 'This reply didn’t finish.') {
@@ -909,7 +898,7 @@ function systemLine(it, _ctx) {
  */
 function movedLine(it, ctx) {
   const live = itemsOf(ctx.threadId).some((x) => x.id === it.itemId);
-  return h(
+  const line = h(
     'div.col.sys-line.moved',
     icon('down', 'i-sm'),
     h('span', h('b', it.title), it.what === 'app' ? ` · updated to v${it.v} below` : ' · asked again below'),
@@ -932,6 +921,8 @@ function movedLine(it, ctx) {
         )
       : null,
   );
+  // A turn’s list stays here when the item that carried it moved on (#195).
+  return it.work ? h('div.col', line, workChip(it, ctx)) : line;
 }
 
 function hopBlock(it, ctx) {
