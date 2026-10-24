@@ -57,14 +57,27 @@
 //   `permission` IDs, so two turns may both use 1. The daemon keys its pending prompts and tools by both, and every
 //   message to or from Postbox that names one (`tool`, `prompt`, `prompt-expired`, `answer`, `reply`) carries `turn`.
 // - A second Postbox gets `busy` unless its hello says `takeover`; the one it replaces gets `taken-over`.
+// - A `stop` for a turn the daemon doesn’t have answers `no-turn`, and from then on a `start` for that turn is refused
+//   with `turn-stopped`, on any connection: a start written to a channel that dropped may still reach the daemon after
+//   the stop sent on the next one. A stop that comes while its turn’s start is under way waits for that start to
+//   answer, and the start launches nothing if its runner hadn’t launched yet. So `no-turn` to a stop means the turn
+//   won’t run there. The daemon keeps this in memory only: a restart ends the old channels too.
 // - Settings that the host enforces (HOST_ENFORCED) go in `hello.settings`, with remote-settings.mjs’s names, units
 //   and ranges; HOST_DEFAULTS applies to any not sent. The rest of a host’s settings stay on the laptop.
+// - `check` asks the daemon to run the host’s sign-in check, the signInCheck its driver’s hello sent, as an argument
+//   list with no shell and no stdin, for at most SIGN_IN_CHECK_MS; `checked` says how it exited (ok is exit code 0;
+//   code is null when it couldn’t start, was killed or ran out of time). One `checked` answers each `check`, in the
+//   order they came; a hello with no signInCheck gets the `no-check` error instead. Postbox uses it to resume after
+//   Sign-in needed only when the check passes (D2), and to warn before a turn.
 
 import { LIMITS, READING } from './limits.mjs';
 import { checkHostPath, checkHostSettings, defaultHostSettings, PATH_BYTES, RANGES } from './remote-settings.mjs';
 
 /** Bumped on any change a peer of the previous version would refuse or misread. */
 export const PROTOCOL_VERSION = 2;
+
+/** How long the daemon lets the host’s signInCheck run before it kills it and answers that the check failed. */
+export const SIGN_IN_CHECK_MS = 30_000;
 
 const KiB = 1024;
 const MiB = 1024 * KiB;
@@ -171,6 +184,7 @@ export const ERROR_CODES = Object.freeze(
     'no-turn',
     'turn-exists',
     'turn-ended', // a shim or write for a turn that has ended
+    'turn-stopped', // a start for a turn this daemon was asked to stop before it had it
     'no-harness', // the harness wasn’t found on the host
     'start-failed',
     'bad-offset', // read.from isn’t 0, a line’s start or the file’s size
@@ -179,6 +193,7 @@ export const ERROR_CODES = Object.freeze(
     'no-tool', // a reply to a tool that isn’t queued
     'disconnected', // to the shim: an asked tool while Postbox isn’t connected
     'no-node', // the host has no Node 22 or later to run the daemon (the `host` launcher, or the daemon’s own check)
+    'no-check', // a `check` when the driver’s hello sent no signInCheck
     'internal',
   ]),
 );
@@ -395,6 +410,8 @@ const CHANNELS = {
     ack: (m) => fields(m, 'ack', ['turn', 'upTo']) || turnId(m.turn, 'ack.turn') || int(m.upTo, 'ack.upTo', 0, Number.MAX_SAFE_INTEGER),
     /** {}: stop everything and delete ~/.postbox-remote. */
     remove: (m) => fields(m, 'remove', []),
+    /** {}: run the host’s signInCheck (hello.settings’), answered by `checked`. */
+    check: (m) => fields(m, 'check', []),
   },
 
   /** daemon → Postbox, over the SSH channel’s stdout. */
@@ -483,6 +500,13 @@ const CHANNELS = {
       opt(m.reason, (v) => oneOf(v, 'prompt-expired.reason', ['expired', 'canceled'])),
     /** {}: everything is stopped and deleted; the daemon exits next. */
     removed: (m) => fields(m, 'removed', []),
+    /** { ok, code, at }: how the signInCheck a `check` ran exited; ok exactly when code is 0, at when it ended. */
+    checked: (m) =>
+      fields(m, 'checked', ['ok', 'code', 'at']) ||
+      bool(m.ok, 'checked.ok') ||
+      (m.code === null ? '' : int(m.code, 'checked.code', 0, 255)) ||
+      int(m.at, 'checked.at', 0, Number.MAX_SAFE_INTEGER) ||
+      (m.ok === (m.code === 0) ? '' : 'checked.ok is true exactly when checked.code is 0.'),
     error: (m) => checkError(m),
   },
 
@@ -962,13 +986,20 @@ function checkDecision(v, at) {
   return `${at}.behavior must be allow or deny; got “${clip(v.behavior)}”.`;
 }
 
+/**
+ * { code, message, re?, turn?, id? }: re is the type of the message it answers, turn the turn it’s about, and id the
+ * prompt or tool call it names, within that turn: an `re: 'prompt-expired'` error names the prompt whose end the daemon
+ * couldn’t record, so Postbox ends exactly that card.
+ */
 function checkError(m) {
   return (
-    fields(m, 'error', ['code', 'message'], ['re', 'turn']) ||
+    fields(m, 'error', ['code', 'message'], ['re', 'turn', 'id']) ||
     oneOf(m.code, 'error.code', ERROR_CODES) ||
     str(m.message, 'error.message', REMOTE_LIMITS.messageChars, 1) ||
     opt(m.re, (v) => (typeof v === 'string' && /^[a-z][a-z-]{0,31}$/.test(v) ? '' : 'error.re must be the type of the message it answers.')) ||
-    opt(m.turn, (v) => turnId(v, 'error.turn'))
+    opt(m.turn, (v) => turnId(v, 'error.turn')) ||
+    opt(m.id, (v) => id(v, 'error.id')) ||
+    (m.id !== undefined && m.turn === undefined ? 'error.id names a prompt or a tool call within a turn, so it comes with error.turn.' : '')
   );
 }
 

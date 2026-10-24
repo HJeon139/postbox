@@ -461,6 +461,7 @@ export function createBroker({
         code: 'internal',
         re: 'prompt-expired',
         turn,
+        id,
         message:
           `Postbox’s daemon on this host couldn’t write down that prompt ${id} in turn ${turn} ${what}: ${why}. It can’t be answered any more; if the daemon restarts, it may show as waiting until the host’s permissionWaitMax from when it was asked.`.slice(
             0,

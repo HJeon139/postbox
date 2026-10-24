@@ -63,7 +63,7 @@ export const NODE_PATH_FILE = 'node-path';
 /** The laptop’s folder of tokens, under Postbox’s data folder. */
 export const TOKENS_DIR = 'remote-tokens';
 /** The daemon’s token’s shape (shared/remote-protocol.mjs checks hello.token against the same). */
-const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
+export const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
 /** A host ID, as store.mjs’s newId makes them; it names a file, so nothing else passes. */
 const HOST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 /** A shipped file’s path: plain ASCII parts, so it fits a ustar name and a manifest line, and no shell splits it. */

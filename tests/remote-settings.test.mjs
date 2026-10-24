@@ -184,7 +184,7 @@ test('a project’s folder on a host must be an absolute path there', () => {
   }
 });
 
-test('the runtime adds, updates and removes hosts, with clear errors', () => {
+test('the runtime adds, updates and removes hosts, with clear errors', async () => {
   const rt = runtime();
   assert.match(
     refused(() => rt.addHost({ name: '-oProxyCommand=x' })),
@@ -224,19 +224,16 @@ test('the runtime adds, updates and removes hosts, with clear errors', () => {
     /already a host/,
   );
 
-  assert.deepEqual(rt.removeHost(other.id), { ok: true });
+  assert.deepEqual(await rt.removeHost(other.id), { ok: true, stopped: 0 });
   assert.equal(rt.s.hosts[other.id], undefined);
-  assert.match(
-    refused(() => rt.removeHost(other.id), 404),
-    /doesn’t exist/,
-  );
+  await assert.rejects(rt.removeHost(other.id), (e) => e.status === 404 && /doesn’t exist/.test(e.message));
   assert.match(
     refused(() => rt.updateHost('ho_none', {}), 404),
     /doesn’t exist/,
   );
 });
 
-test('a project keeps a folder per host, and loses it when the host goes', () => {
+test('a project keeps a folder per host, and loses it when the host goes', async () => {
   const rt = runtime();
   rt.store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
   const a = rt.addHost({ name: 'a' });
@@ -261,7 +258,7 @@ test('a project keeps a folder per host, and loses it when the host goes', () =>
 
   rt.setProjectHostFolder('p1', b.id, null);
   assert.deepEqual(rt.s.projects.p1.hostFolders, { [a.id]: '/home/user/app' });
-  rt.removeHost(a.id);
+  await rt.removeHost(a.id);
   assert.deepEqual(rt.s.projects.p1.hostFolders, {});
 });
 
@@ -274,7 +271,7 @@ test('hosts and project host folders survive a store reload', async () => {
     const h = rt.addHost({ name: 'devbox', settings: { idleTimeout: 2 * HOUR, signInCheck: ['klist', '-s'] } });
     rt.setProjectHostFolder('p1', h.id, '/home/user/app');
     const gone = rt.addHost({ name: 'gone' });
-    rt.removeHost(gone.id);
+    await rt.removeHost(gone.id);
     await store.flush();
 
     const again = await new Store(dir).load();

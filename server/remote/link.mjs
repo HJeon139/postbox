@@ -18,7 +18,8 @@
 // - setMaxListeners(0): every turn’s child listens.
 // And for the runtime and the UI: `welcome` (the latest, kept after a drop, so the host’s home and harnesses stay
 // known), `failure` (the current SshFailure, with its kind and next step; null once a session opens), `state` (the
-// reconnector’s), 'failure' (f) at each failure and 'state' (s) at each change, and need(), wake(), retry() and close().
+// reconnector’s), 'failure' (f) at each failure and 'state' (s) at each change, and need(), wake(), retry(), idle() and
+// close().
 //
 // When it’s needed: while `needed()` says so, or by default while anything listens for 'message' (a turn’s child, or
 // the runtime waiting on a prompt). The reconnector asks it before each attempt, so a host nobody needs isn’t redialed.
@@ -165,6 +166,13 @@ export function createHostLink({ host, version, token, takeover = false, needed,
         if (closed) return;
         if (take) takeoverNext = true;
         rec.retry();
+      },
+      /**
+       * Closes the current session without giving up, when nothing needs the host (hosts.mjs): the link is idle until a
+       * send, need() or wake() opens another, so the host’s daemon can exit at its idleTimeout. Turns go on.
+       */
+      idle() {
+        if (!closed) current?.close();
       },
       /** Stops reconnecting and closes the session; turns go on on the host. Listeners for 'error' hear it. */
       close() {

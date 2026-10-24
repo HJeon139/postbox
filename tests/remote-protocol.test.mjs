@@ -165,6 +165,8 @@ const CASES = {
     stop: { ok: { turn: 't1' }, bad: [[{}, /stop needs “turn”/]] },
     ack: { ok: { turn: 't1', upTo: 120 }, bad: [[{ turn: 't1', upTo: '120' }, /ack\.upTo must be a whole number/]] },
     remove: { ok: {}, bad: [[{ force: true }, /“force” isn’t a field of remove/]] },
+    // No argv: the daemon runs the signInCheck hello sent, so a check can’t name another program.
+    check: { ok: {}, bad: [[{ argv: ['klist', '-s'] }, /“argv” isn’t a field of check/]] },
   },
   'daemon-to-postbox': {
     welcome: {
@@ -222,6 +224,16 @@ const CASES = {
     },
     'prompt-expired': { ok: { id: 'prompt-1', turn: 't1', at: 5 }, bad: [[{ id: 'prompt-1', turn: 't1' }, /needs “at”/]] },
     removed: { ok: {}, bad: [[{ turns: 2 }, /“turns” isn’t a field of removed/]] },
+    checked: {
+      ok: { ok: false, code: null, at: 5 },
+      bad: [
+        [{ ok: true, code: 1, at: 5 }, /checked\.ok is true exactly when checked\.code is 0/],
+        [{ ok: false, code: 0, at: 5 }, /checked\.ok is true exactly when checked\.code is 0/],
+        [{ ok: false, code: 256, at: 5 }, /checked\.code must be from 0 to 255/],
+        [{ ok: 'no', code: 1, at: 5 }, /checked\.ok must be true or false/],
+        [{ ok: true, code: 0 }, /checked needs “at”/],
+      ],
+    },
     error: {
       ok: { code: 'bad-offset', message: '7 isn’t the start of a line.', re: 'read', turn: 't1' },
       bad: [
@@ -381,6 +393,23 @@ test('prompt-expired says why', () => {
   assert.ok(validateMessage('daemon-to-postbox', expired).ok, 'reason defaults to expired');
   assert.ok(validateMessage('daemon-to-postbox', { ...expired, reason: 'canceled' }).ok);
   assert.match(String(/** @type {any} */ (validateMessage('daemon-to-postbox', { ...expired, reason: 'gone' })).error), /reason/);
+});
+
+test('#120 an error about a prompt’s expiry names the prompt within its turn: error.id, which needs error.turn', () => {
+  const err = { type: 'error', code: 'internal', re: 'prompt-expired', turn: 't1', message: 'Couldn’t write it down.' };
+  assert.ok(validateMessage('daemon-to-postbox', err).ok, 'id is optional, as from an older daemon');
+  assert.ok(validateMessage('daemon-to-postbox', { ...err, id: 'codex:7' }).ok);
+  const r = (m) => String(/** @type {any} */ (validateMessage('daemon-to-postbox', m)).error);
+  assert.match(r({ ...err, id: '' }), /error\.id must be an ID/);
+  const { turn: _t, ...noTurn } = err;
+  assert.match(r({ ...noTurn, id: 'p1' }), /error\.id names a prompt or a tool call within a turn/);
+});
+
+test('#120 G10: turn-stopped is an error code: a start refused because the daemon was asked to stop that turn first', () => {
+  assert.ok(ERROR_CODES.includes('turn-stopped'));
+  const err = { type: 'error', code: 'turn-stopped', re: 'start', turn: 't1', message: 'Turn t1 was stopped before it started here.' };
+  assert.ok(validateMessage('daemon-to-postbox', err).ok);
+  assert.match(String(/** @type {any} */ (validateMessage('daemon-to-postbox', { ...err, code: 'turn-stopped-early' })).error), /error\.code/);
 });
 
 test('start.json names the harness’s absolute program and the start message’s argv, env, stdin and folder', () => {

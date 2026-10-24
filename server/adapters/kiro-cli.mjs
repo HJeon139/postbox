@@ -587,8 +587,14 @@ export class KiroCliAdapter {
     const prompt = formatMessage(message, ctx.pathOf);
     const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
     const folders = ctx.remote ? [cwd] : [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
-    // Before anything starts on the host: the turn ID and version the runtime owns.
-    if (ctx.remote) checkRemoteContext(ctx.remote);
+    // Before anything starts on the host: the turn ID and version the runtime owns. After a Postbox restart,
+    // ctx.remote.attach names a turn already there instead, which is replayed from the start and never started again.
+    const attach = ctx.remote?.attach?.turn ?? null;
+    if (ctx.remote) checkRemoteContext(ctx.remote, { attach: Boolean(attach) });
+    if (attach) {
+      await this.run({ ctx, cwd, folders, prompt, guide, sessionId: ctx.state.kiroSessionId ?? null, turn: attach, attach: true });
+      return;
+    }
     const first = await this.run({ ctx, cwd, folders, prompt, guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
     // A session Kiro no longer has (its history was cleared, or the persona moved between your setup and
     // Isolated, which keep sessions in different homes) starts over, once.
@@ -602,10 +608,10 @@ export class KiroCliAdapter {
   }
 
   /**
-   * @param {{ ctx: any, cwd: string, folders: string[], prompt: string, guide: string, sessionId: string|null, turn?: string }} o
-   *   turn: on a remote host, the host turn this run starts as (the runtime’s)
+   * @param {{ ctx: any, cwd: string, folders: string[], prompt: string, guide: string, sessionId: string|null, turn?: string, attach?: boolean }} o
+   *   turn: on a remote host, the host turn this run starts as (the runtime’s); attach: it’s already there
    */
-  async run({ ctx, cwd, folders, prompt, guide, sessionId, turn }) {
+  async run({ ctx, cwd, folders, prompt, guide, sessionId, turn, attach = false }) {
     const persona = ctx.persona;
     const agent = `postbox-${String(persona.handle).replace(/[^a-z0-9_-]/gi, '')}-${randomUUID().slice(0, 8)}`;
     const args = kiroArgs({ persona, agent, sessionId, prompt });
@@ -614,7 +620,7 @@ export class KiroCliAdapter {
     let spawnFn = this.spawn;
     let env;
     if (ctx.remote) {
-      checkRemoteMessage(prompt);
+      if (!attach) checkRemoteMessage(prompt);
       const { link, welcome, version } = ctx.remote;
       const hostTurn = /** @type {string} */ (turn);
       const shim = { command: welcome.node.path, args: shimArgs(ctx.remote, hostPaths(welcome.home, version).shim, hostTurn) };
@@ -631,10 +637,11 @@ export class KiroCliAdapter {
           env: remoteEnv,
           agentFile: { name: `${agent}.json`, text },
           turn: hostTurn,
+          ...(attach ? { attach: { from: 0 } } : {}),
         })
       );
       env = {};
-      ctx.activity({ ...REMOTE_ARGV_NOTE });
+      if (!attach) ctx.activity({ ...REMOTE_ARGV_NOTE });
     } else {
       const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
       file = join(home, 'agents', `${agent}.json`);

@@ -9,7 +9,11 @@
 //   adapter’s capabilities.remote.env, and the working folder is `folder`, a path on the host.
 // - No `pid`, and `remote: true`. A host’s process ID would mean an unrelated process here, so process-group.mjs’s
 //   stopTurn, signalGroup and stopJobUnder branch on `remote` and never call the local kill or ps. kill(signal) sends
-//   the daemon’s `stop` once, whatever the signal; the daemon sends SIGINT, then SIGKILL (C5).
+//   the daemon’s `stop` once, whatever the signal; the daemon sends SIGINT, then SIGKILL (C5). After kill() no `start`
+//   goes, not even again at a welcome. One that may have reached the host unconfirmed gets `stop` instead, at each
+//   welcome and at its `started` (or turn-exists), since the stop before it may have found no turn there; a no-turn
+//   answer to that stop means it never arrived, and the child exits as a kill before start does. One that never
+//   reached a channel sends nothing: the child exits at once.
 // - `exit` and `close` come from the daemon’s `ended`. An interrupted turn (no live runner and no exit.json) exits
 //   with code null and signal null, and sets `interrupted`.
 // - A line the daemon had to cut (over REMOTE_LIMITS.streamLineBytes) puts nothing on stdout: the child emits `cut`
@@ -143,6 +147,8 @@ export class RemoteProcess extends EventEmitter {
     if (this.startBody) this.build('start', this.startFiles(''));
     /** `start` was handed to the connection (or isn’t needed). */
     this.startSent = !start;
+    /** `start` was written to a channel that had its welcome, so it may be on the host (or isn’t needed). */
+    this.startWritten = !start;
     this.startResent = false;
     this.started = !start;
     this.next = from;
@@ -177,12 +183,17 @@ export class RemoteProcess extends EventEmitter {
     });
   }
 
-  /** Sends the daemon’s `stop`, once. False if the turn has already ended. @param {string} [_signal]  any: the daemon decides */
+  /**
+   * Sends the daemon’s `stop`, once, and never a `start` from here on. False if the turn has already ended. A start
+   * that may have reached the host but isn’t confirmed is stopped again at each welcome and at its `started` (the
+   * header). @param {string} [_signal]  any: the daemon decides
+   */
   kill(_signal) {
     if (this.ended) return false;
     this.killed = true;
-    if (!this.startSent) {
-      // Nothing is on the host yet (a file stdin not ended, or spawn just returned): there’s nothing to stop there.
+    if (!this.startWritten) {
+      // Nothing is on the host yet (a file stdin not ended, spawn just returned, or no channel had its welcome when
+      // start went): there’s nothing to stop there.
       this.startBody = null;
       this.finish({ code: null, signal: 'SIGINT' });
       return true;
@@ -213,7 +224,7 @@ export class RemoteProcess extends EventEmitter {
 
   /** @param {Record<string, unknown>} body */
   sendStart(body) {
-    if (this.ended || !this.startBody) return;
+    if (this.ended || this.killed || !this.startBody) return;
     let msg;
     try {
       msg = this.build('start', body);
@@ -223,7 +234,7 @@ export class RemoteProcess extends EventEmitter {
     this.startBody = /** @type {any} */ (body);
     this.startSent = true;
     // Unsent, it goes at the next welcome, as one that may have been lost in a drop does.
-    this.conn.send(msg);
+    if (this.conn.send(msg) === true) this.startWritten = true;
     this.pump();
   }
 
@@ -264,11 +275,16 @@ export class RemoteProcess extends EventEmitter {
   /** Whatever didn’t reach the daemon, at a welcome. */
   resume() {
     if (this.ended) return;
-    if (this.stopPending) this.stopPending = !this.send('stop', { turn: this.turn });
-    if (this.startSent && !this.started && this.startBody) {
+    if (this.killed && !this.started) {
+      // Killed with its start unconfirmed: that start may be on the host, and a stop that went before it, or was lost,
+      // may have found no turn there. So it’s stopped again, and its start never goes again: a turn mustn’t start
+      // after the person asked to stop it.
+      this.stopPending = !this.send('stop', { turn: this.turn });
+    } else if (this.stopPending) this.stopPending = !this.send('stop', { turn: this.turn });
+    if (!this.killed && this.startSent && !this.started && this.startBody) {
       // It may have reached the daemon before the drop: a turn-exists answer then means it did.
       this.startResent = true;
-      this.conn.send(this.build('start', this.startBody));
+      if (this.conn.send(this.build('start', this.startBody)) === true) this.startWritten = true;
     }
     if (this.inFlight?.sent) {
       // Kept in flight, so nothing passes it, until in.jsonl says whether it arrived (the header). read() asks.
@@ -314,6 +330,8 @@ export class RemoteProcess extends EventEmitter {
   onStarted() {
     if (this.started) return;
     this.started = true;
+    // Started after kill(): the stop sent then may have reached the daemon before the turn was there, so it goes again.
+    if (this.killed) this.stopPending = !this.send('stop', { turn: this.turn });
     this.read();
   }
 
@@ -371,7 +389,10 @@ export class RemoteProcess extends EventEmitter {
       if (m.code === 'turn-ended') this.queue = [];
       return this.pump();
     }
-    // A refused ack or stop changes nothing: the turn’s end still comes as `ended`.
+    // Killed before its start was confirmed, and the host has no such turn: the start never reached it, and isn’t sent
+    // again, so this is the end, as a kill before start is.
+    if (m.re === 'stop' && m.code === 'no-turn' && this.killed && !this.started) return this.finish({ code: null, signal: 'SIGINT' });
+    // Otherwise a refused ack or stop changes nothing: the turn’s end still comes as `ended`.
   }
 
   // ── Ending ──────────────────────────────────────────────────────────────────────────

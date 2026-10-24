@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { hostPaths } from '../../shared/remote-protocol.mjs';
+import { codexPromptId } from '../remote/host/broker.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { draftOf } from '../write-guard.mjs';
 import { checkRemoteContext, shimArgs } from './adapter.mjs';
@@ -11,7 +12,7 @@ import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { effortOf, POSTBOX_SERVER } from './setup.mjs';
+import { AUTO_MODEL, effortOf, POSTBOX_SERVER } from './setup.mjs';
 
 // Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false).
 // On a remote host (#120), stdin stays open for the JSON-RPC until turn/completed, it sets no variable of its own,
@@ -109,7 +110,15 @@ export function codexPermissions(persona, cwd) {
   return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request' };
 }
 
-const codexModelOf = (persona) => (persona?.model && persona.model !== 'mock' ? String(persona.model) : null);
+/**
+ * The model to name in thread/start and turn/start, or null to name none, so Codex uses its own default: null for no
+ * model, the mock, AUTO_MODEL and any Claude model. Codex runs none of Claude’s, and named, one fails the turn: Claude’s
+ * default, say, on a persona made while Postbox had no Codex list, or one moved here from Claude Code.
+ */
+export const codexModelOf = (persona) => {
+  const model = persona?.model ? String(persona.model) : '';
+  return !model || model === 'mock' || model === AUTO_MODEL || model.startsWith('claude-') ? null : model;
+};
 const codexEffortOf = (persona) => (effortOf(persona) === 'max' ? 'xhigh' : effortOf(persona));
 
 export function codexConfigArgs(mcpUrl) {
@@ -380,7 +389,9 @@ export class CodexAdapter {
   name = 'codex';
   /**
    * @param {{ bin?: string, workRoot?: string, models?: string[], spawnImpl?: typeof spawn, kill?: typeof process.kill,
-   *           listProcesses?: typeof listProcesses }} opts
+   *           listProcesses?: typeof listProcesses }} opts  models: what codexModels found here; AUTO_MODEL is offered
+   *   after them, and alone when there are none (Codex only on a host, #120), so the model field never falls back to
+   *   Claude’s models, which Codex doesn’t run
    */
   constructor({ bin = findCodex(), workRoot = process.cwd(), models = [], spawnImpl = spawn, kill = process.kill, listProcesses: list = listProcesses } = {}) {
     this.bin = bin;
@@ -388,7 +399,7 @@ export class CodexAdapter {
     this.list = list;
     this.workRoot = workRoot;
     this.spawn = spawnImpl;
-    this.capabilities = { ...CODEX_CAPABILITIES, ...(models.length ? { models } : {}) };
+    this.capabilities = { ...CODEX_CAPABILITIES, models: [...new Set([...models, AUTO_MODEL])] };
   }
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
   folderFor(persona, project) {
@@ -480,11 +491,16 @@ export class CodexAdapter {
       for (const x of pending.values()) x.reject(err);
       pending.clear();
     };
-    /** Answers an app-server approval or elicitation request, unless the host already has (remote turns). */
+    /**
+     * Answers an app-server approval or elicitation request, unless the host already has (remote turns). On a host,
+     * its card names the request as the daemon does (codex:<id>), so the daemon’s expiry of it reaches the card.
+     */
     const answer = async (msg) => {
       let reply;
+      const hostPrompt = remote ? codexPromptId(msg.id) : null;
+      const asking = hostPrompt ? { ...ctx, askPermission: (/** @type {any} */ req) => ctx.askPermission({ ...req, hostPrompt }) } : ctx;
       try {
-        reply = { id: msg.id, result: await codexApproval(ctx, msg) };
+        reply = { id: msg.id, result: await codexApproval(asking, msg) };
       } catch (error) {
         reply = { id: msg.id, error: { code: -32601, message: error.message } };
       }
@@ -637,6 +653,7 @@ export class CodexAdapter {
       await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
       send({ method: 'initialized', params: {} });
       const permissions = codexPermissions(ctx.persona, cwd);
+      const model = codexModelOf(ctx.persona);
       const fork = ctx.state.fork ?? ctx.state.forkFrom;
       const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
       const opened =
@@ -644,7 +661,7 @@ export class CodexAdapter {
           ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true })
           : sourceThreadId
             ? await request('thread/resume', { threadId: sourceThreadId, cwd })
-            : await request('thread/start', { cwd, ...(codexModelOf(ctx.persona) ? { model: codexModelOf(ctx.persona) } : {}) });
+            : await request('thread/start', { cwd, ...(model ? { model } : {}) });
       const threadId = sourceThreadId;
       const id = opened?.thread?.id ?? threadId;
       if (!id) throw new Error('Codex app-server did not return a thread id.');
@@ -657,14 +674,14 @@ export class CodexAdapter {
         threadId: id,
         input: [{ type: 'text', text: inputText }],
         settings: { developer_instructions: guide },
-        ...(codexModelOf(ctx.persona) ? { model: codexModelOf(ctx.persona) } : {}),
+        ...(model ? { model } : {}),
         effort: codexEffortOf(ctx.persona),
         cwd,
         ...permissions,
       });
       activeTurnId = started?.turn?.id ?? activeTurnId;
       ctx.reported?.({
-        ...(started?.turn?.model || codexModelOf(ctx.persona) ? { model: started?.turn?.model ?? codexModelOf(ctx.persona) } : {}),
+        ...(started?.turn?.model || model ? { model: started?.turn?.model ?? model } : {}),
         effort: started?.turn?.effort ?? codexEffortOf(ctx.persona),
       });
       await ended;

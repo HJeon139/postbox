@@ -17,6 +17,7 @@ const EVENT_TYPES = [
   'dataset',
   'schedule',
   'host',
+  'host.status',
   'glossary',
   'item.add',
   'item.patch',

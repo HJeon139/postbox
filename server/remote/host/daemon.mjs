@@ -70,6 +70,7 @@ import {
   PROTOCOL_VERSION,
   parseLine,
   REMOTE_LIMITS,
+  SIGN_IN_CHECK_MS,
   socketPathFits,
   TURN_FILES,
   validateExitRecord,
@@ -202,6 +203,13 @@ export function createDaemon({
   const killTimers = new Map();
   /** @type {Map<string, Map<number, import('./proc.mjs').ToolGroup>>} tool shells’ groups Stop recorded, per turn */
   const shells = new Map();
+  /**
+   * Turns asked to stop while this daemon didn’t have them: a start for one is refused (stop). In memory only, since a
+   * restart ends every channel a late start could come on.
+   */
+  const stoppedFirst = new Set();
+  /** @type {Map<string, Promise<void>>} starts under way, per turn, until they’ve answered */
+  const starting = new Map();
   /** Problems found since the start, beside programs’ (lingering, say), for each welcome. */
   /** @type {Map<string, string>} */
   const problems = new Map();
@@ -437,6 +445,7 @@ export function createDaemon({
     stop: (c, m) => stop(c, m),
     ack: (c, m) => ack(c, m),
     remove: (c) => remove(c),
+    check: (c) => check(c),
   };
 
   /** @param {Conn} c @param {any} m */
@@ -524,8 +533,31 @@ export function createDaemon({
     return { dir: `${home === '/' ? '' : home}/.kiro/agents` };
   }
 
-  /** @param {Conn} c @param {any} m */
+  /**
+   * A start, once for its turn at a time, and none for a turn already asked to stop (stop).
+   * @param {Conn} c @param {any} m
+   */
   async function start(c, m) {
+    if (stoppedFirst.has(m.turn))
+      return fail(c, 'turn-stopped', `Turn ${m.turn} was stopped before it started here, so it isn’t started now.`, 'start', m.turn);
+    if (starting.has(m.turn)) return fail(c, 'turn-exists', `There’s already a turn ${m.turn} on this host.`, 'start', m.turn);
+    const run = startTurn(c, m);
+    starting.set(
+      m.turn,
+      run.then(
+        () => {},
+        () => {},
+      ),
+    );
+    try {
+      return await run;
+    } finally {
+      starting.delete(m.turn);
+    }
+  }
+
+  /** @param {Conn} c @param {any} m */
+  async function startTurn(c, m) {
     const failStart = (code, text) => fail(c, code, text, 'start', m.turn);
     const harness = programs?.harnesses.find((h) => h.name === m.harness);
     if (!harness?.path)
@@ -563,6 +595,9 @@ export function createDaemon({
       // Outside the turn folder (a Kiro home’s agents folder), recorded in it, so it goes when the turn ends.
       if (m.agentFile && agents && 'dir' in agents) await cleanup.writeAgentFile(m.turn, { dir: agents.dir, name: m.agentFile.name, text: m.agentFile.text });
       await writeAtomic(`${dir}/${TURN_FILES.start}`, JSON.stringify(record));
+      // A stop came meanwhile (from the next channel, this one having dropped): nothing runs. Checked just before the
+      // launch, so a stop after it waits for the runner and stops it.
+      if (stoppedFirst.has(m.turn)) throw Object.assign(new Error('it was stopped before its runner launched.'), { code: 'turn-stopped' });
       const { pid, scoped, lingerOff } = await launchRunner({ node, turn: m.turn, paths: p, scope: settings.detach, spawn, logind });
       log(`Started turn ${m.turn} (${m.harness}), runner ${pid}${scoped ? ', in a systemd user scope' : ''}.`);
       // Only a scoped runner ends at the last logout: without the scope (KillUserProcesses off), a probe saw turns
@@ -576,7 +611,7 @@ export function createDaemon({
       // Nothing ran, so the folder goes, and the same turn can be started again.
       await cleanup.dropAgentFile(m.turn).catch(() => {});
       await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
-      return failStart('start-failed', `Couldn’t start turn ${m.turn}: ${e.message}`);
+      return failStart(e.code === 'turn-stopped' ? 'turn-stopped' : 'start-failed', `Couldn’t start turn ${m.turn}: ${e.message}`);
     }
     // `started` means the runner is up (the protocol): its socket answers, so a `write` right after it reaches the
     // runner, and messages on a channel are handled in order, so one sent before this answer waits for it.
@@ -871,7 +906,13 @@ export function createDaemon({
    * @param {Conn} c @param {any} m
    */
   async function stop(c, m) {
+    // Marked first, so a start that comes from now on, on any connection, is refused. One already under way is waited
+    // for: it starts nothing if its runner hadn’t launched yet, and its runner is stopped below if it had.
+    stoppedFirst.add(m.turn);
+    while (starting.has(m.turn)) await starting.get(m.turn);
     if (!(await needTurn(c, m.turn, 'stop'))) return;
+    // It’s here: a start for it again is turn-exists, as ever.
+    stoppedFirst.delete(m.turn);
     await stopTurn(m.turn);
     if (!c.follows.has(`${m.turn}:out`)) follow(c, m.turn, 'out', 0, true);
   }
@@ -998,6 +1039,61 @@ export function createDaemon({
     if (idleTimer) timers.clearTimeout(idleTimer);
     if (sweepTimer) timers.clearTimeout(sweepTimer);
     onRemoved();
+  }
+
+  /** The checks’ queue. */
+  let checks = Promise.resolve();
+  /** The signInCheck processes running, so close() can end them. @type {Set<any>} */
+  const checking = new Set();
+
+  /**
+   * `check`: runs the host’s signInCheck, the one the driver’s hello sent (HOST_ENFORCED), and answers `checked`.
+   * It runs as an argument list (spawn’s program and arguments, never a shell), with no stdin and its output
+   * discarded, in the home folder and the daemon’s environment, and is killed at SIGN_IN_CHECK_MS. It isn’t awaited,
+   * so the connection’s other messages go on while it runs. Checks run one at a time, so the `checked` answers come
+   * in the order the checks did.
+   * @param {Conn} c
+   */
+  function check(c) {
+    const argv = settings.signInCheck;
+    if (!Array.isArray(argv) || !argv.length)
+      return fail(c, 'no-check', 'This host has no signInCheck in its settings, so there’s no sign-in check to run.', 'check');
+    checks = checks.then(async () => {
+      const r = await runCheck(argv);
+      send(c, 'checked', { ok: r.code === 0, code: r.code, at: now() });
+    });
+  }
+  /** @param {string[]} argv @returns {Promise<{ code: number | null }>} */
+  function runCheck(argv) {
+    return new Promise((resolve) => {
+      let done = false;
+      /** @type {any} */
+      let child = null;
+      let timer = null;
+      /** @param {number | null} code @param {string} [why] */
+      const finish = (code, why) => {
+        if (done) return;
+        done = true;
+        if (timer) timers.clearTimeout(timer);
+        checking.delete(child);
+        if (why) log(`The sign-in check ${argv[0]} ${why}`);
+        resolve({ code });
+      };
+      try {
+        child = spawn(argv[0], argv.slice(1), { cwd: home, env, stdio: ['ignore', 'ignore', 'ignore'], shell: false });
+      } catch (e) {
+        return finish(null, `couldn’t start: ${e.message}`);
+      }
+      checking.add(child);
+      child.on('error', (e) => finish(null, `couldn’t start: ${e.message}`));
+      child.on('exit', (code, signal) => finish(signal ? null : code, signal ? `ended on ${signal}.` : undefined));
+      timer = timers.setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {}
+        finish(null, `didn’t finish within ${Math.round(SIGN_IN_CHECK_MS / 1000)} s, so it was stopped.`);
+      }, SIGN_IN_CHECK_MS);
+    });
   }
 
   /** Sweeps every sweepMs (cleanup.mjs); the timer is unref’d, like the others. */
@@ -1130,6 +1226,11 @@ export function createDaemon({
       for (const t of killTimers.values()) timers.clearTimeout(t);
       killTimers.clear();
       shells.clear();
+      for (const child of checking) {
+        try {
+          child.kill('SIGKILL');
+        } catch {}
+      }
       for (const c of [...conns]) c.close();
     },
   };

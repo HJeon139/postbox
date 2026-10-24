@@ -4,6 +4,7 @@
 // runner.json a real one would; a test plays the harness by appending to out.jsonl and writing exit.json.
 
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -15,7 +16,17 @@ import { createDaemon, EXIT, HOST_ENTRY, LOCK_STALE_MS, main, SERVE_START_MS, ta
 import { hostVersion } from '../server/remote/host/paths.mjs';
 import { findPrograms, parseVersion } from '../server/remote/host/programs.mjs';
 import { createSshConnection } from '../server/remote/ssh.mjs';
-import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, REMOTE_LIMITS, TURN_FILES, validateStartRecord } from '../shared/remote-protocol.mjs';
+import {
+  encode,
+  hostPaths,
+  MESSAGE_FILE,
+  message,
+  PROTOCOL_VERSION,
+  REMOTE_LIMITS,
+  SIGN_IN_CHECK_MS,
+  TURN_FILES,
+  validateStartRecord,
+} from '../shared/remote-protocol.mjs';
 import { defaultHostSettings } from '../shared/remote-settings.mjs';
 import { readMessages } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
@@ -67,9 +78,11 @@ function fakeClock(t0 = 1_760_000_000_000) {
 
 /**
  * A daemon over a temp home, with fake runners.
- * @param {{ token?: string | null, same?: boolean, clock?: ReturnType<typeof fakeClock>, onIdle?: () => void, settings?: object, uid?: number }} [o]
+ * @param {{ token?: string | null, same?: boolean, clock?: ReturnType<typeof fakeClock>, onIdle?: () => void, settings?: object, uid?: number, spawn?: any, broker?: any }} [o]
+ *   spawn: the daemon’s own spawn, for the sign-in check (the runners are launchRunner’s, faked here). broker: in place
+ *   of the daemon’s own.
  */
-function setup({ token = TOKEN, same = true, clock, onIdle, uid } = {}) {
+function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, broker } = {}) {
   // A short folder name: a turn’s socket path must fit Linux’s 108 bytes, and macOS’s tmpdir is long.
   const home = mkdtempSync(join(tmpdir(), 'pbd-'));
   const p = hostPaths(home, VERSION);
@@ -86,10 +99,10 @@ function setup({ token = TOKEN, same = true, clock, onIdle, uid } = {}) {
   /** What the fake launchRunner reports: runner.mjs’s scoped and lingerOff. */
   /**
    * What the fake proc reports: toolGroups’ answers, one per call (null: the processes can’t be listed), and the
-   * groups liveGroups finds gone.
-   * @type {{ same: boolean, scoped: boolean, lingerOff: boolean, refuse: string, groups: any[][] | null, goneGroups: number[] }}
+   * groups liveGroups finds gone. launching: what launchRunner waits for before its runner is up.
+   * @type {{ same: boolean, scoped: boolean, lingerOff: boolean, refuse: string, groups: any[][] | null, goneGroups: number[], launching: Promise<void> | null }}
    */
-  const state = { same, scoped: false, lingerOff: false, refuse: '', groups: [], goneGroups: [] };
+  const state = { same, scoped: false, lingerOff: false, refuse: '', groups: [], goneGroups: [], launching: null };
   const groupLookups = [];
   const daemon = createDaemon({
     home,
@@ -97,6 +110,7 @@ function setup({ token = TOKEN, same = true, clock, onIdle, uid } = {}) {
     ...(clock ? { now: clock.now, timers: clock.timers } : {}),
     async launchRunner(o) {
       launches.push(o);
+      if (state.launching) await state.launching;
       if (state.refuse) {
         // As runner.mjs refuses a turn: the reason in err.log, no runner.json, and it exits.
         writeFileSync(o.paths.turn(o.turn, TURN_FILES.err), `postbox runner: ${state.refuse}\n`, { mode: 0o600 });
@@ -130,6 +144,8 @@ function setup({ token = TOKEN, same = true, clock, onIdle, uid } = {}) {
     pollMs: 10,
     stopGraceMs: 5000,
     ...(uid === undefined ? {} : { uid }),
+    ...(spawn ? { spawn } : {}),
+    ...(broker ? { broker } : {}),
   });
   const connect = () => {
     const input = new PassThrough();
@@ -165,6 +181,15 @@ function makeTurn(p, turn, { out = '', exit = null, start = true, harness = 'cla
   writeFileSync(p.turn(turn, TURN_FILES.runner), JSON.stringify({ turn, version: VERSION, pid: 777, bootId: BOOT, startTime: 99 }));
   writeFileSync(p.turn(turn, TURN_FILES.out), out);
   if (exit) writeFileSync(p.turn(turn, TURN_FILES.exit), JSON.stringify(exit));
+}
+
+/** Waits for fn() to be true, a few ms at a time. */
+async function until(fn, what, ms = 2000) {
+  const end = Date.now() + ms;
+  while (!fn()) {
+    if (Date.now() > end) assert.fail(`Timed out waiting for ${what}.`);
+    await new Promise((r) => setTimeout(r, 2));
+  }
 }
 
 /** Every `line` a connection gets for a turn until its `ended`. */
@@ -705,6 +730,83 @@ test('stop: when the host’s processes can’t be listed, the SIGKILL still rea
   }
 });
 
+/** A promise and the function that settles it. */
+function gate() {
+  /** @type {() => void} */
+  let open = () => {};
+  const shut = new Promise((resolve) => {
+    open = () => resolve(undefined);
+  });
+  return { shut, open };
+}
+
+test('#120 G10: a stop for a turn the daemon doesn’t have refuses its start from then on, on any connection: nothing runs, no folder', async () => {
+  const s = setup();
+  try {
+    const b = await hello(s);
+    b.send('stop', { turn: 't1' });
+    const e = await b.msgs.next('error');
+    assert.deepEqual([e.code, e.re, e.turn], ['no-turn', 'stop', 't1']);
+    // Its start was on its way over a channel that dropped, and arrives after, on another connection.
+    const c = await hello(s, { takeover: true });
+    c.send('start', startMsg('t1'));
+    const refused = await c.msgs.next('error');
+    assert.deepEqual([refused.code, refused.re, refused.turn], ['turn-stopped', 'start', 't1']);
+    assert.equal(s.launches.length, 0, 'no runner');
+    assert.equal(existsSync(s.p.turn('t1')), false, 'no turn folder');
+    // Asked again, the stop still finds no turn; other turns start as ever.
+    c.send('stop', { turn: 't1' });
+    assert.equal((await c.msgs.next('error')).code, 'no-turn');
+    c.send('start', startMsg('t2'));
+    await c.msgs.next('started');
+  } finally {
+    s.done();
+  }
+});
+
+test('#120 G10: a stop that comes, on another connection, while a start is under way before its runner launches: nothing runs, and the stop finds no turn', async () => {
+  const g = gate();
+  const s = setup({ broker: { starting: () => g.shut } });
+  try {
+    const a = await hello(s);
+    a.send('start', startMsg('t1'));
+    await waitFor(() => existsSync(s.p.turn('t1')));
+    // A’s channel dropped with the start under way; Postbox connects again and stops the turn.
+    const b = await hello(s, { takeover: true });
+    b.send('stop', { turn: 't1' });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(b.msgs.messages.filter((m) => m.type === 'error').length, 0, 'the stop waits for the start');
+    g.open();
+    const e = await b.msgs.next('error');
+    assert.deepEqual([e.code, e.re, e.turn], ['no-turn', 'stop', 't1']);
+    assert.equal(s.launches.length, 0, 'no runner');
+    assert.equal(existsSync(s.p.turn('t1')), false, 'no turn folder');
+  } finally {
+    s.done();
+  }
+});
+
+test('#120 G10: a stop that comes, on another connection, while a launched runner comes up waits for it, then stops it', async () => {
+  const g = gate();
+  const s = setup();
+  s.state.launching = g.shut;
+  try {
+    const a = await hello(s);
+    a.send('start', startMsg('t1'));
+    await waitFor(() => s.launches.length === 1);
+    const b = await hello(s, { takeover: true });
+    b.send('stop', { turn: 't1' });
+    await new Promise((r) => setTimeout(r, 20));
+    g.open();
+    await waitFor(() => s.kills.length === 1);
+    const pid = JSON.parse(readFileSync(s.p.turn('t1', TURN_FILES.runner), 'utf8')).pid;
+    assert.deepEqual(s.kills, [[-pid, 'SIGINT']]);
+    assert.equal(b.msgs.messages.filter((m) => m.type === 'error').length, 0);
+  } finally {
+    s.done();
+  }
+});
+
 test('scan classifies turn folders: a live runner is running, exit.json is ended, neither is interrupted', async () => {
   const s = setup();
   try {
@@ -1050,3 +1152,74 @@ async function waitFor(cond, timeoutMs = 2000) {
     await new Promise((r) => setTimeout(r, 5));
   }
 }
+
+// ── The sign-in check (G5) ──
+
+/** A spawn that records each call and hands back a child the test ends. */
+function checkSpawn() {
+  const calls = [];
+  const spawn = (program, args, options) => {
+    const child = Object.assign(new EventEmitter(), { kills: [], kill: (sig) => child.kills.push(sig) && true });
+    calls.push({ program, args, options, child });
+    return child;
+  };
+  return { spawn, calls };
+}
+
+test('check: runs hello’s signInCheck as an argument list, with no shell and no stdin, and answers checked with its exit', async () => {
+  const sp = checkSpawn();
+  const s = setup({ spawn: sp.spawn });
+  try {
+    const c = await hello(s, { settings: { signInCheck: ['klist', '-s', 'a b; rm -rf ~'] } });
+    c.send('check');
+    await until(() => sp.calls.length === 1, 'the check to start');
+    const [call] = sp.calls;
+    assert.equal(call.program, 'klist');
+    assert.deepEqual(call.args, ['-s', 'a b; rm -rf ~'], 'each argument as given: nothing parses them');
+    assert.equal(call.options.shell, false);
+    assert.deepEqual(call.options.stdio, ['ignore', 'ignore', 'ignore']);
+    assert.equal(call.options.cwd, s.home);
+    // Other messages go on while it runs.
+    c.send('read', { turn: 'nope', from: 0 });
+    assert.equal((await c.msgs.next('error')).code, 'no-turn');
+    call.child.emit('exit', 0, null);
+    const ok = await c.msgs.next('checked');
+    assert.equal(ok.ok, true);
+    assert.equal(ok.code, 0);
+    c.send('check');
+    await until(() => sp.calls.length === 2, 'the second check');
+    sp.calls[1].child.emit('exit', 1, null);
+    assert.deepEqual((({ ok: o, code }) => ({ ok: o, code }))(await c.msgs.next('checked')), { ok: false, code: 1 });
+    c.send('check');
+    await until(() => sp.calls.length === 3, 'the third check');
+    const e = Object.assign(new Error('spawn klist ENOENT'), { code: 'ENOENT' });
+    sp.calls[2].child.emit('error', e);
+    assert.deepEqual((({ ok: o, code }) => ({ ok: o, code }))(await c.msgs.next('checked')), { ok: false, code: null }, 'a check that can’t start fails');
+  } finally {
+    s.done();
+  }
+});
+
+test('check: one that runs past SIGN_IN_CHECK_MS is killed and fails; without a signInCheck it’s no-check', async () => {
+  const clock = fakeClock();
+  const sp = checkSpawn();
+  const s = setup({ spawn: sp.spawn, clock });
+  try {
+    const c = await hello(s, { settings: { signInCheck: ['klist', '-s'] } });
+    c.send('check');
+    await until(() => sp.calls.length === 1, 'the check to start');
+    await clock.tick(SIGN_IN_CHECK_MS);
+    assert.deepEqual(sp.calls[0].child.kills, ['SIGKILL']);
+    const late = await c.msgs.next('checked');
+    assert.deepEqual([late.ok, late.code, late.at], [false, null, clock.now()]);
+    sp.calls[0].child.emit('exit', null, 'SIGKILL'); // its exit after the kill changes nothing
+    const d = await hello(s, { takeover: true, settings: { signInCheck: null } });
+    d.send('check');
+    const none = await d.msgs.next('error');
+    assert.equal(none.code, 'no-check');
+    assert.equal(none.re, 'check');
+    assert.equal(sp.calls.length, 1);
+  } finally {
+    s.done();
+  }
+});

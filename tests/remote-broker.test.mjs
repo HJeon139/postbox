@@ -988,9 +988,9 @@ test('an expiry the broker can’t write down still ends the prompt, unanswerabl
     s.send('permission-canceled', { id: 'p1', at: clock.now() });
     await until(() => k.sent.length === 3, 'the error');
     assert.deepEqual(
-      k.sent.slice(2).map((m) => [m.type, m.code, m.re, m.turn]),
-      [['error', 'internal', 'prompt-expired', 't1']],
-      'no prompt-expired, as if it were on disk',
+      k.sent.slice(2).map((m) => [m.type, m.code, m.re, m.turn, m.id]),
+      [['error', 'internal', 'prompt-expired', 't1', 'p1']],
+      'no prompt-expired, as if it were on disk; the error names the prompt, so Postbox ends exactly its card',
     );
     assert.match(k.sent[2].message, /couldn’t write down that prompt p1 in turn t1 was canceled/);
     // The shim gave up on it all the same: it can’t be answered, and isn’t sent again.

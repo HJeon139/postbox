@@ -14,12 +14,15 @@
 //   d.addTurn(turn, opts)  a turn that was already on the host before Postbox connected
 //   d.append(turn, text)   a new out.jsonl line, sent to whoever follows the turn
 //   d.end(turn, exit?)     the harness exits: exit.json, then `ended` to followers
+//   d.interrupt(turn)      the runner is gone with no exit.json (a reboot, a SIGKILL): `ended` with exit null
 //   d.appendIn(turn, text) a new in.jsonl line (a write the daemon made, or one a test plays late), sent to followers
 //   d.caughtUp(turn, log)  sends a `caught-up` held back by holdCaughtUp
 //   d.tool(turn, name, args, id?) / d.prompt(turn, request?, id?) / d.expire(turn, id)   queue the shim’s events; the
 //                          first two return the ID. A shim picks IDs per turn, so two turns may use the same one: the
-//                          fake keys what’s waiting by (turn, id), as the real daemon does.
+//                          fake keys what’s waiting by (turn, id), as the real daemon does. d.expireUnrecorded(turn, id)
+//                          ends one with the error the daemon sends when it can’t write the end down.
 //   d.received, d.sent, d.errors, d.turns, d.stops, d.answers, d.replies   what happened, to assert on
+//   d.checks               each signInCheck a `check` ran, as the argv its connection’s hello sent
 // and readMessages(stream) on Postbox’s side, to await what the daemon sent.
 
 import { readFileSync } from 'node:fs';
@@ -51,11 +54,13 @@ export const FIXTURE_PROMPT = JSON.parse(readFileSync(new URL('permission-prompt
 /**
  * @param {{ token?: string, lines?: string[], autoEnd?: boolean, exit?: { code: number | null, signal: string | null },
  *           stopExit?: { code: number | null, signal: string | null }, home?: string, now?: () => number,
- *           harnesses?: string[], problems?: { code: string, message: string }[], holdCaughtUp?: ('out' | 'in')[] }} [opts]
+ *           harnesses?: string[], problems?: { code: string, message: string }[], holdCaughtUp?: ('out' | 'in')[],
+ *           check?: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }> }} [opts]
  *   lines: what each started turn’s out.jsonl holds (the fixture by default). autoEnd: a started turn has already
  *   exited with `exit` (true by default); false keeps it running until end() or a stop. stopExit: how a stopped turn
  *   ends (SIGINT, C5). harnesses: the ones the host has (all three by default). holdCaughtUp: logs whose `caught-up`
  *   a read doesn’t send until the test calls caughtUp(), so lines can arrive between a read’s first pass and it.
+ *   check: how the host’s signInCheck exits, given the argv hello sent (exit 0 by default); a promise holds the answer.
  */
 export function createFakeDaemon({
   token = FAKE_TOKEN,
@@ -68,6 +73,7 @@ export function createFakeDaemon({
   harnesses = [...HARNESSES],
   problems = [],
   holdCaughtUp = [],
+  check = () => ({ code: 0 }),
 } = {}) {
   /** @type {Map<string, FakeTurn>} */
   const turns = new Map();
@@ -87,6 +93,8 @@ export function createFakeDaemon({
   const sent = [];
   const errors = [];
   const stops = [];
+  /** @type {string[][]} */
+  const checks = [];
   let ids = 0;
   /** @type {Set<Conn>} */
   const conns = new Set();
@@ -95,7 +103,7 @@ export function createFakeDaemon({
   /** @type {Conn} */
   let current;
 
-  /** @typedef {{ stdin: PassThrough, stdout: PassThrough, ready: boolean, closed: boolean, follows: Map<string, true>, held?: { turn: string, log: string }[] }} Conn */
+  /** @typedef {{ stdin: PassThrough, stdout: PassThrough, ready: boolean, closed: boolean, follows: Map<string, true>, held?: { turn: string, log: string }[], settings?: any }} Conn */
 
   const send = (c, type, body) => {
     if (c.closed) return;
@@ -198,13 +206,24 @@ export function createFakeDaemon({
       const t = turns.get(m.turn);
       if (!t) return fail(c, 'no-turn', `There’s no turn ${m.turn} on this host.`, 'stop', m.turn);
       stops.push(m.turn);
+      const reading = c.follows.has(`${m.turn}:out`);
       finish(t, stopExit);
+      // As the real daemon’s quiet follower: a connection that isn’t reading the turn hears its `ended` on its own.
+      if (!reading) sendEnded(c, t);
     },
     ack(c, m) {
       const t = turns.get(m.turn);
       if (!t) return fail(c, 'no-turn', `There’s no turn ${m.turn} on this host.`, 'ack', m.turn);
       if (m.upTo > size(t.out)) return fail(c, 'bad-offset', `${m.upTo} is past the end of ${m.turn}’s log.`, 'ack', m.turn);
       t.acked = Math.max(t.acked, m.upTo);
+    },
+    // As the real daemon does: the signInCheck this connection’s hello sent, or no-check.
+    async check(c) {
+      const argv = c.settings?.signInCheck;
+      if (!argv) return fail(c, 'no-check', 'This host has no signInCheck in its settings.', 'check');
+      checks.push(argv);
+      const { code } = await check(argv);
+      send(c, 'checked', { ok: code === 0, code, at: now() });
     },
     remove(c) {
       for (const t of turns.values()) finish(t, stopExit);
@@ -230,6 +249,7 @@ export function createFakeDaemon({
     }
     driver = c;
     c.ready = true;
+    c.settings = m.settings ?? {};
     send(c, 'welcome', {
       version: PROTOCOL_VERSION,
       home,
@@ -297,6 +317,7 @@ export function createFakeDaemon({
     stops,
     answers,
     replies,
+    checks,
     /**
      * A turn already on the host: running, ended (with `exit`) or interrupted.
      * @param {string} turn @param {{ harness?: string, stdin?: string, lines?: string[], exit?: { code: number | null, signal: string | null } | null, interrupted?: boolean }} [o]
@@ -333,6 +354,16 @@ export function createFakeDaemon({
     end(turn, how = exit) {
       finish(need(turn), how);
     },
+    /** @param {string} turn */
+    interrupt(turn) {
+      const t = need(turn);
+      if (t.exit || t.interrupted) return;
+      t.interrupted = true;
+      for (const c of followers(turn, 'out')) {
+        sendEnded(c, t);
+        c.follows.delete(`${turn}:out`);
+      }
+    },
     /** @param {string} turn @param {string} name @param {object} args @param {string} [id]  the shim’s ID; a fresh one by default */
     tool(turn, name, args, id = `tool-${++ids}`) {
       if (tools.has(key(turn, id))) throw new Error(`The fake daemon already has tool call ${id} for turn ${turn}.`);
@@ -351,6 +382,16 @@ export function createFakeDaemon({
     expire(turn, id) {
       if (!prompts.delete(key(turn, id))) throw new Error(`The fake daemon has no prompt ${id} for turn ${turn}.`);
       toDriver((c) => send(c, 'prompt-expired', { id, turn, at: now() }));
+    },
+    /**
+     * A waiting prompt ended, but the daemon couldn’t write that down (the broker’s endPrompt): Postbox hears an error
+     * naming the prompt, not prompt-expired. @param {string} turn @param {string} id
+     */
+    expireUnrecorded(turn, id) {
+      if (!prompts.delete(key(turn, id))) throw new Error(`The fake daemon has no prompt ${id} for turn ${turn}.`);
+      toDriver((c) =>
+        send(c, 'error', { code: 'internal', re: 'prompt-expired', turn, id, message: `Couldn’t write down that prompt ${id} in turn ${turn} expired.` }),
+      );
     },
     /** What’s still waiting for Postbox, as (turn, id) pairs. */
     get queued() {

@@ -9,12 +9,13 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
+import { HOST_ENFORCED } from '../shared/remote-protocol.mjs';
 import { checkDestination, checkHostPath, checkHostSettings } from '../shared/remote-settings.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
-import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
+import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
@@ -40,6 +41,7 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
+import { RemoteTurns } from './remote/turns.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -91,6 +93,17 @@ const KEPT_POLL_MS = 5000;
 const MAX_JOBS = 50;
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
+/**
+ * How long removing a host waits for the turns it stopped there to end before it drops the link (#120): the daemon’s
+ * grace period between SIGINT and SIGKILL is 10 s, and the stop and its answer cross the network.
+ */
+const REMOVE_HOST_WAIT_MS = 15000;
+/** A harness’s name for the person, and the host setting that names its path (shared/remote-settings.mjs). */
+const HARNESS_LABELS = /** @type {Record<string, [string, string]>} */ ({
+  'claude-code': ['Claude Code', 'claudePath'],
+  'kiro-cli': ['Kiro CLI', 'kiroPath'],
+  codex: ['Codex', 'codexPath'],
+});
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
@@ -191,15 +204,20 @@ function blockContent(it) {
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string }, localBackends?: string[] },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
    *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
-   *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger }} deps
+   *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger,
+   *           hosts?: import('./remote/hosts.mjs').HostManager | null }} deps
    *   spawnShell: how `!command` starts a process (#67); signalProcess and listProcesses: how a background job Postbox
    *   kept running is signaled, and found to check it’s still the same process (#129). Tests pass fakes.
    *   ledger: the work ledger (#132); tests pass one with fake files and git
+   *   hosts: the remote hosts’ manager (#120, server/remote/hosts.mjs), which reaches each host’s daemon; without it,
+   *   nothing runs on a host. Tests pass a fake.
+   *   config.localBackends: the registered backends that run on this computer, when some run only on a host
+   *   (localBackends()); left out, all of them do.
    */
-  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger }) {
+  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger, hosts }) {
     this.store = store;
     this.adapters = adapters;
     this.corpus = corpus;
@@ -229,6 +247,9 @@ export class Runtime {
     this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
     // What each conversation’s agents changed, ran and published (#132).
     this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
+    // Turns of agents whose persona runs on a remote host (#120): server/remote/turns.mjs.
+    this.hosts = hosts ?? null;
+    this.remote = new RemoteTurns(this, { hosts: this.hosts });
     // Forks are gone (#228): any left from before are archived, once.
     archiveForks(this);
   }
@@ -611,8 +632,9 @@ export class Runtime {
     const where = threadId && threadId !== se.threadId && this.s.threads[threadId] ? threadId : se.threadId;
     this.answerDelivered(where, message);
     // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
-    // the context below waits for the agent’s next turn instead.
-    const slash = message.slash === true;
+    // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
+    // (#120, message.attach): it sends the agent nothing, and replays what the host has.
+    const slash = message.slash === true || typeof message.attach === 'string';
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
@@ -663,12 +685,19 @@ export class Runtime {
       asked,
     };
     this.turns.set(sessionId, turn);
+    // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
+    const hostId = this.remote.hostOf(persona);
+    if (hostId) this.remote.begin(turn, hostId, adapter);
     // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
-    // flagged; the adapter knows the agent’s folder.
+    // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
     const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
     this.ledger.startTurn(turn, {
       se,
-      folder: adapter?.folderFor ? Promise.resolve().then(() => adapter.folderFor(persona, project)) : persona?.folder || project?.folder || null,
+      folder: hostId
+        ? null
+        : adapter?.folderFor
+          ? Promise.resolve().then(() => adapter.folderFor(persona, project))
+          : persona?.folder || project?.folder || null,
       projectFolder: project?.folder ?? null,
     });
     // Rules the person allowed once (from a refusal card) apply to this turn only.
@@ -685,7 +714,15 @@ export class Runtime {
       finishedAt: null,
     });
     const ctx = this.turnContext(se, turn);
-    const run = Promise.resolve().then(() => adapter.deliver(this.s.sessions[sessionId], message, ctx));
+    // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
+    const run = Promise.resolve().then(async () => {
+      // A backend registered for hosts only (its CLI isn’t here) never runs here: one placed here since is refused.
+      if (!hostId && !this.runsHere(persona?.backend ?? 'mock')) {
+        const text = `@${se.handle}’s turn didn’t start: ${this.notHere(persona?.backend ?? 'mock')}`;
+        throw Object.assign(new Error(text), { userMessage: text });
+      }
+      return adapter.deliver(this.s.sessions[sessionId], hostId ? await this.remote.prepare(turn, ctx, message) : message, ctx);
+    });
     turn.exited = run.then(
       () => {},
       () => {},
@@ -744,8 +781,12 @@ export class Runtime {
       },
       /** Where an attachment can be read on disk, or null. */
       pathOf: (a) => rt.attachmentPath(turn.threadId, a),
-      /** Asks the person in the thread; resolves to { allow, message?, updatedInput?, updatedPermissions? }. */
-      askPermission: (req) => rt.requestPermission(turn.sessionId, req),
+      /**
+       * Asks the person in the thread; resolves to { allow, message?, updatedInput?, updatedPermissions? }. On a remote
+       * turn, req.hostPrompt names the prompt as the host knows it (a Codex request’s codex:<id>), so the host’s
+       * expiry of it marks the card (#120).
+       */
+      askPermission: (req) => (turn.remote ? rt.remote.ask(turn, req) : rt.requestPermission(turn.sessionId, req)),
       /** Permission rules the person allowed for this turn only, after a refusal (Claude Code rule syntax). */
       allowOnce: [...turn.allowOnce],
       /** Rules the person made for this conversation only (#66): { allow, ask, deny }, passed every turn. */
@@ -959,6 +1000,8 @@ export class Runtime {
     turn.closed = true;
     this.turns.delete(turn.sessionId);
     this.settleSubagentSteps(turn);
+    // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
+    if (turn.remote) err = this.remote.ended(turn, err);
     this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
@@ -997,7 +1040,7 @@ export class Runtime {
           text: '',
           status: 'failed',
         }).id;
-      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null, asked: askedOf(turn) });
+      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null, asked: askedOf(turn), ...(err.remote ? { remote: err.remote } : {}) });
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
@@ -1137,13 +1180,16 @@ export class Runtime {
    * and the session shows as stopping until it has exited: its next turn waits for that (#126).
    * jobs: what happens to the background jobs the turn started (#129): 'stop' them with it, or 'keep' them running,
    * each with its own Stop.
-   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words.
-   * @param {string} sessionId @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' }} [opts]
+   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words; 'hung' when a remote
+   * turn had no output for its host’s stallTimeout (#120), with why: what the person sees.
+   * A remote turn’s Stop is always a plain stop: the daemon stops the whole turn, so no job is kept (#120).
+   * @param {string} sessionId
+   * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung', why?: string }} [opts]
    */
-  stop(sessionId, { silent = false, jobs = 'stop', by = 'you' } = {}) {
+  stop(sessionId, { silent = false, jobs = 'stop', by = 'you', why } = {}) {
     const turn = this.turns.get(sessionId);
     if (!turn) return false;
-    const keep = jobs === 'keep' ? this.runningJobs(sessionId, turn.id) : [];
+    const keep = jobs === 'keep' && !turn.remote ? this.runningJobs(sessionId, turn.id) : [];
     turn.keepJobs = new Set(keep.map((j) => j.id));
     this.exiting.set(sessionId, { turn, held: [], silent });
     // The adapter reads which jobs to keep from the reason; anything else only sees that the turn was aborted.
@@ -1175,7 +1221,8 @@ export class Runtime {
     if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
     // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
     const se = this.s.sessions[sessionId];
-    if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : 'stopped');
+    if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : by === 'hung' ? 'hung' : 'stopped');
+    if (turn.remote) this.remote.stopped(turn, { by, why });
     // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
     setTimeout(() => {
       if (this.exiting.get(sessionId)?.turn !== turn) return;
@@ -1208,8 +1255,10 @@ export class Runtime {
     const se = this.s.sessions[turn.sessionId];
     if (!se) return;
     // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
+    // A remote turn Postbox stopped because it hung says so instead (#120).
+    const stoppedBy = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id ? se.remoteTurn.message : 'Stopped by you';
     if (se.state === 'stopping' || se.currentStep === 'Stopping')
-      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: 'Stopped by you', finishedAt: Date.now(), sideTurn: null });
+      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
     else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
     const held = se.archived || se.deleting ? [] : ex.held;
     // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
@@ -1238,7 +1287,8 @@ export class Runtime {
     const turn = this.turns.get(sessionId);
     if (!turn) return { stopped: false };
     if (turnId && turnId !== turn.id) return { stopped: false, ended: true };
-    const running = this.runningJobs(sessionId, turn.id);
+    // A remote turn’s jobs stop with it (#120), so there’s nothing to ask.
+    const running = turn.remote ? [] : this.runningJobs(sessionId, turn.id);
     if (running.length && jobs !== 'stop' && jobs !== 'keep') {
       const ask = { jobs: running.length, text: stopAskText(se.handle, running.length), turnId: turn.id };
       this.updateSession(sessionId, { stopAsk: { ...ask, at: Date.now() } });
@@ -1448,6 +1498,8 @@ export class Runtime {
       return { ok: true };
     }
     const turn = this.turns.get(sessionId);
+    // On a host, the daemon stops a turn as a whole (#120): a job there has no Stop of its own.
+    if (turn?.id === job.turnId && turn.remote) throw httpError(409, `A job on a host stops with its turn. Stop @${se.handle} to stop it.`);
     const stopJob = turn?.id === job.turnId ? turn.control?.stopJob : null;
     if (typeof stopJob !== 'function') throw httpError(409, `Postbox can’t reach that job’s process. Stop @${se.handle} to stop it.`);
     const mark = (stopping) =>
@@ -1468,7 +1520,9 @@ export class Runtime {
    */
   async stopTurns({ graceMs = 4000 } = {}) {
     this.closing = true;
-    for (const id of [...this.turns.keys()]) this.stop(id, { silent: true, by: 'shutdown' });
+    // A turn on a remote host doesn’t need Postbox: it goes on there, and is attached again after the restart (#120).
+    for (const [id, turn] of [...this.turns]) if (!turn.remote) this.stop(id, { silent: true, by: 'shutdown' });
+    this.remote.close();
     await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.');
     /** @type {NodeJS.Timeout|undefined} */
     let timer;
@@ -1477,6 +1531,25 @@ export class Runtime {
     });
     await Promise.race([Promise.all([...this.exiting.values()].map((x) => x.turn.exited)), late]);
     clearTimeout(timer);
+  }
+
+  /**
+   * At startup: turns that were running on a remote host are attached again, and replayed, once the host’s welcome
+   * lists them; one it doesn’t is Interrupted (server/remote/turns.mjs). Call after expireStalePermissions.
+   */
+  restoreRemoteTurns() {
+    this.remote.restore();
+  }
+
+  /**
+   * Resume, after a remote turn stopped with Sign-in needed or Interrupted: a turn that starts with why the last one
+   * stopped (#120, D2).
+   * @param {string} sessionId
+   */
+  resumeRemote(sessionId) {
+    const r = this.remote.resume(sessionId);
+    if (!r.ok) throw httpError(409, r.message);
+    return { ok: true };
   }
 
   /** After a restart, no background job Postbox knew of is its to track any more. */
@@ -1914,7 +1987,7 @@ export class Runtime {
   /**
    * A turn that was stopped or failed starts no lint turn, but its progress steps still running show as stalled, as
    * at a normal end (#58), and the agent hears which at the start of its next turn (#98).
-   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown'} how
+   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown' | 'hung'} how
    */
   stallLeftRunning(turn, se, how) {
     const problems = this.stallSteps(turn, se);
@@ -1922,7 +1995,7 @@ export class Runtime {
     const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
     this.tellAgent(
       se.id,
-      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
+      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
     );
   }
 
@@ -2116,8 +2189,10 @@ export class Runtime {
    * @param {string} sessionId
    * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
    * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
+   * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`.
    * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
-   *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null }} req
+   *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null,
+   *           hostPrompt?: { hostId: string, turn: string, id: string } | null }} req
    * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
    */
   async requestPermission(sessionId, req) {
@@ -2127,7 +2202,10 @@ export class Runtime {
   }
 
   /** @param {string} sessionId @param {Parameters<Runtime['requestPermission']>[1]} req */
-  askPerson(sessionId, { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false, draft }) {
+  askPerson(
+    sessionId,
+    { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false, draft, hostPrompt = null },
+  ) {
     const se = this.s.sessions[sessionId];
     const turn = this.turns.get(sessionId);
     if (!se || !turn) return Promise.resolve({ allow: false, message: 'The turn has ended.' });
@@ -2147,6 +2225,7 @@ export class Runtime {
       always: this.alwaysFor(se, { tool, input, suggestions, suppressAlways }),
       // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
       who: whoAsked(turn, agentId, toolUseId),
+      ...(hostPrompt ? { remote: { hostId: hostPrompt.hostId, turn: hostPrompt.turn, prompt: hostPrompt.id } } : {}),
       status: 'open',
     });
     // The text so far is finished; the reply continues below the card.
@@ -2337,10 +2416,14 @@ export class Runtime {
     return { ok: true };
   }
 
-  /** After a restart, no tool call is waiting any more, so open cards can’t be answered. */
+  /**
+   * After a restart, no tool call is waiting any more, so open cards can’t be answered. A card of a turn still on a
+   * remote host stays open: the host sends its prompt again, or says it expired (#120).
+   */
   expireStalePermissions() {
     for (const [threadId, items] of Object.entries(this.s.items))
-      for (const it of items) if (it.kind === 'permission' && it.status === 'open') this.patchItem(threadId, it.id, { status: 'expired' });
+      for (const it of items)
+        if (it.kind === 'permission' && it.status === 'open' && !this.remote.keepsCard(it)) this.patchItem(threadId, it.id, { status: 'expired' });
   }
 
   // ── The permissions panel (#66) ────────────────────────────────────────────────────
@@ -2601,6 +2684,9 @@ export class Runtime {
   /**
    * The folder a conversation’s `!` commands run in: where the agent that replies there works, as its adapter decides
    * (its own folder, the project’s, or a workspace of its own), else the project’s.
+   * `!` runs on this computer even when that agent runs on a host (#67, #120): then it’s the project’s folder here,
+   * else the workspace of its own the agent would have here, never a path on the host, and `host` names the host.
+   * @param {string} threadId @returns {Promise<{ folder: string|null, host: string|null }>}
    */
   async commandFolder(threadId) {
     const t = this.thread(threadId);
@@ -2609,8 +2695,15 @@ export class Runtime {
     const persona = se ? this.personaFor(se) : null;
     const project = this.s.projects[t.projectId] ?? null;
     const adapter = persona ? this.adapters.get(persona.backend) : null;
-    if (adapter?.folderFor) return adapter.folderFor(persona, project);
-    return persona?.folder || project?.folder || null;
+    const hostId = persona?.remote?.hostId ?? null;
+    if (hostId) {
+      const host = this.s.hosts?.[hostId]?.name ?? 'its host';
+      // Its own folder is left out: it’s where the agent works, and that’s on the host.
+      const here = { ...persona, folder: '' };
+      return { folder: (adapter?.folderFor ? await adapter.folderFor(here, project) : project?.folder) || null, host };
+    }
+    if (adapter?.folderFor) return { folder: await adapter.folderFor(persona, project), host: null };
+    return { folder: persona?.folder || project?.folder || null, host: null };
   }
 
   /**
@@ -2627,22 +2720,25 @@ export class Runtime {
     const line = String(command ?? '').trim();
     if (!line) throw httpError(422, 'Write a command after the !.');
     if (line.length > 10000) throw httpError(422, 'A command is limited to 10,000 characters.');
-    const cwd = await this.commandFolder(threadId);
+    const { folder: cwd, host } = await this.commandFolder(threadId);
     if (!cwd) throw httpError(409, 'This conversation has no folder to run commands in. Give the project or the agent a folder first.');
+    // Said once, as the output’s first line, when the agent here runs on a host: you, and the agents, see where it ran.
+    const note = host ? `! commands run on this computer, not on ${host}.\n` : '';
     const startedAt = Date.now();
     const it = this.addItem(threadId, {
       kind: 'command',
       command: line,
       cwd,
+      ...(host ? { notOn: host } : {}),
       status: 'running',
-      text: '',
+      text: note,
       cut: false,
       exitCode: null,
       signal: null,
       startedAt,
     });
-    let out = ''; // the end of the output so far, at most twice the bound between flushes
-    let sent = 0; // characters already sent as item.text, before the output was cut
+    let out = note; // the end of the output so far, at most twice the bound between flushes
+    let sent = note.length; // characters already sent as item.text, before the output was cut
     let cut = false;
     let refreshed = 0; // refreshes of the item’s text since it was cut
     let refreshedAt = 0;
@@ -2820,8 +2916,7 @@ export class Runtime {
   }
 
   async attachClaudeSession({ claudeSessionId, projectId, handle }) {
-    if (!this.adapters.names().includes('claude-code'))
-      throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
+    if (!this.runsHere('claude-code')) throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
     const cs = (await listClaudeSessions({ root: this.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
     if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
     if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
@@ -2965,12 +3060,25 @@ export class Runtime {
 
   // ── Personas ───────────────────────────────────────────────────────────────────────
 
+  /**
+   * The model a persona of this backend gets when it names none: the mock’s, else Claude’s default, unless the backend
+   * offers AUTO_MODEL and not Claude’s default. That’s Codex, which runs none of Claude’s models and always offers
+   * AUTO_MODEL, alone when its CLI gave no list (Codex only on a host, #120): Claude’s default would fail its turn. Kiro
+   * runs Claude’s models, listed or not, and the Antigravity CLI puts its own default in place of Claude’s.
+   * @param {string} backend
+   */
+  defaultModelFor(backend) {
+    if (backend === 'mock') return 'mock';
+    const offered = this.adapters.names().includes(backend) ? this.adapters.get(backend).capabilities?.models : null;
+    return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
+  }
+
   createPersona({
     handle,
     description = '',
     instructions = '',
     backend = 'mock',
-    model = backend === 'mock' ? 'mock' : DEFAULT_MODEL,
+    model = this.defaultModelFor(backend),
     effort = DEFAULT_EFFORT,
     permissionMode = 'auto',
     usesHostSetup = true,
@@ -2980,23 +3088,25 @@ export class Runtime {
     tools = [],
     examples = [],
     createdBy = null,
+    remote = null,
   }) {
     handle = String(handle ?? '')
       .replace(/^@/, '')
       .trim();
     if (!/^[a-z][a-z0-9_-]{1,23}$/i.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
-    if (!this.adapters.names().includes(backend))
-      throw httpError(422, `“${backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}. See README, “Run real agents”.`);
+    if (!this.adapters.names().includes(backend)) throw httpError(422, this.notHere(backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
     checkSetup({ usesHostSetup, canPublish, mcpOff });
+    const placed = this.placement(remote, backend);
+    if (!placed && !this.runsHere(backend)) throw httpError(422, this.notHere(backend));
     const p = {
       id: newId('pe'),
       handle,
       description,
       instructions,
-      model: String(model || DEFAULT_MODEL),
+      model: String(model || this.defaultModelFor(backend)),
       effort,
       backend,
       permissionMode,
@@ -3007,6 +3117,7 @@ export class Runtime {
       tools: [...new Set(tools)],
       examples,
       createdBy,
+      remote: placed,
       createdAt: Date.now(),
       version: 1,
       retired: false,
@@ -3023,10 +3134,23 @@ export class Runtime {
     if (patch.effort !== undefined) checkEffort(patch.effort);
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
-    if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend))
-      throw httpError(422, `“${patch.backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}.`);
-    // A persona moved from the mock to a real model gets the default model.
-    if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: DEFAULT_MODEL };
+    if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, this.notHere(patch.backend));
+    // Where it runs (#120): checked when it changes, and when its backend does, since only some backends run on a host.
+    if (patch.remote !== undefined || (patch.backend !== undefined && p.remote)) {
+      const remote = this.placement(patch.remote === undefined ? p.remote : patch.remote, patch.backend ?? p.backend);
+      if ((remote?.hostId ?? null) !== (p.remote?.hostId ?? null)) {
+        const busy = Object.values(this.s.sessions).some((se) => se.personaId === id && (this.turns.has(se.id) || this.exiting.has(se.id)));
+        if (busy) throw httpError(409, `@${p.handle} is in the middle of a turn. Stop it or let it finish, then move it.`);
+      }
+      patch = { ...patch, remote };
+    }
+    // On this computer, its backend’s CLI must be here (one that runs only on a host is registered all the same).
+    if ((patch.backend !== undefined || patch.remote !== undefined) && !(patch.remote === undefined ? p.remote : patch.remote)) {
+      const backend = patch.backend ?? p.backend;
+      if (!this.runsHere(backend)) throw httpError(422, this.notHere(backend));
+    }
+    // A persona moved from the mock to a real model gets that backend’s default model.
+    if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: this.defaultModelFor(patch.backend) };
     const next = {
       ...p,
       ...pick(patch, [
@@ -3043,6 +3167,7 @@ export class Runtime {
         'tools',
         'examples',
         'retired',
+        'remote',
       ]),
       version: (p.version ?? 1) + 1,
     };
@@ -3051,6 +3176,64 @@ export class Runtime {
   }
 
   // ── Remote hosts (#120) ────────────────────────────────────────────────────────────
+
+  /**
+   * The backends that run on this computer: every registered one, unless config.localBackends lists them. Claude Code,
+   * Kiro CLI and Codex are registered without their CLI here too (server/index.mjs), since an agent can run them on a
+   * host; config.localBackends then leaves them out.
+   */
+  localBackends() {
+    const local = this.config.localBackends;
+    const names = this.adapters.names();
+    return Array.isArray(local) ? names.filter((n) => local.includes(n)) : names;
+  }
+
+  /** @param {string} backend */
+  runsHere(backend) {
+    return this.localBackends().includes(backend);
+  }
+
+  /** Why a backend can’t run on this computer, and what can. @param {string} backend */
+  notHere(backend) {
+    const elsewhere = this.adapters.names().includes(backend) && this.adapters.get(backend).capabilities?.remote;
+    return `“${backend}” isn’t available on this computer. Available: ${this.localBackends().join(', ')}.${elsewhere ? ' It can run on one of your hosts: choose one for this agent.' : ''} See README, “Run real agents”.`;
+  }
+
+  /**
+   * Where a persona runs: null for this computer, or { hostId } for a host Postbox knows. Only a backend that says how
+   * it runs remotely (capabilities.remote: Claude Code, Kiro CLI and Codex) can run on a host.
+   * @param {unknown} remote @param {string} backend  a registered backend @returns {{ hostId: string } | null}
+   */
+  placement(remote, backend) {
+    if (remote === null || remote === undefined) return null;
+    const r = /** @type {Record<string, unknown>} */ (remote);
+    if (typeof remote !== 'object' || Array.isArray(remote) || Object.keys(r).some((k) => k !== 'hostId'))
+      throw httpError(422, 'Where an agent runs is null, for this computer, or { hostId } for one of your hosts.');
+    const h = typeof r.hostId === 'string' && Object.hasOwn(this.s.hosts ?? {}, r.hostId) ? this.s.hosts[r.hostId] : null;
+    if (!h) throw httpError(422, 'That host doesn’t exist; it may have been removed. Pick one of your hosts, or run the agent on this computer.');
+    if (!this.adapters.names().includes(backend)) throw httpError(422, `“${backend}” isn’t available in this Postbox, so it can’t run on ${h.name} either.`);
+    if (!this.adapters.get(backend).capabilities?.remote) {
+      const can = this.adapters.names().filter((n) => this.adapters.get(n).capabilities?.remote);
+      throw httpError(
+        422,
+        `“${backend}” runs only on this computer, so this agent can’t run on ${h.name}. ${can.length ? `Backends here that can run on a host: ${can.join(', ')}.` : 'Claude Code, Kiro CLI and Codex can run on a host, and none of them is on this computer.'}`,
+      );
+    }
+    // The host’s last welcome says which harnesses its daemon found. Not known yet, the turn’s start says.
+    const w = this.hosts?.status(h.id)?.welcome;
+    if (Array.isArray(w?.harnesses)) {
+      const found = w.harnesses.find((/** @type {any} */ x) => x?.name === backend);
+      if (!found?.path) {
+        const [label, setting] = HARNESS_LABELS[backend] ?? [backend, 'its path'];
+        const looked = found?.looked?.length ? ` Postbox’s daemon looked in ${found.looked.join(', ')}.` : '';
+        throw httpError(
+          422,
+          `${label} isn’t installed on ${h.name}, so this agent can’t run there.${looked} Install it there, or set ${setting} in the host’s settings.`,
+        );
+      }
+    }
+    return { hostId: h.id };
+  }
 
   /** @param {string} id @returns {import('../shared/remote-settings.mjs').Host} */
   host(id) {
@@ -3077,28 +3260,167 @@ export class Runtime {
   }
 
   /**
-   * Renames a host or changes some of its settings; settings not given keep their values.
+   * Renames a host or changes some of its settings; settings not given keep their values. A change to one the daemon
+   * enforces (HOST_ENFORCED) reaches a connected host at once: its link opens a new session, whose hello sends it.
    * @param {string} id @param {{ name?: unknown, settings?: unknown }} patch
    */
   updateHost(id, { name, settings } = {}) {
     const h = this.host(id);
     const dest = name === undefined ? h.name : checked(checkDestination(name));
     if (this.hostNamed(dest, id)) throw httpError(409, `${dest} is already a host.`);
+    // A new destination is another machine, as far as Postbox knows: a turn there now would go on there while new
+    // ones went to the new one, and a resume would look for its session on the wrong machine.
+    if (dest !== h.name && this.remote.busyOn(id))
+      throw httpError(
+        409,
+        `${h.name} can’t be renamed while agents’ turns run there or wait to go on there: they’d carry on on ${h.name} while new ones went to ${dest}. Stop them or let them finish, then rename it.`,
+      );
     const next = { ...h, name: dest, settings: checked(checkHostSettings(settings ?? {}, h.settings)) };
     this.store.emit('host', next);
+    const enforced = HOST_ENFORCED.some((k) => JSON.stringify(h.settings?.[k]) !== JSON.stringify(next.settings?.[k]));
+    // Renamed: the manager drops the old link now, if nothing needs it, and the next use dials the new destination.
+    if (dest !== h.name) this.hosts?.refresh(id).catch((e) => console.error(`Postbox couldn’t close its link to ${h.name}: ${e?.message ?? e}`));
+    else if (enforced && this.hosts?.status(id)?.state === 'connected')
+      this.hosts.refresh(id).catch((e) => console.error(`Postbox couldn’t send ${dest} its new settings: ${e?.message ?? e}`));
     return next;
   }
 
-  /** Removes a host, and every project’s folder on it. @param {string} id */
-  removeHost(id) {
-    this.host(id);
-    // TODO(#120): stop the host’s remote turns first, once there are any (the plan’s L5).
+  /**
+   * Removes a host, and every project’s folder on it. Its turns stop first, each as Stop stops it, through the daemon,
+   * and Postbox waits up to waitMs for them to end. A turn that may still run there (its link gave up, or the stop
+   * hasn’t reached it) keeps the host: Postbox connects to ask, and until the daemon confirms each is over, the
+   * removal is refused (409) and the host’s settings and token stay, so the stops can still be delivered. So is one
+   * whose token is gone from this computer: nothing can reach the host to stop them, which isn’t a sign they stopped,
+   * so installing again is the way to stop them. Then the host manager forgets the link and its token, so nothing holds
+   * a connection to a host Postbox no longer knows.
+   * Agents placed on it keep their placement and can’t start a turn there until they’re moved.
+   * @param {string} id @param {{ waitMs?: number }} [opts]
+   */
+  async removeHost(id, { waitMs = REMOVE_HOST_WAIT_MS } = {}) {
+    const h = this.host(id);
+    const until = Date.now() + waitMs;
+    const stopped = [];
+    let given = 0;
+    // Agents placed on it, and sessions with a turn there (one that started before its agent moved, or one waiting to be
+    // attached again after a restart, which no Stop reaches).
+    const on = new Set(this.remote.sessionsOn(id));
+    for (const se of Object.values(this.s.sessions)) if (this.persona(se.personaId)?.remote?.hostId === id || se.remoteTurn?.hostId === id) on.add(se.id);
+    for (const sessionId of on) {
+      // A turn already stopping is waited for too.
+      if (this.stop(sessionId, { silent: true }) || this.exiting.has(sessionId)) stopped.push(this.exiting.get(sessionId)?.turn.exited);
+      else if (this.remote.cancel(sessionId)) given++;
+    }
+    if (stopped.length) {
+      /** @type {NodeJS.Timeout|undefined} */
+      let timer;
+      const late = new Promise((r) => {
+        timer = setTimeout(r, waitMs);
+      });
+      await Promise.race([Promise.all(stopped), late]);
+      clearTimeout(timer);
+    }
+    const { left, noToken } = await this.remote.confirmStops(id, Math.max(0, until - Date.now()));
+    if (left.length && noToken) {
+      const names = [...new Set(left.map((t) => this.s.sessions[this.remote.stopping.get(t)?.sessionId ?? '']?.handle).map((x) => (x ? `@${x}` : 'an agent')))];
+      throw httpError(
+        409,
+        `${h.name}’s token isn’t on this computer any more, so Postbox can’t reach it to stop ${left.length} running ${left.length === 1 ? 'turn' : 'turns'}: ${names.join(', ')}. Install Postbox on ${h.name} again to stop them, then remove it.`,
+      );
+    }
+    if (left.length) {
+      const reached = this.hosts?.status(id)?.state === 'connected';
+      const turns = left.length === 1 ? 'a turn' : `${left.length} turns`;
+      throw httpError(
+        409,
+        reached
+          ? `${h.name} hasn’t confirmed that ${turns} there stopped, so Postbox keeps the host until it does. Try again in a moment.`
+          : `${h.name} can’t be reached, so its running turns can’t be stopped; Postbox keeps the host until they can be. They’re stopped when it’s back, and then you can remove it.`,
+      );
+    }
+    await this.hosts?.forget(id);
+    // It may have been removed meanwhile, by a second click.
+    if (!this.s.hosts?.[id]) return { ok: true, stopped: stopped.length + given };
     for (const p of Object.values(this.s.projects)) {
       if (!p.hostFolders || !Object.hasOwn(p.hostFolders, id)) continue;
       const { [id]: _gone, ...rest } = p.hostFolders;
       this.store.emit('project', { ...p, hostFolders: rest });
     }
     this.store.emit('host', { id, removed: true });
+    return { ok: true, stopped: stopped.length + given };
+  }
+
+  /** The host manager, or a refusal that says remote hosts aren’t available. */
+  hostManager() {
+    if (!this.hosts) throw httpError(503, 'This Postbox wasn’t started with remote hosts, so it can’t connect to one.');
+    return this.hosts;
+  }
+
+  /**
+   * A host’s connection as the page shows it: the link’s state, its failure in words with the next step, what the
+   * daemon’s welcome said about the host (its home, Node, harnesses and problems, not its turns), and when Postbox last
+   * heard from it. Null before the host manager knows of it.
+   * @param {string} id
+   */
+  hostStatus(id) {
+    this.host(id);
+    const st = this.hosts?.status(id) ?? null;
+    if (!st) return null;
+    const f = st.failure ?? null;
+    const w = st.welcome ?? null;
+    return {
+      state: st.state ?? null,
+      failure: f && { kind: f.kind ?? 'failed', message: String(f.message ?? ''), next: f.next ?? null, retry: f.retry === true },
+      welcome: w && { version: w.version, home: w.home, node: w.node, harnesses: w.harnesses ?? [], problems: w.problems ?? [] },
+      lastHeard: st.lastHeard ?? null,
+    };
+  }
+
+  /**
+   * Keeps each host’s status in the state for the page (s.hostStatus), as other live state reaches it: what the host
+   * manager says now, then at each 'status' it emits. One from before a restart is replaced, since its link is gone.
+   * Any change is published, lastHeard too: the manager emits a change to lastHeard alone at most every
+   * HEARD_EVERY_MS, though every message moves it.
+   */
+  watchHosts() {
+    for (const id of Object.keys(this.s.hostStatus ?? {})) if (!this.hosts || !this.s.hosts?.[id]) this.store.emit('host.status', { id, status: null });
+    if (!this.hosts) return;
+    for (const id of Object.keys(this.s.hosts ?? {})) this.publishHostStatus(id);
+    this.hosts.on('status', (/** @type {string} */ hostId) => this.publishHostStatus(hostId));
+  }
+
+  /** @param {string|undefined} id */
+  publishHostStatus(id) {
+    if (!id || !this.s.hosts?.[id]) return;
+    const status = this.hostStatus(id);
+    const was = this.s.hostStatus?.[id];
+    if (was !== undefined && JSON.stringify(status) === JSON.stringify(was)) return;
+    this.store.emit('host.status', { id, status });
+  }
+
+  /** What installing Postbox’s host program on a host does, for the page’s confirm before it (describeInstall). @param {string} id */
+  async describeHostInstall(id) {
+    this.host(id);
+    return await this.hostManager().describeInstall(id);
+  }
+
+  /** Installs Postbox’s host program on a host. The page asks first, with describeHostInstall’s text. @param {string} id */
+  async installHost(id) {
+    this.host(id);
+    const result = await this.hostManager().install(id);
+    this.publishHostStatus(id);
+    return result ?? { ok: true };
+  }
+
+  /**
+   * Connects to a host again now, after a failure only the person could fix (a sign-in, a host key) or to stop waiting
+   * out the backoff. takeover: replace the other Postbox that’s connected to it (busy).
+   * @param {string} id @param {{ takeover?: unknown }} [opts]
+   */
+  retryHost(id, { takeover = false } = {}) {
+    this.host(id);
+    if (typeof takeover !== 'boolean') throw httpError(422, 'takeover is true or false.');
+    this.hostManager().link(id).retry({ takeover });
+    this.publishHostStatus(id);
     return { ok: true };
   }
 
@@ -3149,6 +3471,8 @@ export class Runtime {
 
   archive(sessionId) {
     this.stop(sessionId, { silent: true });
+    // A turn on a host waiting to be attached again after a restart, or to resume, isn’t attached or resumed (#120).
+    this.remote.cancel(sessionId);
     const se = this.session(sessionId);
     this.updateSession(sessionId, { archived: true, state: 'idle', needs: null, archivedAt: Date.now() });
     dropWakes(this, se, 'archived');
@@ -3259,7 +3583,11 @@ export class Runtime {
     const t = this.thread(threadId);
     if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Delete the conversation it belongs to instead.');
     const until = Date.now() + DELETE_UNDO_MS;
-    for (const se of this.sessionsIn(threadId)) this.stop(se.id, { silent: true });
+    // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).
+    for (const se of this.sessionsIn(threadId)) {
+      this.stop(se.id, { silent: true });
+      this.remote.cancel(se.id);
+    }
     this.putThread({ ...t, deleting: until });
     clearTimeout(this.timers.get(`delt:${threadId}`));
     this.timers.set(`delt:${threadId}`, setTimeout(() => this.purgeThread(threadId), DELETE_UNDO_MS).unref());

@@ -30,6 +30,12 @@ export const SETTINGS_OVERLAY = { outputStyle: 'default' };
 /** The model a real backend uses when a persona doesn’t name one (or names the mock). */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 export const modelOf = (persona) => (persona?.model && persona.model !== 'mock' ? String(persona.model) : DEFAULT_MODEL);
+/**
+ * A persona’s model that leaves the choice to its harness: Kiro’s own name for its router (`kiro-cli chat
+ * --list-models` lists it), and for Codex no model at all, so Codex’s configuration decides. Codex offers it beside
+ * the models its CLI lists, and alone when Postbox has no list, as when Codex is only on a host (#120).
+ */
+export const AUTO_MODEL = 'auto';
 
 /** Effort levels, as `claude --effort <level>` and the SDK’s EffortLevel (sdk.d.ts) spell them. */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];

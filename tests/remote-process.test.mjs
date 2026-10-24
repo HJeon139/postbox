@@ -370,6 +370,79 @@ test('#120: a file stdin killed before it ends starts nothing on the host', asyn
   assert.equal(sent(d, 'stop').length, 0);
 });
 
+for (const arrived of [true, false]) {
+  test(`#120: a turn killed before started, across a drop, is stopped at the reconnect and never started again (start ${arrived ? 'reached' : 'lost before'} the host)`, async () => {
+    const d = createFakeDaemon({ autoEnd: false, lines: [] });
+    const connection = connectTo(d);
+    // After the welcome, so the start goes on a channel (one handed over before it never left the laptop).
+    await new Promise((r) => connection.once('connected', r));
+    const real = connection.send.bind(connection);
+    // The channel drops with the start: after the daemon has it (its started is lost), or before (the start is).
+    connection.send = (msg) => {
+      if (msg.type !== 'start') return real(msg);
+      const ok = arrived ? real(msg) : true;
+      connection.drop();
+      return ok;
+    };
+    const child = remoteSpawn({ connection, harness: 'claude-code', folder: FOLDER, stdin: 'none', turn: arrived ? 'tk1' : 'tk2' })('claude', []);
+    const w = watch(child);
+    await until(() => child.startSent, 'the start');
+    connection.send = real;
+    assert.equal(child.kill('SIGINT'), true);
+    const before = d.received.length;
+    connection.reconnect();
+    await until(() => d.received.slice(before).some((m) => m.type === 'stop'), 'the stop at the welcome');
+    await new Promise((r) => setTimeout(r, 20));
+    const after = d.received.slice(before);
+    assert.deepEqual(
+      after.filter((m) => m.type === 'start'),
+      [],
+      'no start after the kill',
+    );
+    assert.deepEqual(
+      after.filter((m) => m.type === 'stop'),
+      [{ type: 'stop', turn: child.turn }],
+    );
+    assert.deepEqual(d.stops, arrived ? [child.turn] : []);
+    assert.equal(d.turns.has(child.turn), arrived, 'a lost start never reaches the host');
+    // Its end: the stopped turn’s `ended`, or the no-turn answer to the stop when nothing reached the host.
+    await until(() => child.ended, 'the exit');
+    assert.deepEqual(await w.exit, { code: null, signal: 'SIGINT' });
+    await w.close;
+  });
+}
+
+for (const answer of ['started', 'turn-exists']) {
+  test(`#120: a ${answer} that comes after kill() is followed by a stop`, async () => {
+    const sends = [];
+    const connection = new (class extends EventEmitter {
+      send(msg) {
+        sends.push(msg);
+        return true;
+      }
+    })();
+    const child = remoteSpawn({ connection, harness: 'claude-code', folder: FOLDER, stdin: 'none', turn: 'tk3' })('claude', []);
+    await new Promise((r) => process.nextTick(r));
+    // turn-exists counts as started only for a start sent again at a welcome.
+    if (answer === 'turn-exists') connection.emit('connected');
+    assert.equal(sends.filter((m) => m.type === 'start').length, answer === 'turn-exists' ? 2 : 1);
+    child.kill('SIGINT');
+    const at = sends.length;
+    connection.emit(
+      'message',
+      answer === 'started'
+        ? { type: 'started', turn: 'tk3' }
+        : { type: 'error', code: 'turn-exists', message: 'There’s already a turn.', re: 'start', turn: 'tk3' },
+    );
+    assert.ok(
+      sends.slice(at).some((m) => m.type === 'stop'),
+      `a stop after the ${answer}: ${JSON.stringify(sends.slice(at))}`,
+    );
+    assert.equal(sends.filter((m) => m.type === 'start').length, answer === 'turn-exists' ? 2 : 1, 'no start after the kill');
+    child.finish({ code: null, signal: 'SIGINT' });
+  });
+}
+
 test('#120: a cut line puts nothing on stdout, emits cut with its offset, and notes it on stderr', async () => {
   const d = createFakeDaemon({ autoEnd: false, lines: [] });
   const connection = connectTo(d);

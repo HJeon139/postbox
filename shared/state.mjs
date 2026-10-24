@@ -20,6 +20,9 @@ export function emptyState() {
     schedules: {},
     // Remote hosts agents can run on (#120), each with its settings (shared/remote-settings.mjs).
     hosts: {},
+    // Each host’s connection as the host manager last reported it (#120): { state, failure, welcome, lastHeard }.
+    // Live state, like a session’s: the server replaces it at each start, since the link it described is gone.
+    hostStatus: {},
     // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
     work: {},
   };
@@ -60,8 +63,14 @@ export function apply(s, type, d) {
       else s.schedules[d.id] = d;
       break;
     case 'host':
-      if (d.removed) delete s.hosts?.[d.id];
-      else (s.hosts ??= {})[d.id] = d;
+      if (d.removed) {
+        delete s.hosts?.[d.id];
+        delete s.hostStatus?.[d.id];
+      } else (s.hosts ??= {})[d.id] = d;
+      break;
+    case 'host.status':
+      if (d.status === null) delete s.hostStatus?.[d.id];
+      else (s.hostStatus ??= {})[d.id] = d.status;
       break;
     case 'glossary':
       (s.glossary[d.threadId] ??= {})[d.entry.key] = d.entry;

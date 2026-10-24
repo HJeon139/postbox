@@ -34,6 +34,8 @@
 //   CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1, so the cut-off turn goes on (D2). No other variable crosses.
 // - Stop goes through the daemon (process-group.mjs’s remote branch). Background jobs aren’t kept and have no Stop of
 //   their own: the runtime doesn’t offer either for a remote turn, and a keep that reaches here anyway is reported stopped.
+// - After a Postbox restart, ctx.remote.attach names a turn already on the host: it’s read from the start into a fresh
+//   mapper (the reply is rebuilt whole), nothing is sent to it, and no fallback starts another.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -260,9 +262,11 @@ export class ClaudeCodeAdapter {
   async deliver(session, message, ctx) {
     const persona = ctx.persona;
     const remote = ctx.remote ?? null;
+    const attach = remote?.attach?.turn ?? null;
     // A host whose claude can’t run the turn as Postbox needs it refuses before anything starts (C3), as does a remote
     // context without the runtime’s turn ID or Postbox’s version.
-    if (remote) {
+    if (remote && attach) checkRemoteContext(remote, { attach: true });
+    else if (remote) {
       checkRemoteContext(remote);
       const problem = remoteClaudeProblem(remote.welcome ?? remote.link?.welcome, remote.settings ?? {});
       if (problem) throw new Error(problem);
@@ -276,6 +280,11 @@ export class ClaudeCodeAdapter {
     const left = remote ? [...new Set(ctx.addDirs ?? [])].filter(Boolean) : [];
     if (remote)
       guide += `\n\nThis turn runs on a remote host, in ${cwd}.${left.length ? ` The folders added to this conversation (${left.join(', ')}) are on Postbox’s computer, not this host, so you can’t reach them here.` : ''}`;
+    // A turn already on the host, after a restart: replayed, never started again.
+    if (attach) {
+      await this.run({ ctx, cwd, prompt, guide, resume: true, sessionId: ctx.state.claudeSessionId ?? null, turn: attach, attach: true });
+      return;
+    }
     const fork = !ctx.state.claudeSessionId ? forkPoint(ctx.state) : null;
     // Each run is a host turn: the first is the runtime’s, and a fallback’s is a new one it allocates (and persists).
     let runs = 0;
@@ -312,8 +321,9 @@ export class ClaudeCodeAdapter {
    * ID (#120).
    * @param {import('./adapter.mjs').RemoteContext} remote  ctx.remote @param {string} folder @param {string} turn
    * @param {boolean} resumeInterrupted  set the variable that goes on with a cut-off turn
+   * @param {boolean} [attach]  read the turn already on the host from the start, instead of starting it
    */
-  remoteTurn(remote, folder, turn, resumeInterrupted) {
+  remoteTurn(remote, folder, turn, resumeInterrupted, attach = false) {
     const welcome = remote.welcome ?? remote.link?.welcome;
     const wait = Number.isInteger(remote.settings?.permissionWaitMax) ? remote.settings.permissionWaitMax : defaultHostSettings().permissionWaitMax;
     const server = shimServer({
@@ -326,19 +336,31 @@ export class ClaudeCodeAdapter {
     // Only the names capabilities.remote lists: the laptop’s environment never crosses.
     const env = Object.fromEntries(Object.entries(set).filter(([k]) => CLAUDE_CODE_CAPABILITIES.remote.env.includes(k)));
     const spawnImpl = /** @type {typeof spawn} */ (
-      /** @type {unknown} */ (remoteSpawn({ connection: remote.link, harness: 'claude-code', folder, stdin: 'file', env, files: [], turn }))
+      /** @type {unknown} */ (
+        remoteSpawn({
+          connection: remote.link,
+          harness: 'claude-code',
+          folder,
+          stdin: 'file',
+          env,
+          files: [],
+          turn,
+          ...(attach ? { attach: { from: 0 } } : {}),
+        })
+      )
     );
     return { turn, server, spawnImpl };
   }
 
   /**
    * @param {{ ctx: any, cwd: string, addDirs?: string[], prompt: string, guide: string, resume: boolean, sessionId: string|null, fork?: any,
-   *   turn: string | null }} o  turn: the host turn this run is, on a host (null here)
+   *   turn: string | null, attach?: boolean }} o  turn: the host turn this run is, on a host (null here); attach: it’s
+   *   already there, after a restart
    */
-  run({ ctx, cwd, addDirs = [], prompt, guide, resume, sessionId, fork = null, turn }) {
+  run({ ctx, cwd, addDirs = [], prompt, guide, resume, sessionId, fork = null, turn, attach = false }) {
     const id = sessionId ?? randomUUID();
     // A resume (not a fork, not a fresh start) of a turn the host lost goes on with it (D2).
-    const remote = ctx.remote && turn ? this.remoteTurn(ctx.remote, cwd, turn, Boolean(resume && !fork && ctx.remote.resumeInterrupted)) : null;
+    const remote = ctx.remote && turn ? this.remoteTurn(ctx.remote, cwd, turn, Boolean(resume && !fork && ctx.remote.resumeInterrupted), attach) : null;
     const args = claudeArgs({
       persona: ctx.persona,
       sessionId: id,
