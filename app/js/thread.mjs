@@ -5,10 +5,12 @@ import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
-import { inThreadLine, subagentNow } from './agents.mjs';
+import { subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
+import { asWake, queuedRow } from './composer-queue.mjs';
+import { addressLine, addressSig } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
@@ -25,6 +27,17 @@ export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
 const speaker = (it) => (it.kind === 'user' ? 'you' : it.kind === 'agent' || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null);
+// One turn’s items share a sender line; a later turn of the same agent gets its own, and so does a wake it sent from
+// another turn (its fromTurnId) (#135). An item from before turns were kept, or no turn made, goes with the one before.
+const turnOf = (it) => it.turnId ?? it.fromTurnId;
+const sameTurn = (a, b) => !turnOf(a) || !turnOf(b) || turnOf(a) === turnOf(b);
+// What woke the turn (#135): “woken by @critic”, “after @researcher replied in a side thread”, or its scheduled wake.
+const wokeText = ({ by, reply, in: at, scheduled }) =>
+  scheduled
+    ? 'woken by a scheduled wake'
+    : reply
+      ? `after @${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}`
+      : `woken by @${by}`;
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
 
@@ -379,7 +392,8 @@ const who = (it, { you = false } = {}) => {
   const ring = se ? ringFor(se, 'xs') : h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' });
   if (se) ring.dataset.session = se.id;
   const state = se ? h('span.who-state', { dataset: { session: se.id, item: it.id }, 'aria-live': 'off' }) : null;
-  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
+  const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
+  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
@@ -448,7 +462,7 @@ function messageActions(node, it, ctx) {
 }
 
 function renderItem(it, prev, ctx) {
-  const showWho = !(prev && speaker(prev) && speaker(prev) === speaker(it) && prev.kind !== 'voice');
+  const showWho = !(prev && speaker(prev) && speaker(prev) === speaker(it) && prev.kind !== 'voice' && sameTurn(prev, it));
   switch (it.kind) {
     case 'user': {
       return h(
@@ -1073,18 +1087,6 @@ export function flushOutbox() {
   if (items.length) client.emit({ type: 'outbox' });
 }
 
-/**
- * A queued wake (#228) is another agent’s message, waiting for its agent to finish: it says whose, and has no Edit.
- * @param {HTMLElement} row @param {any} q
- */
-function asWake(row, q) {
-  if (q.kind !== 'wake') return row;
-  const what = row.querySelector('.q-text .small');
-  if (what) what.textContent = `@${q.from}’s message · waits for ${what.textContent.replace(/^Queued · sends when (.*) finishes$/, '$1')} to finish`;
-  [...row.querySelectorAll('button')].find((b) => b.textContent === 'Edit')?.remove();
-  return row;
-}
-
 export function mountComposer(threadId, { side = false } = {}) {
   const topic = S().threads[threadId]?.kind === 'topic';
   // / and ! (#67) live in a conversation’s own composer, not in a thread panel’s.
@@ -1624,6 +1626,15 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (c.thread) insertText(`[${c.thread.title.replace(/[[\]]/g, '')}](${threadLink(c.thread.id)})`);
     else insertText(`@${c.p.handle}`);
   }
+  // “Did you mean @critic?” (#134): the @ goes before the name the draft opens with, and the caret stays where it was.
+  function addAt() {
+    const at = ta.selectionStart + (ta.selectionStart >= /^\s*/.exec(ta.value)[0].length ? 1 : 0);
+    ta.value = ta.value.replace(/^(\s*)/, '$1@');
+    ta.focus();
+    ta.setSelectionRange(at, at);
+    save();
+    paint();
+  }
   function insertText(text) {
     const before = ta.value.slice(0, mention.start);
     const after = ta.value.slice(ta.selectionStart);
@@ -1641,9 +1652,12 @@ export function mountComposer(threadId, { side = false } = {}) {
     save();
     updateMention();
     updateSlash();
-    // The hint line follows what the line will do: a picked skill, a ! command, or a message.
+    // The hint line follows what the line will do: a picked skill, a ! command, or a message, and whom it reaches.
     if (slashTarget && !ta.value.startsWith(`/${slashTarget.name}`)) slashTarget = null;
-    if (ta.value.startsWith('!') || hint.dataset.mode || (commands && ta.value.startsWith('/'))) paint();
+    const to = hint.dataset.to !== addressSig(threadId, ta.value);
+    if (to || ta.value.startsWith('!') || hint.dataset.mode || (commands && ta.value.startsWith('/'))) paint();
+    // Said once, when it appears, since the hint isn’t read as you type.
+    if (to && hint.querySelector('.did-you-mean')) say(`${hint.querySelector('.did-you-mean').textContent} Its button follows the message box.`);
   });
   ta.addEventListener('click', () => {
     updateMention();
@@ -1791,10 +1805,10 @@ export function mountComposer(threadId, { side = false } = {}) {
       queue,
       t.queue ?? [],
       (q) => q.id,
-      (q) => asWake(queuedRow(q), q),
+      (q) => asWake(queuedRow(q, threadId, paint), q),
       (node, q) => {
         if (node.dataset.editing) return; // keep an inline edit open while the agent works
-        const fresh = asWake(queuedRow(q), q);
+        const fresh = asWake(queuedRow(q, threadId, paint), q);
         node.replaceChildren(...fresh.childNodes);
       },
     );
@@ -1861,7 +1875,10 @@ export function mountComposer(threadId, { side = false } = {}) {
             : '';
     if (mode) hint.dataset.mode = mode;
     else delete hint.dataset.mode;
+    hint.dataset.to = addressSig(threadId, ta.value);
     const folder = mode === 'shell' ? commandFolder() : null;
+    // A repaint while you’re on “Did you mean” keeps you there (#134).
+    const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);
     fill(
       hint,
       mode === 'shell'
@@ -1892,16 +1909,20 @@ export function mountComposer(threadId, { side = false } = {}) {
               )
             : offline
               ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
-              : topic
-                ? h('span', 'Replies stay in this thread. @ brings in another agent from the conversation.')
-                : side
-                  ? h('span', 'Anything you send here adds you to this side thread.')
-                  : [
-                      members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), mockMarker(last), ' (last speaker)') : null,
-                      h('span', 'Enter to send · Shift+Enter for a new line'),
-                      h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
-                    ],
+              : [
+                  // Who it reaches, in a room and in a topic or side thread too, and the @ a name may lack (#134).
+                  addressLine(threadId, ta.value, { room: topic || side || members.length > 1, addAt }),
+                  topic
+                    ? h('span', 'Replies stay here · @ brings in another agent')
+                    : side
+                      ? h('span', 'Sending adds you to this side thread')
+                      : [
+                          h('span', 'Enter to send · Shift+Enter for a new line'),
+                          h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
+                        ],
+                ],
     );
+    if (onFix) hint.querySelector('.did-you-mean')?.focus();
   }
   /**
    * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude
@@ -1967,63 +1988,6 @@ export function mountComposer(threadId, { side = false } = {}) {
       h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Don’t stop @${se.handle}`, onclick: dismiss }, icon('x', 'i-sm')),
     );
   }
-  function queuedRow(q) {
-    const names = q.sessionIds
-      .map((id) => S().sessions[id]?.handle)
-      .filter(Boolean)
-      .map((x) => `@${x}`)
-      .join(', ');
-    const text = h('span.q-text', h('span.small.dim', `Queued · sends when ${names} finishes`), h('br'), q.text);
-    const row = h(
-      'div.queued',
-      icon('clock', 'dim'),
-      text,
-      h(
-        'button.btn.sm',
-        {
-          type: 'button',
-          onclick: () => api(`/api/threads/${threadId}/queue/${q.id}/send`, {}).catch((e) => toast({ title: 'Couldn’t send now', text: e.message })),
-        },
-        'Send now',
-      ),
-      h(
-        'button.btn.sm.ghost',
-        {
-          type: 'button',
-          onclick: () => {
-            // The row may have been refreshed in place, so mark the node it’s in now, not the one built here.
-            const live = text.closest('.queued');
-            const done = () => {
-              delete live.dataset.editing;
-              paint();
-            };
-            const input = h('input.input', {
-              value: q.text,
-              'aria-label': 'Edit the queued message',
-              onkeydown: (e) => {
-                if (e.key === 'Enter') saveEdit();
-                if (e.key === 'Escape') done();
-              },
-            });
-            const saveEdit = () =>
-              api(`/api/threads/${threadId}/queue/${q.id}`, { text: input.value }, 'PATCH')
-                .then(done)
-                .catch((e) => toast({ title: 'Couldn’t edit', text: e.message }));
-            live.dataset.editing = '1';
-            text.replaceChildren(input, h('button.btn.sm', { type: 'button', onclick: saveEdit }, 'Save'));
-            input.focus();
-          },
-        },
-        'Edit',
-      ),
-      h(
-        'button.btn.sm.ghost',
-        { type: 'button', 'aria-label': 'Remove the queued message', onclick: () => api(`/api/threads/${threadId}/queue/${q.id}`, undefined, 'DELETE') },
-        icon('x', 'i-sm'),
-      ),
-    );
-    return row;
-  }
   paint();
   autosize();
   const off = client.on((ch) => {
@@ -2044,162 +2008,6 @@ export function mountComposer(threadId, { side = false } = {}) {
       unlisten();
     },
   };
-}
-
-/**
- * The panel beside a conversation. It holds a topic thread (yours, forked from a message, with Summarize back)
- * or a side thread between agents (which you can join by typing).
- */
-export function mountSidePanel(parentId, sideId) {
-  const side = S().threads[sideId];
-  if (!side) return null;
-  const topic = side.kind === 'topic';
-  const parent = S().threads[parentId];
-  const tr = mountTranscript(sideId, { inPanel: true });
-  const comp = mountComposer(sideId, { side: true });
-  const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
-  const body = h('div.sp-body', topic ? threadRoot(root) : null, tr.el);
-  // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
-  const who = topic ? inThreadLine(sideId) : null;
-  // One summary at a time (#93): from the request until it’s posted or the turn ends, the button waits. The
-  // server keeps the request on the thread, so a reload or a second tab waits too, and it refuses a second one.
-  // From the click until the server’s own state shows the request: its agent at work on it.
-  let asking = false;
-  const pendingSummary = () => {
-    const ask = S().threads[sideId]?.summaryPending;
-    const se = ask && S().sessions[ask.sessionId];
-    const working = !!(se && !se.archived && ['think', 'gen', 'tool', 'needs'].includes(se.state));
-    if (working) asking = false;
-    return asking || working;
-  };
-  const summarize = topic
-    ? h(
-        'button.btn.sm',
-        {
-          type: 'button',
-          title: 'Ask the thread’s agent for a short summary, and post it in the conversation',
-          onclick: () => {
-            asking = true;
-            paintSummarize();
-            api(`/api/threads/${sideId}/summarize`, {})
-              .then(() => toast({ title: 'Summary requested', text: `It will appear in ${parent?.title ?? 'the conversation'} when it’s written.` }))
-              .catch((e) => {
-                asking = false;
-                toast({ title: 'Couldn’t ask for a summary', text: e.message, level: 'blocking' });
-              })
-              .finally(paintSummarize);
-          },
-        },
-        'Summarize back',
-      )
-    : null;
-  const paintSummarize = () => {
-    if (!summarize) return;
-    const waiting = pendingSummary();
-    summarize.disabled = waiting || !(S().threads[sideId]?.lastSpeaker || S().threads[sideId]?.woke);
-    const label = waiting ? 'Summary requested…' : 'Summarize back';
-    if (summarize.textContent !== label) summarize.textContent = label;
-  };
-  paintSummarize();
-  const off = client.on((ch) => {
-    if (
-      (ch.type === 'thread' && ch.data.id === sideId) ||
-      (ch.type === 'session' && ch.data.id === S().threads[sideId]?.summaryPending?.sessionId) ||
-      ch.type === 'load'
-    )
-      paintSummarize();
-  });
-  const el = h(
-    'aside.sidepanel',
-    { 'aria-labelledby': 'sp-title' },
-    h(
-      'div.sp-head',
-      icon('thread', 'dim'),
-      h(
-        'div.grow',
-        h('b', { id: 'sp-title' }, topic ? 'Thread' : side.title),
-        h('div.small.dim', topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`),
-      ),
-      summarize,
-      copyLink(sideId, topic),
-      h(
-        'button.btn.icon.sm.ghost',
-        { type: 'button', 'aria-label': topic ? 'Close thread' : 'Close side thread', onclick: () => navigate(`#/t/${parentId}`) },
-        icon('x'),
-      ),
-    ),
-    who ? h('div.sp-agents', who.el) : null,
-    body,
-    h('div.sp-foot', comp.el),
-  );
-  // A file dropped anywhere on the panel attaches to the panel’s composer, not the conversation’s.
-  comp.dropZone(el);
-  requestAnimationFrame(() => tr.settle());
-  return {
-    el,
-    destroy() {
-      off();
-      who?.destroy();
-      tr.destroy();
-      comp.destroy();
-    },
-  };
-}
-
-/**
- * Copy link (#121): the thread’s address, to paste in a message. An agent that gets it can read the thread with
- * read_conversation, and the composer’s # inserts the same link.
- */
-function copyLink(threadId, topic) {
-  const b = h(
-    'button.btn.sm',
-    {
-      type: 'button',
-      onclick: async () => {
-        try {
-          await navigator.clipboard.writeText(threadLink(threadId));
-          say('Link copied. Paste it in a message, and the agent can read this thread.');
-          b.textContent = 'Copied';
-        } catch {
-          toast({ title: 'Couldn’t copy the link', text: threadLink(threadId) });
-        }
-        setTimeout(() => {
-          b.textContent = 'Copy link';
-        }, 2000);
-      },
-      'aria-label': topic ? 'Copy link to this topic thread' : 'Copy link to this side thread',
-    },
-    'Copy link',
-  );
-  return b;
-}
-
-/** The message a topic thread branched from, at its top. */
-function threadRoot(root) {
-  if (!root) return null;
-  const text = root.kind === 'block' ? `${root.block?.title ?? root.block?.type ?? 'A block'}${root.block?.type === 'app' ? ' (app)' : ''}` : (root.text ?? '');
-  // A long message is clamped to a few lines here; it’s all in the conversation beside it.
-  const md = h('div.md.clamped', { html: trusted(renderMarkdown(text, { mentions: handles() })) });
-  queueMicrotask(() => enhanceMarkdown(md));
-  const more = h(
-    'button.btn.sm.ghost',
-    {
-      type: 'button',
-      'aria-expanded': 'false',
-      onclick: (e) => {
-        const open = md.classList.toggle('clamped') === false;
-        e.currentTarget.setAttribute('aria-expanded', String(open));
-        e.currentTarget.textContent = open ? 'Show less' : 'Show all';
-      },
-    },
-    'Show all',
-  );
-  return h(
-    'div.thread-root',
-    h('span.label', root.kind === 'user' ? 'You' : `@${root.handle ?? ''}`),
-    md,
-    text.length > 280 || /\n\s*\n/.test(text) ? more : null,
-  );
 }
 
 export const _test = { renderItem, activityLabel };

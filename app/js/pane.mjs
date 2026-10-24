@@ -8,8 +8,8 @@
 import { h, icon } from './dom.mjs';
 import { mountDivider } from './pane-split.mjs';
 import { mountWidth } from './pane-width.mjs';
+import { mountSidePanel } from './side-panel.mjs';
 import { mountTelemetryView } from './telemetry.mjs';
-import { mountSidePanel } from './thread.mjs';
 import { navigate, paneHref, rememberWork, route, setPaneFull } from './ui.mjs';
 import { mountWorkPane } from './work.mjs';
 

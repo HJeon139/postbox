@@ -4,7 +4,10 @@
 //     agent’s reply does (#99);
 //   • a glossary term inside a definition opens a card of its own over its parent’s, by mouse and by keyboard;
 //     leaving the child closes only the child, a cycle (U → U:13 → U) and a fourth level open nothing, and the cards
-//     stay on screen at 375 px (#103).
+//     stay on screen at 375 px (#103);
+//   • a later turn of the same agent gets its own sender line, with its time and what woke it (another agent, or a
+//     scheduled wake), while one turn’s items share one; so does each wake it sent from a turn of its own, in a side
+//     thread (#135).
 //
 //   node tools/check-transcript-render.mjs
 //
@@ -68,12 +71,8 @@ try {
     ].join('\n'),
   });
   // A reply that keeps its question (#111): one whose fence would have swallowed the answer, were they one text.
-  const answered = rt.shareText(thread.id, {
-    fromThreadId: topic,
-    handle: 'analyst',
-    text: 'Use chapter offsets.',
-    question: 'Which?\n```js\nconst unit = "page"',
-  });
+  const question = 'Which?\n```js\nconst unit = "page"';
+  const answered = rt.shareText(thread.id, { fromThreadId: topic, handle: 'analyst', text: 'Use chapter offsets.', question });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await page.synced(store.state.seq);
   const ASKED = `document.querySelector('[data-key="${answered.id}"] .shared-card')`;
@@ -227,6 +226,69 @@ try {
     assert.ok(await page.evaluate('document.scrollingElement.scrollWidth <= innerWidth'), 'no sideways scroll');
   });
   await page.size(1280, 900);
+
+  // ── #135: a later turn of the same agent gets its own sender line ──
+  // The mixed-room UAT run (22 October 2026), step 6: @critic replied, then spoke again in a new turn after @researcher
+  // answered it in their side thread, and the second message showed with no sender line. Here @analyst wakes
+  // @reviewer, which answers in the side thread, and a second answer comes back as endTurn sends one (saidIn).
+  const room = rt.createThread({ projectId: project.id, title: 'Turn checks', personaIds: [persona.id, rt.createPersona({ handle: 'reviewer' }).id] });
+  const an = rt.sessionsIn(room.id).find((x) => x.handle === 'analyst');
+  const idle = () => until(() => !rt.turns.size && !rt.exiting.size, 20000);
+  rt.agentWake(an.id, 'reviewer', 'Check revision 3.');
+  await idle();
+  const side = Object.values(rt.s.threads).find((x) => x.kind === 'side' && x.parentId === room.id);
+  rt.deliver(an.id, { kind: 'agent', from: '@reviewer', text: 'Revision 3 has one arithmetic gap.', saidIn: side.id });
+  await idle();
+  // One turn of two items, as a reply split by a block is: they keep one sender line.
+  for (const text of ['Part one.', 'Part two.'])
+    rt.addItem(room.id, { kind: 'agent', sessionId: an.id, personaId: an.personaId, handle: 'analyst', turnId: 'turn_135', text, status: 'done' });
+  await page.synced(store.state.seq);
+  await page.evaluate(`location.hash = '#/t/${room.id}'`);
+  await page.waitFor(`document.querySelectorAll('.transcript[data-thread="${room.id}"] > .item').length >= 4`, { label: 'the turn checks room' });
+  const lines = await page.evaluate(
+    `[...document.querySelectorAll('.transcript[data-thread="${room.id}"] > .item')].filter((n) => n.querySelector('.md p')).map((n) => { const w = n.querySelector('.who'); return w ? w.innerText.replace(/\\s+/g, ' ').trim() + (w.querySelector('.ts') ? ' [time]' : '') : ''; })`,
+  );
+  const [, second, one, two] = lines.slice(-4);
+  check(
+    /^@analyst.*after @reviewer replied in a side thread.*\[time\]$/.test(second ?? ''),
+    `#135 the next turn of the same agent has its own sender line, its time and what woke it (“${second}”)`,
+  );
+  check(/^@analyst.*\[time\]$/.test(one ?? '') && two === '', `#135 one turn’s two items share one sender line (“${one}”, “${two}”)`);
+
+  // A turn a scheduled wake started says so, as the timer delivers it ({ kind: 'wake', note }, server/adapters/adapter.mjs).
+  const replies = () => store.items(room.id).filter((x) => x.kind === 'agent' && x.handle === 'analyst').length;
+  const had = replies();
+  rt.schedule(an.id, { inMs: 1000, note: 'Look at the totals again.' });
+  await until(() => replies() > had, 5000);
+  await idle();
+  await page.synced(store.state.seq);
+  const whoOf = (id) =>
+    `[...document.querySelectorAll('.transcript[data-thread="${id}"] > .item')].filter((n) => n.querySelector('.md p')).map((n) => n.querySelector('.who')?.innerText.replace(/\\s+/g, ' ').trim() ?? '')`;
+  const woken = (await page.evaluate(whoOf(room.id))).at(-1);
+  check(/^@analyst.*woken by a scheduled wake/.test(woken ?? ''), `#135 a turn a scheduled wake started says so on its sender line (“${woken}”)`);
+  // Two wakes from two turns of @analyst, sent while @reviewer was busy, sit together in the side thread, as agentWake
+  // records them: each says the turn it came from. A third from the second turn shares its line.
+  for (const [n, text] of ['Check the totals.', 'And the dates, please.', 'And the names.'].entries())
+    rt.addItem(side.id, {
+      kind: 'agent',
+      sessionId: an.id,
+      personaId: an.personaId,
+      handle: 'analyst',
+      text,
+      status: 'done',
+      hop: n + 1,
+      fromTurnId: `turn_135_${Math.min(n, 1)}`,
+    });
+  await page.synced(store.state.seq);
+  await page.evaluate(`location.hash = '#/t/${room.id}/side/${side.id}'`);
+  await page.waitFor(`[...document.querySelectorAll('.transcript[data-thread="${side.id}"] .md p')].some((p) => p.textContent === 'And the names.')`, {
+    label: 'the side thread',
+  });
+  const wakes = (await page.evaluate(whoOf(side.id))).slice(-3);
+  check(
+    /^@analyst/.test(wakes[0]) && /^@analyst/.test(wakes[1]) && wakes[2] === '',
+    `#135 two wakes from two turns of the same agent each have a sender line in the side thread, and one turn’s two share it (${JSON.stringify(wakes)})`,
+  );
 
   check(!page.logs.length, `no errors in the page${page.logs.length ? `: ${page.logs.join('; ')}` : ''}`);
 } finally {

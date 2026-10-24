@@ -40,8 +40,8 @@ test('#251: a reaction is added, and clicking it again takes it back', async () 
     ['🚩'],
   );
   assert.throws(() => react(f, f.reply, '🎉'), /React with one of/);
-  const wake = f.store.items(f.t.id).find((x) => x.kind === 'system');
-  assert.throws(() => react(f, wake, '👍'), /a message, a block or an app/);
+  const line = f.rt.addItem(f.t.id, { kind: 'system', variant: 'joined', to: 'beta' });
+  assert.throws(() => react(f, line, '👍'), /a message, a block or an app/);
 });
 
 test('#251: the reacted-to agent hears it once, at its next turn, and another agent sees it in its catch-up', async () => {

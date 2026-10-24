@@ -34,6 +34,8 @@ export const REVIEW_BLOCK_DEF = {
  */
 export function reviewBlock(rt, sessionId, args) {
   const se = rt.session(sessionId);
+  // A summary for the conversation wakes no one (#225, #93): a review would wake the block’s agent, and post in the room.
+  if (rt.turns.get(sessionId)?.summarizeTo) return no('A summary for the conversation wakes no one: finish it, and the person decides the rest.');
   const { blockId, comments, verdict } = args && typeof args === 'object' ? args : {};
   if (typeof blockId !== 'string' || !blockId.trim()) return no('blockId names the review block: its id, or its item id.');
   if (verdict !== undefined && !VERDICTS.includes(verdict)) return no('verdict is “comment”, “approve” or “request_changes”, or left out.');

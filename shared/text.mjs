@@ -22,6 +22,22 @@ export function parseMentions(text, handles) {
 }
 
 /**
+ * The agent a message addresses by name without its @, as in “critic: what’s your concern?”: Postbox sends a message
+ * that @-mentions no one to the agent that spoke last, so this one may not reach the critic. Only a name that opens
+ * the message, followed by “:” or “,”, counts: “what did the researcher find?” is meant for whoever spoke last.
+ * Nothing when the message @-mentions anyone (read as parseMentions, above, reads them), or when the agent
+ * it names spoke last, since the message reached it anyway.
+ * @param {string} text  @param {string[]} handles  @param {{ lastSpeaker?: string|null }} [opts]  the last speaker’s handle
+ * @returns {string[]}
+ */
+export function unaddressed(text, handles, { lastSpeaker = null } = {}) {
+  if (parseMentions(text, handles).length) return [];
+  const name = /^\s*([A-Za-z0-9_-]+)\s*[:,]/.exec(String(text ?? ''))?.[1]?.toLowerCase();
+  const h = handles.find((x) => x.toLowerCase() === name);
+  return h && h !== lastSpeaker ? [h] : [];
+}
+
+/**
  * Splits streaming text into finished sentences for a polite live region, so a screen reader hears
  * whole sentences instead of every token. A sentence ends at a line break, or at . ! or ? (with any closing quote,
  * bracket or Markdown mark after it) followed by whitespace or the end of the text, so the dots in converter.py,

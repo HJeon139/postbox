@@ -82,7 +82,7 @@ const AFTER = [
   ['topic-thread-panel', 'topic', q('aside.sidepanel')],
   ['side-thread-panel', 'side', q('aside.sidepanel')],
   ['compaction-divider', 'Corpus planning', `[...document.querySelectorAll('.transcript > .item')].find((n) => n.textContent.includes('Context compacted'))`],
-  ['system-wake-line', 'Corpus planning', item('You woke')],
+  ['system-wake-line', 'Corpus planning', item('wake itself')],
   ['progress-block', 'Corpus planning', block('Index the shelf')],
   [
     'choice-block',

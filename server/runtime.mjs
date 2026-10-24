@@ -54,6 +54,7 @@ import {
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
 import { reviewBlock } from './review-comments.mjs';
+import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -70,7 +71,6 @@ import {
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
-import { shareThreadText, shareTopicReply } from './thread-sharing.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 
@@ -112,6 +112,17 @@ const count = (n) => n.toLocaleString('en-US');
  * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s.
  */
 const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
+/**
+ * What woke a turn, on each item it shows, for its sender line (#135): another agent, with a message, or with its
+ * answer to one (endTurn sends that with saidIn, where it answered); or a wake it scheduled.
+ */
+const wokeOf = (turn) => {
+  const m = turn?.asked?.message;
+  if (m?.kind === 'wake') return { woke: { scheduled: true } };
+  return m?.kind === 'agent' ? { woke: { by: String(m.from ?? '').replace(/^@/, ''), ...(m.saidIn ? { reply: true, in: m.saidIn } : {}) } } : {};
+};
+/** What each reply of a turn carries: what woke it, and that a reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check. */
+const replyMarks = (turn) => ({ ...(turn.kind === 'lint' ? { lintReply: true } : {}), ...wokeOf(turn) });
 /**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
  * read_message takes, so the agent can read the rest (#109).
@@ -452,13 +463,13 @@ export class Runtime {
     // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
     const away = t.kind === 'side' || t.kind === 'topic';
     if (away) {
-      for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you'), woke: true });
+      for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you') });
       if (!targets.length) {
         // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
         const p = threadPersona(this, t);
         const se = p && this.sideSession(t, p.id, 'you');
         if (!se) throw httpError(409, `No agent is in this ${t.kind === 'side' ? 'side thread' : 'thread'}. @-mention one to bring it in.`);
-        targets.push({ se, woke: false });
+        targets.push({ se });
       }
     }
     // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
@@ -466,13 +477,13 @@ export class Runtime {
     if (archived && !away) throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
     for (const p of away ? [] : mentioned) {
       const joined = !this.sessionsIn(threadId).some((x) => x.personaId === p.id);
-      targets.push({ se: this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }), woke: true });
+      targets.push({ se: this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }) });
     }
     if (!targets.length) {
       const members = this.sessionsIn(threadId).filter((x) => !x.archived);
       const last = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
       if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
-      targets.push({ se: last, woke: false });
+      targets.push({ se: last });
     }
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
@@ -492,8 +503,8 @@ export class Runtime {
     const conv = this.lineage(threadId).at(-1);
     this.putThread({ ...this.s.threads[conv], hops: 0 });
     const refs = this.threadRefs(threadId, text);
-    for (const { se, woke } of targets) {
-      if (woke) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
+    // An agent you @-mentioned gets no “You woke” line: your message’s mention says so (#114).
+    for (const { se } of targets) {
       this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id, ...(refs.length ? { context: refs } : {}) }, { threadId });
     }
     return { item };
@@ -545,7 +556,7 @@ export class Runtime {
     return this.postAndDeliver(
       threadId,
       q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se && !x.se.archived),
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
     );
   }
 
@@ -580,7 +591,7 @@ export class Runtime {
     this.postAndDeliver(
       threadId,
       q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se && !x.se.archived),
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
     );
   }
 
@@ -721,8 +732,7 @@ export class Runtime {
           text: '',
           status: 'streaming',
           activity: turn.first ? null : { steps: [...turn.steps] },
-          // A reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check.
-          ...(turn.kind === 'lint' ? { lintReply: true } : {}),
+          ...replyMarks(turn),
         });
         // The text before a tool call or a block is finished; only the newest segment shows the caret.
         if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
@@ -987,9 +997,9 @@ export class Runtime {
       for (const it of items)
         if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
     }
-    // Posted or not, the summary isn’t pending any more, so Summarize back works again. Any turn ending clears
-    // one a restart left behind, too.
-    this.clearSummaryPending(turn.threadId);
+    // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
+    // turn (#225). Any turn ending clears one a restart left behind, too.
+    this.clearSummaryPending(turn.threadId, turn);
     if (err && err.name !== 'AbortError') {
       // Its progress steps still running show as stalled, as at any turn’s end (#98).
       this.stallLeftRunning(turn, se, 'failed');
@@ -1087,21 +1097,21 @@ export class Runtime {
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
-    // An agent that @-mentions another agent wakes it.
+    // An agent that @-mentions another agent wakes it, except in a summary sent back, which wakes no one (#225).
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
     // Mentioning the agent that just wrote to you wakes it only if you ask it to check again.
     const replyTo = turn.replyTo ? this.s.sessions[turn.replyTo]?.handle?.toLowerCase() : null;
-    for (const h of parseMentions(turn.said, this.handles())) {
+    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
       const hl = h.toLowerCase();
       if (hl === se.handle.toLowerCase() || hl === replyTo) continue;
       if (hl === turn.from && !/again|once more|loop/i.test(turn.said)) continue;
       // Its turn has ended, so where it spoke comes from the turn: an answer goes back to a topic thread it spoke in.
-      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null });
+      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id });
       if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
     }
     // A reply to an agent that woke this one goes back to it.
     if (turn.replyTo && this.s.sessions[turn.replyTo] && !this.s.sessions[turn.replyTo].archived) {
-      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)' }, { threadId: turn.replyIn });
+      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)', saidIn: turn.threadId }, { threadId: turn.replyIn });
       this.recordAgentMessage(se.id, 'to', this.s.sessions[turn.replyTo].handle, turn.said);
       this.recordAgentMessage(turn.replyTo, 'from', se.handle, turn.said);
     }
@@ -1573,57 +1583,20 @@ export class Runtime {
     return { threadId: topic.id };
   }
 
-  /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
   shareToConversation(topicId, itemId) {
-    return shareTopicReply(this, topicId, itemId);
+    return shareToConversation(this, topicId, itemId);
   }
-
-  /** “Summarize back”: the topic’s agent writes a short summary, which is posted in the conversation. */
-  summarizeBack(topicId) {
-    const topic = this.thread(topicId);
-    if (topic.kind !== 'topic') throw httpError(409, 'Only a topic thread can be summarized back.');
-    // The thread’s agent: the one that spoke last there, else the one it started with (#228).
-    const p = threadPersona(this, topic);
-    const se = p && this.sideSession(topic, p.id, 'you');
-    if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
-    // One at a time, so a second click or a second tab can’t post it twice (#93).
-    if (this.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
-    // Kept on the thread for the panel’s button, until the turn ends or is stopped. A restart can leave it
-    // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
-    this.putThread({ ...topic, summaryPending: { sessionId: se.id, at: Date.now() } });
-    this.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
-    this.deliver(
-      se.id,
-      {
-        kind: 'notice',
-        text: 'Summarize this topic thread for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.',
-      },
-      { summarizeTo: topic.parentId, threadId: topicId },
-    );
-    return { ok: true };
+  summarizeBack(topicId, opts) {
+    return summarizeBack(this, topicId, opts);
   }
-
-  /** Whether a summarize turn is running or queued in a topic thread. */
   summarizing(topicId) {
-    return (
-      [...this.turns.values()].some((x) => (x.threadId === topicId && x.summarizeTo) || x.pending.some((p) => p.summarizeTo && p.threadId === topicId)) ||
-      // One waiting for a stopped turn’s process to exit (#126).
-      [...this.exiting.values()].some((x) => x.held.some((h) => h.summarizeTo && h.threadId === topicId))
-    );
+    return summarizing(this, topicId);
   }
-
-  clearSummaryPending(topicId) {
-    const t = this.s.threads[topicId];
-    if (t?.summaryPending && !this.summarizing(topicId)) this.putThread({ ...t, summaryPending: null });
+  clearSummaryPending(topicId, ended) {
+    return clearSummaryPending(this, topicId, ended);
   }
-
-  /**
-   * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
-   * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
-   * bring_to_conversation, because the person asked it to (#128).
-   */
-  shareText(threadId, { fromThreadId, handle, text, summary = false, agent = false, question = undefined }) {
-    return shareThreadText(this, threadId, { fromThreadId, handle, text, summary, agent, question });
+  shareText(threadId, opts) {
+    return shareText(this, threadId, opts);
   }
 
   // ── Shared memory in a conversation ────────────────────────────────────────────────
@@ -3259,7 +3232,16 @@ export class Runtime {
         const it = rt.addItem(
           threadId(),
           v.ok
-            ? { kind: 'block', sessionId, handle: se().handle, turnId: turn?.id ?? null, valid: true, block: v.block, answered: false }
+            ? {
+                kind: 'block',
+                sessionId,
+                handle: se().handle,
+                turnId: turn?.id ?? null,
+                valid: true,
+                block: v.block,
+                answered: false,
+                ...wokeOf(turn),
+              }
             : {
                 kind: 'block',
                 sessionId,
@@ -3351,6 +3333,9 @@ export class Runtime {
           kind: 'proposal',
           sessionId,
           handle: se().handle,
+          // Its turn’s, so it shares that turn’s sender line and no other (#135).
+          turnId: turn?.id ?? null,
+          ...wokeOf(turn),
           status: 'open',
           proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend },
           extraTools: tools.filter((t) => !mine.has(t)),
