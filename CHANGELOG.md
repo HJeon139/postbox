@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.23.0 (2026-10-24)
+
+### Features
+
+- **glossary:** link terms inside a definition, and stack their hover cards
+
+### Fixes
+
+- **blocks:** an escape before a carriage return no longer makes the highlighter backtrack
+- **thread:** draw math, diagrams and glossary terms in a reply shared back from a thread
+- **blocks:** show the code block's filename in its header, and highlight its code
+
 ## 0.22.0 (2026-10-24)
 
 ### Features
