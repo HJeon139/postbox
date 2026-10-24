@@ -9,12 +9,15 @@ import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
+import { focusComposer, hopBlock } from './hop-card.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { workList } from './work-list.mjs';
+
+export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
 const handles = () =>
@@ -925,37 +928,6 @@ function movedLine(it, ctx) {
   return it.work ? h('div.col', line, workChip(it, ctx)) : line;
 }
 
-function hopBlock(it, ctx) {
-  const open = it.status === 'open';
-  const act = (allow) =>
-    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action: allow ? 'confirm' : 'cancel' })
-      .then(focusComposer)
-      .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
-  return h(
-    'div.col.block',
-    { role: 'group', class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
-    h(
-      'div.block-head',
-      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h('span.title.grow', `Let @${it.from} wake @${it.to}?`),
-      h('span.kind', 'Confirm · from Postbox'),
-    ),
-    h(
-      'div.block-body.md',
-      h('p', `That would be agent wake ${it.n} since your last message. After 3 in a row, the next one waits for you.`),
-      it.reason ? h('p.dim.small', `@${it.from}’s reason: “${it.reason}”`) : null,
-      !open ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'allowed' ? 'Allowed' : 'Not allowed') : null,
-    ),
-    open
-      ? h(
-          'div.block-foot',
-          h('button.btn', { type: 'button', onclick: () => act(true) }, `Let @${it.from} wake @${it.to}`),
-          h('button.btn', { type: 'button', onclick: () => act(false) }, `Don’t wake @${it.to}`),
-        )
-      : null,
-  );
-}
-
 /**
  * A `!command` you ran (#67): the command line, where it ran, its output as it streams (the last 64 KB, saying when
  * earlier output was cut), Stop while it runs, then the exit code and how long it took. The agents read it on their
@@ -1410,7 +1382,6 @@ const saveOutbox = () => {
 client.on((ch) => {
   if (ch.type === 'connection' && client.connection === 'open') flushOutbox();
 });
-export const focusComposer = () => $('#composer-input')?.focus();
 
 export async function sendMessage(threadId, text, attachments = [], { sendNow = false } = {}) {
   try {
