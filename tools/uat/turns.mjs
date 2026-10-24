@@ -1,11 +1,65 @@
 // How the runner waits on the agents’ turns between steps, and stops one when the tester asks it to.
 
 import { sleep } from '../cdp.mjs';
+import { waitingOnYou } from './checks.mjs';
 
-/** Waits until no agent under test is working, sampling what the screen says meanwhile. */
-export async function settle({ api, d, threadsUnderTest, facts, midTurnChecks, opt }) {
+/** The longest the tester’s wait action waits: five minutes. */
+export const WAIT_MAX_S = 300;
+/**
+ * The longest send_then_stop waits before Stop. The delay is the tester’s wait before it presses Stop, so it gets the
+ * wait action’s bound: long enough for a turn to start a background job and check on it (p0 asks for 40 s), and short
+ * enough that a mistaken number can’t hold the run while an agent spends unwatched.
+ */
+export const STOP_AFTER_MAX_S = WAIT_MAX_S;
+/**
+ * How long a block that asks may sit while its agent still works before the wait hands it to the tester. In the
+ * recorded runs of 24 October, the turns that showed one ended 2.5 to 4.3 s after it (12 blocks in 6 runs), most on a
+ * closing line: handing those back at once would show the tester a reply still being written. A turn still at work
+ * 10 s on is doing more, and the tester can answer meanwhile. Stop’s question hands back at once: the turn waits on it.
+ */
+export const BLOCK_GRACE_MS = 10_000;
+
+/** What needs the person, by a key that names each once: Stop’s questions about background jobs, then waitingOnYou’s. */
+const asking = (st, ids, sessions) => [
+  ...sessions
+    .filter((se) => se.stopAsk)
+    .map((se) => ({
+      key: `stop:${se.id}:${se.stopAsk.at}`,
+      stop: true,
+      what: `Postbox asks whether to stop @${se.handle}’s ${se.stopAsk.jobs > 1 ? 'background jobs' : 'background job'} too`,
+    })),
+  ...waitingOnYou(st, ids).map((w) => ({ key: w.itemId ?? w.what, stop: false, what: w.what })),
+];
+
+/**
+ * Of the asks on screen, those to hand the tester now, while an agent works: Stop’s question at once, a block once it
+ * has waited BLOCK_GRACE_MS. `told` holds what the tester has had or will have anyway: what was handed back, and what
+ * was on screen while nobody worked. `since` holds when this wait first saw each of the others.
+ * @param {{ key: string, stop: boolean }[]} asks  @param {{ told: Set<string>, since: Map<string, number>, working: boolean }} o
+ */
+function dueAsks(asks, { told, since, working }) {
+  if (!working) {
+    for (const x of asks) told.add(x.key);
+    return [];
+  }
+  const now = Date.now();
+  for (const x of asks) if (!told.has(x.key) && !since.has(x.key)) since.set(x.key, now);
+  const due = asks.filter((x) => !told.has(x.key) && (x.stop || now - (since.get(x.key) ?? now) >= BLOCK_GRACE_MS));
+  if (due.length) for (const x of asks) told.add(x.key);
+  return due;
+}
+
+/**
+ * Waits until no agent under test is working, sampling what the screen says meanwhile. With `handBack`, it returns
+ * while an agent still works once something needs the person that the tester hasn’t had: Stop’s question about a
+ * background job, which keeps the turn running until it’s answered (#126), or a block that asks and has waited
+ * BLOCK_GRACE_MS. The tester gets it then, rather than when the turn ends (#289), once for each (dueAsks).
+ * @param {{ api: any, d: any, threadsUnderTest: any, facts: any, midTurnChecks: any, opt: any, told?: Set<string>, handBack?: boolean, log?: (line: string) => void }} ctx
+ */
+export async function settle({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told = new Set(), handBack = false, log = () => {} }) {
   const end = Date.now() + Number(opt['turn-timeout']) * 1000;
   let calm = 0;
+  const since = new Map();
   while (Date.now() < end) {
     await sleep(1500);
     const st = (await api('/api/state')).state;
@@ -18,6 +72,11 @@ export async function settle({ api, d, threadsUnderTest, facts, midTurnChecks, o
     const checking = Object.values(st.apps).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
     const thinking = working.filter((se) => se.state !== 'gen').map((se) => se.handle);
     if (thinking.length) facts.samples.push({ busy: thinking, rows: (await d.working()).length });
+    const due = handBack ? dueAsks(asking(st, ids, sessions), { told, since, working: working.length > 0 }) : [];
+    if (due.length) {
+      log(`handed back while @${working.map((se) => se.handle).join(', @')} works: ${due.map((x) => x.what).join('; ')}`);
+      return null;
+    }
     if (working.length) await midTurnChecks(st);
     calm = working.length || checking ? 0 : calm + 1;
     if (calm >= 2) return null;
@@ -26,10 +85,35 @@ export async function settle({ api, d, threadsUnderTest, facts, midTurnChecks, o
   return `An agent was still working after ${opt['turn-timeout']} s, so the run pressed Stop.`;
 }
 
-/** The tester’s send_then_stop: sends a message, waits, and presses Stop on the active reply. */
-export async function sendThenStop(d, a) {
+/**
+ * The tester’s send_then_stop: sends a message, waits the seconds it gave (at most STOP_AFTER_MAX_S), running `onWait`
+ * every 5 s meanwhile, presses Stop on the active reply, and reads Postbox’s question about background jobs if it asks
+ * one, for the tester to answer with jobs. A reply that finished first is said, not an error. The interrupt goes on the
+ * run’s record (probes.interrupts) and in its log.
+ * @param {any} d  @param {{ text?: string, seconds?: number }} a
+ * @param {{ step: number, probes: { interrupts: any[] }, log?: (line: string) => void, onWait?: () => Promise<void> }} run
+ * @returns {Promise<string>}  what happened, for the tester
+ */
+export async function sendThenStop(d, a, { step, probes, log = () => {}, onWait = async () => {} }) {
+  const n = Number(a.seconds ?? 2);
+  const asked = Number.isFinite(n) ? Math.round(n) : 2;
+  const seconds = Math.max(1, Math.min(STOP_AFTER_MAX_S, asked));
+  const clamped = seconds !== asked ? ` (you asked for ${asked} s; the run waits 1 to ${STOP_AFTER_MAX_S} s)` : '';
   await d.send(a.text ?? '');
-  await sleep(Math.max(1, Math.min(10, a.seconds ?? 2)) * 1000);
-  await d.stopAll();
-  return 'Pressed Stop on the active reply.';
+  for (let left = seconds * 1000; left > 0; left -= 5000) {
+    await sleep(Math.min(5000, left));
+    if (left > 5000) await onWait();
+  }
+  const stopped = await d.stopAll().then(
+    () => true,
+    (e) => (/No Stop control/.test(e.message) ? false : Promise.reject(e)),
+  );
+  let ask = null;
+  for (let i = 0; stopped && i < 20 && !(ask = await d.jobsAsk()); i++) await sleep(250);
+  probes.interrupts.push({ step, at: Date.now(), do: 'stop', after: seconds, stopped, asked: ask ?? null, answered: null });
+  const said = !stopped
+    ? `No reply was working after ${seconds} s${clamped}, so nothing was stopped: it had finished.`
+    : `Pressed Stop on the active reply after ${seconds} s${clamped}. ${ask ? `Postbox asks: “${ask}” Answer it with jobs.` : 'Postbox didn’t ask about background jobs.'}`;
+  log(`send_then_stop: ${said}`);
+  return said;
 }

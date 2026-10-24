@@ -39,7 +39,7 @@ import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepC
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { coverageSection, gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
-import { sendThenStop, settle as settleTurns } from './uat/turns.mjs';
+import { sendThenStop, settle as settleTurns, WAIT_MAX_S } from './uat/turns.mjs';
 import { mergePeopleVerdicts, withoutPreset } from './uat/verdicts.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -375,7 +375,9 @@ async function main() {
       midTurn.push(...newFindings(MID_TURN));
     };
 
-    const settle = () => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt });
+    // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289).
+    const told = new Set();
+    const settle = (handBack = false) => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log });
 
     const observe = async () => {
       const out = [];
@@ -418,7 +420,7 @@ async function main() {
     };
 
     for (let step = 1; step <= steps; step++) {
-      const timedOut = await settle();
+      const timedOut = await settle(true);
       await refreshFacts();
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
@@ -487,6 +489,13 @@ async function main() {
         log(`action held: ${waiting.length} waiting on the person`);
         continue;
       }
+      // An interrupt acts on the turn running when it starts, and the wait can hand back while one runs (#289).
+      if (a.interrupt && !idle) {
+        actionError =
+          'Not yet: an agent is still working, so an interrupt would act on its turn, not the one this starts. Answer what needs you, or wait, first.';
+        log('action held: an interrupt while an agent works');
+        continue;
+      }
       // Moving on from a phase whose triggers haven’t happened: held once, then a coverage gap.
       const held = a.type === 'next_phase' || a.type === 'done' ? goals.leave(phase) : null;
       if (held) {
@@ -519,7 +528,7 @@ async function main() {
           );
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
-        } else if (a.type === 'send_then_stop') actionResult = await sendThenStop(d, a);
+        } else if (a.type === 'send_then_stop') actionResult = await sendThenStop(d, a, { step, probes: facts.probes, log, onWait: () => midTurnChecks() });
         else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
         else if (a.type === 'act' || a.type === 'review') {
@@ -595,7 +604,7 @@ async function main() {
           await sleep(1500);
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
-        } else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
+        } else if (a.type === 'wait') await sleep(Math.min(WAIT_MAX_S, a.seconds ?? 30) * 1000);
         else if (a.type === 'stop') await d.stopAll();
         // Stop or Send now while the turn this action started is running (#126).
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
