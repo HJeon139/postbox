@@ -1,10 +1,12 @@
 // Starting a remote turn (#120, server/remote/turns.mjs, the header): deliver makes the turn remote at once (begin),
 // and before its adapter starts, the host has its welcome, the host turn has its ID, kept on the session as
-// se.remoteTurn so it survives a restart, and the host has the conversation’s snapshot (prepare).
+// se.remoteTurn so it survives a restart, the host has the conversation’s snapshot, and the message’s attachments
+// are read to go with the start (prepare).
 
 import { randomUUID } from 'node:crypto';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { offersBring } from '../side-threads.mjs';
+import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
 import { signInCheck } from './turns-resume.mjs';
 import { abortError, OFFSET_SAVE_MS, updateRemote, whyLine } from './turns-shared.mjs';
@@ -47,9 +49,9 @@ export function begin(rts, turn, hostId, adapter) {
 }
 
 /**
- * Everything a remote turn needs before its adapter starts: the host’s welcome, the turn’s ID (persisted) and the
- * snapshot. Fills ctx.remote, and returns the message to deliver, which starts with why the last turn stopped when
- * it’s a resume. message.attach (a host turn ID) attaches to that turn instead (after a restart).
+ * Everything a remote turn needs before its adapter starts: the message’s attachments, the host’s welcome, the turn’s
+ * ID (persisted) and the snapshot. Fills ctx.remote, and returns the message to deliver, which starts with why the
+ * last turn stopped when it’s a resume. message.attach (a host turn ID) attaches to that turn instead (after a restart).
  * @param {RemoteTurns} rts @param {any} turn @param {any} ctx @param {any} message
  */
 export async function prepare(rts, turn, ctx, message) {
@@ -60,6 +62,8 @@ export async function prepare(rts, turn, ctx, message) {
   const host = rt.s.hosts?.[live.hostId];
   const { version, hosts } = startable(rts, se, persona, host);
   const attach = typeof message.attach === 'string' ? message.attach : null;
+  // Read now, so a message over the limits is refused before anything is asked of the host (attachments.mjs).
+  const attachments = attach ? [] : await carryAttachments(message, ctx.pathOf);
   // A host renamed while turns still run over its old link: nothing new starts there, and nothing falls back to it.
   let welcome;
   let link;
@@ -86,6 +90,7 @@ export async function prepare(rts, turn, ctx, message) {
     nextTurn: async () => allocate(rts, live, folder),
     // As server/mcp.mjs lists bring_to_conversation only for such a turn, so does the shim (shimArgs).
     bring: offersBring(rt, turn),
+    attachments,
   };
   if (attach) attachTo(rts, live, se, turn, attach, remote);
   else {

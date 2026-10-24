@@ -2,14 +2,17 @@
 // host through its daemon (server/remote/process.mjs), in ctx.remote.folder, with the shim as Postbox’s server. With
 // ctx.remote.attach, Postbox has restarted and the turn is already running there: it’s replayed from out.jsonl and
 // rebuilt from both logs (createCodexRebuild), and the message isn’t sent again. The host turn is the runtime’s
-// (ctx.remote.turn), or the attached one: one deliver is one host turn.
+// (ctx.remote.turn), or the attached one: one deliver is one host turn. Its start carries the message’s attachments,
+// and turn/start’s input names their copies in the turn’s folder there (remote-turn.mjs’s attachmentPaths).
 // server/adapters/codex.mjs runs the turn; this module holds what only a host needs.
 
 import { codexPromptId } from '../remote/host/broker.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
-import { hostShim, hostWaitMax } from './remote-turn.mjs';
+import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
 import { PERMISSION_WAIT_MARGIN_MS, POSTBOX_SERVER } from './setup.mjs';
+
+export { attachmentPaths } from './remote-turn.mjs';
 
 /**
  * How Codex runs on a remote host (CODEX_CAPABILITIES.remote): stdin stays open for the JSON-RPC until turn/completed,
@@ -105,6 +108,7 @@ export function spawnRemoteCodex(remote, attach, cwd, bin) {
     harness: 'codex',
     folder: cwd,
     stdin: 'held',
+    attachments: startAttachments(remote),
     turn,
     ...(attach ? { attach: { from: 0 } } : {}),
   });

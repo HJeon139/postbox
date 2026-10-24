@@ -49,7 +49,7 @@ import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
-import { KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
+import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, setupOf } from './setup.mjs';
 
@@ -462,9 +462,9 @@ export class KiroCliAdapter {
 
   async deliver(session, message, ctx) {
     const persona = ctx.persona;
-    // On a host, its folder there; the laptop’s folders don’t cross (the header).
+    // On a host, its folder there, and the host turn’s copies of attachments; laptop folders don’t cross (the header).
     const cwd = ctx.remote ? ctx.remote.folder : await this.folderFor(persona, ctx.project);
-    const prompt = formatMessage(message, ctx.pathOf);
+    const promptOn = (turn = ctx.remote?.turn) => formatMessage(message, attachmentPaths(ctx, turn));
     const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
     const folders = ctx.remote ? [cwd] : [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
     // Before anything starts on the host: the turn ID and version the runtime owns. After a Postbox restart,
@@ -472,10 +472,10 @@ export class KiroCliAdapter {
     const attach = ctx.remote?.attach?.turn ?? null;
     if (ctx.remote) checkRemoteContext(ctx.remote, { attach: Boolean(attach) });
     if (attach) {
-      await this.run({ ctx, cwd, folders, prompt, guide, sessionId: ctx.state.kiroSessionId ?? null, turn: attach, attach: true });
+      await this.run({ ctx, cwd, folders, prompt: promptOn(attach), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: attach, attach: true });
       return;
     }
-    const first = await this.run({ ctx, cwd, folders, prompt, guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
+    const first = await this.run({ ctx, cwd, folders, prompt: promptOn(), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
     // A session Kiro no longer has (its history was cleared, or the persona moved between your setup and
     // Isolated, which keep sessions in different homes) starts over, once.
     if (first.missingSession) {
@@ -483,7 +483,7 @@ export class KiroCliAdapter {
       const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
       // On a host, a second host turn, which the runtime persists before nextTurn returns.
       const turn = ctx.remote ? await ctx.remote.nextTurn() : undefined;
-      await this.run({ ctx, cwd, folders, prompt: note + prompt, guide, sessionId: null, turn });
+      await this.run({ ctx, cwd, folders, prompt: note + promptOn(turn), guide, sessionId: null, turn });
     }
   }
 

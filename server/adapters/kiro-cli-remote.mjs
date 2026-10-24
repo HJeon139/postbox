@@ -14,13 +14,17 @@
 //   execve(2)), so a longer one is refused before the turn starts. And other users on the host can read a process’s
 //   arguments in /proc/<pid>/cmdline unless /proc is mounted with hidepid (proc(5)), so each remote turn says so, as a
 //   step in its activity.
+// - The message’s attachments go with every start, the fresh one too, and the message names their copies in that host
+//   turn’s folder (remote-turn.mjs’s attachmentPaths).
 // - Stop goes through stopTurn’s remote branch: the daemon’s `stop`, never a local signal.
 // server/adapters/kiro-cli.mjs runs the turn; this module holds what only a host needs.
 
 import { REMOTE_DIR, REMOTE_LIMITS, utf8Bytes } from '../../shared/remote-protocol.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
-import { hostShim } from './remote-turn.mjs';
+import { hostShim, startAttachments } from './remote-turn.mjs';
 import { setupOf } from './setup.mjs';
+
+export { attachmentPaths } from './remote-turn.mjs';
 
 /**
  * How this backend runs on a remote host (KIRO_CAPABILITIES.remote, #117): nothing goes in on stdin, only KIRO_HOME
@@ -85,6 +89,7 @@ export function kiroRemoteSpawn(ctx, { agent, cwd, turn, attach, prompt, agentTe
     stdin: 'none',
     env: remoteEnv,
     agentFile: { name: `${agent}.json`, text },
+    attachments: startAttachments(ctx.remote),
     turn: hostTurn,
     ...(attach ? { attach: { from: 0 } } : {}),
   });

@@ -33,7 +33,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { claudeArgs } from './claude-code-args.mjs';
-import { CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
+import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
@@ -132,7 +132,8 @@ export class ClaudeCodeAdapter {
     const attach = remote?.attach?.turn ?? null;
     if (remote) checkRemoteClaude(remote, Boolean(attach));
     const cwd = remote ? remote.folder : await this.folderFor(persona, ctx.project);
-    const prompt = formatMessage(message, ctx.pathOf);
+    // On a host, each attachment is its copy in the folder of the host turn the message goes to.
+    const promptOn = (/** @type {string | null} */ turn) => formatMessage(message, attachmentPaths(ctx, turn));
     const local = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
     const guide = remote ? remoteGuide(local, cwd, ctx.addDirs ?? []) : local;
     // The project’s folder, and the folders the person added for this conversation (#66). On a host, none: they’re
@@ -140,21 +141,22 @@ export class ClaudeCodeAdapter {
     const addDirs = remote ? [] : [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
     // A turn already on the host, after a restart: replayed, never started again.
     if (attach) {
-      await this.run({ ctx, cwd, prompt, guide, resume: true, sessionId: ctx.state.claudeSessionId ?? null, turn: attach, attach: true });
+      await this.run({ ctx, cwd, prompt: promptOn(attach), guide, resume: true, sessionId: ctx.state.claudeSessionId ?? null, turn: attach, attach: true });
       return;
     }
     const fork = !ctx.state.claudeSessionId ? forkPoint(ctx.state) : null;
     const hostTurn = hostTurns(remote);
+    let turn = await hostTurn();
     let first = await this.run({
       ctx,
       cwd,
       addDirs,
-      prompt,
+      prompt: promptOn(turn),
       guide,
       resume: Boolean(ctx.state.claudeSessionId),
       sessionId: ctx.state.claudeSessionId,
       fork,
-      turn: await hostTurn(),
+      turn,
     });
     // A branch point Claude Code can no longer find (#61): fork from the conversation’s latest point instead,
     // once. The fork is saved without its uuid first, so a later turn never goes back to the bad one.
@@ -162,13 +164,15 @@ export class ClaudeCodeAdapter {
       const latest = { claudeSessionId: fork.claudeSessionId };
       ctx.saveState({ claudeSessionId: null, fork: latest });
       const note = '[Postbox] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message.\n\n';
-      first = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, guide, resume: false, sessionId: null, fork: latest, turn: await hostTurn() });
+      turn = await hostTurn();
+      first = await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, fork: latest, turn });
     }
     // A session Claude Code no longer has (its history was cleared) starts over, once.
     if (first.missingSession) {
       ctx.saveState({ claudeSessionId: null });
       const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
-      await this.run({ ctx, cwd, addDirs, prompt: note + prompt, guide, resume: false, sessionId: null, turn: await hostTurn() });
+      turn = await hostTurn();
+      await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, turn });
     }
   }
 

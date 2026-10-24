@@ -29,7 +29,8 @@
 //   ctx.mcpUrl                              where a real agent connects for the UI tools
 //   ctx.remote                              set when the turn runs on a remote host (#120), and then ctx.mcpUrl is
 //                                           never used: { link, welcome, settings, folder, version, turn, nextTurn,
-//                                           attach?, resumeInterrupted?, bring? } (RemoteContext below)
+//                                           attach?, resumeInterrupted?, bring?, attachments? } (RemoteContext
+//                                           below)
 //                                           link: server/remote/link.mjs’s createHostLink; welcome: the daemon’s
 //                                           latest (home, node.path, harnesses); settings: the host’s
 //                                           (shared/remote-settings.mjs); folder: the host folder it works in;
@@ -45,7 +46,9 @@
 //                                           spawns through server/remote/process.mjs’s remoteSpawn with that ID and
 //                                           makes none of its own. Codex also takes attach: { turn } (the turn to
 //                                           pick up after a restart, instead of turn), Claude Code
-//                                           resumeInterrupted.
+//                                           resumeInterrupted. attachments: the message’s files, which every start
+//                                           carries (server/remote/attachments.mjs); the message names their copies
+//                                           on the host through remote-turn.mjs’s attachmentPaths, never ctx.pathOf.
 //
 // Throw (or reject) to fail the turn; the message is shown to you with Retry.
 //
@@ -88,7 +91,8 @@
 /**
  * A turn’s remote context (#120), as the runtime passes it in ctx.remote.
  * @typedef {{ link: any, welcome: any, settings: Record<string, any>, folder: string, version: string,
- *   turn?: string, nextTurn: () => Promise<string>, attach?: { turn: string }, resumeInterrupted?: boolean, bring?: boolean }} RemoteContext
+ *   turn?: string, nextTurn: () => Promise<string>, attach?: { turn: string }, resumeInterrupted?: boolean, bring?: boolean,
+ *   attachments?: import('../remote/attachments.mjs').RemoteAttachment[] }} RemoteContext
  */
 
 /**

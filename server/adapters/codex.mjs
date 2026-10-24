@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline';
 import { draftOf } from '../write-guard.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { findCodex } from './codex-models.mjs';
-import { CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
+import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
@@ -226,7 +226,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
   // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
   const guide = agentGuide({ persona: ctx.persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null });
-  const inputText = formatMessage(message, ctx.pathOf);
+  const inputText = formatMessage(message, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
     threadId: id,
     input: [{ type: 'text', text: inputText }],

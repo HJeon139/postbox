@@ -2,6 +2,7 @@
 // there through the host’s daemon (server/remote/process.mjs), with these differences:
 // - Postbox’s server is the host’s stdio shim: { type: stdio, command: <host node>, args: [<shim.mjs>, <turn>],
 //   timeout: the host’s permissionWaitMax plus an hour, alwaysLoad }, passed on every turn, resumes too (C1, C6).
+// - The message’s attachments go with every start, and the message names their copies in that host turn’s folder.
 // - The working folder is the host folder, and no --add-dir: the conversation’s added folders are on this computer, so
 //   the agent guide says they aren’t there. The session lives in the host’s ~/.claude/projects.
 // - The host’s claude must be 2.1.187 or later (C3), and 2.1.259 or later with the host’s denyPrompts on, which passes
@@ -15,8 +16,10 @@
 
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
-import { hostShim, hostWaitMax } from './remote-turn.mjs';
+import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
 import { PERMISSION_WAIT_MARGIN_MS, shimServer } from './setup.mjs';
+
+export { attachmentPaths } from './remote-turn.mjs';
 
 /**
  * What this backend can do, for the runtime and the UI (#117). Left out, it forks, reads rules and offers Claude’s
@@ -129,6 +132,7 @@ export function remoteTurn(remote, folder, turn, resumeInterrupted, attach = fal
         stdin: 'file',
         env,
         files: [],
+        attachments: startAttachments(remote),
         turn,
         ...(attach ? { attach: { from: 0 } } : {}),
       })
