@@ -88,7 +88,7 @@ await check('An agent’s reaction shows under the reply with its name in words,
   await page.waitFor(`[...${REPLY}.querySelectorAll('.react-chip')].some((b) => b.textContent.includes('@${agent.handle}'))`, {
     label: 'the agent’s reaction, named',
   });
-  const chip = `[...${REPLY}.querySelectorAll('.react-chip')].find((b) => b.textContent.startsWith('❓'))`;
+  const chip = `[...${REPLY}.querySelectorAll('.react-chip')].find((b) => b.querySelector('img')?.alt === '❓')`;
   assert.match(await page.evaluate(`${chip}.getAttribute('aria-label')`), new RegExp(`from @${agent.handle}: add yours$`));
   await click(chip);
   await page.waitFor(`${chip}.getAttribute('aria-label').endsWith('take yours back')`, { label: 'yours added beside it' });
