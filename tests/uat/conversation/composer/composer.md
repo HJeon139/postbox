@@ -11,7 +11,11 @@ Where you write to agents; it must say who will answer.
 ## Expected functionality
 
 - Enter sends, Shift+Enter adds a line; drafts are kept per conversation.
-- The hint says who replies (the last speaker in a room); Stop replaces Send while an agent works.
+- The hint says who replies (the last speaker in a room, and in a topic or side thread the agent that spoke there last, else the one it started with: “Replying to @x”); Stop replaces Send while an agent works.
+- A draft that @-mentions agents wakes those, and only those: the hint says “Wakes @critic, not @researcher (last speaker)” in place of “Replying to”, since the agent it would otherwise go to isn’t woken. It reads the message at its next turn, as every agent in the conversation does; @-mention it too to wake it (#107).
+- A draft that opens with an agent’s name and “:” or “,” (“critic: …”, “Researcher, …”) mentions no one, so it would go to the agent that replies, not the one it names: the hint asks “Did you mean @critic?”, and its click adds the @. Nothing shows for a name later in the draft (“What did the researcher find?”), or for the agent that replies anyway. The end-to-end tester reads a message by the same rule (#134).
+- Scrolled a little above the end, Tab through the last replies: each button, option and link you reach shows above the composer, with its focus ring, never under it or under the Jump to latest pill. A click on a message there doesn’t move the view (#232).
+- A topic or side thread’s composer is as tall as the conversation’s, and with a thread panel open the two boxes sit at the same height, side by side. The hint under each keeps room for two lines, so a shorter hint doesn’t lower its box (#116).
 - / opens the [command menu](command-menu.md), as does the Commands button beside +; a line that starts with ! runs a [command](../transcript/command-item.md) in the conversation’s folder. The hint line says what Enter will do with either. In a topic or side thread’s composer, / and ! don’t run anything: a line that starts with ! says so in the hint before you send it, and goes to the agent as a message ([#104](https://github.com/HJeon139/postbox/issues/104)).
 - Messages sent while an agent is busy are queued with Send now, Edit and remove ([screenshot](../../screenshots/queued-message.png)).
 - Messages typed offline are sent when the connection returns.
@@ -33,8 +37,11 @@ Where you write to agents; it must say who will answer.
 5. In the panel’s composer, type `!gh --help`.
 
 **Pass if:** Before you send, the hint says “! runs commands only in the conversation’s own composer. Here, this goes to the agent as a message.”
+6. In a room where @researcher spoke last, type `critic: what’s your biggest concern?`, then `@critic what do you think?`, then open a topic thread and a side thread.
 
-The headless check `node tools/checks/attachments.mjs` covers steps 3 and 4 with a drawn PNG and SVG, and `node tools/check-commands.mjs` covers step 5.
+**Pass if:** The hint asks “Did you mean @critic?”, and its click makes the draft “@critic: what’s your biggest concern?”. With the @, it says “Wakes @critic, not @researcher (last speaker)”. Each thread’s composer says “Replying to @x”.
+
+The headless check `node tools/checks/attachments.mjs` covers steps 3 and 4 with a drawn PNG and SVG, `node tools/check-commands.mjs` covers step 5, and `node tools/checks/composer-address.mjs` covers step 6.
 
 ## Related
 

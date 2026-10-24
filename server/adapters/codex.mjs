@@ -11,7 +11,7 @@ import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 
 // Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false).
-export const CODEX_CAPABILITIES = Object.freeze({ resume: true, fork: true, permissions: 'none', tools: 'none', isolation: false });
+export const CODEX_CAPABILITIES = Object.freeze({ resume: true, fork: true, permissions: 'none', tools: 'none', isolation: false, promptTool: false });
 export const findCodex = (env = process.env) => env.POSTBOX_CODEX_BIN || 'codex';
 
 function probe(bin, args, timeout = 8000) {

@@ -12,6 +12,7 @@ Results from a side topic come back to the main conversation only when you choos
 
 - Shows “From the thread …” or “Summary of the thread …”, who wrote it, the text, and Open thread.
 - The text is drawn as an agent’s reply is: math and Mermaid diagrams render, and the conversation’s glossary terms link (#99).
+- A reply also shows the person’s question before the answer.
 - The conversation’s agents read it at the start of their next turn; it doesn’t wake them.
 
 ## Steps to reproduce
@@ -19,4 +20,4 @@ Results from a side topic come back to the main conversation only when you choos
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. After scene 4c, check the summary in “ReAct, step by step”.
 
-**Pass if:** The summary is in the conversation and links to its thread.
+**Pass if:** The summary is in the conversation and links to its thread; a shared reply makes its question clear without opening the thread.

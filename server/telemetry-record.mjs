@@ -127,7 +127,9 @@ export function tierA(rt, c) {
       turn: c.byTurn.get(t.turnId),
       reason: t.before ? 'before-recording' : t.running ? 'running' : t.lost ? 'write-failed' : 'not-recorded',
     }));
-  const wakes = items.filter((x) => x.kind === 'system' && x.variant === 'wake' && x.from !== 'you' && !x.scheduled);
+  // An agent’s wake is its message in the side thread, with its number in the chain (#114); a room from before that has
+  // a line for each.
+  const wakes = items.filter((x) => (x.kind === 'agent' && x.hop) || (x.kind === 'system' && x.variant === 'wake' && x.from !== 'you' && !x.scheduled));
   const others = c.threads.map((id) => rt.s.threads[id]).filter((t) => t && t.id !== c.conv.id);
   return {
     room: {
@@ -137,8 +139,8 @@ export function tierA(rt, c) {
       turns: turns.length,
       sideThreads: others.filter((t) => t.kind === 'side').length,
       topicThreads: others.filter((t) => t.kind === 'topic').length,
-      wakeChains: wakes.filter((x) => (x.n ?? 1) === 1).length,
-      longestWakeChain: Math.max(0, ...wakes.map((x) => x.n ?? 1)),
+      wakeChains: wakes.filter((x) => (x.hop ?? x.n ?? 1) === 1).length,
+      longestWakeChain: Math.max(0, ...wakes.map((x) => x.hop ?? x.n ?? 1)),
       hopConfirms: items.filter((x) => x.kind === 'hop').length,
       compactions: items.filter((x) => x.kind === 'system' && x.variant === 'compaction').length,
       initiativeEntropy: entropy(turns.map((t) => t.woke)),
@@ -156,7 +158,7 @@ export function tierA(rt, c) {
       })),
     blocks: items.filter((x) => x.kind === 'block' && x.valid).map((x) => blockRow(rt, c, x)),
     work: workOf(rt, c),
-    reactions: reactionsOf(c),
+    reactions: reactionsOf(rt, c),
     gaps: [
       ...gaps,
       ...(lostOf(rt).events.has(c.conv.id) ? [{ kind: 'events', reason: 'write-failed' }] : []),
@@ -190,12 +192,18 @@ const blockRow = (rt, c, x) => ({
     : {}),
 });
 
-/** Each reaction in the report’s span, on the ref it’s on, with the time from the item to it: the time to detect (R9). */
-function reactionsOf(c) {
+/**
+ * Each reaction in the report’s span, on the ref it’s on, with who made it (the person, or the agent’s pseudonym) and
+ * the time from the item to it: the time to detect (R9).
+ */
+function reactionsOf(rt, c) {
+  // An agent no longer in the room is agent-0, which no agent in it is named: never another agent’s pseudonym.
+  const by = (r) => (r.by ? (c.agents.get(rt.s.sessions[r.by]?.personaId)?.id ?? 'agent-0') : 'person');
   const out = [];
   for (const it of c.items)
     for (const r of it.reactions ?? [])
-      if (c.byItem.has(it.id) && r.at >= c.since) out.push({ emoji: r.emoji, on: c.byItem.get(it.id), detectMs: Math.max(0, r.at - it.at), at: r.at });
+      if (c.byItem.has(it.id) && r.at >= c.since)
+        out.push({ emoji: r.emoji, on: c.byItem.get(it.id), by: by(r), detectMs: Math.max(0, r.at - it.at), at: r.at });
   return out.sort((a, b) => a.at - b.at).map(({ at: _a, ...r }, i) => ({ ref: `r${i + 1}`, ...r }));
 }
 

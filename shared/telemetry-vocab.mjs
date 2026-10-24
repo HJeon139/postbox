@@ -50,6 +50,7 @@ export const POSTBOX_TOOLS = [
   'update_app',
   'retire_app',
   'define_term',
+  'react',
   'propose_agent',
   'schedule_wake',
   'wake_agent',

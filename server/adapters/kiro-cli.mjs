@@ -49,7 +49,7 @@ import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
-export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list' });
+export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false });
 
 /** The kiro-cli binary: POSTBOX_KIRO_BIN, then the PATH. */
 export const findKiro = (env = process.env) => env.POSTBOX_KIRO_BIN || 'kiro-cli';

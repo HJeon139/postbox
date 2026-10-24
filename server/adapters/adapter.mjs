@@ -37,11 +37,14 @@
 //   capabilities.models: [ids]        the models it offers, suggested in the model field instead of Claude’s
 //   capabilities.tools: 'none'        it can’t turn a tool off for one agent, so the Tools help says so (#143)
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
-// Left out, an adapter is taken to fork and read rules, with Claude’s models, as the Claude backends do. The page
-// gets every adapter’s capabilities in /api/state (config.backends).
+//   capabilities.promptTool: false    it never asks through Postbox’s permission_prompt (the CLI’s --permission-prompt-tool),
+//                                     so MCP doesn’t list it and refuses a call to it at once (#220)
+// Left out, an adapter is taken to fork and read rules, with Claude’s models, as the Claude backends do, and to ask
+// through permission_prompt, as the Claude Code CLI does. The page gets every adapter’s capabilities in /api/state
+// (config.backends).
 
 /**
- * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, models?: string[] },
+ * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, models?: string[] },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
  */
 
