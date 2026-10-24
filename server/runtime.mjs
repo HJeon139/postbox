@@ -632,8 +632,8 @@ export class Runtime {
     const turn = {
       id: newId('turn'),
       kind: message.kind,
-      // Another agent’s review of a block of this agent’s (#133): an event the person didn’t send.
-      reviewer: message.kind === 'event' ? (message.event?.from ?? null) : null,
+      // Whether this is the person moving on (#69): their message or an event of theirs, not another agent’s review (#133).
+      movesOn: message.kind === 'user' || (message.kind === 'event' && !message.event?.from),
       from:
         message.kind === 'agent'
           ? String(message.from ?? '')
@@ -681,7 +681,7 @@ export class Runtime {
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
       state: 'think',
-      needs: (message.kind === 'event' && !message.event?.from) || message.kind === 'user' ? null : se.needs,
+      needs: turn.movesOn ? null : se.needs,
       currentStep: 'Thinking',
       finishedAt: null,
     });
@@ -1025,8 +1025,7 @@ export class Runtime {
     const open = items.filter(
       (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
     );
-    const waiting =
-      se.needs?.kind === 'block' && turn.kind !== 'user' && (turn.kind !== 'event' || turn.reviewer) ? items.find((it) => it.id === se.needs?.itemId) : null;
+    const waiting = se.needs?.kind === 'block' && !turn.movesOn ? items.find((it) => it.id === se.needs?.itemId) : null;
     if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
