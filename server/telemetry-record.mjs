@@ -127,7 +127,9 @@ export function tierA(rt, c) {
       turn: c.byTurn.get(t.turnId),
       reason: t.before ? 'before-recording' : t.running ? 'running' : t.lost ? 'write-failed' : 'not-recorded',
     }));
-  const wakes = items.filter((x) => x.kind === 'system' && x.variant === 'wake' && x.from !== 'you' && !x.scheduled);
+  // An agent’s wake is its message in the side thread, with its number in the chain (#114); a room from before that has
+  // a line for each.
+  const wakes = items.filter((x) => (x.kind === 'agent' && x.hop) || (x.kind === 'system' && x.variant === 'wake' && x.from !== 'you' && !x.scheduled));
   const others = c.threads.map((id) => rt.s.threads[id]).filter((t) => t && t.id !== c.conv.id);
   return {
     room: {
@@ -137,8 +139,8 @@ export function tierA(rt, c) {
       turns: turns.length,
       sideThreads: others.filter((t) => t.kind === 'side').length,
       topicThreads: others.filter((t) => t.kind === 'topic').length,
-      wakeChains: wakes.filter((x) => (x.n ?? 1) === 1).length,
-      longestWakeChain: Math.max(0, ...wakes.map((x) => x.n ?? 1)),
+      wakeChains: wakes.filter((x) => (x.hop ?? x.n ?? 1) === 1).length,
+      longestWakeChain: Math.max(0, ...wakes.map((x) => x.hop ?? x.n ?? 1)),
       hopConfirms: items.filter((x) => x.kind === 'hop').length,
       compactions: items.filter((x) => x.kind === 'system' && x.variant === 'compaction').length,
       initiativeEntropy: entropy(turns.map((t) => t.woke)),

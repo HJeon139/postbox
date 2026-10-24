@@ -2,7 +2,10 @@
 // line, its link (#114).
 
 import assert from 'node:assert/strict';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { collect, tierA } from '../server/telemetry-record.mjs';
 import { settle, setup, sideOf } from './side-threads-fixture.mjs';
 
 test('#135: a woken turn that opens with a block, or proposes a teammate, says what woke it, and keeps to its own turn', async () => {
@@ -68,4 +71,15 @@ test('#114: a fix request that sends agents back and forth shows one line for th
   );
   assert.equal(lines[0].count, 8);
   assert.match(lines[2].text, /^Allowed: @alpha wakes @beta$/);
+});
+
+test('#114: with no line per wake, a telemetry report still counts the room’s wake chains, from each wake’s message', async () => {
+  const { store, rt, t, alpha, beta } = setup();
+  rt.agentWake(alpha.id, 'beta', 'Check the totals.');
+  await settle(rt);
+  rt.agentWake(beta.id, 'alpha', 'One more gap, please look again.');
+  await settle(rt);
+  const conv = store.state.threads[t.id];
+  const { room } = tierA(rt, collect(rt, conv, join(tmpdir(), 'pb-no-recording'), { history: true }));
+  assert.deepEqual([room.wakeChains, room.longestWakeChain], [1, 2]);
 });

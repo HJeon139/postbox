@@ -31,7 +31,7 @@ export function agentWake(rt, fromSessionId, handle, text, { confirmed = false, 
   const hops = (parent.hops ?? 0) + 1;
   rt.putThread({ ...rt.s.threads[parent.id], hops });
   // The exchange happens in a side thread; your thread shows one line that links to it, which counts each wake in place
-  // of a line of its own (#114).
+  // of a line of its own (#114). The wake’s message keeps its number in the chain (hop), for telemetry’s wake chains.
   const pair = [from.handle, p.handle].sort().join('|');
   let side = Object.values(rt.s.threads).find((x) => x.kind === 'side' && x.parentId === parent.id && x.pair === pair);
   if (!side) {
@@ -53,7 +53,7 @@ export function agentWake(rt, fromSessionId, handle, text, { confirmed = false, 
     });
     rt.addItem(parent.id, { kind: 'sidelink', sideThreadId: side.id, from: from.handle, to: p.handle, count: 0 });
   }
-  const said = rt.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done' });
+  const said = rt.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop: hops });
   rt.recordAgentMessage(from.id, 'to', p.handle, text);
   // The woken agent answers from its session in the conversation, so it remembers the exchange (#110). Busy, it takes
   // the wake when its turn ends, from the side thread’s queue, where the person sees it and can cancel it: a fork would
