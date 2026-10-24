@@ -25,6 +25,10 @@ export async function launch({ port = 9333 } = {}) {
       '--no-default-browser-check',
       '--hide-scrollbars',
       '--force-color-profile=srgb',
+      // A machine’s force-installed extensions load even into this fresh profile, and as their workers start they
+      // cancel the page’s first requests (net::ERR_ABORTED before anything is sent), so a check sometimes never sees
+      // the page load. CI’s runners have none; this makes a laptop run match. It touches only this test browser.
+      '--disable-extensions',
       'about:blank',
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
