@@ -9,8 +9,6 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
-import { HOST_ENFORCED } from '../shared/remote-protocol.mjs';
-import { checkDestination, checkHostPath, checkHostSettings } from '../shared/remote-settings.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
@@ -41,6 +39,9 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
+import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
+import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
+import { localBackends, notHere, placedPatch, placement, runsHere } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { runShell } from './shell.mjs';
 import {
@@ -93,17 +94,6 @@ const KEPT_POLL_MS = 5000;
 const MAX_JOBS = 50;
 /** How long a stopped turn may hold its session before Postbox lets the next turn start anyway, and says so (#126). */
 const STOP_WATCHDOG_MS = 15000;
-/**
- * How long removing a host waits for the turns it stopped there to end before it drops the link (#120): the daemon’s
- * grace period between SIGINT and SIGKILL is 10 s, and the stop and its answer cross the network.
- */
-const REMOVE_HOST_WAIT_MS = 15000;
-/** A harness’s name for the person, and the host setting that names its path (shared/remote-settings.mjs). */
-const HARNESS_LABELS = /** @type {Record<string, [string, string]>} */ ({
-  'claude-code': ['Claude Code', 'claudePath'],
-  'kiro-cli': ['Kiro CLI', 'kiroPath'],
-  codex: ['Codex', 'codexPath'],
-});
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
@@ -715,8 +705,8 @@ export class Runtime {
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
       // A backend registered for hosts only (its CLI isn’t here) never runs here: one placed here since is refused.
-      if (!hostId && !this.runsHere(persona?.backend ?? 'mock')) {
-        const text = `@${se.handle}’s turn didn’t start: ${this.notHere(persona?.backend ?? 'mock')}`;
+      if (!hostId && !runsHere(this, persona?.backend ?? 'mock')) {
+        const text = `@${se.handle}’s turn didn’t start: ${notHere(this, persona?.backend ?? 'mock')}`;
         throw Object.assign(new Error(text), { userMessage: text });
       }
       return adapter.deliver(this.s.sessions[sessionId], hostId ? await this.remote.prepare(turn, ctx, message) : message, ctx);
@@ -2920,7 +2910,7 @@ export class Runtime {
   }
 
   async attachClaudeSession({ claudeSessionId, projectId, handle }) {
-    if (!this.runsHere('claude-code')) throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
+    if (!runsHere(this, 'claude-code')) throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
     const cs = (await listClaudeSessions({ root: this.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
     if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
     if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
@@ -3099,12 +3089,12 @@ export class Runtime {
       .trim();
     if (!/^[a-z][a-z0-9_-]{1,23}$/i.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
-    if (!this.adapters.names().includes(backend)) throw httpError(422, this.notHere(backend));
+    if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
     checkSetup({ usesHostSetup, canPublish, mcpOff });
-    const placed = this.placement(remote, backend);
-    if (!placed && !this.runsHere(backend)) throw httpError(422, this.notHere(backend));
+    const placed = placement(this, remote, backend);
+    if (!placed && !runsHere(this, backend)) throw httpError(422, notHere(this, backend));
     const p = {
       id: newId('pe'),
       handle,
@@ -3138,21 +3128,9 @@ export class Runtime {
     if (patch.effort !== undefined) checkEffort(patch.effort);
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
-    if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, this.notHere(patch.backend));
-    // Where it runs (#120): checked when it changes, and when its backend does, since only some backends run on a host.
-    if (patch.remote !== undefined || (patch.backend !== undefined && p.remote)) {
-      const remote = this.placement(patch.remote === undefined ? p.remote : patch.remote, patch.backend ?? p.backend);
-      if ((remote?.hostId ?? null) !== (p.remote?.hostId ?? null)) {
-        const busy = Object.values(this.s.sessions).some((se) => se.personaId === id && (this.turns.has(se.id) || this.exiting.has(se.id)));
-        if (busy) throw httpError(409, `@${p.handle} is in the middle of a turn. Stop it or let it finish, then move it.`);
-      }
-      patch = { ...patch, remote };
-    }
-    // On this computer, its backend’s CLI must be here (one that runs only on a host is registered all the same).
-    if ((patch.backend !== undefined || patch.remote !== undefined) && !(patch.remote === undefined ? p.remote : patch.remote)) {
-      const backend = patch.backend ?? p.backend;
-      if (!this.runsHere(backend)) throw httpError(422, this.notHere(backend));
-    }
+    if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, notHere(this, patch.backend));
+    // Where it runs (#120), and whether its backend runs here when that’s here.
+    patch = placedPatch(this, id, p, patch);
     // A persona moved from the mock to a real model gets that backend’s default model.
     if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: this.defaultModelFor(patch.backend) };
     const next = {
@@ -3179,296 +3157,59 @@ export class Runtime {
     return next;
   }
 
-  // ── Remote hosts (#120) ────────────────────────────────────────────────────────────
+  // ── Remote hosts (#120): server/remote/placement.mjs, host-admin.mjs and host-status.mjs ──────────
 
-  /**
-   * The backends that run on this computer: every registered one but those registered to run only on a host (the
-   * registry’s here: false). Claude Code, Kiro CLI and Codex are registered that way when their CLI isn’t found
-   * (server/index.mjs), since an agent can still run them on a host.
-   */
   localBackends() {
-    return this.adapters.names().filter((n) => this.adapters.runsHere(n));
+    return localBackends(this);
   }
 
-  /** @param {string} backend */
-  runsHere(backend) {
-    return this.adapters.runsHere(backend);
-  }
-
-  /** Why a backend can’t run on this computer, and what can. @param {string} backend */
-  notHere(backend) {
-    const elsewhere = this.adapters.names().includes(backend) && this.adapters.get(backend).capabilities?.remote;
-    return `“${backend}” isn’t available on this computer. Available: ${this.localBackends().join(', ')}.${elsewhere ? ' It can run on one of your hosts: choose one for this agent.' : ''} See README, “Run real agents”.`;
-  }
-
-  /**
-   * Where a persona runs: null for this computer, or { hostId } for a host Postbox knows. Only a backend that says how
-   * it runs remotely (capabilities.remote: Claude Code, Kiro CLI and Codex) can run on a host.
-   * @param {unknown} remote @param {string} backend  a registered backend @returns {{ hostId: string } | null}
-   */
-  placement(remote, backend) {
-    if (remote === null || remote === undefined) return null;
-    const r = /** @type {Record<string, unknown>} */ (remote);
-    if (typeof remote !== 'object' || Array.isArray(remote) || Object.keys(r).some((k) => k !== 'hostId'))
-      throw httpError(422, 'Where an agent runs is null, for this computer, or { hostId } for one of your hosts.');
-    const h = typeof r.hostId === 'string' && Object.hasOwn(this.s.hosts ?? {}, r.hostId) ? this.s.hosts[r.hostId] : null;
-    if (!h) throw httpError(422, 'That host doesn’t exist; it may have been removed. Pick one of your hosts, or run the agent on this computer.');
-    if (!this.adapters.names().includes(backend)) throw httpError(422, `“${backend}” isn’t available in this Postbox, so it can’t run on ${h.name} either.`);
-    if (!this.adapters.get(backend).capabilities?.remote) {
-      const can = this.adapters.names().filter((n) => this.adapters.get(n).capabilities?.remote);
-      throw httpError(
-        422,
-        `“${backend}” runs only on this computer, so this agent can’t run on ${h.name}. ${can.length ? `Backends here that can run on a host: ${can.join(', ')}.` : 'Claude Code, Kiro CLI and Codex can run on a host, and none of them is on this computer.'}`,
-      );
-    }
-    // The host’s last welcome says which harnesses its daemon found. Not known yet, the turn’s start says.
-    const w = this.hosts?.status(h.id)?.welcome;
-    if (Array.isArray(w?.harnesses)) {
-      const found = w.harnesses.find((/** @type {any} */ x) => x?.name === backend);
-      if (!found?.path) {
-        const [label, setting] = HARNESS_LABELS[backend] ?? [backend, 'its path'];
-        const looked = found?.looked?.length ? ` Postbox’s daemon looked in ${found.looked.join(', ')}.` : '';
-        throw httpError(
-          422,
-          `${label} isn’t installed on ${h.name}, so this agent can’t run there.${looked} Install it there, or set ${setting} in the host’s settings.`,
-        );
-      }
-    }
-    return { hostId: h.id };
-  }
-
-  /** @param {string} id @returns {import('../shared/remote-settings.mjs').Host} */
+  /** @param {string} id */
   host(id) {
-    const h = this.s.hosts?.[id];
-    if (!h) throw httpError(404, 'That host doesn’t exist. It may have been removed.');
-    return h;
+    return host(this, id);
   }
 
-  /** A host by its SSH destination, the one the person sees. @param {string} name @param {string} [except] */
-  hostNamed(name, except) {
-    return Object.values(this.s.hosts ?? {}).find((h) => h.id !== except && h.name === name) ?? null;
+  /** @param {{ name?: unknown, settings?: unknown }} [opts] */
+  addHost(opts) {
+    return addHost(this, opts);
   }
 
-  /**
-   * Adds a host: its SSH destination and any settings that differ from the defaults.
-   * @param {{ name?: unknown, settings?: unknown }} opts
-   */
-  addHost({ name, settings } = {}) {
-    const dest = checked(checkDestination(name));
-    if (this.hostNamed(dest)) throw httpError(409, `${dest} is already a host.`);
-    const h = { id: newId('ho'), name: dest, settings: checked(checkHostSettings(settings)), createdAt: Date.now() };
-    this.store.emit('host', h);
-    return h;
+  /** @param {string} id @param {{ name?: unknown, settings?: unknown }} [patch] */
+  updateHost(id, patch) {
+    return updateHost(this, id, patch);
   }
 
-  /**
-   * Renames a host or changes some of its settings; settings not given keep their values. A change to one the daemon
-   * enforces (HOST_ENFORCED) reaches a connected host at once: its link opens a new session, whose hello sends it.
-   * @param {string} id @param {{ name?: unknown, settings?: unknown }} patch
-   */
-  updateHost(id, { name, settings } = {}) {
-    const h = this.host(id);
-    const dest = name === undefined ? h.name : checked(checkDestination(name));
-    if (this.hostNamed(dest, id)) throw httpError(409, `${dest} is already a host.`);
-    // A new destination is another machine, as far as Postbox knows: a turn there now would go on there while new
-    // ones went to the new one, and a resume would look for its session on the wrong machine.
-    if (dest !== h.name && this.remote.busyOn(id))
-      throw httpError(
-        409,
-        `${h.name} can’t be renamed while agents’ turns run there or wait to go on there: they’d carry on on ${h.name} while new ones went to ${dest}. Stop them or let them finish, then rename it.`,
-      );
-    const next = { ...h, name: dest, settings: checked(checkHostSettings(settings ?? {}, h.settings)) };
-    this.store.emit('host', next);
-    const enforced = HOST_ENFORCED.some((k) => JSON.stringify(h.settings?.[k]) !== JSON.stringify(next.settings?.[k]));
-    // Renamed: the manager drops the old link now, if nothing needs it, and the next use dials the new destination.
-    if (dest !== h.name) this.hosts?.refresh(id).catch((e) => console.error(`Postbox couldn’t close its link to ${h.name}: ${e?.message ?? e}`));
-    else if (enforced && this.hosts?.status(id)?.state === 'connected')
-      this.hosts.refresh(id).catch((e) => console.error(`Postbox couldn’t send ${dest} its new settings: ${e?.message ?? e}`));
-    return next;
+  /** @param {string} id @param {{ waitMs?: number }} [opts] */
+  removeHost(id, opts) {
+    return removeHost(this, id, opts);
   }
 
-  /**
-   * Removes a host, and every project’s folder on it. Its turns stop first, each as Stop stops it, through the daemon,
-   * and Postbox waits up to waitMs for them to end. A turn that may still run there (its link gave up, or the stop
-   * hasn’t reached it) keeps the host: Postbox connects to ask, and until the daemon confirms each is over, the
-   * removal is refused (409) and the host’s settings and token stay, so the stops can still be delivered. So is one
-   * whose token is gone from this computer: nothing can reach the host to stop them, which isn’t a sign they stopped,
-   * so installing again is the way to stop them. Then Postbox removes itself from the host (the manager’s
-   * removeFromHost: the daemon stops anything still running there, deletes ~/.postbox-remote and says `removed`), and
-   * only then does the manager forget the link and its token, so nothing holds a connection to a host Postbox no longer
-   * knows. Until the host confirms, the removal is refused (409, with the reason and the next step) and the settings and
-   * token stay: without the token, Postbox could never reach what it left there. One with no token here and nothing
-   * running there is removed here alone, since Postbox can’t reach anything of its own there.
-   * Agents placed on it keep their placement and can’t start a turn there until they’re moved.
-   * @param {string} id @param {{ waitMs?: number }} [opts]
-   */
-  async removeHost(id, { waitMs = REMOVE_HOST_WAIT_MS } = {}) {
-    const h = this.host(id);
-    const until = Date.now() + waitMs;
-    const stopped = [];
-    let given = 0;
-    // Agents placed on it, and sessions with a turn there (one that started before its agent moved, or one waiting to be
-    // attached again after a restart, which no Stop reaches).
-    const on = new Set(this.remote.sessionsOn(id));
-    for (const se of Object.values(this.s.sessions)) if (this.persona(se.personaId)?.remote?.hostId === id || se.remoteTurn?.hostId === id) on.add(se.id);
-    for (const sessionId of on) {
-      // A turn already stopping is waited for too.
-      if (this.stop(sessionId, { silent: true }) || this.exiting.has(sessionId)) stopped.push(this.exiting.get(sessionId)?.turn.exited);
-      else if (this.remote.cancel(sessionId)) given++;
-    }
-    if (stopped.length) {
-      /** @type {NodeJS.Timeout|undefined} */
-      let timer;
-      const late = new Promise((r) => {
-        timer = setTimeout(r, waitMs);
-      });
-      await Promise.race([Promise.all(stopped), late]);
-      clearTimeout(timer);
-    }
-    const { left, noToken } = await this.remote.confirmStops(id, Math.max(0, until - Date.now()));
-    if (left.length && noToken) {
-      const names = [...new Set(left.map((t) => this.s.sessions[this.remote.stopping.get(t)?.sessionId ?? '']?.handle).map((x) => (x ? `@${x}` : 'an agent')))];
-      throw httpError(
-        409,
-        `${h.name}’s token isn’t on this computer any more, so Postbox can’t reach it to stop ${left.length} running ${left.length === 1 ? 'turn' : 'turns'}: ${names.join(', ')}. Install Postbox on ${h.name} again to stop them, then remove it.`,
-      );
-    }
-    if (left.length) {
-      const reached = this.hosts?.status(id)?.state === 'connected';
-      const turns = left.length === 1 ? 'a turn' : `${left.length} turns`;
-      throw httpError(
-        409,
-        reached
-          ? `${h.name} hasn’t confirmed that ${turns} there stopped, so Postbox keeps the host until it does. Try again in a moment.`
-          : `${h.name} can’t be reached, so its running turns can’t be stopped; Postbox keeps the host until they can be. They’re stopped when it’s back, and then you can remove it.`,
-      );
-    }
-    if (this.hosts) {
-      try {
-        await this.hosts.removeFromHost(id);
-      } catch (e) {
-        // No token here: nothing of Postbox’s there can be reached. No host: a second click removed it meanwhile.
-        if (e?.code !== 'not-installed' && e?.code !== 'no-host')
-          throw Object.assign(httpError(409, `${String(e?.message ?? e)} Postbox keeps ${h.name} and its token here until it can remove itself there.`), {
-            code: e?.kind ?? e?.code ?? 'failed',
-            next: e?.next ?? null,
-          });
-      }
-      await this.hosts.forget(id);
-    }
-    // It may have been removed meanwhile, by a second click.
-    if (!this.s.hosts?.[id]) return { ok: true, stopped: stopped.length + given };
-    for (const p of Object.values(this.s.projects)) {
-      if (!p.hostFolders || !Object.hasOwn(p.hostFolders, id)) continue;
-      const { [id]: _gone, ...rest } = p.hostFolders;
-      this.store.emit('project', { ...p, hostFolders: rest });
-    }
-    this.store.emit('host', { id, removed: true });
-    return { ok: true, stopped: stopped.length + given };
-  }
-
-  /** The host manager, or a refusal that says remote hosts aren’t available. */
-  hostManager() {
-    if (!this.hosts) throw httpError(503, 'This Postbox wasn’t started with remote hosts, so it can’t connect to one.');
-    return this.hosts;
-  }
-
-  /**
-   * A host’s connection as the page shows it: the link’s state, its failure in words with the next step, what the
-   * daemon’s welcome said about the host (its home, Node, harnesses and problems, not its turns), and when Postbox last
-   * heard from it. Null before the host manager knows of it.
-   * @param {string} id
-   */
+  /** @param {string} id */
   hostStatus(id) {
-    this.host(id);
-    const st = this.hosts?.status(id) ?? null;
-    if (!st) return null;
-    const f = st.failure ?? null;
-    const w = st.welcome ?? null;
-    return {
-      state: st.state ?? null,
-      failure: f && { kind: f.kind ?? 'failed', message: String(f.message ?? ''), next: f.next ?? null, retry: f.retry === true },
-      welcome: w && { version: w.version, home: w.home, node: w.node, harnesses: w.harnesses ?? [], problems: w.problems ?? [] },
-      lastHeard: st.lastHeard ?? null,
-    };
+    return hostStatus(this, id);
   }
 
-  /**
-   * Keeps each host’s status in the state for the page (s.hostStatus), as other live state reaches it: what the host
-   * manager says now, then at each 'status' it emits. One from before a restart is replaced, since its link is gone.
-   * Any change is published, lastHeard too: the manager emits a change to lastHeard alone at most every
-   * HEARD_EVERY_MS, though every message moves it.
-   */
   watchHosts() {
-    for (const id of Object.keys(this.s.hostStatus ?? {})) if (!this.hosts || !this.s.hosts?.[id]) this.store.emit('host.status', { id, status: null });
-    if (!this.hosts) return;
-    for (const id of Object.keys(this.s.hosts ?? {})) this.publishHostStatus(id);
-    this.hosts.on('status', (/** @type {string} */ hostId) => this.publishHostStatus(hostId));
+    return watchHosts(this);
   }
 
-  /** @param {string|undefined} id */
-  publishHostStatus(id) {
-    if (!id || !this.s.hosts?.[id]) return;
-    const status = this.hostStatus(id);
-    const was = this.s.hostStatus?.[id];
-    if (was !== undefined && JSON.stringify(status) === JSON.stringify(was)) return;
-    this.store.emit('host.status', { id, status });
+  /** @param {string} id */
+  describeHostInstall(id) {
+    return describeHostInstall(this, id);
   }
 
-  /** What installing Postbox’s host program on a host does, for the page’s confirm before it (describeInstall). @param {string} id */
-  async describeHostInstall(id) {
-    this.host(id);
-    return await this.hostManager().describeInstall(id);
+  /** @param {string} id */
+  installHost(id) {
+    return installHost(this, id);
   }
 
-  /** Installs Postbox’s host program on a host. The page asks first, with describeHostInstall’s text. @param {string} id */
-  async installHost(id) {
-    this.host(id);
-    let result;
-    try {
-      result = await this.hostManager().install(id);
-    } catch (e) {
-      throw hostRefusal(e);
-    }
-    this.publishHostStatus(id);
-    // Whether it installed or found this version there; never the daemon’s token, which stays out of what the page
-    // reads (server/remote/ssh.mjs, “The daemon’s token”).
-    return { ok: true, installed: result?.installed !== false, version: result?.version ?? null };
+  /** @param {string} id @param {{ takeover?: unknown }} [opts] */
+  retryHost(id, opts) {
+    return retryHost(this, id, opts);
   }
 
-  /**
-   * Connects to a host again now, after a failure only the person could fix (a sign-in, a host key) or to stop waiting
-   * out the backoff. takeover: replace the other Postbox that’s connected to it (busy).
-   * @param {string} id @param {{ takeover?: unknown }} [opts]
-   */
-  retryHost(id, { takeover = false } = {}) {
-    this.host(id);
-    if (typeof takeover !== 'boolean') throw httpError(422, 'takeover is true or false.');
-    let link;
-    try {
-      link = this.hostManager().link(id);
-    } catch (e) {
-      throw hostRefusal(e);
-    }
-    link.retry({ takeover });
-    this.publishHostStatus(id);
-    return { ok: true };
-  }
-
-  /**
-   * Sets a project’s folder on a host, an absolute path there; null clears it, and its agents work in
-   * ~/postbox-work/<handle> on that host instead (the design, “The adapters stay”).
-   * @param {string} projectId @param {string} hostId @param {unknown} folder
-   */
+  /** @param {string} projectId @param {string} hostId @param {unknown} folder */
   setProjectHostFolder(projectId, hostId, folder) {
-    const p = this.s.projects[projectId];
-    if (!p) throw httpError(404, 'That project doesn’t exist.');
-    const h = this.host(hostId);
-    const { [hostId]: _old, ...rest } = p.hostFolders ?? {};
-    const hostFolders = folder === null ? rest : { ...rest, [hostId]: checked(checkHostPath(folder, `The project’s folder on ${h.name}`)) };
-    const next = { ...p, hostFolders };
-    this.store.emit('project', next);
-    return next;
+    return setProjectHostFolder(this, projectId, hostId, folder);
   }
 
   /**
@@ -4115,23 +3856,6 @@ function writeOf(tool, input, detail, given) {
   };
 }
 
-/**
- * A host’s failure (an SshFailure: what happened, and the next step) as the page reads it: a 502 whose error is the
- * message, with `next` and its kind as `code`, rather than a 500 that hides both. One for a host this computer has no
- * token for (not-installed) is a 409, as is the manager’s refusal of a host renamed while a turn still uses its old
- * name (host-renamed-busy: try again once it ends). Anything else is returned as it is, to be thrown.
- * @param {any} e
- */
-function hostRefusal(e) {
-  if (e?.code === 'host-renamed-busy') return Object.assign(httpError(409, e.message), { code: e.code, next: null });
-  if (e?.name !== 'SshFailure') return e;
-  return Object.assign(httpError(e.kind === 'not-installed' ? 409 : 502, e.message), { code: e.kind, next: e.next ?? null });
-}
-/** A check’s value, or its refusal as a 422. @param {import('../shared/remote-settings.mjs').Checked} r */
-function checked(r) {
-  if (!r.ok) throw httpError(422, r.error);
-  return r.value;
-}
 /** An error the ledger raised with a status, as the API answers it. */
 const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;
