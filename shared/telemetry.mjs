@@ -84,6 +84,8 @@ const re = (pattern) => (v) => typeof v === 'string' && pattern.test(v);
 const num = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v < 1e13;
 const bool = (v) => typeof v === 'boolean';
 const int = (v) => Number.isInteger(v) && v > 0 && v < 1e7;
+/** A ref’s one shape: its kind’s letter and an ordinal over the room, from 1. */
+const REF = /^[tirc][1-9]\d{0,4}$/;
 /** The refs a finding offers its label: at most five (R16). */
 export const MAX_REFS = 5;
 const n = en(BUCKETS);
@@ -112,7 +114,8 @@ const SCHEMA = obj({
         k,
         n,
       ]),
-      ['initiativeEntropy', (v) => num(v) && Math.round(v * 10) === v * 10],
+      // Entropy over at most a few kinds of wake, to a tenth: a small number, so it can’t carry a value.
+      ['initiativeEntropy', (v) => num(v) && v <= 8 && Math.round(v * 10) === v * 10],
     ]),
   ),
   agents: list(
@@ -181,7 +184,9 @@ export function finalCheck(report, { checkIds, build = {}, refs, uat = false }) 
   const issued = new Set(refs);
   const check = (spec, v, path) => {
     if (spec === 'check') return checkIds.includes(v) || out.push(path);
-    if (typeof spec === 'string' && spec.startsWith('ref:')) return (typeof v === 'string' && issued.has(v) && spec.slice(4).includes(v[0])) || out.push(path);
+    // A ref is issued for this report, and in its strict ordinal shape, whatever the issued set says (R16).
+    if (typeof spec === 'string' && spec.startsWith('ref:'))
+      return (typeof v === 'string' && REF.test(v) && issued.has(v) && spec.slice(4).includes(v[0])) || out.push(path);
     if (spec === 'version' || spec === 'commit') return (typeof v === 'string' && v === build[spec]) || out.push(path);
     if (typeof spec === 'function') return spec(v) || out.push(path);
     if (spec.item) {

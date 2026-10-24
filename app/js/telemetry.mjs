@@ -70,6 +70,8 @@ function openTelemetry(convId) {
 
 /** The header’s word for a recording conversation (R5): “Recording since 14:02”, kept up to date. */
 export function recordingBadge(t) {
+  // A page with no conversation (Threads, Archived) has no badge, and nothing listening for one.
+  if (!t) return null;
   const badge = h('span.rec-badge', { id: 'recording-badge', role: 'status' });
   const paint = () => {
     const rec = S().threads[t?.id]?.recording;
@@ -77,14 +79,13 @@ export function recordingBadge(t) {
     badge.textContent = rec?.on ? `Recording since ${time(rec.startedAt ?? rec.since)}` : '';
   };
   paint();
-  // The top bar is rebuilt often: a badge that’s left it stops listening, so listeners don’t pile up.
-  let shown = false;
+  // The top bar is rebuilt often, and mounts what it builds at once: a badge that isn’t in the page by the next change
+  // has been dropped, and stops listening, so listeners don’t pile up.
   const off = client.on((ch) => {
-    if (badge.isConnected) shown = true;
-    else if (shown) return off();
-    if (ch.type === 'thread' && ch.data.id === t?.id) paint();
+    if (!badge.isConnected) return off();
+    if (ch.type === 'thread' && ch.data.id === t.id) paint();
   });
-  return t ? badge : null;
+  return badge;
 }
 
 /**
@@ -93,7 +94,8 @@ export function recordingBadge(t) {
  * @param {string} convId
  */
 export function mountTelemetryView(convId) {
-  const body = h('div.sp-body.tv-body');
+  // Focus waits here while a button it was on is disabled or replaced, then goes to the view’s first control.
+  const body = h('div.sp-body.tv-body', { id: 'tv-body', tabindex: '-1' });
   const close = h(
     'button.btn.icon.sm',
     {
@@ -121,7 +123,7 @@ export function mountTelemetryView(convId) {
         const had = body.contains(document.activeElement) ? document.activeElement?.id : null;
         body.replaceChildren(...(draft ? draftView(convId, draft, load) : askView(convId, o, load, ask)), ...savedView(convId, o.saved, load));
         const back = had ? document.getElementById(had) : null;
-        (back && body.contains(back) ? back : had ? body.querySelector('button, input') : null)?.focus();
+        (back && back !== body && body.contains(back) ? back : had ? body.querySelector('button, input') : null)?.focus();
       })
       .catch(fail('Couldn’t open Telemetry'));
   const ask = { history: false };
@@ -150,6 +152,8 @@ function askView(convId, o, load, ask) {
       id: 'tv-make',
       disabled: !o.recording,
       onclick: () => {
+        // Disabling the button it’s on would drop focus to the page: it waits in the view instead.
+        /** @type {HTMLElement | null} */ (make.closest('.tv-body'))?.focus();
         make.disabled = true;
         make.textContent = 'Making the report…';
         api(`/api/threads/${convId}/telemetry/reports`, { history: history.checked }).then(load, (e) => {

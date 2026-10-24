@@ -157,7 +157,11 @@ export function tierA(rt, c) {
     blocks: items.filter((x) => x.kind === 'block' && x.valid).map((x) => blockRow(rt, c, x)),
     work: workOf(rt, c),
     reactions: reactionsOf(c),
-    gaps: [...gaps, ...(lostOf(rt).events.has(c.conv.id) ? [{ kind: 'events', reason: 'write-failed' }] : [])],
+    gaps: [
+      ...gaps,
+      ...(lostOf(rt).events.has(c.conv.id) ? [{ kind: 'events', reason: 'write-failed' }] : []),
+      ...(lostOf(rt).sweep ? [{ kind: 'sweep', reason: 'write-failed' }] : []),
+    ],
   };
 }
 

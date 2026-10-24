@@ -5,6 +5,7 @@
 // (thread.recording), which only the header shows; no agent reads it. The whole folder goes with the conversation (after
 // Undo’s window); recording/ goes at once with Delete recordings, and each stream 30 days after it was last written.
 
+import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,9 +21,19 @@ const SWEEP_MS = 864e5;
 /** A clone’s implicit data/ folder, which is often inside the folder its agents work in (R11). */
 const CLONE_DATA = fileURLToPath(new URL('../data', import.meta.url));
 
-/** <data folder>/telemetry: --data’s or ~/.postbox’s, never a clone’s data/ (then ~/.postbox’s), or the tests’ own. */
-export const telemetryRoot = (rt) =>
-  rt.config.telemetryRoot ?? (rt.store.dir ? join(resolve(rt.store.dir) === CLONE_DATA ? postboxHome() : rt.store.dir, 'telemetry') : null);
+/**
+ * <data folder>/telemetry: --data’s or ~/.postbox’s, or the tests’ own. Never a clone’s data/, which is often inside
+ * the folder its agents work in: a clone gets a folder of its own in ~/.postbox, keyed by its data folder, so its
+ * sweep never meets the home install’s conversations, nor another clone’s.
+ */
+export const telemetryRoot = (rt) => {
+  if (rt.config.telemetryRoot) return rt.config.telemetryRoot;
+  if (!rt.store.dir) return null;
+  if (resolve(rt.store.dir) !== CLONE_DATA) return join(rt.store.dir, 'telemetry');
+  return join(postboxHome(), `telemetry-clone-${createHash('sha256').update(CLONE_DATA).digest('hex').slice(0, 12)}`);
+};
+/** What a conversation’s folder is named: its id, and nothing else the sweep would take for one. */
+const CONV_DIR = /^th_[A-Za-z0-9]{1,32}$/;
 
 /** A folder under telemetry/, made owner-only (0700) along the way. */
 export function folder(rt, ...parts) {
@@ -192,8 +203,16 @@ export function watchTelemetry(rt) {
       lostOf(rt).events.add(rt.lineage(threadId).at(-1));
     }
   });
-  sweep(rt);
-  const timer = setInterval(() => sweep(rt), SWEEP_MS);
+  // A sweep that can’t delete something leaves it for the next one, as a gap: it never stops Postbox, at start or later.
+  const sweepSafely = () => {
+    try {
+      sweep(rt);
+    } catch {
+      lostOf(rt).sweep = true;
+    }
+  };
+  sweepSafely();
+  const timer = setInterval(sweepSafely, SWEEP_MS);
   timer.unref?.();
   return () => {
     off();
@@ -221,27 +240,36 @@ export function sweep(rt, now = Date.now()) {
   const root = telemetryRoot(rt);
   if (!root || !existsSync(root)) return [];
   const gone = [];
-  for (const name of readdirSync(root)) {
-    if (!rt.s.threads[name]) {
-      rmSync(join(root, name), { recursive: true, force: true });
-      gone.push(name);
-      continue;
+  for (const name of readdirSync(root).filter((n) => CONV_DIR.test(n))) {
+    try {
+      gone.push(...sweepOne(rt, root, name, now));
+    } catch {
+      lostOf(rt).sweep = true;
     }
-    const rec = join(root, name, 'recording');
-    if (!existsSync(rec)) continue;
-    const old = [...filesIn(join(rec, 'streams')), ...filesIn(join(rec, 'drafts'))].filter((f) => now - statSync(f).mtimeMs > KEEP_MS);
-    for (const f of old) {
-      rmSync(f, { force: true });
-      gone.push(relative(root, f));
-    }
-    ageEvents(join(rec, 'events.jsonl'), now);
-    const rest = filesIn(rec);
-    const fresh = rest.length ? rest.some((f) => now - statSync(f).mtimeMs <= KEEP_MS) : now - statSync(rec).mtimeMs <= KEEP_MS;
-    if (filesIn(join(rec, 'streams')).length || fresh) continue;
-    rmSync(rec, { recursive: true, force: true });
-    gone.push(relative(root, rec));
   }
   return gone;
+}
+
+/** The 30-day rule for one conversation’s folder: what it deleted. */
+function sweepOne(rt, root, name, now) {
+  if (!rt.s.threads[name]) {
+    rmSync(join(root, name), { recursive: true, force: true });
+    return [name];
+  }
+  const rec = join(root, name, 'recording');
+  if (!existsSync(rec)) return [];
+  const gone = [];
+  const old = [...filesIn(join(rec, 'streams')), ...filesIn(join(rec, 'drafts'))].filter((f) => now - statSync(f).mtimeMs > KEEP_MS);
+  for (const f of old) {
+    rmSync(f, { force: true });
+    gone.push(relative(root, f));
+  }
+  ageEvents(join(rec, 'events.jsonl'), now);
+  const rest = filesIn(rec);
+  const fresh = rest.length ? rest.some((f) => now - statSync(f).mtimeMs <= KEEP_MS) : now - statSync(rec).mtimeMs <= KEEP_MS;
+  if (filesIn(join(rec, 'streams')).length || fresh) return gone;
+  rmSync(rec, { recursive: true, force: true });
+  return [...gone, relative(root, rec)];
 }
 
 /** Keeps the events recorded in the last 30 days, by when each was recorded. */

@@ -24,8 +24,16 @@ function overview(rt, threadId) {
   const conv = convOf(rt, threadId);
   const root = telemetryRoot(rt);
   const dir = conv && root ? join(root, conv.id, 'recording', 'drafts') : null;
+  // A stray file there (.DS_Store, a half-written draft) is skipped, not a failure.
   const open = (dir && existsSync(dir) ? readdirSync(dir) : [])
-    .map((f) => JSON.parse(readFileSync(join(dir ?? '', f), 'utf8')))
+    .filter((f) => f.endsWith('.json'))
+    .flatMap((f) => {
+      try {
+        return [JSON.parse(readFileSync(join(dir ?? '', f), 'utf8'))];
+      } catch {
+        return [];
+      }
+    })
     .filter((d) => !d.saved)
     .sort((a, b) => b.at - a.at)[0];
   return { recording: conv?.recording ?? null, draft: open?.report?.id ?? null, saved: savedReports(rt, threadId) };

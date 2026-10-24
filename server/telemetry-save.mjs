@@ -55,7 +55,7 @@ export function saveReport(rt, threadId, id, { hash } = {}) {
   write(join(dir, 'run.json'), `${JSON.stringify(run, null, 2)}\n`);
   write(join(dir, 'findings.json'), `${JSON.stringify(findings, null, 2)}\n`);
   // What File issue checks the bytes against later: their hash, the refs issued, and the build they were saved by.
-  write(join(dir, 'meta.json'), JSON.stringify({ hash: now, refs: draft.refs ?? [], uat: draft.uat === true, build: rt.config.build ?? {} }));
+  write(join(dir, 'meta.json'), JSON.stringify({ hash: now, refs: draft.refs ?? [], uat: draft.uat === true }));
   draft.saved = { at: Date.now(), hash: now };
   write(join(recFolder(rt, conv.id, 'drafts'), `${id}.json`), JSON.stringify(draft));
   return { ok: true, id, hash: now };
@@ -79,13 +79,18 @@ export function savedBytes(rt, convId, id) {
   } catch {
     throw httpError(409, 'This report’s file doesn’t parse. Delete it.');
   }
-  const problems = finalCheck(report, { checkIds: CHECKS.map((c) => c.id), build: meta.build, refs: meta.refs, uat: meta.uat });
-  if (problems.length) throw httpError(422, `This report fails the final check (${problems.slice(0, 3).join(', ')}), so Postbox won’t send it.`);
+  // The build is the running one, never a file’s word for it: meta.json sits beside report.json, as easy to edit.
+  const problems = finalCheck(report, { checkIds: CHECKS.map((c) => c.id), build: rt.config.build ?? {}, refs: meta.refs ?? [], uat: meta.uat === true });
+  if (problems.length)
+    throw httpError(
+      422,
+      `This report fails the final check (${problems.slice(0, 3).join(', ')}), so Postbox won’t send it. One saved by another version of Postbox can be deleted, not filed.`,
+    );
   return { text, hash: sha(text), report };
 }
 
 /** Strings in a file derived from the report that aren’t the report’s own or a fixed template’s, as paths. */
-function derivedProblems(obj, report, name) {
+export function derivedProblems(obj, report, name) {
   const ok = new Set(['A live room', 'live', 'check', 'flag']);
   const walk = (v) => (typeof v === 'string' ? ok.add(v) : v && typeof v === 'object' ? Object.values(v).forEach(walk) : null);
   walk(report);
@@ -133,8 +138,10 @@ export function discardDraft(rt, threadId, id) {
 /** Deletes a saved report. */
 export function deleteReport(rt, threadId, id) {
   const conv = convOf(rt, threadId);
-  savedBytes(rt, conv?.id, id);
-  rmSync(join(reportFolder(rt, conv.id), id), { recursive: true, force: true });
+  // No check first: a report that no longer checks out is exactly the one to delete.
+  const dir = conv && /^rep_[A-Za-z0-9]{1,16}$/.test(String(id)) ? join(telemetryRoot(rt) ?? '', conv.id, 'reports', id) : null;
+  if (!dir || !existsSync(dir)) throw httpError(404, 'There’s no such report.');
+  rmSync(dir, { recursive: true, force: true });
   return { ok: true };
 }
 

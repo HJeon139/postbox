@@ -126,7 +126,7 @@ export const BUCKETS = ['0', '1-9', '10-99', '100-999', '1000-9999', '10000-9999
 /** A duration’s bucket, and a cost’s, in cents to the nearest power of ten (R12). */
 export const DURATIONS = ['under-1s', '1-9s', '10-59s', 'minutes', 'hours'];
 export const COSTS = ['0', 'under-1c', '1c', '10c', '1usd', '10usd', '100usd'];
-export const GAP_KINDS = ['no-stream', 'transcript', 'check', 'classifier', 'events'];
+export const GAP_KINDS = ['no-stream', 'transcript', 'check', 'classifier', 'events', 'sweep'];
 export const GAP_REASONS = [
   'before-recording',
   'not-recorded',
