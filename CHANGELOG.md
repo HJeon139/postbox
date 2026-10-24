@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.30.0 (2026-10-24)
+
+### Features
+
+- **reactions:** switch to the person's final icon set
+
 ## 0.29.0 (2026-10-24)
 
 ### Features
