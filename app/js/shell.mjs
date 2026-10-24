@@ -984,8 +984,8 @@ function quickAnswer(se) {
             h('button.btn.sm', { type: 'button', onclick: () => act('deny') }, 'Don’t allow'),
           ]
         : [
-            h('button.btn.sm', { type: 'button', onclick: () => act('once') }, 'Allow once and retry'),
-            h('button.btn.sm', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`),
+            it.rules.once ? h('button.btn.sm', { type: 'button', onclick: () => act('once') }, 'Allow once and retry') : null,
+            it.rules.always ? h('button.btn.sm', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`) : null,
           ];
     return h(
       'div.col',

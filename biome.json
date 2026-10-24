@@ -105,6 +105,10 @@
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 162 } } } } }
     },
     {
+      "includes": ["app/js/permission-cards.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 146 } } } } }
+    },
+    {
       "includes": ["app/js/permissions.mjs"],
       "linter": {
         "rules": {
