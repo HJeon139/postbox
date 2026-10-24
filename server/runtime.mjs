@@ -39,9 +39,22 @@ import { parseDataset } from './corpus.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
-import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
+import {
+  allowAlways,
+  alwaysFor,
+  askPerson,
+  expireStalePermissions,
+  readsRules,
+  recordDenial,
+  requestPermission,
+  resolveDenial,
+  resolvePermission,
+  settlePermission,
+} from './permission-cards.mjs';
+import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
 import { reviewBlock } from './review-comments.mjs';
+import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -59,8 +72,7 @@ import {
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
-import { askForTool } from './tool-ask.mjs';
-import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
+import { askForTool, settleToolAsks } from './tool-ask.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -100,6 +112,17 @@ const count = (n) => n.toLocaleString('en-US');
  * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s.
  */
 const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
+/**
+ * What woke a turn, on each item it shows, for its sender line (#135): another agent, with a message, or with its
+ * answer to one (endTurn sends that with saidIn, where it answered); or a wake it scheduled.
+ */
+const wokeOf = (turn) => {
+  const m = turn?.asked?.message;
+  if (m?.kind === 'wake') return { woke: { scheduled: true } };
+  return m?.kind === 'agent' ? { woke: { by: String(m.from ?? '').replace(/^@/, ''), ...(m.saidIn ? { reply: true, in: m.saidIn } : {}) } } : {};
+};
+/** What each reply of a turn carries: what woke it, and that a reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check. */
+const replyMarks = (turn) => ({ ...(turn.kind === 'lint' ? { lintReply: true } : {}), ...wokeOf(turn) });
 /**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
  * read_message takes, so the agent can read the rest (#109).
@@ -204,7 +227,7 @@ export class Runtime {
     this.configDir = claudeConfigDir !== undefined ? claudeConfigDir : this.home === homedir() ? process.env.CLAUDE_CONFIG_DIR || null : null;
     this.blobs = blobs ?? null;
     this.narrator = narrator ?? null;
-    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId }
+    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId, timer }
     this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
     this.turns = new Map(); // sessionId → live turn
     // sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126)
@@ -440,13 +463,13 @@ export class Runtime {
     // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
     const away = t.kind === 'side' || t.kind === 'topic';
     if (away) {
-      for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you'), woke: true });
+      for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you') });
       if (!targets.length) {
         // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
         const p = threadPersona(this, t);
         const se = p && this.sideSession(t, p.id, 'you');
         if (!se) throw httpError(409, `No agent is in this ${t.kind === 'side' ? 'side thread' : 'thread'}. @-mention one to bring it in.`);
-        targets.push({ se, woke: false });
+        targets.push({ se });
       }
     }
     // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
@@ -454,13 +477,13 @@ export class Runtime {
     if (archived && !away) throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
     for (const p of away ? [] : mentioned) {
       const joined = !this.sessionsIn(threadId).some((x) => x.personaId === p.id);
-      targets.push({ se: this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }), woke: true });
+      targets.push({ se: this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }) });
     }
     if (!targets.length) {
       const members = this.sessionsIn(threadId).filter((x) => !x.archived);
       const last = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
       if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
-      targets.push({ se: last, woke: false });
+      targets.push({ se: last });
     }
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
@@ -480,8 +503,8 @@ export class Runtime {
     const conv = this.lineage(threadId).at(-1);
     this.putThread({ ...this.s.threads[conv], hops: 0 });
     const refs = this.threadRefs(threadId, text);
-    for (const { se, woke } of targets) {
-      if (woke) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
+    // An agent you @-mentioned gets no “You woke” line: your message’s mention says so (#114).
+    for (const { se } of targets) {
       this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id, ...(refs.length ? { context: refs } : {}) }, { threadId });
     }
     return { item };
@@ -533,7 +556,7 @@ export class Runtime {
     return this.postAndDeliver(
       threadId,
       q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se && !x.se.archived),
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
     );
   }
 
@@ -568,7 +591,7 @@ export class Runtime {
     this.postAndDeliver(
       threadId,
       q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se && !x.se.archived),
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
     );
   }
 
@@ -635,6 +658,8 @@ export class Runtime {
               .toLowerCase()
           : null,
       sessionId,
+      // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
+      backend: persona?.backend ?? 'mock',
       threadId: where,
       segment: null,
       first: null,
@@ -707,8 +732,7 @@ export class Runtime {
           text: '',
           status: 'streaming',
           activity: turn.first ? null : { steps: [...turn.steps] },
-          // A reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check.
-          ...(turn.kind === 'lint' ? { lintReply: true } : {}),
+          ...replyMarks(turn),
         });
         // The text before a tool call or a block is finished; only the newest segment shows the caret.
         if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
@@ -973,9 +997,9 @@ export class Runtime {
       for (const it of items)
         if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
     }
-    // Posted or not, the summary isn’t pending any more, so Summarize back works again. Any turn ending clears
-    // one a restart left behind, too.
-    this.clearSummaryPending(turn.threadId);
+    // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
+    // turn (#225). Any turn ending clears one a restart left behind, too.
+    this.clearSummaryPending(turn.threadId, turn);
     if (err && err.name !== 'AbortError') {
       // Its progress steps still running show as stalled, as at any turn’s end (#98).
       this.stallLeftRunning(turn, se, 'failed');
@@ -1073,21 +1097,21 @@ export class Runtime {
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
-    // An agent that @-mentions another agent wakes it.
+    // An agent that @-mentions another agent wakes it, except in a summary sent back, which wakes no one (#225).
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
     // Mentioning the agent that just wrote to you wakes it only if you ask it to check again.
     const replyTo = turn.replyTo ? this.s.sessions[turn.replyTo]?.handle?.toLowerCase() : null;
-    for (const h of parseMentions(turn.said, this.handles())) {
+    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
       const hl = h.toLowerCase();
       if (hl === se.handle.toLowerCase() || hl === replyTo) continue;
       if (hl === turn.from && !/again|once more|loop/i.test(turn.said)) continue;
       // Its turn has ended, so where it spoke comes from the turn: an answer goes back to a topic thread it spoke in.
-      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null });
+      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id });
       if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
     }
     // A reply to an agent that woke this one goes back to it.
     if (turn.replyTo && this.s.sessions[turn.replyTo] && !this.s.sessions[turn.replyTo].archived) {
-      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)' }, { threadId: turn.replyIn });
+      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)', saidIn: turn.threadId }, { threadId: turn.replyIn });
       this.recordAgentMessage(se.id, 'to', this.s.sessions[turn.replyTo].handle, turn.said);
       this.recordAgentMessage(turn.replyTo, 'from', se.handle, turn.said);
     }
@@ -1559,69 +1583,20 @@ export class Runtime {
     return { threadId: topic.id };
   }
 
-  /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
   shareToConversation(topicId, itemId) {
-    const topic = this.thread(topicId);
-    if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only messages in a topic or side thread can be sent to the conversation.');
-    const it = this.store.item(topicId, itemId);
-    if (!it?.text) throw httpError(404, 'That reply has no text to send.');
-    if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
-    // Part of a summary still being written: the whole summary is posted when it’s done (#93).
-    if ([...this.turns.values()].some((x) => x.id === it.turnId && x.summarizeTo))
-      throw httpError(409, 'This reply is part of a summary that’s still being written. It’s posted in the conversation when it’s done.');
-    this.patchItem(topicId, itemId, { sharedAt: Date.now() });
-    return this.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text });
+    return shareToConversation(this, topicId, itemId);
   }
-
-  /** “Summarize back”: the topic’s agent writes a short summary, which is posted in the conversation. */
-  summarizeBack(topicId) {
-    const topic = this.thread(topicId);
-    if (topic.kind !== 'topic') throw httpError(409, 'Only a topic thread can be summarized back.');
-    // The thread’s agent: the one that spoke last there, else the one it started with (#228).
-    const p = threadPersona(this, topic);
-    const se = p && this.sideSession(topic, p.id, 'you');
-    if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
-    // One at a time, so a second click or a second tab can’t post it twice (#93).
-    if (this.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
-    // Kept on the thread for the panel’s button, until the turn ends or is stopped. A restart can leave it
-    // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
-    this.putThread({ ...topic, summaryPending: { sessionId: se.id, at: Date.now() } });
-    this.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
-    this.deliver(
-      se.id,
-      {
-        kind: 'notice',
-        text: 'Summarize this topic thread for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.',
-      },
-      { summarizeTo: topic.parentId, threadId: topicId },
-    );
-    return { ok: true };
+  summarizeBack(topicId, opts) {
+    return summarizeBack(this, topicId, opts);
   }
-
-  /** Whether a summarize turn is running or queued in a topic thread. */
   summarizing(topicId) {
-    return (
-      [...this.turns.values()].some((x) => (x.threadId === topicId && x.summarizeTo) || x.pending.some((p) => p.summarizeTo && p.threadId === topicId)) ||
-      // One waiting for a stopped turn’s process to exit (#126).
-      [...this.exiting.values()].some((x) => x.held.some((h) => h.summarizeTo && h.threadId === topicId))
-    );
+    return summarizing(this, topicId);
   }
-
-  clearSummaryPending(topicId) {
-    const t = this.s.threads[topicId];
-    if (t?.summaryPending && !this.summarizing(topicId)) this.putThread({ ...t, summaryPending: null });
+  clearSummaryPending(topicId, ended) {
+    return clearSummaryPending(this, topicId, ended);
   }
-
-  /**
-   * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
-   * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
-   * bring_to_conversation, because the person asked it to (#128).
-   */
-  shareText(threadId, { fromThreadId, handle, text, summary = false, agent = false }) {
-    const from = this.s.threads[fromThreadId];
-    // The conversation’s agents read it at the start of their next turn, with everything else they missed.
-    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary, ...(agent ? { agent } : {}) });
-    return it;
+  shareText(threadId, opts) {
+    return shareText(this, threadId, opts);
   }
 
   // ── Shared memory in a conversation ────────────────────────────────────────────────
@@ -1719,7 +1694,7 @@ export class Runtime {
         return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
-        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
+        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${i.question ? `You asked: “${text(i.question)}” ` : ''}${text(i.text)}`;
       case 'system':
         if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
         if (i.variant === 'joined') return `@${i.to} joined`;
@@ -2068,242 +2043,35 @@ export class Runtime {
     return { ok: true, sent };
   }
 
-  // ── Permission prompts ─────────────────────────────────────────────────────────────
-  // A real agent in “ask” mode stops before anything risky, such as running a command. Postbox shows a card
-  // in the thread, the agent needs you, and the tool call waits for your answer. Ending the turn, or Stop,
-  // turns any open card into “expired” and answers no.
-
-  /**
-   * input is the call’s input, which Edit changes; suggestions are Claude Code’s own (`permission_suggestions`, the
-   * SDK’s `suggestions`), which Always allow returns; agentId names the subagent that asks, when one does.
-   * @param {string} sessionId
-   * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
-   * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
-   * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
-   *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null }} req
-   * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
-   */
-  async requestPermission(sessionId, req) {
-    // A write outside Postbox the person already settled runs without a card (#112).
-    if (isWriteCall(req.tool, req.input) && this.s.sessions[sessionId] && (await writePasses(this, sessionId, req).catch(() => false))) return { allow: true };
-    return this.askPerson(sessionId, req);
+  requestPermission(sessionId, req) {
+    return requestPermission(this, sessionId, req);
   }
-
-  /** @param {string} sessionId @param {Parameters<Runtime['requestPermission']>[1]} req */
-  askPerson(sessionId, { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false, draft }) {
-    const se = this.s.sessions[sessionId];
-    const turn = this.turns.get(sessionId);
-    if (!se || !turn) return Promise.resolve({ allow: false, message: 'The turn has ended.' });
-    const json = input && typeof input === 'object' && !Array.isArray(input) ? JSON.stringify(input) : null;
-    const it = this.addItem(turn.threadId, {
-      kind: 'permission',
-      sessionId,
-      handle: se.handle,
-      turnId: turn.id,
-      tool: String(tool ?? '').slice(0, 120),
-      summary: String(summary).slice(0, 200),
-      ...writeOf(tool, input, detail, draft),
-      // The tool call it’s about, so a refusal of a call you answered here doesn’t get a second card.
-      toolUseId: toolUseId ? String(toolUseId) : null,
-      // What Edit starts from; an input too large to edit here can still be allowed as it is.
-      input: json && json.length <= MAX_EDIT_INPUT ? JSON.parse(json) : null,
-      always: this.alwaysFor(se, { tool, input, suggestions, suppressAlways }),
-      // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
-      who: whoAsked(turn, agentId, toolUseId),
-      status: 'open',
-    });
-    // The text so far is finished; the reply continues below the card.
-    if (turn.segment) this.patchItem(turn.threadId, turn.segment, { status: 'done' });
-    turn.segment = null;
-    this.updateSession(sessionId, {
-      state: 'needs',
-      needs: { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...this.awayFrom(se, turn.threadId) },
-    });
-    this.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
-    return new Promise((resolve) => {
-      this.permissionWaits.set(it.id, { resolve, threadId: turn.threadId, sessionId });
-    });
+  askPerson(sessionId, req) {
+    return askPerson(this, sessionId, req);
   }
-
-  /**
-   * What Always allow offers on a card, or null for none:
-   * - none when Claude Code says a saved rule would grant more than this call (the SDK’s suppressAlwaysAllowRule);
-   * - Claude Code’s own suggestions when it sends a list (the SDK does, and an empty list means none);
-   * - otherwise, for the CLI’s prompt tool, which sends no list at all (recorded), the rule Postbox makes for a refusal,
-   *   which it saves where the CLI saves “don’t ask again”; but only for a backend that reads rules from a folder.
-   * @param {any} se @param {{ tool: unknown, input: any, suggestions: unknown, suppressAlways: boolean }} req
-   */
-  alwaysFor(se, { tool, input, suggestions, suppressAlways }) {
-    if (suppressAlways) return null;
-    if (Array.isArray(suggestions)) return alwaysAllow(suggestions);
-    if (suggestions !== null && suggestions !== undefined) return null;
-    return this.readsRules(this.persona(se.personaId)?.backend) ? postboxAlways(String(tool ?? '').slice(0, 121), input) : null;
+  alwaysFor(se, req) {
+    return alwaysFor(this, se, req);
   }
-
-  /**
-   * Whether a backend reads Claude Code’s permission rules from the agent’s folder: Claude Code and the Agent SDK do;
-   * the mock reads none, and the Kiro CLI has rules of its own (capabilities.permissions: 'none', #117).
-   * @param {string|undefined} backend
-   */
   readsRules(backend) {
-    const adapter = backend && this.adapters.names().includes(backend) ? this.adapters.get(backend) : null;
-    return Boolean(adapter?.folderFor) && adapter?.capabilities?.permissions !== 'none';
+    return readsRules(this, backend);
   }
-
-  /**
-   * Answers a waiting tool call. Any status that starts with “allowed” lets it run, with `answer`’s updatedInput or
-   * updatedPermissions; anything else refuses it with `message`.
-   * @param {string} itemId @param {string} status @param {string} [message]
-   * @param {{ updatedInput?: Record<string, any>, updatedPermissions?: any[] }} [answer] @param {Record<string, any>} [patch]
-   */
-  settlePermission(itemId, status, message, answer = {}, patch = {}) {
-    const w = this.permissionWaits.get(itemId);
-    if (!w) return false;
-    this.permissionWaits.delete(itemId);
-    this.patchItem(w.threadId, itemId, { status, answeredAt: Date.now(), ...patch });
-    const se = this.s.sessions[w.sessionId];
-    if (se?.needs?.itemId === itemId) this.updateSession(se.id, { needs: null, state: this.turns.has(se.id) ? 'tool' : 'idle' });
-    w.resolve(status.startsWith('allowed') ? { allow: true, ...answer } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
-    return true;
+  settlePermission(itemId, status, message, answer, patch) {
+    return settlePermission(this, itemId, status, message, answer, patch);
   }
-
-  /**
-   * Your answer on a permission card (#66, #10):
-   * - allow: this once, as asked;
-   * - always: this once, and Claude Code’s own suggestions as updatedPermissions (the card shows them in words);
-   * - edit: with your change to the input (values.command for a command, else values.input, an object or JSON);
-   * - deny: no, with values.reason, which goes to the agent.
-   * @param {string} threadId @param {string} itemId @param {string} action @param {Record<string, any>} [values]
-   */
-  resolvePermission(threadId, itemId, action, values = {}) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'permission' || it.status !== 'open' || !this.permissionWaits.has(itemId))
-      throw httpError(409, 'That request was already answered, or the turn that asked has ended.');
-    if (!['allow', 'always', 'edit', 'deny'].includes(action)) throw httpError(400, 'A permission request takes “allow”, “always”, “edit” or “deny”.');
-    const asked = `${it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`} to ${it.summary}`;
-    if (action === 'allow') {
-      this.addItem(threadId, { kind: 'voice', text: `Allowed: ${asked}` });
-      this.settlePermission(itemId, 'allowed');
-    } else if (action === 'always') {
-      if (!it.always) throw httpError(409, 'There’s no rule to save for this one, so it can only be allowed once.');
-      return this.allowAlways(threadId, it, asked);
-    } else if (action === 'edit') {
-      const input = editedInput(it, values);
-      this.addItem(threadId, { kind: 'voice', text: `Allowed with your edit: ${asked}` });
-      this.settlePermission(
-        itemId,
-        'allowed-edited',
-        undefined,
-        { updatedInput: input },
-        { edited: it.tool === 'Bash' ? input.command : JSON.stringify(input, null, 2) },
-      );
-    } else {
-      const reason = String(values?.reason ?? '')
-        .trim()
-        .slice(0, MAX_REASON);
-      this.addItem(threadId, { kind: 'voice', text: `Didn’t allow: ${asked}${reason ? ` (“${reason}”)` : ''}` });
-      this.settlePermission(
-        itemId,
-        'denied',
-        reason ? `The person didn’t allow this. Their reason: ${reason}` : 'The person didn’t allow this. Ask them what to do instead, or find another way.',
-        {},
-        reason ? { reason } : {},
-      );
-    }
-    return { ok: true };
+  resolvePermission(threadId, itemId, action, values) {
+    return resolvePermission(this, threadId, itemId, action, values);
   }
-
-  /**
-   * Always allow on a permission card: Claude Code’s suggestions go back as updatedPermissions, and Claude Code saves
-   * them; a rule Postbox made (the CLI suggests none) Postbox saves itself, in the agent folder’s local settings.
-   * @param {string} threadId @param {any} it @param {string} asked
-   */
-  async allowAlways(threadId, it, asked) {
-    if (it.always.saves) {
-      const se = this.s.sessions[it.sessionId];
-      const persona = se && this.personaFor(se);
-      const adapter = persona && this.adapters.get(persona.backend);
-      if (!adapter?.folderFor || !this.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
-      await addAllowRule(await adapter.folderFor(persona, this.s.projects[this.s.threads[threadId]?.projectId]), it.always.saves);
-      // The card may have been answered, or its turn ended, while the file was written.
-      if (!this.permissionWaits.has(it.id)) throw httpError(409, 'The rule is saved, but the turn that asked has ended.');
-    }
-    this.addItem(threadId, { kind: 'voice', text: `Always allowed (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')}): ${asked}` });
-    this.settlePermission(it.id, 'allowed-always', undefined, it.always.updates ? { updatedPermissions: it.always.updates } : {});
-    return { ok: true };
+  allowAlways(threadId, it, asked) {
+    return allowAlways(this, threadId, it, asked);
   }
-
-  // ── Refusals ───────────────────────────────────────────────────────────────────────
-  // Claude Code refuses some calls without asking anyone: auto mode’s classifier, a deny rule, or the mode.
-  // Each refusal becomes a card, so the person can allow it once (the agent tries again), always (a rule in
-  // the agent folder’s .claude/settings.local.json, shared with the CLI), or leave it.
-
   recordDenial(turn, d) {
-    const se = this.s.sessions[turn.sessionId];
-    if (!se) return;
-    const key = String(d.toolUseId ?? '');
-    // Once per call, and never for a call the person answered on a permission card.
-    if (key && this.store.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission') && it.toolUseId === key)) return;
-    const rules = rulesFor(String(d.tool ?? ''), d.input ?? {});
-    const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);
-    this.addItem(turn.threadId, {
-      kind: 'denial',
-      sessionId: se.id,
-      handle: se.handle,
-      turnId: turn.id,
-      toolUseId: key,
-      tool: String(d.tool ?? '').slice(0, 120),
-      summary: String(d.label ?? d.tool ?? '').slice(0, 200),
-      detail: detail.slice(0, 4000),
-      reason: String(d.reason ?? '').slice(0, 400),
-      reasonType: d.reasonType ? String(d.reasonType).slice(0, 40) : null,
-      who: d.who ? String(d.who).slice(0, 40) : null,
-      rules,
-      status: 'open',
-    });
-    // The text so far is finished; the reply continues below the card.
-    if (turn.segment) this.patchItem(turn.threadId, turn.segment, { status: 'done' });
-    turn.segment = null;
+    return recordDenial(this, turn, d);
   }
-
-  async resolveDenial(threadId, itemId, action) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'denial' || it.status !== 'open') throw httpError(409, 'That refusal was already answered.');
-    if (!['once', 'always', 'leave'].includes(action)) throw httpError(400, 'A refusal takes “once”, “always” or “leave”.');
-    const se = this.s.sessions[it.sessionId];
-    const asked = it.who ? `${it.who} (your subagent)` : 'you';
-    /** @type {string | null} */
-    let note = null;
-    if (action === 'always') {
-      const persona = se && this.personaFor(se);
-      const adapter = persona && this.adapters.get(persona.backend);
-      if (!adapter?.folderFor || !this.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
-      const folder = await adapter.folderFor(persona, this.s.projects[this.s.threads[threadId]?.projectId]);
-      const { file } = await addAllowRule(folder, it.rules.always);
-      note = `[Postbox] The person now always allows \`${it.rules.always}\` (saved in ${file}). The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
-    } else if (action === 'once') {
-      if (se) this.updateSession(se.id, { allowOnce: [...(se.allowOnce ?? []), it.rules.once] });
-      note = `[Postbox] The person allowed \`${it.rules.once}\` for your next turn only. The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
-    }
-    const status = { once: 'allowed-once', always: 'allowed-always', leave: 'left' }[action];
-    this.patchItem(threadId, itemId, { status, answeredAt: Date.now() });
-    const words = { once: 'Allowed once', always: `Always allowed ${it.rules.alwaysWords}`, leave: 'Left refused' }[action];
-    this.addItem(threadId, { kind: 'voice', text: `${words}: @${it.handle} to ${it.summary}` });
-    if (se?.needs?.itemId === itemId) {
-      const next = this.store.items(threadId).find((x) => x.kind === 'denial' && x.sessionId === se.id && x.status === 'open');
-      this.updateSession(se.id, {
-        needs: next ? { kind: 'denial', itemId: next.id, text: `A step was refused: ${next.summary}` } : null,
-        state: this.turns.has(se.id) ? se.state : next ? 'needs' : 'idle',
-      });
-    }
-    if (note && se && !se.archived) this.deliver(se.id, { kind: 'notice', text: note }, { threadId });
-    return { ok: true };
+  resolveDenial(threadId, itemId, action) {
+    return resolveDenial(this, threadId, itemId, action);
   }
-
-  /** After a restart, no tool call is waiting any more, so open cards can’t be answered. */
   expireStalePermissions() {
-    for (const [threadId, items] of Object.entries(this.s.items))
-      for (const it of items) if (it.kind === 'permission' && it.status === 'open') this.patchItem(threadId, it.id, { status: 'expired' });
+    return expireStalePermissions(this);
   }
 
   // ── The permissions panel (#66) ────────────────────────────────────────────────────
@@ -3010,6 +2778,8 @@ export class Runtime {
       version: (p.version ?? 1) + 1,
     };
     this.store.emit('persona', next);
+    // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
+    if (patch.tools !== undefined) settleToolAsks(this, next);
     return next;
   }
 
@@ -3462,7 +3232,16 @@ export class Runtime {
         const it = rt.addItem(
           threadId(),
           v.ok
-            ? { kind: 'block', sessionId, handle: se().handle, turnId: turn?.id ?? null, valid: true, block: v.block, answered: false }
+            ? {
+                kind: 'block',
+                sessionId,
+                handle: se().handle,
+                turnId: turn?.id ?? null,
+                valid: true,
+                block: v.block,
+                answered: false,
+                ...wokeOf(turn),
+              }
             : {
                 kind: 'block',
                 sessionId,
@@ -3554,6 +3333,9 @@ export class Runtime {
           kind: 'proposal',
           sessionId,
           handle: se().handle,
+          // Its turn’s, so it shares that turn’s sender line and no other (#135).
+          turnId: turn?.id ?? null,
+          ...wokeOf(turn),
           status: 'open',
           proposal: { handle: String(handle).replace(/^@/, ''), description, instructions, tools, model, backend },
           extraTools: tools.filter((t) => !mine.has(t)),
@@ -3602,26 +3384,6 @@ const KEEP_LOST = 'Postbox couldn’t find its process to keep it running: it ma
 /** What the person and the agent are told when Postbox couldn’t tell which of a turn’s processes a kept job was (#164). */
 const keepUnsure = (n) => `Postbox couldn’t tell which of ${n} processes is this job, so it kept them all running; stopping the job stops them all.`;
 
-/**
- * A permission card’s detail, and for a write outside Postbox (#112) that it is one, and its draft, which the card shows
- * as Markdown above the other arguments.
- * @param {unknown} tool @param {any} input @param {unknown} detail @param {{ field: string, text: string } | null | undefined} given
- */
-function writeOf(tool, input, detail, given) {
-  const outside = isWriteCall(String(tool ?? ''), input);
-  const draft = given === undefined ? draftOf(String(tool ?? ''), input) : given;
-  const rest =
-    draft && input && typeof input === 'object' && Object.hasOwn(input, draft.field)
-      ? JSON.stringify({ ...input, [draft.field]: '(the draft above)' }, null, 2)
-      : null;
-  return {
-    detail: String(rest ?? detail).slice(0, 4000),
-    // Where it lands, so the card can say so before anything exists there.
-    ...(outside ? { outside: true, where: whereOf(String(tool ?? ''), input) } : {}),
-    ...(draft ? { draft: { field: draft.field, text: String(draft.text).slice(0, 20000) } } : {}),
-  };
-}
-
 /** An error the ledger raised with a status, as the API answers it. */
 const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;
@@ -3646,30 +3408,6 @@ function checkSetup({ usesHostSetup, canPublish, mcpOff }) {
 function checkEffort(effort) {
   if (!EFFORT_LEVELS.includes(effort)) throw httpError(422, `Effort is one of ${EFFORT_LEVELS.join(', ')}.`);
 }
-/**
- * Always allow for a prompt without suggestions (the CLI’s prompt tool sends none): the broader rule a refusal card
- * offers (permission-rules.mjs, rulesFor), which Postbox saves in the folder’s local settings itself.
- * @param {string} tool @param {any} input
- */
-function postboxAlways(tool, input) {
-  if (!tool || tool.length > 120) return null;
-  const r = rulesFor(tool, input && typeof input === 'object' ? input : {});
-  // A rule too long to keep (a command with a heredoc, say, which only ever gets its exact text) isn’t offered.
-  if (cleanRule(r.always) !== r.always) return null;
-  return {
-    updates: null,
-    saves: r.always,
-    lines: [{ text: `Always allow ${r.always} in this folder (.claude/settings.local.json)`, rule: r.always }],
-    moved: null,
-    words: r.alwaysWords,
-  };
-}
-/** The subagent behind a prompt, from the adapter’s stream (claude-stream.mjs, who), bounded; null for the agent itself. */
-function whoAsked(turn, agentId, toolUseId) {
-  const ids = { agentId: agentId ? String(agentId) : null, toolUseId: toolUseId ? String(toolUseId) : null };
-  const name = turn.subagentName?.(ids) ?? (ids.agentId ? 'a subagent' : null);
-  return name ? String(name).slice(0, 40) : null;
-}
 // Commands in the composer (#67), bounded: an agent’s list for the / menu, a `!command`’s output (its last
 // characters), how often that output reaches the browser, and how much of it the agents read.
 const MAX_COMMANDS = 200;
@@ -3681,38 +3419,6 @@ const COMMAND_CONTEXT = 4000;
 // What a conversation keeps for the permissions panel (#66), bounded.
 const MAX_CONVERSATION_RULES = 200;
 const MAX_ADD_DIRS = 20;
-// A permission card’s Edit (#10): the input it starts from, and what you can send back, are bounded.
-const MAX_EDIT_INPUT = 16000;
-const MAX_REASON = 1000;
-/**
- * The input an edited permission answer allows: the command you changed, for Bash, else the input you rewrote (an
- * object, or JSON that parses to one). Refused when it doesn’t parse, so a typo never reaches the agent’s tool.
- * @param {any} it @param {Record<string, any>} values
- */
-function editedInput(it, values) {
-  // Edit starts from the call’s whole input. One too large to keep on the card can only be allowed as it is, since an
-  // edit made from its shortened text would drop the rest (a command’s description, timeout or background flag).
-  if (!it.input) throw httpError(409, 'This call’s input is too large to edit here. Allow it as it is, or don’t allow it and say what to do instead.');
-  if (it.tool === 'Bash' && typeof values?.command === 'string') {
-    const command = values.command.trim();
-    if (!command) throw httpError(422, 'Write the command to run, or choose Don’t allow.');
-    if (command.length > MAX_EDIT_INPUT) throw httpError(422, `A command is limited to ${MAX_EDIT_INPUT.toLocaleString('en-US')} characters.`);
-    return { ...it.input, command };
-  }
-  let input = values?.input;
-  if (typeof input === 'string') {
-    try {
-      input = JSON.parse(input);
-    } catch (e) {
-      throw httpError(422, `The edited input isn’t valid JSON: ${e.message}`);
-    }
-  }
-  if (!input || typeof input !== 'object' || Array.isArray(input))
-    throw httpError(422, 'The edited input has to be a JSON object, like the one it started from.');
-  if (JSON.stringify(input).length > MAX_EDIT_INPUT)
-    throw httpError(422, `The edited input is limited to ${MAX_EDIT_INPUT.toLocaleString('en-US')} characters.`);
-  return input;
-}
 /** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
 const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));

@@ -12,7 +12,7 @@ Everything about one agent at once, so you can decide without opening the conver
 
 - Header: ring, @name (a link to its conversation), project and conversation on one line (a long name is cut short on screen, whole in the link), what it runs with, state line.
 - What it runs with (#60): its backend, the model that answered its last turn (the one it’s set to before its first turn) and the effort, with full model ids: “Claude Code · claude-opus-5-5 · medium effort”. A model that isn’t the one set says “· not the model you set: claude-opus-5-5”. A mock agent says “Mock agent · scripted replies, not a model”, and “mock” after its @name (#12).
-- Needs you: what it’s waiting on, with a quick answer for a simple choice or confirm, or Open conversation.
+- Needs you: what it’s waiting on, with a quick answer for a simple choice or confirm, or Open conversation. The card has a heavier amber top edge and a tinted head band, unlike any button’s 1 px amber outline, so it stands out from the controls on it (#8).
 - Only a block from the agent’s latest turn makes it need you. Blocks you left open from earlier turns show quietly under the state line, as “1 open review”, and the agent stops reading “needs you” once you send it a new message or it finishes another turn (#69).
 - Current step, last message, tool calls, agent messages (each opens its side thread), subagents, then context %, compactions and started along the bottom.
 - A section with nothing in it isn’t shown, and the current step isn’t shown when the header already says it (“Waiting for you”, “Thinking”) (#3).

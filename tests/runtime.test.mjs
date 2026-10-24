@@ -79,7 +79,7 @@ test('@-mentioning an agent that isn’t in the thread brings it in and turns th
   rt.sendMessage(t.id, { text: '@beta take a look' });
   await settle(rt);
   assert.equal(store.state.threads[t.id].kind, 'room');
-  assert.ok(store.items(t.id).some((i) => i.kind === 'system' && i.variant === 'wake' && i.to === 'beta'));
+  assert.ok(!store.items(t.id).some((i) => i.kind === 'system'), 'your mention is the record of the wake, with no line of its own (#114)');
 });
 
 test('a message sent mid-reply is queued, then delivered when the agent finishes', async () => {
@@ -654,7 +654,7 @@ async function conversation() {
   return ctx;
 }
 
-test('sending a reply to the conversation reaches its agent on its next turn, without waking it', async () => {
+test('#111: sharing a topic reply keeps the question it answers', async () => {
   const { rt, store, t, adapter } = await conversation();
   const first = store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, first.id);
@@ -665,8 +665,8 @@ test('sending a reply to the conversation reaches its agent on its next turn, wi
   const calls = adapter.calls.length;
   rt.shareToConversation(threadId, reply.id);
   const shared = store.items(t.id).at(-1);
-  assert.equal(shared.kind, 'shared');
-  assert.equal(shared.text, 'Use chapter offsets.');
+  assert.deepEqual({ question: shared.question, text: shared.text }, { question: 'Offsets or pages?', text: 'Use chapter offsets.' });
+  assert.match(rt.describeItem(shared), /You asked: “Offsets or pages\?” Use chapter offsets\./);
   assert.equal(adapter.calls.length, calls, 'sharing costs no turn');
   assert.throws(() => rt.shareToConversation(threadId, reply.id), /already in the conversation/);
   rt.sendMessage(t.id, { text: 'Carry on' });
@@ -2030,7 +2030,7 @@ test('#153 an app is still its title alone', async () => {
   rt.sendMessage(t.id, { text: '@beta look' });
   await settle(rt);
   const ctx = adapter.calls.at(-1).message.context.join('\n');
-  assert.match(ctx, /@alpha showed an app “Explorer”\n/);
+  assert.match(ctx, /@alpha showed an app “Explorer”(\n|$)/);
   assert.doesNotMatch(ctx, /Secret code/);
   assert.ok(store.items(t.id).some((i) => i.kind === 'block'));
 });

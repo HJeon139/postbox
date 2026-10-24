@@ -2,6 +2,57 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.29.0 (2026-10-24)
+
+### Features
+
+- **threads:** Summarize back from a side thread, as from a topic thread
+- **composer:** ask “Did you mean @critic?” when a draft names an agent without its @
+
+### Fixes
+
+- **composer:** shorter thread hints, so a thread's composer sits as high as the conversation's
+- **threads:** a summary's review_block wakes no one either
+- **threads:** keep a queued summary pending while its turn starts
+- **threads:** say on the sender line when a scheduled wake started the turn
+- **threads:** give each wake an agent sends from another turn its own sender line
+- **telemetry:** count agents' wake chains from each wake's message, now that wakes have no line
+- **threads:** one line per side thread in the conversation, not one per wake
+- **composer:** say whom a message that mentions an agent wakes, not who it replies to
+- **thread:** give a later turn of the same agent its own sender line, with what woke it
+
+## 0.28.1 (2026-10-24)
+
+### Fixes
+
+- **permissions:** expire a permission card a minute before Claude Code gives up on the call
+- **permissions:** offer permission_prompt only to the CLI, and expire a card at 25 hours
+- **permissions:** a tool card answers itself when the tool is turned on elsewhere
+
+## 0.28.0 (2026-10-24)
+
+### Features
+
+- **overview:** give a card that needs you a look of its own
+
+### Fixes
+
+- **look:** light mode keeps its fills, and focus-clear places its message under the composer
+- **contrast:** check the app's stylesheet when none is named
+- **a11y:** keep what has focus clear of the sticky composer
+- **ui:** mark every text button as a control, with a border or an underline
+- **composer:** line up the thread panel's composer with the conversation's
+- **ui:** give boxes that wrap a card's corners, not pill ends
+- **ui:** show selected segments, chosen chips and on toggles as amber outlines
+
+## 0.27.1 (2026-10-24)
+
+### Fixes
+
+- **threads:** space a shared reply's question as a message is
+- **threads:** draw a shared reply's question apart from its answer
+- **threads:** keep the question with shared replies
+
 ## 0.27.0 (2026-10-24)
 
 ### Features
