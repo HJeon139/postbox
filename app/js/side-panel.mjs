@@ -66,18 +66,16 @@ export function mountSidePanel(parentId, sideId) {
 /**
  * Summarize back (#93, #225): asks an agent of the thread for a short summary, posted in the conversation. In a side
  * thread a menu picks which of its two agents writes it, the one that started it first. One summary at a time: from the
- * request until it’s posted or the turn ends, the button waits. The server keeps the request on the thread, so a reload
- * or a second tab waits too, and it refuses a second one. From the click until the server’s own state shows the
- * request: its agent at work on it.
+ * request until it’s posted, fails or is stopped, the button waits, also while it waits for its agent. The server keeps
+ * the request on the thread until then (summaryPending), so a reload or a second tab waits too, and it refuses a second
+ * one. Between the click and the server’s state reaching the page, the click itself.
  */
 function summarizeButton(sideId, parent) {
   let asking = false;
   const pending = () => {
-    const ask = S().threads[sideId]?.summaryPending;
-    const se = ask && S().sessions[ask.sessionId];
-    const working = !!(se && !se.archived && ['think', 'gen', 'tool', 'needs'].includes(se.state));
-    if (working) asking = false;
-    return asking || working;
+    const ask = !!S().threads[sideId]?.summaryPending;
+    if (ask) asking = false;
+    return asking || ask;
   };
   const ask = (handle) => {
     asking = true;
@@ -119,9 +117,7 @@ function summarizeButton(sideId, parent) {
     if (el.textContent !== label) el.textContent = label;
   };
   paint();
-  const mine = (ch) =>
-    (ch.type === 'thread' && ch.data.id === sideId) || (ch.type === 'session' && ch.data.id === S().threads[sideId]?.summaryPending?.sessionId);
-  return { el, destroy: client.on((ch) => (mine(ch) || ch.type === 'load') && paint()) };
+  return { el, destroy: client.on((ch) => ((ch.type === 'thread' && ch.data.id === sideId) || ch.type === 'load') && paint()) };
 }
 
 /**

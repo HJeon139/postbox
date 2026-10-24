@@ -3,7 +3,9 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { held, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
+import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { Runtime } from '../server/runtime.mjs';
+import { held, ScriptedAdapter, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
 
 /** A side thread between alpha, who started it, and beta, who answered. */
 async function sideThread() {
@@ -102,5 +104,89 @@ test('#93: so it does in a topic thread', async () => {
   await settle(f.rt);
   const { threadId: topic } = f.rt.startTopic(f.t.id, f.store.items(f.t.id).find((x) => x.kind === 'agent').id);
   assert.equal(await askWhileBusy(f, topic, 'One more thing'), true, 'pending while the summary is written');
+  assert.equal(f.store.items(f.t.id).at(-1).summary, true);
+});
+
+/** A topic thread on alpha’s first reply in the conversation (#93). */
+async function topicThread() {
+  const f = setup();
+  f.rt.sendMessage(f.t.id, { text: '@alpha which editions differ?' });
+  await settle(f.rt);
+  return { ...f, topic: f.rt.startTopic(f.t.id, f.store.items(f.t.id).find((x) => x.kind === 'agent').id).threadId };
+}
+
+/**
+ * The agent that writes the summary is stopped in the thread, and its process is slow to exit (its step ignores the
+ * abort), so the summary asked meanwhile waits for it (#126). Returns the step, to let the process exit.
+ */
+function askWhileExiting({ rt, adapter }, threadId, text, sessionId) {
+  const lingering = held();
+  adapter.next.push(lingering.step);
+  rt.sendMessage(threadId, { text });
+  rt.stop(sessionId);
+  rt.summarizeBack(threadId);
+  assert.ok(
+    rt.exiting.get(sessionId)?.held.some((h) => h.summarizeTo),
+    'it waits for the stopped process',
+  );
+  return lingering;
+}
+
+for (const [where, make, text] of [
+  ['side', sideThread, '@alpha one more thing'],
+  ['topic', topicThread, 'One more thing'],
+]) {
+  test(`#225: in a ${where} thread, a summary waiting for a stopped turn’s process is pending until it’s written`, async () => {
+    const f = await make();
+    const threadId = f.side?.id ?? f.topic;
+    const lingering = askWhileExiting(f, threadId, text, f.alpha.id);
+    assert.ok(f.store.state.threads[threadId].summaryPending, 'pending while it waits, which a reloaded page reads');
+    assert.throws(() => f.rt.summarizeBack(threadId), { status: 409 });
+    lingering.release();
+    await settle(f.rt);
+    assert.equal(f.store.state.threads[threadId].summaryPending, null, 'done once the summary is written');
+    assert.equal(f.store.items(f.t.id).at(-1).summary, true);
+  });
+
+  test(`#225: in a ${where} thread, one that waited is no longer pending when its agent is archived before the process exits`, async () => {
+    const f = await make();
+    const threadId = f.side?.id ?? f.topic;
+    const lingering = askWhileExiting(f, threadId, text, f.alpha.id);
+    f.rt.archive(f.alpha.id);
+    lingering.release();
+    await settle(f.rt);
+    assert.equal(f.store.state.threads[threadId].summaryPending, null, 'the summary isn’t coming');
+  });
+}
+
+test('#93: a restart clears a pending summary, since its turn doesn’t survive one', async () => {
+  const f = await topicThread();
+  const summary = held();
+  f.adapter.next.push(summary.step);
+  f.rt.summarizeBack(f.topic);
+  assert.ok(f.store.state.threads[f.topic].summaryPending);
+  // Postbox starts again on the same saved state.
+  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
+  new Runtime({ store: f.store, adapters: new AdapterRegistry().register(new ScriptedAdapter()), corpus, config: { origin: 'http://127.0.0.1:1' } });
+  assert.equal(f.store.state.threads[f.topic].summaryPending, null);
+  summary.release();
+  await settle(f.rt);
+});
+
+test('#93: Retry on a failed summary is pending again until it’s written', async () => {
+  const f = await topicThread();
+  f.adapter.next.push(async () => {
+    throw new Error('The model is overloaded.');
+  });
+  f.rt.summarizeBack(f.topic);
+  await settle(f.rt);
+  const failed = f.store.items(f.topic).find((x) => x.status === 'failed');
+  const summary = held();
+  f.adapter.next.push(summary.step);
+  f.rt.retry(f.topic, failed.id);
+  assert.ok(f.store.state.threads[f.topic].summaryPending, 'pending while it’s written again');
+  summary.release();
+  await settle(f.rt);
+  assert.equal(f.store.state.threads[f.topic].summaryPending, null);
   assert.equal(f.store.items(f.t.id).at(-1).summary, true);
 });

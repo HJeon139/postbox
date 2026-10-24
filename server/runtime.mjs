@@ -42,7 +42,7 @@ import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
 import { reviewBlock } from './review-comments.mjs';
-import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
+import { clearSummaryPending, markSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -236,6 +236,8 @@ export class Runtime {
     this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
     // Forks are gone (#228): any left from before are archived, once.
     archiveForks(this);
+    // A summary pending when Postbox stopped isn’t coming: no turn survives a restart, so Summarize back works again (#93).
+    for (const id of Object.keys(this.s.threads)) this.clearSummaryPending(id);
   }
 
   get s() {
@@ -1219,6 +1221,8 @@ export class Runtime {
       this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: 'Stopped by you', finishedAt: Date.now(), sideTurn: null });
     else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
     const held = se.archived || se.deleting ? [] : ex.held;
+    // A summary that waited and won’t start now isn’t coming (#93).
+    if (held !== ex.held) for (const h of ex.held) if (h.summarizeTo) this.clearSummaryPending(h.threadId);
     // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
     if (this.closing) {
       for (const h of held.filter((x) => x.message.kind === 'user')) {
@@ -1470,6 +1474,8 @@ export class Runtime {
     if (it.asked) this.deliver(it.sessionId, { ...it.asked.message, retry: true }, { replyTo: it.asked.replyTo, summarizeTo: it.asked.summarizeTo, threadId });
     // A failed reply stored before #151 kept nothing of what it was asked: the person’s last message is the best guess.
     else this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
+    // A failed summary tried again is pending again, as when you asked for it (#93).
+    if (it.asked?.summarizeTo) markSummaryPending(this, threadId, it.sessionId);
   }
 
   // ── Agents waking agents ───────────────────────────────────────────────────────────

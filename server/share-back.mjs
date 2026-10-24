@@ -36,9 +36,7 @@ export function summarizeBack(rt, topicId, opts) {
   if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
   // One at a time, so a second click or a second tab can’t post it twice (#93).
   if (rt.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
-  // Kept on the thread for the panel’s button, until the turn ends or is stopped. A restart can leave it
-  // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
-  rt.putThread({ ...topic, summaryPending: { sessionId: se.id, at: Date.now() } });
+  markSummaryPending(rt, topicId, se.id);
   rt.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
   const what = topic.kind === 'side' ? 'side thread' : 'topic thread';
   rt.deliver(
@@ -77,6 +75,16 @@ export function summarizing(rt, topicId) {
     // One waiting for a stopped turn’s process to exit (#126).
     [...rt.exiting.values()].some((x) => x.held.some((h) => h.summarizeTo && h.threadId === topicId))
   );
+}
+
+/**
+ * Kept on the thread for the panel’s button, which reads only this, in every tab and after a reload (#93, #225): it’s
+ * cleared once the summary is posted, fails, is stopped or can’t start, and at a restart (the Runtime’s constructor).
+ * @param {any} rt @param {string} topicId @param {string} sessionId  the session writing it
+ */
+export function markSummaryPending(rt, topicId, sessionId) {
+  const t = rt.s.threads[topicId];
+  if (t) rt.putThread({ ...t, summaryPending: { sessionId, at: Date.now() } });
 }
 
 /**

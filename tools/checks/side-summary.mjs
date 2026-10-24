@@ -2,7 +2,8 @@
 // menu of the thread’s two agents, the one that started it first; the agent picked writes the summary in the side
 // thread, and it’s posted in the conversation as a summary from that thread. Its @-mention of the other agent wakes
 // no one, and the wake limit doesn’t move. Asked while that agent is busy in the side thread, it waits behind that turn,
-// and the button waits until the summary is posted.
+// and the button waits until the summary is posted; asked while its stopped turn’s process is still exiting, it waits
+// after a reload too.
 //
 //   node tools/checks/side-summary.mjs
 //
@@ -101,6 +102,47 @@ await check('#225 Summarize back asked while its agent is busy in the side threa
     `(({ disabled, textContent }) => [disabled, textContent])(document.querySelector('.sidepanel .sp-head [aria-haspopup=menu]'))`,
   );
   expect(was[0] && was[1] === 'Summary requested…', `Summarize back could be asked again while the summary was being written: ${JSON.stringify(was)}`);
+  release(indexer.id);
+  await idle();
+  await page.synced(store.state.seq);
+  await page.waitFor(`${BUTTON} && !${BUTTON}.disabled`, { label: 'Summarize back once the summary is posted' });
+  const last = store.items(room.id).at(-1);
+  expect(last.kind === 'shared' && last.summary && last.fromThreadId === side.id, 'The summary wasn’t posted in the conversation');
+});
+
+await check('#225 Summarize back asked while its agent’s stopped turn is still exiting waits after a reload too', async () => {
+  // @indexer’s turn in the side thread ignores Stop for a while, as a CLI that’s slow to exit does, so the summary
+  // waits for its process.
+  const side = sideOf();
+  let exit = () => {};
+  scripts.set(indexer.id, async (ctx) => {
+    ctx.status({ state: 'tool', currentStep: 'Reading the shelf' });
+    await new Promise((r) => {
+      exit = r;
+    });
+  });
+  rt.sendMessage(side.id, { text: '@indexer one more thing' });
+  await until(() => busy(indexer.id), '@indexer at work');
+  rt.stop(indexer.id);
+  await open(`#/t/${room.id}/side/${side.id}`);
+  await page.waitFor(`${BUTTON} && !${BUTTON}.disabled`, { label: 'Summarize back in the side thread' });
+  await page.evaluate(`${BUTTON}.focus()`);
+  await press('Enter');
+  await press('Enter');
+  await until(() => rt.exiting.get(indexer.id)?.held.some((h) => h.summarizeTo), 'the summary waiting for the stopped turn to exit');
+  // The page loads again, so it knows only what the server sends it.
+  await page.reload();
+  await page.synced(store.state.seq);
+  await page.waitFor(`document.querySelector('.sidepanel .sp-head [aria-haspopup=menu]')`, { label: 'the side thread’s panel again' });
+  await settle();
+  const was = await page.evaluate(
+    `(({ disabled, textContent }) => [disabled, textContent])(document.querySelector('.sidepanel .sp-head [aria-haspopup=menu]'))`,
+  );
+  expect(was[0] && was[1] === 'Summary requested…', `After a reload, Summarize back could be asked again while the summary waited: ${JSON.stringify(was)}`);
+  // The process exits, the summary’s turn runs, and once it’s posted the button is back.
+  const before = turns.length;
+  exit();
+  await until(() => turns.length > before && /^Summarize/.test(turns.at(-1).text), 'the summary’s turn');
   release(indexer.id);
   await idle();
   await page.synced(store.state.seq);
