@@ -36,7 +36,6 @@ import { reviewFindings } from './uat/review.mjs';
 import { readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
-import { telemetryDriver } from './uat/telemetry-driver.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { coverageSection, gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
@@ -279,9 +278,7 @@ async function main() {
     const mainThread = /#\/t\/([^/]+)/.exec(hash)?.[1];
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
-    const td = telemetryDriver(page);
-    const tel = { flags: [], shown: { views: [], saved: [], issues: [], copied: [], opened: [] } };
-    if (tm.runnerRecords(scenario, opt)) await td.menu('Record this room').then(() => log('Telemetry: recording this room.'));
+    const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
     const system = systemPrompt({ scenario, issues });

@@ -9,6 +9,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSyn
 import { join, relative } from 'node:path';
 import { LIVE_INPUTS, liveChecks } from '../../server/room-checks.mjs';
 import { TELEMETRY_CHECK_IDS } from '../../server/room-checks-telemetry.mjs';
+import { telemetryDriver } from './telemetry-driver.mjs';
 
 /** Whether the runner records this run: unless --telemetry no, or the scenario starts recording itself. */
 export const runnerRecords = (scenario, opt) => opt.telemetry !== 'no' && scenario.telemetry !== 'manual';
@@ -57,6 +58,18 @@ export function seedCanaries(workspace, dir) {
   mkdirSync(join(dir, 'telemetry'), { recursive: true });
   writeFileSync(join(dir, 'telemetry', 'canaries.json'), `${JSON.stringify(canaries, null, 2)}\n`);
   return canaries;
+}
+
+/**
+ * The page’s telemetry driver and what the run keeps of what it showed; and, unless the scenario records itself,
+ * Record this room from the ⋯ menu before step 1 (U4).
+ * @param {any} page @param {{ scenario: any, opt: any, log: (l: string) => void }} o
+ */
+export async function startTelemetry(page, { scenario, opt, log }) {
+  const td = telemetryDriver(page);
+  const tel = { flags: [], shown: { views: [], saved: [], issues: [], copied: [], opened: [] } };
+  if (runnerRecords(scenario, opt)) await td.menu('Record this room').then(() => log('Telemetry: recording this room.'));
+  return { td, tel };
 }
 
 /** The runner’s note of a tester finding: the step’s newest item and the time, for its 🚩 after the last step (U4). */

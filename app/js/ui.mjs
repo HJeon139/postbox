@@ -6,9 +6,8 @@ import { spokenSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
 import { rememberWork } from './work-memory.mjs';
 
-export { rememberWork, workRemembered } from './work-memory.mjs';
-
 export { initHoverCards } from './hovercards.mjs';
+export { rememberWork, workRemembered } from './work-memory.mjs';
 
 // ── Navigation ──────────────────────────────────────────────────────────────────────────
 // Routes: #/ (overview), #/t/<threadId>, and #/t/<threadId>/side/<sideThreadId> with a thread in the right pane.

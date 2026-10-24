@@ -45,6 +45,7 @@ export const BOILERPLATE_IDS = ['researcher', 'developer', 'critic'];
 export const POSTBOX_TOOLS = [
   'show_block',
   'update_block',
+  'review_block',
   'show_app',
   'update_app',
   'retire_app',

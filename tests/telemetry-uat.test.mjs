@@ -6,11 +6,13 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { TOOL_DEFS } from '../server/mcp.mjs';
 import { runChecks } from '../server/room-checks.mjs';
 import { TELEMETRY_CHECK_IDS } from '../server/room-checks-telemetry.mjs';
 import { draftView } from '../server/telemetry-report.mjs';
 import { telemetryRoute } from '../server/telemetry-routes.mjs';
 import { saveReport } from '../server/telemetry-save.mjs';
+import { callClass } from '../server/telemetry-streams.mjs';
 import { readRuns } from '../tools/uat/runs.mjs';
 import { recurrence, report as statsReport } from '../tools/uat/stats.mjs';
 import { TELEMETRY_TRIGGERS } from '../tools/uat/telemetry-triggers.mjs';
@@ -155,4 +157,10 @@ test('should-fix: telemetry GETs answer 404 for an unknown conversation and 400 
   await assert.rejects(telemetryRoute(f.rt, '/api/threads/th_nope/telemetry', 'GET', null), (e) => e.status === 404);
   await assert.rejects(telemetryRoute(f.rt, `/api/threads/${f.t.id}/telemetry/reports/rep_x/issues/%E0%A4%A`, 'GET', null), (e) => e.status === 400);
   f.stop();
+});
+
+test('R12: every tool Postbox serves has its own class in a report, review_block (#255) included, not “other”', () => {
+  for (const { name } of TOOL_DEFS) assert.equal(callClass(`mcp__postbox__${name}`, {}), `postbox:${name}`, name);
+  assert.ok(TOOL_DEFS.some((t) => t.name === 'review_block'));
+  assert.equal(callClass('mcp__postbox__not_a_tool', {}), 'other');
 });
