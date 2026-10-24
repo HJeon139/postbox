@@ -49,6 +49,44 @@ test('what isn’t a separator doesn’t make a command chained: quotes, escapes
     assert.equal(chains(command), true, command);
 });
 
+// A heredoc’s word as the shell reads it (POSIX, “Here-Document”; bash’s manual, “Here Documents”): quote removal
+// applies to the word, and the body ends at the line that is that word, with leading tabs stripped for <<-. Quoting any
+// of it means the body isn’t expanded; otherwise a $( ) or ` ` in the body runs, so it’s a part (as in a command).
+test('a heredoc whose word is quoted, escaped or has punctuation in it is one command, as the shell reads it', () => {
+  for (const command of [
+    'cat > a.json <<\'END-JSON\'\n{ "a": 1 };\nEND-JSON',
+    'cat <<"END.X"\na && b\nEND.X\n',
+    'cat <<\\EOF\n$(not run) | x\nEOF',
+    'cat <<E"O"F\na; b\nEOF',
+    'cat <<END-JSON\n{ "a": 1 } | x\nEND-JSON',
+    "cat <<-'EOF'\n\tone; two\n\t\tEOF",
+    "cat <<A <<'B'\na; b\nA\nc | d\nB",
+    // Only an exact line ends the body: " EOF" doesn’t, nor does a tab-indented one without <<-, so ls is the body’s.
+    'cat <<EOF\nhi\n EOF\nls\nEOF',
+    'cat <<EOF\nhi\n\tEOF\nls\nEOF',
+    // Unterminated: bash reads the body to the end (with a warning), so nothing after it is another command.
+    "cat <<'EOF'\na && b\nEND",
+    'echo $((1 << 2)) > out.txt',
+  ])
+    assert.equal(chains(command), false, command);
+  for (const command of [
+    "cat <<'END-JSON' > a.json\n{}\nEND-JSON\nnpm test && echo ok",
+    "cat <<'EOF' && ls\nhi\nEOF",
+    // The command after the terminator line is another one, whatever the word holds.
+    'cat <<END-JSON\n{}\nEND-JSON\nls',
+    'cat <<E"O"F\nx\nEOF\nls',
+    'cat <<-EOF\n\tx\n\tEOF\nls',
+    // An unquoted word’s body is expanded, so a command substitution in it runs.
+    'cat <<EOF\n$(date)\nEOF',
+    'cat <<END-X\n`date`\nEND-X',
+    // A << in $(( )) is a shift, not a heredoc that would hide the next line.
+    'echo $((1 << 2))\nls',
+  ])
+    assert.equal(chains(command), true, command);
+  assert.equal(chains('cat <<EOF\n\\$(not run)\nEOF'), false, 'an escaped $ in an expanded body');
+  assert.equal(rulesFor('Bash', { command: "cat > a.json <<'END-JSON'\n{}\nEND-JSON" }).once, "Bash(cat > a.json <<'END-JSON'\n{}\nEND-JSON)");
+});
+
 test('fetches are allowed by domain, files by path, anything else by tool', () => {
   assert.equal(rulesFor('WebFetch', { url: 'https://example.com/a?b' }).always, 'WebFetch(domain:example.com)');
   assert.equal(rulesFor('Edit', { file_path: '/p/a.md' }).once, 'Edit(/p/a.md)');
