@@ -2,6 +2,7 @@
 // scenario’s `- seed:` plants in it (tools/uat/scenario.mjs).
 
 import { spawnSync } from 'node:child_process';
+import { seedFakeEnv } from './allowonce-triggers.mjs';
 import * as tm from './telemetry-run.mjs';
 
 /**
@@ -13,5 +14,6 @@ export function makeWorkspace(scenario, paths, dir) {
   // git add and commit would land in Postbox’s history; a workroom agent had to notice and make a nested repo.
   spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
   const canaries = scenario.seed === 'canaries' ? tm.seedCanaries(paths.workspace, dir) : null;
+  if (scenario.seed === 'fake-env') seedFakeEnv(paths.workspace);
   return canaries;
 }

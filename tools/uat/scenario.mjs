@@ -74,7 +74,8 @@ export function parseScenario(md) {
     // (M1’s exit check, #63). Without it, a run puts the agents on the fast model it’s given (--agent-model).
     models: meta.models === 'persona' ? 'persona' : 'run',
     // Telemetry (designs/telemetry-persona.md, U2): `- seed: canaries` plants the run’s canaries in the workspace,
-    // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario.
+    // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario. `- seed:
+    // fake-env` plants the allow-once scenario’s fake .env (tools/uat/workspace.mjs).
     seed: meta.seed ?? null,
     gh: meta.gh === 'none' ? 'none' : 'yes',
     telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
