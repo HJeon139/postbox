@@ -2,10 +2,11 @@
 // Shared by the Claude Code and Agent SDK adapters, so both backends behave the same way.
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
+import { factsText, runsWith } from '../../shared/agent-facts.mjs';
 import { LIMITS, limitText, PALETTES } from '../../shared/limits.mjs';
 import { commentAt } from '../../shared/review-comments.mjs';
 import { formatLint } from '../checks.mjs';
-import { TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /**
  * The system prompt Postbox appends for an agent: who it is, who else is here, and how to use the room.
@@ -13,9 +14,10 @@ import { TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
  * the Kiro CLI’s own), or null for a backend that can’t turn a tool off for one agent.
  * room: the other agents in this conversation, with their roles (Runtime.roomOf); handles: every agent in Postbox.
  * @param {{ persona: any, handles: string[], room?: { handle: string, role: string }[], project?: any, brief?: string|null,
+ *           session?: { backend?: string, personaSnapshot?: { model?: string, effort?: string }, lastModel?: string, lastEffort?: string }|null,
  *           toolRules?: Record<string, string[]>|null }} who
  */
-export function agentGuide({ persona, handles, room = [], project, brief, toolRules = TOOL_RULES }) {
+export function agentGuide({ persona, handles, room = [], project, brief, session, toolRules = TOOL_RULES }) {
   const here = new Set(room.map((r) => r.handle));
   const others = handles.filter((h) => h !== persona.handle && !here.has(h));
   return [
@@ -28,6 +30,8 @@ export function agentGuide({ persona, handles, room = [], project, brief, toolRu
       : '',
     project?.name ? `This conversation belongs to the project “${project.name}”.` : '',
     brief ? `How you joined: ${brief}` : '',
+    sessionText(session, persona),
+    setupDiagnosisText(),
     offText(toolsOff(persona, toolRules)),
     guideText(),
   ]
@@ -62,6 +66,20 @@ export function offText(off) {
   return `## Turned off for you
 
 The person turned these off for you in Postbox, so their tools aren’t in your list: ${list}. This computer has them; Postbox doesn’t give them to you. If a request needs one, don’t say the computer or the person lacks it: call ask_for_tool { tool: "${off[0]}", why: what you’d use it for }, then end your turn. The person sees a card that turns it on for you, and their answer reaches you as a message.`;
+}
+
+function sessionText(session, persona) {
+  const facts = runsWith(session, persona, { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT });
+  const text = facts.mock
+    ? `Postbox runs this session with ${factsText(facts)}.`
+    : facts.answered
+      ? `The last answered Postbox turn used ${factsText(facts)}.`
+      : `Postbox has this session configured to use ${factsText(facts)}; it has not answered a turn yet.`;
+  return `## What Postbox knows about this session\n\n${text} This is a baseline for this session, not proof that a separate command uses the same settings.`;
+}
+
+function setupDiagnosisText() {
+  return `## Verify before blaming setup\n\nBefore blaming the person’s setup or asking them to change it, rerun the exact failing command when safe and authorized. Compare it with a working command that changes one thing; a different host, credential chain or environment does not confirm the cause. Treat these session facts as a baseline only. If you cannot verify the cause, call it a guess, say what you compared, and do not ask the person to act on it.`;
 }
 
 /**

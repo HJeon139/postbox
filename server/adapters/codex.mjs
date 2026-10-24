@@ -384,7 +384,7 @@ export class CodexAdapter {
       ctx.state.codexThreadId = id;
       ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
       // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
-      const guide = agentGuide({ persona: ctx.persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null });
+      const guide = agentGuide({ ...ctx, session, brief: session?.brief, toolRules: null });
       const inputText = formatMessage(message, ctx.pathOf);
       const started = await request('turn/start', {
         threadId: id,

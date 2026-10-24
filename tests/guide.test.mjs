@@ -7,6 +7,41 @@ import { agentGuide, guideText } from '../server/adapters/guide.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
 import { freshInstall } from '../server/seed.mjs';
 
+test('the guide grounds setup diagnosis in the exact failing command and a one-factor comparison', () => {
+  const g = agentGuide({
+    persona: { handle: 'developer', backend: 'claude-code' },
+    session: { personaSnapshot: { model: 'claude-opus-5-5', effort: 'medium' } },
+    handles: ['developer'],
+  });
+  assert.match(g, /rerun the exact failing command when safe and authorized/);
+  assert.match(g, /Compare it with a working command that changes one thing/);
+  assert.match(g, /a different host, credential chain or environment does not confirm the cause/);
+  assert.match(g, /If you cannot verify the cause, call it a guess/);
+  assert.match(g, /do not ask the person to act on it/);
+});
+
+test('the guide reports the session backend baseline without claiming a separate command uses it', () => {
+  const persona = { handle: 'developer', backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium' };
+  const answered = agentGuide({
+    persona,
+    session: {
+      personaSnapshot: { model: 'claude-opus-5-5', effort: 'medium' },
+      lastModel: 'claude-sonnet-5-5',
+      lastEffort: 'high',
+    },
+    handles: ['developer'],
+  });
+  assert.match(
+    answered,
+    /The last answered Postbox turn used Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · high effort on the last turn, set to medium/,
+  );
+  assert.match(answered, /not proof that a separate command uses the same settings/);
+
+  const unrun = agentGuide({ persona, session: { personaSnapshot: { model: persona.model, effort: persona.effort } }, handles: ['developer'] });
+  assert.match(unrun, /configured to use Claude Code · claude-opus-5-5 · medium effort; it has not answered a turn yet/);
+  assert.doesNotMatch(unrun, /last answered Postbox turn used/);
+});
+
 test('the guide starts from what a reply contains, not from what the person asked for', () => {
   const g = guideText();
   const first = g.split('\n## ')[0];
