@@ -3,30 +3,70 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { open, realpath, stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
+import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { buildEvent } from '../shared/events.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
-import { toPlainText } from '../shared/markdown.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
-import { turnLine } from '../shared/work.mjs';
+import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
+import { retireApp } from './app-retire.mjs';
+import {
+  APP_HOLD_MAX,
+  APP_SEND_LIMIT,
+  APP_SEND_WINDOW_MS,
+  appCheck,
+  appEvent,
+  appFile,
+  appQuery,
+  appState,
+  hostTool,
+  needAppSend,
+  registerApp,
+  resolveAppSend,
+  updateApp,
+} from './apps.mjs';
+import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { parseDataset } from './corpus.mjs';
+import { clip, clipText, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
+import { readCapped } from './read-capped.mjs';
 import { runShell } from './shell.mjs';
+import {
+  agentWake,
+  archiveForks,
+  bringToConversation,
+  bumpSideLink,
+  deliverWake,
+  dropWakes,
+  recordAgentMessage,
+  resolveHop,
+  sideSession,
+  threadPersona,
+  wakeAgent,
+} from './side-threads.mjs';
 import { newId } from './store.mjs';
-import { askForTool, resolveToolAsk } from './tool-ask.mjs';
+import { endSubagent, notUrgent } from './subagent-end.mjs';
+import { settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
+import { askForTool } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
-export const HOP_LIMIT = 3;
+export { AgentFileError } from './agent-files.mjs';
+export { hostTool } from './apps.mjs';
+export { httpError } from './helpers.mjs';
+export { HOP_LIMIT } from './side-threads.mjs';
+export { readCapped };
+
+/** @typedef {import('./agent-files.mjs').AppFile} AppFile */
+
 const DELETE_UNDO_MS = 10000;
 /** The days a conversation can sit with nothing happening before it archives itself (#101), unless Settings says otherwise. */
 export const ARCHIVE_AFTER_DAYS = 7;
@@ -35,8 +75,6 @@ export const ARCHIVE_AFTER_CHOICES = [0, 1, 3, 7, 30]; // 0: never
 const LINT_SETTLE_MS = 1500;
 /** …and at most, while an app of the agent’s is still being checked. */
 const LINT_WAIT_MAX_MS = 12000;
-/** App check problems that are warnings: the app is shown, with notes, and the agent is told. */
-const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error']);
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
  * actions and asks you only when it can’t decide. ask: ask before anything risky. acceptEdits: edit files
@@ -55,9 +93,12 @@ const STOP_WATCHDOG_MS = 15000;
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
-const CATCH_UP_CHARS = 16000;
-const clipText = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const count = (n) => n.toLocaleString('en-US');
+/**
+ * What a turn was asked, kept on its failed reply so Retry sends it again as it was, with its own kind (#151): a wake
+ * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s.
+ */
+const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
 /**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
  * read_message takes, so the agent can read the rest (#109).
@@ -119,7 +160,8 @@ function blockContent(it) {
       out.push(String(b.fallback ?? ''));
   }
   const a = it.answered ? it.answer : null;
-  if (a) {
+  if (it.closed) out.push(closedText(it));
+  else if (a) {
     const v = a.values ?? {};
     if (b.type === 'review') {
       const comments = Array.isArray(v.comments) ? v.comments : [];
@@ -144,10 +186,6 @@ function blockContent(it) {
   if (b.outcome) out.push(`Outcome: ${b.outcome}`);
   return out.filter(Boolean).join('\n\n');
 }
-const clip = (s, n = 200) => {
-  const t = toPlainText(s);
-  return t.length > n ? t.slice(0, n - 1) + '…' : t;
-};
 
 export class Runtime {
   /**
@@ -190,6 +228,8 @@ export class Runtime {
     this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
     // What each conversation’s agents changed, ran and published (#132).
     this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
+    // Forks are gone (#228): any left from before are archived, once.
+    archiveForks(this);
   }
 
   get s() {
@@ -279,6 +319,8 @@ export class Runtime {
       const replies = this.store.items(threadId).filter((x) => x.kind === 'user' || x.kind === 'agent').length;
       this.patchItem(t.parentId, t.rootItemId, { replies, lastReplyAt: it.at });
     }
+    // …and a message in a side thread on its line in the conversation, whoever wrote it (#130).
+    if (t?.kind === 'side' && (it.kind === 'user' || it.kind === 'agent')) this.bumpSideLink(threadId);
     return it;
   }
   patchItem(threadId, id, patch) {
@@ -303,8 +345,8 @@ export class Runtime {
       return false;
     }
     const now = Date.now();
-    const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub };
-    this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, at: now, movedAt: now } });
+    const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub, ...carriedList(items[i]).stub };
+    this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, ...carriedList(items[i]).item, at: now, movedAt: now } });
     // A session whose catch-up marker was the item now reads on from the stub, where the item was, so what came
     // after it isn’t skipped.
     for (const se of this.sessionsIn(threadId)) if (se.seenItem === id) this.updateSession(se.id, { seenItem: st.id });
@@ -400,30 +442,25 @@ export class Runtime {
       .map((h) => this.personaByHandle(h))
       .filter(Boolean);
     const targets = [];
-    // A side thread is a channel between the conversation’s own sessions (#110, #128): an agent you @-mention there,
-    // or the one you reply to, answers from its session in the conversation, and the exchange shows here.
-    if (t.kind === 'side') {
+    // A side or topic thread is answered by the conversation’s own sessions (#110, #128, #228): an agent you
+    // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
+    const away = t.kind === 'side' || t.kind === 'topic';
+    if (away) {
       for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you'), woke: true });
       if (!targets.length) {
-        // The last speaker replies, as in a conversation; before anyone has, the agent that was woken.
-        const last = this.s.sessions[t.lastSpeaker];
-        const p = last && !last.archived && !last.deleting ? null : this.personaByHandle(t.woke ?? t.pair?.split('|')[1] ?? '');
-        const se = p ? this.sideSession(t, p.id, 'you') : last;
-        if (!se) throw httpError(409, 'No agent is in this side thread. @-mention one to bring it in.');
+        // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
+        const p = threadPersona(this, t);
+        const se = p && this.sideSession(t, p.id, 'you');
+        if (!se) throw httpError(409, `No agent is in this ${t.kind === 'side' ? 'side thread' : 'thread'}. @-mention one to bring it in.`);
         targets.push({ se, woke: false });
       }
     }
     // Refuse before anything is posted, so a refused message doesn’t also appear in the transcript.
     const archived = mentioned.map((p) => this.sessionsIn(threadId).find((x) => x.personaId === p.id)).find((x) => x?.archived);
-    if (archived && t.kind !== 'side') throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
-    for (const p of t.kind === 'side' ? [] : mentioned) {
+    if (archived && !away) throw httpError(409, `@${archived.handle}’s session is archived. Restore it first.`);
+    for (const p of away ? [] : mentioned) {
       const joined = !this.sessionsIn(threadId).some((x) => x.personaId === p.id);
-      // In a topic thread, an agent from the conversation joins as a fork of its session there.
-      const from = joined && t.kind === 'topic' ? this.sessionsIn(t.parentId).find((x) => x.personaId === p.id) : null;
-      const se = from
-        ? this.forkSession(from.id, threadId)
-        : this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null });
-      targets.push({ se, woke: true });
+      targets.push({ se: this.ensureSession(threadId, p.id, { brief: joined ? 'You were @-mentioned into this thread.' : null }), woke: true });
     }
     if (!targets.length) {
       const members = this.sessionsIn(threadId).filter((x) => !x.archived);
@@ -445,7 +482,9 @@ export class Runtime {
 
   postAndDeliver(threadId, { text, attachments }, targets) {
     const item = this.addItem(threadId, { kind: 'user', text, attachments });
-    this.putThread({ ...this.s.threads[threadId], hops: 0 });
+    // You’re here: the wake limit starts again, on the conversation, where agents’ wakes count (#108, #228).
+    const conv = this.lineage(threadId).at(-1);
+    this.putThread({ ...this.s.threads[conv], hops: 0 });
     const refs = this.threadRefs(threadId, text);
     for (const { se, woke } of targets) {
       if (woke) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
@@ -475,13 +514,18 @@ export class Runtime {
 
   editQueued(threadId, queueId, text) {
     const t = this.thread(threadId);
+    if ((t.queue ?? []).find((q) => q.id === queueId)?.kind === 'wake') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
     const queue = (t.queue ?? []).map((q) => (q.id === queueId ? { ...q, text: String(text) } : q));
     this.putThread({ ...t, queue });
   }
 
   cancelQueued(threadId, queueId) {
     const t = this.thread(threadId);
-    this.putThread({ ...t, queue: (t.queue ?? []).filter((q) => q.id !== queueId) });
+    const q = (t.queue ?? []).find((x) => x.id === queueId);
+    this.putThread({ ...t, queue: (t.queue ?? []).filter((x) => x.id !== queueId) });
+    // A wake you removed: its agent was told it would be answered, so it hears it won’t be (#228).
+    if (q?.kind === 'wake' && this.s.sessions[q.fromSessionId] && !this.s.sessions[q.fromSessionId].archived)
+      this.tellAgent(q.fromSessionId, `The person removed your message (“${clip(q.text, 120)}”) before it was answered. Carry on without it.`);
   }
 
   /** Send now: stops the agent’s current turn and delivers the queued message at once. */
@@ -491,23 +535,46 @@ export class Runtime {
     if (!q) throw httpError(404, 'That queued message was already sent or removed.');
     this.putThread({ ...t, queue: t.queue.filter((x) => x.id !== queueId) });
     for (const id of q.sessionIds) this.stop(id, { silent: true, jobs: 'keep' });
+    if (q.kind === 'wake') return deliverWake(this, threadId, q);
     return this.postAndDeliver(
       threadId,
       q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se),
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se && !x.se.archived),
     );
   }
 
-  drainQueue(threadId) {
+  /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
+  drainAll() {
+    for (const t of Object.values(this.s.threads)) if (t.queue?.length && !t.deleting) this.drainQueue(t.id);
+  }
+
+  /**
+   * Sends what can go from a thread’s queue: every item whose agents are free, in order for each agent, so one waiting
+   * for a busy agent holds back nothing for another (#228). wakesOnly: only agents’ wakes, after a failed turn, when
+   * your own messages wait for you to see the failure.
+   */
+  drainQueue(threadId, wakesOnly = false) {
     const t = this.s.threads[threadId];
     if (!t?.queue?.length) return;
-    const [q, ...rest] = t.queue;
-    if (q.sessionIds.some((id) => this.turns.has(id))) return;
-    this.putThread({ ...t, queue: rest });
+    const held = new Set();
+    const go = [];
+    for (const q of t.queue) {
+      const free = !q.sessionIds.some((id) => held.has(id) || this.turns.has(id) || this.exiting.has(id));
+      if (free && (!wakesOnly || q.kind === 'wake')) go.push(q);
+      if (!wakesOnly || q.kind === 'wake') for (const id of q.sessionIds) held.add(id);
+    }
+    if (!go.length) return;
+    this.putThread({ ...t, queue: t.queue.filter((x) => !go.includes(x)) });
+    for (const q of go) this.sendQueued(threadId, q);
+  }
+
+  /** One item from a queue: a wake to its agent, or your message, posted and delivered. */
+  sendQueued(threadId, q) {
+    if (q.kind === 'wake') return deliverWake(this, threadId, q);
     this.postAndDeliver(
       threadId,
       q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se),
+      q.sessionIds.map((id) => ({ se: this.s.sessions[id], woke: false })).filter((x) => x.se && !x.se.archived),
     );
   }
 
@@ -522,7 +589,7 @@ export class Runtime {
    */
   deliver(sessionId, message, { replyTo = null, summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
-    // As it was asked, for a fork that starts again fresh (forkRetry).
+    // As it was asked, for Retry (askedOf).
     const asked = { message, replyTo, summarizeTo, threadId };
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(sessionId)) {
@@ -547,15 +614,18 @@ export class Runtime {
     const slash = message.slash === true;
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
-      message = { ...message, context: [...se.context, ...(message.context ?? [])] };
+      // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
+      message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
       this.updateSession(sessionId, { context: [] });
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
     // And before that, what happened in the conversation since this agent last took part: a room is shared
     // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
-    const catchUp = slash ? null : this.catchUp(this.s.sessions[sessionId], message.itemId);
-    if (catchUp) message = { ...message, context: [catchUp, ...(message.context ?? [])] };
+    // …and in the topic or side thread it answers in, what was said there since it last took part (#228).
+    const there = slash || where === se.threadId ? null : threadCatchUp(this, this.s.sessions[sessionId], where, message.itemId);
+    const catchUp = [slash ? null : this.catchUp(this.s.sessions[sessionId], message.itemId), there].filter(Boolean);
+    if (catchUp.length) message = { ...message, context: [...catchUp, ...(message.context ?? [])] };
     const persona = this.persona(se.personaId);
     const adapter = this.adapters.get(persona?.backend ?? 'mock');
     const abort = new AbortController();
@@ -576,6 +646,8 @@ export class Runtime {
       abort,
       closed: false,
       replyTo,
+      // Where the agent that woke this one speaks: the reply goes back to it there (#228).
+      replyIn: message.replyIn ?? null,
       summarizeTo,
       checkpoint: null,
       pending: [],
@@ -602,6 +674,7 @@ export class Runtime {
     turn.allowOnce = se.allowOnce ?? [];
     this.updateSession(sessionId, {
       allowOnce: [],
+      endingSubagents: [],
       glimpse: '',
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
@@ -659,7 +732,7 @@ export class Runtime {
       mcpUrl: `${this.config.origin}/mcp?session=${encodeURIComponent(turn.sessionId)}&turn=${turn.token}`,
       persona,
       project: rt.s.projects[thread?.projectId] ?? null,
-      thread: { id: turn.threadId, title: thread?.title ?? '' },
+      thread: { id: turn.threadId, title: thread?.title ?? '', kind: thread?.kind ?? 'thread' },
       handles: rt.handles(),
       room: rt.roomOf(turn.threadId, se0),
       /** What the adapter saved for this session last time, such as its own session id. */
@@ -871,12 +944,12 @@ export class Runtime {
     };
   }
 
-  /** The turn’s work is recorded (#132), then its first reply gets the line that leads to it. */
+  /** The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195). */
   endWork(turn, status) {
-    const first = turn.first;
     return this.ledger.endTurn(turn, { status }).then(() => {
       const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-      if (line && first && this.store.item(turn.threadId, first)) this.patchItem(turn.threadId, first, { work: line });
+      const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
+      if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
     });
   }
 
@@ -907,8 +980,6 @@ export class Runtime {
     // Posted or not, the summary isn’t pending any more, so Summarize back works again. Any turn ending clears
     // one a restart left behind, too.
     this.clearSummaryPending(turn.threadId);
-    if (err && err.name !== 'AbortError' && this.forkRetry(se, turn, err)) return;
-    if (!err && se.forkOf?.first) this.updateSession(se.id, { forkOf: { ...se.forkOf, first: false } });
     if (err && err.name !== 'AbortError') {
       // Its progress steps still running show as stalled, as at any turn’s end (#98).
       this.stallLeftRunning(turn, se, 'failed');
@@ -925,7 +996,7 @@ export class Runtime {
           text: '',
           status: 'failed',
         }).id;
-      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null });
+      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null, asked: askedOf(turn) });
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
@@ -936,7 +1007,9 @@ export class Runtime {
         stopAsk: null,
       });
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
-      this.forkDone(se, turn);
+      // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
+      // queued messages wait, as before, for you to see the failure.
+      this.takePending(se, turn, 'wakes');
       return;
     }
     // An app-check turn that ended without a new version: show the app with a note instead of waiting forever.
@@ -954,6 +1027,7 @@ export class Runtime {
     if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
+    const topic = turn.threadId !== se.threadId && this.s.threads[turn.threadId]?.kind === 'topic' ? this.s.threads[turn.threadId] : null;
     const refused = items.filter((it) => it.kind === 'denial' && it.turnId === turn.id && it.status === 'open');
     const askedTool = items.filter((it) => it.kind === 'toolask' && it.turnId === turn.id && it.status === 'open').at(-1);
     const needs = open.length
@@ -985,7 +1059,8 @@ export class Runtime {
       currentStep: needs ? 'Waiting for you' : `Idle since ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
       lastMessage: last ? clip(last.text) : se.lastMessage,
       finishedAt: Date.now(),
-      unread: viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
+      // A reply in a topic thread counts on the thread, not the conversation it answers from (#228).
+      unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
       stopAsk: null,
     });
     if (needs && (needs.kind === 'block' || needs.kind === 'denial' || needs.kind === 'toolask'))
@@ -999,6 +1074,8 @@ export class Runtime {
     if (turn.kind === 'lint') this.quietLint(turn, se);
     else this.endLint(turn, [...this.checkTurn(turn, se), ...stalled]);
     this.lastTurn.set(se.id, turn.id);
+    if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
+    if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
     // An agent that @-mentions another agent wakes it.
     // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
@@ -1008,24 +1085,30 @@ export class Runtime {
       const hl = h.toLowerCase();
       if (hl === se.handle.toLowerCase() || hl === replyTo) continue;
       if (hl === turn.from && !/again|once more|loop/i.test(turn.said)) continue;
-      this.agentWake(se.id, h, turn.said);
+      // Its turn has ended, so where it spoke comes from the turn: an answer goes back to a topic thread it spoke in.
+      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null });
+      if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
     }
     // A reply to an agent that woke this one goes back to it.
-    if (turn.replyTo && this.s.sessions[turn.replyTo]) {
-      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)' });
+    if (turn.replyTo && this.s.sessions[turn.replyTo] && !this.s.sessions[turn.replyTo].archived) {
+      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)' }, { threadId: turn.replyIn });
       this.recordAgentMessage(se.id, 'to', this.s.sessions[turn.replyTo].handle, turn.said);
       this.recordAgentMessage(turn.replyTo, 'from', se.handle, turn.said);
-      this.bumpSideLink(turn.threadId);
     }
+    this.takePending(se, turn, true);
+  }
+
+  /**
+   * What waited for a turn that ended: the next message, with the rest behind it; with none, the queues (drain), or
+   * only agents’ wakes waiting there (drain: 'wakes').
+   */
+  takePending(se, turn, drain) {
     const next = turn.pending.shift();
     if (next) {
       this.deliver(se.id, next.message, { replyTo: next.replyTo, summarizeTo: next.summarizeTo, threadId: next.threadId });
       const t = this.turns.get(se.id);
       if (t) t.pending.push(...turn.pending);
-    } else {
-      this.forkDone(se, turn);
-      this.drainQueues(se.id, turn.threadId);
-    }
+    } else if (drain) this.drainQueues(se.id, turn.threadId, drain === 'wakes');
   }
 
   /**
@@ -1041,10 +1124,11 @@ export class Runtime {
    * The queues waiting on this session: the thread its turn was in, and any other (its conversation, a side thread)
    * whose next message is for it. A session answers in more than one thread now (#110).
    */
-  drainQueues(sessionId, threadId) {
-    const ids = new Set([threadId]);
-    for (const t of Object.values(this.s.threads)) if (t.queue?.[0]?.sessionIds.includes(sessionId)) ids.add(t.id);
-    for (const id of ids) this.drainQueue(id);
+  drainQueues(sessionId, threadId, wakesOnly = false) {
+    const ids = new Set(wakesOnly ? [] : [threadId]);
+    for (const t of Object.values(this.s.threads))
+      if (t.queue?.some((q) => q.sessionIds.includes(sessionId) && (!wakesOnly || q.kind === 'wake'))) ids.add(t.id);
+    for (const id of ids) this.drainQueue(id, wakesOnly);
   }
 
   /**
@@ -1097,8 +1181,16 @@ export class Runtime {
       console.error(`@${se?.handle ?? sessionId}’s stopped turn hadn’t ended after ${STOP_WATCHDOG_MS / 1000} s, so its next turn starts anyway.`);
       this.turnExited(turn);
     }, STOP_WATCHDOG_MS).unref?.();
-    // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93).
+    // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93), in a topic thread too.
+    // A reply from an agent it woke, waiting behind the turn, goes with it: it hears at its next turn what it said.
     this.clearSummaryPending(turn.threadId);
+    for (const p of turn.pending) {
+      if (p.summarizeTo && p.threadId) this.clearSummaryPending(p.threadId);
+      if (p.message.kind === 'agent' && !p.replyTo && se)
+        this.tellAgent(sessionId, `${p.message.from}’s reply came while your turn was stopped: “${clip(p.message.text ?? '', 300)}”`);
+    }
+    // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
+    if (!silent && se) dropWakes(this, se);
     return true;
   }
 
@@ -1136,9 +1228,11 @@ export class Runtime {
    * Stop from the page (#129): with background jobs running, it asks first whether to stop them too, and the ask
    * shows in the conversation (se.stopAsk) until you answer, dismiss it, or the turn ends.
    * turnId: the turn the ask was about. An answer to an ask about a turn that has ended since stops nothing.
-   * @param {string} sessionId @param {{ jobs?: 'stop' | 'keep' | null, turnId?: string | null }} [choice]
+   * subagent: End on that subagent’s row instead (#229), which tells the agent to stop it.
+   * @param {string} sessionId @param {{ jobs?: 'stop' | 'keep' | null, turnId?: string | null, subagent?: string | null }} [choice]
    */
-  requestStop(sessionId, { jobs = null, turnId = null } = {}) {
+  requestStop(sessionId, { jobs = null, turnId = null, subagent = null } = {}) {
+    if (subagent) return endSubagent(this, sessionId, String(subagent));
     const se = this.session(sessionId);
     const turn = this.turns.get(sessionId);
     if (!turn) return { stopped: false };
@@ -1398,302 +1492,41 @@ export class Runtime {
     const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
     this.patchItem(threadId, itemId, { status: 'retried' });
     this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-    this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
+    if (it.asked) this.deliver(it.sessionId, { ...it.asked.message, retry: true }, { replyTo: it.asked.replyTo, summarizeTo: it.asked.summarizeTo, threadId });
+    // A failed reply stored before #151 kept nothing of what it was asked: the person’s last message is the best guess.
+    else this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
   }
 
   // ── Agents waking agents ───────────────────────────────────────────────────────────
 
-  /** After HOP_LIMIT agent-to-agent wakes in a row without you, the next one waits for your confirm. */
-  agentWake(fromSessionId, handle, text, { confirmed = false } = {}) {
-    const from = this.s.sessions[fromSessionId];
-    const p = this.personaByHandle(handle);
-    if (!from || !p) return { ok: false, message: `There’s no agent called @${handle}.` };
-    const t = this.s.threads[from.threadId];
-    const parent = t.kind === 'side' ? (this.s.threads[t.parentId] ?? t) : t;
-    if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) {
-      // One request at a time: further wakes wait behind the one you haven’t answered.
-      if (this.store.items(parent.id).some((x) => x.kind === 'hop' && x.status === 'open'))
-        return { ok: false, waiting: true, message: 'Another wake is already waiting for the person to allow it.' };
-      const it = this.addItem(parent.id, {
-        kind: 'hop',
-        fromSessionId,
-        from: from.handle,
-        to: p.handle,
-        // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
-        reason: clip(text, 200),
-        text,
-        status: 'open',
-        n: (parent.hops ?? 0) + 1,
-      });
-      this.updateSession(fromSessionId, {
-        // The card is in the conversation, even when the agent asking is a fork in a side thread (#121).
-        needs: { kind: 'hop', itemId: it.id, text: `@${from.handle} wants to wake @${p.handle}`, ...this.awayFrom(from, parent.id) },
-        state: this.turns.has(fromSessionId) ? from.state : 'needs',
-      });
-      this.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${(parent.hops ?? 0) + 1} since your last message.`);
-      return { ok: false, waiting: true, message: `Waiting for the person to allow waking @${p.handle}.` };
-    }
-    const hops = (parent.hops ?? 0) + 1;
-    this.putThread({ ...this.s.threads[parent.id], hops });
-    // A persona with no session here joins the conversation (sideSession), and the line says so.
-    const joins = !this.sessionsIn(parent.id).some((x) => x.personaId === p.id);
-    this.addItem(parent.id, {
-      kind: 'system',
-      variant: 'wake',
-      from: from.handle,
-      to: p.handle,
-      n: hops,
-      limit: HOP_LIMIT,
-      ...(joins ? { joined: true } : {}),
-    });
-    // The exchange happens in a side thread; your thread shows one line that links to it.
-    const pair = [from.handle, p.handle].sort().join('|');
-    let side = Object.values(this.s.threads).find((x) => x.kind === 'side' && x.parentId === parent.id && x.pair === pair);
-    if (!side) {
-      side = this.putThread({
-        id: newId('th'),
-        projectId: parent.projectId,
-        title: `@${from.handle} ↔ @${p.handle}`,
-        kind: 'side',
-        parentId: parent.id,
-        pair,
-        // Who answers in it before anyone has spoken there (sendMessage).
-        woke: p.handle,
-        members: [],
-        lastSpeaker: null,
-        hops: 0,
-        queue: [],
-        createdAt: Date.now(),
-        archived: false,
-      });
-      this.addItem(parent.id, { kind: 'sidelink', sideThreadId: side.id, from: from.handle, to: p.handle, count: 0 });
-    }
-    const said = this.addItem(side.id, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done' });
-    this.recordAgentMessage(from.id, 'to', p.handle, text);
-    // The woken agent answers from its session in the conversation, so it remembers the exchange (#110); a fork of it
-    // answers only while that session is busy.
-    const target = this.sideSession(side, p.id, from.handle);
-    this.recordAgentMessage(target.id, 'from', from.handle, text);
-    this.bumpSideLink(side.id);
-    this.deliver(target.id, { kind: 'agent', from: `@${from.handle}`, text, itemId: said.id }, { replyTo: from.id, threadId: side.id });
-    return { ok: true, message: target.forkOf?.busy ? `Woke @${p.handle}: its session was busy, so a fork of it answers.` : `Woke @${p.handle}.` };
+  agentWake(fromSessionId, handle, text, opts) {
+    return agentWake(this, fromSessionId, handle, text, opts);
   }
-
-  /**
-   * Who answers for a persona in a side thread (#110): one session per persona per conversation. That’s its session in
-   * the conversation, which joins it if it isn’t there yet. Only while that session is mid-turn (or archived) does a fork
-   * of it, taken at its latest point, answer instead: one per side thread, reused, and shown nested under the persona.
-   * @param {any} side @param {string} personaId @param {string} by  the handle that woke it, or 'you'
-   */
   sideSession(side, personaId, by) {
-    const parent = this.thread(side.parentId);
-    const home =
-      this.sessionsIn(parent.id).find((x) => x.personaId === personaId) ??
-      this.ensureSession(parent.id, personaId, {
-        brief: by === 'you' ? 'You were @-mentioned in a side thread of this conversation.' : `@${by} woke you in a side thread of this conversation.`,
-        joined: { by, in: side.id },
-      });
-    if (!home.archived && !this.turns.has(home.id) && !this.exiting.has(home.id)) return home;
-    // Busy in this side thread already: the message waits for that turn, as any message to a busy agent does. A fork
-    // here would be a second session doing the same work, which is #121 again.
-    const busyIn = this.turns.get(home.id)?.threadId ?? this.exiting.get(home.id)?.turn.threadId;
-    if (!home.archived && busyIn === side.id) return home;
-    const fork = this.sessionsIn(side.id).find((x) => x.personaId === personaId && !x.archived);
-    return fork ?? this.forkBusy(home, side, by);
+    return sideSession(this, side, personaId, by);
   }
-
-  /**
-   * A fork of a busy session into a side thread, at the session’s latest point: it starts with its memory, answers the
-   * wake, and when it’s done the session hears where to read what it did (forkDone).
-   * @param {any} src @param {any} side @param {string} by
-   */
-  forkBusy(src, side, by) {
-    const se = this.ensureSession(side.id, src.personaId);
-    const adapter = this.adapters.get(this.persona(src.personaId)?.backend ?? 'mock');
-    // first: its first turn hasn’t ended yet. If that turn fails before it does anything, the fork starts again fresh.
-    this.updateSession(se.id, { personaSnapshot: src.personaSnapshot, forkOf: { sessionId: src.id, itemId: null, busy: true, by, first: true }, wokenBy: by });
-    if (adapter.capabilities?.fork === false) return this.forkFresh(se, src, side);
-    this.updateSession(se.id, {
-      backendState: { fork: null, forkFrom: src.backendState ?? null, contextWindow: src.backendState?.contextWindow },
-      ctx: src.ctx,
-      compactions: src.compactions,
-      // Its catch-up is this side thread’s, from the start.
-      seenItem: null,
-      context: [this.forkNote(src, side, null)],
-    });
-    try {
-      adapter.fork?.(src, this.s.sessions[se.id]);
-    } catch (e) {
-      return this.forkFresh(se, src, side, e);
-    }
-    return this.s.sessions[se.id];
-  }
-
-  /**
-   * A fork that can’t start from its session’s memory: the backend can’t fork (Kiro), or forking failed. It’s a new
-   * session of the agent, and its note says so, and why.
-   * @param {any} se @param {any} src @param {any} side @param {any} [err]
-   */
-  forkFresh(se, src, side, err = null) {
-    if (err) console.error(`A fork of @${src.handle}’s session couldn’t start from its memory, so it starts fresh: ${err.message ?? err}`);
-    this.updateSession(se.id, {
-      backendState: {},
-      ctx: 2,
-      compactions: 0,
-      seenItem: null,
-      forkOf: { ...this.s.sessions[se.id].forkOf, fresh: true },
-      context: [this.forkNote(src, side, err)],
-    });
-    return this.s.sessions[se.id];
-  }
-
-  /**
-   * What a fork reads first. fresh: null when it starts from its session’s memory; otherwise why it doesn’t (true for
-   * a backend that can’t fork, or the error).
-   * @param {any} src @param {any} side @param {any} fresh
-   */
-  forkNote(src, side, fresh) {
-    const conv = this.s.threads[src.threadId]?.title ?? '';
-    const why = fresh && fresh !== true ? ` (starting from its memory failed: ${clipText(String(fresh.message ?? fresh), 200)})` : '';
-    return `[Postbox] You’re answering in the side thread “${side.title}” as a fork of your session in the conversation “${conv}”: that session was busy${src.archived ? ' (archived)' : ''}, so ${fresh ? `this is a new session of you, and it doesn’t remember the conversation${why}` : 'this one starts from what it remembered then'}. Your session there doesn’t see what you do here; when you’re done, it’s told where to read it.`;
-  }
-
-  /**
-   * A fork’s first turn failed before it said or did anything, which is how a backend’s fork of a session mid-turn
-   * fails: it starts again, once, as a fresh session, with the same message. Returns whether it did.
-   * @param {any} se @param {any} turn @param {any} err
-   */
-  forkRetry(se, turn, err) {
-    if (!se.forkOf?.busy || !se.forkOf.first || se.forkOf.fresh || turn.first || turn.steps.length || turn.said) return false;
-    const src = this.s.sessions[se.forkOf.sessionId];
-    const side = this.s.threads[se.threadId];
-    if (!src || !side) return false;
-    this.forkFresh(se, src, side, err);
-    this.updateSession(se.id, { state: 'idle', needs: null, currentStep: '' });
-    const { message, replyTo, summarizeTo, threadId } = turn.asked;
-    this.deliver(se.id, message, { replyTo, summarizeTo, threadId });
-    this.turns.get(se.id)?.pending.push(...turn.pending);
-    return true;
-  }
-
-  /**
-   * A fork made because its session was busy finished a turn: its session’s next turn gets a pointer to it, with the
-   * thread id. The agent decides whether to bring it in: the fork’s summary (its last reply) or its full messages, both
-   * with read_conversation. Postbox sends neither. The pointer replaces an older one for the same thread.
-   * @param {any} se @param {any} turn
-   */
-  forkDone(se, turn) {
-    if (!se.forkOf?.busy) return;
-    const main = this.s.sessions[se.forkOf.sessionId];
-    const side = this.s.threads[turn.threadId];
-    if (!main || !side) return;
-    const tag = `(thread ${side.id})`;
-    const text = `[Postbox] A fork of you answered in the side thread “${side.title}” ${tag} while you were busy, starting from what you remembered then. You don’t remember what it did. Its summary is its last reply: read_conversation with thread: "${side.id}" and limit: 1. Its full messages: read_conversation with thread: "${side.id}". Read either only if it matters to your work.`;
-    this.updateSession(main.id, { context: [...(main.context ?? []).filter((x) => !x.includes(tag)), text].slice(-20) });
-  }
-
   resolveHop(threadId, itemId, allow) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
-    this.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined' });
-    this.addItem(threadId, { kind: 'voice', text: allow ? `Allowed: @${it.from} wakes @${it.to}` : `Didn’t allow @${it.from} to wake @${it.to}` });
-    const from = this.s.sessions[it.fromSessionId];
-    if (from) this.updateSession(from.id, { needs: null, state: this.turns.has(from.id) ? from.state : 'idle' });
-    this.putThread({ ...this.s.threads[threadId], hops: 0 });
-    // A request stored before #108 kept only the preview.
-    if (allow) this.agentWake(it.fromSessionId, it.to, it.text ?? it.reason, { confirmed: true });
-    else if (from) this.deliver(from.id, { kind: 'notice', text: `The person chose not to let you wake @${it.to}. Carry on without it.` });
+    return resolveHop(this, threadId, itemId, allow);
   }
-
   bumpSideLink(sideThreadId) {
-    const side = this.s.threads[sideThreadId];
-    if (side?.kind !== 'side') return;
-    const link = this.store.items(side.parentId).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
-    if (link) this.patchItem(side.parentId, link.id, { count: this.store.items(side.id).filter((x) => x.kind === 'agent' || x.kind === 'user').length });
+    return bumpSideLink(this, sideThreadId);
   }
-
   recordAgentMessage(sessionId, dir, other, text) {
-    const se = this.s.sessions[sessionId];
-    if (!se) return;
-    this.updateSession(sessionId, { agentMessages: [{ dir, other, text: clip(text, 120), at: Date.now() }, ...se.agentMessages].slice(0, 6) });
+    return recordAgentMessage(this, sessionId, dir, other, text);
   }
 
   // ── Acting in blocks ───────────────────────────────────────────────────────────────
 
-  /** @param {number} [revision]  the revision of the block the person answered, as their page showed it (#123) */
   act(threadId, itemId, action, values, revision) {
-    const it = this.store.item(threadId, itemId);
-    if (!it) throw httpError(404, 'That block doesn’t exist any more.');
-    if (it.kind === 'hop') return this.resolveHop(threadId, itemId, action === 'confirm');
-    if (it.kind === 'proposal') return this.resolveProposal(threadId, itemId, action);
-    if (it.kind === 'permission') return this.resolvePermission(threadId, itemId, action, values);
-    if (it.kind === 'denial') return this.resolveDenial(threadId, itemId, action);
-    if (it.kind === 'appsend') return this.resolveAppSend(threadId, itemId, action);
-    if (it.kind === 'toolask') return resolveToolAsk(this, threadId, itemId, action);
-    if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
-    if (it.answered) throw httpError(409, 'You already answered this. Only a new block, or an update to it, can ask again.');
-    // Progress, image and code never ask; a card or table action doesn’t lock the block.
-    const locks = ASKING.has(it.block.type);
-    const current = it.revision ?? 1;
-    // An answer is for the revision the person saw. One the agent replaced while they were answering is refused,
-    // so an approval never lands on text they didn’t see; their page keeps the draft and shows what changed.
-    if (revision !== undefined && !Number.isInteger(revision)) throw httpError(422, 'The revision you answered must be a whole number.');
-    if (locks && revision !== undefined && revision !== current)
-      throw Object.assign(
-        httpError(
-          409,
-          `This changed while you were answering: you answered revision ${revision}, and it’s now revision ${current}. Look it over, then answer again.`,
-        ),
-        { code: 'stale' },
-      );
-    const r = buildEvent(it.block, action, values, { revision: current });
-    if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
-    // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
-    if (locks)
-      this.patchItem(threadId, itemId, {
-        answered: true,
-        answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false },
-      });
-    this.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
-    const se = this.s.sessions[it.sessionId];
-    if (se?.needs?.itemId === itemId) this.updateSession(se.id, { needs: null, state: this.turns.has(se.id) ? se.state : 'idle' });
-    if (se) this.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId }, { threadId });
-    return { ok: true, voice: r.voice };
+    return act(this, threadId, itemId, action, values, revision);
   }
 
-  /**
-   * An answer is read once its event starts one of the agent’s turns (#123). While the agent works, the event waits
-   * in its turn’s queue, and until it’s delivered, update_block can’t reopen the block over it.
-   * @param {string} threadId @param {any} message  a message starting a turn
-   */
   answerDelivered(threadId, message) {
-    if (message.kind !== 'event' || !message.blockItemId) return;
-    const it = this.store.item(threadId, message.blockItemId);
-    if (it?.answer?.read === false && it.answer.revision === message.event.revision) this.patchItem(threadId, it.id, { answer: { ...it.answer, read: true } });
+    return answerDelivered(this, threadId, message);
   }
 
-  /**
-   * update_block’s refusal over an answer the agent hasn’t read: the answer stays on screen, and the reply says what
-   * it was. If its event is no longer waiting for the agent (a stopped or failed turn, or a restart, dropped it), the
-   * reply carries the whole answer and counts as reading it, so the block isn’t stuck.
-   * @param {string} sessionId @param {string} threadId @param {any} it  the answered block item
-   * @param {boolean} [outcome]  the update set outcome: it reports on an answer the agent can’t know yet
-   */
   unreadAnswer(sessionId, threadId, it, outcome = false) {
-    const a = it.answer;
-    const at = new Date(a.at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const n = Array.isArray(a.values?.comments) ? a.values.comments.length : 0;
-    const full = JSON.stringify(a.values ?? {});
-    const what = it.block.type === 'review' ? `${a.values?.verdict}${n ? `, ${n} comment${n === 1 ? '' : 's'}` : ''}` : `${a.action} ${clipText(full, 300)}`;
-    const said = `${outcome ? 'The outcome wasn’t recorded: you haven’t read the answer it reports on.' : 'The update wasn’t applied.'} The person answered revision ${a.revision ?? 1} of ${it.block.id} at ${at}: ${what}. Their answer stays on screen.`;
-    const waiting = this.turns.get(sessionId)?.pending.some((p) => p.message.blockItemId === it.id);
-    const then = outcome ? 'then record the outcome' : 'then update';
-    if (waiting) return { ok: false, message: `${said} It reaches you when this turn ends: read it, ${then}.` };
-    this.patchItem(threadId, it.id, { answer: { ...a, read: true } });
-    return {
-      ok: false,
-      message: `${said} It didn’t reach you in a turn, so ${it.block.type !== 'review' && full.length <= 300 ? 'that’s the whole answer' : `here it is in full: ${a.action} ${clipText(full, CATCH_UP_CHARS)}`}. Read it, ${then}.`,
-    };
+    return unreadAnswer(this, sessionId, threadId, it, outcome);
   }
 
   resolveProposal(threadId, itemId, action) {
@@ -1712,16 +1545,17 @@ export class Runtime {
     const p = this.createPersona({ handle, description, instructions, tools, backend, createdBy: it.sessionId });
     this.patchItem(threadId, itemId, { status: 'created', personaId: p.id });
     this.addItem(threadId, { kind: 'voice', text: `Created @${p.handle}` });
-    this.ensureSession(threadId, p.id, { brief: it.proposal.description });
+    // In a topic or side thread too, it joins the conversation: one session per agent there (#228).
+    this.ensureSession(this.lineage(threadId).at(-1), p.id, { brief: it.proposal.description });
     this.addItem(threadId, { kind: 'system', variant: 'joined', to: p.handle });
     return { ok: true, personaId: p.id };
   }
 
   // ── Topic threads ──────────────────────────────────────────────────────────────────
-  // Any message in a conversation can start a topic thread, as in Slack. Its agent is a fork of the agent’s
-  // session at that message: it remembers everything up to it and nothing after, and the conversation never
-  // sees the thread unless you send something back. That keeps a side topic out of the main session’s
-  // context, which is the point: conversations are how you manage what each agent remembers.
+  // Any message in a conversation can start a topic thread, as in Slack. Its agents are the conversation’s own, one
+  // session each (#228): an agent answers there from that session, so it remembers the thread, and the conversation’s
+  // other agents see the thread’s line, with a short summary, and read it if they choose. Nothing in it is posted in
+  // the conversation unless you send it.
 
   startTopic(threadId, itemId) {
     const parent = this.thread(threadId);
@@ -1739,6 +1573,8 @@ export class Runtime {
       kind: 'topic',
       parentId: threadId,
       rootItemId: itemId,
+      // Who answers in it before anyone has spoken there (sendMessage): set below.
+      woke: null,
       members: [],
       lastSpeaker: null,
       hops: 0,
@@ -1755,58 +1591,14 @@ export class Runtime {
       (answer && this.s.sessions[answer.sessionId]) ||
       members.find((x) => x.id === parent.lastSpeaker) ||
       members[0];
-    if (src) this.forkSession(src.id, topic.id);
+    if (src) this.putThread({ ...this.s.threads[topic.id], woke: src.handle });
     return { threadId: topic.id };
   }
 
-  /**
-   * Adds a fork of a conversation’s session to one of its topic threads. The fork point is the agent’s last
-   * finished turn at or before the topic’s root message; the adapter resumes the backend session there.
-   */
-  forkSession(sourceSessionId, topicId) {
-    const src = this.session(sourceSessionId);
-    const topic = this.thread(topicId);
-    const items = this.store.items(topic.parentId);
-    const idx = items.findIndex((x) => x.id === topic.rootItemId);
-    const at = items
-      .slice(0, idx + 1)
-      .reverse()
-      .find((x) => x.sessionId === src.id && x.checkpoint);
-    const se = this.ensureSession(topicId, src.personaId);
-    const root = items[idx];
-    const who = root?.kind === 'user' ? 'your' : root?.handle ? `@${root.handle}’s` : 'a';
-    const adapter = this.adapters.get(this.persona(src.personaId)?.backend ?? 'mock');
-    // A backend that can’t fork a session (the Kiro CLI, #117) joins the thread fresh, as an agent that joined the
-    // conversation later does: its first catch-up starts with the message the thread is about (#81).
-    if (adapter.capabilities?.fork === false) {
-      this.updateSession(se.id, { personaSnapshot: src.personaSnapshot, forkOf: { sessionId: src.id, itemId: null }, backendState: {} });
-      return this.s.sessions[se.id];
-    }
-    this.updateSession(se.id, {
-      // The same persona version as the session it forks: it is the same agent, branching.
-      personaSnapshot: src.personaSnapshot,
-      forkOf: { sessionId: src.id, itemId: at?.id ?? null },
-      // With no checkpoint before the root, an agent that joined later starts fresh; replies from before
-      // checkpoints were kept fall back to the session’s latest point.
-      backendState: {
-        fork: at?.checkpoint ?? null,
-        forkFrom: at || items.some((x) => x.sessionId === src.id && x.checkpoint) ? null : (src.backendState ?? null),
-        contextWindow: src.backendState?.contextWindow,
-      },
-      ctx: src.ctx,
-      compactions: src.compactions,
-      context: [
-        `[Postbox] This is a topic thread that branches from ${who} message in the conversation “${this.s.threads[topic.parentId]?.title ?? ''}”: “${clip(root?.text || root?.block?.title || '', 400)}”. You remember the conversation up to there. It continues separately, and nothing from this thread reaches it unless the person sends it back.`,
-      ],
-    });
-    adapter.fork?.(src, this.s.sessions[se.id]);
-    return this.s.sessions[se.id];
-  }
-
-  /** “Send to conversation”: a reply from a topic thread is posted in its conversation, for you and its agents. */
+  /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
   shareToConversation(topicId, itemId) {
     const topic = this.thread(topicId);
-    if (topic.kind !== 'topic') throw httpError(409, 'Only replies in a topic thread can be sent to the conversation.');
+    if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only messages in a topic or side thread can be sent to the conversation.');
     const it = this.store.item(topicId, itemId);
     if (!it?.text) throw httpError(404, 'That reply has no text to send.');
     if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
@@ -1821,7 +1613,9 @@ export class Runtime {
   summarizeBack(topicId) {
     const topic = this.thread(topicId);
     if (topic.kind !== 'topic') throw httpError(409, 'Only a topic thread can be summarized back.');
-    const se = this.sessionsIn(topicId).find((x) => !x.archived);
+    // The thread’s agent: the one that spoke last there, else the one it started with (#228).
+    const p = threadPersona(this, topic);
+    const se = p && this.sideSession(topic, p.id, 'you');
     if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
     // One at a time, so a second click or a second tab can’t post it twice (#93).
     if (this.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
@@ -1835,7 +1629,7 @@ export class Runtime {
         kind: 'notice',
         text: 'Summarize this topic thread for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.',
       },
-      { summarizeTo: topic.parentId },
+      { summarizeTo: topic.parentId, threadId: topicId },
     );
     return { ok: true };
   }
@@ -1843,9 +1637,9 @@ export class Runtime {
   /** Whether a summarize turn is running or queued in a topic thread. */
   summarizing(topicId) {
     return (
-      [...this.turns.values()].some((x) => x.threadId === topicId && (x.summarizeTo || x.pending.some((p) => p.summarizeTo))) ||
+      [...this.turns.values()].some((x) => (x.threadId === topicId && x.summarizeTo) || x.pending.some((p) => p.summarizeTo && p.threadId === topicId)) ||
       // One waiting for a stopped turn’s process to exit (#126).
-      [...this.exiting.values()].some((x) => x.turn.threadId === topicId && x.held.some((h) => h.summarizeTo))
+      [...this.exiting.values()].some((x) => x.held.some((h) => h.summarizeTo && h.threadId === topicId))
     );
   }
 
@@ -1855,13 +1649,14 @@ export class Runtime {
   }
 
   /**
-   * Posts text from a topic thread in its conversation. The conversation’s agents read it at the start of
-   * their next turn rather than being woken by it, so sharing never costs a turn.
+   * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
+   * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
+   * bring_to_conversation, because the person asked it to (#128).
    */
-  shareText(threadId, { fromThreadId, handle, text, summary = false }) {
+  shareText(threadId, { fromThreadId, handle, text, summary = false, agent = false }) {
     const from = this.s.threads[fromThreadId];
     // The conversation’s agents read it at the start of their next turn, with everything else they missed.
-    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary });
+    const it = this.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary, ...(agent ? { agent } : {}) });
     return it;
   }
 
@@ -1885,7 +1680,9 @@ export class Runtime {
       .slice(at + 1)
       .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
       .map((i) => this.describeItem(i, se))
-      .filter(Boolean);
+      .filter(Boolean)
+      // Its topic and side threads with something new, each a line it chooses whether to read (#228).
+      .concat(threadLines(this, se, items[at]?.at ?? 0));
     if (!lines.length) return root && `[Postbox] ${root}`;
     const kept = [];
     let size = 0;
@@ -1900,11 +1697,10 @@ export class Runtime {
   }
 
   /**
-   * The message a topic thread started from, for a session in it with no fork point to resume (it joined fresh,
-   * or its agent joined the conversation after that message); null for anything else. Issue #81.
+   * The message a topic thread started from, for an agent’s first turn there (#81, #228); null for anything else.
    */
   topicRootLine(se, t) {
-    if (t?.kind !== 'topic' || (se.forkOf && (se.backendState?.fork || se.backendState?.forkFrom))) return null;
+    if (t?.kind !== 'topic') return null;
     const root = this.store.item(t.parentId, t.rootItemId);
     if (!root) return null;
     // The thread is about this message, so it gets more room than an item in the catch-up.
@@ -1959,7 +1755,7 @@ export class Runtime {
         return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
-        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
+        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
       case 'system':
         if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
         if (i.variant === 'joined') return `@${i.to} joined`;
@@ -1967,7 +1763,7 @@ export class Runtime {
         if (i.variant === 'dataset') return `@${i.handle} loaded the dataset “${i.dataset}” (${i.records} records); search it by naming it in books`;
         return null;
       case 'sidelink':
-        return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages; read_conversation with thread: "${i.sideThreadId}" reads it)`;
+        return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages${i.threadSummary ? `; in short, as a model summarized it: “${i.threadSummary}”` : ''}; read_conversation with thread: "${i.sideThreadId}" reads it)`;
       case 'command': {
         // A `!command` the person ran (#67), with its output, as Claude Code’s bash mode passes it on.
         const how =
@@ -2209,7 +2005,7 @@ export class Runtime {
     const send = () => {
       e.timer = null;
       // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
-      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending');
+      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending' && !a.retired);
       if (wait > 0 && checking && Date.now() < until) {
         e.timer = setTimeout(send, wait);
         e.timer.unref?.();
@@ -3286,12 +3082,14 @@ export class Runtime {
     this.stop(sessionId, { silent: true });
     const se = this.session(sessionId);
     this.updateSession(sessionId, { archived: true, state: 'idle', needs: null, archivedAt: Date.now() });
+    dropWakes(this, se, 'archived');
     const t = this.s.threads[se.threadId];
     if (t && this.sessionsIn(t.id).every((x) => x.id === sessionId || x.archived)) this.putThread({ ...t, archived: true });
   }
 
   restore(sessionId) {
     const se = this.session(sessionId);
+    if (se.retiredFork) throw httpError(409, 'A fork from before agents had one session per conversation can’t come back: its agent answers there now.');
     this.updateSession(sessionId, { archived: false, archivedAt: null });
     const t = this.s.threads[se.threadId];
     if (t?.archived) this.putThread({ ...t, archived: false });
@@ -3326,7 +3124,8 @@ export class Runtime {
   /** Restores every archived session in a conversation and its side and topic threads, and the threads with them. */
   restoreThread(threadId) {
     const threads = this.archiveScope(threadId);
-    for (const t of threads) for (const se of this.sessionsIn(t.id)) if (se.archived) this.restore(se.id);
+    // A fork retired by #228’s migration stays archived.
+    for (const t of threads) for (const se of this.sessionsIn(t.id)) if (se.archived && !se.retiredFork) this.restore(se.id);
     for (const t of threads) if (this.s.threads[t.id].archived) this.putThread({ ...this.s.threads[t.id], archived: false });
   }
 
@@ -3373,6 +3172,7 @@ export class Runtime {
     const se = this.session(sessionId);
     const until = Date.now() + DELETE_UNDO_MS;
     this.updateSession(sessionId, { deleting: until });
+    dropWakes(this, se, 'removed');
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.set(
       `del:${sessionId}`,
@@ -3519,239 +3319,43 @@ export class Runtime {
     for (const sc of Object.values(this.s.schedules)) this.arm(sc);
   }
 
-  // ── Apps ───────────────────────────────────────────────────────────────────────────
+  // ── Apps (server/apps.mjs) ─────────────────────────────────────────────────────────
 
-  /** The browser reports its pre-display check. The first failure goes back to the agent to fix. */
-  appCheck(appId, { version, problems = [] }) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    if (version !== app.current) return { ignored: true };
-    const clean = (Array.isArray(problems) ? problems : [])
-      .slice(0, 20)
-      .map((p) => ({ code: String(p?.code).slice(0, 40), message: String(p?.message).slice(0, 300) }));
-    if (!clean.length) {
-      this.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
-      return { status: 'passed' };
-    }
-    if (clean.some((p) => p.code === 'script-error')) {
-      this.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
-      return { status: 'crashed' };
-    }
-    // Problems the agent can’t fix (the frame never answered) are shown as a note, not sent back. Warnings (marks or
-    // text too small, an app showing only an error) don’t hold the app back: it’s shown with notes, and the agent
-    // hears of them through the lint pipeline, unless it’s already fixing the app.
-    const fixable = clean.filter((p) => p.code !== 'no-answer');
-    const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
-    if (app.check.attempt === 0 && blocking.length && this.s.sessions[app.sessionId]) {
-      this.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable } });
-      this.deliver(app.sessionId, { kind: 'app-check', appId, problems: fixable }, { threadId: app.threadId });
-      return { status: 'fixing' };
-    }
-    const notes = clean.every((p) => APP_WARNINGS.has(p.code));
-    this.store.emit('app', { ...app, check: { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}) } });
-    if (notes) {
-      // The version was made by the agent’s turn that’s running, or else the last one that ended.
-      const turnId = [...this.turns.values()].find((t) => t.sessionId === app.sessionId)?.id ?? this.lastTurn.get(app.sessionId);
-      const scope = { kind: 'app', id: appId, title: app.title };
-      this.lint(
-        app.sessionId,
-        turnId,
-        clean.map((p) => ({ ...p, scope })),
-      );
-    }
-    return { status: 'note' };
+  static APP_SEND_LIMIT = APP_SEND_LIMIT;
+  static APP_SEND_WINDOW_MS = APP_SEND_WINDOW_MS;
+  static APP_HOLD_MAX = APP_HOLD_MAX;
+  appCheck(appId, report) {
+    return appCheck(this, appId, report);
   }
-
-  // An app writes lines in your voice, and each one starts an agent turn, so its sends are limited (#38). The
-  // browser accepts a send only right after a click or key press in that app (app/js/apps.mjs); here, where a
-  // script calling the API lands too, an app gets APP_SEND_LIMIT sends per APP_SEND_WINDOW_MS. More wait on
-  // a card for you to allow or not, and nothing is dropped silently: the app is told its send is waiting.
-  // The browser keeps the same limit (SEND_LIMIT in app/js/apps.mjs), and the agent guide says so.
-  static APP_SEND_LIMIT = 5;
-  static APP_SEND_WINDOW_MS = 60_000;
-  /** Sends one card holds; past that, a send is refused with a reason. */
-  static APP_HOLD_MAX = 20;
-
-  /**
-   * An event an app sends in your voice. Within the limit, it goes to the agent; past it (or when the browser
-   * asks, with hold), it waits on the app’s card. The card and its events are items, so they survive a restart.
-   * @param {string} appId @param {string} action @param {object} values
-   * @param {{ hold?: boolean, now?: number }} [opts]
-   */
-  appEvent(appId, action, values, { hold = false, now = Date.now() } = {}) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
-    if (!r.ok) throw httpError(422, r.error);
-    const items = this.store.items(app.threadId);
-    const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
-    // Sends you allowed on a card don’t count against the next minute.
-    const recent = items.filter((x) => x.kind === 'voice' && x.appId === appId && !x.approved && now - (x.sentAt ?? x.at) < Runtime.APP_SEND_WINDOW_MS).length;
-    // Once some sends wait, later ones wait behind them, so the agent gets them in order.
-    if (card || hold || recent >= Runtime.APP_SEND_LIMIT) {
-      const held = { action: r.event.action, values: r.event.values, voice: r.voice, sent: r.event.sent, ...(r.quote ? { quote: r.quote } : {}) };
-      const waiting = (card?.events.length ?? 0) + 1;
-      if (card) {
-        if (card.events.length >= Runtime.APP_HOLD_MAX)
-          throw httpError(429, `${card.events.length} messages from ${app.title} are already waiting for the person to allow them. Wait for their answer.`);
-        this.patchItem(app.threadId, card.id, { events: [...card.events, held] });
-      }
-      const cardId =
-        card?.id ?? this.addItem(app.threadId, { kind: 'appsend', appId, title: app.title, sessionId: app.sessionId, events: [held], status: 'open' }).id;
-      this.needAppSend(app, cardId, waiting);
-      return {
-        ok: true,
-        held: true,
-        waiting,
-        message: `Held for the person to allow: an app sends up to ${Runtime.APP_SEND_LIMIT} messages a minute. ${waiting === 1 ? '1 message is' : `${waiting} messages are`} waiting.`,
-      };
-    }
-    this.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
-    if (this.s.sessions[app.sessionId]) this.deliver(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId });
-    return { ok: true, voice: r.voice };
+  appEvent(appId, action, values, opts) {
+    return appEvent(this, appId, action, values, opts);
   }
-
-  /** An open app card makes its agent need you and tells you, like a permission card, unless it already needs you. */
   needAppSend(app, itemId, waiting) {
-    const se = this.s.sessions[app.sessionId];
-    if (!se || (se.needs && se.needs.itemId !== itemId)) return;
-    const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
-    this.updateSession(se.id, { needs: { kind: 'appsend', itemId, text }, state: this.turns.has(se.id) ? se.state : 'needs' });
-    if (waiting === 1) this.notify('blocking', se, text, `Apps send up to ${Runtime.APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
+    return needAppSend(this, app, itemId, waiting);
   }
-
-  /** Your answer on an app’s card: allow sends the waiting events as they were sent; don’t allow drops them. */
-  resolveAppSend(threadId, itemId, action, { now = Date.now() } = {}) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'appsend' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
-    if (action !== 'allow' && action !== 'deny') throw httpError(400, 'An app’s request takes “allow” or “deny”.');
-    const allow = action === 'allow';
-    this.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
-    const owner = this.s.sessions[it.sessionId];
-    if (owner?.needs?.itemId === itemId) this.updateSession(owner.id, { needs: null, state: this.turns.has(owner.id) ? owner.state : 'idle' });
-    if (!allow) {
-      const n = it.events.length;
-      this.addItem(threadId, { kind: 'voice', text: `Didn’t allow ${it.title} to send ${n === 1 ? '1 message' : `${n} messages`}` });
-      return { ok: true };
-    }
-    const se = this.s.sessions[it.sessionId];
-    for (const ev of it.events) {
-      this.addItem(threadId, { kind: 'voice', text: ev.voice, ...(ev.quote ? { quote: ev.quote } : {}), appId: it.appId, sentAt: now, approved: true });
-      const event = {
-        blockId: it.appId,
-        action: ev.action,
-        values: ev.values,
-        ...(ev.sent ? { sent: ev.sent } : {}),
-        ...(ev.quote ? { appSummary: ev.quote } : {}),
-      };
-      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event }, { threadId });
-    }
-    return { ok: true };
+  resolveAppSend(threadId, itemId, action, opts) {
+    return resolveAppSend(this, threadId, itemId, action, opts);
   }
-
   appState(appId, state) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    const json = JSON.stringify(state ?? null);
-    if (json.length > 256 * 1024) throw httpError(413, 'Saved app state is limited to 256 KB.');
-    // An app that saves the same state again (on every load, say) changes nothing.
-    if (json === JSON.stringify(app.state ?? null)) return;
-    this.store.emit('app', { ...app, state: JSON.parse(json) });
+    return appState(this, appId, state);
   }
-
-  /** An app asks the host for data. It can use only tools both it and its agent were granted. */
   appQuery(appId, tool, args) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    const se = this.s.sessions[app.sessionId];
-    const persona = se && this.personaFor(se);
-    const allowed = new Set((app.versions[app.current - 1].permissions ?? []).filter((t) => persona?.tools?.includes(t)));
-    if (!allowed.has(tool)) throw httpError(403, `This app can’t use “${tool}”. It needs the permission, and its agent needs the tool.`);
-    return hostTool(this, tool, args);
+    return appQuery(this, appId, tool, args);
   }
-
-  /**
-   * A data file of an app’s version (#54), as the app reads it with postbox.file(name).
-   * @param {string} appId @param {string} name @param {number} [v]  the version; the current one by default
-   */
-  async appFile(appId, name, v) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    const ver = app.versions[(Number(v) || app.current) - 1];
-    const f = ver?.files?.find((x) => x.name === name);
-    if (!f || !this.blobs) throw httpError(404, `This version of ${app.title} has no file “${name}”.`);
-    return this.blobs.get(f.sha256);
+  appFile(appId, name, v) {
+    return appFile(this, appId, name, v);
   }
-
-  // ── Files an agent names (#54) ─────────────────────────────────────────────────────
-
-  /** The folders an agent works in: its own (where it starts), the project’s, and any added for the conversation. */
-  async agentFolders(sessionId) {
-    const se = this.session(sessionId);
-    const persona = this.personaFor(se);
-    const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
-    const adapter = this.adapters.get(persona?.backend);
-    const own = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona?.folder || project?.folder || null;
-    return [...new Set([own, project?.folder, ...(se.addDirs ?? [])].filter(Boolean))];
+  agentFolders(sessionId) {
+    return agentFolders(this, sessionId);
   }
-
-  /**
-   * Reads a file an agent named for an app: a path in one of its folders (relative to its own), followed through
-   * links, so a link can’t reach outside them. Larger than max bytes is refused before it’s read.
-   * @param {string} sessionId @param {unknown} path @param {number} max @param {string} what  how the error names it
-   */
-  async agentFile(sessionId, path, max, what) {
-    if (typeof path !== 'string' || !path.trim()) throw new AgentFileError(`${what} needs a path to a file in your folder.`);
-    const folders = await this.agentFolders(sessionId);
-    if (!folders.length) throw new AgentFileError(`You have no folder to read ${what} from. Send it inline instead.`);
-    const real = await realpath(resolve(folders[0], path)).catch(() => null);
-    if (!real) throw new AgentFileError(`There’s no file at ${path} (${what}).`);
-    const roots = await Promise.all(folders.map((f) => realpath(f).catch(() => null)));
-    if (!roots.some((r) => r && (real === r || real.startsWith(r + sep))))
-      throw new AgentFileError(`${path} is outside your folders, so Postbox didn’t read it (${what}).`);
-    const st = await stat(real);
-    if (!st.isFile()) throw new AgentFileError(`${path} isn’t a file (${what}).`);
-    const over = () => new AgentFileError(`${path} is over the limit for ${what}.`);
-    if (st.size > max) throw over();
-    const buf = await readCapped(real, max);
-    if (!buf) throw over();
-    return buf;
+  agentFile(sessionId, path, max, what) {
+    return agentFile(this, sessionId, path, max, what);
   }
-
-  /**
-   * show_app and update_app as an agent calls them over MCP (#54): code may come from codePath, a file in its folder,
-   * and files names data files there for the app to read. Postbox reads both itself, under the same limits as an
-   * inline call, and stores the data files with the version. Returns the call’s arguments with code filled in, and
-   * the files as Postbox stored them; a call can’t name stored files itself.
-   * @param {string} sessionId @param {any} args
-   * @returns {Promise<{ args: any, files?: AppFile[] }>}
-   */
-  async appFiles(sessionId, args) {
-    const { codePath, files: wanted, ...rest } = args ?? {};
-    const out = { ...rest };
-    if (codePath !== undefined) {
-      if (typeof rest.code === 'string' && rest.code) throw new AgentFileError('Send code or codePath, not both.');
-      // A character is at most 4 bytes, so a file within the limit in characters is within 4 times it in bytes.
-      out.code = (await this.agentFile(sessionId, codePath, LIMITS.appCode * 4, 'codePath')).toString('utf8');
-      if (out.code.length > LIMITS.appCode)
-        throw new AgentFileError(`${codePath} has ${out.code.length.toLocaleString('en-US')} characters; an app’s code is up to ${limitText('appCode')}.`);
-    }
-    if (wanted === undefined) return { args: out };
-    if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
-    if (wanted.length > LIMITS.appFiles) throw new AgentFileError(`An app carries up to ${limitText('appFiles')} data files.`);
-    if (!this.blobs) throw new AgentFileError('This Postbox can’t store files.');
-    /** @type {AppFile[]} */
-    const stored = [];
-    for (const f of wanted) {
-      const path = typeof f === 'string' ? f : f?.path;
-      const name = String((typeof f === 'object' && f?.name) || basename(String(path ?? '')));
-      if (!FILE_NAME.test(name)) throw new AgentFileError(`“${name}” can’t name a file: use letters, digits and - _ . (up to 64).`);
-      if (stored.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
-      const buf = await this.agentFile(sessionId, path, LIMITS.appFileBytes, `the file “${name}” (up to ${limitText('appFileBytes')})`);
-      const { sha256, size } = await this.blobs.put(buf);
-      stored.push({ name, sha256, size });
-    }
-    return { args: out, files: stored };
+  appFiles(sessionId, args) {
+    return appFiles(this, sessionId, args);
+  }
+  registerApp(sessionId, block, itemId, threadId, files) {
+    return registerApp(this, sessionId, block, itemId, threadId, files);
   }
 
   // ── Datasets (#47) ─────────────────────────────────────────────────────────────────
@@ -3844,6 +3448,7 @@ export class Runtime {
     if (!threadId) return;
     this.viewing.set(threadId, Date.now());
     for (const se of this.sessionsIn(threadId)) if (se.unread) this.updateSession(se.id, { unread: 0 });
+    if (this.s.threads[threadId]?.unread) this.putThread({ ...this.s.threads[threadId], unread: 0 });
   }
   isViewing(threadId) {
     return Date.now() - (this.viewing.get(threadId) ?? 0) < 20000;
@@ -3911,55 +3516,8 @@ export class Runtime {
           ? { ok: true, message: renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown block ${v.block.id}.` }
           : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
       },
-      update_block({ block }) {
-        const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
-        if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
-        // In the thread the turn is in, else the session’s own: a block it showed in the conversation can be updated
-        // from a turn in a side thread (#110).
-        const mine = (id) =>
-          [...rt.store.items(id)].reverse().find((x) => x.kind === 'block' && x.valid && x.block.id === v.block.id && x.sessionId === sessionId);
-        const where = mine(threadId()) ? threadId() : se().threadId;
-        const existing = mine(where);
-        if (!existing) return { ok: false, message: `There’s no block with id ${v.block.id} to update. Use show_block to add it.` };
-        if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
-        const now = Date.now();
-        // An update that sets outcome reports a result, not a question (#94): it goes under the person’s answer, the
-        // block stays answered, and nobody is asked again. The question they answered stays as they saw it.
-        if (typeof v.block.outcome === 'string') {
-          if (!existing.answered)
-            return {
-              ok: false,
-              message: OUTCOME_LATER(v.block.id, 'The update wasn’t applied.'),
-            };
-          // Nor over an answer the agent hasn’t read (#123): it can’t know what came of an answer it hasn’t seen, and
-          // “Deleted.” could land under a Cancel.
-          if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing, true);
-          const { outcome, ...asked } = v.block;
-          const keys = new Set([...Object.keys(asked), ...Object.keys(existing.block)].filter((k) => k !== 'outcome'));
-          const changed = [...keys].some((k) => JSON.stringify(asked[k]) !== JSON.stringify(existing.block[k]));
-          rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, revision: (existing.revision ?? 1) + 1, updatedAt: now });
-          return {
-            ok: true,
-            message: `Recorded the outcome under the person’s answer to ${v.block.id}; it stays answered.${changed ? ' Your other changes weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.' : ''}`,
-          };
-        }
-        // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
-        // read (#123): the person would see it vanish, and the agent would never learn what it erased.
-        if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
-        /** @type {Record<string, any>} */
-        const patch = { block: v.block, answered: false, answer: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
-        if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
-        // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
-        if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
-        if (!followsConversation(v.block)) {
-          rt.patchItem(where, existing.id, patch);
-          return { ok: true, message: `Updated block ${v.block.id}.` };
-        }
-        // It asks again, so it comes to the newest point, where the person will look for it (#92). Text the turn writes
-        // next goes after it, when it’s in the turn’s own thread.
-        if (where === threadId()) endSegment();
-        const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
-        return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
+      update_block(args) {
+        return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment });
       },
       /**
        * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
@@ -3984,41 +3542,11 @@ export class Runtime {
           given,
         );
       },
-      /**
-       * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
-       * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
-       */
-      update_app({ id, code, permissions, title, summary = '' }, given = {}) {
-        const app = rt.s.apps[id];
-        if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
-        const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
-        if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
-        const versions = [
-          ...app.versions,
-          {
-            v: app.versions.length + 1,
-            code,
-            permissions: v.block.permissions ?? [],
-            files: given.files ?? app.versions[app.current - 1].files ?? [],
-            summary: String(summary ?? '').slice(0, 300),
-            at: Date.now(),
-          },
-        ];
-        const next = {
-          ...app,
-          title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
-          versions,
-          current: versions.length,
-          check: { status: 'pending', attempt: app.check.attempt },
-        };
-        rt.store.emit('app', next);
-        // A new version always comes to the newest point, where the agent says what changed (#49).
-        let moved = false;
-        if (followsConversation({ type: 'app' })) {
-          if (app.threadId === threadId()) endSegment();
-          moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
-        }
-        return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
+      update_app(args, given) {
+        return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
+      },
+      retire_app(args) {
+        return retireApp(rt, sessionId, args);
       },
       define_term({ term, definition, key, source }) {
         if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
@@ -4071,9 +3599,8 @@ export class Runtime {
         const sc = rt.schedule(sessionId, { inMs: Math.round((+in_minutes || 1) * 60000), note });
         return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}.` };
       },
-      wake_agent({ handle, message }) {
-        return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
-      },
+      wake_agent: (args) => wakeAgent(rt, sessionId, args),
+      bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
       read_conversation(args = {}) {
         try {
           return { ok: true, message: rt.readConversation(se(), args) };
@@ -4095,111 +3622,11 @@ export class Runtime {
       },
     };
   }
-
-  /** @param {string} sessionId @param {any} block @param {string} itemId @param {string} [threadId] @param {AppFile[]} [files] */
-  registerApp(sessionId, block, itemId, threadId = this.s.sessions[sessionId]?.threadId, files = []) {
-    this.store.emit('app', {
-      id: block.id,
-      threadId,
-      sessionId,
-      itemId,
-      title: block.title ?? 'App',
-      versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], files, at: Date.now(), summary: '' }],
-      current: 1,
-      state: null,
-      check: { status: 'pending', attempt: 0, problems: [] },
-    });
-  }
 }
-
-/** What a block’s stub calls it once it moved (#92): its title, or the start of what it asks. @param {any} b */
-const blockTitle = (b) => clip(String(b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id).replace(/\s+/g, ' '), 80);
 
 const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 /** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */
 const datasetDir = (folder) => join(folder, '.postbox', 'datasets');
-
-/** A data file of an app’s version, stored by its hash (#54). @typedef {{ name: string, sha256: string, size: number }} AppFile */
-const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
-/** A file an agent named that Postbox can’t use; its message goes back to the agent. */
-export class AgentFileError extends Error {}
-
-/**
- * Reads a file, but never more than max bytes of it: null when it has more. Its size was checked before, but a file
- * that’s still being written can grow after that, so the read itself stops past the limit.
- * @param {string} path @param {number} max
- */
-export async function readCapped(path, max) {
-  const fh = await open(path, 'r');
-  try {
-    const chunks = [];
-    let total = 0;
-    for (;;) {
-      // One byte past the limit is enough to know it’s over.
-      const chunk = Buffer.alloc(Math.min(1024 * 1024, max + 1 - total));
-      const { bytesRead } = await fh.read(chunk, 0, chunk.length, total);
-      if (!bytesRead) break;
-      chunks.push(chunk.subarray(0, bytesRead));
-      total += bytesRead;
-      if (total > max) return null;
-    }
-    return Buffer.concat(chunks, total);
-  } finally {
-    await fh.close();
-  }
-}
-
-/** Why an outcome was refused on a block nobody has answered yet (#94). @param {string} id @param {string} what */
-const OUTCOME_LATER = (id, what) =>
-  `${what} outcome reports the result of the person’s answer, and ${id} hasn’t been answered yet. Send the block without outcome, and set outcome with update_block once they’ve answered.`;
-
-/** Host tools that apps (through the bridge) and agents can use, if granted. */
-export function hostTool(rt, tool, args = {}) {
-  switch (tool) {
-    case 'corpus.search': {
-      const q = String(args.query ?? '').slice(0, 200);
-      const mode = ['both', 'lexical', 'semantic'].includes(args.mode) ? args.mode : 'both';
-      return rt.corpus.search(q, { mode, k: Math.min(50, +args.k || 12), books: Array.isArray(args.books) ? args.books : undefined });
-    }
-    case 'corpus.read':
-      return rt.corpus.read(String(args.id ?? ''));
-    case 'corpus.stats':
-      return rt.corpus.stats();
-    case 'narrate.speak':
-      if (!rt.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');
-      return rt.narrator.speak(args);
-    default:
-      throw httpError(404, `There’s no host tool called “${tool}”.`);
-  }
-}
-
-/**
- * A progress update’s step times, kept beside the block: startedAt when a step starts running, endedAt when it
- * stops. A step that finishes without a duration gets one from them.
- * @param {any} item  the block as it was  @param {any} block  the update  @param {number} now
- */
-function stampSteps(item, block, now) {
-  const was = new Map((item.block.steps ?? []).map((s) => [s.id, s.state]));
-  /** @type {Record<string, { startedAt?: number, endedAt?: number }>} */
-  const times = {};
-  const steps = block.steps.map((sent) => {
-    const before = was.get(sent.id);
-    // Only Postbox marks a step stalled; from the agent, it means still running.
-    const s = sent.state === 'stalled' && before !== 'stalled' ? { ...sent, state: 'running' } : sent;
-    const t = { ...(item.stepTimes?.[s.id] ?? {}) };
-    const going = before === 'running' || before === 'stalled';
-    // A step that was running when the block was shown started then.
-    if (going) t.startedAt ??= item.at;
-    if (s.state === 'running') {
-      if (!going) t.startedAt = now;
-      delete t.endedAt;
-    } else if (going && s.state !== 'pending') t.endedAt = now;
-    times[s.id] = t;
-    const finished = s.state === 'done' || s.state === 'failed';
-    return finished && !s.duration && t.startedAt && t.endedAt ? { ...s, duration: formatDuration(t.endedAt - t.startedAt) } : s;
-  });
-  return { block: { ...block, steps }, stepTimes: times };
-}
 
 /** What Postbox asks when you stop an agent whose background jobs are running (#129). */
 export function stopAskText(handle, n) {
@@ -4260,9 +3687,6 @@ function writeOf(tool, input, detail, given) {
   };
 }
 
-export function httpError(status, message) {
-  return Object.assign(new Error(message), { status, userMessage: message });
-}
 /** An error the ledger raised with a status, as the API answers it. */
 const asHttp = (e) => {
   throw e?.status ? httpError(e.status, e.message) : e;

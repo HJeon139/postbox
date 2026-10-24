@@ -5,10 +5,12 @@
 import { ASKING } from '/shared/catalog.mjs';
 import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
-import { formatDuration } from '/shared/text.mjs';
+import { onPageOrigin } from '/shared/urls.mjs';
 import { mountApp } from './apps.mjs';
+import { asDrawn, closing } from './block-close.mjs';
 import { client } from './client.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
+import { startProgressClock, tickProgress } from './progress-clock.mjs';
 
 const drafts = new Map(); // item id → local, unsent input
 const draft = (id, init) => {
@@ -61,7 +63,8 @@ export function renderBlock(item, ctx) {
   const b = item.block;
   track(item);
   const r = RENDER[b.type];
-  const node = r(b, item, ctx);
+  const node = r(b, asDrawn(item), ctx);
+  closing(node, item, (setError) => submit(item, ctx, 'dismiss', {}, setError));
   node.classList.add('block');
   node.setAttribute('role', 'group');
   node.dataset.blockItem = item.id;
@@ -74,7 +77,7 @@ function head(b, extra = [], kind = KIND[b.type]) {
 }
 const answeredNote = (item) =>
   h('span.answered-note', icon('check', 'i-sm'), `Answered at ${timeOf(item.answer.at)} · only a new block, or an update to it, can ask again`);
-// A result the agent reported on an answered choice, form or confirm (#94), under your answer.
+// A result the agent reported on an answered choice, form, confirm or review (#94, #106), under your answer.
 const outcomeLine = (item) => (item.answered && item.block.outcome ? h('div.outcome', icon('check', 'i-sm'), md(item.block.outcome)) : null);
 const errLine = (msg) => (msg ? h('span.err', { role: 'alert' }, icon('warn'), msg) : null);
 
@@ -618,7 +621,16 @@ const RENDER = {
         'div.block-body',
         h(
           'figure',
-          h('img', { src: b.src, alt: b.alt, width: b.width ?? null, height: b.height ?? null, loading: 'lazy', referrerpolicy: 'no-referrer' }),
+          h('img', {
+            src: onPageOrigin(b.src, location.origin),
+            alt: b.alt,
+            width: b.width ?? null,
+            height: b.height ?? null,
+            loading: 'lazy',
+            referrerpolicy: 'no-referrer',
+            // A failed image says so, in place of a broken-image icon (#180). The alt text stays as the description.
+            onerror: (e) => e.target.replaceWith(h('p.err.img-failed', icon('warn'), `This image couldn’t load. It shows: ${b.alt}`)),
+          }),
           h('figcaption', b.caption ? `${b.caption} · ` : '', `From ${new URL(b.src).host}`),
         ),
       ),
@@ -992,7 +1004,7 @@ function renderReview(b, item, ctx) {
   }
 
   if (done) {
-    node.append(h('div.block-foot', h('span.answered-note', icon('check', 'i-sm'), `${item.answer.voice} · ${timeOf(item.answer.at)}`)));
+    node.append(h('div.block-foot', h('span.answered-note', icon('check', 'i-sm'), `${item.answer.voice} · ${timeOf(item.answer.at)}`), outcomeLine(item)));
   } else {
     const resolved = (b.threads ?? []).filter((t) => t.status === 'resolved').length;
     const verdicts = [
@@ -1096,43 +1108,6 @@ function inlineMd(t) {
 // ── Progress blocks: times that move ─────────────────────────────────────────────────────
 
 const stateName = (s) => s[0].toUpperCase() + s.slice(1);
-/** A step still marked running looks stalled when its agent has stopped working and the block hasn’t moved for a minute. */
-const STALE_MS = 60000;
-const WORKING = new Set(['think', 'gen', 'tool']);
-
-/** Brings a progress block’s times up to date: “Updated 40 s ago”, live elapsed times, and stalled steps. */
-function tickProgress(node) {
-  const now = Date.now();
-  const se = client.state.sessions[node.dataset.progress];
-  const idle = !se || !WORKING.has(se.state);
-  const stale = idle && now - Number(node.dataset.updatedAt) > STALE_MS;
-  for (const el of node.querySelectorAll('[data-since]')) {
-    const ms = Math.max(1000, now - Number(el.dataset.since));
-    const li = el.closest('li');
-    if (el.dataset.sinceKind === 'updated') el.textContent = ms < 5000 ? 'Updated just now' : `Updated ${formatDuration(ms)} ago`;
-    else if (el.dataset.sinceKind === 'stalled' || stale)
-      el.textContent = `No update for ${formatDuration(Math.max(1000, now - Number(node.dataset.updatedAt)))}`;
-    else el.textContent = formatDuration(ms);
-    if (li && el.dataset.sinceKind === 'running') {
-      li.classList.toggle('stale', stale);
-      li.querySelector('.g')?.setAttribute('aria-label', stale ? 'Stalled' : 'Running');
-    }
-  }
-}
-
-let progressClock = 0;
-function startProgressClock() {
-  if (progressClock) return;
-  progressClock = setInterval(() => {
-    const blocks = document.querySelectorAll('[data-progress]');
-    for (const node of blocks) tickProgress(/** @type {HTMLElement} */ (node));
-    if (!blocks.length) {
-      clearInterval(progressClock);
-      progressClock = 0;
-    }
-  }, 1000);
-}
-
 export function diffLines(a, b) {
   const n = a.length,
     m = b.length;

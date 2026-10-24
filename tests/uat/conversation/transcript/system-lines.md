@@ -12,7 +12,7 @@ You can always see who started what: wakes, joins, compactions, side threads, at
 
 - “You woke @x”, “@a woke @b · agent wake n of 3”.
 - Compaction divider with Show summary ([screenshot](../../screenshots/compaction-divider.png)).
-- A side-thread link “@a asked @b · n messages · Open” ([screenshot](../../screenshots/side-thread-link.png)). While an agent works or waits for you in it, the link carries that agent’s ring and state: “@a asked @b · @b is calling tools · 3 messages · Open”, or “@b (a fork) needs you” (#121).
+- A side-thread link “@a asked @b · n messages · Open” ([screenshot](../../screenshots/side-thread-link.png)). While an agent works or waits for you in it, the link carries that agent’s ring and state: “@a asked @b · @b is calling tools · 3 messages · Open”, or “@b needs you” (#121). The agents’ catch-up shows the line with a summary of a few words once the thread settles (#228). The count is every message there, from you or an agent, one per agent turn, and it updates as they come (#130). When a turn there failed, the link reads “@b failed” and has Retry beside it, and Open goes to the failed card in the side thread (#151).
 
 ## Steps to reproduce
 

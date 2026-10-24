@@ -22,3 +22,17 @@ export function isSafeUrl(url, { schemes = DEFAULT_SCHEMES, origins } = {}) {
   if (u.username || u.password) return false;
   return true;
 }
+
+const LOOPBACK = new Set(['127.0.0.1', 'localhost']);
+/**
+ * A URL of Postbox’s own, which names 127.0.0.1 or localhost, moved to the page’s origin. Postbox answers at both, and
+ * its media URLs name the one it started with, which a page opened at the other doesn’t count as 'self' (#180). Any
+ * other URL is unchanged.
+ * @param {string} src @param {string} page  the page’s origin, such as http://localhost:4191
+ */
+export function onPageOrigin(src, page) {
+  const u = new URL(src);
+  const p = new URL(page);
+  const ours = LOOPBACK.has(u.hostname) && LOOPBACK.has(p.hostname) && u.port === p.port && u.protocol === p.protocol;
+  return ours ? `${p.origin}${u.pathname}${u.search}${u.hash}` : src;
+}

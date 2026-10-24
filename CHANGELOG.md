@@ -2,6 +2,105 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.21.0 (2026-10-24)
+
+### Features
+
+- **uat:** --force-agent-model runs a models: persona scenario on the run's model
+
+## 0.20.0 (2026-10-24)
+
+### Features
+
+- **pane:** reopen a thread left open when you come back to its conversation
+- **pane:** resize the right pane from a handle on its left edge
+- **pane:** hide the sidebar while the right pane needs its room
+
+### Fixes
+
+- **pane:** an honest sidebar button beside the pane, and widths without the scroll bar
+- **pane:** keep the sidebar button true, and the sidebar out of the pane's way
+- **pane:** keep the conversation column usable beside the right pane
+
+## 0.19.0 (2026-10-24)
+
+### Features
+
+- **agents:** End on a subagent's row tells its agent to stop it
+
+### Fixes
+
+- **side-threads:** one session per agent per conversation, and no forks
+
+## 0.18.0 (2026-10-24)
+
+### Features
+
+- **work:** list what each turn did under its last reply, each row opening Work at it
+
+### Fixes
+
+- **work:** say which time the reply's activity line and the turn's list show
+- **ledger:** record commits and branches a command makes, from git before and after it
+
+## 0.17.0 (2026-10-24)
+
+### Features
+
+- **apps:** agents retire an app they no longer need with retire_app
+
+### Fixes
+
+- **apps:** the integrator's review fixes for retiring apps and the app check
+- **kit:** review fixes for the text and control checks
+- **apps:** review fixes for retiring an app
+- **kit:** the app check finds controls you can't see or click
+- **kit:** the app check finds text that spills out of its box or over other text
+
+## 0.16.0 (2026-10-23)
+
+### Features
+
+- **blocks:** agents withdraw a block that asks, and the person can dismiss one
+
+### Fixes
+
+- **a11y:** screen readers hear replies as plain text, with dots in words kept
+- **markdown:** \(…\) and \[…\] are math, not escaped brackets
+- **markdown:** $$…$$ on one line is display math
+- **blocks:** Postbox's own images load at localhost, and a failed image says so
+- **blocks:** tell a topic thread's agent that its conversation's block is there
+
+## 0.15.0 (2026-10-23)
+
+### Features
+
+- **side-threads:** send a side-thread message to the conversation, yourself or by an agent
+- **threads:** the Threads page lists side threads beside topic threads
+
+### Fixes
+
+- **side-threads:** a failed side-thread turn shows on its line, with Retry, and opens at its card
+- **side-threads:** the side-thread line counts every message there
+
+## 0.14.0 (2026-10-23)
+
+### Features
+
+- **uat:** print recurrence by issue in uat-stats
+
+### Fixes
+
+- **uat:** count a closed issue's recurrence only after it closed
+- **uat:** count only a closed issue's regressions as its recurrence
+- **uat:** read a draft that asks to go out, and a list put to the person
+- **uat:** catch an updated app its last version didn't move
+- **uat:** one regression comment per issue per run, only while it stands
+- **uat:** comment a regression a later filing pass finds, and never preset when gh fails
+- **uat:** verify a closed issue caught again against its fix
+- **uat:** stop #63's check flagging reports and exercise answers
+- **uat:** read moved blocks and apps in #123's and #49's checks
+
 ## 0.13.2 (2026-10-23)
 
 ### Fixes

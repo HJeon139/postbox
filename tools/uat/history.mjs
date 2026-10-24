@@ -8,7 +8,8 @@ import { join } from 'node:path';
 
 /** The event, cut to what the checks read, or null for one they don’t (streamed text, apps, glossary…). */
 export function keepEvent(seq, type, data) {
-  if (type === 'item.add' || type === 'item.patch') return { seq, type, data };
+  // An item brought to the newest point (item.move) carries its update as a patch: a block’s new revision (#213).
+  if (type === 'item.add' || type === 'item.patch' || type === 'item.move') return { seq, type, data };
   // A session event holds the whole session; the checks read only its state, and finishedAt, which a turn clears. The
   // triggers (tools/uat/triggers.mjs) also read Stop’s question about background jobs, and the jobs themselves (#126),
   // when the session has them.
@@ -52,7 +53,7 @@ export function followEvents(origin) {
     }
     if (!Number.isFinite(seq) || seq === null || seq <= last) return;
     last = seq;
-    if (type !== 'item.add' && type !== 'item.patch' && type !== 'session') return;
+    if (type !== 'item.add' && type !== 'item.patch' && type !== 'item.move' && type !== 'session') return;
     try {
       const e = keepEvent(seq, type, JSON.parse(data));
       if (e) kept.push(e);
@@ -95,14 +96,8 @@ const lines = (text) =>
       }
     });
 
-/**
- * A finished run’s history: the events.jsonl a live run saved, or else what is left of Postbox’s own log in its data
- * folder. The store deletes a segment once a snapshot covers it, so the log alone can start partway through a run.
- * @param {string} dir  the run’s folder
- */
-export function readHistory(dir) {
-  const saved = join(dir, 'events.jsonl');
-  if (existsSync(saved)) return lines(readFileSync(saved, 'utf8'));
+/** What is left of Postbox’s own log in a run’s data folder, cut as keepEvent cuts it. @param {string} dir */
+function logged(dir) {
   const data = join(dir, 'data');
   if (!existsSync(data)) return [];
   return readdirSync(data)
@@ -111,4 +106,19 @@ export function readHistory(dir) {
     .flatMap((n) => lines(readFileSync(join(data, n), 'utf8')))
     .map((e) => keepEvent(e.seq, e.type, e.data))
     .filter(Boolean);
+}
+
+/**
+ * A finished run’s history: the events.jsonl a live run saved, or else what is left of Postbox’s own log in its data
+ * folder. The store deletes a segment once a snapshot covers it, so the log alone can start partway through a run. A
+ * run saved before the runner kept item.move (#213) takes its moves from the log, where the log still has them.
+ * @param {string} dir  the run’s folder
+ */
+export function readHistory(dir) {
+  const saved = join(dir, 'events.jsonl');
+  if (!existsSync(saved)) return logged(dir);
+  const kept = lines(readFileSync(saved, 'utf8'));
+  if (kept.some((e) => e.type === 'item.move')) return kept;
+  const moves = logged(dir).filter((e) => e.type === 'item.move');
+  return moves.length ? [...kept, ...moves].sort((a, b) => a.seq - b.seq) : kept;
 }

@@ -393,7 +393,7 @@ export async function start({
     }
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/(stop|archive|restore|undo-delete)$/)) && req.method === 'POST') {
       const action = {
-        stop: () => rt.requestStop(m[1], { jobs: body.jobs ?? null, turnId: body.turnId ?? null }),
+        stop: () => rt.requestStop(m[1], { jobs: body.jobs ?? null, turnId: body.turnId ?? null, subagent: body.subagent ?? null }),
         archive: () => rt.archive(m[1]),
         restore: () => rt.restore(m[1]),
         'undo-delete': () => rt.undoDelete(m[1]),
@@ -423,7 +423,7 @@ export async function start({
     if (path === '/api/claude-sessions/attach' && req.method === 'POST') return send(res, 201, await rt.attachClaudeSession(body));
     if (path === '/api/personas' && req.method === 'POST') {
       const p = rt.createPersona(body);
-      if (body.join?.threadId) rt.ensureSession(body.join.threadId, p.id, { brief: 'You were just created and added to this thread.' });
+      if (body.join?.threadId) rt.ensureSession(rt.lineage(body.join.threadId).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
       else if (body.join?.projectId) rt.createThread({ projectId: body.join.projectId, title: body.join.title || `With @${p.handle}`, personaIds: [p.id] });
       if (body.saveAsBoilerplate)
         store.emit('boilerplate', { id: newId('bp'), name: `@${p.handle}`, description: p.description, instructions: p.instructions, tools: p.tools });
@@ -577,7 +577,7 @@ export async function start({
   if (listen)
     await new Promise((ok, fail) => {
       server.once('error', fail);
-      server.listen(port, host, () => ok(undefined));
+      server.listen(port, host, () => ok(rt.drainAll())); // listening: what waited in the queues across a restart goes (#228)
     });
   if (!quiet)
     console.log(

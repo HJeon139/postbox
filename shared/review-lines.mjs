@@ -3,7 +3,8 @@
 // rules in markdown.mjs, in the same order. In a diff, it runs on diffLines' output, so a removed
 // table row is still a row of that table, shown as removed.
 
-import { closesFence, FENCE, HEADING, LIST_ITEM, MATH, QUOTE, RULE, TABLE_SEP } from './markdown.mjs';
+import { closesFence, FENCE, HEADING, LIST_ITEM, QUOTE, RULE, TABLE_SEP } from './markdown.mjs';
+import { displayCloser } from './math.mjs';
 
 /**
  * A source line. n is its line number in the current version, o in the previous one (diffs only).
@@ -35,8 +36,8 @@ export function groupReviewLines(rows, depth = 0) {
     const t = rows[i].t;
 
     const fence = t.match(FENCE);
-    if (fence || MATH.test(t)) {
-      const closes = fence ? (l) => closesFence(fence[1], l) : (l) => MATH.test(l);
+    const closes = fence ? (l) => closesFence(fence[1], l) : displayCloser(t, rows.slice(i + 1));
+    if (closes) {
       const body = [];
       const hidden = [rows[i]];
       for (i++; i < rows.length; i++) {

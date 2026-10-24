@@ -1,9 +1,10 @@
 // The MCP server: Postbox’s UI tools over JSON-RPC 2.0 (MCP’s Streamable HTTP transport, JSON responses).
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
-// and gets show_block, update_block, show_app, update_app, define_term, propose_agent, schedule_wake,
-// wake_agent, ask_for_tool, corpus_search and add_dataset. Every tool returns at once; when you answer a block, your answer reaches
-// the agent later as a new message carrying { blockId, action, values }.
+// and gets show_block, update_block, show_app, update_app, retire_app, define_term, propose_agent, schedule_wake,
+// wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search and add_dataset.
+// Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
+// carrying { blockId, action, values }.
 //
 // One tool is the exception: permission_prompt is what Claude Code calls (--permission-prompt-tool) before
 // a risky tool call in “ask” mode, and it waits for your answer on a card in the conversation.
@@ -16,6 +17,8 @@
 import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
 import { AgentFileError } from './runtime.mjs';
+import { offersBring } from './side-threads.mjs';
+import { withUrgent } from './subagent-end.mjs';
 
 const PROTOCOL = '2025-06-18';
 const count = (k) => k.toLocaleString('en-US');
@@ -32,12 +35,12 @@ const FILE_SCHEMA = { type: 'object', properties: { name: { type: 'string' }, pa
 export const TOOL_DEFS = [
   {
     name: 'show_block',
-    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the conversation. Its id names that one block in this conversation: showing an id you already showed is refused, so change a block with update_block, or pick a new id. Returns at once; the person’s answer arrives later as a message. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')}, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters.`,
+    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the conversation. Its id names that one block in this conversation: showing an id you already showed is refused, so change a block with update_block, or pick a new id. Returns at once; the person’s answer arrives later as a message. The person can also dismiss a choice, form, confirm or review without answering it: you get the action “dismiss”, and it no longer waits on them. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')}, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {
     name: 'update_block',
-    description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form or confirm (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, keeps the block answered, and changes nothing else. A choice, form, confirm or review that asks again moves to the newest point in the conversation, with a line where it was; other blocks update in place. Each update makes the block’s next revision, and the person’s answer names the revision it’s for. An update over an answer you haven’t read yet (it waits until your turn ends), whether it asks again or sets outcome, is refused, and the reply says what they answered: read it, then update. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
+    description: `Replace a block you showed earlier, by its id. An update asks again, except one that sets outcome on an answered choice, form, confirm or review (Markdown, up to ${n('outcome')} characters): that reports the result under the person’s answer, such as “Filed as #105”, keeps the block answered, and changes nothing else. To close a choice, form, confirm or review that’s wrong, handled or stale, answered or not, call update_block with block: { id, withdraw: why } (up to ${n('outcome')} characters): the person sees it closed with your reason, and it stops waiting on them. Don’t ask again just to say a block is done. A choice, form, confirm or review that asks again moves to the newest point in the conversation, with a line where it was; other blocks update in place. Each update makes the block’s next revision, and the person’s answer names the revision it’s for. An update over an answer you haven’t read yet (it waits until your turn ends), whether it asks again or sets outcome, is refused, and the reply says what they answered: read it, then update. For a progress block, send every step each time: set progress { done, total, unit } on a step as items finish, update at least every minute, and close each step as done or failed before your turn ends, or Postbox marks it stalled and tells you. Postbox stamps when the block and each step changed, and fills in duration.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {
@@ -74,6 +77,20 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'retire_app',
+    description:
+      'Retire an app you showed that’s wrong, replaced or no longer needed, rather than updating it to a version that only points elsewhere. It shows as one line where it is, with reason (up to 300 characters) and, when replacedBy names an app or block shown in this conversation, a link to it; it doesn’t move, runs nothing until the person opens a version, and keeps its versions. update_app brings it back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        reason: { type: 'string' },
+        replacedBy: { type: 'string', description: 'The id of the app or block that replaces it.' },
+      },
+      required: ['id', 'reason'],
+    },
+  },
+  {
     name: 'define_term',
     description: 'Add a term to the glossary of this conversation, or of the topic thread you’re in. Every later mention links to its definition.',
     inputSchema: {
@@ -104,12 +121,18 @@ export const TOOL_DEFS = [
   {
     name: 'wake_agent',
     description:
-      'Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its own session in this conversation, so it remembers it (a fork of that session, if it’s busy). After 3 agent wakes in a row, the person must allow the next one.',
+      'Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its one session in this conversation, so it remembers it; if it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After 3 agent wakes in a row, the person must allow the next one.',
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
+    name: 'bring_to_conversation',
+    description:
+      'Post text in the main conversation from the side thread or topic thread you’re in. Use it only when the person asks for something to go to the main chat, in a message to you there: nothing goes there on its own. It shows as shared by you from the side or topic thread, and wakes no one; the conversation’s agents read it at their next turn.',
+    inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to post, in Markdown.' } }, required: ['text'] },
+  },
+  {
     name: 'read_conversation',
-    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes. Pass the id of one of its side threads or topic threads to read that one instead: a catch-up line, a note about a fork of you, or a link the person sent gives it.`,
+    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes. Pass the id of one of its side threads or topic threads to read that one instead: a catch-up line, or a link the person sent, gives it.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -223,7 +246,7 @@ async function one(rt, sessionId, msg, turnToken) {
     case 'ping':
       return reply({});
     case 'tools/list':
-      return reply({ tools: TOOL_DEFS });
+      return reply({ tools: TOOL_DEFS.filter((t) => t.name !== 'bring_to_conversation' || inThread(rt, sessionId, turnToken)) });
     case 'tools/call': {
       if (!rt.s.sessions[sessionId]) return fail(-32602, 'Unknown Postbox session. Connect with /mcp?session=<id>.');
       if (turnToken === null)
@@ -242,7 +265,9 @@ async function one(rt, sessionId, msg, turnToken) {
         // An app’s code and data files may come from files in the agent’s folder, which Postbox reads itself (#54).
         const app = name === 'show_app' || name === 'update_app' ? await rt.appFiles(sessionId, args) : { args };
         const r = await tools[name](app.args, app.files ? { files: app.files } : {});
-        return reply({ content: [{ type: 'text', text: r.results ? JSON.stringify(r.results) : r.message }], isError: r.ok === false && !r.waiting });
+        // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
+        const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message);
+        return reply({ content: [{ type: 'text', text }], isError: r.ok === false && !r.waiting });
       } catch (e) {
         if (e instanceof AgentFileError) return reply({ content: [{ type: 'text', text: e.message }], isError: true });
         return reply({ content: [{ type: 'text', text: e.userMessage ?? e.message }], isError: true });
@@ -251,6 +276,12 @@ async function one(rt, sessionId, msg, turnToken) {
     default:
       return fail(-32601, `Method “${msg.method}” isn’t supported.`);
   }
+}
+
+/** Whether the session’s turn is one bring_to_conversation is offered to (#128): the person’s, in a side or topic thread. */
+function inThread(rt, sessionId, turnToken) {
+  const turn = rt.turns.get(sessionId);
+  return turn?.token === turnToken && offersBring(rt, turn);
 }
 
 /**

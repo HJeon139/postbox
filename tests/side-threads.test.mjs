@@ -1,71 +1,9 @@
-// Side threads (#110, #121, #128): one session per persona per conversation. A wake runs in the agent’s session in the
-// conversation and shows in the side thread; only while that session is busy does a fork of it answer.
+// Side threads (#110, #121, #128, #228): one session per persona per conversation. A wake runs in the agent’s session in
+// the conversation and shows in the side thread; while that session is busy, the wake waits for its turn.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { Runtime } from '../server/runtime.mjs';
-import { Store } from '../server/store.mjs';
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/** An adapter whose replies the test scripts per call; a step can hold its turn open until the test lets it go. */
-class ScriptedAdapter {
-  name = 'mock';
-  constructor() {
-    this.calls = [];
-    this.next = [];
-    this.forks = [];
-  }
-  fork(source, target) {
-    this.forks.push([source.id, target.id]);
-  }
-  async deliver(session, message, ctx) {
-    this.calls.push({ handle: session.handle, sessionId: session.id, message, thread: ctx.thread.id, state: ctx.state });
-    ctx.saveState({ backendSession: `cli-${session.id}` });
-    const step = this.next.shift() ?? (async (c) => c.text('ok'));
-    await step(ctx, message, session);
-  }
-}
-
-function setup() {
-  const store = new Store(null);
-  const adapter = new ScriptedAdapter();
-  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({
-    store,
-    adapters: new AdapterRegistry().register(adapter),
-    corpus,
-    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
-  });
-  store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
-  const a = rt.createPersona({ handle: 'alpha' });
-  const b = rt.createPersona({ handle: 'beta' });
-  const c = rt.createPersona({ handle: 'gamma' });
-  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id, b.id] });
-  const [alpha, beta] = rt.sessionsIn(t.id);
-  return { store, rt, adapter, t, a, b, c, alpha, beta };
-}
-const settle = async (rt) => {
-  for (let i = 0; i < 200 && (rt.turns.size || rt.exiting.size); i++) await sleep(5);
-  await sleep(5);
-};
-/** A step that holds its turn open until release() is called. */
-function held() {
-  let release = () => {};
-  const done = new Promise((r) => {
-    release = r;
-  });
-  return {
-    release: () => release(),
-    step: async (c) => {
-      c.text('working on it');
-      await done;
-    },
-  };
-}
-const sideOf = (store, t) => Object.values(store.state.threads).find((x) => x.kind === 'side' && x.parentId === t.id);
-const sessionsOfPersona = (store, personaId) => Object.values(store.state.sessions).filter((x) => x.personaId === personaId);
+import { held, sessionsOfPersona, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
 
 test('#110: a wake runs in the agent’s own session in the conversation, and shows in the side thread', async () => {
   const { store, rt, adapter, t, b, alpha, beta } = setup();
@@ -104,74 +42,30 @@ test('#110: a wake runs in the agent’s own session in the conversation, and sh
   assert.equal(adapter.calls.at(-1).thread, t.id);
 });
 
-test('#110: a persona woken from outside the conversation joins it, so a later wake or mention reaches the same session', async () => {
-  const { store, rt, adapter, t, c, alpha, beta } = setup();
-  rt.agentWake(alpha.id, 'gamma', 'Check the numbers.');
-  await settle(rt);
-  const gammas = sessionsOfPersona(store, c.id);
-  assert.equal(gammas.length, 1);
-  assert.equal(gammas[0].threadId, t.id, 'it joined the conversation');
-  assert.ok(store.state.threads[t.id].members.includes(gammas[0].id));
-  // The person never added it, so the session and the wake’s line say why it’s here (the person’s decision).
-  assert.equal(gammas[0].joinedBy, 'alpha');
-  const wakes = store.items(t.id).filter((i) => i.kind === 'system' && i.variant === 'wake' && i.to === 'gamma');
-  assert.equal(wakes[0].joined, true);
-  // A different partner wakes it: another side thread, the same session.
-  rt.agentWake(beta.id, 'gamma', 'And mine?');
-  await settle(rt);
-  assert.equal(store.items(t.id).filter((i) => i.kind === 'system' && i.variant === 'wake' && i.to === 'gamma')[1].joined, undefined, 'it joined only once');
-  assert.equal(sessionsOfPersona(store, c.id).length, 1);
-  assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 2);
-  rt.sendMessage(t.id, { text: '@gamma summarize both' });
-  await settle(rt);
-  assert.equal(adapter.calls.at(-1).sessionId, gammas[0].id);
-});
-
-test('#110: only while the session is mid-turn does a fork of it answer, at its latest point, and the session gets a pointer', async () => {
+test('#228: a wake while the session is busy waits for its turn, as a message to a busy agent does: no fork', async () => {
   const { store, rt, adapter, t, b, alpha, beta } = setup();
-  // @beta is busy in the conversation.
-  rt.sendMessage(t.id, { text: '@beta first warm up' });
-  await settle(rt);
   const busy = held();
   adapter.next.push(busy.step);
   rt.sendMessage(t.id, { text: '@beta start the long job' });
-  assert.ok(rt.turns.has(beta.id));
-  adapter.next.push(async (c) => c.text('Fork: the editions are 1st and 3rd.'));
+  adapter.next.push(async (c) => c.text('The editions are 1st and 3rd.'));
   const r = rt.agentWake(alpha.id, 'beta', 'Which editions?');
-  assert.match(r.message, /a fork of it answers/);
+  assert.equal(r.message, 'Woke @beta: it’s busy, so it answers when its current turn ends.');
   await sleep(10);
-  const side = sideOf(store, t);
-  const forks = sessionsOfPersona(store, b.id).filter((x) => x.id !== beta.id);
-  assert.equal(forks.length, 1);
-  const fork = forks[0];
-  assert.equal(fork.threadId, side.id);
-  assert.deepEqual(fork.forkOf, { sessionId: beta.id, itemId: null, busy: true, by: 'alpha', first: false });
-  // From the session’s latest point: what its backend saved, not a checkpoint of a message.
-  assert.deepEqual(fork.backendState.forkFrom, store.state.sessions[beta.id].backendState);
-  assert.deepEqual(adapter.forks, [[beta.id, fork.id]]);
-  const forkCall = adapter.calls.find((x) => x.sessionId === fork.id);
-  assert.match(forkCall.message.context.join('\n'), /fork of your session in the conversation “T”/);
-  // A second wake while @beta is still busy reuses the fork.
-  adapter.next.push(async (c) => c.text('Fork again.'));
-  rt.agentWake(alpha.id, 'beta', 'And the dates?');
-  await sleep(20);
-  assert.equal(sessionsOfPersona(store, b.id).length, 2);
+  assert.deepEqual(
+    sessionsOfPersona(store, b.id).map((x) => x.id),
+    [beta.id],
+  );
+  // It waits in the side thread’s queue, where the person sees it and can remove it (#228).
+  const [q] = sideOf(store, t).queue;
+  assert.deepEqual([q.kind, q.from, q.text, q.sessionIds], ['wake', 'alpha', 'Which editions?', [beta.id]]);
   busy.release();
   await settle(rt);
-  // The pointer names the thread; Postbox sends neither the fork’s summary nor its messages.
-  const pointer = (store.state.sessions[beta.id].context ?? []).filter((x) => x.includes(side.id));
-  assert.equal(pointer.length, 1, 'one pointer per thread, replaced, not piled up');
-  assert.match(pointer[0], /read_conversation with thread: "th_[^"]+" and limit: 1/);
-  assert.doesNotMatch(pointer[0], /editions are 1st/);
-  // It reaches @beta’s next turn, which can then read the fork’s summary.
-  rt.sendMessage(t.id, { text: '@beta anything new?' });
-  await settle(rt);
-  const next = adapter.calls.at(-1);
-  assert.equal(next.sessionId, beta.id);
-  assert.ok(next.message.context.some((x) => x.includes(`thread ${side.id}`)));
-  const summary = rt.toolsFor(beta.id).read_conversation({ thread: side.id, limit: 1 });
-  assert.equal(summary.ok, true);
-  assert.match(summary.message, /Fork again\./);
+  const answer = adapter.calls.find((x) => x.message.text === 'Which editions?');
+  assert.deepEqual([answer.sessionId, answer.thread], [beta.id, sideOf(store, t).id]);
+  assert.equal(
+    Object.values(store.state.sessions).some((x) => x.forkOf),
+    false,
+  );
 });
 
 test('#110: a second wake while the session is busy in that same side thread waits for its turn, and starts no fork', async () => {
@@ -182,69 +76,16 @@ test('#110: a second wake while the session is busy in that same side thread wai
   await sleep(5);
   const side = sideOf(store, t);
   adapter.next.push(async (c) => c.text('Dates: 1999 and 2004.'));
-  const r = rt.agentWake(alpha.id, 'beta', 'And the dates?');
-  assert.equal(r.message, 'Woke @beta.');
+  rt.agentWake(alpha.id, 'beta', 'And the dates?');
   assert.deepEqual(
     sessionsOfPersona(store, b.id).map((x) => x.id),
     [beta.id],
-    'a fork would be a second @beta doing the same work',
   );
-  assert.equal(rt.turns.get(beta.id).pending.length, 1);
+  assert.equal(store.state.threads[side.id].queue.length, 1);
   h.release();
   await settle(rt);
   const second = adapter.calls.find((c) => c.message.text === 'And the dates?');
-  assert.equal(second.sessionId, beta.id);
-  assert.equal(second.thread, side.id);
-});
-
-test('#110: a fork that can’t start from its session’s memory starts again fresh, once, and its note says why', async () => {
-  const { store, rt, adapter, t, b, alpha, beta } = setup();
-  rt.sendMessage(t.id, { text: '@beta first warm up' });
-  await settle(rt);
-  const busy = held();
-  adapter.next.push(busy.step);
-  rt.sendMessage(t.id, { text: '@beta the long job' });
-  // The backend can’t resume a session whose transcript is still being written: the fork’s first turn fails at once.
-  adapter.next.push(async (c) => {
-    if (c.state.forkFrom) throw new Error('No conversation found to resume');
-    c.text('Should not run here.');
-  });
-  adapter.next.push(async (c) => c.text('Fresh: the editions are 1st and 3rd.'));
-  rt.agentWake(alpha.id, 'beta', 'Which editions?');
-  await sleep(30);
-  const fork = sessionsOfPersona(store, b.id).find((x) => x.id !== beta.id);
-  const side = sideOf(store, t);
-  const tries = adapter.calls.filter((c) => c.sessionId === fork.id);
-  assert.equal(tries.length, 2);
-  assert.ok(tries[0].state.forkFrom, 'it tried the session’s memory first');
-  assert.equal(tries[1].state.forkFrom, undefined, 'then fresh');
-  assert.equal(tries[1].message.text, 'Which editions?');
-  assert.match(
-    tries[1].message.context.join('\n'),
-    /this is a new session of you, and it doesn’t remember the conversation \(starting from its memory failed: No conversation found to resume\)/,
-  );
-  assert.equal(store.state.sessions[fork.id].forkOf.fresh, true);
-  assert.equal(store.items(side.id).filter((i) => i.status === 'failed').length, 0, 'the failed try left nothing in the thread');
-  assert.ok(store.items(side.id).some((i) => i.kind === 'agent' && i.text === 'Fresh: the editions are 1st and 3rd.'));
-  busy.release();
-  await settle(rt);
-});
-
-test('#110: a fork whose adapter fails to fork starts fresh at once', async () => {
-  const { store, rt, adapter, t, b, alpha, beta } = setup();
-  adapter.fork = () => {
-    throw new Error('fork refused');
-  };
-  const busy = held();
-  adapter.next.push(busy.step);
-  rt.sendMessage(t.id, { text: '@beta the long job' });
-  rt.agentWake(alpha.id, 'beta', 'Which editions?');
-  await sleep(10);
-  const fork = sessionsOfPersona(store, b.id).find((x) => x.id !== beta.id);
-  assert.equal(store.state.sessions[fork.id].forkOf.fresh, true);
-  assert.equal(adapter.calls.find((c) => c.sessionId === fork.id).state.forkFrom, undefined);
-  busy.release();
-  await settle(rt);
+  assert.deepEqual([second.sessionId, second.thread], [beta.id, side.id]);
 });
 
 test('#128: @-mentioning an agent in a side thread reaches its session in the conversation, not a new copy', async () => {

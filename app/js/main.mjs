@@ -5,37 +5,22 @@ import { onThemeChange } from './apps.mjs';
 import { client, connect, hrefOf, itemsOf, load, needsYou, threadsOf } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
 import { mountPane } from './pane.mjs';
+import { canonical } from './pane-route.mjs';
 import { paintStateWords, ringFor } from './ring.mjs';
 import { openPalette } from './sheets.mjs';
 import { mountEmptyProject, mountOverview, mountRail, mountThreads, nextNeedsYou, railHidden, toggleRail, topbar } from './shell.mjs';
 import { focusComposer, mountComposer, mountTranscript } from './thread.mjs';
-import { initHoverCards, mdNode, navigate, paneHref, refind, rememberWork, route, say, setAttention, toast, workRemembered } from './ui.mjs';
+import { initHoverCards, mdNode, navigate, refind, route, say, setAttention, toast } from './ui.mjs';
 
 const root = $('#root');
 let mounted = [];
 let current = null;
 /** The open conversation’s right pane, which changes in place while you stay in the conversation. */
 let pane = null;
-/** Below this width the right pane covers the conversation (workbench.css). */
-const narrow = matchMedia('(max-width: 767px)');
-
-/**
- * The address a conversation’s route should have, when it isn’t the one it has: the Work page #138 had opens the
- * Work pane, and a conversation left with Work open opens it again (rememberWork in ui.mjs).
- */
-function canonical(r) {
-  if (r.view !== 'thread' || !client.state.threads[r.threadId]) return null;
-  if (r.oldWork) return paneHref(r.threadId, { work: true, turn: r.turn });
-  if (r.work) rememberWork(r.threadId, true);
-  // In a narrow window the pane covers the conversation, so coming back opens the conversation, not Work over it.
-  else if (workRemembered(r.threadId) && !narrow.matches) return paneHref(r.threadId, { side: r.sideId, work: true });
-  return null;
-}
-
 /** @param {{ rebuild?: boolean }} [opts]  rebuild: the whole view, even when only the pane changed */
 function render({ rebuild = false } = {}) {
   const r = route();
-  const to = canonical(r);
+  const to = canonical(r, current);
   if (to) {
     navigate(to, { replace: true });
     return;

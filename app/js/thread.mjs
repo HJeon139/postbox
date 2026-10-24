@@ -4,15 +4,20 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
-import { agentsSection, subagentNow } from './agents.mjs';
+import { inThreadLine, subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
+import { focusComposer, hopBlock } from './hop-card.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
-import { announceStreaming, navigate, openMenu, openWork, paneHref, say, toast } from './ui.mjs';
+import { sideActive, sideLine, sideSig } from './side-line.mjs';
+import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
+import { workList } from './work-list.mjs';
+
+export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
 const handles = () =>
@@ -70,7 +75,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     el.append(working); // keep it last
   };
 
-  const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0]);
+  const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0, app.retired?.at ?? null]);
   const render = (it, prev) => {
     const ctx = { threadId, kind: S().threads[threadId]?.kind, rerender: () => rerender(it.id) };
     const node = renderItem(it, prev, ctx);
@@ -302,7 +307,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       for (const it of itemsOf(threadId))
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
           if (it.block.type === 'app') {
-            // Only what changes the frame re-renders it: a new version, a version picked, or the check’s result.
+            // Only what changes the frame re-renders it: a new version, a version picked, the check’s result, or retiring (#193).
             // Saved state never does; the running app already has it, and reloading would make it save again.
             const sig = appSig(d);
             const node = nodes.get(it.id);
@@ -401,8 +406,8 @@ const who = (it, { you = false } = {}) => {
   return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
 };
 
-// Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a reply in a
-// topic thread: “Send to conversation”. The actions appear on hover and focus, and always on touch screens.
+// Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
+// topic or side thread (#128): “Send to conversation”. The actions appear on hover and focus, and always on touch screens.
 function messageActions(node, it, ctx) {
   if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent) return;
   if (it.kind === 'block' && !it.valid) return;
@@ -410,7 +415,7 @@ function messageActions(node, it, ctx) {
   if (ctx.kind === 'thread' || ctx.kind === 'room') {
     const topic = it.topicId && S().threads[it.topicId];
     if (topic) {
-      const unread = sessionsOf(topic.id).reduce((a, x) => a + (x.unread ?? 0), 0);
+      const unread = topic.unread ?? 0;
       bar.append(
         h(
           'a.replies',
@@ -439,7 +444,7 @@ function messageActions(node, it, ctx) {
           'Reply in thread',
         ),
       );
-  } else if (ctx.kind === 'topic' && (it.kind === 'agent' || it.kind === 'user') && it.text) {
+  } else if ((ctx.kind === 'topic' || ctx.kind === 'side') && (it.kind === 'agent' || it.kind === 'user') && it.text) {
     bar.append(
       it.sharedAt
         ? h('span.small.dim', icon('check', 'i-sm'), ' Sent to the conversation')
@@ -495,16 +500,16 @@ function renderItem(it, prev, ctx) {
                 'summary',
                 icon('right', 'i-sm'),
                 activityLabel(steps),
-                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s` : '',
+                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
                 running ? ' · running' : '',
               ),
               stepTree(steps),
             )
           : null,
         jobRows(it, steps),
-        // What the turn changed, ran and published, from the work ledger (#132), leading to it.
-        it.work ? workChip(it, ctx) : null,
         it.text || it.status === 'streaming' ? h('div.md') : null,
+        // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
+        it.work ? workChip(it, ctx) : null,
         it.status === 'stopped' ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
         it.status === 'failed'
           ? h(
@@ -562,7 +567,7 @@ function renderItem(it, prev, ctx) {
       if (it.valid && it.block.type === 'app') {
         // Named like any other block (#88). Only the agent that wrote an app can update it, so this is also who
         // made each version.
-        return h('div.wide', showWho ? h('div.col', who(it)) : null, renderAppItem(it, ctx));
+        return h('div.wide', showWho ? h('div.col', who(it)) : null, renderAppItem(it, ctx), it.work ? workChip(it, ctx) : null);
       }
       // revision: the one the person answered (#123); a card’s or table’s action doesn’t say.
       const act = async (action, values, revision) => {
@@ -570,7 +575,7 @@ function renderItem(it, prev, ctx) {
         focusComposer();
         return r;
       };
-      const node = h('div.col.turn', showWho ? who(it) : null, renderBlock(it, { act, threadId: ctx.threadId }));
+      const node = h('div.col.turn', showWho ? who(it) : null, renderBlock(it, { act, threadId: ctx.threadId }), it.work ? workChip(it, ctx) : null);
       if (it.valid && it.block.type === 'review' && it.block.format === 'app') node.dataset.appVersion = String(S().apps[it.block.appId]?.current ?? '');
       return node;
     }
@@ -583,7 +588,8 @@ function renderItem(it, prev, ctx) {
         it.quote ? h('span.app-says', 'The app’s summary: ', h('q', it.quote)) : null,
       );
     case 'shared':
-      // A reply or a summary sent back from a topic thread. Its agents read it at the start of their next turn.
+      // A reply or a summary sent back from a topic or side thread, by you or by an agent you asked (#128). Its agents
+      // read it at the start of their next turn.
       return h(
         'div.col.turn',
         h(
@@ -591,7 +597,12 @@ function renderItem(it, prev, ctx) {
           h(
             'div.shared-head',
             icon('thread', 'i-sm'),
-            h('span.grow', it.summary ? 'Summary of the thread ' : 'From the thread ', h('b', `“${it.fromTitle}”`), it.handle ? ` · @${it.handle}` : ' · you'),
+            h(
+              'span.grow',
+              it.summary ? 'Summary of the thread ' : 'From the thread ',
+              h('b', `“${it.fromTitle}”`),
+              it.agent ? ` · shared by @${it.handle} in a turn you started` : it.handle ? ` · @${it.handle}` : ' · you',
+            ),
             S().threads[it.fromThreadId] ? h('a.small', { href: hrefOf(it.fromThreadId) }, 'Open thread') : null,
           ),
           h('div.md', { html: trusted(renderMarkdown(it.text, { mentions: handles() })) }),
@@ -599,25 +610,8 @@ function renderItem(it, prev, ctx) {
       );
     case 'system':
       return systemLine(it, ctx);
-    case 'sidelink': {
-      // The agent at work in it, with the ring and state word the sidebar rows use (#121), so the conversation shows
-      // what’s running there without opening it.
-      const at = sideActive(it.sideThreadId);
-      return h(
-        'div.col.sys',
-        { dataset: { sideSig: sideSig(at) } },
-        h(
-          'a.pill',
-          { href: `#/t/${ctx.threadId}/side/${it.sideThreadId}`, style: { textDecoration: 'none', borderColor: 'var(--accent)' } },
-          at ? ringFor(at, 'xs') : icon('thread', 'i-sm'),
-          h('b', `@${it.from}`),
-          ' asked ',
-          h('b', `@${it.to}`),
-          at ? [' · ', h('b', `@${at.handle}`), `${at.forkOf?.busy ? ' (a fork)' : ''} ${doing(at)}`] : null,
-          ` · ${plural(it.count ?? 0, 'message')} · Open`,
-        ),
-      );
-    }
+    case 'sidelink':
+      return sideLine(it, ctx);
     case 'hop':
       return hopBlock(it, ctx);
     case 'permission':
@@ -639,34 +633,12 @@ function renderItem(it, prev, ctx) {
   }
 }
 
-/** The session most worth showing in a side thread: one that needs you, else one at work there; null when none is. */
-function sideActive(sideId) {
-  const rank = { needs: 4, failed: 3, tool: 2, gen: 2, think: 2, stopping: 1 };
-  const here = sessionsAt(sideId).filter((se) => !se.archived && (!se.sideTurn || se.sideTurn.threadId === sideId) && rank[se.state]);
-  return here.sort((a, b) => rank[b.state] - rank[a.state])[0] ?? null;
-}
-const sideSig = (se) => (se ? `${se.id}:${se.state}` : '');
-/** “is calling tools”, “needs you”: what an agent is doing, after its name. */
-const doing = (se) => (se.state === 'needs' ? 'needs you' : se.state === 'failed' ? 'failed' : `is ${stateWord(se.state).toLowerCase()}`);
-
-/** A turn’s line from the work ledger (#132), which opens the conversation’s Work in the right pane, at that turn. */
+/** A turn’s line and its list from the work ledger (#132, #195), each leading to the conversation’s Work. */
 function workChip(it, ctx) {
   const t = client.state.threads[ctx.threadId];
   const conv = (t?.kind === 'side' || t?.kind === 'topic') && t.parentId ? t.parentId : ctx.threadId;
-  return h(
-    'a.work-chip',
-    {
-      href: paneHref(conv, { work: true, turn: it.turnId }),
-      'aria-label': `This turn’s work: ${it.work}`,
-      // Beside the thread that’s open, if any: the address is worked out when you choose it.
-      onclick: (e) => {
-        e.preventDefault();
-        openWork(conv, { turn: it.turnId });
-      },
-    },
-    icon('file', 'i-sm'),
-    it.work,
-  );
+  const s = client.state;
+  return workList(it, conv, [s.projects?.[s.threads[conv]?.projectId]?.folder, s.personas?.[s.sessions?.[it.sessionId]?.personaId]?.folder]);
 }
 
 function failureText(msg = 'This reply didn’t finish.') {
@@ -929,7 +901,7 @@ function systemLine(it, _ctx) {
  */
 function movedLine(it, ctx) {
   const live = itemsOf(ctx.threadId).some((x) => x.id === it.itemId);
-  return h(
+  const line = h(
     'div.col.sys-line.moved',
     icon('down', 'i-sm'),
     h('span', h('b', it.title), it.what === 'app' ? ` · updated to v${it.v} below` : ' · asked again below'),
@@ -952,37 +924,8 @@ function movedLine(it, ctx) {
         )
       : null,
   );
-}
-
-function hopBlock(it, ctx) {
-  const open = it.status === 'open';
-  const act = (allow) =>
-    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action: allow ? 'confirm' : 'cancel' })
-      .then(focusComposer)
-      .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
-  return h(
-    'div.col.block',
-    { role: 'group', class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
-    h(
-      'div.block-head',
-      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h('span.title.grow', `Let @${it.from} wake @${it.to}?`),
-      h('span.kind', 'Confirm · from Postbox'),
-    ),
-    h(
-      'div.block-body.md',
-      h('p', `That would be agent wake ${it.n} since your last message. After 3 in a row, the next one waits for you.`),
-      it.reason ? h('p.dim.small', `@${it.from}’s reason: “${it.reason}”`) : null,
-      !open ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'allowed' ? 'Allowed' : 'Not allowed') : null,
-    ),
-    open
-      ? h(
-          'div.block-foot',
-          h('button.btn', { type: 'button', onclick: () => act(true) }, `Let @${it.from} wake @${it.to}`),
-          h('button.btn', { type: 'button', onclick: () => act(false) }, `Don’t wake @${it.to}`),
-        )
-      : null,
-  );
+  // A turn’s list stays here when the item that carried it moved on (#195).
+  return it.work ? h('div.col', line, workChip(it, ctx)) : line;
 }
 
 /**
@@ -1439,7 +1382,6 @@ const saveOutbox = () => {
 client.on((ch) => {
   if (ch.type === 'connection' && client.connection === 'open') flushOutbox();
 });
-export const focusComposer = () => $('#composer-input')?.focus();
 
 export async function sendMessage(threadId, text, attachments = [], { sendNow = false } = {}) {
   try {
@@ -1463,6 +1405,18 @@ export function flushOutbox() {
   saveOutbox();
   for (const m of items) sendMessage(m.threadId, m.text, m.attachments);
   if (items.length) client.emit({ type: 'outbox' });
+}
+
+/**
+ * A queued wake (#228) is another agent’s message, waiting for its agent to finish: it says whose, and has no Edit.
+ * @param {HTMLElement} row @param {any} q
+ */
+function asWake(row, q) {
+  if (q.kind !== 'wake') return row;
+  const what = row.querySelector('.q-text .small');
+  if (what) what.textContent = `@${q.from}’s message · waits for ${what.textContent.replace(/^Queued · sends when (.*) finishes$/, '$1')} to finish`;
+  [...row.querySelectorAll('button')].find((b) => b.textContent === 'Edit')?.remove();
+  return row;
 }
 
 export function mountComposer(threadId, { side = false } = {}) {
@@ -1698,10 +1652,10 @@ export function mountComposer(threadId, { side = false } = {}) {
     runAgentCommand(se, '/compact');
   }
   function stopAll() {
-    // In a conversation, Stop reaches its side threads too (#121): its agents wherever their turn is, and the forks
-    // answering there. Topic threads keep running: you forked them, and each has its own Stop.
+    // In a conversation, Stop reaches its side threads too (#121), but not a turn in a topic thread: it has its own (#228).
     const t = thread();
-    const working = (t?.kind === 'side' || t?.kind === 'topic' ? sessionsAt(threadId) : [...sessionsOf(threadId), ...sideSessionsOf(threadId)]).filter(busy);
+    const go = (se) => busy(se) && !(t?.kind !== 'topic' && S().threads[se.sideTurn?.threadId]?.kind === 'topic');
+    const working = (t?.kind === 'side' || t?.kind === 'topic' ? sessionsAt(threadId) : [...sessionsOf(threadId), ...sideSessionsOf(threadId)]).filter(go);
     if (!working.length) return say('Nothing is running here.');
     for (const se of working)
       stopSession(se).then(
@@ -2171,10 +2125,10 @@ export function mountComposer(threadId, { side = false } = {}) {
       queue,
       t.queue ?? [],
       (q) => q.id,
-      (q) => queuedRow(q),
+      (q) => asWake(queuedRow(q), q),
       (node, q) => {
         if (node.dataset.editing) return; // keep an inline edit open while the agent works
-        const fresh = queuedRow(q);
+        const fresh = asWake(queuedRow(q), q);
         node.replaceChildren(...fresh.childNodes);
       },
     );
@@ -2438,10 +2392,9 @@ export function mountSidePanel(parentId, sideId) {
   const tr = mountTranscript(sideId, { inPanel: true });
   const comp = mountComposer(sideId, { side: true });
   const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
-  const agents = sessionsOf(sideId).filter((x) => !x.archived);
-  const body = h('div.sp-body', topic ? threadRoot(root, agents) : null, tr.el);
-  // A topic thread’s agents, with the same rows and quick panel as the sidebar’s (#105): its composer has no / commands.
-  const who = topic ? agentsSection(sideId, { label: 'Agents in this thread' }) : null;
+  const body = h('div.sp-body', topic ? threadRoot(root) : null, tr.el);
+  // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
+  const who = topic ? inThreadLine(sideId) : null;
   // One summary at a time (#93): from the request until it’s posted or the turn ends, the button waits. The
   // server keeps the request on the thread, so a reload or a second tab waits too, and it refuses a second one.
   // From the click until the server’s own state shows the request: its agent at work on it.
@@ -2477,13 +2430,18 @@ export function mountSidePanel(parentId, sideId) {
   const paintSummarize = () => {
     if (!summarize) return;
     const waiting = pendingSummary();
-    summarize.disabled = waiting || !sessionsOf(sideId).some((x) => !x.archived);
+    summarize.disabled = waiting || !(S().threads[sideId]?.lastSpeaker || S().threads[sideId]?.woke);
     const label = waiting ? 'Summary requested…' : 'Summarize back';
     if (summarize.textContent !== label) summarize.textContent = label;
   };
   paintSummarize();
   const off = client.on((ch) => {
-    if ((ch.type === 'thread' && ch.data.id === sideId) || (ch.type === 'session' && ch.data.threadId === sideId) || ch.type === 'load') paintSummarize();
+    if (
+      (ch.type === 'thread' && ch.data.id === sideId) ||
+      (ch.type === 'session' && ch.data.id === S().threads[sideId]?.summaryPending?.sessionId) ||
+      ch.type === 'load'
+    )
+      paintSummarize();
   });
   const el = h(
     'aside.sidepanel',
@@ -2550,11 +2508,10 @@ function copyLink(threadId, topic) {
   return b;
 }
 
-/** The message a topic thread branched from, at its top, and what the forked agent remembers. */
-function threadRoot(root, agents) {
+/** The message a topic thread branched from, at its top. */
+function threadRoot(root) {
   if (!root) return null;
   const text = root.kind === 'block' ? `${root.block?.title ?? root.block?.type ?? 'A block'}${root.block?.type === 'app' ? ' (app)' : ''}` : (root.text ?? '');
-  const one = agents.length === 1;
   // A long message is clamped to a few lines here; it’s all in the conversation beside it.
   const md = h('div.md.clamped', { html: trusted(renderMarkdown(text, { mentions: handles() })) });
   queueMicrotask(() => enhanceMarkdown(md));
@@ -2576,12 +2533,6 @@ function threadRoot(root, agents) {
     h('span.label', root.kind === 'user' ? 'You' : `@${root.handle ?? ''}`),
     md,
     text.length > 280 || /\n\s*\n/.test(text) ? more : null,
-    h(
-      'p.small.dim',
-      agents.length
-        ? `${agents.map((x) => `@${x.handle}`).join(' and ')} here ${one ? 'is a branch of its' : 'are branches of their'} session at this message: ${one ? 'it remembers' : 'they remember'} the conversation up to here, and nothing in this thread reaches the conversation unless you send it.`
-        : 'No agent is in this thread. @-mention one from the conversation to bring in a branch of its session.',
-    ),
   );
 }
 

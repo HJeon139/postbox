@@ -15,6 +15,8 @@ Feedback on long documents needs to be anchored to lines, batched, and followed 
 - Markdown renders by block, the way it does in a reply: a table is a table, a list keeps its numbering and nesting, a code fence is code and a quote is quoted. Each table row, list item and code line takes its own comment; a table’s delimiter row and a fence’s markers don’t show.
 - In a diff, an added or removed table row, list item or code line stays in place inside its block, marked added or removed.
 - Comments are drafted, then submitted with a verdict (comment, approve, request changes).
+- When the agent reports what came of an approved draft (“Filed as #105”), the result shows under your answer, and the review stays answered: nothing asks you to approve it again (#106).
+- While it waits on you, it can be dismissed, and its agent can withdraw it, as a [choice](choice.md) can.
 - A revision shows as a diff against the previous version; resolved threads collapse.
 - If the agent changes the draft while you’re answering, your submit is refused, your comments are kept, and you see what changed: see [A block that changed while you were answering](changed-while-answering.md).
 

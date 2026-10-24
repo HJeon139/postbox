@@ -46,7 +46,7 @@ async function press(key, { shift = false, quick = false } = {}) {
 }
 const centerOf = (expr) =>
   page.evaluate(
-    `(() => { const el = ${expr}; if (!el) return null; el.scrollIntoView({ block: 'nearest' }); const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`,
+    `(() => { const el = ${expr}; if (!el) return null; el.scrollIntoView({ block: 'center' }); const b = el.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`,
   );
 async function click(expr) {
   const r = await centerOf(expr);
@@ -411,14 +411,14 @@ for (const [width, height] of [
     await press('Escape');
     await page.waitFor(`!${q('.pane-full')}`);
     assert.equal(await focusedId(), 'work-full');
-    // Another conversation has nothing open; coming back, Work is open again, and so for a plain link to it. In a
-    // narrow window, where the pane would cover it, the conversation opens on its own.
+    // Another conversation has nothing open; coming back, Work and the thread are open again (#122), and so for a
+    // plain link to it. In a narrow window, where the pane would cover it, the conversation opens on its own.
     await open(`#/t/${other.id}`);
     assert.equal(await has('.rpane:not([hidden])'), false);
     await open(pane(''));
     if (width >= 768) {
-      await page.waitFor(q(WORK), { label: 'Work again' });
-      assert.equal(await hash(), pane('?work'));
+      await page.waitFor(`${q(WORK)} && ${q(THREAD)}`, { label: 'Work and the thread again' });
+      assert.equal(await hash(), pane(`/side/${topic}?work`));
     } else {
       assert.equal(await hash(), pane(''));
       assert.equal(await has('.rpane:not([hidden])'), false, 'the pane covers the conversation');
