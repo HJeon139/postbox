@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.26.0 (2026-10-24)
+
+### Features
+
+- **reactions:** draw each reaction with its icon
+
+### Fixes
+
+- **reactions:** the UAT's telemetry driver finds a reaction by its icon, and every icon is checked
+
 ## 0.25.1 (2026-10-24)
 
 ### Fixes
