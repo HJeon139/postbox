@@ -1,8 +1,9 @@
 // Checks WCAG 2.1 contrast for the Workbench tokens in both themes.
-// Usage: node tools/contrast.mjs [path/to/workbench.css]
+// Usage: node tools/contrast.mjs [path/to/workbench.css], by default the app's (app/workbench.css), which is what ships;
+// the Stage 1 mockups' copy (mockups/workbench.css) has fallen behind it and is checked only when named.
 import { readFileSync } from 'node:fs';
 
-const css = readFileSync(process.argv[2] ?? new URL('../mockups/workbench.css', import.meta.url), 'utf8');
+const css = readFileSync(process.argv[2] ?? new URL('../app/workbench.css', import.meta.url), 'utf8');
 
 function block(selector) {
   const start = css.indexOf(selector + ' {');

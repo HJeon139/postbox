@@ -327,7 +327,7 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 | `node tools/demo.mjs [--port] [--speed]` | Plays every block and error state on a fresh Postbox |
 | `node tools/shoot-app.mjs [--baseline]` | Plays the demo in headless Chrome, screenshots every scene at 375 and 1280 px in both modes, and checks each with axe-core (`AXE=0` skips it) |
 | `node tools/shoot.mjs [--baseline]` | Screenshots the static mockups |
-| `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage |
+| `node tools/contrast.mjs [css]` | Checks WCAG contrast for every token pair, in both modes and on the app stage (`app/workbench.css` unless you name another) |
 | `npm run format` | Applies Biome’s formatting and safe fixes |
 | `npm run test:coverage` | Runs the tests with coverage for `shared/`, `server/` and the lint rules |
 | `npm run release [-- --dry-run]` | Releases the next semantic version from the commits since the last tag: package.json, CHANGELOG.md, a release commit and a tag. CI runs it after each merge to main (`.github/workflows/release.yml`) |
