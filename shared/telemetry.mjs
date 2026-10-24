@@ -64,7 +64,7 @@ export function labelsOf(answer, { asked, sent, turns, failed = null, proposals 
     (l.turn === undefined || l.turn === null || (typeof l.turn === 'string' && named.has(l.turn)));
   const pick = (l) => ({ mast: l.mast, area: l.area, attribution: l.attribution, confidence: l.confidence, ...(l.turn ? { turn: l.turn } : {}) });
   const labels = asked.map(({ ref: on, refs }, i) => {
-    // The newest 60 are the window, as boundedInput sends them.
+    // The last 60 are the window, as boundedInput sends them: agents’ flags come first, so they go first (#270).
     const why = i < asked.length - MAX_LABELS || !sent.has(on) ? 'over-budget' : (failed ?? (fine(byRef.get(on), new Set(refs)) ? null : 'rejected'));
     return why ? { on, label: UNLABELED, reason: why } : { on, ...pick(byRef.get(on)) };
   });

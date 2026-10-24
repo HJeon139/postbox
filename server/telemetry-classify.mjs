@@ -29,7 +29,7 @@ const said = (it, ref) => {
 };
 
 /**
- * What goes to the classifier, within its bounds (R3): the newest refs to label, at most 60 and 120,000 characters in
+ * What goes to the classifier, within its bounds (R3): the last refs to label, at most 60 and 120,000 characters in
  * all, and the record trimmed to the room, its agents, and the turns those refs name. The refs left out are over budget.
  * @param {{ record: any, asked: { ref: string, item: string|null, refs: string[], named?: string[] }[], items: any[], byItem: Map<string, string>, proposals?: boolean }} o
  *   named: the refs and turns a finding names, which the record keeps
