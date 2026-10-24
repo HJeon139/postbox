@@ -205,7 +205,7 @@ export function foldLabels(findings, t) {
     }
     const flag = (t.flags ?? []).find((x) => x.key === (f.key ?? f.title));
     const ref = flag && Object.entries(n.draft?.local ?? {}).find(([, v]) => v.id === flag.item)?.[0];
-    const r = ref && (n.report.reactions ?? []).find((x) => x.on === ref && x.emoji === '🚩');
+    const r = ref && (n.report.reactions ?? []).find((x) => x.on === ref && x.emoji === '🚩' && x.by === 'person');
     if (r && n.labelOn(r.ref)) f.telemetry = pick(n.labelOn(r.ref));
   }
   return n.report.proposed ?? [];
@@ -257,7 +257,7 @@ export function telemetryBlock(t, findings) {
   const listed = new Set((n.report.checks?.found ?? []).map((k) => k.check));
   const pinned = (t.flags ?? []).filter((f) => {
     const ref = Object.entries(n.draft?.local ?? {}).find(([, v]) => v.id === f.item)?.[0];
-    return (n.report.reactions ?? []).some((r) => r.on === ref && r.emoji === '🚩');
+    return (n.report.reactions ?? []).some((r) => r.on === ref && r.emoji === '🚩' && r.by === 'person');
   });
   const labels = n.report.labels ?? [];
   const why = {};

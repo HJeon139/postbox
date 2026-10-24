@@ -5,7 +5,7 @@
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
 const QUIET =
-  /^(?:mcp__postbox__(?:show_block|update_block|review_block|show_app|update_app|retire_app|define_term|propose_agent|schedule_wake|wake_agent|bring_to_conversation|permission_prompt|read_conversation|read_message)|ToolSearch|SubagentHandback)$/;
+  /^(?:mcp__postbox__(?:show_block|update_block|review_block|show_app|update_app|retire_app|define_term|propose_agent|schedule_wake|wake_agent|bring_to_conversation|permission_prompt|read_conversation|read_message|react)|ToolSearch|SubagentHandback)$/;
 /** Whether a tool call shows as what it makes rather than as a step (the Kiro CLI adapter shares this). */
 export const isQuietTool = (name) => QUIET.test(String(name ?? ''));
 // How Postbox answers a call the person declined on a permission card (server/runtime.mjs): that’s their

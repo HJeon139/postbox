@@ -93,6 +93,8 @@ await check('An agent’s reaction shows under the reply with its name in words,
   await click(chip);
   await page.waitFor(`${chip}.getAttribute('aria-label').endsWith('take yours back')`, { label: 'yours added beside it' });
   assert.match(await page.evaluate(`${chip}.getAttribute('aria-label')`), new RegExp(`from you and @${agent.handle}`));
+  // In words on screen too, not only by its color (principle 5).
+  assert.equal(await page.evaluate(`${chip}.querySelector('.react-who').textContent`), `you and @${agent.handle}`);
   assert.deepEqual(await onServer(), ['🚩', '❓', '❓']);
 });
 

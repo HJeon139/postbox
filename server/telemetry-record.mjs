@@ -195,7 +195,8 @@ const blockRow = (rt, c, x) => ({
  * the time from the item to it: the time to detect (R9).
  */
 function reactionsOf(rt, c) {
-  const by = (r) => (r.by ? (c.agents.get(rt.s.sessions[r.by]?.personaId)?.id ?? 'agent-1') : 'person');
+  // An agent no longer in the room is agent-0, which no agent in it is named: never another agent’s pseudonym.
+  const by = (r) => (r.by ? (c.agents.get(rt.s.sessions[r.by]?.personaId)?.id ?? 'agent-0') : 'person');
   const out = [];
   for (const it of c.items)
     for (const r of it.reactions ?? [])

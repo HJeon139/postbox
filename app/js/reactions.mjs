@@ -53,8 +53,8 @@ function row(it, threadId) {
           onclick: () => react(threadId, it.id, emoji),
         },
         drawn(emoji),
-        // Who else reacted, in words; yours alone needs none.
-        agents.length ? h('span.react-who', agents.join(', ')) : null,
+        // Who reacted, in words, you among them (principle 5): yours alone needs none.
+        agents.length ? h('span.react-who', who(names)) : null,
       );
     }),
   );
