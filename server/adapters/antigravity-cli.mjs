@@ -697,8 +697,9 @@ export class AntigravityCliAdapter {
         `Postbox couldn’t read ${this.settingsFile}, so Antigravity will refuse Postbox’s tools. Add "${ALLOW_POSTBOX}" to permissions.allow there.`,
       );
     const prompt = formatMessage(message, ctx.pathOf);
-    // agy can’t turn tools off: agyRules says what the persona turned off instead.
-    const guide = agentGuide({ persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null });
+    // agy can’t turn tools off: agyRules says what the persona turned off instead. Its rules file holds 12,000
+    // characters, so it leaves out the session and setup sections (#131); agyRules’ test keeps it under that.
+    const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null, setup: false });
     const rules = agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER) });
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
