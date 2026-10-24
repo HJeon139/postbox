@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.30.1 (2026-10-24)
+
+### Fixes
+
+- **agents:** shorter setup guidance, safe in bypass mode, and none in agy's full rules file
+- **agents:** ground setup diagnosis in evidence
+- **uat:** count filed findings in recurrence
+
 ## 0.30.0 (2026-10-24)
 
 ### Features
