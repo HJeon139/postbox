@@ -12,8 +12,10 @@ const SH_COMMENT = String.raw`(?<!\S)#[^\n]*`;
 const SQL_COMMENT = String.raw`--[^\n]*|\/\*[\s\S]*?(?:\*\/|$)`;
 // A string that isn’t closed runs to the end of its line, or of the code for one that may span lines, as an unclosed
 // comment does. A pattern that failed instead was tried again at every later quote: 15 s on a 200,000-character line.
-const DQ = String.raw`"(?:[^"\\\n]|\\.)*(?:"|\\?(?![^\n]))`;
-const SQ = String.raw`'(?:[^'\\\n]|\\.)*(?:'|\\?(?![^\n]))`;
+// An escape is a backslash and any character but a newline, \r included: with `.`, a backslash before a CR failed
+// the string and backtracked through it (46 s on 200,000 characters).
+const DQ = String.raw`"(?:[^"\\\n]|\\[^\n])*(?:"|\\?(?![^\n]))`;
+const SQ = String.raw`'(?:[^'\\\n]|\\[^\n])*(?:'|\\?(?![^\n]))`;
 const BQ = String.raw`\`(?:[^\`\\]|\\[\s\S])*(?:\`|\\?$)`;
 const TRIPLE = String.raw`"""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)`;
 // A character literal ('x', '\n', '\u{1F600}'), but not a Rust lifetime ('a), which never closes.

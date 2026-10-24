@@ -94,3 +94,20 @@ test('a word after a dot is a property, not a keyword', () => {
   assert.deepEqual(of(t, 'kw'), ['if']);
   assert.deepEqual(of(t, 'fn'), ['delete']);
 });
+
+// Review of #254: `.` in an escape didn’t match \r, so a string ending in a backslash and a CR failed, and the engine
+// backtracked through it at every escaped quote: 46 s on 200,000 characters.
+test('an escape before a carriage return ends the string at its line, and a long line of them takes no time', { timeout: 2000 }, () => {
+  const long = `"${'\\"'.repeat(99_999)}\\\r`;
+  for (const lang of ['json', 'js', 'shell', 'sql']) {
+    const started = performance.now();
+    const tokens = highlight(long, lang);
+    assert.ok(performance.now() - started < 500, `${lang}: ${Math.round(performance.now() - started)} ms`);
+    assert.equal(tokens.map((t) => t.text).join(''), long, lang);
+  }
+  // A CRLF continuation reads as an LF one does: the string ends at the line, and the next line is code again.
+  assert.deepEqual(
+    of(highlight('x = "a\\\r\ny = 2', 'js'), 'str'),
+    of(highlight('x = "a\\\ny = 2', 'js'), 'str').map((s) => `${s}\r`),
+  );
+});
