@@ -40,7 +40,7 @@ test('#215: a reply Send now interrupted says so, and so does the notice about i
   const now = await stopAnd((rt, t) => rt.sendMessage(t.id, { text: 'Change of plan.', sendNow: true }));
   assert.equal(now.reply.stopReason, 'send-now');
   assert.equal(now.next.text, 'Change of plan.');
-  assert.match(now.next.context[0], /bgR .* is still running: the person’s message with Send now ended your last turn, but not this job\. If your CLI says/);
+  assert.match(now.next.context[0], /bgR .* is still running: a message sent with Send now ended your last turn, but not this job\. If your CLI says/);
   const queued = await stopAnd((rt, t) => rt.sendQueuedNow(t.id, rt.sendMessage(t.id, { text: 'Queued, then sent now.' }).queued.id));
   assert.equal(queued.reply.stopReason, 'send-now');
   assert.equal(queued.next.text, 'Queued, then sent now.');
@@ -79,4 +79,24 @@ test('#249: Keep running that kept no job after all, with no process left to kee
   await sleep(10);
   assert.deepEqual(store.state.sessions[se.id].jobs, []);
   assert.equal(store.items(t.id).find((i) => i.kind === 'agent').stopReason, 'stop');
+});
+
+// Review of #264: a kept job stopped from its row before the CLI exited was no longer listed, so the reply lost it.
+test('#249: a kept job stopped from its row before its CLI exits still leaves the reply saying its work kept running', async () => {
+  const { rt, store, adapter, t, se, procs } = setup();
+  const first = slowToExit({ job: JOB });
+  adapter.next.push(first);
+  rt.sendMessage(t.id, { text: 'go' });
+  await sleep(5);
+  rt.requestStop(se.id, { jobs: 'keep' });
+  await sleep(5);
+  assert.ok(
+    store.state.sessions[se.id].jobs.some((j) => j.kept),
+    'kept',
+  );
+  procs.length = 0;
+  await rt.stopJob(se.id, JOB.id);
+  first.exit();
+  await sleep(10);
+  assert.equal(store.items(t.id).find((i) => i.kind === 'agent').stopReason, 'kept-jobs');
 });

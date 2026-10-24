@@ -239,9 +239,9 @@ await check('#164 a kept job Postbox couldn’t tell apart says so under its row
   const before = signals.length;
   await click(q('.bg-jobs li button'));
   await page.waitFor(`!${q('.bg-jobs li')}`, { label: 'the row to go' });
-  // Only the SIGINTs: an earlier case’s Stop sends its group SIGKILL once the grace period is over (stopPgid), which
-  // the fake records whenever it lands, here too (#244).
-  const ints = signals.slice(before).filter(([, sig]) => sig === 'SIGINT');
+  // All but the earlier case’s late SIGKILL to 4242: its Stop sends it once the grace period is over (stopPgid), and
+  // the fake records it whenever it lands, here too (#244). Any other signal, a stray kill included, still fails it.
+  const ints = signals.slice(before).filter(([pid, sig]) => !(pid === -4242 && sig === 'SIGKILL'));
   assert.deepEqual(
     ints.map(([pid, sig]) => `${pid} ${sig}`),
     ['-4242 SIGINT', '-4343 SIGINT'],

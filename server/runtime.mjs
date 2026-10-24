@@ -1287,6 +1287,7 @@ export class Runtime {
     }
     const groups = j.kept === true ? keptGroupsOf(j) : [];
     if (groups.length) {
+      turn.keptAny = true;
       this.updateSession(se.id, { jobs: jobs.map((x) => (x.id === id ? { ...x, kept: true, pgid: groups[0].pgid, groups } : x)) });
       // Postbox couldn’t tell which of the turn’s processes was the job, so it kept them all (#164): say so.
       const unsure = groups.length > 1 ? keepUnsure(groups.length) : null;
@@ -1297,7 +1298,7 @@ export class Runtime {
       // A step that follows it reads as running on (#129): the agent leaves it running, rather than closing it as failed.
       this.tellAgent(
         se.id,
-        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: ${turn.stopReason === 'send-now' ? 'the person’s message with Send now ended your last turn, but not this job' : 'the person stopped your last turn and kept this job running'}. If your CLI says it was stopped, that’s only because the process that started it has ended: it wasn’t stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
+        `Your background job ${id} (\`${clipText(old.command, 200)}\`) is still running: ${turn.stopReason === 'send-now' ? 'a message sent with Send now ended your last turn, but not this job' : 'the person stopped your last turn and kept this job running'}. If your CLI says it was stopped, that’s only because the process that started it has ended: it wasn’t stopped.${unsure ? ` ${unsure}` : ''}${old.outputFile ? ` Its output is in ${old.outputFile}.` : ''} They can stop it from the conversation. If a progress step follows it, leave that step running while the job runs: when it ends, Postbox tells you on your next turn.`,
       );
       this.watchKept();
       return;
@@ -1389,8 +1390,9 @@ export class Runtime {
   settleJobs(turn) {
     for (const j of [...(this.s.sessions[turn.sessionId]?.jobs ?? [])])
       if (j.turnId === turn.id && j.state === 'running' && !j.kept) this.endJob(turn.sessionId, j.id, 'stopped', turn.keepJobs.has(j.id) ? KEEP_LOST : null);
-    // Keep running kept none of them after all (KEEP_LOST): its reply doesn’t say they kept running (#249).
-    if (turn.stopReason !== 'kept-jobs' || this.s.sessions[turn.sessionId]?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
+    // Keep running kept none of them after all (KEEP_LOST): its reply doesn’t say they kept running (#249). One that was
+    // kept counts though it’s been stopped since, from its row.
+    if (turn.stopReason !== 'kept-jobs' || turn.keptAny || this.s.sessions[turn.sessionId]?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
     turn.stopReason = 'stop';
     for (const it of this.store.items(turn.threadId))
       if (it.turnId === turn.id && it.stopReason === 'kept-jobs') this.patchItem(turn.threadId, it.id, { stopReason: 'stop' });
