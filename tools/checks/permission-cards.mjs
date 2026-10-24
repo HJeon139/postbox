@@ -18,6 +18,8 @@ import { start } from '../../server/index.mjs';
 import { expireWait } from '../../server/permission-cards.mjs';
 import { launch } from '../cdp.mjs';
 import { finish, ports, record } from '../harness.mjs';
+import { ALLOW_ONCE_TRIGGERS } from '../uat/allowonce-triggers.mjs';
+import { readUi } from '../uat/run-files.mjs';
 
 const { PORT, CHROME_PORT } = await ports(5350, 10650);
 
@@ -137,6 +139,9 @@ await check('#238 a refused chained command offers no Allow once or Always allow
   );
   assert.match(await text(`${chained}.querySelector('.block-body')`), /ask @tester to run the parts as separate commands/);
   assert.deepEqual(await buttons(single), ['Allow once and retry', 'Always allow commands that start with “python -m”', 'Leave it']);
+  // The UAT runner reads these cards from the page the same way, for the allow-once scenario’s trigger (readUi).
+  const facts = { threads: [thread.id], state: rt.s, ui: { denialCards: (await readUi(page)).denialCards } };
+  assert.equal(ALLOW_ONCE_TRIGGERS['chained-refusal-no-allow'].run(facts).length, 1, 'the trigger sees the chained card only');
 });
 
 await check('#220 a permission card nobody answered for 25 hours says it expired, and how long it waited', async () => {

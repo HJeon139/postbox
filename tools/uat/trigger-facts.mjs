@@ -1,5 +1,5 @@
-// Helpers the triggers share (tools/uat/triggers.mjs): a line of evidence cut to length, the room's items, and a tool
-// result's text.
+// Helpers the triggers share (tools/uat/triggers.mjs, tools/uat/allowonce-triggers.mjs): a line of evidence cut to
+// length, the room's items, and a tool result's text.
 
 import { clip as clipTo } from '../../shared/text.mjs';
 

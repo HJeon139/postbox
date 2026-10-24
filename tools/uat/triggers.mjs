@@ -12,6 +12,7 @@
 
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
 import { NEEDS_TRIGGERS } from '../../server/room-checks-needs.mjs';
+import { ALLOW_ONCE_TRIGGERS } from './allowonce-triggers.mjs';
 import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 import { clip, itemsOf, resultText } from './trigger-facts.mjs';
 
@@ -223,6 +224,7 @@ export const TRIGGERS = {
   },
   ...TELEMETRY_TRIGGERS,
   ...NEEDS_TRIGGERS,
+  ...ALLOW_ONCE_TRIGGERS,
 };
 
 /**
