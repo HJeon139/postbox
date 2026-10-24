@@ -6,6 +6,9 @@
 import { CATCH_UP_CHARS } from './blocks.mjs';
 import { clipText } from './helpers.mjs';
 
+// The person’s reactions (#251) are catch-up lines too, beside the threads’: runtime.mjs reads both from here.
+export { reactionLines } from './reactions.mjs';
+
 /** How long a thread stays quiet after a reply before its summary is written. */
 export const SUMMARY_DELAY_MS = 5000;
 export const SUMMARY_MODEL = 'haiku';

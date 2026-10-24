@@ -723,6 +723,12 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; }
 .msg-actions .replies:hover { border-color: var(--accent); }
 .msg-actions .replies .dim { color: var(--dim); }
+/* The person’s reactions under a message (#251): each one a button that takes it back. */
+.reactions { display: flex; flex-wrap: wrap; gap: 6px; }
+.turn.me .reactions { justify-content: flex-end; }
+.react-chip { font: inherit; font-size: 13px; line-height: 1; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 999px; background: var(--panel); color: var(--text); cursor: pointer; }
+.react-chip:hover { background: var(--sunk); }
+.react-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Sent back from a topic thread. */
 .shared-card { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
