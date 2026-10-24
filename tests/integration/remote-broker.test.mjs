@@ -102,6 +102,27 @@ function startShim(h, turn) {
   return shim;
 }
 
+/**
+ * The first test’s prompt, which waits across a daemon restart; the Postbox connected to the new daemon.
+ * @param {Awaited<ReturnType<typeof serveDaemon>>} s @param {ReturnType<typeof startShim>} shim @param {any} pb  the first Postbox
+ */
+async function promptAcrossRestart(s, shim, pb) {
+  // A prompt waits across a daemon restart: the shim reconnects and sends it again, the new daemon (from
+  // prompts.jsonl) sends it to Postbox at its hello, and the answer reaches the harness.
+  const asking = shim.tool('permission_prompt', { tool_name: 'Bash', input: { command: 'make' }, tool_use_id: 'tu_1' });
+  const prompt = await pb.msgs.next('prompt', 5000);
+  assert.deepEqual(prompt.request.input, { command: 'make' });
+  await s.restart();
+  const pb2 = await s.postbox();
+  const again = await pb2.msgs.next('prompt', 5000);
+  assert.equal(again.id, prompt.id, 'the same prompt, by (turn, id)');
+  // The answer reaches the shim now if it has reconnected, or when it sends the prompt again.
+  pb2.send('answer', { turn: 't1', prompt: prompt.id, result: { behavior: 'allow', updatedInput: { command: 'make' } } });
+  const allowed = await shim.response(asking);
+  assert.deepEqual(JSON.parse(allowed.text), { behavior: 'allow', updatedInput: { command: 'make' } });
+  return pb2;
+}
+
 test('broker and shim: queued and asked calls, the snapshot’s reading tools, a prompt across a daemon restart, and Stop', { skip: NO_UNIX }, async () => {
   const h = makeHost();
   const s = await serveDaemon(h);
@@ -141,19 +162,7 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
     pb.send('reply', { turn: 't1', id: search.id, ok: true, text: '[{"id":"doc:1"}]' });
     assert.deepEqual(await shim.response(asked), { text: '[{"id":"doc:1"}]', isError: false });
 
-    // A prompt waits across a daemon restart: the shim reconnects and sends it again, the new daemon (from
-    // prompts.jsonl) sends it to Postbox at its hello, and the answer reaches the harness.
-    const asking = shim.tool('permission_prompt', { tool_name: 'Bash', input: { command: 'make' }, tool_use_id: 'tu_1' });
-    const prompt = await pb.msgs.next('prompt', 5000);
-    assert.deepEqual(prompt.request.input, { command: 'make' });
-    await s.restart();
-    const pb2 = await s.postbox();
-    const again = await pb2.msgs.next('prompt', 5000);
-    assert.equal(again.id, prompt.id, 'the same prompt, by (turn, id)');
-    // The answer reaches the shim now if it has reconnected, or when it sends the prompt again.
-    pb2.send('answer', { turn: 't1', prompt: prompt.id, result: { behavior: 'allow', updatedInput: { command: 'make' } } });
-    const allowed = await shim.response(asking);
-    assert.deepEqual(JSON.parse(allowed.text), { behavior: 'allow', updatedInput: { command: 'make' } });
+    const pb2 = await promptAcrossRestart(s, shim, pb);
 
     // Stop: from then on the turn’s calls are refused, and nothing reaches Postbox.
     pb2.send('stop', { turn: 't1' });
