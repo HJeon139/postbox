@@ -12,6 +12,12 @@
 // for a version release: --release (releaseGate), which also counts as --compat:
 //
 //   node tools/uat-run.mjs --scenario mixedroom --compat
+//
+// Host mode (#120) puts agents on other machines over ssh, Claude Code only: --host for each (host1, host2…),
+// --host-setting hostN.key=value, and --place over a scenario’s `- place:` (tests/uat/e2e/README.md, “Host mode”):
+//
+//   node tools/uat-run.mjs --scenario remotehosts --host host-a.example.com --host host-b.example.com
+//
 // Everything a run makes goes in uat-runs/<time>-<scenario>/ in the main checkout, or POSTBOX_UAT_RUNS (tools/uat/runs.mjs),
 // ignored by git: report.md, findings.json, run.json, screenshots, each agent turn’s raw stream, and Postbox’s data.
 // A run is 15 steps unless its scenario or --steps says otherwise; a targeted scenario’s phases end on their triggers
@@ -29,9 +35,14 @@ import { launch, sleep } from './cdp.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
+import { cleanUp, endHosts } from './uat/hosts-end.mjs';
+import { hostMode } from './uat/hosts-options.mjs';
+import { createHostRun, readHosts, startHosts } from './uat/hosts-run.mjs';
+import { forHosts } from './uat/hosts-scenario.mjs';
+import { afterStep, fault, sample } from './uat/hosts-watch.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 import { presetFindings } from './uat/regressions.mjs';
-import { writeReport } from './uat/report.mjs';
+import { agentsSpent, writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
@@ -69,6 +80,13 @@ const { values: opt } = parseArgs({
     release: { type: 'boolean', default: false },
     // Run a compatibility scenario: one with agents on a backend other than Claude’s, such as the Kiro CLI.
     compat: { type: 'boolean', default: false },
+    // Host mode (#120): hosts as ssh destinations (host1, host2… in order), their settings as hostN.key=value, and
+    // where agents run, as handle=hostN or handle=local over the scenario’s `- place:` (tools/uat/hosts-options.mjs).
+    host: { type: 'string', multiple: true },
+    'host-setting': { type: 'string', multiple: true },
+    place: { type: 'string', multiple: true },
+    // The run’s whole spend, agents and tester, in dollars: the run stops before a step that would start past it.
+    'run-budget': { type: 'string' },
   },
 });
 
@@ -142,7 +160,9 @@ const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.rep
 
 async function main() {
   const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
-  const scenario = parseScenario(readFileSync(scenarioFile, 'utf8'));
+  const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
+  // Host mode (#120): agents on other machines over ssh (--host), Claude Code only (tools/uat/hosts-options.mjs).
+  const { hosts, placement, scenario } = hostMode(opt, name, parseScenario(readFileSync(scenarioFile, 'utf8')));
   const other = compatBackends(scenario);
   if (other.length && !opt.compat && !opt.release)
     throw new Error(
@@ -156,7 +176,6 @@ async function main() {
   if (unknown.length) throw new Error(`This scenario names triggers that don’t exist: ${unknown.join(', ')}. See tools/uat/triggers.mjs.`);
   const steps = stepCap(scenario, opt.steps);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = {
     data: join(dir, 'data'),
@@ -207,6 +226,8 @@ async function main() {
   // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
   const history = followEvents(origin);
   const page = await launch({ port: Number(opt['chrome-port']) });
+  // Host mode’s record of its hosts (tools/uat/hosts-run.mjs), which its checks and triggers read as facts.hosts.
+  const hr = hosts.length ? createHostRun({ hosts, placement, launcher: scenario.launcher, root: ROOT, stamp, data: paths.data, log }) : null;
   const findings = new Map(); // key → finding
   const timeline = [];
   const facts = {
@@ -230,6 +251,7 @@ async function main() {
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
+    ...(hr ? { hosts: hr.record } : {}),
   };
   try {
     await page.size(1440, 1000, { theme: 'light' });
@@ -238,6 +260,7 @@ async function main() {
     facts.startPersonas = Object.values(state0.personas).filter((p) => !p.retired);
     const d = driver(page);
     await d.newProject(scenario.project, paths.workspace);
+    if (hr) await startHosts(hr, { postbox, api, kit: d.kit, dir, project: scenario.project });
     const hash = await d.newConversation(scenario.project, scenario.conversation, scenario.agents);
     const mainThread = /#\/t\/([^/]+)/.exec(hash)?.[1];
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
@@ -285,6 +308,8 @@ async function main() {
       await noteStale();
       return `Answered ${it.item}${now?.revision ? ` (at revision ${now.revision} when you answered)` : ''} while the agent worked.`;
     };
+    // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
+    const hostFault = (spec) => (hr ? fault(hr, spec, page) : Promise.reject(new Error('A fault needs a run with --host.')));
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
@@ -336,6 +361,7 @@ async function main() {
     const midTurn = [];
     let lastMidTurn = 0;
     const midTurnChecks = async (st = null) => {
+      if (hr) await sample(hr, st ?? (await api('/api/state')).state);
       if (Date.now() - lastMidTurn < 15_000) return;
       lastMidTurn = Date.now();
       facts.state = st ?? (await api('/api/state')).state;
@@ -412,6 +438,7 @@ async function main() {
     for (let step = 1; step <= steps; step++) {
       const timedOut = await settle();
       await refreshFacts();
+      if (hr) await afterStep(hr, facts);
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
       const obs = await observe();
@@ -453,6 +480,11 @@ async function main() {
       ]
         .filter(Boolean)
         .join('\n\n');
+      const spent = agentsSpent(facts.streams) + tester.spent;
+      if (spent >= Number(opt['run-budget'] ?? Infinity)) {
+        log(`The run has spent $${spent.toFixed(2)} of its $${opt['run-budget']} (--run-budget), so it stops here.`);
+        break;
+      }
       const answer = await tester.step(prompt, system);
       goals.took(phase);
       timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action });
@@ -589,13 +621,19 @@ async function main() {
           await sleep(1500);
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
-        } else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
+        } else if (a.type === 'fault') actionResult = await hostFault(a);
+        else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
         else if (a.type === 'stop') await d.stopAll();
         // Stop or Send now while the turn this action started is running (#126).
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
           // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
-          const said = await d.interrupt(a.interrupt, { panel, onWait: () => midTurnChecks(), answer: () => answerMidTurn(a.interrupt) });
+          // A fault mid-turn is the driver’s answer while the agent works, with the fault for its answer.
+          const now = a.interrupt.do === 'fault' ? () => hostFault(a.interrupt) : () => answerMidTurn(a.interrupt);
+          const said = await d.interrupt(
+            { ...a.interrupt, do: a.interrupt.do === 'fault' ? 'answer' : a.interrupt.do },
+            { panel, onWait: () => midTurnChecks(), answer: now },
+          );
           facts.probes.interrupts.push({ step, at: Date.now(), do: a.interrupt.do, answered: /You answered “([^”]+)”/.exec(said)?.[1] ?? null });
           actionResult = actionResult ? `${actionResult} ${said}` : said;
         }
@@ -607,6 +645,7 @@ async function main() {
     }
     await settle();
     await refreshFacts();
+    if (hr) await endHosts(hr, dir);
     newFindings();
     // What the last action caused counts, and every phase with triggers that didn’t all happen is a coverage gap.
     await noteStale();
@@ -629,6 +668,7 @@ async function main() {
       runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
     );
   } finally {
+    if (hr) await cleanUp(hr).catch((e) => log(`Couldn’t clean the hosts up: ${e.message}`));
     history.close();
     await page.close().catch(() => {});
     postbox.kill();
@@ -655,7 +695,10 @@ async function recheck(dir) {
   // Its record before the report is rewritten: the minutes it took are only in the first report.
   const record = readRun(dir);
   const name = existsSync(join(dir, 'run.json')) && record?.scenario ? record.scenario : dir.replace(/^.*-(\w+)$/, '$1');
-  const scenario = parseScenario(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8'));
+  // A host-mode run’s record of its hosts (#120): its phases as it played them, and what its checks read.
+  const hostsRec = readHosts(dir);
+  const parsed = parseScenario(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8'));
+  const scenario = hostsRec ? forHosts(parsed, hostsRec.placement, hostsRec.hosts) : parsed;
   const port = Number(opt.port);
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', join(dir, 'data')], {
@@ -701,6 +744,7 @@ async function recheck(dir) {
       samples: saved.samples ?? [],
       ui: {},
       ...userSetup(join(dir, 'workspace')),
+      ...(hostsRec ? { hosts: hostsRec } : {}),
     };
     facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);

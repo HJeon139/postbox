@@ -121,6 +121,7 @@ export const SCHEMA = {
             'fullscreen',
             'fullscreen_draft',
             'restore',
+            'fault',
             'next_phase',
             'done',
           ],
@@ -132,7 +133,8 @@ export const SCHEMA = {
         button: { type: 'string' },
         target: {
           type: 'string',
-          description: 'app_click: the visible text to click inside the app. settings, agent_panel: the agent’s handle. restore: the file’s name.',
+          description:
+            'app_click: the visible text to click inside the app. settings, agent_panel: the agent’s handle. restore: the file’s name. fault: the host.',
         },
         model: { type: 'string', description: 'agent_panel: the model to pick, as the panel names it.' },
         effort: { type: 'string', description: 'agent_panel: the effort to pick.' },
@@ -141,6 +143,7 @@ export const SCHEMA = {
         open: { enum: ['work', 'thread'], description: 'pane: the view to open in the right pane.' },
         pane: { enum: ['work', 'thread'], description: 'fullscreen: the view to open full screen.' },
         permissions: { type: 'boolean', description: 'settings: also open its permissions panel.' },
+        fault: { enum: ['kill-ssh', 'kill-daemon', 'restart-postbox'], description: 'fault, in a run with hosts: what to break; target is the host.' },
         seconds: { type: 'integer' },
         verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'review: your verdict.' },
         comments: {
@@ -154,9 +157,11 @@ export const SCHEMA = {
           description: 'send, thread, act, review: act while the turn this starts is running.',
           properties: {
             after: { type: 'integer', description: 'Seconds to let the agent work first.' },
-            do: { enum: ['stop', 'send_now', 'answer'] },
+            do: { enum: ['stop', 'send_now', 'answer', 'fault'] },
             jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
             text: { type: 'string', description: 'send_now: the message to send.' },
+            fault: { enum: ['kill-ssh', 'kill-daemon', 'restart-postbox'], description: 'fault: what to break while the agent works.' },
+            target: { type: 'string', description: 'fault: the host, such as host1.' },
             item: { type: 'string', description: 'answer: the block to answer while the agent works, such as I7.' },
             verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'answer, on a review: your verdict.' },
             comments: {

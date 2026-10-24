@@ -89,6 +89,14 @@ sequenceDiagram
 | agy-refusal-not-shown        | #65   | A call Antigravity refused (on its step, or only in the result’s `denied_actions`) with no refused step under its id. Release runs only                                                                                                         |
 | agy-postbox-refused          | #143  | A call to Postbox’s own tools that Antigravity refused: the allow rule is missing from the agy settings. Release runs only                                                                                                                      |
 | agy-tool-not-allowed         | #5    | An Antigravity command or fetch that ran when the persona doesn’t tick `shell` or `web.fetch`: agy can’t turn them off, so the agent ignored being told. Release runs only                                                                      |
+| ran-on-its-host              | #120  | Host mode: a turn of an agent placed on a host with no remote turn on that host in Postbox’s state or history, or a turn of an agent here with one                                                                                              |
+| host-turns-listed            | #120  | Host mode, at the end: a turn Postbox recorded on a host that isn’t in its `~/.postbox-remote/turns`, or one there Postbox never recorded (read over the runner’s own ssh)                                                                      |
+| host-done-when               | #120  | Host mode, at the end: Postbox still running on a host after its idle timeout, or `~/.postbox-remote` still there, or anything of Postbox running, after Remove                                                                                 |
+| host-listeners               | #120  | Host mode: a TCP listener of the run’s own processes, there during a turn and not before setup (`ss` on the host, `lsof` here)                                                                                                                  |
+| remote-stop-left-processes   | #120  | Host mode: a turn Stop ended that left processes on its host, or Stop that didn’t say beforehand that a background job there stops with the turn                                                                                                |
+| fault-not-recovered          | #120  | Host mode: a host that didn’t read Connected again within 3 minutes of a fault                                                                                                                                                                  |
+| attachment-laptop-path       | #120  | Host mode: an agent on a host given a path in this computer’s Postbox data, which it can’t read                                                                                                                                                 |
+| host-install-offered         | #120  | Host mode: a host just added whose card offers no Install…                                                                                                                                                                                      |
 | failed-turn, page-errors     | (new) | Any other failed turn, and console errors                                                                                                                                                                                                       |
 
 When a defect is filed from a run, add a check for it here if it can be caught deterministically, so later runs keep watching for it.
@@ -99,6 +107,7 @@ When a defect is filed from a run, add a check for it here if it can be caught d
 - [HotpotQA: renaming entities to test RAG memorization](scenarios/hotpotqa.md)
 - [P0 hotfixes](scenarios/p0.md) (#108, #123, #125, #126), a targeted scenario (see “How long a run is”): two Claude Code agents in a room. Phase 1 has them trade a 15-item checklist, and then only their changes, through more than three wakes, so the allow card appears (#108). Phase 2 makes the draft change under you: you answer it while its agent revises it, answer a revision that has since changed, and ask for it again under the same id (#123, #125). Phase 3 has a background command, then Stop with Keep running, Stop with Stop it too, and Send now (#126).
 - [Telemetry: recording a room after something goes wrong](scenarios/telemetry.md), a targeted scenario for telemetry ([`designs/telemetry-persona.md`](../../../designs/telemetry-persona.md), “End-to-end UAT”). **Planned:** it lands before telemetry and reactions (#251), so the runner refuses it until its triggers exist. The tester starts recording late in a room whose project holds this run’s canaries, reacts 🚩 and 👎 to two messages while an agent writes a line meant to fool the report, then asks for a report on the whole room, leaves out a line, saves it, and presses File issue with no `gh`. Once telemetry ships, every run records itself and saves one report at the end (`--telemetry no` opts out): the runner reacts 🚩 to each tester finding’s item and folds the report’s labels into `findings.json` (the design’s U4).
+- [Remote hosts: three agents on three machines](scenarios/remotehosts.md) (#120), a targeted scenario for host mode only (“Host mode”, below): @researcher on host1, @critic on host2 and @developer here. Phase 1 has a turn on each machine, a block, a review and a permission card answered after a minute; phase 2 an attachment to an agent on a host, agents waking each other across machines, and Stop on a host; phase 3 the three faults, one of them while a permission card waits.
 - [Work room: real changes, the agents in the sidebar, and the right pane](scenarios/workroom.md): @researcher changes real files and @critic reviews them, through the Agents section and the Work view in the right pane. Its plan is [plan-agents-and-work.md](../plan-agents-and-work.md).
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
@@ -184,6 +193,7 @@ A trigger is a deterministic predicate over what the run records ([`tools/uat/tr
 | stop-keep-jobs       | #126  | Stop asked about a background job, and the person kept it running                                      |
 | stop-jobs-too        | #126  | Stop asked about a background job, and the person stopped it too                                       |
 | send-now-job-running | #126  | Send now interrupted a turn with a background job running, and the job kept running without a question |
+| host mode’s twelve   | #120  | listed under “Host mode”, below                                                                        |
 
 ```mermaid
 flowchart TD
@@ -238,6 +248,86 @@ Each run writes to `uat-runs/<time>-<scenario>/` in the main checkout, which git
 - `data/`: Postbox’s data, so a run can be reopened with `node server/index.mjs --data uat-runs/<run>/data`
 
 File what a run finds with the bug template in the [UAT README](../README.md), after checking each finding against its screenshot.
+
+## Host mode
+
+Host mode runs agents on other machines over ssh, while Postbox, the tester and Chrome stay here (#120). It puts each agent where the scenario’s `- place:` line says, or where `--place` says over it, and checks that each turn really ran there. It sets the hosts up through the UI as a person would, breaks the connection on purpose when the tester asks, and ends with the issue’s “Done when” checks on every host. This first pass is Claude Code only: with any `--host`, the runner refuses `codex`, `mixedroom` and `geminiroom`, and any scenario with an agent on another backend, and says why.
+
+The person’s run shape: two hosts, one agent on each and one here, Claude Code on Haiku 5.5 at low effort, within $100. Both hosts have Claude Code in a folder that isn’t on a non-interactive ssh’s PATH, so its setting gives the full path there (a host path’s `~` isn’t expanded); `/home/user/tools/bin/claude` stands for it below. Node 22 or later is under mise, which the daemon finds by itself:
+
+```bash
+node tools/uat-run.mjs --scenario remotehosts \
+  --host host-a.example.com --host host-b.example.com \
+  --host-setting host1.claudePath=/home/user/tools/bin/claude \
+  --host-setting host2.claudePath=/home/user/tools/bin/claude \
+  --host-setting host1.idleTimeout=1min --host-setting host2.idleTimeout=1min \
+  --budget 25 --run-budget 100 --file no
+```
+
+Run it in a terminal where `ssh -o BatchMode=yes host-a.example.com true` exits without asking anything, for each host. Host names come only from the command line: never write them into a scenario or anything else in the repo, which is public.
+
+**Options:**
+- `--host <ssh destination>`, repeatable. The hosts are host1, host2… in the order given, and the tester sees their destinations in the UI.
+- `--host-setting <hostN>.<key>=<value>`: a host setting from `shared/remote-settings.mjs`, checked as the server checks it. A duration takes its unit (`90s`, `1min`, `2h`, `7d`) or milliseconds; `keepAlive.interval` and `keepAlive.count` are written so; `signInCheck` is a JSON list.
+- `--place <handle>=<hostN|local>`: where an agent runs, over the scenario’s line. A scenario that places an agent on host2 needs two `--host`s, or a `--place` that moves it.
+- `--run-budget <dollars>`: the run’s whole spend, agents and tester. The run stops before a step once it’s past it. `--budget` caps the tester alone.
+
+**Setup, through the UI** (`tools/uat/driver-hosts.mjs`), after the project is made and before the conversation starts:
+1. Before anything else, over the runner’s own ssh: each host’s home, its TCP listeners, its turns from before, and whether Postbox already runs there. A host where it does may be another Postbox’s, so the run stops.
+2. Settings › Hosts › Add a host, then Edit settings: the `--host-setting`s, and the project’s folder on the host, `~/postbox-uat/<run>`, which the runner’s ssh makes first. The daemon makes an agent’s default folder, but not a project’s.
+3. Install… and the confirm’s Install. The confirm’s text goes in `run.log` and `hosts.json`. A host just added has no status yet, so its card offers no Install…. The run then opens the same confirm itself, and `host-install-offered` records it as a finding.
+4. With a scenario’s `- launcher:` (P0’s), the launcher goes to `~/postbox-uat/bin` on each host an agent is placed on, over the runner’s ssh. A `sh` wrapper runs it with the host’s Node and its real Claude Code: the `nodePath` and `claudePath` settings, or what the runner’s ssh finds. The host’s Claude Code path is then set to the wrapper, in Edit settings.
+5. Each placed agent’s Runs on, in Settings › Personas.
+
+Postbox connects to a host when a turn there needs it, and an installed host nothing needs offers no Connect, so a host first reads Connected with its first turn. After each step, the run notes each host’s first Connected, with the Node and Claude Code its daemon found. A host that fails before it ever connected stops the run, with the host’s own status message.
+
+**The runner’s ssh** (`tools/uat/hosts-ssh.mjs`) is an argument list in BatchMode whose remote command is always `sh -s`. Each script is a constant fed on its standard input, so the login shell parses nothing else. A script’s only values are a turn ID, checked as a UUID, the run’s stamp, and the launcher’s two paths, checked as plain absolute paths. Nothing the person types reaches a shell.
+
+**What host mode adds.** The checks are listed in the table above. Four of the existing ones change on a remote turn:
+- `settings-leak`, `mcp-servers-missing` and `mcp-side-channel` read the person’s setup here, or Postbox’s HTTP route, which a turn on a host never has. They judge only the turns here. At the end, each says how many remote turns it couldn’t judge, as a measurement finding (“settings-leak: not applicable to 12 remote turns”), so it never passes silently.
+- `work-files-match-stream` expects a file changed on a host as an edit step there, with no diff, by design. It flags one shown as a file of this computer’s, or missing.
+
+The triggers, for `remotehosts` and for P0’s Stop phase on a host:
+
+| Trigger                        | Postbox showed that                                                                                       |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| turn-on-each-place             | a turn of a placed agent ran where it’s placed, on each host and on this computer                         |
+| remote-block-answered          | an agent on a host showed a block that asks, and your answer reached it                                   |
+| remote-review-answered         | an agent on a host put a draft up for review, and you answered it                                         |
+| remote-card-after-a-minute     | a permission card from a host was answered more than a minute after it appeared                           |
+| remote-attachment-read         | an agent on a host read a file you attached, from its copy on the host                                    |
+| cross-host-wake                | an agent woke an agent that runs on another machine                                                       |
+| remote-stop-says-jobs          | before Stop, it said the background job on the host stops with the turn, and you stopped the agent        |
+| remote-stop-no-process-left    | after Stop on an agent with a background job on a host, nothing of that turn was left running there       |
+| fault-kill-ssh                 | the host read Connected again on its own after its ssh connection was killed                              |
+| fault-restart-postbox          | the hosts read Connected again after Postbox restarted on the same data                                   |
+| fault-kill-daemon              | the host read Connected again after its daemon was killed                                                 |
+| remote-card-while-disconnected | a permission card from a host, open when its ssh connection was killed, was answered after it reconnected |
+
+**Stop on a host** never asks about background jobs, since they stop with the turn. So P0’s Stop phase names its agent (`- host: researcher`), and when that agent is on a host, it takes `- host-triggers:` instead of #126’s, and the text under `### On a host` instead of its own. Before each Stop on an agent on a host, the runner reads what the composer says. Once the daemon’s grace has passed, it lists what of that turn still runs on the host: its runner’s session, and anything naming the turn.
+
+**Faults** (`tools/uat/hosts-watch.mjs`), which the tester picks with `fault {fault, target}`, or mid-turn with an interrupt `{after, do: fault, fault, target}`:
+- `kill-ssh` kills the run’s Postbox’s ssh to that host.
+- `kill-daemon` kills `host.mjs serve` there.
+- `restart-postbox` stops the run’s Postbox as Ctrl-C does, starts it again on the same data, and reloads the page.
+
+Each is recorded with what Postbox showed after: the host’s states and how long each took, and the agents’ rows. The run waits until each host it touched reads Connected again, or 3 minutes. A permission card raised while disconnected is a kill-ssh while the card waits, then the answer after the reconnect.
+
+**At the end** (`tools/uat/hosts-end.mjs`), over every host:
+1. Its `~/.postbox-remote/turns` against the turns Postbox recorded there.
+2. The idle timeout, waited out: nothing of Postbox should run there (`pgrep -u $USER -f .postbox-remote`). Postbox closes its connection 2 minutes after nothing needs a host, and the daemon exits idleTimeout after that. Set the shortest, `--host-setting hostN.idleTimeout=1min`; a host left at more than 10 minutes isn’t waited for, and the report says so.
+3. Remove through the UI, accepting its confirm. Then `~/.postbox-remote` must be gone there, and nothing of Postbox running. `~/postbox-uat` goes too.
+
+Listeners are compared with the baseline while placed agents work, at most once a minute on each machine. A new listener of the run’s own processes is a finding; another process’s is only listed in `run.log`.
+
+**What a run leaves.** On each host, nothing, once it ends: Remove deletes `~/.postbox-remote`, and the run deletes `~/postbox-uat`. A run that fails partway removes what it installed the same way. A run stopped with Ctrl-C can’t, so do the checklist’s Clean up (`tests/uat/remote-hosts.md`, section 7) on each host. Here, the run’s folder holds `hosts.json` (the setup, the faults, the stops, the listeners and the end-of-run results), which `--recheck` reads back, beside the usual files.
+
+P0 and the work room run with hosts too. P0 places @researcher on host1 with its launcher there, and the work room puts both agents on host1, sharing the project’s folder:
+
+```bash
+node tools/uat-run.mjs --scenario p0 --host host-a.example.com --host-setting host1.claudePath=/home/user/tools/bin/claude --host-setting host1.idleTimeout=1min --file no
+node tools/uat-run.mjs --scenario workroom --host host-a.example.com --host-setting host1.claudePath=/home/user/tools/bin/claude --host-setting host1.idleTimeout=1min --file no
+```
 
 ## Verdicts, and filing what a run finds
 

@@ -16,5 +16,12 @@
     "tools": ["corpus.read", "shell", "web.fetch"],
     "instructions": "Review carefully. Resolve what you fix, and explain what you leave open.",
     "examples": [["Review my corpus schema line by line", "Comment on the spec, then get a revision"]]
+  },
+  {
+    "handle": "developer",
+    "description": "Builds small tools and runs their tests before saying they work.",
+    "tools": ["shell", "web.fetch"],
+    "instructions": "Say what you ran and what it printed. Keep changes small, and say which files you changed.",
+    "examples": [["Write a script that counts lines in text files", "A tested script, with what it printed"]]
   }
 ]

@@ -18,6 +18,12 @@
 //   - steps: 10                                  the most steps the phase gets before the run records a coverage gap
 // A phase with triggers ends when they’ve all happened, or at its cap. One without works as it always has: the tester
 // says when it’s done.
+//
+// Host mode (#120, tools/uat/hosts-options.mjs): `- place: researcher=host1, critic=local` puts agents on the hosts a
+// run names with --host, and `- launcher: tools/uat/claude-launcher.mjs` puts P0’s launcher in front of Claude Code on
+// each host an agent is placed on. A run without --host ignores both. A phase can say what changes when one agent runs
+// on a host: `- host: researcher` names it, `- host-triggers: …` replace its triggers then, and the text under a
+// `### On a host` heading replaces the phase’s text then (tools/uat/hosts-scenario.mjs).
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
 export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
@@ -35,6 +41,17 @@ function backendsOf(spec) {
   for (const part of String(spec ?? '').split(/,\s*/)) {
     const m = /^@?([\w-]+)=([\w-]+)(?::([\w.:-]+))?$/.exec(part.trim());
     if (m) out[m[1]] = { backend: m[2], model: m[3] ?? null };
+  }
+  return out;
+}
+
+/** `researcher=host1, critic=local`: where each agent runs in host mode. @returns {Record<string, string>} */
+export function placesOf(spec) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const part of String(spec ?? '').split(/,\s*/)) {
+    const m = /^@?([\w-]+)=(host\d+|local)$/.exec(part.trim());
+    if (m) out[m[1]] = m[2];
   }
   return out;
 }
@@ -70,6 +87,8 @@ export function parseScenario(md) {
     conversation: meta.conversation ?? 'UAT',
     backends: backendsOf(meta.backends),
     permissionModes: permissionModesOf(meta.permission_modes),
+    place: placesOf(meta.place),
+    launcher: meta.launcher?.trim() || null,
     // `- models: persona` keeps each persona’s own model and effort, for scenarios that measure what agents choose
     // (M1’s exit check, #63). Without it, a run puts the agents on the fast model it’s given (--agent-model).
     models: meta.models === 'persona' ? 'persona' : 'run',
@@ -121,10 +140,18 @@ const count = (v) => {
   return Number.isInteger(n) && n >= 1 && n <= 500 ? n : null;
 };
 
+/** A list of trigger ids, as a phase names them. @param {string|undefined} spec */
+const triggerList = (spec) =>
+  (spec ?? '')
+    .split(/,\s*/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
 /**
- * A phase: its title, its own settings (the lines “- triggers: …” and “- steps: N” before its text), and its text.
+ * A phase: its title, its own settings (the lines “- triggers: …” and “- steps: N” before its text, and in host mode
+ * “- host: …” and “- host-triggers: …”), and its text, with what replaces it when that agent runs on a host.
  * @param {string} p  the phase’s section, from its “## ” heading
- * @returns {{ title: string, text: string, triggers: string[], steps: number|null }}
+ * @returns {{ title: string, text: string, triggers: string[], steps: number|null, host: string|null, hostTriggers: string[], hostText: string }}
  */
 function phaseOf(p) {
   const [heading, ...rest] = p.split('\n');
@@ -132,18 +159,22 @@ function phaseOf(p) {
   const meta = {};
   let i = 0;
   for (; i < rest.length; i++) {
-    const m = /^- (triggers?|steps): (.*)$/.exec(rest[i]);
+    const m = /^- (triggers?|steps|host|host-triggers): (.*)$/.exec(rest[i]);
     if (m) meta[m[1].replace(/s$/, '')] = m[2].trim();
     else if (rest[i].trim()) break;
   }
+  const [text, hostText = ''] = rest
+    .slice(i)
+    .join('\n')
+    .split(/^### On a host[ \t]*$/m);
   return {
     title: heading.replace(/^##\s*/, ''),
-    text: rest.slice(i).join('\n').trim(),
-    triggers: (meta.trigger ?? '')
-      .split(/,\s*/)
-      .map((t) => t.trim())
-      .filter(Boolean),
+    text: text.trim(),
+    triggers: triggerList(meta.trigger),
     steps: count(meta.step),
+    host: meta.host?.replace(/^@/, '') || null,
+    hostTriggers: triggerList(meta['host-trigger']),
+    hostText: hostText.trim(),
   };
 }
 
