@@ -42,7 +42,7 @@ import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
 import { reviewBlock } from './review-comments.mjs';
-import { clearSummaryPending, markSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
+import { clearSummaryPending, markSummaryPending, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -59,6 +59,7 @@ import {
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
+import { shareThreadText, shareTopicReply } from './thread-sharing.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
@@ -1577,7 +1578,7 @@ export class Runtime {
   }
 
   shareToConversation(topicId, itemId) {
-    return shareToConversation(this, topicId, itemId);
+    return shareTopicReply(this, topicId, itemId);
   }
   summarizeBack(topicId, opts) {
     return summarizeBack(this, topicId, opts);
@@ -1589,7 +1590,7 @@ export class Runtime {
     return clearSummaryPending(this, topicId, ended);
   }
   shareText(threadId, opts) {
-    return shareText(this, threadId, opts);
+    return shareThreadText(this, threadId, opts);
   }
 
   // ── Shared memory in a conversation ────────────────────────────────────────────────
@@ -1687,7 +1688,7 @@ export class Runtime {
         return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
       }
       case 'shared':
-        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${text(i.text)}`;
+        return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${i.question ? `You asked: “${text(i.question)}” ` : ''}${text(i.text)}`;
       case 'system':
         if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
         if (i.variant === 'joined') return `@${i.to} joined`;

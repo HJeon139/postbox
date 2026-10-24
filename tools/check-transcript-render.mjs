@@ -70,8 +70,21 @@ try {
       '```',
     ].join('\n'),
   });
+  // A reply that keeps its question (#111): one whose fence would have swallowed the answer, were they one text.
+  const answered = rt.shareText(thread.id, {
+    fromThreadId: topic,
+    handle: 'analyst',
+    text: 'Use chapter offsets.',
+    question: 'Which?\n```js\nconst unit = "page"',
+  });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await page.synced(store.state.seq);
+  const ASKED = `document.querySelector('[data-key="${answered.id}"] .shared-card')`;
+  await page.waitFor(ASKED, { label: 'the shared reply' });
+  const parts = await page.evaluate(
+    `(() => { const c = ${ASKED}; return { q: !!c.querySelector('.shared-q pre'), a: [...c.querySelectorAll('p')].some((p) => p.textContent === 'Use chapter offsets.' && !p.closest('pre, .shared-q')) }; })()`,
+  );
+  check(parts.q && parts.a, `#111 a shared reply shows its question apart, and the answer isn’t swallowed by it (${JSON.stringify(parts)})`);
   const CARD = `document.querySelector('[data-key="${shared.id}"] .shared-card')`;
   await page.waitFor(CARD, { label: 'the shared summary' });
   // KaTeX keeps the source in its MathML, so what’s read is whether every formula was drawn.
@@ -231,8 +244,8 @@ try {
   rt.deliver(an.id, { kind: 'agent', from: '@reviewer', text: 'Revision 3 has one arithmetic gap.', saidIn: side.id });
   await idle();
   // One turn of two items, as a reply split by a block is: they keep one sender line.
-  for (const text of ['Part one.', 'Part two.'])
-    rt.addItem(room.id, { kind: 'agent', sessionId: an.id, personaId: an.personaId, handle: 'analyst', turnId: 'turn_135', text, status: 'done' });
+  const said = { kind: 'agent', sessionId: an.id, personaId: an.personaId, handle: 'analyst', status: 'done' };
+  for (const text of ['Part one.', 'Part two.']) rt.addItem(room.id, { ...said, turnId: 'turn_135', text });
   await page.synced(store.state.seq);
   await page.evaluate(`location.hash = '#/t/${room.id}'`);
   await page.waitFor(`document.querySelectorAll('.transcript[data-thread="${room.id}"] > .item').length >= 4`, { label: 'the turn checks room' });
@@ -260,16 +273,7 @@ try {
   // Two wakes from two turns of @analyst, sent while @reviewer was busy, sit together in the side thread, as agentWake
   // records them: each says the turn it came from. A third from the second turn shares its line.
   for (const [n, text] of ['Check the totals.', 'And the dates, please.', 'And the names.'].entries())
-    rt.addItem(side.id, {
-      kind: 'agent',
-      sessionId: an.id,
-      personaId: an.personaId,
-      handle: 'analyst',
-      text,
-      status: 'done',
-      hop: n + 1,
-      fromTurnId: `turn_135_${Math.min(n, 1)}`,
-    });
+    rt.addItem(side.id, { ...said, text, hop: n + 1, fromTurnId: `turn_135_${Math.min(n, 1)}` });
   await page.synced(store.state.seq);
   await page.evaluate(`location.hash = '#/t/${room.id}/side/${side.id}'`);
   await page.waitFor(`[...document.querySelectorAll('.transcript[data-thread="${side.id}"] .md p')].some((p) => p.textContent === 'And the names.')`, {

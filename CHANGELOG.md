@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.27.1 (2026-10-24)
+
+### Fixes
+
+- **threads:** space a shared reply's question as a message is
+- **threads:** draw a shared reply's question apart from its answer
+- **threads:** keep the question with shared replies
+
 ## 0.27.0 (2026-10-24)
 
 ### Features

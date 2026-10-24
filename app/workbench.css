@@ -765,6 +765,9 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .shared-card { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .shared-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
 .shared-head b { color: var(--text); font-weight: 600; }
+/* The question a shared reply answers (#111), set apart from the answer. */
+.shared-q { display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--line); padding-left: 8px; margin-bottom: 6px; color: var(--dim); }
+.shared-q-label { display: block; font-size: 12px; }
 
 /* The Threads view. */
 .threads-view { max-width: 820px; width: 100%; margin: 0 auto; padding: 20px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
