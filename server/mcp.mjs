@@ -16,7 +16,7 @@
 
 import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
 import { REACTIONS } from '../shared/reactions.mjs';
-import { permission } from './permission-prompt.mjs';
+import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
 import { reactTool } from './reactions.mjs';
 import { REVIEW_BLOCK_DEF } from './review-comments.mjs';
 import { AgentFileError } from './runtime.mjs';
@@ -262,7 +262,7 @@ async function one(rt, sessionId, msg, turnToken) {
     case 'ping':
       return reply({});
     case 'tools/list':
-      return reply({ tools: TOOL_DEFS.filter((t) => t.name !== 'bring_to_conversation' || inThread(rt, sessionId, turnToken)) });
+      return reply({ tools: TOOL_DEFS.filter((t) => offered(rt, sessionId, turnToken, t.name)) });
     case 'tools/call': {
       if (!rt.s.sessions[sessionId]) return fail(-32602, 'Unknown Postbox session. Connect with /mcp?session=<id>.');
       if (turnToken === null)
@@ -276,7 +276,7 @@ async function one(rt, sessionId, msg, turnToken) {
       const args = msg.params?.arguments ?? {};
       // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools.
       const tools = { ...rt.toolsFor(sessionId, rt.turns.get(sessionId) ?? null), react: (a) => reactTool(rt, rt.session(sessionId), a) };
-      if (name === 'permission_prompt') return reply(await permission(rt, sessionId, args));
+      if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args) : NOT_YOUR_PROMPT);
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {
         // An app’s code and data files may come from files in the agent’s folder, which Postbox reads itself (#54).
@@ -295,8 +295,12 @@ async function one(rt, sessionId, msg, turnToken) {
   }
 }
 
-/** Whether the session’s turn is one bring_to_conversation is offered to (#128): the person’s, in a side or topic thread. */
-function inThread(rt, sessionId, turnToken) {
+/**
+ * Whether tools/list offers a tool: bring_to_conversation only to the person’s turn in a side or topic thread (#128),
+ * permission_prompt only to a backend that asks through it (server/permission-prompt.mjs), and every other tool always.
+ */
+function offered(rt, sessionId, turnToken, name) {
   const turn = rt.turns.get(sessionId);
-  return turn?.token === turnToken && offersBring(rt, turn);
+  if (name === 'bring_to_conversation') return turn?.token === turnToken && offersBring(rt, turn);
+  return name !== 'permission_prompt' || asksByPrompt(rt, sessionId);
 }

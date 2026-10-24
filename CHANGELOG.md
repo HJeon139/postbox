@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.28.1 (2026-10-24)
+
+### Fixes
+
+- **permissions:** expire a permission card a minute before Claude Code gives up on the call
+- **permissions:** offer permission_prompt only to the CLI, and expire a card at 25 hours
+- **permissions:** a tool card answers itself when the tool is turned on elsewhere
+
 ## 0.28.0 (2026-10-24)
 
 ### Features
