@@ -211,7 +211,7 @@ test('#106: the person dismisses a block that asks: it closes, stops needing the
   assert.equal(store.item(t.id, cardItem.id).closed, undefined);
 });
 
-test('#216: a topic thread’s agent hears that a block its conversation showed is there, and what it can do instead', async () => {
+test('#216, #228: a turn in a topic thread is the conversation’s own session, so it updates a block it showed there', async () => {
   const { rt, store, t, adapter } = setup();
   const table = {
     id: 'hotpot-10-sample',
@@ -242,11 +242,10 @@ test('#216: a topic thread’s agent hears that a block its conversation showed 
   });
   rt.sendMessage(threadId, { text: 'Rename the entities in that table.' });
   await settle(rt);
-  assert.equal(fixed.ok, false);
-  assert.match(fixed.message, /^Block hotpot-10-sample is in the conversation, not in this thread, and it can’t be changed from here\./);
-  assert.match(fixed.message, /show a corrected block in this thread with a new id, or ask the person to send your correction to the conversation/);
-  assert.equal(store.items(t.id).find((i) => i.kind === 'block').block.rows[0].cells.q, 'Who?', 'the conversation’s block is unchanged');
+  // No forks (#228): the agent answering in the thread is the one that showed the table.
+  assert.equal(fixed.ok, true, fixed.message);
+  assert.equal(store.items(t.id).find((i) => i.kind === 'block').block.rows[0].cells.q, 'Whom?');
   assert.match(missing.message, /^There’s no block with id never-shown to update\. Use show_block to add it\.$/);
   assert.match(others.message, /^There’s no block with id theirs to update\./, 'another agent’s block gets the old answer');
-  assert.match(aside.message, /^Block aside is in the side thread “@other ↔ @critic”, not in this thread, and it can’t be changed from here\./);
+  assert.equal(aside.ok, false, 'a block in a side thread is updated from there');
 });

@@ -3,17 +3,11 @@
 // and it runs no sandbox until they open a version. A new version (update_app) brings it back.
 
 /**
- * Why there’s no app of the session’s with that id. A topic thread’s agent is a fork with a session of its own, so an
- * app the session it forked from showed in the conversation isn’t its own (#216). Whether a fork may change it is #210.
- * @param {any} rt  the Runtime @param {string} sessionId @param {string} id
+ * Why there’s no app of the session’s with that id. With no forks (#228), a topic thread’s agent is the conversation’s
+ * own session, so there’s no longer an app it showed under another session (#216).
+ * @param {any} _rt  the Runtime @param {string} _sessionId @param {string} id
  */
-export function notYours(rt, sessionId, id) {
-  const app = rt.s.apps[id];
-  if (app && app.sessionId === rt.s.sessions[sessionId]?.forkOf?.sessionId)
-    return {
-      ok: false,
-      message: `App ${id} is in the conversation, not in this thread, and it can’t be changed from here. Instead, show a new app in this thread, or ask the person to send your note about it to the conversation.`,
-    };
+export function notYours(_rt, _sessionId, id) {
   return { ok: false, message: `There’s no app with id ${id} from you.` };
 }
 

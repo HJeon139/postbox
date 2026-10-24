@@ -201,20 +201,15 @@ await check('#101 Archive conversation on an idle row takes it off the overview;
   await page.waitFor(`!!document.querySelector('.ov-row[data-key="${t.id}"]')`, { label: 'the row to come back' });
 });
 
-await check('#101 a room archived from its ⋯ takes every agent off the overview, its side thread’s fork too, and comes back whole', async () => {
+await check('#101 a room archived from its ⋯ takes every agent off the overview, one waiting in its side thread too, and comes back whole', async () => {
   const room = threadNamed('Corpus planning');
-  const side = rt.createThread({
-    projectId: room.projectId,
-    title: '@indexer ↔ @researcher',
-    kind: 'side',
-    parentId: room.id,
-    personaIds: [needs[1].personaId],
-  });
-  const fork = rt.sessionsIn(side.id)[0];
-  rt.updateSession(fork.id, { state: 'needs', needs: { kind: 'permission', text: 'Allow Bash?' } });
-  const ids = [...rt.sessionsIn(room.id), fork].map((x) => x.id);
+  const side = rt.createThread({ projectId: room.projectId, title: '@indexer ↔ @researcher', kind: 'side', parentId: room.id });
+  // The room’s @researcher waits on you in the side thread: it answers there from its one session (#228).
+  const away = rt.sessionsIn(room.id).find((x) => x.handle === 'researcher');
+  rt.updateSession(away.id, { state: 'needs', needs: { kind: 'permission', text: 'Allow Bash?', threadId: side.id } });
+  const ids = rt.sessionsIn(room.id).map((x) => x.id);
   await open('#/');
-  await page.waitFor(`!!document.querySelector('.ov-col[data-key="${fork.id}"]') && !!document.querySelector('.ov-col[data-key="${needs[1].id}"]')`);
+  await page.waitFor(`!!document.querySelector('.ov-col[data-key="${away.id}"]') && !!document.querySelector('.ov-col[data-key="${needs[1].id}"]')`);
   await open(`#/t/${room.id}`);
   await page.evaluate(`document.querySelector('header.topbar #conversation-actions').click()`);
   await page.waitFor(menuItem('Archive room'));
@@ -228,7 +223,7 @@ await check('#101 a room archived from its ⋯ takes every agent off the overvie
   await open('#/archived');
   await page.waitFor(archivedRow(room.id));
   const listed = (await page.evaluate(`${archivedRow(room.id)}.innerText`)).match(/@\w+/g).sort();
-  assert.deepEqual(listed, ['@indexer', '@indexer', '@researcher'], 'The row doesn’t list the room’s agents and the fork');
+  assert.deepEqual(listed, ['@indexer', '@researcher'], 'The row doesn’t list the room’s agents');
   // Restore from the room’s own ⋯.
   await open(`#/t/${room.id}`);
   await page.evaluate(`document.querySelector('header.topbar #conversation-actions').click()`);
@@ -241,6 +236,16 @@ await check('#101 a room archived from its ⋯ takes every agent off the overvie
   assert.equal(store.state.threads[side.id].archived, false);
   // Archiving answered nothing; it set the agents idle. @indexer needs you again for the next case.
   rt.updateSession(needs[1].id, { state: 'needs', needs: { kind: 'block', text: 'Which format should the index use?' } });
+});
+
+await check('#228 a fork retired at startup isn’t listed under Archived: it can’t come back, and its conversation is live', async () => {
+  const room = threadNamed('Corpus planning');
+  const old = rt.createThread({ projectId: room.projectId, title: 'An old topic', kind: 'topic', parentId: room.id, personaIds: [needs[1].personaId] });
+  rt.updateSession(rt.sessionsIn(old.id)[0].id, { archived: true, retiredFork: true, archivedAt: Date.now() });
+  await open('#/archived');
+  await page.synced(store.state.seq);
+  await page.waitFor(`document.querySelector('h1.title')?.textContent === 'Archived'`, { label: 'the Archived page' });
+  assert.equal(await page.evaluate(`!!${archivedRow(room.id)}`), false, 'A live conversation is listed under Archived');
 });
 
 await check('#101 a conversation idle for as long as Settings › Projects says archives itself, and one waiting on you stays', async () => {
