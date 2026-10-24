@@ -23,7 +23,7 @@ flowchart LR
     s5["5. The right pane: #197, #86, #122, #7"]
     s6["6. UAT checks that recur for real: #213"]
     s7["7. A permission card that waits: #217"]
-    s8["8. One pool of agents, ending a fork: #228, #229"]
+    s8["8. One session per agent, no forks: #228, #229"]
   end
   subgraph w6["Wave 6 (next)"]
     v["Visual consistency: #8 + #181, #199, #116, #182"]
@@ -47,7 +47,7 @@ flowchart LR
 | 5 | The right pane | [w5-pane.md](w5-pane.md) | #197, #86, #122, #7 | 4950–4999, 10250–10299 | triage |
 | 5 | UAT checks that recur for real | [w5-uat-checks.md](w5-uat-checks.md) | #213 | 5000–5049, 10300–10349 | triage |
 | 5 | A permission card that waits | [w5-permission-wait.md](w5-permission-wait.md) | #217 (P1) | 5050–5099, 10350–10399 | triage |
-| 5 | One pool of agents, and ending a fork | [w5-thread-pool.md](w5-thread-pool.md) | #228 (P1, the person chose option a), #229 (P1) | 5100–5149, 10400–10449 | triage |
+| 5 | One session per agent, no forks, and ending a subagent | [w5-thread-pool.md](w5-thread-pool.md) | #228 (P1, the person's design of 23 October), #229 (P1) | 5100–5149, 10400–10449 | triage |
 | 6 | Visual consistency | to write | #8 with #181 (what amber means), #199, #116; #182 if time allows | — | — |
 | 6 | Review block | to write | #179, with selection comments, and #133: agents comment on a review through the same comment model | — | — |
 | 6 | Backends | to write | #118, #136, #117’s rest (Codex, OpenCode), #167; #150 after the person’s `--compat` Codex run | — | — |
