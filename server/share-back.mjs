@@ -1,0 +1,71 @@
+// What comes back from a topic or side thread to its conversation (#93, #128): Send to conversation on a message, and
+// Summarize back, which asks the thread’s agent for a summary and posts it there. The conversation’s agents read it
+// at their next turn; nothing wakes them. Functions take the Runtime first (architecture.md, “What a move may change”).
+
+import { httpError } from './helpers.mjs';
+import { threadPersona } from './side-threads.mjs';
+
+/** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
+export function shareToConversation(rt, topicId, itemId) {
+  const topic = rt.thread(topicId);
+  if (topic.kind !== 'topic' && topic.kind !== 'side') throw httpError(409, 'Only messages in a topic or side thread can be sent to the conversation.');
+  const it = rt.store.item(topicId, itemId);
+  if (!it?.text) throw httpError(404, 'That reply has no text to send.');
+  if (it.sharedAt) throw httpError(409, 'That reply is already in the conversation.');
+  // Part of a summary still being written: the whole summary is posted when it’s done (#93).
+  if ([...rt.turns.values()].some((x) => x.id === it.turnId && x.summarizeTo))
+    throw httpError(409, 'This reply is part of a summary that’s still being written. It’s posted in the conversation when it’s done.');
+  rt.patchItem(topicId, itemId, { sharedAt: Date.now() });
+  return rt.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text });
+}
+
+/** “Summarize back”: the topic’s agent writes a short summary, which is posted in the conversation. */
+export function summarizeBack(rt, topicId) {
+  const topic = rt.thread(topicId);
+  if (topic.kind !== 'topic') throw httpError(409, 'Only a topic thread can be summarized back.');
+  // The thread’s agent: the one that spoke last there, else the one it started with (#228).
+  const p = threadPersona(rt, topic);
+  const se = p && rt.sideSession(topic, p.id, 'you');
+  if (!se) throw httpError(409, 'No agent is in this thread to summarize it.');
+  // One at a time, so a second click or a second tab can’t post it twice (#93).
+  if (rt.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
+  // Kept on the thread for the panel’s button, until the turn ends or is stopped. A restart can leave it
+  // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
+  rt.putThread({ ...topic, summaryPending: { sessionId: se.id, at: Date.now() } });
+  rt.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
+  rt.deliver(
+    se.id,
+    {
+      kind: 'notice',
+      text: 'Summarize this topic thread for the main conversation: what was decided, what changed, and anything still open. One short paragraph, no headings. It will be posted there as your summary.',
+    },
+    { summarizeTo: topic.parentId, threadId: topicId },
+  );
+  return { ok: true };
+}
+
+/** Whether a summarize turn is running or queued in a topic thread. */
+export function summarizing(rt, topicId) {
+  return (
+    [...rt.turns.values()].some((x) => (x.threadId === topicId && x.summarizeTo) || x.pending.some((p) => p.summarizeTo && p.threadId === topicId)) ||
+    // One waiting for a stopped turn’s process to exit (#126).
+    [...rt.exiting.values()].some((x) => x.held.some((h) => h.summarizeTo && h.threadId === topicId))
+  );
+}
+
+export function clearSummaryPending(rt, topicId) {
+  const t = rt.s.threads[topicId];
+  if (t?.summaryPending && !rt.summarizing(topicId)) rt.putThread({ ...t, summaryPending: null });
+}
+
+/**
+ * Posts text from a topic or side thread in its conversation. The conversation’s agents read it at the start of
+ * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
+ * bring_to_conversation, because the person asked it to (#128).
+ */
+export function shareText(rt, threadId, { fromThreadId, handle, text, summary = false, agent = false }) {
+  const from = rt.s.threads[fromThreadId];
+  // The conversation’s agents read it at the start of their next turn, with everything else they missed.
+  const it = rt.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary, ...(agent ? { agent } : {}) });
+  return it;
+}
