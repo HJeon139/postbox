@@ -15,8 +15,12 @@ export function shareToConversation(rt, topicId, itemId) {
   // Part of a summary still being written: the whole summary is posted when it’s done (#93).
   if ([...rt.turns.values()].some((x) => x.id === it.turnId && x.summarizeTo))
     throw httpError(409, 'This reply is part of a summary that’s still being written. It’s posted in the conversation when it’s done.');
+  // A topic's reply keeps the question it answers (#111): the person's last message before it.
+  const items = topic.kind === 'topic' && it.kind === 'agent' ? rt.store.items(topicId) : [];
+  const index = items.findIndex((item) => item.id === it.id);
+  const question = index >= 0 ? items.slice(0, index).findLast((item) => item.kind === 'user')?.text : undefined;
   rt.patchItem(topicId, itemId, { sharedAt: Date.now() });
-  return rt.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text });
+  return rt.shareText(topic.parentId, { fromThreadId: topicId, handle: it.kind === 'user' ? null : it.handle, text: it.text, question });
 }
 
 /**
@@ -95,9 +99,17 @@ export function clearSummaryPending(rt, topicId, ended = null) {
  * their next turn rather than being woken by it, so sharing never costs a turn. agent: the agent posted it with
  * bring_to_conversation, because the person asked it to (#128).
  */
-export function shareText(rt, threadId, { fromThreadId, handle, text, summary = false, agent = false }) {
+export function shareText(rt, threadId, { fromThreadId, handle, text, summary = false, agent = false, question = undefined }) {
   const from = rt.s.threads[fromThreadId];
   // The conversation’s agents read it at the start of their next turn, with everything else they missed.
-  const it = rt.addItem(threadId, { kind: 'shared', fromThreadId, fromTitle: from?.title ?? '', handle, text, summary, ...(agent ? { agent } : {}) });
-  return it;
+  return rt.addItem(threadId, {
+    kind: 'shared',
+    fromThreadId,
+    fromTitle: from?.title ?? '',
+    handle,
+    text,
+    summary,
+    ...(agent ? { agent } : {}),
+    ...(question === undefined ? {} : { question }),
+  });
 }

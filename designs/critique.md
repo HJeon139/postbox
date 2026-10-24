@@ -57,6 +57,8 @@ Each point says what was observed, why it matters, and what to change. Points ar
 
 **Recommendation.** Keep amber for interaction. Give needs-you its own token: the existing pulse, plus a distinct border weight or a tinted header band on the card, not the same amber outline buttons use.
 
+**Done** (24 October 2026, #8). A card that needs you has a 3 px amber top edge and a head band in its own token, `--needs-band`; buttons keep the 1 px amber outline. intent.md records the rule.
+
 ## Part 2: the end-to-end experience
 
 ### 2.1 Agents change files, and Postbox never shows what changed
