@@ -15,7 +15,7 @@
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
 import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
-import { describePermission } from './adapters/claude-stream.mjs';
+import { permission } from './permission-prompt.mjs';
 import { REVIEW_BLOCK_DEF } from './review-comments.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { offersBring } from './side-threads.mjs';
@@ -284,26 +284,4 @@ async function one(rt, sessionId, msg, turnToken) {
 function inThread(rt, sessionId, turnToken) {
   const turn = rt.turns.get(sessionId);
   return turn?.token === turnToken && offersBring(rt, turn);
-}
-
-/**
- * Asks the person whether a tool may run, and answers in the shape Claude Code expects from a
- * permission prompt tool: { behavior: "allow", updatedInput } or { behavior: "deny", message }.
- */
-async function permission(rt, sessionId, args) {
-  const { tool_name, input = {}, tool_use_id, permission_suggestions, agent_id } = args ?? {};
-  const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
-  const answer = await rt.requestPermission(sessionId, {
-    tool: String(tool_name ?? ''),
-    summary,
-    detail,
-    toolUseId: tool_use_id,
-    input,
-    suggestions: permission_suggestions,
-    agentId: typeof agent_id === 'string' ? agent_id : null,
-  });
-  const decision = answer.allow
-    ? { behavior: 'allow', updatedInput: answer.updatedInput ?? input, ...(answer.updatedPermissions ? { updatedPermissions: answer.updatedPermissions } : {}) }
-    : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
-  return { content: [{ type: 'text', text: JSON.stringify(decision) }] };
 }
