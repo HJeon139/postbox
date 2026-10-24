@@ -239,10 +239,13 @@ await check('#164 a kept job Postbox couldn’t tell apart says so under its row
   const before = signals.length;
   await click(q('.bg-jobs li button'));
   await page.waitFor(`!${q('.bg-jobs li')}`, { label: 'the row to go' });
-  assert.deepEqual(signals.slice(before), [
-    [-4242, 'SIGINT'],
-    [-4343, 'SIGINT'],
-  ]);
+  // Only the SIGINTs: an earlier case’s Stop sends its group SIGKILL once the grace period is over (stopPgid), which
+  // the fake records whenever it lands, here too (#244).
+  const ints = signals.slice(before).filter(([, sig]) => sig === 'SIGINT');
+  assert.deepEqual(
+    ints.map(([pid, sig]) => `${pid} ${sig}`),
+    ['-4242 SIGINT', '-4343 SIGINT'],
+  );
   assert.equal(step().state, 'stopped');
 });
 
