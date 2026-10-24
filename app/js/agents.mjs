@@ -10,16 +10,17 @@
 // topic thread, then the subagents at work in its turn (#73), its only children (#228), each under the one that
 // started it, with what it was asked and what it’s doing now, a line each, without hover.
 
-import { BACKEND_NAMES, chipEffort, chipModel, codexDefault, modelName } from '/shared/agent-facts.mjs';
+import { BACKEND_NAMES, chipEffort, chipModel } from '/shared/agent-facts.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
+import { everyMinute, hostSection, modelOptions } from './agent-host.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
-import { hostLine, hostOf, stopNote, turnLine } from './remote.mjs';
+import { hostLine, stopNote, turnLine } from './remote.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { capsOf, EFFORT_NAMES, modeHelp, modelsFor, openSettings } from './sheets.mjs';
+import { capsOf, EFFORT_NAMES, modeHelp, openSettings } from './sheets.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
 export { subagentNow } from './agent-tree.mjs';
@@ -54,15 +55,7 @@ export function agentsSection(threadId) {
     if (ch.type === 'session' && ch.data.threadId !== threadId && S().threads[ch.data.threadId]?.parentId !== threadId) return;
     if (['session', 'thread', 'persona', 'load', 'remove', 'host', 'host.status'].includes(ch.type)) paint();
   });
-  // “Last heard from 2 min ago” ages while nothing changes.
-  const tick = setInterval(() => el.isConnected && paint(), 60_000);
-  return {
-    el,
-    destroy: () => {
-      off();
-      clearInterval(tick);
-    },
-  };
+  return { el, destroy: everyMinute(el, paint, off) };
 }
 
 /**
@@ -190,9 +183,6 @@ export function openAgentPanel(sessionId, from = null) {
     const mock = isMock(se);
     fill(title, `@${se.handle}`, mockMarker(se));
     fill(sub, `${stateWord(se.state)} · ${se.ctx ?? 0}% of context used · ${mock ? BACKEND_NAMES.mock : (BACKEND_NAMES[f.backend] ?? f.backend)}`);
-    const host = hostOf(se);
-    const there = turnLine(se);
-    const failure = host?.status?.failure;
     const note = stopNote(se);
     keepFocus(body, () =>
       fill(
@@ -201,35 +191,18 @@ export function openAgentPanel(sessionId, from = null) {
           'div.qp-asks',
           openAsksEl(se, true, () => dlg?.close()),
         ),
-        // Where it runs, when that’s a host (#120): the connection in words, and why Postbox can’t reach it.
-        host
-          ? h(
-              'section.qp-sec.qp-host',
-              { 'aria-label': `Where @${se.handle} runs` },
-              h('p.small', hostLine(se)),
-              there ? h('p.small', there) : null,
-              failure?.message ? h('p.small.dim', failure.message, failure.next ? ` ${failure.next}` : '') : null,
-            )
-          : null,
+        hostSection(se),
         // This conversation’s: the session’s snapshot, as /model and /effort set it.
         mock
           ? h('p.help', 'A mock agent runs scripted replies, so it has no model, effort or permission mode to change.')
           : section(
               `In ${where}`,
               `From its next turn, as /model and /effort set them.`,
-              choice(
-                'Model',
-                where,
-                // Codex’s default is one choice, `auto`, whatever older setting stands for it.
-                [...new Set([...modelsFor(f.backend), codexDefault(f.backend, f.setModel) ? 'auto' : f.setModel])]
-                  .filter((m) => !(f.backend === 'codex' && m !== 'auto' && codexDefault(f.backend, m)))
-                  .map((m) => [m, modelName(f.backend, m)]),
-                codexDefault(f.backend, f.setModel) ? 'auto' : f.setModel,
-                (id, name) =>
-                  api(`/api/sessions/${se.id}/run`, { model: id }).then(
-                    (r) => done(`Model: ${name} for @${se.handle} in ${where}, ${r.now ? 'from now: its running turn changed too' : 'from its next turn'}.`),
-                    failed,
-                  ),
+              choice('Model', where, ...modelOptions(f), (id, name) =>
+                api(`/api/sessions/${se.id}/run`, { model: id }).then(
+                  (r) => done(`Model: ${name} for @${se.handle} in ${where}, ${r.now ? 'from now: its running turn changed too' : 'from its next turn'}.`),
+                  failed,
+                ),
               ),
               choice(
                 'Effort',
