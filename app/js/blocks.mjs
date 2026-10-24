@@ -9,6 +9,7 @@ import { onPageOrigin } from '/shared/urls.mjs';
 import { mountApp } from './apps.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { client } from './client.mjs';
+import { codeBox, copyControls, showFilename } from './code-block.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 
@@ -638,47 +639,9 @@ const RENDER = {
   },
 
   code(b) {
-    const status = h('span.small.dim', { role: 'status' });
-    const [hd, titleId] = head(
-      b,
-      [
-        h(
-          'button.btn.sm',
-          {
-            type: 'button',
-            onclick: async () => {
-              try {
-                await navigator.clipboard.writeText(b.code);
-                status.textContent = 'Copied';
-              } catch {
-                status.textContent = 'Couldn’t copy. Select the text instead.';
-              }
-              setTimeout(() => {
-                status.textContent = '';
-              }, 2000);
-            },
-          },
-          icon('copy', 'i-sm'),
-          'Copy',
-        ),
-        status,
-      ],
-      b.language ? `Code · ${b.language}` : 'Code',
-    );
-    const lines = b.code.split('\n');
-    return h(
-      'div',
-      { 'aria-labelledby': titleId },
-      hd,
-      h(
-        'div.code',
-        h(
-          'pre.mono',
-          { tabindex: '0', 'aria-label': `${b.filename ?? 'Code'}, ${plural(lines.length, 'line')}` },
-          lines.map((l, i) => [h('span.ln', { 'aria-hidden': 'true' }, String(i + 1)), l, i < lines.length - 1 ? '\n' : '']),
-        ),
-      ),
-    );
+    const [hd, titleId] = head(b, copyControls(b), b.language ? `Code · ${b.language}` : 'Code');
+    showFilename(hd, b);
+    return h('div', { 'aria-labelledby': titleId }, hd, codeBox(b));
   },
 
   review: renderReview,

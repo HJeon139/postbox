@@ -507,6 +507,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .code { background: var(--sunk); border-radius: 0 0 8px 8px; }
 .code pre { padding: 12px; overflow: auto; line-height: 1.55; }
 .code .ln { display: inline-block; width: 2.4em; color: var(--dim); opacity: .7; user-select: none; }
+.block-head .code-file { font-size: 13px; overflow-wrap: anywhere; }
 .kw { color: var(--syn-kw); } .str { color: var(--syn-str); } .num-t { color: var(--syn-num); } .fn { color: var(--syn-fn); } .com { color: var(--syn-com); font-style: italic; }
 
 .img-block img, .img-block svg { display: block; width: 100%; height: auto; border-radius: 6px; }

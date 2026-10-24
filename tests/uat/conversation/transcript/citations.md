@@ -11,7 +11,7 @@ Claims an agent makes from papers must be checkable.
 ## Expected functionality
 
 - Markers link to a sources list under the reply.
-- Hovering or focusing a marker opens a card: a loading bar, then it stays; leaving counts down before closing; Enter pins, Escape closes.
+- Hovering or focusing a marker opens a card: a loading bar, then it stays; leaving counts down before closing; Enter or Space pins and moves focus into the card, and Escape closes it and returns focus to the marker.
 
 ## Steps to reproduce
 
