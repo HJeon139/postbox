@@ -214,6 +214,20 @@ test('#133: a reply goes in its thread, and a revision that leaves a reviewer’
   assert.deepEqual(item().block.threads, resolved);
 });
 
+test('#133: a revision that would push a reviewer’s kept thread past 200 threads is refused, and drops nothing', async () => {
+  const { rt, mine, theirs, item } = await shown();
+  rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [ranged] });
+  await settle(rt);
+  const own = Array.from({ length: 200 }, (_, i) => ({ id: `r${i}`, status: 'open', line: 1, comments: [{ author: 'You', text: 'x' }] }));
+  const r = rt.toolsFor(mine.id).update_block({ block: { ...draft, revision: 2, threads: own } });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /threads has more than 200 items/);
+  assert.deepEqual(
+    item().block.threads.map((x) => x.id),
+    ['critic-1'],
+  );
+});
+
 test('#133: a comment from a side thread lands on the block in the room', async () => {
   const { rt, store, adapter, t, item } = await shown();
   let said;

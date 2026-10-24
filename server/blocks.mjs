@@ -136,8 +136,12 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
   // read (#123): the person would see it vanish, and the agent would never learn what it erased.
   if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
-  // Another agent’s comments stay on a review its revision leaves them off (#133).
-  if (v.block.type === 'review') v.block = keepReviewThreads(existing, v.block);
+  // Another agent’s comments stay on a review its revision leaves them off (#133), and count toward its threads.
+  if (v.block.type === 'review') {
+    v.block = keepReviewThreads(existing, v.block);
+    const kept = validateBlock(v.block, { imageOrigins: rt.config.imageOrigins });
+    if (!kept.ok) return { ok: false, message: `The update wasn’t applied: with the reviewers’ threads it leaves out, which stay, ${kept.errors.join(' ')}` };
+  }
   /** @type {Record<string, any>} */
   const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));

@@ -74,7 +74,8 @@ export function reviewBlock(rt, sessionId, args) {
 
 /**
  * A review update keeps the threads review_block added that it leaves out, each following its quote, or its line’s
- * text, into the new text. The block’s agent resolves a reviewer’s thread; it can’t drop one.
+ * text, into the new text. The block’s agent resolves a reviewer’s thread; it can’t drop one, so the caller validates
+ * the result: kept threads can take it past the catalog’s limit.
  * @param {any} existing  the block item as it was @param {any} block  the update, validated
  */
 export function keepReviewThreads(existing, block) {
@@ -86,7 +87,7 @@ export function keepReviewThreads(existing, block) {
   const was = moves ? splitLines(existing.block.content) : [];
   const now = moves ? splitLines(block.content) : [];
   const kept = moves ? left.map((t) => follow(t, block.content, was, now)) : left;
-  return { ...block, threads: [...(block.threads ?? []), ...kept].slice(0, 200) };
+  return { ...block, threads: [...(block.threads ?? []), ...kept] };
 }
 
 /**
