@@ -4,7 +4,6 @@ import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { draftOf } from '../write-guard.mjs';
-import { checkRemoteContext } from './adapter.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { findCodex } from './codex-models.mjs';
 import { CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
@@ -228,16 +227,13 @@ export class CodexAdapter {
   async deliver(session, message, ctx) {
     const remote = ctx.remote ?? null;
     const attach = remote?.attach ?? null;
-    if (remote) checkRemoteContext(remote, { attach: Boolean(attach) });
     const cwd = remote ? remote.folder : await this.folderFor(ctx.persona, ctx.project);
+    const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl)];
+    // Its own process group, so stopping the turn reaches everything the app-server started (#126); on a host, the daemon’s.
     /** @type {any} */
-    let child;
-    if (remote) child = spawnRemoteCodex(remote, attach, cwd, this.bin);
-    else {
-      const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl)];
-      // Its own process group, so stopping the turn reaches everything the app-server started (#126).
-      child = this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
-    }
+    const child = remote
+      ? spawnRemoteCodex(remote, attach, cwd, this.bin)
+      : this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
     const exitedP = new Promise((r) => {
       child.once('exit', r);
       child.once('close', r);
@@ -301,8 +297,7 @@ export class CodexAdapter {
         return;
       }
       if (msg.id != null && msg.method) {
-        // App-server initiated approval/elicitation request. One replayed after a restart waits for the rebuild,
-        // which answers it then only if nobody has.
+        // App-server initiated approval/elicitation request; one replayed after a restart waits for the rebuild (pickUp).
         if (!host?.rebuilding) await answer(msg);
         return;
       }
@@ -332,8 +327,7 @@ export class CodexAdapter {
             : `Codex app-server could not start: ${e.message}`,
       );
       fail(err);
-      // A remote turn ends at its close, which comes next (server/remote/process.mjs) and fails it with endError.
-      if (!child.remote) finish(err);
+      if (!child.remote) finish(err); // a remote turn ends at its close, which comes next and fails it with endError
     });
     child.on('close', (code) => {
       exited = true;
@@ -348,10 +342,9 @@ export class CodexAdapter {
       fail(err);
       finish(err);
     });
-    // Stop asks Codex to interrupt the turn; the app-server itself is stopped as the turn ends, below. A remote turn
-    // still being rebuilt uses what the rebuild has so far.
+    // Stop asks Codex to interrupt the turn; the app-server itself is stopped as the turn ends, below.
     const onAbort = () => {
-      const threadId = ctx.state.codexThreadId ?? host?.rebuild?.threadId;
+      const threadId = ctx.state.codexThreadId ?? host?.rebuild?.threadId; // one still being rebuilt: what the rebuild has
       const turnId = activeTurnId ?? host?.rebuild?.turnId;
       if (host?.rebuilding && host.rebuild) requestId = Math.max(requestId, host.rebuild.nextRequestId());
       if (!threadId || !turnId) return finish();

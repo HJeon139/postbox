@@ -7,6 +7,7 @@
 
 import { codexPromptId } from '../remote/host/broker.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
+import { checkRemoteContext } from './adapter.mjs';
 import { hostShim, hostWaitMax } from './remote-turn.mjs';
 import { PERMISSION_WAIT_MARGIN_MS, POSTBOX_SERVER } from './setup.mjs';
 
@@ -89,11 +90,13 @@ export function interruptReached(child, id) {
 /**
  * The app-server on the host, through its daemon, in `cwd` there, with the shim as Postbox’s server: started as the
  * runtime’s host turn, or read from the start when `attach` names one already there. No variable of its own crosses
- * (CODEX_REMOTE.env), and the laptop’s environment never does.
+ * (CODEX_REMOTE.env), and the laptop’s environment never does. A context the runtime didn’t fill in is refused first,
+ * before anything starts on the host (checkRemoteContext).
  * @param {import('./adapter.mjs').RemoteContext} remote @param {{ turn: string } | null} attach @param {string} cwd
  * @param {string} bin
  */
 export function spawnRemoteCodex(remote, attach, cwd, bin) {
+  checkRemoteContext(remote, { attach: Boolean(attach) });
   const turn = attach?.turn ?? /** @type {string} */ (remote.turn);
   const shim = hostShim(remote, remote.welcome, turn);
   const args = ['app-server', '--listen', 'stdio://', ...codexRemoteConfigArgs(shim.command, shim.args, hostWaitMax(remote))];
