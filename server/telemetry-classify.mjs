@@ -2,6 +2,7 @@
 // thread summary’s (server/thread-summary.mjs, summarizerOf: Haiku, one turn, no tools, no settings, no session), over
 // the typed record and the text of each item it’s asked to label, with up to four before it, between markers that say
 // the text is data. It answers in enums for the refs it was given; the gate (shared/telemetry.mjs) takes what passes.
+// lint-allow-file quotes: this is read by a model, and straight quotes mark the JSON it answers in.
 
 import { AREAS, ATTRIBUTIONS, CONFIDENCE, MAST } from '../shared/telemetry-vocab.mjs';
 import { clipText } from './helpers.mjs';

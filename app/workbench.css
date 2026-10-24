@@ -1201,3 +1201,21 @@ code.wc-name { font-size: 12px; }
 .qp-switch[aria-checked="true"] .track::after { transform: translateX(12px); background: var(--accent); }
 .qp-tool .help { padding-left: 38px; }
 .qp-actions { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* Telemetry (designs/telemetry-persona.md): the header’s word while a conversation records, and the Telemetry view. */
+.rec-badge { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.tv-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; overflow: auto; }
+.tv-h { font-size: 14px; margin: 6px 0 0; }
+.tv-summary { border-collapse: collapse; font-size: 13px; }
+.tv-summary th, .tv-summary td { text-align: left; padding: 3px 10px 3px 0; border-bottom: 1px solid var(--line); }
+.tv-summary th { font-weight: 500; color: var(--dim); }
+.tv-lines { list-style: none; margin: 0; padding: 0; font-size: 12.5px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
+.tv-lines li { display: grid; grid-template-columns: 34px 1fr auto; gap: 6px; align-items: start; padding: 2px 6px; }
+.tv-lines .tv-n { color: var(--dim); text-align: right; user-select: none; }
+.tv-lines .tv-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); }
+.tv-lines li.out .tv-text { text-decoration: line-through; color: var(--dim); }
+.tv-hash { overflow-wrap: anywhere; }
+.tv-saved { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.tv-findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.tv-findings li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.tv-issue { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; font-size: 12.5px; background: var(--sunk); padding: 10px; border-radius: 8px; }

@@ -8,6 +8,7 @@
 import { h, icon } from './dom.mjs';
 import { mountDivider } from './pane-split.mjs';
 import { mountWidth } from './pane-width.mjs';
+import { mountTelemetryView, TELEMETRY } from './telemetry.mjs';
 import { mountSidePanel } from './thread.mjs';
 import { navigate, paneHref, rememberWork, route, setPaneFull } from './ui.mjs';
 import { mountWorkPane } from './work.mjs';
@@ -134,7 +135,7 @@ export function mountPane(convId) {
     if (fullKind && (fullKind !== full || !stays)) leaveFull({ focus: stays && !full });
     // The thread.
     if ((thread?.id ?? null) !== sideId) {
-      const next = sideId ? mountSidePanel(convId, sideId) : null;
+      const next = sideId ? (sideId === TELEMETRY ? mountTelemetryView(convId) : mountSidePanel(convId, sideId)) : null;
       if (next) {
         // Its head gets the full-screen icon, before its close button.
         const head = next.el.querySelector('.sp-head');
