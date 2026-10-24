@@ -194,6 +194,22 @@ test('a permission card can wait a day: Postbox’s server is passed with a 25-h
   }
 });
 
+test('the recording behind #217: without a timeout, Claude Code cut each permission_prompt call at 60 s', () => {
+  // A real claude -p turn (2.1.308) against an HTTP server that never answered permission_prompt: with no
+  // timeout, each call failed after 60 s with “The operation timed out”; with a timeout it was still waiting.
+  // fixtures/claude-code/permission-timeout.json holds that recording.
+  const rec = JSON.parse(readFileSync(new URL('fixtures/claude-code/permission-timeout.json', import.meta.url), 'utf8'));
+  const cut = rec.stream.flatMap((e) => (e.type === 'user' ? e.message.content : []));
+  assert.ok(cut.length > 0 && cut.every((c) => c.is_error && /The operation timed out/.test(c.content)), 'each wait failed');
+  const closed = rec.server.filter((l) => l.event.startsWith('CALL CONNECTION CLOSED'));
+  assert.deepEqual(
+    closed.map((l) => l.event.match(/after (\S+)s/)[1]),
+    ['60.0', '60.0'],
+    'Claude Code closed each call at 60 s',
+  );
+  assert.ok(DAY_AND_AN_HOUR > 24 * 60 * 60 * 1000, 'the timeout Postbox passes is longer than a day’s wait');
+});
+
 test('servers a persona turned off are denied by name in both backends; Postbox’s own never is', () => {
   const persona = { model: 'mock', mcpOff: ['search', 'claude.ai Google Drive', 'postbox'] };
   const want = {
