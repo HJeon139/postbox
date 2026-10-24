@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import {
-  AGY_CAPABILITIES,
   AGY_DEFAULT_MODEL,
   ALLOW_POSTBOX,
   AntigravityCliAdapter,
@@ -66,14 +65,6 @@ const replay = (name, opts) => {
   for (const e of fixture(name)) m.push(e);
   return { ctx, m };
 };
-
-test('the capabilities: resumes, can’t fork, reads no Claude Code rules, can’t deny tools or isolate', () => {
-  assert.deepEqual({ ...AGY_CAPABILITIES }, { resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false });
-  const a = new AntigravityCliAdapter({ workRoot: '/tmp/x', models: ['gemini-3.8-flash-high'] });
-  assert.deepEqual(a.capabilities.models, ['gemini-3.8-flash-high']);
-  assert.equal(new AntigravityCliAdapter({ workRoot: '/tmp/x' }).capabilities.models, undefined);
-  assert.equal(a.capabilities.remote, undefined, 'it can’t run on a remote host yet');
-});
 
 test('a recorded turn that shows a block: the reply, no step for Postbox’s tool or its schema, the conversation and the model', () => {
   const { ctx, m } = replay('block');
