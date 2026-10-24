@@ -73,6 +73,7 @@ import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
+import { turnExited } from './turn-exit.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -1217,36 +1218,8 @@ export class Runtime {
     return true;
   }
 
-  /**
-   * A turn’s adapter is done, which for a real backend means its process has exited. Its background jobs that nothing
-   * reported the end of went with it, and a stopped session takes what waited for it: the messages sent meanwhile,
-   * then the queue.
-   */
   turnExited(turn) {
-    this.settleJobs(turn);
-    const ex = this.exiting.get(turn.sessionId);
-    if (ex?.turn !== turn) return;
-    this.exiting.delete(turn.sessionId);
-    const se = this.s.sessions[turn.sessionId];
-    if (!se) return;
-    // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
-    if (se.state === 'stopping' || se.currentStep === 'Stopping')
-      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: 'Stopped by you', finishedAt: Date.now(), sideTurn: null });
-    else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
-    const held = se.archived || se.deleting ? [] : ex.held;
-    // A summary that waited and won’t start now isn’t coming (#93).
-    if (held !== ex.held) for (const h of ex.held) if (h.summarizeTo) this.clearSummaryPending(h.threadId);
-    // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
-    if (this.closing) {
-      for (const h of held.filter((x) => x.message.kind === 'user')) {
-        const t = this.s.threads[h.threadId ?? se.threadId];
-        const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now() };
-        if (t) this.putThread({ ...t, queue: [...(t.queue ?? []), q] });
-      }
-      return;
-    }
-    for (const h of held) this.deliver(se.id, h.message, { replyTo: h.replyTo, summarizeTo: h.summarizeTo, threadId: h.threadId });
-    if (!held.length && !ex.silent) this.drainQueues(se.id, turn.threadId);
+    return turnExited(this, turn);
   }
 
   /**
