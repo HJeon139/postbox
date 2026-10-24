@@ -7,7 +7,8 @@
 // - a kept job Postbox couldn’t tell apart from another process (#164) says so under its row, and its Stop stops both;
 // - Stop it too stops both; the ask’s colors are the tokens’, with amber only on its first choice; at 375 px it fits;
 // - each stopped reply says why (#215, #249): “Stopped by you”, with its background work kept running after Keep
-//   running, and “Interrupted by Send now” after a queued message’s Send now, whose job keeps running.
+//   running, and “Interrupted by Send now” after a queued message’s Send now, whose job keeps running;
+// - two kept jobs Postbox couldn’t tell apart share their processes (#167): stopping one ends the other as stopped.
 //
 //   node tools/check-stop.mjs
 //
@@ -52,22 +53,18 @@ rt.adapters.register({
   async deliver(_session, message, ctx) {
     if (!/job/.test(message.text ?? '')) return ctx.text('Done.');
     n += 1;
-    const id = `bgjob${n}`;
+    // Asked for two, it starts a second job beside the first (#167).
+    const jobs = [{ id: `bgjob${n}`, label: 'Run the mixed-room UAT scenario live', command: 'node tools/uat-run.mjs' }];
+    if (/two jobs/.test(message.text ?? '')) jobs.push({ id: `bgjob${n}b`, label: 'Tail the UAT log', command: 'tail -f uat.log' });
     ctx.text('Starting the UAT run in the background.');
-    ctx.activity({ id: `tu_${n}`, label: 'Run the mixed-room UAT scenario live', state: 'running', job: id });
-    ctx.job({
-      id,
-      toolUseId: `tu_${n}`,
-      label: 'Run the mixed-room UAT scenario live',
-      command: 'node tools/uat-run.mjs',
-      outputFile: '/tmp/out.txt',
-      state: 'running',
-    });
+    for (const j of jobs) {
+      ctx.activity({ id: `tu_${j.id}`, label: j.label, state: 'running', job: j.id });
+      ctx.job({ id: j.id, toolUseId: `tu_${j.id}`, label: j.label, command: j.command, outputFile: '/tmp/out.txt', state: 'running' });
+    }
     await new Promise((r) => ctx.signal.addEventListener('abort', r));
-    // Asked to say it’s unsure, it keeps both shells, as for a job Postbox couldn’t tell apart (#164).
+    // Asked to say it’s unsure, it keeps both shells, as for a job Postbox couldn’t tell apart (#164), for each job.
     const groups = /unsure/.test(message.text ?? '') ? PROCS.map((p) => ({ pgid: p.pgid, command: p.command })) : undefined;
-    if (ctx.signal.reason?.keepJobs?.length) ctx.job({ id, kept: true, pgid: 4242, groups });
-    else ctx.job({ id, state: 'stopped' });
+    for (const { id } of jobs) ctx.job(ctx.signal.reason?.keepJobs?.length ? { id, kept: true, pgid: 4242, groups } : { id, state: 'stopped' });
     await new Promise((r) => setTimeout(r, 400));
   },
 });
@@ -247,6 +244,24 @@ await check('#164 a kept job Postbox couldn’t tell apart says so under its row
     [-4343, 'SIGINT'],
   ]);
   assert.equal(step().state, 'stopped');
+});
+
+await check('#167 two kept jobs Postbox couldn’t tell apart: stopping one stops both, and the other’s step says why', async () => {
+  await startJob('Run two jobs, unsure which shell.');
+  await click(q('.composer .btn.stop'));
+  await page.waitFor(`!!${q('.stop-ask')}`, { label: 'the ask' });
+  await click(q('.stop-ask .btn:not(.send):not(.ghost)'));
+  await until(() => state() === 'idle', 'the process to exit');
+  await page.waitFor(`document.querySelectorAll('.bg-jobs li').length === 2`, { label: 'both job rows' });
+  await click(q('.bg-jobs li button'));
+  await page.waitFor(`!${q('.bg-jobs li')}`, { label: 'both rows to go' });
+  const rows = await page.evaluate(
+    `(() => { const d = [...document.querySelectorAll('details.activity')].at(-1); d.open = true; return [...d.querySelectorAll('.steps li .step-text')].map((li) => li.innerText.replace(/\\s+/g, ' ').trim()); })()`,
+  );
+  assert.deepEqual(rows, [
+    'Run the mixed-room UAT scenario live Stopped',
+    'Tail the UAT log Stopped: Postbox couldn’t tell its processes from those of the background job “Run the mixed-room UAT scenario live”, so stopping that job stopped this one too.',
+  ]);
 });
 
 await check('#215 a queued message’s Send now: the reply it interrupted says so, and its job keeps running', async () => {

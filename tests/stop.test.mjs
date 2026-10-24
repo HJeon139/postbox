@@ -764,6 +764,61 @@ test('#164: a kept job’s groups stay its own while their leaders’ command li
   assert.equal(step().detail, null, 'it no longer says what was kept');
 });
 
+test('#167: two kept jobs Postbox couldn’t tell apart share their processes: stopping one stops the other, as stopped, not done', async () => {
+  // What Stop keeps for two jobs that match no shell in the recorded ps: every other tool shell, for each (#164).
+  const k0 = fakeKill();
+  const cli = exitLater(k0);
+  const keep = [
+    { id: 'bgX', command: 'npm run long' },
+    { id: 'bgY', command: 'npm run longer' },
+  ];
+  const { kept } = await stopTurn(fakeChild(), { keep, exited: cli.exited, kill: k0.kill, list: async () => PS, pollMs: 2 });
+  cli.exit();
+  assert.deepEqual(kept[0].groups, kept[1].groups, 'the same groups, for both');
+  const { rt, store, adapter, t, se, k, procs } = setup();
+  let exit = () => {};
+  adapter.next.push(async (c) => {
+    keep.forEach((j, n) => {
+      c.activity({ id: `tu_${n}`, label: j.command, state: 'running', job: j.id });
+      c.job({ id: j.id, toolUseId: `tu_${n}`, label: j.command, command: j.command, outputFile: null, state: 'running' });
+    });
+    await new Promise((r) => c.signal.addEventListener('abort', r));
+    for (const j of kept) c.job({ id: j.id, kept: true, pgid: j.pgid, groups: j.groups });
+    await new Promise((r) => {
+      exit = r;
+    });
+  });
+  rt.sendMessage(t.id, { text: 'go' });
+  await sleep(5);
+  rt.stop(se.id, { jobs: 'keep' });
+  exit();
+  await sleep(10);
+  assert.deepEqual(
+    store.state.sessions[se.id].jobs.map((j) => `${j.id} ${j.kept}`),
+    ['bgX true', 'bgY true'],
+  );
+  procs.push(...PS.filter((p) => kept[0].groups.some((g) => g.pgid === p.pgid)));
+  await rt.stopJob(se.id, 'bgX');
+  assert.deepEqual(
+    k.sent,
+    kept[0].groups.map((g) => [-g.pgid, 'SIGINT']),
+  );
+  // Their processes have gone: the poll mustn’t say bgY finished by itself.
+  procs.length = 0;
+  await rt.pollKept();
+  const steps = store.items(t.id).find((i) => i.kind === 'agent' && i.activity?.steps?.length).activity.steps;
+  assert.deepEqual(
+    steps.map((st) => `${st.job} ${st.state}`),
+    ['bgX stopped', 'bgY stopped'],
+  );
+  assert.equal(
+    steps[1].detail,
+    'Postbox couldn’t tell its processes from those of the background job “npm run long”, so stopping that job stopped this one too.',
+  );
+  assert.deepEqual(store.state.sessions[se.id].jobs, []);
+  assert.match(store.state.sessions[se.id].context.join('\n'), /bgY \(`npm run longer`\) was stopped by the person/);
+});
+
 test('#164: a kept job saved before groups were recorded, with only its pgid, is still checked by its command and stopped', async () => {
   const { rt, store, t, se, k, procs } = setup();
   rt.updateSession(se.id, {

@@ -50,8 +50,13 @@ export async function stopJob(rt, sessionId, jobId) {
   if (!job) throw httpError(409, 'That background job already ended.');
   if (job.kept) {
     // Only the groups still the job’s: one that ended may have left its id to another process.
-    for (const g of liveGroups(job, await rt.listProcesses().catch(() => []))) stopPgid(g.pgid, { kill: rt.signalProcess });
+    const procs = await rt.listProcesses().catch(() => []);
+    const stopped = new Set(liveGroups(job, procs).map((g) => g.pgid));
+    for (const pgid of stopped) stopPgid(pgid, { kill: rt.signalProcess });
     rt.endJob(sessionId, jobId, 'stopped', null, { by: 'you' });
+    // Another kept job Postbox couldn’t tell apart from it shares those groups, still its own (#164): it stopped with them (#167).
+    const why = `Postbox couldn’t tell its processes from those of the background job “${job.label}”, so stopping that job stopped this one too.`;
+    for (const o of keptJobs(rt)) if (liveGroups(o, procs).some((g) => stopped.has(g.pgid))) rt.endJob(o.sessionId, o.id, 'stopped', why, { by: 'you' });
     return { ok: true };
   }
   const turn = rt.turns.get(sessionId);
