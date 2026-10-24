@@ -1,8 +1,8 @@
 // Who a message from the composer goes to, as sendMessage decides it (server/runtime.mjs), for the composer’s hint: a
-// message that @-mentions no one goes to the next speaker, and one that names an agent without its @ may not reach it
-// (#134).
+// message wakes the agents it @-mentions, and only them (#107); one that @-mentions no one goes to the next speaker,
+// and one that names an agent without its @ may not reach it (#134).
 
-import { unaddressed } from '/shared/text.mjs';
+import { parseMentions, unaddressed } from '/shared/text.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { handles } from './agent-markdown.mjs';
 import { S, sessionsOf } from './client.mjs';
@@ -32,15 +32,29 @@ export function nextSpeaker(threadId) {
 const named = (threadId, draft) => unaddressed(draft, handles(), { lastSpeaker: nextSpeaker(threadId)?.handle ?? null })[0] ?? null;
 
 /** What the address part of the hint depends on, so the composer repaints it only when that changes as you type. */
-export const addressSig = (threadId, draft) => named(threadId, draft) ?? '';
+export const addressSig = (threadId, draft) => JSON.stringify([parseMentions(draft, handles()), named(threadId, draft)]);
 
 /**
- * The hint’s first part: “Did you mean @critic?”, a button that adds the @, when the draft opens with an agent’s name
- * and “:” or “,”; then “Replying to @researcher”, in a room or a topic or side thread.
+ * The hint’s first part. A draft that @-mentions agents: “Wakes @critic, not @researcher (last speaker)”, since the
+ * agent it would otherwise go to isn’t woken, and reads it at its next turn (#107). Otherwise “Did you mean @critic?”,
+ * a button that adds the @, when the draft opens with an agent’s name and “:” or “,”; then “Replying to @researcher”,
+ * in a room or a topic or side thread.
  * @param {string} threadId @param {string} draft @param {{ room: boolean, addAt: () => void }} opts
  */
 export function addressLine(threadId, draft, { room, addAt }) {
   const next = nextSpeaker(threadId);
+  const wakes = parseMentions(draft, handles());
+  if (wakes.length) {
+    const not = next && !wakes.includes(next.handle) ? [', not ', h('b', `@${next.handle}`), next.last ? ' (last speaker)' : ''] : [];
+    return [
+      h(
+        'span.wakes',
+        'Wakes ',
+        wakes.flatMap((x, i) => [i ? ', ' : '', h('b', `@${x}`)]),
+        ...not,
+      ),
+    ];
+  }
   const name = named(threadId, draft);
   return [
     name ? h('button.btn.sm.ghost.did-you-mean', { type: 'button', onclick: addAt }, 'Did you mean ', h('b', `@${name}`), '?') : null,

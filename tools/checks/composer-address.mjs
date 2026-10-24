@@ -2,7 +2,8 @@
 //   • a draft that opens with an agent’s name and “:” or “,”, in a room where another agent spoke last, shows “Did you
 //     mean @critic?”, whose one click adds the @; a name later in the draft, or the last speaker’s own, shows nothing
 //     (#134, the rule the end-to-end tester uses);
-//   • topic and side threads say who an unaddressed message goes to, “Replying to @x”, as the conversation does (#134).
+//   • topic and side threads say who an unaddressed message goes to, “Replying to @x”, as the conversation does (#134);
+//   • a draft that @-mentions an agent says it wakes that one, and not the agent it would otherwise go to (#107).
 //
 //   node tools/checks/composer-address.mjs
 //
@@ -119,6 +120,17 @@ await check('#134 “Researcher, …” to the last speaker, and a name later in
     const hint = await text(HINT('composer-input'));
     expect(!hint.includes('Did you mean'), `“${draft}” shows “${hint}”`);
   }
+  await typeIn('composer-input', '');
+});
+
+await check('#107 replying while mentioning another agent says it wakes that one, not the last speaker', async () => {
+  await typeIn('composer-input', '@critic what do you make of revision 3?');
+  const hint = await text(HINT('composer-input'));
+  expect(hint.includes('Wakes @critic, not @researcher (last speaker)'), `The hint reads “${hint}”`);
+  expect(!hint.includes('Replying to'), `The hint still says it replies to the last speaker: “${hint}”`);
+  await typeIn('composer-input', '@critic and @researcher, both of you');
+  const both = await text(HINT('composer-input'));
+  expect(both.includes('Wakes @critic, @researcher') && !both.includes(', not '), `The hint reads “${both}”`);
   await typeIn('composer-input', '');
 });
 
