@@ -54,7 +54,7 @@ import { listProcesses, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
-export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false });
+export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: false });
 
 /** The agy binary: POSTBOX_AGY_BIN, then the PATH. */
 export const findAgy = (env = process.env) => env.POSTBOX_AGY_BIN || 'agy';

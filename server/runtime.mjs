@@ -215,7 +215,7 @@ export class Runtime {
     this.configDir = claudeConfigDir !== undefined ? claudeConfigDir : this.home === homedir() ? process.env.CLAUDE_CONFIG_DIR || null : null;
     this.blobs = blobs ?? null;
     this.narrator = narrator ?? null;
-    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId }
+    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId, timer }
     this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
     this.turns = new Map(); // sessionId → live turn
     // sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126)
@@ -646,6 +646,8 @@ export class Runtime {
               .toLowerCase()
           : null,
       sessionId,
+      // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
+      backend: persona?.backend ?? 'mock',
       threadId: where,
       segment: null,
       first: null,

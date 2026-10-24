@@ -20,12 +20,13 @@ In ask mode (and when auto mode can’t decide) you approve exactly what will ru
 - **Edit…:** opens the command (or, for other tools, the input as JSON) to change, then **Allow with this edit** runs what you wrote, with the call’s other settings (its description, timeout, background flag) kept. It isn’t offered for an input too large to show in full. JSON that doesn’t parse says so, and nothing is sent. Escape cancels; Cmd+Enter or Ctrl+Enter allows.
 - **Don’t allow…:** asks why, optionally; Enter refuses. The agent reads your reason.
 - Once answered, the card says how (“Always allowed (Bash(npm test:*))”, “Allowed with your edit”, with what ran, or “Not allowed”, with your reason), and a line in your voice says the same.
-- The agent needs you until you answer; Stop answers no and marks the card expired.
+- The agent needs you until you answer; Stop answers no and marks the card expired. A card nobody answers for 25 hours, the time Claude Code waits for the call, expires too, and says “Expired: nobody answered within 25 hours” ([#220](https://github.com/HJeon139/postbox/issues/220)).
+- Only a Claude Code agent asks this way. An Agent SDK, Kiro, Codex or Antigravity agent isn’t offered Postbox’s permission_prompt tool, and one that calls it anyway is told at once that it isn’t for it, with no card.
 - Every control works by keyboard; after an answer, focus goes back to the composer.
 
 ## Steps to reproduce
 
-1. Run `node tools/check-permissions.mjs`. It answers a card each way with real clicks and key presses, including a subagent’s prompt, a Codex MCP tool call, and a write outside Postbox with its draft. Every line should say ok.
+1. Run `node tools/check-permissions.mjs`. It answers a card each way with real clicks and key presses, including a subagent’s prompt, a Codex MCP tool call, and a write outside Postbox with its draft. Every line should say ok. `node tools/checks/permission-cards.mjs` checks how an expired card reads.
 2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open. Scene 10 (“Clear the index cache”): answer Allow.
 3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. In a project whose folder you can lose, set an agent to Ask me and send: “Run `echo hi > note.txt` yourself, then have a general-purpose subagent run `echo bye > note2.txt`.”
 4. On the first card, choose Edit…, change the command to `echo edited > note.txt`, and allow it. On the subagent’s card, choose Always allow.
