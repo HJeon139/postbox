@@ -96,6 +96,10 @@
       }
     },
     {
+      "includes": ["app/js/hovercards.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 93 } } } } }
+    },
+    {
       "includes": ["app/js/main.mjs"],
       "linter": {
         "rules": {
