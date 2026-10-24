@@ -100,7 +100,7 @@ test('headings, rules and paragraph lines stay one target each', () => {
 
 // ── Diffs ──────────────────────────────────────────────────────────────────────────────
 
-// Rows as diffLines in app/js/blocks.mjs returns them: each line prefixed ' ' (same), '-' or '+'.
+// Rows as diffLines in shared/review-diff.mjs returns them: each line prefixed ' ' (same), '-' or '+'.
 const diff = (...lines) => {
   let o = 0,
     n = 0;
