@@ -1,6 +1,8 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
+import { applyHost } from './state-hosts.mjs';
+
 export function emptyState() {
   return {
     version: 1,
@@ -62,16 +64,6 @@ export function apply(s, type, d) {
       if (d.removed) delete s.schedules[d.id];
       else s.schedules[d.id] = d;
       break;
-    case 'host':
-      if (d.removed) {
-        delete s.hosts?.[d.id];
-        delete s.hostStatus?.[d.id];
-      } else (s.hosts ??= {})[d.id] = d;
-      break;
-    case 'host.status':
-      if (d.status === null) delete s.hostStatus?.[d.id];
-      else (s.hostStatus ??= {})[d.id] = d.status;
-      break;
     case 'glossary':
       (s.glossary[d.threadId] ??= {})[d.entry.key] = d.entry;
       break;
@@ -120,6 +112,6 @@ export function apply(s, type, d) {
     case 'notify':
       break; // transient: shown as a toast, nothing to store
     default:
-      throw new Error(`Unknown store event “${type}”.`);
+      if (!applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
   }
 }
