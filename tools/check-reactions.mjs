@@ -22,8 +22,9 @@ await begin('check-reactions', 4954, 10254);
 /** The last agent reply in the conversation: its item, its React button, and its reactions. */
 const REPLY = `[...document.querySelectorAll('#main .item')].filter((n) => n.querySelector('.who b')?.textContent.startsWith('@')).at(-1)`;
 const reactButton = `${REPLY}.querySelector('.msg-actions button[aria-label="React to this message"]')`;
-const chips = () => page.evaluate(`[...${REPLY}.querySelectorAll('.reactions .react-chip')].map((b) => b.textContent + ' ' + b.getAttribute('aria-pressed'))`);
-const menuItem = (label) => `[...document.querySelectorAll('.menu [role=menuitem]')].find((b) => b.textContent.includes(${JSON.stringify(label)}))`;
+const chips = () => page.evaluate(`[...${REPLY}.querySelectorAll('.reactions .react-chip')].map((b) => b.textContent)`);
+const menuItem = (label) => `[...document.querySelectorAll('.menu [role=menuitemcheckbox]')].find((b) => b.textContent.includes(${JSON.stringify(label)}))`;
+const checked = () => page.evaluate(`[...document.querySelectorAll('.menu [role=menuitemcheckbox]')].map((b) => b.getAttribute('aria-checked'))`);
 /** The reactions the server keeps on that reply. */
 const onServer = () =>
   page.evaluate(`fetch('/api/state').then((r) => r.json()).then(({ state }) => {
@@ -36,10 +37,11 @@ await check('#251 a reaction by mouse shows under the reply, and the server keep
   await page.evaluate(`${REPLY}.scrollIntoView({ block: 'center' })`);
   await click(reactButton);
   await page.waitFor(menuItem('Not good'), { label: 'the reactions menu' });
-  assert.equal(await page.evaluate(`document.querySelectorAll('.menu [role=menuitem]').length`), 5);
+  assert.deepEqual(await checked(), ['false', 'false', 'false', 'false', 'false']);
   await click(menuItem('Not good'));
   await page.waitFor(`!!${REPLY}.querySelector('.reactions .react-chip')`, { label: 'the reaction under the reply' });
-  assert.deepEqual(await chips(), ['👎 true']);
+  assert.deepEqual(await chips(), ['👎']);
+  assert.equal(await page.evaluate(`${REPLY}.querySelector('.react-chip').hasAttribute('aria-pressed')`), false);
   assert.deepEqual(await onServer(), ['👎']);
 });
 
@@ -47,15 +49,28 @@ await check('#251 by keyboard: React opens the menu, Enter picks one, and Enter 
   await page.evaluate(`${reactButton}.focus()`);
   await enter();
   await page.waitFor(menuItem('Flag this'), { label: 'the reactions menu' });
+  assert.deepEqual(await checked(), ['false', 'true', 'false', 'false', 'false'], 'the menu says which reactions are on');
   await page.evaluate(`${menuItem('Flag this')}.focus()`);
   await enter();
   await page.waitFor(`${REPLY}.querySelectorAll('.reactions .react-chip').length === 2`, { label: 'the second reaction' });
-  assert.deepEqual(await chips(), ['👎 true', '🚩 true']);
+  assert.deepEqual(await chips(), ['👎', '🚩']);
   await page.evaluate(`[...${REPLY}.querySelectorAll('.react-chip')].find((b) => b.textContent === '👎').focus()`);
   await enter();
   await page.waitFor(`${REPLY}.querySelectorAll('.reactions .react-chip').length === 1`, { label: 'the reaction taken back' });
-  assert.deepEqual(await chips(), ['🚩 true']);
+  assert.deepEqual(await chips(), ['🚩']);
   assert.deepEqual(await onServer(), ['🚩']);
+});
+
+await check('#251 a reaction on an app adds its row, and its frame isn’t drawn again', async () => {
+  const APP = `[...document.querySelectorAll('#main .item')].find((n) => n.querySelector('.appframe'))`;
+  await page.evaluate(`(${APP}).scrollIntoView({ block: 'center' })`);
+  await page.waitFor(`!!(${APP}).querySelector('.appframe iframe')`, { label: 'the app’s frame' });
+  await page.evaluate(`(${APP}).querySelector('iframe').dataset.mark = 'same'`);
+  await click(`(${APP}).querySelector('.msg-actions button[aria-label="React to this message"]')`);
+  await page.waitFor(menuItem('Done'), { label: 'the reactions menu' });
+  await click(menuItem('Done'));
+  await page.waitFor(`!!(${APP}).querySelector('.reactions .react-chip')`, { label: 'the reaction under the app' });
+  assert.equal(await page.evaluate(`(${APP}).querySelector('iframe').dataset.mark`), 'same', 'the app’s frame was drawn again');
 });
 
 await check('#251 axe finds nothing wrong with the reply, its reactions or the menu', async () => {

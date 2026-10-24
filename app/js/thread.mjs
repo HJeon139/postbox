@@ -285,7 +285,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       paintWorking();
       grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
-      rerender(d.id);
+      if (!d.reaction) rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)
