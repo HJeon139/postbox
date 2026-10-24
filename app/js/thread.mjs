@@ -10,6 +10,7 @@ import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { asWake, queuedRow } from './composer-queue.mjs';
+import { addressLine, addressSig } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
@@ -1934,6 +1935,15 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (c.thread) insertText(`[${c.thread.title.replace(/[[\]]/g, '')}](${threadLink(c.thread.id)})`);
     else insertText(`@${c.p.handle}`);
   }
+  // “Did you mean @critic?” (#134): the @ goes before the name the draft opens with, and the caret stays where it was.
+  function addAt() {
+    const at = ta.selectionStart + (ta.selectionStart >= /^\s*/.exec(ta.value)[0].length ? 1 : 0);
+    ta.value = ta.value.replace(/^(\s*)/, '$1@');
+    ta.focus();
+    ta.setSelectionRange(at, at);
+    save();
+    paint();
+  }
   function insertText(text) {
     const before = ta.value.slice(0, mention.start);
     const after = ta.value.slice(ta.selectionStart);
@@ -1951,9 +1961,12 @@ export function mountComposer(threadId, { side = false } = {}) {
     save();
     updateMention();
     updateSlash();
-    // The hint line follows what the line will do: a picked skill, a ! command, or a message.
+    // The hint line follows what the line will do: a picked skill, a ! command, or a message, and whom it reaches.
     if (slashTarget && !ta.value.startsWith(`/${slashTarget.name}`)) slashTarget = null;
-    if (ta.value.startsWith('!') || hint.dataset.mode || (commands && ta.value.startsWith('/'))) paint();
+    const to = hint.dataset.to !== addressSig(threadId, ta.value);
+    if (to || ta.value.startsWith('!') || hint.dataset.mode || (commands && ta.value.startsWith('/'))) paint();
+    // Said once, when it appears, since the hint isn’t read as you type.
+    if (to && hint.querySelector('.did-you-mean')) say(`${hint.querySelector('.did-you-mean').textContent} Its button follows the message box.`);
   });
   ta.addEventListener('click', () => {
     updateMention();
@@ -2171,7 +2184,10 @@ export function mountComposer(threadId, { side = false } = {}) {
             : '';
     if (mode) hint.dataset.mode = mode;
     else delete hint.dataset.mode;
+    hint.dataset.to = addressSig(threadId, ta.value);
     const folder = mode === 'shell' ? commandFolder() : null;
+    // A repaint while you’re on “Did you mean” keeps you there (#134).
+    const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);
     fill(
       hint,
       mode === 'shell'
@@ -2202,16 +2218,20 @@ export function mountComposer(threadId, { side = false } = {}) {
               )
             : offline
               ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
-              : topic
-                ? h('span', 'Replies stay in this thread. @ brings in another agent from the conversation.')
-                : side
-                  ? h('span', 'Anything you send here adds you to this side thread.')
-                  : [
-                      members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), mockMarker(last), ' (last speaker)') : null,
-                      h('span', 'Enter to send · Shift+Enter for a new line'),
-                      h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
-                    ],
+              : [
+                  // Who it reaches, in a room and in a topic or side thread too, and the @ a name may lack (#134).
+                  addressLine(threadId, ta.value, { room: topic || side || members.length > 1, addAt }),
+                  topic
+                    ? h('span', 'Replies stay in this thread. @ brings in another agent from the conversation.')
+                    : side
+                      ? h('span', 'Anything you send here adds you to this side thread.')
+                      : [
+                          h('span', 'Enter to send · Shift+Enter for a new line'),
+                          h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
+                        ],
+                ],
     );
+    if (onFix) hint.querySelector('.did-you-mean')?.focus();
   }
   /**
    * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude

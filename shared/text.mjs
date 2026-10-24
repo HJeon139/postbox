@@ -25,7 +25,7 @@ export function parseMentions(text, handles) {
  * The agent a message addresses by name without its @, as in “critic: what’s your concern?”: Postbox sends a message
  * that @-mentions no one to the agent that spoke last, so this one may not reach the critic. Only a name that opens
  * the message, followed by “:” or “,”, counts: “what did the researcher find?” is meant for whoever spoke last.
- * Nothing when the message @-mentions anyone (read as Postbox reads mentions, shared/text.mjs), or when the agent
+ * Nothing when the message @-mentions anyone (read as parseMentions, above, reads them), or when the agent
  * it names spoke last, since the message reached it anyway.
  * @param {string} text  @param {string[]} handles  @param {{ lastSpeaker?: string|null }} [opts]  the last speaker’s handle
  * @returns {string[]}
