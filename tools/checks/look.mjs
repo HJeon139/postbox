@@ -1,0 +1,159 @@
+// A headless Chrome check of how Postbox’s controls and states look, in both themes, at 375 and 1280 px:
+//   - #181: a selected segment, a chosen chip and a toggle that’s on are an amber outline, never a solid amber fill
+//     bigger than a glyph: in Postbox, in Settings, and in an app’s kit (intent.md, Visual language).
+//
+//   node tools/checks/look.mjs            (ONLY=#181 runs the cases whose name has that in it)
+//
+// It starts its own server with the demo seed (mock agents) on a fresh data folder in the temp directory.
+// PB_PORT and PB_CHROME_PORT move it (5400 and 10700 by default), so sessions working in parallel don’t collide.
+
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { start } from '../../server/index.mjs';
+import { launch } from '../cdp.mjs';
+import { finish, ports, record } from '../harness.mjs';
+
+const { PORT, CHROME_PORT } = await ports(5400, 10700);
+
+process.env.POSTBOX_BACKENDS = 'mock';
+const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-look-'));
+const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
+const page = await launch({ port: CHROME_PORT });
+const { rt, store } = app;
+
+/** Opens a route afresh: a new document, even when only the hash differs from the one open. */
+async function open(hash) {
+  await page.goto('about:blank');
+  await page.goto(`${app.origin}/${hash}`);
+  await page.synced(store.state.seq);
+}
+const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
+async function check(name, fn) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
+  let timer;
+  try {
+    const late = new Promise((_, fail) => {
+      timer = setTimeout(() => fail(new Error('Timed out after 45 s')), 45000);
+    });
+    await Promise.race([fn(), late]);
+    record(true, name);
+  } catch (e) {
+    record(false, name, e.message);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+/** Evaluates an expression in the page, or in a sandboxed app’s frame (its own process) when session is set. */
+async function inside(session, expr) {
+  if (!session) return page.evaluate(expr);
+  const r = await page.send('Runtime.evaluate', { expression: expr, returnByValue: true }, session);
+  if (r.exceptionDetails) throw new Error(`In the app: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
+  return r.result.value;
+}
+/** The CDP session of the app frame the selector finds. */
+async function frameOf(selector) {
+  const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(selector)})` });
+  assert.ok(result.objectId, `No frame: ${selector}`);
+  const { node } = await page.send('DOM.describeNode', { objectId: result.objectId });
+  const session = page.frameSession(node.frameId);
+  assert.ok(session, `The frame ${selector} has no session of its own to read it through`);
+  return session;
+}
+
+const persona = (handle) => Object.values(store.state.personas).find((p) => p.handle === handle);
+const project = Object.values(store.state.projects)[0];
+const t = rt.createThread({ projectId: project.id, title: 'Look checks', personaIds: [persona('librarian').id] });
+const se = rt.sessionsIn(t.id)[0];
+const tools = rt.toolsFor(se.id);
+
+// ── #181: selected and on states are amber outlines ─────────────────────────────────────
+
+tools.show_block({
+  block: {
+    id: 'prefs',
+    type: 'form',
+    version: 1,
+    title: 'Index settings',
+    fallback: 'Index settings',
+    fields: [{ id: 'stem', label: 'Stem words', kind: 'toggle', default: true }],
+  },
+});
+tools.show_block({
+  block: {
+    id: 'mode',
+    type: 'choice',
+    version: 1,
+    title: 'Search mode',
+    fallback: 'Search mode',
+    options: ['Lexical', 'Semantic', 'Both'].map((l) => ({ id: l.toLowerCase(), label: l })),
+  },
+});
+tools.show_app({
+  id: 'kitseg',
+  title: 'Corpus explorer',
+  code: '<main style="padding:12px"><span class="seg" role="radiogroup" aria-label="Mode"><button role="radio" aria-checked="false">Lexical</button><button role="radio" aria-checked="true">Both</button></span></main>',
+  permissions: [],
+});
+
+// Every element of a control (a button, a radio, a switch, a checkbox) bigger than a glyph whose background is
+// amber; and, for each selected or on control, the colors that mark it.
+const amberIn = (sel = 'body') => `(() => {
+  const root = document.querySelector(${JSON.stringify(sel)});
+  const probe = (v) => { const p = document.createElement('span'); p.style.background = v; document.body.append(p); const c = getComputedStyle(p).backgroundColor; p.remove(); return c; };
+  const accent = probe('var(--accent)');
+  const amber = new Set([accent, probe('var(--on)')]);
+  const solid = [];
+  for (const c of root.querySelectorAll('button, [role=radio], [role=switch], [role=checkbox], [aria-pressed], [aria-checked]'))
+    for (const n of [c, ...c.querySelectorAll('*')]) {
+      const r = n.getBoundingClientRect();
+      if (Math.min(r.width, r.height) > 18 && amber.has(getComputedStyle(n).backgroundColor))
+        solid.push(n.tagName.toLowerCase() + '.' + [...n.classList].join('.') + ' “' + c.textContent.trim().slice(0, 30) + '” ' + Math.round(r.width) + '×' + Math.round(r.height));
+    }
+  const on = [...root.querySelectorAll('.seg button[aria-checked=true], .chip[aria-checked=true], .chip[aria-pressed=true], .toggle[aria-checked=true] .track')].map((n) => {
+    const s = getComputedStyle(n);
+    const edge = s.borderTopColor === accent || s.boxShadow.includes(accent);
+    return { what: n.closest('.seg, .chip, .toggle').classList[0], text: s.color, edge, knob: getComputedStyle(n, '::after').backgroundColor };
+  });
+  return { solid, on, accent };
+})()`;
+/** What’s wrong with how a place marks its selected and on states: an amber fill, or a state not marked in amber. */
+function unmarked(found, where, kinds) {
+  const bad = found.solid.map((s) => `${where}: a solid amber fill on ${s}`);
+  for (const k of kinds) if (!found.on.some((o) => o.what === k)) bad.push(`${where}: no selected ${k} to look at`);
+  for (const o of found.on) {
+    if (!o.edge) bad.push(`${where}: a selected ${o.what} has no amber edge`);
+    if ((o.what === 'toggle' ? o.knob : o.text) !== found.accent) bad.push(`${where}: a selected ${o.what} isn’t marked in amber (${o.text}, knob ${o.knob})`);
+  }
+  return bad;
+}
+
+for (const theme of ['dark', 'light'])
+  for (const width of [1280, 375])
+    await check(
+      `#181 at ${width} px (${theme}): selected segments, chosen chips and on toggles are amber outlines, in Postbox, Settings and an app`,
+      async () => {
+        await page.size(width, 900, { theme });
+        await open(`#/t/${t.id}`);
+        await page.waitFor(
+          `document.querySelector('.toggle[aria-checked=true]') && document.querySelector('.chips .chip') && document.querySelector('.appframe iframe')`,
+        );
+        await page.evaluate(`[...document.querySelectorAll('.chips .chip')].at(-1).click()`);
+        await settle();
+        const bad = unmarked(await page.evaluate(amberIn()), 'the conversation', ['toggle', 'chip']);
+        const frame = await frameOf('.appframe iframe');
+        for (let i = 0; i < 50 && !(await inside(frame, `!!document.querySelector('.seg')`)); i++) await settle();
+        bad.push(...unmarked(await inside(frame, amberIn()), 'the app', ['seg']));
+        await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings())`);
+        await page.waitFor(`document.querySelector('.dialog .seg button[aria-checked=true]')`);
+        bad.push(...unmarked(await page.evaluate(amberIn('.dialog')), 'Settings', ['seg']));
+        assert.deepEqual(bad, []);
+      },
+    );
+
+await page.close();
+await app.close();
+await rm(dataDir, { recursive: true, force: true });
+if (page.logs.length) console.log(`\nPage errors:\n  ${page.logs.join('\n  ')}`);
+finish();

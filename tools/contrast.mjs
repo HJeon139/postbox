@@ -47,6 +47,9 @@ const checks = [
   ['dim', 'chip', 4.5],
   ['accent', 'bg', 4.5],
   ['accent', 'panel', 4.5],
+  // A chosen chip’s label and an on toggle’s knob, and a selected segment on a sunk field (#181).
+  ['accent', 'chip', 4.5],
+  ['accent', 'sunk', 4.5],
   ['on-ink', 'on', 4.5],
   ['good', 'bg', 4.5],
   ['good', 'panel', 4.5],
@@ -70,6 +73,7 @@ const checks = [
   ['stage-dim', 'stage-chip', 4.5],
   ['accent', 'stage-bg', 4.5],
   ['accent', 'stage-panel', 4.5],
+  ['accent', 'stage-chip', 4.5],
   ['stage-label', 'stage-panel', 4.5],
   ['stage-edge', 'bg', 3],
   ['stage-edge', 'stage-panel', 3],
