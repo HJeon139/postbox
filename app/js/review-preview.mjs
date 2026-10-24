@@ -107,13 +107,14 @@ function selecting(root, md, lines, env) {
     btn.hidden = !anchor;
     if (!anchor || !r) return;
     // Beside the selection’s end, and next in the tab order after it: right after the run or block it ends in, which
-    // keeps every run’s text as it was.
+    // keeps every run’s text as it was. Moved only when it isn’t there already: moving it would take its focus away.
     const box = r.getBoundingClientRect();
     const at = root.getBoundingClientRect();
     btn.style.top = `${box.bottom - at.top + 4}px`;
     btn.style.left = `${Math.max(8, Math.min(box.right - at.left - 40, at.width - 110))}px`;
     const end = r.endContainer instanceof Element ? r.endContainer : r.endContainer.parentElement;
-    (end?.closest('[data-sl]') ?? partOf(md, r.endContainer))?.after(btn);
+    const place = end?.closest('[data-sl]') ?? partOf(md, r.endContainer);
+    if (place && place.nextSibling !== btn) place.after(btn);
   };
   document.addEventListener('selectionchange', update);
   // A click that only clears a selection, or one on text, which can be selected, stays in Preview.

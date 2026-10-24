@@ -101,6 +101,23 @@ try {
   let id = '';
   const block = () => `document.querySelector('[data-block-item="${id}"]')`;
   const radio = (group, label) => `[...${block()}.querySelectorAll('[aria-label="${group}"] [role="radio"]')].find((x) => x.textContent === '${label}')`;
+  /** Selects the first word in Preview, then waits for the Comment button beside it, which moves as the page hears it. */
+  const select = async (word) => {
+    await page.evaluate(`(() => { const word = ${JSON.stringify(word)}, s = getSelection(), w = document.createTreeWalker(${block()}.querySelector('.rv-preview .md'), NodeFilter.SHOW_TEXT);
+      for (let t = w.nextNode(); t; t = w.nextNode()) if (t.data.includes(word)) { const r = document.createRange(), k = t.data.indexOf(word);
+        r.setStart(t, k); r.setEnd(t, k + word.length); s.removeAllRanges(); s.addRange(r); return; } })()`);
+    const beside = `(() => { const word = ${JSON.stringify(word)}, s = getSelection(), c = ${block()}.querySelector('.rv-sel'), r = s.rangeCount && s.getRangeAt(0);
+      return !c.hidden && s.toString() === word && !!c.previousElementSibling?.contains(r.endContainer)
+        && { near: Math.abs(c.getBoundingClientRect().top - r.getBoundingClientRect().bottom) < 40, text: c.textContent }; })()`;
+    return until(() => page.evaluate(beside));
+  };
+  /** Comments on the first word in Preview, from the Comment button beside it. */
+  const commentOn = async (word, text) => {
+    await select(word);
+    await page.evaluate(`${block()}.querySelector('.rv-sel').click()`);
+    await until(() => page.evaluate(`document.activeElement?.tagName === 'TEXTAREA' && (document.activeElement.value = ${JSON.stringify(text)})`));
+    await press('Enter', 'Enter', 13, { modifiers: 2 });
+  };
   const shown = () =>
     page.evaluate(`(() => { const b = ${block()}; return b && {
       mode: b.querySelector('[aria-label="View"] [aria-checked="true"]')?.textContent ?? '',
@@ -151,23 +168,11 @@ try {
   await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...ends[0], button: 'left', clickCount: 1 });
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...ends[1], button: 'left', buttons: 1 });
   await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...ends[1], button: 'left', clickCount: 1 });
-  await page.evaluate(`(() => {
-    const md = ${block()}.querySelector('.rv-preview .md');
-    const walk = document.createTreeWalker(md, NodeFilter.SHOW_TEXT);
-    for (let t = walk.nextNode(); t; t = walk.nextNode()) if (t.data.includes('really bold')) {
-      const r = document.createRange(); r.setStart(t, t.data.indexOf('really bold')); r.setEnd(t, t.data.indexOf('really bold') + 11);
-      getSelection().removeAllRanges(); getSelection().addRange(r); return;
-    }
-  })()`);
-  const button = await until(() =>
-    page.evaluate(`(() => { const b = ${block()}.querySelector('.rv-sel'); if (!b || b.hidden) return null;
-      const r = getSelection().getRangeAt(0).getBoundingClientRect(), x = b.getBoundingClientRect();
-      return { near: Math.abs(x.top - r.bottom) < 40, text: b.textContent }; })()`),
-  );
+  const button = await select('really bold');
   check(button?.text === 'Comment' && button.near, `selecting text shows a Comment button beside it (${JSON.stringify(button)})`);
   await press(...TAB);
-  const tabbed = await page.evaluate(`document.activeElement?.classList.contains('rv-sel')`);
-  check(tabbed, 'Tab from the selection reaches the Comment button');
+  const tabbed = await page.evaluate(`document.dispatchEvent(new Event('selectionchange')), document.activeElement?.classList.contains('rv-sel')`);
+  check(tabbed, 'Tab from the selection reaches the Comment button, and a late selectionchange leaves it there');
   await press(...ENTER);
   const box = await until(() => page.evaluate(`document.activeElement?.tagName === 'TEXTAREA' && document.activeElement.getAttribute('aria-label')`));
   check(box === 'Comment on “really bold”', `Enter opens the comment box, with focus in it (${box})`);
@@ -226,27 +231,9 @@ try {
 
   // ── Submit from Preview: the agent gets the line, columns and quote ──
   await page.evaluate(`${radio('View', 'Preview')}.click()`);
-  await page.evaluate(`(() => {
-    const md = ${block()}.querySelector('.rv-preview .md');
-    const td = [...md.querySelectorAll('td')].find((x) => x.textContent === 'low price');
-    const t = td.querySelector('[data-sl]').firstChild; const r = document.createRange(); r.setStart(t, 0); r.setEnd(t, 3);
-    getSelection().removeAllRanges(); getSelection().addRange(r);
-  })()`);
-  await until(() => page.evaluate(`!${block()}.querySelector('.rv-sel').hidden`));
-  await page.evaluate(`${block()}.querySelector('.rv-sel').click()`);
-  await until(() => page.evaluate(`document.activeElement?.tagName === 'TEXTAREA'`));
-  await page.evaluate(`document.activeElement.value = 'Say how low.'`);
-  await press('Enter', 'Enter', 13, { modifiers: 2 });
+  await commentOn('low', 'Say how low.');
   // And a word of a code block in a list item, whose lines sit past the item’s indent.
-  await page.evaluate(`(() => {
-    const pre = ${block()}.querySelector('.rv-preview li pre'); const t = pre.querySelector('code').firstChild; const k = t.data.indexOf('run');
-    const r = document.createRange(); r.setStart(t, k); r.setEnd(t, k + 3); getSelection().removeAllRanges(); getSelection().addRange(r);
-  })()`);
-  await until(() => page.evaluate(`!${block()}.querySelector('.rv-sel').hidden`));
-  await page.evaluate(`${block()}.querySelector('.rv-sel').click()`);
-  await until(() => page.evaluate(`document.activeElement?.tagName === 'TEXTAREA'`));
-  await page.evaluate(`document.activeElement.value = 'Which script?'`);
-  await press('Enter', 'Enter', 13, { modifiers: 2 });
+  await commentOn('run', 'Which script?');
   await page.evaluate(`[...${block()}.querySelectorAll('button')].find((x) => x.textContent === 'Submit review').click()`);
   const heard = await until(() => calls.find((m) => m.kind === 'event' && m.event.blockId === 'notes'));
   check(
