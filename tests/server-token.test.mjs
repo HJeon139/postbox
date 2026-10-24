@@ -59,6 +59,7 @@ const WRITE_ROUTES = {
     '/api/sessions/se_none/restore',
     '/api/sessions/se_none/undo-delete',
   ],
+  'POST ^\\/api\\/sessions\\/([^/]+)\\/resume$': ['/api/sessions/se_none/resume'],
   'DELETE ^\\/api\\/sessions\\/([^/]+)$': ['/api/sessions/se_none'],
   'DELETE ^\\/api\\/sessions\\/([^/]+)\\/stop-ask$': ['/api/sessions/se_none/stop-ask'],
   'POST ^\\/api\\/sessions\\/([^/]+)\\/jobs\\/([^/]+)\\/stop$': ['/api/sessions/se_none/jobs/job_none/stop'],
@@ -187,4 +188,18 @@ test('#74: a message sent with the page’s token posts as the person; one witho
   assert.equal(sent.status, 201);
   assert.equal(app.store.items(thread.id).find((i) => i.kind === 'user')?.text, 'from the page');
   for (const se of app.rt.sessionsIn(thread.id)) app.rt.stop(se.id, { silent: true });
+});
+
+test('#120 L6: Resume after a turn on a host stopped needs the page’s token, and with it reaches resumeRemote', async () => {
+  const thread = Object.values(app.store.state.threads).find((t) => t.title === 'Corpus explorer');
+  const [se] = app.rt.sessionsIn(thread.id);
+  const path = `/api/sessions/${se.id}/resume`;
+  const refused = await call({ method: 'POST', path, body: {} });
+  assert.equal(refused.status, 403);
+  assert.equal(refused.json.code, 'token');
+  // With the token, the runtime answers: this agent has no stopped turn on a host, so there’s nothing to resume.
+  const cookie = await pageCookie();
+  const r = await call({ method: 'POST', path, body: {}, cookie });
+  assert.equal(r.status, 409, r.text);
+  assert.match(r.json.error, new RegExp(`^@${se.handle} has no stopped turn on a host to resume\\.$`));
 });

@@ -116,10 +116,25 @@ export function checkRemoteContext(remote, { attach = false } = {}) {
 export class AdapterRegistry {
   constructor() {
     this.adapters = new Map();
+    /** The backends registered to run only on a host: their CLI isn’t on this computer (#120). */
+    this.hostOnly = new Set();
   }
-  register(adapter) {
+  /**
+   * An adapter runs on this computer unless it’s registered with here: false. server/index.mjs registers Claude Code,
+   * Kiro CLI and Codex that way when their CLI isn’t found, so an agent can still run them on a host; anything else
+   * (the mock, or a scripted adapter a check or test puts in) runs here. Registering a name again replaces its adapter
+   * and where it runs.
+   * @param {any} adapter @param {{ here?: boolean }} [o]
+   */
+  register(adapter, { here = true } = {}) {
     this.adapters.set(adapter.name, adapter);
+    if (here) this.hostOnly.delete(adapter.name);
+    else this.hostOnly.add(adapter.name);
     return this;
+  }
+  /** Whether a registered backend runs on this computer. @param {string} name */
+  runsHere(name) {
+    return this.adapters.has(name) && !this.hostOnly.has(name);
   }
   get(name) {
     const a = this.adapters.get(name);

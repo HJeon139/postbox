@@ -109,7 +109,7 @@ const BREAK_STALE_MS = 5000;
 /** daemon.log is set aside as daemon.log.1 when it’s over this at serve’s start. */
 const LOG_KEEP_BYTES = 4 * 1024 * 1024;
 /** How long `remove` waits for the turns it stopped to end, past Stop’s grace period. */
-const REMOVE_WAIT_MS = 5000;
+export const REMOVE_WAIT_MS = 5000;
 /** The daemon’s entry point, which the `host` launcher (PROGRAMS.host, a shell script) runs with the Node it found. */
 export const HOST_ENTRY = join(dirname(PROGRAMS.host), 'host.mjs');
 /** Exit codes, from sysexits.h. */
@@ -154,7 +154,7 @@ const READ_CHUNK = 64 * 1024;
  *   launchRunner?: LaunchRunner, askRunner?: AskRunner, proc?: Proc, writeRunner?: WriteRunner,
  *   findPrograms?: (o: { home: string, settings: Record<string, any> }) => Promise<import('./programs.mjs').Programs>,
  *   kill?: (pid: number, signal: NodeJS.Signals) => void, log?: (line: string) => void, onIdle?: () => void,
- *   onRemoved?: () => void, pollMs?: number, stopGraceMs?: number, runnerStartMs?: number, sweepMs?: number,
+ *   onRemoved?: () => void, pollMs?: number, stopGraceMs?: number, removeWaitMs?: number, runnerStartMs?: number, sweepMs?: number,
  *   broker?: Broker, shim?: ShimSeam, uid?: number, env?: Record<string, string | undefined> }} opts
  *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs). onRemoved: `remove` has
  *   deleted ~/.postbox-remote and said `removed`, so the daemon exits. env: the daemon’s environment, which each runner
@@ -178,6 +178,7 @@ export function createDaemon({
   onRemoved = onIdle,
   pollMs = POLL_MS,
   stopGraceMs = STOP_GRACE_MS,
+  removeWaitMs = REMOVE_WAIT_MS,
   runnerStartMs = RUNNER_START_MS,
   sweepMs = SWEEP_MS,
   broker,
@@ -1009,6 +1010,9 @@ export function createDaemon({
       removing = false;
       return fail(c, 'internal', bad, 'remove');
     }
+    // A start already under way on another connection finishes first (no new one gets past `removing`), so its turn
+    // is scanned and stopped like the rest, never launched from files this removal deleted.
+    while (starting.size) await Promise.all(starting.values());
     const records = [];
     for (const t of (await scan()).filter((x) => x.state === 'running')) {
       await stopTurn(t.turn);
@@ -1017,15 +1021,26 @@ export function createDaemon({
     }
     const live = async () => {
       const still = [];
-      for (const r of records) if (!(await readExit(r.turn)) && (await proc.sameProcess(r.rec))) still.push(r.turn);
+      // By the runner’s own process, not exit.json: after its SIGKILL the daemon writes exit.json itself, whether or not
+      // the runner actually went.
+      for (const r of records) if (await proc.sameProcess(r.rec)) still.push(r.turn);
       return still;
     };
     let still = await live();
-    for (let i = Math.ceil((stopGraceMs + REMOVE_WAIT_MS) / pollMs); still.length && i > 0; i--) {
+    for (let i = Math.ceil((stopGraceMs + removeWaitMs) / pollMs); still.length && i > 0; i--) {
       await new Promise((resolve) => setTimeout(resolve, pollMs).unref());
       still = await live();
     }
-    if (still.length) log(`Turns ${still.join(', ')} hadn’t ended ${Math.round((stopGraceMs + REMOVE_WAIT_MS) / 1000)} s after Stop; removing anyway.`);
+    // A runner still alive after Stop (stuck in the kernel, say) keeps everything: deleting its records and the token
+    // would leave it running with nothing on either machine able to stop it. The laptop keeps the host, and the person
+    // can remove it again once the turn has ended.
+    if (still.length) {
+      removing = false;
+      const n = still.length;
+      const why = `${n === 1 ? 'Turn' : 'Turns'} ${still.join(', ')} ${n === 1 ? 'was' : 'were'} still running ${Math.round((stopGraceMs + removeWaitMs) / 1000)} s after Stop, so nothing was removed.`;
+      log(why);
+      return fail(c, 'internal', why, 'remove');
+    }
     for (const x of conns) for (const f of x.follows.values()) f.stop();
     try {
       await cleanup.removeAll((pid) => kill(pid, 'SIGTERM'));

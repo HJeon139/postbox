@@ -116,7 +116,7 @@ async function write(path, init) {
   return fetch(path, init);
 }
 
-/** API calls. Errors carry the server’s plain-English message. */
+/** API calls. Errors carry the server’s plain-English message, and for a host’s failure what to do next (#120). */
 export async function api(path, body, method = 'POST') {
   let r;
   try {
@@ -126,7 +126,12 @@ export async function api(path, body, method = 'POST') {
   }
   const data = await r.json().catch(() => ({}));
   if (!r.ok)
-    throw Object.assign(new Error(data.error ?? `The server answered ${r.status}.`), { status: r.status, fieldErrors: data.fieldErrors, code: data.code });
+    throw Object.assign(new Error(data.error ?? `The server answered ${r.status}.`), {
+      status: r.status,
+      fieldErrors: data.fieldErrors,
+      code: data.code,
+      next: data.next ?? null,
+    });
   return data;
 }
 

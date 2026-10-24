@@ -16,6 +16,12 @@
 // - Effort: each turn’s wall time, tool calls, tokens and spend (the result’s total_cost_usd).
 // Whether a file is uncommitted, committed or pushed is asked of git when the Work view opens: read-only commands,
 // without git’s optional locks, so an agent’s own git never waits on Postbox.
+//
+// A turn on a remote host (#120; architecture.md, “Remote hosts”) is recorded from its stream only. Its files are on
+// the host, and a path there may name a different file here, or one of the person’s own: so the ledger never reads,
+// diffs or restores a file for it, and never runs git or reads a command’s output file for it either. An edit is
+// kept as a step (kind 'edit': the file, the host, how many edits) with no copy and no lines; commands, branches,
+// commits and pushes are kept as the stream reports them, with their host; effort is kept as for any turn.
 
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
@@ -119,6 +125,9 @@ function memoryBlobs() {
 const sameSnap = (a, b) => Boolean(a?.exists) === Boolean(b?.exists) && (!a?.exists || (a.sha256 && a.sha256 === b?.sha256));
 const known = (s) => !s?.exists || Boolean(s.sha256);
 const fail = (status, message) => Object.assign(new Error(message), { status });
+/** The refusal for a file on a host: Postbox never read it, so it has no diff and nothing to put back. */
+const onHost = (e) =>
+  fail(409, `${e.rel} is on ${e.host?.name ?? 'a host'}, and Postbox doesn’t keep copies of files on a host: it has no diff of it and can’t restore it.`);
 
 export class Ledger {
   /**
@@ -175,20 +184,25 @@ export class Ledger {
 
   /**
    * A turn starts. folder is where the agent works (a promise is fine: adapters find it asynchronously),
-   * projectFolder the project’s root: a change outside both is flagged.
+   * projectFolder the project’s root: a change outside both is flagged. A turn on a host (hostOf) records only what
+   * its stream says, against the host’s folder for it.
    * @param {any} turn @param {{ se: any, folder?: string|null|Promise<string|null>, projectFolder?: string|null }} where
    */
   startTurn(turn, { se, folder = null, projectFolder = null }) {
     const convId = this.convOf(turn.threadId);
+    const host = this.hostOf(turn, se);
     /** @type {any} */
     const w = {
       convId,
       se: { id: se.id, handle: se.handle },
+      host,
       folder: null,
-      projectFolder,
+      projectFolder: host ? null : projectFolder,
       files: new Map(), // path → { path, tools, who, before: Promise<snap>, firstTool }
+      edits: new Map(), // on a host: path → its edit entry’s id
       calls: new Map(), // tool_use id → { name, input, who, at, path? }
       commands: new Map(), // tool_use id → command entry id
+      results: new Map(), // tool_use id → its command’s result, while it’s being recorded
       externals: new Map(), // tool_use id → external entry id
       denied: new Set(),
       usage: new Map(), // process key → { costUsd, tokens }
@@ -197,14 +211,16 @@ export class Ledger {
       ended: false,
     };
     turn.work = w;
-    w.pending.push(
-      Promise.resolve(folder).then(
-        (f) => {
-          w.folder = f ?? null;
-        },
-        () => {},
-      ),
-    );
+    // A host’s folder is known once the turn has its host turn (se.remoteTurn.folder), before its first tool call.
+    if (!host)
+      w.pending.push(
+        Promise.resolve(folder).then(
+          (f) => {
+            w.folder = f ?? null;
+          },
+          () => {},
+        ),
+      );
     this.add(convId, {
       kind: 'turn',
       id: turn.id,
@@ -215,12 +231,37 @@ export class Ledger {
       startedAt: turn.startedAt ?? this.now(),
       status: 'running',
       toolCalls: 0,
+      ...(host ? { host } : {}),
     });
+  }
+
+  /**
+   * The host a turn runs on, { id, name }, or null for this computer: the runtime has made the turn remote
+   * (turn.remote), its persona runs on a host, or its session’s host turn is this one.
+   * @param {any} turn @param {any} se
+   */
+  hostOf(turn, se) {
+    const now = this.s.sessions?.[se.id] ?? se;
+    const r = now.remoteTurn;
+    const id = [turn.remote?.hostId, this.s.personas?.[now.personaId]?.remote?.hostId, r?.rtTurn === turn.id ? r.hostId : null].find(
+      (x) => typeof x === 'string' && x,
+    );
+    if (!id) return null;
+    return { id, name: clip(this.s.hosts?.[id]?.name ?? 'its host', 200) };
+  }
+  /** The folder a host turn works in, once the runtime has given it one. */
+  hostFolder(turn) {
+    const w = turn.work;
+    if (!w.folder) {
+      const r = this.s.sessions?.[w.se.id]?.remoteTurn;
+      if (r?.rtTurn === turn.id && typeof r.folder === 'string' && isAbsolute(r.folder)) w.folder = resolve(r.folder);
+    }
+    return w.folder;
   }
 
   base(turn, extra = {}) {
     const w = turn.work;
-    return { turnId: turn.id, threadId: turn.threadId, sessionId: w.se.id, handle: w.se.handle, at: this.now(), ...extra };
+    return { turnId: turn.id, threadId: turn.threadId, sessionId: w.se.id, handle: w.se.handle, at: this.now(), ...(w.host ? { host: w.host } : {}), ...extra };
   }
   abs(w, p) {
     return isAbsolute(p) ? resolve(p) : resolve(w.folder ?? w.projectFolder ?? '/', p);
@@ -234,6 +275,7 @@ export class Ledger {
     const w = turn.work;
     if (!w || w.ended || !id || w.calls.has(id)) return;
     w.toolCalls += 1;
+    if (w.host) this.hostFolder(turn);
     /** @type {{ name: string, input: any, who: string|null, at: number, path: string|null }} */
     const call = { name, input, who, at: this.now(), path: null };
     w.calls.set(id, call);
@@ -241,6 +283,8 @@ export class Ledger {
     if (field && typeof input?.[field] === 'string' && input[field].trim()) {
       const path = this.abs(w, input[field]);
       call.path = path;
+      // On a host, the file isn’t here to read: its edit is recorded when the tool says it worked (toolResult).
+      if (w.host) return;
       let f = w.files.get(path);
       if (!f) {
         // Read now, before the tool writes: the tool runs in another process, so this is the moment to catch it.
@@ -267,7 +311,8 @@ export class Ledger {
         }),
       );
       w.commands.set(id, e.id);
-      commandStarted(this, turn, e.id);
+      // Its git folder is read before and after, here; a host’s is on the host (#120).
+      if (!w.host) commandStarted(this, turn, e.id);
       return;
     }
     const ext = externalTool(name);
@@ -356,6 +401,10 @@ export class Ledger {
     if (!w || !call) return;
     /** @type {any} */
     const r = result && typeof result === 'object' ? result : null;
+    if (call.path && w.host) {
+      if (!isError && !w.denied.has(id)) this.hostEdit(turn, call);
+      return;
+    }
     if (call.path) {
       const f = w.files.get(call.path);
       // The tool’s own record of the file before it changed it, which beats the read Postbox raced it for.
@@ -368,7 +417,9 @@ export class Ledger {
     }
     const cmdId = w.commands.get(id);
     if (cmdId) {
-      w.pending.push(this.track(this.commandEnded(turn, cmdId, { isError, text, r, vcsCwd }).then(() => commandSeen(this, turn, cmdId))));
+      const done = this.track(this.commandEnded(turn, cmdId, { isError, text, r, vcsCwd }).then(() => commandSeen(this, turn, cmdId)));
+      w.results.set(id, done);
+      w.pending.push(done);
       return;
     }
     const extId = w.externals.get(id);
@@ -379,6 +430,34 @@ export class Ledger {
         result: clip(text, 2000),
         endedAt: this.now(),
       });
+  }
+
+  /**
+   * An edit on a host, as a step: which file, how many edits this turn, and that Postbox kept no copy of it.
+   * @param {any} turn @param {{ who: string|null, path: string|null }} call
+   */
+  hostEdit(turn, { who, path }) {
+    const w = turn.work;
+    if (!path) return;
+    const id = w.edits.get(path);
+    const e = id ? this.entry(w.convId, id) : null;
+    if (e) {
+      this.patch(w.convId, e.id, { tools: (e.tools ?? 1) + 1, at: this.now() });
+      return;
+    }
+    const entry = this.add(
+      w.convId,
+      this.base(turn, {
+        kind: 'edit',
+        id: newId('we'),
+        who,
+        path: clip(path, 4000),
+        rel: clip(this.display(path, w), 500),
+        outside: Boolean(w.folder) && !this.inside(path, w),
+        tools: 1,
+      }),
+    );
+    w.edits.set(path, entry.id);
   }
 
   async commandEnded(turn, cmdId, { isError, text, r, vcsCwd }) {
@@ -462,13 +541,16 @@ export class Ledger {
     w.pending.push(
       this.track(
         (async () => {
+          // Its result first: a replayed stream (a remote turn attached again) hands both over at once.
+          await w.results.get(toolUseId);
           const e = this.entry(w.convId, cmdId);
           if (!e) return;
           const exit = /exit code (\d+)/i.exec(summary);
           const code = exit ? Number(exit[1]) : null;
           const state = /kill|stop/i.test(status) ? 'stopped' : status === 'completed' && (code ?? 0) === 0 ? 'done' : 'failed';
           let output = e.output ?? null;
-          if (outputFile && isAbsolute(outputFile)) {
+          // A host’s output file is on the host; the path names nothing here.
+          if (outputFile && isAbsolute(outputFile) && !w.host) {
             const tail = await this.io.readTail(outputFile, MAX_OUTPUT_BYTES).catch(() => null);
             if (tail) output = { ...(await this.keepOutput(tail.bytes)), cut: tail.cut };
           }
@@ -520,7 +602,8 @@ export class Ledger {
       await Promise.allSettled(w.pending);
       turnEnded(this, w);
       this.recordPublishes(turn);
-      for (const f of w.files.values()) {
+      // A host turn has no files to read (they’re on the host), so this is a no-op for it; the guard says so.
+      for (const f of w.host ? [] : w.files.values()) {
         const before = await f.before;
         const after = await this.capture(await this.io.read(f.path));
         await this.recordChange(turn, f, before, after);
@@ -590,7 +673,8 @@ export class Ledger {
   /** Where a path is shown from: the project, the agent’s folder, the home folder, or as it is. */
   display(path, w) {
     for (const root of [w.projectFolder, w.folder]) if (root && (path === root || path.startsWith(root + sep))) return relative(root, path) || basename(path);
-    if (this.home && path.startsWith(this.home + sep)) return `~/${relative(this.home, path)}`;
+    // The home folder here isn’t the host’s.
+    if (this.home && !w.host && path.startsWith(this.home + sep)) return `~/${relative(this.home, path)}`;
     return path;
   }
   inside(path, w) {
@@ -685,6 +769,7 @@ export class Ledger {
   /** @param {string} convId @param {string} fileId @param {string|null} [changeId] */
   async fileDiff(convId, fileId, changeId = null) {
     const f = this.entry(convId, fileId);
+    if (f?.kind === 'edit') throw onHost(f);
     if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
     const c = changeId ? this.entry(convId, changeId) : null;
     if (changeId && (c?.kind !== 'change' || c.fileId !== fileId)) throw fail(404, 'That change isn’t in this conversation’s work.');
@@ -711,6 +796,7 @@ export class Ledger {
    */
   async restore(convId, fileId) {
     const f = this.entry(convId, fileId);
+    if (f?.kind === 'edit') throw onHost(f);
     if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
     if (!known(f.before)) throw fail(409, `Postbox didn’t keep a copy of ${f.rel} from before: it was ${f.before?.big ? 'larger than 4 MB' : 'unreadable'}.`);
     if (sameSnap(f.before, f.after)) throw fail(409, `${f.rel} is already as it was before.`);

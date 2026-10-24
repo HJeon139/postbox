@@ -220,6 +220,9 @@ test('#120 e2e: a persona whose host was removed is refused with a reason, and n
   const p = postbox();
   try {
     assert.deepEqual(await p.rt.removeHost(p.host.id), { ok: true, stopped: 0 });
+    // Removing it removed Postbox there, over one session; nothing dials it after.
+    assert.equal(p.d.removes, 1);
+    assert.equal(p.ssh.calls.length, 1);
     assert.deepEqual(p.rt.persona(p.se().personaId).remote, { hostId: p.host.id }, 'it keeps its placement until moved');
     p.rt.sendMessage(p.t.id, { text: 'hi' });
     await until(() => replies(p).some((i) => i.status === 'failed'), 'the refusal');
@@ -227,7 +230,7 @@ test('#120 e2e: a persona whose host was removed is refused with a reason, and n
     const failed = replies(p).find((i) => i.status === 'failed');
     assert.match(failed.error, /@coder’s host was removed, so this turn couldn’t start\. Choose another host for it, or this computer\./);
     assert.deepEqual(p.f.calls, [], 'nothing ran on this computer');
-    assert.equal(p.ssh.calls.length, 0, 'nor on any host');
+    assert.equal(p.ssh.calls.length, 1, 'nor on any host: no session after the removal’s');
   } finally {
     await p.done();
     rmSync(p.dataDir, { recursive: true, force: true });

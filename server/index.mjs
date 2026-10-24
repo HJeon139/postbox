@@ -129,42 +129,33 @@ export async function start({
   const blobs = new Blobs(join(dataDir, 'blobs'));
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
-  // The backends that run on this computer. Those that can run on a host (capabilities.remote: Claude Code, Kiro CLI
-  // and Codex) register without their CLI here too, so an agent can run them there (#120); the rest only when they
-  // can run here. POSTBOX_BACKENDS=mock turns them all off (tests, demo).
-  const local = new Set(['mock']);
+  // The real backends. Those that can run on a host (capabilities.remote: Claude Code, Kiro CLI and Codex) register
+  // without their CLI here too, as host-only (here: false), so an agent can run them there (#120); the rest only when
+  // they can run here. POSTBOX_BACKENDS=mock turns them all off (tests, demo).
   const real = (probes !== undefined || process.env.POSTBOX_BACKENDS !== 'mock') && !demo;
   const look = { ...PROBES, ...probes };
   const workRoot = join(dataDir, 'workspaces');
   const claude = real ? await look.claude() : null;
-  if (claude) local.add('claude-code');
-  if (real) adapters.register(new ClaudeCodeAdapter({ workRoot }));
+  if (real) adapters.register(new ClaudeCodeAdapter({ workRoot }), { here: !!claude });
   const sdk = real ? await look.sdk() : null;
-  if (sdk) {
-    adapters.register(new AgentSdkAdapter({ sdk, workRoot }));
-    local.add('agent-sdk');
-  }
+  if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot }));
   // An Isolated Kiro persona runs with a Kiro home of Postbox’s own (#117), next to the workspaces.
   const kiro = real ? await look.kiro() : null;
-  if (kiro) local.add('kiro-cli');
-  if (real) adapters.register(new KiroCliAdapter({ workRoot, isolatedHome: join(dataDir, 'kiro-home'), models: kiro ? await look.kiroModels() : [] }));
+  if (real)
+    adapters.register(new KiroCliAdapter({ workRoot, isolatedHome: join(dataDir, 'kiro-home'), models: kiro ? await look.kiroModels() : [] }), {
+      here: !!kiro,
+    });
   // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
   const agy = real ? await look.agy() : null;
-  if (agy) {
-    adapters.register(new AntigravityCliAdapter({ workRoot, models: await look.agyModels() }));
-    local.add('antigravity-cli');
-  }
+  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, models: await look.agyModels() }));
   const codex = real ? await look.codex() : null;
-  if (codex) local.add('codex');
-  if (real) adapters.register(new CodexAdapter({ workRoot, models: codex ? await look.codexModels() : [] }));
+  if (real) adapters.register(new CodexAdapter({ workRoot, models: codex ? await look.codexModels() : [] }), { here: !!codex });
   const config = {
     origin,
     // Which build this is, shown under Personas in the sidebar.
     build: buildInfo({ root: ROOT }),
     imageOrigins: [origin, 'https://www.gutenberg.org', 'https://upload.wikimedia.org'],
     versions: { claudeCode: claude, kiroCli: kiro, antigravityCli: agy, codex },
-    // Which registered backends run on this computer; the rest run only on a host (the runtime’s localBackends).
-    localBackends: [...local],
     // The person’s Claude Code user settings live here: the permissions panel reads and writes their rules (#66).
     home: claudeHome,
   };
@@ -183,7 +174,7 @@ export async function start({
           version: config.build.version,
         });
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
-  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => local.has(b)) ?? 'mock';
+  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
   for (const se of Object.values(store.state.sessions))
@@ -269,6 +260,8 @@ export async function start({
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
           fieldErrors: e.fieldErrors,
           code: e.code,
+          // What to do about a host’s failure (#120): the page shows it under the error.
+          next: e.status ? e.next : undefined,
         });
       else res.end();
     }
@@ -361,7 +354,7 @@ export async function start({
           adapters: rt.localBackends(),
           // What each one can do (#117), so the page hides what a backend can’t honor rather than checking its name;
           // local: whether it runs on this computer, since one that can run on a host is listed without its CLI here.
-          backends: Object.fromEntries(adapters.names().map((n) => [n, { ...(adapters.get(n).capabilities ?? {}), local: local.has(n) }])),
+          backends: Object.fromEntries(adapters.names().map((n) => [n, { ...(adapters.get(n).capabilities ?? {}), local: adapters.runsHere(n) }])),
           defaultModel: DEFAULT_MODEL,
           effortLevels: EFFORT_LEVELS,
           defaultEffort: DEFAULT_EFFORT,
@@ -462,6 +455,9 @@ export async function start({
       rt.session(m[1]);
       return send(res, 200, { ok: true, result: action() ?? null });
     }
+    // Resume, after a turn on a host stopped with Sign-in needed or Interrupted (#120): a 409 says why when there’s
+    // nothing to resume.
+    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/resume$/)) && req.method === 'POST') return send(res, 200, rt.resumeRemote(m[1]));
     if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteSession(m[1]));
     // Stop’s ask about background jobs, dismissed, and a background job’s own Stop (#129).
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/stop-ask$/)) && req.method === 'DELETE') {
@@ -651,10 +647,10 @@ export async function start({
       server.once('error', fail);
       server.listen(port, host, () => ok(rt.drainAll())); // listening: what waited in the queues across a restart goes (#228)
     });
-  const remoteOnly = adapters.names().filter((n) => !local.has(n));
+  const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
   if (!quiet)
     console.log(
-      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${[...local].join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${agy ? ` (Antigravity CLI ${agy})` : ''}${codex ? ` (Codex ${codex})` : ''}${remoteOnly.length ? `\nOn hosts only: ${remoteOnly.join(', ')}` : ''}${demo ? '\nDemo controls are on.' : ''}`,
+      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${rt.localBackends().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${agy ? ` (Antigravity CLI ${agy})` : ''}${codex ? ` (Codex ${codex})` : ''}${remoteOnly.length ? `\nOn hosts only: ${remoteOnly.join(', ')}` : ''}${demo ? '\nDemo controls are on.' : ''}`,
     );
   return {
     server,

@@ -28,13 +28,17 @@
 //   argument list with no shell. null when the host has none (the default). Sign-in needed resumes on its own only
 //   when it passes (D2); without one, the turn waits for the person.
 // - refresh(hostId): the settings the daemon enforces changed, so a connected host gets a fresh hello with them.
+// - removeFromHost(hostId): the design’s “Remove Postbox from host”, through the daemon (`remove`, answered by
+//   `removed`): it stops every turn still running there and deletes ~/.postbox-remote. Only after `removed` may the
+//   caller forget the token (forget); until then it’s the only way to reach the host and try again.
 
 import { EventEmitter } from 'node:events';
 import { lstatSync, readFileSync } from 'node:fs';
 import { message, SIGN_IN_CHECK_MS } from '../../shared/remote-protocol.mjs';
+import { REMOVE_WAIT_MS, STOP_GRACE_MS } from './host/daemon.mjs';
 import { describeInstall, forgetToken, installHost, TOKEN_RE, tokenFile } from './install.mjs';
 import { createHostLink } from './link.mjs';
-import { failure as sshFailure } from './ssh.mjs';
+import { SshFailure, failure as sshFailure } from './ssh.mjs';
 
 /** How long a connected host that nothing needs keeps its session, so back-to-back turns share one. */
 export const IDLE_GRACE_MS = 2 * 60 * 1000;
@@ -42,9 +46,13 @@ export const IDLE_GRACE_MS = 2 * 60 * 1000;
 export const HEARD_EVERY_MS = 10_000;
 /** How long Postbox waits for a sign-in check’s answer once it’s sent: the host’s own limit, plus the round trip. */
 export const CHECK_WAIT_MS = SIGN_IN_CHECK_MS + 30_000;
+/**
+ * How long Postbox waits for `removed` once it sent `remove`: the daemon’s own wait for the turns it stops (Stop’s
+ * grace period, then REMOVE_WAIT_MS), plus the round trip and the deleting.
+ */
+export const REMOVE_CONFIRM_MS = STOP_GRACE_MS + REMOVE_WAIT_MS + 30_000;
 
 /**
- * @typedef {import('./ssh.mjs').SshFailure} SshFailure
  * @typedef {ReturnType<typeof createHostLink>} HostLink
  * @typedef {import('../../shared/remote-settings.mjs').Host} Host
  * @typedef {'connected' | 'reconnecting' | 'disconnected' | 'failed' | 'not-installed'} HostState
@@ -91,6 +99,8 @@ export function createHostManager({
   const heardTimers = new Map();
   /** @type {Map<string, Promise<SignInCheck | null>>} the sign-in check under way, per host */
   const checks = new Map();
+  /** @type {Map<string, Promise<void>>} the removal under way, per host */
+  const removals = new Map();
   let closed = false;
 
   /** @param {string} id @returns {Host} */
@@ -404,6 +414,60 @@ export function createHostManager({
     }
   };
 
+  /** @param {string} id @returns {Promise<void>} */
+  const runRemove = async (id) => {
+    const why = Symbol('remove');
+    need(id, why);
+    try {
+      const name = hostOf(id).name;
+      const again = (/** @type {SshFailure} */ f) => new SshFailure(f.kind, f.message, `${f.next} Then remove it again.`, f.detail);
+      try {
+        await ensureWelcome(id);
+      } catch (e) {
+        // No token here (link()’s not-installed) is the caller’s to decide; a host that can’t be reached is a retry.
+        throw e?.name === 'SshFailure' && e.code !== 'not-installed' ? again(e) : e;
+      }
+      const l = /** @type {Entry} */ (links.get(id)).link;
+      await new Promise((resolve, reject) => {
+        let timer = null;
+        /** @param {(v: any) => void} fn @param {any} [v] */
+        const done = (fn, v) => {
+          if (timer) clearTimer(timer);
+          l.off('message', onMessage);
+          l.off('state', onState);
+          fn(v);
+        };
+        const onMessage = (m) => {
+          if (m.type === 'removed') done(resolve);
+          // The daemon refused, deleting nothing: a home it won’t delete, or a removal already under way.
+          else if (m.type === 'error' && m.re === 'remove')
+            done(reject, new SshFailure('failed', `${name} didn’t remove Postbox: ${m.message}`, `Fix that on ${name}, then remove it again.`));
+        };
+        // The daemon says `removed` before it closes, so a close first is a lost connection, whatever it did there.
+        const lost = () =>
+          new SshFailure('failed', `The connection to ${name} closed before it confirmed that Postbox was removed.`, `Remove it again once ${name} is back.`);
+        const onState = () => !l.connected && done(reject, lost());
+        l.on('message', onMessage);
+        l.on('state', onState);
+        timer = setTimer(
+          () =>
+            done(
+              reject,
+              new SshFailure(
+                'failed',
+                `${name} didn’t confirm within ${Math.round(REMOVE_CONFIRM_MS / 1000)} seconds that Postbox was removed.`,
+                'Try again in a moment.',
+              ),
+            ),
+          REMOVE_CONFIRM_MS,
+        );
+        if (!l.send(message('postbox-to-daemon', 'remove', {}))) done(reject, lost());
+      });
+    } finally {
+      release(id, why);
+    }
+  };
+
   return Object.assign(events, {
     /**
      * The host’s link, made on first use. Throws an SshFailure with code `not-installed` when this laptop has no
@@ -533,6 +597,27 @@ export function createHostManager({
       if (under) return under;
       const p = runCheck(hostId, argv).finally(() => checks.delete(hostId));
       checks.set(hostId, p);
+      return p;
+    },
+    /**
+     * Removes Postbox from the host: connects if need be, sends the daemon `remove` (it stops every turn still running
+     * there, deletes ~/.postbox-remote, its code, token, logs and turn records, and exits), and resolves once it says
+     * `removed`. Rejects with an SshFailure (what happened, and the next step) when the host can’t be reached, the
+     * daemon refuses, the connection closes first, or no `removed` comes within REMOVE_CONFIRM_MS; the token stays, so
+     * the caller can try again. One this laptop has no token for rejects as link() does (code `not-installed`). One
+     * removal per host at a time; callers share it.
+     * @param {string} hostId @returns {Promise<void>}
+     */
+    removeFromHost(hostId) {
+      try {
+        hostOf(hostId);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+      const under = removals.get(hostId);
+      if (under) return under;
+      const p = runRemove(hostId).finally(() => removals.delete(hostId));
+      removals.set(hostId, p);
       return p;
     },
     /** Closes every link; turns go on on their hosts. */

@@ -204,7 +204,7 @@ function blockContent(it) {
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string }, localBackends?: string[] },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
    *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
    *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger,
@@ -214,8 +214,6 @@ export class Runtime {
    *   ledger: the work ledger (#132); tests pass one with fake files and git
    *   hosts: the remote hosts’ manager (#120, server/remote/hosts.mjs), which reaches each host’s daemon; without it,
    *   nothing runs on a host. Tests pass a fake.
-   *   config.localBackends: the registered backends that run on this computer, when some run only on a host
-   *   (localBackends()); left out, all of them do.
    */
   constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger, hosts }) {
     this.store = store;
@@ -1040,7 +1038,13 @@ export class Runtime {
           text: '',
           status: 'failed',
         }).id;
-      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null, asked: askedOf(turn), ...(err.remote ? { remote: err.remote } : {}) });
+      this.patchItem(turn.threadId, target, {
+        status: 'failed',
+        error: message,
+        retry: turn.retry ?? null,
+        asked: askedOf(turn),
+        ...(err.remote ? { remote: err.remote } : {}),
+      });
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
@@ -3178,19 +3182,17 @@ export class Runtime {
   // ── Remote hosts (#120) ────────────────────────────────────────────────────────────
 
   /**
-   * The backends that run on this computer: every registered one, unless config.localBackends lists them. Claude Code,
-   * Kiro CLI and Codex are registered without their CLI here too (server/index.mjs), since an agent can run them on a
-   * host; config.localBackends then leaves them out.
+   * The backends that run on this computer: every registered one but those registered to run only on a host (the
+   * registry’s here: false). Claude Code, Kiro CLI and Codex are registered that way when their CLI isn’t found
+   * (server/index.mjs), since an agent can still run them on a host.
    */
   localBackends() {
-    const local = this.config.localBackends;
-    const names = this.adapters.names();
-    return Array.isArray(local) ? names.filter((n) => local.includes(n)) : names;
+    return this.adapters.names().filter((n) => this.adapters.runsHere(n));
   }
 
   /** @param {string} backend */
   runsHere(backend) {
-    return this.localBackends().includes(backend);
+    return this.adapters.runsHere(backend);
   }
 
   /** Why a backend can’t run on this computer, and what can. @param {string} backend */
@@ -3291,8 +3293,12 @@ export class Runtime {
    * hasn’t reached it) keeps the host: Postbox connects to ask, and until the daemon confirms each is over, the
    * removal is refused (409) and the host’s settings and token stay, so the stops can still be delivered. So is one
    * whose token is gone from this computer: nothing can reach the host to stop them, which isn’t a sign they stopped,
-   * so installing again is the way to stop them. Then the host manager forgets the link and its token, so nothing holds
-   * a connection to a host Postbox no longer knows.
+   * so installing again is the way to stop them. Then Postbox removes itself from the host (the manager’s
+   * removeFromHost: the daemon stops anything still running there, deletes ~/.postbox-remote and says `removed`), and
+   * only then does the manager forget the link and its token, so nothing holds a connection to a host Postbox no longer
+   * knows. Until the host confirms, the removal is refused (409, with the reason and the next step) and the settings and
+   * token stay: without the token, Postbox could never reach what it left there. One with no token here and nothing
+   * running there is removed here alone, since Postbox can’t reach anything of its own there.
    * Agents placed on it keep their placement and can’t start a turn there until they’re moved.
    * @param {string} id @param {{ waitMs?: number }} [opts]
    */
@@ -3337,7 +3343,19 @@ export class Runtime {
           : `${h.name} can’t be reached, so its running turns can’t be stopped; Postbox keeps the host until they can be. They’re stopped when it’s back, and then you can remove it.`,
       );
     }
-    await this.hosts?.forget(id);
+    if (this.hosts) {
+      try {
+        await this.hosts.removeFromHost(id);
+      } catch (e) {
+        // No token here: nothing of Postbox’s there can be reached. No host: a second click removed it meanwhile.
+        if (e?.code !== 'not-installed' && e?.code !== 'no-host')
+          throw Object.assign(httpError(409, `${String(e?.message ?? e)} Postbox keeps ${h.name} and its token here until it can remove itself there.`), {
+            code: e?.kind ?? e?.code ?? 'failed',
+            next: e?.next ?? null,
+          });
+      }
+      await this.hosts.forget(id);
+    }
     // It may have been removed meanwhile, by a second click.
     if (!this.s.hosts?.[id]) return { ok: true, stopped: stopped.length + given };
     for (const p of Object.values(this.s.projects)) {
@@ -3406,9 +3424,16 @@ export class Runtime {
   /** Installs Postbox’s host program on a host. The page asks first, with describeHostInstall’s text. @param {string} id */
   async installHost(id) {
     this.host(id);
-    const result = await this.hostManager().install(id);
+    let result;
+    try {
+      result = await this.hostManager().install(id);
+    } catch (e) {
+      throw hostRefusal(e);
+    }
     this.publishHostStatus(id);
-    return result ?? { ok: true };
+    // Whether it installed or found this version there; never the daemon’s token, which stays out of what the page
+    // reads (server/remote/ssh.mjs, “The daemon’s token”).
+    return { ok: true, installed: result?.installed !== false, version: result?.version ?? null };
   }
 
   /**
@@ -3419,7 +3444,13 @@ export class Runtime {
   retryHost(id, { takeover = false } = {}) {
     this.host(id);
     if (typeof takeover !== 'boolean') throw httpError(422, 'takeover is true or false.');
-    this.hostManager().link(id).retry({ takeover });
+    let link;
+    try {
+      link = this.hostManager().link(id);
+    } catch (e) {
+      throw hostRefusal(e);
+    }
+    link.retry({ takeover });
     this.publishHostStatus(id);
     return { ok: true };
   }
@@ -4084,6 +4115,18 @@ function writeOf(tool, input, detail, given) {
   };
 }
 
+/**
+ * A host’s failure (an SshFailure: what happened, and the next step) as the page reads it: a 502 whose error is the
+ * message, with `next` and its kind as `code`, rather than a 500 that hides both. One for a host this computer has no
+ * token for (not-installed) is a 409, as is the manager’s refusal of a host renamed while a turn still uses its old
+ * name (host-renamed-busy: try again once it ends). Anything else is returned as it is, to be thrown.
+ * @param {any} e
+ */
+function hostRefusal(e) {
+  if (e?.code === 'host-renamed-busy') return Object.assign(httpError(409, e.message), { code: e.code, next: null });
+  if (e?.name !== 'SshFailure') return e;
+  return Object.assign(httpError(e.kind === 'not-installed' ? 409 : 502, e.message), { code: e.kind, next: e.next ?? null });
+}
 /** A check’s value, or its refusal as a 422. @param {import('../shared/remote-settings.mjs').Checked} r */
 function checked(r) {
   if (!r.ok) throw httpError(422, r.error);

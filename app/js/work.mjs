@@ -7,13 +7,16 @@
 // needs review, files by where they stand, commands, what was published, spend, and each turn’s line. Full screen, the
 // whole of it over the window (mountWork): every file with its diff and Restore, version control, every command with
 // its output, and effort by agent.
+//
+// An agent on a remote host (#120) works on the host’s files, which Postbox never reads: its edits show as the files
+// it named, on that host, with no lines, no diff and no Restore, under one line per host that says so.
 
 import { fileEffort, fileState, flagged, formatBytes, formatCost, formatTokens, signed, summarize, turnLine } from '/shared/work.mjs';
 import { commandLabel } from '/shared/work-list.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
 import { closeWork, keepFocus, openDialog, openWork, toast } from './ui.mjs';
-import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
+import { dur, effortSection, externalSection, hostName, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
 
 const S = () => client.state;
 const STATE_WORDS = {
@@ -33,6 +36,49 @@ const COMMAND_WORDS = {
   unknown: 'Didn’t report how it ended',
 };
 const GLYPH = { running: 'running', done: 'done', failed: 'failed', denied: 'failed', stopped: 'failed', background: 'running', unknown: 'unknown' };
+
+/**
+ * One line per host the turns in view ran on: those agents’ files are on the host, so Postbox lists what they edited
+ * and records nothing of the files themselves.
+ * @param {any[]} turns
+ */
+function hostNotes(turns) {
+  const by = new Map();
+  for (const t of turns) {
+    if (!t.host) continue;
+    const name = hostName(t);
+    (by.get(name) ?? by.set(name, new Set()).get(name)).add(`@${t.handle}`);
+  }
+  return [...by].map(([name, handles]) =>
+    h(
+      'p.small.work-host-note',
+      `Files on ${name} aren’t recorded: Postbox lists the ones ${[...handles].join(', ')} edited there, with no diff and no Restore.`,
+    ),
+  );
+}
+
+/**
+ * Edits on a host, one row per file: how many edits, by whom and in how many turns. A row’s id is its first edit’s,
+ * so the pane and the full form name the same item.
+ * @param {any[]} edits
+ */
+function editRows(edits) {
+  const by = new Map();
+  for (const e of edits) {
+    const key = `${e.host?.id ?? ''}\0${e.path}`;
+    const g = by.get(key);
+    if (!g) by.set(key, { ...e, tools: e.tools ?? 1, handles: new Set([e.handle]), turns: new Set([e.turnId]) });
+    else {
+      g.tools += e.tools ?? 1;
+      g.handles.add(e.handle);
+      g.turns.add(e.turnId);
+      g.at = Math.max(g.at ?? 0, e.at ?? 0);
+      g.outside ||= e.outside;
+    }
+  }
+  return [...by.values()].sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
+}
+const notRecorded = (g) => h('span.small.dim', `on ${hostName(g)}, not recorded`);
 
 /** The line of counts for files and lines (“3 files · +40 −12”). */
 const counts = (t) => [plural(t.files, 'file'), signedEl(t.added, t.deleted)];
@@ -284,10 +330,12 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
   function filesSection(s, entries) {
     const files = [...s.files].sort((a, b) => Number(flagged(b, git)) - Number(flagged(a, git)) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
     const byAgent = s.byAgent.filter((a) => a.files);
+    const edits = editRows(s.edits);
     return section(
       'work-files',
       'Files',
-      files.length,
+      files.length + edits.length,
+      hostNotes(s.turns),
       files.length
         ? h(
             'div.work-items',
@@ -310,7 +358,10 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
               );
             }),
           )
-        : h('p.empty-note', 'No files changed yet. A file shows here when an agent’s edit or write changes it.'),
+        : edits.length
+          ? null
+          : h('p.empty-note', 'No files changed yet. A file shows here when an agent’s edit or write changes it.'),
+      edits.length ? h('div.work-items', edits.map(editItem)) : null,
       byAgent.length > 1
         ? h(
             'p.small.dim',
@@ -320,6 +371,29 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
           )
         : null,
       h('p.small.dim', 'Changes a command makes (a formatter, a script) aren’t listed yet: Postbox sees the files an agent edits with its file tools.'),
+    );
+  }
+
+  /** A file an agent on a host edited: what the stream named, and why there’s nothing more. */
+  function editItem(g) {
+    const by = [...g.handles].map((x) => `@${x}`).join(', ');
+    return item(
+      g.id,
+      '',
+      [
+        h('span.mono.work-path', { title: g.path }, g.rel),
+        notRecorded(g),
+        g.outside ? h('span.work-tag.warn', icon('warn', 'i-sm'), 'Outside the project') : null,
+        h('span.small.dim.work-who', by),
+      ],
+      () => [
+        h('p.mono.small.work-full', g.path),
+        h(
+          'p.small.dim',
+          `${plural(g.tools, 'edit')}${turnId ? '' : ` in ${plural(g.turns.size, 'turn')}`} by ${by}, on ${hostName(g)}. The file is on the host, and Postbox didn’t read it, so it has no diff of it and nothing to restore.`,
+        ),
+        turnId || g.turns.size !== 1 ? null : h('p.small', workLink(threadId, { full: true, turn: g.turnId }, 'That turn')),
+      ],
     );
   }
 
@@ -505,7 +579,14 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         : c.leftRunning
           ? h('p.small.dim', 'It was still running in the background when the turn ended, so Postbox didn’t see it end.')
           : null,
-      c.endedInBackground ? h('p.small.dim', 'It ran in the background; this is its output file.') : null,
+      c.endedInBackground
+        ? h(
+            'p.small.dim',
+            c.host
+              ? `It ran in the background on ${hostName(c)}. Its output file stays there, so this is only what it said as it started.`
+              : 'It ran in the background; this is its output file.',
+          )
+        : null,
       c.output?.cut ? h('p.small.dim', 'Earlier output was cut: this is the last 4 MB.') : null,
       c.state === 'running'
         ? h('p.small.dim', 'Its output shows here when it ends.')
@@ -612,6 +693,13 @@ export function mountWorkPane(threadId) {
       h('span.mono.wc-name', f.rel.replace(/^.*\//, ''), f.rel.includes('/') ? h('span.dim', ` ${f.rel.replace(/\/[^/]*$/, '')}`) : null),
       f.binary ? h('span.small.dim', 'binary') : signedEl(f.added, f.deleted),
     );
+  const editRow = (g, to, prefix) =>
+    row(
+      `${prefix}-${g.id}`,
+      () => go(to),
+      h('span.mono.wc-name', g.rel.replace(/^.*\//, ''), g.rel.includes('/') ? h('span.dim', ` ${g.rel.replace(/\/[^/]*$/, '')}`) : null),
+      notRecorded(g),
+    );
   const commandRow = (c, to, prefix) =>
     row(
       `${prefix}-${c.id}`,
@@ -644,10 +732,12 @@ export function mountWorkPane(threadId) {
   function files(s) {
     const states = ['uncommitted', 'committed', 'pushed', 'outside'].filter((st) => s.byState[st].files);
     const back = s.byState.unchanged.files;
+    const edits = editRows(s.edits);
     return sec(
       'wc-files',
       'Files',
-      s.total.files ? String(s.total.files) : '',
+      s.total.files + edits.length ? String(s.total.files + edits.length) : '',
+      hostNotes(s.turns),
       // The total, when there’s more than one state to add up.
       states.length > 1 || (back && s.total.files)
         ? h('p.small', plural(s.total.files, 'file'), ' ', signedEl(s.total.added, s.total.deleted), back ? h('span.dim', ` · ${back} put back`) : null)
@@ -669,7 +759,19 @@ export function mountWorkPane(threadId) {
               ),
             ),
           )
-        : h('p.empty-note', back ? 'Every changed file was put back.' : 'No files changed yet.'),
+        : edits.length
+          ? null
+          : h('p.empty-note', back ? 'Every changed file was put back.' : 'No files changed yet.'),
+      edits.length
+        ? h(
+            'div.wc-group',
+            short(
+              edits,
+              (g) => editRow(g, { at: g.id }, 'wc-edit'),
+              () => go({ at: 'work-files' }),
+            ),
+          )
+        : null,
       gitError
         ? h('p.small.dim', `Git couldn’t say where the changes stand: ${gitError}`)
         : !git && s.files.length
@@ -833,6 +935,14 @@ export function mountWorkPane(threadId) {
             5,
           )
         : null,
+      s.edits.length
+        ? short(
+            editRows(s.edits),
+            (g) => editRow(g, { turn: t.id, at: g.id }, `wc-t-${t.id}`),
+            () => go({ turn: t.id, at: 'work-files' }),
+            5,
+          )
+        : null,
       s.commands.length
         ? short(
             s.commands,
@@ -854,7 +964,7 @@ export function mountWorkPane(threadId) {
         .map((t) => ({ t, line: turnLine(entries, t.id) }))
         .filter((x) => x.line)
         .reverse();
-      if (!lines.length && !s.files.length && !s.commands.length && !s.external.length)
+      if (!lines.length && !s.files.length && !s.edits.length && !s.commands.length && !s.external.length)
         return fill(
           body,
           h('p.empty-note', 'Nothing yet. When an agent edits a file, runs a command or publishes something, it shows here, with what it took.'),

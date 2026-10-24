@@ -12,6 +12,7 @@ import { PassThrough } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { tokenFile } from '../server/remote/install.mjs';
+import { SshFailure, failure as sshFailure } from '../server/remote/ssh.mjs';
 import { WAKE_CHECK_MS, WAKE_GAP_MS, watchWake } from '../server/remote/wake.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
@@ -40,6 +41,11 @@ class FakeHosts extends EventEmitter {
     /** @type {Map<string, any>} */
     this.links = new Map();
     this.onForget = (_id) => {};
+    /** @type {Error | null} */
+    this.installError = null;
+    /** What removeFromHost rejects with, in place of the daemon’s `removed`. @type {Error | null} */
+    this.removeError = null;
+    this.onRemove = (_id) => {};
   }
   status(id) {
     return this.statuses.get(id) ?? null;
@@ -47,6 +53,12 @@ class FakeHosts extends EventEmitter {
   async forget(id) {
     this.calls.push(['forget', id]);
     this.onForget(id);
+  }
+  /** As the manager’s: resolves once the daemon said `removed`, or rejects with removeError. */
+  async removeFromHost(id) {
+    this.calls.push(['removeFromHost', id]);
+    this.onRemove(id);
+    if (this.removeError) throw this.removeError;
   }
   /** A link that’s connected, and answers a stop as the daemon does: with the turn’s `ended`, unless answerStops is off. */
   link(id) {
@@ -73,9 +85,11 @@ class FakeHosts extends EventEmitter {
     this.calls.push(['refresh', id]);
     return false;
   }
+  /** As install.mjs’s installHost answers, token and all; installError, when set, is thrown instead. */
   async install(id) {
     this.calls.push(['install', id]);
-    return { ok: true, outcome: 'installed' };
+    if (this.installError) throw this.installError;
+    return { token: 'T'.repeat(43), installed: true, version: '0.18.0' };
   }
   describeInstall(id) {
     return { destination: 'host.example.com', steps: [], text: `Install Postbox’s host program on host.example.com? (${id})` };
@@ -283,7 +297,65 @@ test('#120 G10: a stopped turn that never ends holds a host’s removal only for
   rt.sendMessage(t.id, { text: 'go' });
   await until(() => adapter.log.includes('start:far'), 'the turn');
   assert.deepEqual(await rt.removeHost(h.id, { waitMs: 20 }), { ok: true, stopped: 1 });
-  assert.deepEqual(hosts.calls, [['forget', h.id]]);
+  assert.deepEqual(hosts.calls, [
+    ['removeFromHost', h.id],
+    ['forget', h.id],
+  ]);
+  assert.equal(rt.s.hosts[h.id], undefined);
+});
+
+test('#120: removing a host removes Postbox from it once its turns stop, and forgets its token only after the daemon says removed', async () => {
+  const { rt, adapter, hosts } = setup();
+  const h = rt.addHost({ name: 'host.example.com' });
+  const far = rt.createPersona({ handle: 'far', backend: 'claude-code', remote: { hostId: h.id } });
+  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [far.id] });
+  rt.setProjectHostFolder('p1', h.id, '/home/user/app');
+  rt.sendMessage(t.id, { text: 'go' });
+  await until(() => adapter.log.includes('start:far'), 'the turn');
+  let atRemove = null;
+  hosts.onRemove = () => {
+    atRemove = { stopped: adapter.log.includes('stopped:far'), forgotten: hosts.calls.some((c) => c[0] === 'forget'), hostKnown: Boolean(rt.s.hosts[h.id]) };
+  };
+  assert.deepEqual(await rt.removeHost(h.id), { ok: true, stopped: 1 });
+  assert.deepEqual(atRemove, { stopped: true, forgotten: false, hostKnown: true }, 'removed there after its turns stopped, before the token went');
+  assert.deepEqual(hosts.calls, [
+    ['removeFromHost', h.id],
+    ['forget', h.id],
+  ]);
+  assert.equal(rt.s.hosts[h.id], undefined);
+});
+
+test('#120: a removal the host doesn’t confirm keeps the host, its folders and its token, and says why and what to do next', async () => {
+  const { rt, hosts } = setup();
+  const h = rt.addHost({ name: 'host.example.com' });
+  rt.setProjectHostFolder('p1', h.id, '/home/user/app');
+  hosts.removeError = sshFailure('unreachable', 'host.example.com');
+  const e = await rt.removeHost(h.id).catch((x) => x);
+  assert.equal(e.status, 409, e.message);
+  assert.match(
+    e.message,
+    /^Postbox couldn’t reach host\.example\.com\. .*Postbox keeps host\.example\.com and its token here until it can remove itself there\.$/,
+  );
+  assert.equal(e.next, hosts.removeError.next, 'the manager’s next step');
+  assert.equal(e.code, 'unreachable');
+  assert.deepEqual(hosts.calls, [['removeFromHost', h.id]], 'its token wasn’t forgotten');
+  assert.ok(rt.s.hosts[h.id]);
+  assert.deepEqual(rt.s.projects.p1.hostFolders, { [h.id]: '/home/user/app' });
+  // Once the host confirms, it goes.
+  hosts.removeError = null;
+  assert.deepEqual(await rt.removeHost(h.id), { ok: true, stopped: 0 });
+  assert.equal(rt.s.hosts[h.id], undefined);
+});
+
+test('#120: a host this computer has no token for, with no turns there, is removed here: Postbox can’t reach anything of its own there', async () => {
+  const { rt, hosts } = setup();
+  const h = rt.addHost({ name: 'host.example.com' });
+  hosts.removeError = Object.assign(sshFailure('not-installed', 'host.example.com'), { code: 'not-installed' });
+  assert.deepEqual(await rt.removeHost(h.id), { ok: true, stopped: 0 });
+  assert.deepEqual(hosts.calls, [
+    ['removeFromHost', h.id],
+    ['forget', h.id],
+  ]);
   assert.equal(rt.s.hosts[h.id], undefined);
 });
 
@@ -542,7 +614,8 @@ test('#120: the page adds a host, sets a project’s folder on it, installs, ret
   assert.match(described.json.text, /^Install Postbox’s host program on host\.example\.com\?/);
   assert.deepEqual(fake.calls, [], 'reading what an install does installs nothing');
   const installed = await call({ method: 'POST', path: `/api/hosts/${id}/install`, body: {}, cookie });
-  assert.deepEqual(installed.json, { ok: true, outcome: 'installed' });
+  // What it did, and never the daemon’s token, which stays out of what the page reads.
+  assert.deepEqual(installed.json, { ok: true, installed: true, version: '0.18.0' });
   await call({ method: 'POST', path: `/api/hosts/${id}/retry`, body: { takeover: true }, cookie });
   await call({ method: 'POST', path: `/api/hosts/${id}/retry`, body: {}, cookie });
   const odd = await call({ method: 'POST', path: `/api/hosts/${id}/retry`, body: { takeover: 'yes' }, cookie });
@@ -564,6 +637,46 @@ test('#120: the page adds a host, sets a project’s folder on it, installs, ret
   assert.deepEqual(removed.json, { ok: true, stopped: 0 });
   assert.deepEqual(fake.calls.at(-1), ['forget', id]);
   assert.equal((await call({ path: `/api/hosts/${id}/status` })).status, 404);
+});
+
+test('#120 L6: a failed install reaches the page with its message and next step, and a host with no token here, or renamed while busy, is a 409', async () => {
+  const cookie = await pageCookie();
+  const id = (await call({ method: 'POST', path: '/api/hosts', body: { name: 'fails.example.com' }, cookie })).json.id;
+  fake.installError = new SshFailure('failed', 'Postbox couldn’t install its host program on fails.example.com: the disk is full.', 'Install again.');
+  const failed = await call({ method: 'POST', path: `/api/hosts/${id}/install`, body: {}, cookie });
+  fake.installError = null;
+  assert.equal(failed.status, 502, failed.text);
+  assert.deepEqual(failed.json, {
+    error: 'Postbox couldn’t install its host program on fails.example.com: the disk is full.',
+    code: 'failed',
+    next: 'Install again.',
+  });
+  // Retrying a host this computer has no token for says to install it, rather than a 500.
+  const link = fake.link;
+  fake.link = () => {
+    throw Object.assign(sshFailure('not-installed', 'fails.example.com'), { code: 'not-installed' });
+  };
+  const retried = await call({ method: 'POST', path: `/api/hosts/${id}/retry`, body: {}, cookie });
+  fake.link = link;
+  assert.equal(retried.status, 409, retried.text);
+  assert.equal(retried.json.code, 'not-installed');
+  assert.match(retried.json.next, /^Install Postbox on fails\.example\.com from the host’s settings/);
+  // A host renamed while a turn still uses its old name (the manager’s host-renamed-busy) is a 409 saying so, too.
+  const busy = 'This host was renamed renamed.example.com, but Postbox is still using fails.example.com for it. Try again once its turns there end.';
+  fake.link = () => {
+    throw Object.assign(new Error(busy), { code: 'host-renamed-busy' });
+  };
+  const renamed = await call({ method: 'POST', path: `/api/hosts/${id}/retry`, body: {}, cookie });
+  fake.installError = Object.assign(new Error(busy), { code: 'host-renamed-busy' });
+  const reinstalled = await call({ method: 'POST', path: `/api/hosts/${id}/install`, body: {}, cookie });
+  fake.installError = null;
+  fake.link = link;
+  for (const r of [renamed, reinstalled]) {
+    assert.equal(r.status, 409, r.text);
+    assert.equal(r.json.error, busy);
+    assert.equal(r.json.code, 'host-renamed-busy');
+  }
+  await call({ method: 'DELETE', path: `/api/hosts/${id}`, cookie });
 });
 
 test('#120: the host routes refuse a write without the page’s token, and change nothing', async () => {
@@ -651,6 +764,30 @@ test('#120: Claude Code, Kiro CLI and Codex are listed without their CLI here, m
       /^“codex” isn’t available on this computer\. Available: mock, claude-code\. It can run on one of your hosts/,
     );
     assert.deepEqual(server.rt.createPersona({ handle: 'far', backend: 'codex', remote: { hostId: h.id } }).remote, { hostId: h.id });
+  } finally {
+    await server.close();
+    await rm(own, { recursive: true, force: true });
+  }
+});
+
+test('#120: an adapter a check registers after start runs on this computer, even in place of one that runs only on a host', async () => {
+  const own = await mkdtemp(join(tmpdir(), 'pb-hosts-scripted-'));
+  // As the browser checks start it: demo, with POSTBOX_BACKENDS=mock, then a scripted Claude Code put in.
+  const server = await start({ port: PORT + 3, dataDir: own, fresh: true, demo: true, quiet: true, claudeHome: own, listen: false, hosts: null });
+  try {
+    server.rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
+    assert.equal(server.rt.createPersona({ handle: 'scripted', backend: 'claude-code' }).backend, 'claude-code');
+    // A host-only backend replaced by a scripted one runs here too; registered again as host-only, it doesn’t.
+    server.rt.adapters.register({ name: 'codex', capabilities: { remote: true }, deliver: async () => {} }, { here: false });
+    assert.match(
+      refused(() => server.rt.createPersona({ handle: 'near', backend: 'codex' })),
+      /^“codex” isn’t available on this computer\./,
+    );
+    server.rt.adapters.register({ name: 'codex', deliver: async () => {} });
+    assert.equal(server.rt.createPersona({ handle: 'near', backend: 'codex' }).backend, 'codex');
+    const state = await fakeRequest(server.handle, { host: `127.0.0.1:${PORT + 3}`, path: '/api/state' });
+    assert.deepEqual(state.json.config.adapters, ['mock', 'claude-code', 'codex']);
+    assert.equal(state.json.config.backends['claude-code'].local, true, 'the page sees it as local too');
   } finally {
     await server.close();
     await rm(own, { recursive: true, force: true });

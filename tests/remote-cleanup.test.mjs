@@ -342,7 +342,7 @@ test('a turn folder that’s a link is skipped: nothing it points at is deleted'
 
 // ── Through the daemon ──
 
-function daemonSetup({ home = mkdtempSync(join(tmpdir(), 'pbd-')), onRemoved = () => {}, env = {} } = {}) {
+function daemonSetup({ home = mkdtempSync(join(tmpdir(), 'pbd-')), onRemoved = () => {}, env = {}, stuck = new Set(), launching = null } = {}) {
   const p = hostPaths(home, VERSION);
   mkdirSync(p.root, { recursive: true, mode: 0o700 });
   writeFileSync(p.token, TOKEN, { mode: 0o600 });
@@ -355,6 +355,7 @@ function daemonSetup({ home = mkdtempSync(join(tmpdir(), 'pbd-')), onRemoved = (
     // The daemon’s own environment, which the runner inherits: KIRO_HOME, for the Kiro home an agent file goes in.
     env,
     async launchRunner(o) {
+      if (launching) await launching;
       writeFileSync(o.paths.turn(o.turn, TURN_FILES.runner), JSON.stringify({ turn: o.turn, version: VERSION, pid: ++pid, bootId: BOOT, startTime: 1 }));
       alive.add(o.turn);
       return { pid, scoped: false, lingerOff: false };
@@ -378,7 +379,7 @@ function daemonSetup({ home = mkdtempSync(join(tmpdir(), 'pbd-')), onRemoved = (
       kills.push([target, signal]);
       for (const turn of [...alive]) {
         const r = JSON.parse(readFileSync(p.turn(turn, TURN_FILES.runner), 'utf8'));
-        if (-target === r.pid) {
+        if (-target === r.pid && !stuck.has(turn)) {
           writeFileSync(p.turn(turn, TURN_FILES.exit), JSON.stringify({ code: null, signal, at: 9 }));
           alive.delete(turn);
         }
@@ -388,6 +389,7 @@ function daemonSetup({ home = mkdtempSync(join(tmpdir(), 'pbd-')), onRemoved = (
     onRemoved,
     pollMs: 10,
     stopGraceMs: 50,
+    removeWaitMs: 100,
   });
   const connect = async () => {
     const input = new PassThrough();
@@ -541,6 +543,65 @@ test('daemon: remove stops the running turns, waits for them, deletes ~/.postbox
     assert.deepEqual(s.kills[0], [-4001, 'SIGINT'], 'the turn was stopped as Stop does');
     assert.ok(!existsSync(s.p.root));
     assert.ok(existsSync(join(s.home, 'keep.txt')));
+    await until(() => removed, 'the daemon to exit');
+  } finally {
+    s.done();
+  }
+});
+
+test('daemon: remove refuses while a runner is still alive after Stop: no removed, the root and token stay, and a later remove succeeds', async () => {
+  let removed = false;
+  const stuck = new Set(['t1']);
+  const s = daemonSetup({ onRemoved: () => (removed = true), stuck });
+  try {
+    const c = await s.connect();
+    c.send('start', startMsg('t1'));
+    await c.msgs.next('started');
+    c.send('remove', {});
+    const err = await c.msgs.next('error', 5000);
+    assert.equal(err.re, 'remove');
+    assert.match(err.message, /Turn t1 was still running .* after Stop, so nothing was removed/);
+    assert.ok(existsSync(s.p.root), 'nothing was removed');
+    assert.ok(existsSync(s.p.token), 'the token stays, so Postbox can still reach the host');
+    assert.ok(existsSync(s.p.turn('t1', TURN_FILES.runner)), 'the turn’s records stay');
+    assert.equal(removed, false);
+    assert.ok(!c.msgs.messages.some((m) => m.type === 'removed'), 'no removed was said');
+    // Once the runner has gone, removing again works.
+    stuck.delete('t1');
+    s.alive.delete('t1');
+    writeFileSync(s.p.turn('t1', TURN_FILES.exit), JSON.stringify({ code: null, signal: 'SIGKILL', at: 10 }));
+    c.send('remove', {});
+    await c.msgs.next('removed', 5000);
+    assert.ok(!existsSync(s.p.root));
+    await until(() => removed, 'the daemon to exit');
+  } finally {
+    s.done();
+  }
+});
+
+test('daemon: remove waits for a start under way on another connection, then stops its turn and removes everything', async () => {
+  let removed = false;
+  /** @type {() => void} */
+  let open = () => {};
+  const launching = new Promise((resolve) => (open = () => resolve(undefined)));
+  const s = daemonSetup({ onRemoved: () => (removed = true), launching });
+  try {
+    const a = await s.connect();
+    a.send('start', startMsg('t1'));
+    await until(() => existsSync(s.p.turn('t1', TURN_FILES.start)), 'the start to be under way');
+    const b = await s.connect();
+    b.send('remove', {});
+    await new Promise((r) => setTimeout(r, 50));
+    assert.ok(existsSync(s.p.root), 'nothing is removed while the start is under way');
+    assert.ok(!b.msgs.messages.some((m) => m.type === 'removed'));
+    open();
+    await b.msgs.next('removed', 5000);
+    assert.ok(
+      s.kills.some(([target, signal]) => target < 0 && signal === 'SIGINT'),
+      'the turn the start launched was stopped as Stop does',
+    );
+    assert.equal(s.alive.size, 0, 'no runner is left');
+    assert.ok(!existsSync(s.p.root), '~/.postbox-remote is gone');
     await until(() => removed, 'the daemon to exit');
   } finally {
     s.done();

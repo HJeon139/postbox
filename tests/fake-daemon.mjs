@@ -23,6 +23,7 @@
 //                          ends one with the error the daemon sends when it can’t write the end down.
 //   d.received, d.sent, d.errors, d.turns, d.stops, d.answers, d.replies   what happened, to assert on
 //   d.checks               each signInCheck a `check` ran, as the argv its connection’s hello sent
+//   d.removes              how many `remove`s it was sent
 // and readMessages(stream) on Postbox’s side, to await what the daemon sent.
 
 import { readFileSync } from 'node:fs';
@@ -55,12 +56,15 @@ export const FIXTURE_PROMPT = JSON.parse(readFileSync(new URL('permission-prompt
  * @param {{ token?: string, lines?: string[], autoEnd?: boolean, exit?: { code: number | null, signal: string | null },
  *           stopExit?: { code: number | null, signal: string | null }, home?: string, now?: () => number,
  *           harnesses?: string[], problems?: { code: string, message: string }[], holdCaughtUp?: ('out' | 'in')[],
- *           check?: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }> }} [opts]
+ *           check?: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }>,
+ *           remove?: 'removed' | 'refuse' | 'silent' | 'drop' }} [opts]
  *   lines: what each started turn’s out.jsonl holds (the fixture by default). autoEnd: a started turn has already
  *   exited with `exit` (true by default); false keeps it running until end() or a stop. stopExit: how a stopped turn
  *   ends (SIGINT, C5). harnesses: the ones the host has (all three by default). holdCaughtUp: logs whose `caught-up`
  *   a read doesn’t send until the test calls caughtUp(), so lines can arrive between a read’s first pass and it.
  *   check: how the host’s signInCheck exits, given the argv hello sent (exit 0 by default); a promise holds the answer.
+ *   remove: how `remove` goes: removed (the default, as the real daemon’s: turns stopped, `removed`, closed), refuse
+ *   (the daemon’s error when it won’t delete the folder), silent (no answer) or drop (the connection ends first).
  */
 export function createFakeDaemon({
   token = FAKE_TOKEN,
@@ -74,6 +78,7 @@ export function createFakeDaemon({
   problems = [],
   holdCaughtUp = [],
   check = () => ({ code: 0 }),
+  remove: removing = 'removed',
 } = {}) {
   /** @type {Map<string, FakeTurn>} */
   const turns = new Map();
@@ -95,6 +100,7 @@ export function createFakeDaemon({
   const stops = [];
   /** @type {string[][]} */
   const checks = [];
+  let removes = 0;
   let ids = 0;
   /** @type {Set<Conn>} */
   const conns = new Set();
@@ -226,6 +232,12 @@ export function createFakeDaemon({
       send(c, 'checked', { ok: code === 0, code, at: now() });
     },
     remove(c) {
+      removes++;
+      if (removing === 'silent') return;
+      if (removing === 'drop') return close(c);
+      // cleanup.mjs’s rootProblem, word for word but the path.
+      if (removing === 'refuse')
+        return fail(c, 'internal', '/home/user/.postbox-remote isn’t a folder (it’s a link or a file), so Postbox won’t delete anything in it.', 'remove');
       for (const t of turns.values()) finish(t, stopExit);
       turns.clear();
       send(c, 'removed', {});
@@ -318,6 +330,9 @@ export function createFakeDaemon({
     answers,
     replies,
     checks,
+    get removes() {
+      return removes;
+    },
     /**
      * A turn already on the host: running, ended (with `exit`) or interrupted.
      * @param {string} turn @param {{ harness?: string, stdin?: string, lines?: string[], exit?: { code: number | null, signal: string | null } | null, interrupted?: boolean }} [o]

@@ -12,6 +12,7 @@ import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from 
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
+import { hostOf, ranOnHost, resumeHint, stopNote } from './remote.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -30,7 +31,10 @@ const glossaryOf = (threadId) => {
   const g = { ...(S().glossary[t?.parentId] ?? {}), ...(S().glossary[threadId] ?? {}) };
   return g;
 };
-const speaker = (it) => (it.kind === 'user' ? 'you' : it.kind === 'agent' || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null);
+// A reply replaced by its replay (#120: a turn on a host attached again after a restart) shows nothing, so the replay
+// after it names its speaker.
+const speaker = (it) =>
+  it.kind === 'user' ? 'you' : (it.kind === 'agent' && it.status !== 'replaced') || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null;
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
 
@@ -73,7 +77,21 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       },
       (row, se) => fillWorkRow(row, se),
     );
-    el.append(working); // keep it last
+    el.append(hostTurns, working); // keep them last
+  };
+  // Above them, a turn on a host Postbox asked to stop and the host hasn’t confirmed it stopped (#120): it may run on
+  // there meanwhile, so it says so until the daemon confirms it.
+  const hostTurns = h('div.host-turns.col', { role: 'status' });
+  const paintHostTurns = () => {
+    const stopping = sessionsOf(threadId).filter((se) => se.remoteTurn?.state === 'stopping');
+    hostTurns.hidden = !stopping.length;
+    syncList(
+      hostTurns,
+      stopping,
+      (se) => se.id,
+      (se) => hostTurnRow(se),
+      (row, se) => row.replaceChildren(...hostTurnRow(se).childNodes),
+    );
   };
 
   const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0, app.retired?.at ?? null]);
@@ -83,6 +101,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     messageActions(node, it, ctx);
     node.dataset.key = it.id;
     if (it.kind === 'block' && it.valid && it.block.type === 'app' && S().apps[it.block.id]) node.dataset.appSig = appSig(S().apps[it.block.id]);
+    if (it.kind === 'agent') node.dataset.remoteSig = remoteSig(it);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
     return node;
@@ -112,6 +131,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       nodes.set(it.id, n);
       el.append(n);
     });
+    paintHostTurns();
     paintWorking();
   };
   all();
@@ -304,6 +324,13 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       paintWorking();
       for (const it of itemsOf(threadId))
         if (it.kind === 'sidelink' && nodes.get(it.id)?.dataset.sideSig !== sideSig(sideActive(it.sideThreadId))) rerender(it.id);
+      // A reply whose turn ran on a host shows how it stands there (#120): Resume goes once it’s resumed.
+      for (const it of itemsOf(threadId))
+        if (it.kind === 'agent' && it.sessionId === d.id && (nodes.get(it.id)?.dataset.remoteSig ?? '') !== remoteSig(it)) rerender(it.id);
+      paintHostTurns();
+    } else if (ch.type === 'host' || ch.type === 'host.status') {
+      for (const it of itemsOf(threadId)) if (it.kind === 'agent' && (nodes.get(it.id)?.dataset.remoteSig ?? '') !== remoteSig(it)) rerender(it.id);
+      paintHostTurns();
     } else if (ch.type === 'app') {
       for (const it of itemsOf(threadId))
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
@@ -364,6 +391,17 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   };
 }
 
+/** “@coder · Stopping on host.example.com: Postbox asked it to stop, and waits for the host to confirm.” @param {any} se */
+function hostTurnRow(se) {
+  const name = S().hosts?.[se.remoteTurn?.hostId]?.name ?? 'its host';
+  return h(
+    'div.host-turn.small',
+    h('span.g.g-running', { 'aria-hidden': 'true' }),
+    h('b', `@${se.handle}`),
+    ` · Stopping on ${name}: Postbox asked it to stop, and waits for the host to confirm. It may still run there until then.`,
+  );
+}
+
 function fillWorkRow(row, se) {
   ringFor(se, 'xs', row.querySelector('pb-ring'));
   const step = se.state === 'tool' && se.currentStep ? `: ${se.currentStep}` : '';
@@ -410,7 +448,14 @@ const who = (it, { you = false } = {}) => {
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
 // topic or side thread (#128): “Send to conversation”. React, under every one (#251). They appear on hover and focus, and always on touch.
 function messageActions(node, it, ctx) {
-  if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent || (it.kind === 'block' && !it.valid)) return;
+  if (
+    !['user', 'agent', 'block', 'shared'].includes(it.kind) ||
+    it.status === 'streaming' ||
+    it.status === 'replaced' ||
+    it.deletedAgent ||
+    (it.kind === 'block' && !it.valid)
+  )
+    return;
   const bar = h('div.msg-actions');
   if (ctx.kind === 'thread' || ctx.kind === 'room') {
     const topic = it.topicId && S().threads[it.topicId];
@@ -487,12 +532,25 @@ function renderItem(it, prev, ctx) {
       );
     }
     case 'agent': {
-      const steps = it.activity?.steps ?? [];
+      // Replayed whole from the host after a restart (#120): the replay is the reply, so this part of it shows nothing.
+      if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
+      // Kiro CLI on a host takes its message as an argument others there can read (#120): a notice, not a folded step.
+      const all = it.activity?.steps ?? [];
+      const argv = all.find((s) => s.id === KIRO_ARGV_STEP);
+      const steps = argv ? all.filter((s) => s !== argv) : all;
       const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
       const running = steps.some((s) => s.state === 'running');
       const node = h(
         'div.col.turn',
         showWho ? who(it) : null,
+        argv
+          ? h(
+              'div.callout.host-notice',
+              { role: 'note', 'aria-label': argv.label },
+              icon('warn', 'i-sm'),
+              h('div.grow', h('b', argv.label), ' ', argv.detail ?? ''),
+            )
+          : null,
         steps.length
           ? h(
               'details.activity',
@@ -510,27 +568,34 @@ function renderItem(it, prev, ctx) {
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
-        it.status === 'stopped' ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
-        it.status === 'failed'
-          ? h(
-              'div.callout',
-              { role: 'alert' },
-              h('span.g.g-failed', { 'aria-hidden': 'true' }),
-              h('div.grow', ...failureText(it.error)),
-              h(
-                'button.btn.sm',
-                {
-                  type: 'button',
-                  onclick: () =>
-                    api(`/api/threads/${ctx.threadId}/items/${it.id}/retry`, {}).catch((e) =>
-                      toast({ title: 'Retry didn’t start', text: e.message, level: 'blocking' }),
-                    ),
-                },
-                icon('retry', 'i-sm'),
-                'Retry',
-              ),
-            )
-          : null,
+        // A turn on a host Postbox stopped because it hung says why, with the last output’s time (#120).
+        it.note
+          ? h('span.stopped-tag.hung-note', it.note)
+          : it.status === 'stopped'
+            ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`)
+            : null,
+        it.status === 'failed' && remoteFailure(it)
+          ? remoteCallout(it, remoteFailure(it))
+          : it.status === 'failed'
+            ? h(
+                'div.callout',
+                { role: 'alert' },
+                h('span.g.g-failed', { 'aria-hidden': 'true' }),
+                h('div.grow', ...failureText(it.error)),
+                h(
+                  'button.btn.sm',
+                  {
+                    type: 'button',
+                    onclick: () =>
+                      api(`/api/threads/${ctx.threadId}/items/${it.id}/retry`, {}).catch((e) =>
+                        toast({ title: 'Retry didn’t start', text: e.message, level: 'blocking' }),
+                      ),
+                  },
+                  icon('retry', 'i-sm'),
+                  'Retry',
+                ),
+              )
+            : null,
         it.status === 'retried' ? h('span.stopped-tag', 'Retried below') : null,
         it.sources?.length
           ? h(
@@ -641,6 +706,68 @@ function workChip(it, ctx) {
   return workList(it, conv, [s.projects?.[s.threads[conv]?.projectId]?.folder, s.personas?.[s.sessions?.[it.sessionId]?.personaId]?.folder]);
 }
 
+/** The step a Kiro CLI turn on a host shows (server/adapters/kiro-cli.mjs, REMOTE_ARGV_NOTE), drawn as a notice. */
+const KIRO_ARGV_STEP = 'kiro-remote-argv';
+
+/**
+ * How a failed reply’s turn on a host ended, when that’s one the design names (#120, “Turn states”): Sign-in needed
+ * and Interrupted (the runtime marks the reply with remote.state), or Lost, when Postbox’s link gave up with the turn
+ * still there. canResume: it’s the agent’s latest turn there, and waits for Resume. Null for any other failure.
+ * @param {any} it
+ */
+function remoteFailure(it) {
+  const se = S().sessions[it.sessionId];
+  const r = se?.remoteTurn;
+  const latest = ranOnHost(se, it.turnId);
+  const state = it.remote?.state ?? (r?.state === 'lost' && latest ? 'lost' : null);
+  if (state !== 'signin' && state !== 'interrupted' && state !== 'lost') return null;
+  const name = S().hosts?.[it.remote?.hostId ?? r?.hostId]?.name ?? 'its host';
+  const canResume = state !== 'lost' && latest && r?.state === state && !!r.resume && !busy(se) && se.state !== 'stopping';
+  return { state, name, se, canResume };
+}
+/** What a reply’s look depends on besides the reply itself: its turn on a host, for a session change to redraw it. */
+const remoteSig = (it) => {
+  if (it.kind !== 'agent' || !it.sessionId) return '';
+  const f = it.status === 'failed' ? remoteFailure(it) : null;
+  if (f) return [f.state, f.name, f.canResume, f.canResume ? resumeHint(f.se) : ''].join('|');
+  return ranOnHost(S().sessions[it.sessionId], it.turnId) ? 'host' : '';
+};
+
+/**
+ * “Sign-in needed on host.example.com”, “Interrupted on host.example.com”, each with Resume while it waits for it, or
+ * “Lost: Postbox can’t reach host.example.com”, which has nothing to resume: the turn may still run there, and
+ * Postbox attaches to it again when the host is back. Retry isn’t offered: it would start over, not resume.
+ * @param {any} it @param {NonNullable<ReturnType<typeof remoteFailure>>} f
+ */
+function remoteCallout(it, f) {
+  const title =
+    f.state === 'signin' ? `Sign-in needed on ${f.name}` : f.state === 'interrupted' ? `Interrupted on ${f.name}` : `Lost: Postbox can’t reach ${f.name}`;
+  const msg = String(it.error ?? '');
+  // The runtime’s message starts with the same words (server/remote/turns.mjs); the rest says why and what to do.
+  let rest = msg.startsWith(title) ? msg.slice(title.length).replace(/^[.:]\s*/, '') : msg;
+  if (f.state === 'lost') rest = `${rest ? `${rest} ` : ''}The turn may still be running there. Postbox attaches to it again once the host is back.`;
+  rest = rest ? `${rest[0].toUpperCase()}${rest.slice(1)}` : '';
+  const resume = (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    api(`/api/sessions/${f.se.id}/resume`, {})
+      .then(() => say(`Resuming @${f.se.handle} on ${f.name}.`))
+      .catch((err) => {
+        b.disabled = false;
+        toast({ title: `Couldn’t resume @${f.se.handle}`, text: err.message, level: 'blocking' });
+      });
+  };
+  return h(
+    'div.callout.host-callout',
+    { role: 'alert', dataset: { remote: f.state } },
+    h('span.g.g-failed', { 'aria-hidden': 'true' }),
+    h('div.grow', h('b', title), rest ? ` · ${rest}` : '', f.canResume ? ` ${resumeHint(f.se)}` : ''),
+    f.canResume
+      ? h('button.btn.sm', { type: 'button', 'aria-label': `Resume @${f.se.handle} on ${f.name}`, onclick: resume }, icon('retry', 'i-sm'), 'Resume')
+      : null,
+  );
+}
+
 function failureText(msg = 'This reply didn’t finish.') {
   const m = msg.match(/^(.*?[.!?])\s+([\s\S]*)$/);
   return m ? [h('b', m[1]), ' ', m[2]] : [h('b', msg)];
@@ -730,6 +857,9 @@ function stepRow(s) {
 function jobRows(it, steps) {
   const jobs = steps.filter((s) => s.job && s.state === 'running');
   if (!jobs.length || !it.sessionId) return null;
+  // A job of a turn on a host has no Stop of its own (#120): the daemon stops the turn as a whole.
+  const se = S().sessions[it.sessionId];
+  const host = ranOnHost(se, it.turnId) ? hostOf(se) : null;
   return h(
     'ul.bg-jobs',
     { 'aria-label': 'Background jobs' },
@@ -739,24 +869,26 @@ function jobRows(it, steps) {
         h('span.g.g-running', { role: 'img', 'aria-label': 'running' }),
         // What Postbox kept running for it, when it couldn’t tell which process was the job (#164).
         h('span.grow', h('span.dim', 'Background job · '), h('span.mono', s.label), s.detail ? h('span.job-note', s.detail) : null),
-        h(
-          'button.btn.sm',
-          {
-            type: 'button',
-            'aria-label': `Stop the background job “${s.label}”`,
-            onclick: (e) => {
-              const b = e.currentTarget;
-              b.disabled = true;
-              api(`/api/sessions/${it.sessionId}/jobs/${encodeURIComponent(s.job)}/stop`, {})
-                .then(() => say(`Stopped the background job “${s.label}”.`))
-                .catch((err) => {
-                  b.disabled = false;
-                  toast({ title: 'Couldn’t stop the job', text: err.message, level: 'blocking' });
-                });
-            },
-          },
-          'Stop',
-        ),
+        host
+          ? h('span.small.dim.job-host', `A job on a host stops with its turn. Stop @${se.handle} to stop it.`)
+          : h(
+              'button.btn.sm',
+              {
+                type: 'button',
+                'aria-label': `Stop the background job “${s.label}”`,
+                onclick: (e) => {
+                  const b = e.currentTarget;
+                  b.disabled = true;
+                  api(`/api/sessions/${it.sessionId}/jobs/${encodeURIComponent(s.job)}/stop`, {})
+                    .then(() => say(`Stopped the background job “${s.label}”.`))
+                    .catch((err) => {
+                      b.disabled = false;
+                      toast({ title: 'Couldn’t stop the job', text: err.message, level: 'blocking' });
+                    });
+                },
+              },
+              'Stop',
+            ),
       ),
     ),
   );
@@ -945,7 +1077,10 @@ function commandBlock(it, ctx) {
           ? [icon('warn', 'i-sm'), `Couldn’t run: ${it.error}`]
           : [icon('warn', 'i-sm'), `Exit ${it.exitCode ?? it.signal ?? '?'} · ${secs}`];
   const titleId = `cmd-${it.id}`;
-  const out = it.text ? h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${it.command}` }, h('code', it.text)) : null;
+  // Run here while the agent works on a host (#120): said on its own line, so the output starts with the command’s.
+  const where = it.notOn ? `! commands run on this computer, not on ${it.notOn}.` : '';
+  const text = where && String(it.text ?? '').startsWith(`${where}\n`) ? it.text.slice(where.length + 1) : it.text;
+  const out = text ? h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${it.command}` }, h('code', text)) : null;
   // While it runs, the newest output is in view: the item is drawn again as output arrives.
   if (out && running) requestAnimationFrame(() => out.scrollTo({ top: out.scrollHeight }));
   return h(
@@ -954,6 +1089,7 @@ function commandBlock(it, ctx) {
     h('div.block-head', h('code.title.grow.cmd-line', { id: titleId }, `! ${it.command}`), h('span.kind', `Command · ${it.cwd}`)),
     h(
       'div.block-body',
+      where ? h('p.small.cmd-where', `${running ? 'Running' : 'Ran'} on this computer, not on ${it.notOn}.`) : null,
       it.cut ? h('p.small.dim', 'Earlier output was cut: this is the last 64 KB.') : null,
       it.paused && running ? h('p.small.dim', 'It’s still printing. The end of its output shows here when it finishes.') : null,
       out ?? h('p.small.dim', running ? 'No output yet.' : 'No output.'),
@@ -986,7 +1122,13 @@ const PERMISSION_DONE = {
   'allowed-edited': 'Allowed with your edit',
   denied: 'Not allowed',
   expired: 'Expired: the turn ended before you answered',
+  // A card for a turn on a host (#120, server/remote/turns.mjs): the host’s wait ran out (noAnswer), the agent gave up
+  // on the call, or the host ended the prompt and couldn’t write that down.
+  canceled: 'Canceled by the agent',
+  ended: 'Ended: Postbox couldn’t save the expiry',
 };
+/** What an answered card says. @param {any} it */
+const permissionDone = (it) => (it.status === 'expired' && it.noAnswer ? 'Expired: nobody answered in time' : (PERMISSION_DONE[it.status] ?? it.status));
 /**
  * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
  * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.
@@ -1147,7 +1289,7 @@ function permissionBlock(it, ctx) {
         ? h(
             'span.answered-note',
             icon(done ? 'check' : 'x', 'i-sm'),
-            PERMISSION_DONE[it.status] ?? it.status,
+            permissionDone(it),
             it.status === 'allowed-always' && it.always ? ` (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')})` : '',
           )
         : null,
@@ -2110,6 +2252,10 @@ export function mountComposer(threadId, { side = false } = {}) {
             .catch((e) => toast({ title: 'Couldn’t stop', text: e.message }))
       : () => submit();
     action.setAttribute('aria-label', b ? `Stop @${b.handle}’s reply` : 'Send');
+    // On a host, Stop takes the turn’s background jobs with it (#120): said here, before you press it.
+    const note = b ? stopNote(b) : null;
+    if (note) action.setAttribute('aria-describedby', `stop-note-${threadId}`);
+    else action.removeAttribute('aria-describedby');
     const last = S().sessions[t.lastSpeaker];
     const members = sessionsOf(threadId).filter((x) => !x.archived);
     // Every agent here is archived: the conversation is read-only until you restore one.
@@ -2177,7 +2323,9 @@ export function mountComposer(threadId, { side = false } = {}) {
                 ` attempt ${client.attempts} · nothing is lost; replies pick up where they stopped`,
               ),
             )
-          : '',
+          : note
+            ? h('div.sys.stop-note', { style: { marginBottom: '6px' } }, h('span.small.dim', { id: `stop-note-${threadId}` }, note))
+            : '',
     );
     // What Enter will do with a / or ! line (#67).
     const line = ta.value.trimStart();
@@ -2196,15 +2344,18 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (mode) hint.dataset.mode = mode;
     else delete hint.dataset.mode;
     const folder = mode === 'shell' ? commandFolder() : null;
+    // ! stays on this computer when the agent works on a host (#67, #120), and says so.
+    const away = mode === 'shell' ? hostOf(target()) : null;
+    const here = away ? [' on this computer, not on ', h('b', away.name), ','] : null;
     fill(
       hint,
       mode === 'shell'
         ? h(
             'span',
             folder
-              ? ['Runs in ', h('span.mono', folder), ' as you, with Enter. ']
+              ? ['Runs in ', h('span.mono', folder), here, ' as you, with Enter. ']
               : target() && !isMock(target())
-                ? ['Runs in ', h('b', `@${target().handle}`), '’s own workspace, as you, with Enter. ']
+                ? ['Runs in ', h('b', `@${target().handle}`), '’s own workspace', here ?? ',', ' as you, with Enter. ']
                 : 'This conversation has no folder to run commands in. ',
             'The agents read it and its output on their next turn.',
           )
@@ -2244,7 +2395,10 @@ export function mountComposer(threadId, { side = false } = {}) {
   function commandFolder() {
     const se = target();
     const p = se ? S().personas[se.personaId] : null;
-    return se?.personaSnapshot?.folder || p?.folder || S().projects[thread()?.projectId]?.folder || null;
+    const project = S().projects[thread()?.projectId]?.folder || null;
+    // An agent on a host works in a folder there, so ! runs in the project’s folder here (runtime.mjs, commandFolder).
+    if (hostOf(se)) return project;
+    return se?.personaSnapshot?.folder || p?.folder || project;
   }
   /** Stop found background jobs running: the ask shows above the composer, and its first choice takes focus. */
   function askStop(se, ask) {
@@ -2361,7 +2515,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   paint();
   autosize();
   const off = client.on((ch) => {
-    if (['thread', 'session', 'connection', 'outbox', 'load'].includes(ch.type)) paint();
+    if (['thread', 'session', 'connection', 'outbox', 'load', 'persona', 'host'].includes(ch.type)) paint();
   });
   return {
     el,

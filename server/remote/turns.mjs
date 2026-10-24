@@ -802,11 +802,13 @@ export class RemoteTurns {
     this.endedPrompts.add(key(m.turn, m.id));
     if (!card) return;
     const canceled = m.reason === 'canceled';
+    // noAnswer: the host’s permissionWaitMax ran out, which the card says, unlike an expiry when the turn ended.
     this.endCard(
       card,
       canceled ? 'canceled' : 'expired',
       canceled ? 'The agent stopped waiting for this answer.' : 'Nobody answered in time, so the host didn’t allow it.',
       m.at,
+      canceled ? {} : { noAnswer: true },
     );
   }
 
@@ -834,12 +836,15 @@ export class RemoteTurns {
     // prompt-expired or the turn’s end that follows says the rest.
   }
 
-  /** @param {{ threadId: string, it: any }} card @param {string} status @param {string} message @param {number} at */
-  endCard(card, status, message, at) {
+  /**
+   * @param {{ threadId: string, it: any }} card @param {string} status @param {string} message @param {number} at
+   * @param {Record<string, unknown>} [extra]  more for the card, such as noAnswer
+   */
+  endCard(card, status, message, at, extra = {}) {
     const rt = this.rt;
-    if (rt.permissionWaits.has(card.it.id)) rt.settlePermission(card.it.id, status, message, {}, { endedAt: at });
+    if (rt.permissionWaits.has(card.it.id)) rt.settlePermission(card.it.id, status, message, {}, { endedAt: at, ...extra });
     else {
-      rt.patchItem(card.threadId, card.it.id, { status, answeredAt: this.now(), endedAt: at });
+      rt.patchItem(card.threadId, card.it.id, { status, answeredAt: this.now(), endedAt: at, ...extra });
       const se = rt.s.sessions[card.it.sessionId];
       if (se?.needs?.itemId === card.it.id) rt.updateSession(se.id, { needs: null, state: rt.turns.has(se.id) ? 'tool' : 'idle' });
     }

@@ -87,7 +87,7 @@ function fakeLink(d) {
 function fakeHosts(d, { signIn = /** @type {any} */ (null) } = {}) {
   const link = fakeLink(d);
   const hosts = /** @type {any} */ (new EventEmitter());
-  hosts.calls = { need: [], release: [], signIn: 0, ensure: 0, forget: [], refresh: [] };
+  hosts.calls = { need: [], release: [], signIn: 0, ensure: 0, forget: [], refresh: [], remove: [] };
   hosts.signIn = signIn;
   hosts.state = null; // overrides the status’s state
   hosts.theLink = link;
@@ -109,6 +109,10 @@ function fakeHosts(d, { signIn = /** @type {any} */ (null) } = {}) {
   hosts.forget = async (h) => {
     hosts.calls.forget.push(h);
     return true;
+  };
+  // As the daemon’s `removed` answers it (tests/remote-hosts.test.mjs has the real one).
+  hosts.removeFromHost = async (h) => {
+    hosts.calls.remove.push(h);
   };
   hosts.refresh = async (h) => {
     hosts.calls.refresh.push(h);
@@ -301,7 +305,7 @@ test('#120 L5: a prompt from the host is the laptop’s permission card, and the
   await settled(r);
 });
 
-test('#120 L5: a prompt the host expired or the harness canceled marks its card, and no answer goes', async () => {
+test('#120 L5: a prompt the host expired or the harness canceled marks its card (the expiry as nobody answering), and no answer goes', async () => {
   const r = rig();
   const turn = await running(r);
   const a = r.d.prompt(turn);
@@ -312,6 +316,9 @@ test('#120 L5: a prompt the host expired or the harness canceled marks its card,
   await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === b), 'the second card');
   r.link.hear({ type: 'prompt-expired', turn, id: b, at: 1_760_000_000_000, reason: 'canceled' });
   assert.equal(r.store.items(r.t.id).find((i) => i.remote?.prompt === b).status, 'canceled');
+  // The page says “nobody answered in time” only for the host’s expiry (L6), not for one the harness canceled.
+  assert.equal(r.store.items(r.t.id).find((i) => i.remote?.prompt === a).noAnswer, true);
+  assert.equal(r.store.items(r.t.id).find((i) => i.remote?.prompt === b).noAnswer, undefined);
   await sleep(10);
   assert.equal(r.link.sent.filter((m) => m.type === 'answer').length, 0);
   assert.equal(r.se().needs, null);
@@ -743,6 +750,7 @@ test('#120 G10: a turn whose link gave up keeps its host: removing it is refused
   });
   assert.ok(r.store.state.hosts[r.host.id], 'the host is kept');
   assert.deepEqual(r.hosts.calls.forget, [], 'and its token');
+  assert.deepEqual(r.hosts.calls.remove, [], 'and Postbox wasn’t removed there');
   assert.equal(r.d.turns.get(turn).exit, null, 'the turn runs on there');
   assert.equal(r.se().remoteTurn.state, 'stopping', 'given up, but not done');
   assert.deepEqual(
@@ -756,6 +764,7 @@ test('#120 G10: a turn whose link gave up keeps its host: removing it is refused
   await until(() => r.se().remoteTurn.state === 'done', 'the stop confirmed');
   assert.deepEqual(r.se().remoteTurn.stopping, []);
   assert.deepEqual(await r.rt.removeHost(r.host.id, { waitMs: 50 }), { ok: true, stopped: 0 });
+  assert.deepEqual(r.hosts.calls.remove, [r.host.id]);
   assert.deepEqual(r.hosts.calls.forget, [r.host.id]);
   assert.equal(r.store.state.hosts[r.host.id], undefined);
   assert.equal(r.hosts.calls.need.length, r.hosts.calls.release.length, 'every need released');
@@ -939,7 +948,7 @@ test('#120: a turn that would start on a renamed host’s old link is refused, a
 });
 
 /**
- * A runtime with Claude Code here, and Codex registered but not here (config.localBackends), over a fake daemon with
+ * A runtime with Claude Code here, and Codex registered but not here (here: false), over a fake daemon with
  * these harnesses (all three by default).
  * @param {string[]} [harnesses]
  */
@@ -951,9 +960,11 @@ function codexOnHostOnly(harnesses) {
   const store = new Store(null);
   const rt = new Runtime({
     store,
-    adapters: new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', ...own })).register(new CodexAdapter({ bin: 'codex', ...own })),
+    adapters: new AdapterRegistry()
+      .register(new ClaudeCodeAdapter({ bin: 'claude', ...own }))
+      .register(new CodexAdapter({ bin: 'codex', ...own }), { here: false }),
     corpus,
-    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, build: { version: VERSION }, localBackends: ['mock', 'claude-code'] },
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, build: { version: VERSION } },
     hosts,
   });
   store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });

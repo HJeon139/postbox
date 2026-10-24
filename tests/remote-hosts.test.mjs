@@ -1,5 +1,6 @@
 // The host manager (server/remote/hosts.mjs, #120): a link per host with the token install.mjs keeps, each host’s
-// status, the reasons that keep it connected, reconnecting on wake (D2) and the sign-in check (G5). ssh is never run:
+// status, the reasons that keep it connected, reconnecting on wake (D2), the sign-in check (G5) and removing Postbox
+// from a host. ssh is never run:
 // tests/fake-ssh.mjs’s spawn wires each session to tests/fake-daemon.mjs, and a scripted ssh plays failures and
 // installs. Tokens live in a temp data folder, as install.mjs writes them.
 
@@ -8,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { CHECK_WAIT_MS, createHostManager, HEARD_EVERY_MS, IDLE_GRACE_MS } from '../server/remote/hosts.mjs';
+import { CHECK_WAIT_MS, createHostManager, HEARD_EVERY_MS, IDLE_GRACE_MS, REMOVE_CONFIRM_MS } from '../server/remote/hosts.mjs';
 import { installCommand, tokenCommand } from '../server/remote/install.mjs';
 import { SshFailure } from '../server/remote/ssh.mjs';
 import { defaultHostSettings } from '../shared/remote-settings.mjs';
@@ -500,6 +501,79 @@ test('hosts: install keeps the token, so the host links and connects; forget clo
       () => s.mgr.link('h1'),
       (e) => e.code === 'not-installed',
     );
+  } finally {
+    s.done();
+  }
+});
+
+test('hosts: removeFromHost connects, sends remove once and resolves at removed; the token stays until forget', async () => {
+  const s = setup();
+  try {
+    assert.equal(s.mgr.status('h1').state, 'disconnected');
+    const a = s.mgr.removeFromHost('h1');
+    assert.equal(s.mgr.removeFromHost('h1'), a, 'a second click shares the removal under way');
+    await a;
+    assert.equal(s.daemon.removes, 1);
+    assert.equal(s.daemon.sent.at(-1)?.type, 'removed', 'it resolved on the daemon’s removed');
+    assert.equal(existsSync(join(s.dataDir, 'remote-tokens', 'h1')), true, 'removing there leaves the token to forget');
+    assert.equal(await s.mgr.forget('h1'), true);
+    assert.equal(existsSync(join(s.dataDir, 'remote-tokens', 'h1')), false);
+  } finally {
+    s.done();
+  }
+});
+
+test('hosts: removeFromHost rejects, keeping the token, when the daemon refuses, the connection ends first, or no removed comes in time', async () => {
+  const token = (s) => existsSync(join(s.dataDir, 'remote-tokens', 'h1'));
+  const refuse = setup({ daemon: createFakeDaemon({ autoEnd: false, remove: 'refuse' }) });
+  try {
+    await assert.rejects(
+      refuse.mgr.removeFromHost('h1'),
+      (e) =>
+        e instanceof SshFailure &&
+        /^host\.example\.com didn’t remove Postbox: .*isn’t a folder/.test(e.message) &&
+        e.next === 'Fix that on host.example.com, then remove it again.',
+    );
+    assert.equal(token(refuse), true);
+  } finally {
+    refuse.done();
+  }
+  const drop = setup({ daemon: createFakeDaemon({ autoEnd: false, remove: 'drop' }) });
+  try {
+    await assert.rejects(
+      drop.mgr.removeFromHost('h1'),
+      (e) =>
+        e instanceof SshFailure &&
+        e.message === 'The connection to host.example.com closed before it confirmed that Postbox was removed.' &&
+        e.next === 'Remove it again once host.example.com is back.',
+    );
+    assert.equal(token(drop), true);
+  } finally {
+    drop.done();
+  }
+  const silent = setup({ daemon: createFakeDaemon({ autoEnd: false, remove: 'silent' }) });
+  try {
+    const p = silent.mgr.removeFromHost('h1');
+    await until(() => silent.daemon.removes === 1, 'the remove');
+    silent.clock.advance(REMOVE_CONFIRM_MS);
+    await assert.rejects(p, (e) => e instanceof SshFailure && e.message === 'host.example.com didn’t confirm within 45 seconds that Postbox was removed.');
+    assert.equal(token(silent), true);
+  } finally {
+    silent.done();
+  }
+});
+
+test('hosts: removeFromHost says what to do when the host can’t be reached, and rejects as link() does for one with no token here', async () => {
+  const ssh = fakeSsh({ script: (child) => child.fail(255, SIGN_IN) });
+  const s = setup({ spawn: ssh.spawn });
+  try {
+    await assert.rejects(
+      s.mgr.removeFromHost('h1'),
+      (e) => e instanceof SshFailure && e.kind === 'sign-in' && /^Sign in to host\.example\.com in a terminal.* Then remove it again\.$/.test(e.next),
+    );
+    await assert.rejects(s.mgr.removeFromHost('h2'), (e) => e.code === 'not-installed');
+    assert.equal(ssh.calls.length, 1, 'nothing dialed the host with no token');
+    await assert.rejects(s.mgr.removeFromHost('nope'), (e) => e.code === 'no-host');
   } finally {
     s.done();
   }

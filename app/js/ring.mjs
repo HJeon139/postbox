@@ -5,6 +5,11 @@
 // pulses amber. With reduced motion everything holds still (see workbench.css).
 //
 //   <pb-ring name="@indexer" state="tool" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="sm">
+//
+// An agent on a host (#120) also says where it runs in its label: where="on host.example.com, connected, last heard
+// from 2 min ago" (app/js/remote.mjs), in words, since the ring’s color says only what the agent is doing.
+
+import { ringWhere } from './remote.mjs';
 
 // stopping: Stop was pressed, and its process hasn’t exited yet (#126). It holds still, in the idle color.
 const STATE_WORD = { idle: 'Idle', think: 'Thinking', gen: 'Generating', tool: 'Calling tools', needs: 'Needs you', failed: 'Failed', stopping: 'Stopping' };
@@ -69,7 +74,7 @@ const parseSubs = (spec) =>
 export const subsAttr = (subagents = []) => subagents.map((s) => `${s.state}:${Math.round(s.ctx)}:${String(s.name).replace(/[,:]/g, ' ')}`).join(',');
 
 class PbRing extends HTMLElement {
-  static observedAttributes = ['state', 'ctx', 'subs', 'size', 'name'];
+  static observedAttributes = ['state', 'ctx', 'subs', 'size', 'name', 'where'];
   connectedCallback() {
     this.render();
   }
@@ -101,7 +106,8 @@ class PbRing extends HTMLElement {
     const subText = subs.length
       ? `; ${subs.length} subagent${subs.length === 1 ? '' : 's'}: ` + subs.map((x) => `${x.name} ${stateWord(x.state).toLowerCase()}, ${x.ctx}%`).join('; ')
       : '';
-    const label = `${name}: ${stateWord(state)}, ${ctx}% of context used${subText}`;
+    const where = this.getAttribute('where') || '';
+    const label = `${name}: ${stateWord(state)}, ${ctx}% of context used${where ? `; ${where}` : ''}${subText}`;
     svg.setAttribute('aria-label', label);
     const title = document.createElementNS(NS, 'title');
     title.textContent = label;
@@ -130,5 +136,6 @@ export function ringFor(se, size = 'sm', el = null) {
   set('ctx', String(se.ctx ?? 0));
   set('subs', subsAttr(se.subagents));
   set('size', size);
+  set('where', ringWhere(se));
   return el;
 }
