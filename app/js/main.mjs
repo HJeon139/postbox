@@ -4,6 +4,7 @@ import './ring.mjs';
 import { onThemeChange } from './apps.mjs';
 import { client, connect, hrefOf, itemsOf, load, needsYou, threadsOf } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
+import './focus-clear.mjs';
 import { hoverContent } from './hover-content.mjs';
 import './keys.mjs';
 import { mountPane } from './pane.mjs';

@@ -223,6 +223,7 @@ All colors are defined as tokens on `:root` in [`mockups/workbench.css`](../mock
 | Streaming text goes through an `aria-live="polite"` region that announces finished sentences, not every token | Screen readers stay usable while text streams. |
 | When a block appears, focus doesn’t jump to it; after you act in it, focus returns to the composer | You stay where you are. |
 | Every block and app is fully usable by keyboard; focus rings are 2px amber | It works without a mouse. |
+| What has focus is never under the composer, or the Jump to latest pill above it: Tab to a control at the foot of the conversation, and the view scrolls it, with its focus ring, above them. It scrolls only for keyboard focus, never for a click, only when they cover it, and only toward the end | Decided 24 October 2026 (#232, WCAG 2.4.11): the browser scrolls a focused control only to the window’s edge, under the sticky composer. `scroll-padding-bottom` fixed that but kept the view from staying at the end (#88). |
 | One key goes to the next thing that needs you (⌃J), ⌘K opens a palette for threads, projects, agents and actions, and keys move through turns and blocks | Faster than clicking for a power user. |
 | Reduced motion stops every animation; rings hold still, and the rail’s text says the state | State never depends on motion alone. |
 

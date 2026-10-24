@@ -12,6 +12,7 @@ Where you write to agents; it must say who will answer.
 
 - Enter sends, Shift+Enter adds a line; drafts are kept per conversation.
 - The hint says who replies (the last speaker in a room); Stop replaces Send while an agent works.
+- Scrolled a little above the end, Tab through the last replies: each button, option and link you reach shows above the composer, with its focus ring, never under it or under the Jump to latest pill. A click on a message there doesn’t move the view (#232).
 - A topic or side thread’s composer is as tall as the conversation’s, and with a thread panel open the two boxes sit at the same height, side by side. The hint under each keeps room for two lines, so a shorter hint doesn’t lower its box (#116).
 - / opens the [command menu](command-menu.md), as does the Commands button beside +; a line that starts with ! runs a [command](../transcript/command-item.md) in the conversation’s folder. The hint line says what Enter will do with either. In a topic or side thread’s composer, / and ! don’t run anything: a line that starts with ! says so in the hint before you send it, and goes to the agent as a message ([#104](https://github.com/HJeon139/postbox/issues/104)).
 - Messages sent while an agent is busy are queued with Send now, Edit and remove ([screenshot](../../screenshots/queued-message.png)).
