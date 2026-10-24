@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.22.0 (2026-10-24)
+
+### Features
+
+- **threads:** react to a message with an emoji, and the agent hears it as feedback
+
+### Fixes
+
+- **threads:** tell a thread's reactions to its own agents, and keep the review's fixes
+
 ## 0.21.0 (2026-10-24)
 
 ### Features
