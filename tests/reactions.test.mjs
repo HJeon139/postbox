@@ -14,7 +14,7 @@ async function replied() {
   const reply = f.store.items(f.t.id).find((x) => x.kind === 'agent');
   return { ...f, reply };
 }
-const react = (f, item, emoji) => f.rt.act(f.t.id, item.id, 'react', { emoji });
+const react = (f, item, emoji, threadId = f.t.id) => f.rt.act(threadId, item.id, '@react', { emoji });
 /** What each agent’s next turn starts with. */
 async function nextTurns(f, text) {
   const before = f.adapter.calls.length;
@@ -79,4 +79,74 @@ test('#251: a reaction taken back before the agent’s turn isn’t told, and on
     ['✅'],
   );
   assert.ok(!f.store.items(f.t.id).some((x) => x.kind === 'voice'), 'a reaction says nothing in your voice');
+});
+
+test('#251: a reaction in a topic thread reaches the agent answering there, and no one in the conversation', async () => {
+  const f = await replied();
+  const topic = f.rt.startTopic(f.t.id, f.reply.id).threadId;
+  f.adapter.next.push(async (c) => c.text('In the thread: the year field is the cause.'));
+  f.rt.sendMessage(topic, { text: '@alpha say more here' });
+  await settle(f.rt);
+  const there = f.store.items(topic).find((x) => x.kind === 'agent');
+  react(f, there, '🚩', topic);
+  // beta, in the conversation, isn’t told of a reaction in a thread it isn’t in.
+  const [[b, room]] = await nextTurns(f, '@beta anything new?');
+  assert.equal(b, 'beta');
+  assert.doesNotMatch(room, /reacted/);
+  // alpha, answering in the thread, is: once.
+  const before = f.adapter.calls.length;
+  f.rt.sendMessage(topic, { text: '@alpha and?' });
+  await settle(f.rt);
+  const heard = (f.adapter.calls[before].message.context ?? []).join('\n');
+  assert.match(heard, /You reacted 🚩 to @alpha’s message \(yours: take it as feedback\)/);
+  f.rt.sendMessage(topic, { text: '@alpha once more?' });
+  await settle(f.rt);
+  assert.doesNotMatch((f.adapter.calls.at(-1).message.context ?? []).join('\n'), /reacted/);
+});
+
+test('#251: an agent’s card action named react stays the card’s, and the event records what the reaction was', async () => {
+  const f = await replied();
+  const se = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'alpha');
+  f.rt.toolsFor(se.id).show_block({ block: { id: 'c', type: 'card', version: 1, fallback: 'A card', actions: [{ id: 'react', label: 'React' }] } });
+  const card = f.store.items(f.t.id).find((x) => x.kind === 'block');
+  const r = await f.rt.act(f.t.id, card.id, 'react', {});
+  assert.match(r.voice, /^React/);
+  assert.equal(f.store.item(f.t.id, card.id).reactions, undefined);
+  const seen = [];
+  f.store.subscribe((ev) => ev.type === 'item.patch' && ev.data.reaction && seen.push(ev.data));
+  react(f, f.reply, '👍');
+  react(f, f.reply, '👍');
+  assert.deepEqual(
+    seen.map((d) => [d.id, d.reaction.emoji, d.reaction.on]),
+    [
+      [f.reply.id, '👍', true],
+      [f.reply.id, '👍', false],
+    ],
+  );
+  assert.ok(seen.every((d) => Number.isFinite(d.reaction.at)));
+});
+
+test('#251: a reply still being written, or a deleted agent’s, takes no reaction; one in the same millisecond is still told', async () => {
+  const f = await replied();
+  f.rt.patchItem(f.t.id, f.reply.id, { status: 'streaming' });
+  assert.throws(() => react(f, f.reply, '👍'), /still being written/);
+  f.rt.patchItem(f.t.id, f.reply.id, { status: 'done', deletedAgent: true });
+  assert.throws(() => react(f, f.reply, '👍'), /was deleted/);
+  f.rt.patchItem(f.t.id, f.reply.id, { deletedAgent: false });
+  // The marker is the newest reaction told, not the time of the catch-up: one at the same millisecond is told next.
+  const se = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'alpha');
+  const at = Date.now() + 60_000;
+  f.rt.patchItem(f.t.id, f.reply.id, { reactions: [{ emoji: '👍', at }] });
+  f.rt.updateSession(se.id, { reactionsTold: { [f.t.id]: { at: at - 1, keys: [] } } });
+  const [[, first]] = await nextTurns(f, '@alpha one');
+  assert.match(first, /reacted 👍/);
+  f.rt.patchItem(f.t.id, f.reply.id, {
+    reactions: [
+      { emoji: '👍', at },
+      { emoji: '✅', at },
+    ],
+  });
+  const [[, second]] = await nextTurns(f, '@alpha two');
+  assert.doesNotMatch(second, /👍/);
+  assert.match(second, /reacted ✅/);
 });

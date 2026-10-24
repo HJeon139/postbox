@@ -1671,7 +1671,7 @@ export class Runtime {
     const items = this.store.items(se.threadId);
     const t = this.s.threads[se.threadId];
     const at = se.seenItem ? items.findIndex((i) => i.id === se.seenItem) : -1;
-    this.updateSession(se.id, { seenItem: items.at(-1)?.id ?? null, reactionsSeen: Date.now() });
+    this.updateSession(se.id, { seenItem: items.at(-1)?.id ?? null });
     // A session from before markers were kept, alone in its conversation, already saw everything addressed to it.
     if (se.seenItem === undefined && (t?.members?.length ?? 0) <= 1 && se.startedAt < (items.at(-1)?.at ?? 0)) return null;
     // Its first catch-up in a topic thread starts with the message the thread is about, unless it holds it already.
@@ -1682,7 +1682,7 @@ export class Runtime {
       .map((i) => this.describeItem(i, se))
       .filter(Boolean)
       // Its topic and side threads with something new, each a line it may read (#228); the person’s new reactions (#251).
-      .concat(threadLines(this, se, items[at]?.at ?? 0), reactionLines(this, se, se.threadId, se.reactionsSeen ?? se.startedAt ?? 0));
+      .concat(threadLines(this, se, items[at]?.at ?? 0), reactionLines(this, se, se.threadId));
     if (!lines.length) return root && `[Postbox] ${root}`;
     const kept = [];
     let size = 0;
