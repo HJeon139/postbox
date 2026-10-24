@@ -2,6 +2,25 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.26.0 (2026-10-24)
+
+### Features
+
+- **reactions:** draw each reaction with its icon
+
+### Fixes
+
+- **reactions:** the UAT's telemetry driver finds a reaction by its icon, and every icon is checked
+
+## 0.25.1 (2026-10-24)
+
+### Fixes
+
+- **stop:** four review fixes: a stopped kept job, Send now's sender, shared groups, a stray kill
+- **stop:** a stopped reply's tag grows to two lines where its words wrap, not out of its pill
+- **stop:** stopping one of two kept jobs that share processes ends the other as stopped
+- **stop:** say why a reply stopped, and tell the agent its kept jobs weren't stopped
+
 ## 0.25.0 (2026-10-24)
 
 ### Features

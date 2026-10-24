@@ -1,7 +1,7 @@
 // Reactions (#251): under a message, block or app, the person’s reactions as buttons that take one back, and a React
 // button in the message’s actions with the reactions to choose from, each checked when it’s on. The agents answering
 // where it is hear them at their next turn. A reaction repaints only its own row: the item, an app’s frame among
-// them, isn’t drawn again.
+// them, isn’t drawn again. Each reaction is drawn with its icon (app/media/reactions), and its emoji is the icon’s text.
 
 import { REACTIONS } from '/shared/reactions.mjs';
 import { api, client } from './client.mjs';
@@ -9,6 +9,15 @@ import { h } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 const said = new Map(REACTIONS);
+const DRAWN = new Map([
+  ['👍', 'approve'],
+  ['👎', 'disapprove'],
+  ['🚩', 'flag'],
+  ['❓', 'unclear'],
+  ['✅', 'done'],
+]);
+/** A reaction’s icon, which says its emoji to a screen reader. */
+const drawn = (emoji) => h('img.react-icon', { src: `/media/reactions/reaction-${DRAWN.get(emoji)}-64.png`, alt: emoji, width: 20, height: 20 });
 /** The act that reacts: server/reactions.mjs, REACT. */
 const REACT = '@react';
 
@@ -33,7 +42,7 @@ function row(it, threadId) {
           title: 'Take it back',
           onclick: () => react(threadId, it.id, r.emoji),
         },
-        r.emoji,
+        drawn(r.emoji),
       ),
     ),
   );
@@ -56,7 +65,7 @@ export function reactTo(bar, node, it, ctx) {
         const on = new Set((client.state.items[ctx.threadId]?.find((x) => x.id === it.id)?.reactions ?? []).map((r) => r.emoji));
         const menu = openMenu(
           button,
-          REACTIONS.map(([emoji, label]) => ({ label: `${emoji} ${label}`, run: () => react(ctx.threadId, it.id, emoji) })),
+          REACTIONS.map(([emoji, label]) => ({ icon: drawn(emoji), label, run: () => react(ctx.threadId, it.id, emoji) })),
           { label: 'Reactions' },
         );
         // Each is a choice you turn on or off, and says which way it is.

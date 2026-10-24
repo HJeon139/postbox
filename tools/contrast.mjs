@@ -97,6 +97,8 @@ const checks = [
   ['text', 'mark', 4.5],
   ['text', 'diff-add', 4.5],
   ['text', 'diff-del', 4.5],
+  // A reaction’s amber outline on its wash (#251).
+  ['accent', 'mark', 3],
   ['good', 'diff-add', 3],
   // The head of an overview card that needs you: its name, where it is, and the state line (#8).
   ['text', 'needs-band', 4.5],

@@ -11,7 +11,11 @@ A failure must be visible, explained, and recoverable; a stop must look differen
 ## Expected functionality
 
 - A failed reply shows the reason and Retry; the agent needs you until you retry or move on.
-- A stopped reply says “Stopped by you at hh:mm” ([screenshot](../../screenshots/stopped-reply.png)).
+- A stopped reply says why it stopped ([screenshot](../../screenshots/stopped-reply.png)):
+  - “Stopped by you at hh:mm” after Stop;
+  - “Stopped by you at hh:mm · its background work kept running” after Stop with Keep running (#249);
+  - “Interrupted by Send now at hh:mm” after Send now, from the composer or the queue (#215).
+- A reply stopped before Postbox recorded why reads “Stopped by you at hh:mm”.
 
 ## Steps to reproduce
 

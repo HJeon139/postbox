@@ -344,7 +344,7 @@ export function closeMenu() {
 }
 /**
  * A popover menu anchored to a button. items: [{ label, icon?, desc?, kbd?, danger?, current?, run }] or 'hr' or
- * { heading }. Focus starts on the item marked current, else on the first.
+ * { heading }; an icon is a name or a drawn element. Focus starts on the item marked current, else on the first.
  */
 export function openMenu(anchor, items, { className = '', placement = 'below', label = 'Menu' } = {}) {
   // Clicking the menu’s own button again closes it, rather than closing and reopening it (#29).
@@ -379,7 +379,7 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
           it.run();
         },
       },
-      it.icon ? icon(it.icon) : null,
+      typeof it.icon === 'string' ? icon(it.icon) : (it.icon ?? null),
       h('span.grow', { style: { textAlign: 'left' } }, it.label, it.desc ? h('span.d', it.desc) : null),
       it.kbd ? h('span.k', it.kbd) : null,
     );

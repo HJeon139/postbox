@@ -764,8 +764,13 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 /* The person’s reactions under a message (#251): each one a button that takes it back. */
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; }
 .turn.me .reactions { justify-content: flex-end; }
-.react-chip { font: inherit; font-size: 13px; line-height: 1; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 999px; background: var(--panel); color: var(--text); cursor: pointer; }
-.react-chip:hover { background: var(--sunk); }
+/* Each is drawn with its icon (app/media/reactions) on a light amber wash, the person’s own: an amber fill would sink the
+   orange, mustard and red in the icons. */
+.react-chip { display: inline-flex; align-items: center; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 999px; background: var(--mark); cursor: pointer; }
+.react-chip:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.react-icon { display: block; flex: none; width: 20px; height: 20px; }
+/* The icons’ espresso outline only shows on light: on dark, a thin rim keeps their green and orange badges off the wash. */
+:root:not([data-theme="light"]) .react-icon { filter: drop-shadow(1px 0 0 var(--dim)) drop-shadow(-1px 0 0 var(--dim)) drop-shadow(0 1px 0 var(--dim)) drop-shadow(0 -1px 0 var(--dim)); }
 .react-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Sent back from a topic thread. */
@@ -996,8 +1001,9 @@ html.pb-sandbox body { margin: 0; }
 .menu button.mi { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; width: 100%; color: var(--text); }
 .menu button.mi:hover, .menu button.mi.active, .menu button.mi:focus-visible { border-color: var(--accent); background: var(--sunk); outline: none; }
 .menu .mi .i, .menu .mi pb-ring { flex: none; }
-.stopped-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; height: 18px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); align-self: flex-start; }
-.stopped-tag::before { content: ""; width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
+/* A stopped reply’s tag (#215): one line where it fits, and taller, not overflowing, where its words wrap (375 px). */
+.stopped-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; line-height: 14px; min-height: 18px; max-width: 100%; box-sizing: border-box; padding: 1px 7px; border: 1px solid var(--line); border-radius: 9px; color: var(--dim); align-self: flex-start; }
+.stopped-tag::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
 .prompt:hover { border-color: var(--accent) !important; }
 .prompt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hovercard { position: fixed; }
