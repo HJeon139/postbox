@@ -1712,7 +1712,7 @@ export class Runtime {
   }
 
   /**
-   * read_conversation: the conversation’s items, newest last, as text. thread: another thread of the same conversation
+   * read_conversation: the conversation’s items, newest last, as text, each with its id (for read_message and react). thread: another thread of the same conversation
    * to read instead, such as a side thread or a topic thread (#121): its id from a catch-up line, a pointer to a fork, or
    * a link the person shared. Threads of other conversations are refused.
    */
@@ -1725,7 +1725,7 @@ export class Runtime {
     const n = Math.max(1, Math.min(200, Number(limit) || 50));
     const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
     const slice = items.slice(Math.max(0, end - n), end);
-    const lines = slice.map((i) => this.readLine(i, se)).filter(Boolean);
+    const lines = slice.flatMap((i) => (this.readLine(i, se) ? [`[${i.id}] ${this.readLine(i, se)}`] : []));
     const before = end - slice.length;
     return `${lines.join('\n\n') || 'The conversation is empty.'}${before ? `\n\n(${before} earlier ${before === 1 ? 'item' : 'items'}; call again with skip: ${items.length - before} to read them.)` : ''}`;
   }
