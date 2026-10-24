@@ -149,9 +149,8 @@ export async function makeReport(rt, threadId, { history = false } = {}) {
     unlabeled: gated.unlabeled,
     labeled: asked.length,
     refs,
-    input,
-    costUsd: r.costUsd,
-    called: r.called,
+    // What the classifier was sent and answered, local like the rest, so a rejected label can be traced.
+    ...{ input, answer: r.answer, costUsd: r.costUsd, called: r.called },
     uat: proposals,
     at: Date.now(),
   };

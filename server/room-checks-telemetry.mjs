@@ -104,10 +104,20 @@ function secretsOf(f, t) {
 /** Postbox’s own words about telemetry, as its UI says them, and the field its recorder adds. */
 const OWN_WORDS = [/Recording since/, /Record this room/, /Stop recording/, /Telemetry report/, /Delete recordings/, /"recording"\s*:/];
 
-/** The parts of a turn’s input that Postbox writes: [Postbox] lines, and its own tools’ results (not a command’s). */
-function postboxWritten(streams) {
+/**
+ * The parts of a turn’s input that Postbox writes: [Postbox] lines, and its own tools’ results (not a command’s). From
+ * the streams and the agents’ transcripts, which alone hold the input a turn started with.
+ */
+function postboxWritten(streams, transcripts) {
+  const parse = (l) => {
+    try {
+      return [JSON.parse(l)];
+    } catch {
+      return [];
+    }
+  };
   const out = [];
-  for (const s of streams ?? []) {
+  for (const s of [...(streams ?? []), ...(transcripts ?? []).map((t) => ({ handle: t.handle, events: t.lines.flatMap(parse) }))]) {
     const ours = new Set();
     for (const e of s.events ?? []) {
       if (e.type === 'assistant')
@@ -152,10 +162,10 @@ const CHECKS = [
     // An agent’s turn input that tells it the room is recorded (R5, R6): Postbox’s own telemetry words in what Postbox
     // writes. What agents or the person write is left out.
     id: 'recording-visible',
-    inputs: ['telemetry', 'streams'],
+    inputs: ['telemetry', 'streams', 'transcripts'],
     issue: null,
     run: (f) => {
-      const hits = postboxWritten(f.streams).filter((x) => OWN_WORDS.some((w) => w.test(x.text)));
+      const hits = postboxWritten(f.streams, f.transcripts).filter((x) => OWN_WORDS.some((w) => w.test(x.text)));
       return hits.length
         ? [
             {
@@ -228,7 +238,8 @@ const CHECKS = [
     issue: null,
     run: (f) => {
       const items = (f.threads ?? []).flatMap((id) => f.state?.items?.[id] ?? []);
-      const off = f.telemetry.flags.filter((x) => !x.failed && !items.find((it) => it.id === x.item)?.reactions?.some((r) => r.emoji === '🚩'));
+      // Only once the runner has reacted, after the last step (U4).
+      const off = f.telemetry.flags.filter((x) => x.reacted && !items.find((it) => it.id === x.item)?.reactions?.some((r) => r.emoji === '🚩'));
       return off.length
         ? [{ title: 'A 🚩 isn’t on the item it was put on', evidence: off.map((x) => `the 🚩 for “${x.key}” isn’t on ${x.item}`).join('; ') }]
         : [];

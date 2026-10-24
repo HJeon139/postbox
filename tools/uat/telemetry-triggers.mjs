@@ -5,12 +5,14 @@
 const FLAG = '🚩';
 const roomItems = (f) => (f.threads ?? []).flatMap((t) => f.state?.items?.[t] ?? []);
 const reactionsIn = (f) => roomItems(f).flatMap((it) => (it.reactions ?? []).map((r) => ({ ...r, item: it })));
-/** The text of each user event in a stream: what the agent was told at the start of a turn, and its tools’ results. */
-const toldIn = (s) =>
-  (s.events ?? [])
-    .filter((e) => e.type === 'user')
-    .map((e) => (typeof e.message?.content === 'string' ? e.message.content : JSON.stringify(e.message?.content ?? '')))
-    .join('\n');
+/**
+ * Whether an agent was told something at a turn’s start after a time: its Claude Code transcript’s user lines, since
+ * a turn’s stream doesn’t repeat the input it was given.
+ */
+const toldAfter = (f, handle, text, at) =>
+  (f.transcripts ?? [])
+    .filter((t) => t.handle === handle)
+    .some((t) => t.lines.some((l) => l.includes('"type":"user"') && l.includes(text) && Date.parse(/"timestamp":"([^"]+)"/.exec(l)?.[1] ?? '') > at));
 
 export const TELEMETRY_TRIGGERS = {
   'canaries-in-room': {
@@ -52,11 +54,11 @@ export const TELEMETRY_TRIGGERS = {
   'feedback-reacted': {
     issue: null,
     says: 'a reaction other than 🚩 was recorded, and the agent it was on was told of it in its next turn',
-    recorded: (f) => !!f.state && Array.isArray(f.streams),
+    recorded: (f) => !!f.state && Array.isArray(f.transcripts),
     run: (f) =>
       reactionsIn(f)
         .filter((r) => r.emoji !== FLAG && r.item.handle)
-        .filter((r) => (f.streams ?? []).some((s) => s.handle === r.item.handle && (s.started ?? 0) > r.at && toldIn(s).includes(`You reacted ${r.emoji}`)))
+        .filter((r) => toldAfter(f, r.item.handle, `You reacted ${r.emoji}`, r.at))
         .slice(0, 1)
         .map((r) => ({ at: r.at, evidence: `${r.emoji} on @${r.item.handle}’s message, and its next turn was told “You reacted ${r.emoji}”.` })),
   },

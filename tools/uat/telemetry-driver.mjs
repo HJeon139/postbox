@@ -105,7 +105,7 @@ function viewActions({ ev, click, byText, until }) {
       const shown = await ev(
         `({ text: document.querySelector('pre.tv-issue').textContent, hash: (/sha256 ([0-9a-f]{64})/.exec(document.querySelector('pre.tv-issue').parentElement.textContent) ?? [])[1] ?? null })`,
       );
-      await click(byText('', 'button', 'Send'), 'Send');
+      await click(byText('.dialog .d-foot', 'button', 'Send'), 'Send in the File issue dialog');
       await sleep(1000);
       return shown;
     },

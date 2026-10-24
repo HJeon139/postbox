@@ -88,7 +88,7 @@ async function uatFacts() {
       reports: [{ id, text, derived: ['', ''] }],
       drafts: [],
       shown: { saved: [hash], issues: [], copied: [], opened: [] },
-      flags: [{ key: 'x', item: f.reply.id }],
+      flags: [{ key: 'x', item: f.reply.id, reacted: true }],
       modes: [{ path: 'a', dir: true, mode: 0o700 }],
       turns: [],
       expected: [],
@@ -124,7 +124,10 @@ test('U3: the telemetry checks pass on a clean run, and each fires on its own de
   ];
   assert.deepEqual(fired(command), []);
   const moved = structuredClone(facts);
-  moved.telemetry.flags = [{ key: 'x', item: 'it_elsewhere' }];
+  moved.telemetry.flags = [
+    { key: 'x', item: 'it_elsewhere', reacted: true },
+    { key: 'y', item: 'it_not_yet' },
+  ];
   assert.deepEqual(fired(moved), ['flag-misplaced']);
   const open = structuredClone(facts);
   open.telemetry.modes.push({ path: 'a/report.json', dir: false, mode: 0o644 });

@@ -48,7 +48,7 @@ export function seedCanaries(workspace, dir) {
   writeFileSync(join(workspace, '.env'), `AWS_ACCESS_KEY_ID=${canaries.key}\nOWNER=${canaries.email}\nREMOTE=${canaries.repo}\nRETRIES=3\n`);
   writeFileSync(
     join(workspace, 'src', 'config_loader.py'),
-    `import os\n\n\ndef ${canaries.fn}(path=".env"):\n    """Reads KEY=VALUE lines into a dict."""\n    out = {}\n    for line in open(path):\n        if "=" in line:\n            k, v = line.strip().split("=", 1)\n            out[k] = v\n    return out\n`,
+    `import os\n\n# Maintainer: ${canaries.email}. Mirror: ${canaries.repo}\n# Used when .env has no key, for the staging bucket.\nFALLBACK_KEY = "${canaries.key}"\n\n\ndef ${canaries.fn}(path=".env"):\n    """Reads KEY=VALUE lines into a dict."""\n    out = {"AWS_ACCESS_KEY_ID": FALLBACK_KEY}\n    for line in open(path):\n        if "=" in line:\n            k, v = line.strip().split("=", 1)\n            out[k] = v\n    return out\n`,
   );
   writeFileSync(
     join(workspace, 'tests', 'test_config_loader.py'),
@@ -135,10 +135,15 @@ function readJsonLines(file) {
  */
 export async function finishTelemetry({ td, flags, dir, data, main, shown, log }) {
   for (const f of flags)
-    await td.react(f.item, '🚩').catch((e) => {
-      f.failed = e.message;
-      log(`Couldn’t react 🚩 to ${f.item} for “${f.key}”: ${e.message}`);
-    });
+    await td.react(f.item, '🚩').then(
+      () => {
+        f.reacted = true;
+      },
+      (e) => {
+        f.failed = e.message;
+        log(`Couldn’t react 🚩 to ${f.item} for “${f.key}”: ${e.message}`);
+      },
+    );
   const view = await td.report({ history: true });
   shown.views.push({ at: Date.now(), hash: view.hash, lines: view.lines.length });
   await td.save();
