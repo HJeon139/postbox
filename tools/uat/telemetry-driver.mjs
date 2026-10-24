@@ -7,6 +7,9 @@
 import { sleep } from '../cdp.mjs';
 
 const J = JSON.stringify;
+/** A reaction in the open React menu, by its emoji: the item's icon says it (#263), or its text, as before icons. */
+export const reactItem = (emoji) =>
+  `[...document.querySelectorAll('[role=menuitemcheckbox],[role=menuitem]')].find((b) => b.querySelector('img')?.alt === ${J(emoji)} || b.textContent.trim().startsWith(${J(emoji)}))`;
 
 /** The page’s helpers: evaluate, click what an expression finds, find by text, and wait for an expression. */
 function helpers(page) {
@@ -53,10 +56,7 @@ function roomActions({ ev, click, byText }) {
     /** Reacts to an item, by its id, from its React menu. */
     async react(key, emoji) {
       await click(`document.querySelector(${J(`[data-key="${key}"] button[aria-label="React to this message"]`)})`, `the React button on ${key}`);
-      await click(
-        `[...document.querySelectorAll('[role=menuitemcheckbox],[role=menuitem]')].find((b) => b.textContent.trim().startsWith(${J(emoji)}))`,
-        `${emoji} in the React menu`,
-      );
+      await click(reactItem(emoji), `${emoji} in the React menu`);
     },
   };
 }
