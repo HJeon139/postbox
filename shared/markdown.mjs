@@ -5,7 +5,7 @@
 // Supported: paragraphs (a single newline is a line break), # headings, - and 1. lists (nested by
 // indentation), > quotes, ``` fences, ```mermaid diagrams, $$ math blocks (or $$…$$ on one line), $inline math$,
 // LaTeX’s \[display\] and \(inline\) math, pipe tables,
-// ---, `code`, **bold**, *italic*, ~~strikethrough~~, [links](https://…), bare https:// links,
+// ---, `code`, **bold**, *italic*, ~~strikethrough~~, [links](https://…), ![images](https://…), bare https:// links,
 // citation markers [1], term links [label](term:key), glossary auto-links and @mentions.
 // While a reply is streaming, an unclosed fence is drawn as if it were closed.
 //
@@ -13,11 +13,10 @@
 // right after it, closed by its </details>, folds its Markdown away (agents use it to hide an exercise's
 // answer). The tags must be exactly these, with no attributes; anything else, or an unclosed tag, is text.
 
-import { displayMath, mathAt } from './math.mjs';
-import { isSafeUrl } from './urls.mjs';
+import { escapeHtml, glossaryRegex, inline, mentionRegex } from './markdown-inline.mjs';
+import { displayMath } from './math.mjs';
 
-const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
+export { escapeHtml };
 
 // The block rules, shared with the review renderer's line grouping (review-lines.mjs).
 export const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_+#.-]*)\s*$/;
@@ -39,26 +38,43 @@ export const closesFence = (marker, line) => new RegExp(`^ {0,3}${marker[0]}{${m
  *   glossary?: { key: string, term: string }[],
  *   mentions?: string[],         // handles without the @
  *   folds?: boolean,             // false shows <details> as text, as a review does
+ *   pageOrigin?: string,         // the page’s origin, which Postbox’s own images move to (#180, #218)
+ *   positions?: boolean,         // mark where each part came from in src, for a review’s comments (#179; see inline)
  * }} [opts]
  * @returns {string} HTML
  */
 export function renderMarkdown(src, opts = {}) {
-  const ctx = { ...opts, glossaryRe: glossaryRegex(opts.glossary), mentionRe: mentionRegex(opts.mentions) };
-  return blocks(
-    // U+0000 stands in for a code span inside a run of text (see inline), so the text can't contain it.
-    String(src ?? '')
-      .replace(/\r\n?/g, '\n')
-      .replace(/\0/g, '\uFFFD')
-      .split('\n'),
-    ctx,
-  );
+  // U+0000 stands in for a code span inside a run of text (see inline), so the text can't contain it.
+  const lines = String(src ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\0/g, '\uFFFD')
+    .split('\n');
+  const ctx = { ...opts, src: opts.positions ? lines : null, glossaryRe: glossaryRegex(opts.glossary), mentionRe: mentionRegex(opts.mentions) };
+  return blocks(lines, ctx, 0);
 }
 
-function blocks(lines, ctx) {
+/**
+ * Where text t of a line starts in the source, for inline’s marks (#179), or undefined when there are none. line is
+ * source line n as this level of blocks has it: a quote’s marker or a list item’s indent only ever comes off its
+ * front. from is where to look for t in it.
+ * @param {any} ctx @param {number} n @param {string} line @param {string} t @param {number} [from]
+ */
+function at(ctx, n, line, t, from = 0) {
+  if (!ctx.src || !t) return undefined;
+  const o = ctx.src[n] ?? '';
+  const c = o.trimEnd().length - line.trimEnd().length + line.indexOf(t, from);
+  return o.startsWith(t, c) ? { n, c } : undefined;
+}
+/** The source lines a block spans, as data-sl to data-el (1-based), when the render marks positions. */
+const lineMarks = (ctx, a, z) => (ctx.src ? ` data-sl="${a + 1}" data-el="${z + 1}"` : '');
+
+/** @param {string[]} lines @param {any} ctx @param {number} base  the source line lines[0] is */
+function blocks(lines, ctx, base) {
   const out = [];
+  /** @type {number[]} */
   let para = [];
   const flush = () => {
-    if (para.length) out.push(`<p>${para.map((l) => inline(l.trim(), ctx)).join('<br>')}</p>`);
+    if (para.length) out.push(`<p>${para.map((k) => inline(lines[k].trim(), ctx, at(ctx, base + k, lines[k], lines[k].trim()))).join('<br>')}</p>`);
     para = [];
   };
   for (let i = 0; i < lines.length; i++) {
@@ -71,27 +87,16 @@ function blocks(lines, ctx) {
     const fence = line.match(FENCE);
     if (fence) {
       flush();
-      const marker = fence[1],
-        lang = fence[2].toLowerCase();
-      const body = [];
-      let closed = false;
-      for (i++; i < lines.length; i++) {
-        if (closesFence(marker, lines[i])) {
-          closed = true;
-          break;
-        }
-        body.push(lines[i]);
-      }
-      const code = escapeHtml(body.join('\n'));
-      if (lang === 'mermaid' && closed) out.push(`<figure class="md-mermaid"><pre><code>${code}</code></pre></figure>`);
-      else out.push(`<pre class="md-code"><code${lang ? ` data-lang="${escapeHtml(lang)}"` : ''}>${code}</code></pre>`);
+      const f = fenced(lines, i, fence, ctx, base);
+      out.push(f.html);
+      i = f.end;
       continue;
     }
 
     const display = displayMath(lines, i);
     if (display) {
       flush();
-      out.push(`<div class="md-math" data-display="true">${escapeHtml(display.tex)}</div>`);
+      out.push(`<div class="md-math" data-display="true"${lineMarks(ctx, base + i, base + display.end)}>${escapeHtml(display.tex)}</div>`);
       i = display.end;
       continue;
     }
@@ -100,7 +105,7 @@ function blocks(lines, ctx) {
     if (h) {
       flush();
       const level = Math.min(5, Math.max(3, h[1].length + 1));
-      out.push(`<h${level}>${inline(h[2], ctx)}</h${level}>`);
+      out.push(`<h${level}>${inline(h[2], ctx, at(ctx, base + i, line, h[2], line.indexOf('#') + h[1].length))}</h${level}>`);
       continue;
     }
 
@@ -108,10 +113,10 @@ function blocks(lines, ctx) {
     if (fold) {
       flush();
       const summary = fold.summary === null ? '' : `<summary>${inline(fold.summary.trim(), ctx)}</summary>`;
-      out.push(`<details>${summary}${blocks(fold.body, ctx)}</details>`);
+      out.push(`<details>${summary}${blocks(fold.body, { ...ctx, src: null }, 0)}</details>`);
       // Text after </details> on its line is read as a line of its own.
       if (fold.after.trim()) {
-        out.push(blocks([fold.after, ...lines.slice(fold.end + 1)], ctx));
+        out.push(blocks([fold.after, ...lines.slice(fold.end + 1)], ctx, base + fold.end));
         break;
       }
       i = fold.end;
@@ -128,9 +133,9 @@ function blocks(lines, ctx) {
     if (QUOTE.test(line)) {
       flush();
       const body = [];
-      for (; i < lines.length && QUOTE.test(lines[i]); i++) body.push(lines[i].match(QUOTE)[1]);
+      for (; i < lines.length && QUOTE.test(lines[i]); i++) body.push(/** @type {RegExpMatchArray} */ (lines[i].match(QUOTE))[1]);
       i--;
-      out.push(`<blockquote>${blocks(body, ctx)}</blockquote>`);
+      out.push(`<blockquote>${blocks(body, ctx, base + i - body.length + 1)}</blockquote>`);
       continue;
     }
 
@@ -163,7 +168,7 @@ function blocks(lines, ctx) {
         body.push('  ' + l.trim());
       }
       i--;
-      out.push(list(body, ctx));
+      out.push(list(body, ctx, base + i - body.length + 1));
       continue;
     }
 
@@ -172,14 +177,33 @@ function blocks(lines, ctx) {
       const rows = [line];
       for (i += 2; i < lines.length && lines[i].includes('|') && lines[i].trim(); i++) rows.push(lines[i]);
       i--;
-      out.push(table(rows, lines, ctx));
+      out.push(table(rows, ctx, base + i - rows.length));
       continue;
     }
 
-    para.push(line);
+    para.push(i);
   }
   flush();
   return out.join('');
+}
+
+/**
+ * The fence that opens at lines[i], to its closing marker or, while a reply streams, the end: code, or a diagram once
+ * it’s closed. end is the closing marker’s line.
+ * @param {string[]} lines @param {number} i @param {RegExpMatchArray} fence @param {any} ctx @param {number} base
+ */
+function fenced(lines, i, [, marker, name], ctx, base) {
+  const lang = name.toLowerCase();
+  const body = [];
+  let j = i + 1;
+  for (; j < lines.length && !closesFence(marker, lines[j]); j++) body.push(lines[j]);
+  const code = escapeHtml(body.join('\n'));
+  const pos = lineMarks(ctx, base + i, base + Math.min(j, lines.length - 1));
+  const html =
+    lang === 'mermaid' && j < lines.length
+      ? `<figure class="md-mermaid"${pos}><pre><code>${code}</code></pre></figure>`
+      : `<pre class="md-code"${pos}><code${lang ? ` data-lang="${escapeHtml(lang)}"` : ''}>${code}</code></pre>`;
+  return { html, end: j };
 }
 
 /**
@@ -237,191 +261,54 @@ function details(lines, i) {
   return null;
 }
 
-function list(lines, ctx) {
+/** @param {any[]} lines @param {any} ctx @param {number} n0  the source line lines[0] is */
+function list(lines, ctx, n0) {
   const base = lines[0].match(LIST_ITEM)[1].length;
   const ordered = /\d/.test(lines[0].match(LIST_ITEM)[2]);
   const start = ordered ? parseInt(lines[0].match(LIST_ITEM)[2], 10) : 1;
   const items = [];
-  for (const l of lines) {
+  // Where each item starts in lines: an item’s lines follow it, one for one.
+  const starts = [];
+  for (const [k, l] of lines.entries()) {
     const m = l.match(LIST_ITEM);
-    if (m && m[1].length <= base + 1) items.push([m[3]]);
-    else items.at(-1)?.push(l.slice(Math.min(base + 2, l.length - l.trimStart().length)));
+    if (m && m[1].length <= base + 1) {
+      items.push([m[3]]);
+      starts.push(k);
+    } else items.at(-1)?.push(l.slice(Math.min(base + 2, l.length - l.trimStart().length)));
   }
   const tag = ordered ? 'ol' : 'ul';
-  const lis = items.map(([first, ...rest]) => {
+  const lis = items.map(([first, ...rest], j) => {
     const nested = rest.filter((r) => r !== undefined);
-    const inner = nested.length ? blocks([first, ...nested], ctx) : inline(first, ctx);
+    const n = n0 + starts[j];
+    const inner = nested.length ? blocks([first, ...nested], ctx, n) : inline(first, ctx, at(ctx, n, lines[starts[j]], first));
     // A single-paragraph item renders without the <p> wrapper.
     return `<li>${inner.replace(/^<p>([\s\S]*?)<\/p>(?=<|$)/, '$1')}</li>`;
   });
   return `<${tag}${ordered && start !== 1 ? ` start="${start}"` : ''}>${lis.join('')}</${tag}>`;
 }
 
-function table(rows, _lines, ctx) {
-  const cells = (row) =>
-    row
-      .trim()
-      .replace(/^\|/, '')
-      .replace(/\|$/, '')
+/** @param {string[]} rows  the header row and the body rows @param {any} ctx @param {number} n0  the header’s source line */
+function table(rows, ctx, n0) {
+  // Each cell’s text, and where it starts in its row.
+  const cells = (row) => {
+    const t = row.trimEnd();
+    let k = t.length - t.trimStart().length + (t.trimStart().startsWith('|') ? 1 : 0);
+    return t
+      .slice(k, t.endsWith('|') ? -1 : undefined)
       .split(/(?<!\\)\|/)
-      .map((c) => c.trim().replace(/\\\|/g, '|'));
-  const [head, ...body] = rows.map(cells);
-  const th = head.map((c) => `<th>${inline(c, ctx)}</th>`).join('');
-  const trs = body.map((r) => `<tr>${head.map((_, k) => `<td>${inline(r[k] ?? '', ctx)}</td>`).join('')}</tr>`).join('');
-  return `<div class="md-table"><table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`;
-}
-
-// ── Inline ──────────────────────────────────────────────────────────────────────────────
-
-function inline(s, ctx) {
-  let out = '',
-    buf = '',
-    i = 0;
-  // Code spans bind tighter than emphasis, so **`x`** is bold: each span waits in the text run as a
-  // U+0000 and goes back in, in order, once the run's emphasis is applied.
-  const codes = [];
-  const flush = () => {
-    out += textRun(buf, ctx).replace(/\0/g, () => codes.shift());
-    buf = '';
+      .map((part) => {
+        const cell = { t: part.trim(), c: k + part.length - part.trimStart().length };
+        k += part.length + 1;
+        return cell;
+      });
   };
-  while (i < s.length) {
-    const c = s[i];
-    const math = c === '$' || c === '\\' ? mathAt(s, i) : null;
-    if (math) {
-      flush();
-      out += `<span class="md-math"${math.display ? ' data-display="true"' : ''}>${escapeHtml(math.tex)}</span>`;
-      i = math.end;
-      continue;
-    }
-    if (c === '\\' && /[\\`*_{}[\]()#+\-.!|$~>@]/.test(s[i + 1] ?? '')) {
-      buf += s[i + 1];
-      i += 2;
-      continue;
-    }
-
-    if (c === '`') {
-      const run = s.slice(i).match(/^`+/)[0];
-      const end = s.indexOf(run, i + run.length);
-      if (end > -1) {
-        codes.push(`<code>${escapeHtml(s.slice(i + run.length, end).replace(/^ (.*) $/, '$1'))}</code>`);
-        buf += '\0';
-        i = end + run.length;
-        continue;
-      }
-      buf += run;
-      i += run.length;
-      continue;
-    }
-
-    if (c === '[') {
-      const close = s.indexOf(']', i + 1);
-      if (close > -1) {
-        const label = s.slice(i + 1, close);
-        if (s[close + 1] === '(') {
-          const end = matchParen(s, close + 1);
-          if (end > -1) {
-            const target = s.slice(close + 2, end).trim();
-            flush();
-            out += link(label, target, ctx);
-            i = end + 1;
-            continue;
-          }
-        } else if (/^\d{1,3}$/.test(label) && ctx.citations && +label >= 1 && +label <= ctx.citations) {
-          flush();
-          out += `<a class="cite" href="#${escapeHtml(ctx.citeId ?? 'src')}-${+label}" data-cite="${+label}" aria-label="Source ${+label}">${+label}</a>`;
-          i = close + 1;
-          continue;
-        }
-      }
-    }
-
-    // Streaming text can stop right after “https://”, so the full match may not be there yet.
-    const bare = (c === 'h' || c === 'H') && (i === 0 || /[\s(]/.test(s[i - 1])) ? s.slice(i).match(/^https?:\/\/[^\s<>"]+/i) : null;
-    if (bare) {
-      const url = bare[0].replace(/[.,;:!?)\]'”’]+$/, '');
-      if (isSafeUrl(url)) {
-        flush();
-        out += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
-        i += url.length;
-        continue;
-      }
-    }
-
-    buf += c;
-    i++;
-  }
-  flush();
-  return out;
-}
-
-function matchParen(s, open) {
-  let depth = 0;
-  for (let j = open; j < s.length; j++) {
-    if (s[j] === '\\') {
-      j++;
-      continue;
-    }
-    if (s[j] === '(') depth++;
-    else if (s[j] === ')' && --depth === 0) return j;
-  }
-  return -1;
-}
-
-function link(label, target, ctx) {
-  const text = inline(label, { ...ctx, citations: 0 });
-  const term = target.match(/^term:([A-Za-z0-9][A-Za-z0-9_.:-]{0,63})$/);
-  if (term) return `<span class="term" tabindex="0" data-term="${escapeHtml(term[1])}">${text}</span>`;
-  if (isSafeUrl(target)) return `<a href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
-  // An unsafe or relative link keeps its text and drops the address.
-  return text;
-}
-
-// Escapes, then applies emphasis, then glossary terms and @mentions to text outside the tags it made.
-function textRun(raw, ctx) {
-  if (!raw) return '';
-  const s = escapeHtml(raw)
-    .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^\w])__(?=\S)([\s\S]*?\S)__(?!\w)/g, '$1<strong>$2</strong>')
-    .replace(/\*(?=[^\s*])([^*]*?[^\s*])\*/g, '<em>$1</em>')
-    .replace(/\*(?=[^\s*])([^*])\*/g, '<em>$1</em>')
-    .replace(/(^|[^\w])_(?=[^\s_])([^_]*?[^\s_])_(?!\w)/g, '$1<em>$2</em>')
-    .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>');
-  if (!ctx.glossaryRe && !ctx.mentionRe) return s;
-  return s
-    .split(/(<[^>]+>)/)
-    .map((part) => {
-      if (part.startsWith('<')) return part;
-      if (ctx.mentionRe) part = part.replace(ctx.mentionRe, (_m, pre, handle) => `${pre}<span class="mention">@${handle}</span>`);
-      if (ctx.glossaryRe) {
-        part = part
-          .split(/(<[^>]+>)/)
-          .map((p) =>
-            p.startsWith('<')
-              ? p
-              : p.replace(ctx.glossaryRe.re, (m) => {
-                  const key = ctx.glossaryRe.keys.get(m.toLowerCase());
-                  return `<span class="term" tabindex="0" data-term="${escapeHtml(key)}">${m}</span>`;
-                }),
-          )
-          .join('');
-      }
-      return part;
-    })
-    .join('');
-}
-
-function glossaryRegex(glossary) {
-  const entries = (glossary ?? []).filter((g) => g?.term && g?.key);
-  if (!entries.length) return null;
-  const keys = new Map(entries.map((g) => [escapeHtml(g.term).toLowerCase(), g.key]));
-  const alts = [...keys.keys()].sort((a, b) => b.length - a.length).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return { re: new RegExp(`(?<![\\w-])(?:${alts.join('|')})(?![\\w-])`, 'gi'), keys };
-}
-
-function mentionRegex(handles) {
-  const hs = (handles ?? []).filter((h) => /^[A-Za-z0-9_-]+$/.test(h));
-  if (!hs.length) return null;
-  return new RegExp(`(^|[^\\w@])@(${hs.join('|')})(?![\\w-])`, 'g');
+  // With positions, inline reads the cell’s escaped pipes itself, in code spans too (cell), so its marks match.
+  const cellCtx = ctx.src ? { ...ctx, cell: true } : ctx;
+  const cell = (tag, c, row, n) => `<${tag}>${c ? inline(ctx.src ? c.t : c.t.replace(/\\\|/g, '|'), cellCtx, at(ctx, n, row, c.t, c.c)) : ''}</${tag}>`;
+  const [head, ...body] = rows.map(cells);
+  const th = head.map((c) => cell('th', c, rows[0], n0)).join('');
+  const trs = body.map((r, j) => `<tr>${head.map((_, k) => cell('td', r[k], rows[j + 1], n0 + 2 + j)).join('')}</tr>`).join('');
+  return `<div class="md-table"><table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`;
 }
 
 /** Strips Markdown to plain text, for screen-reader announcements and short previews. */

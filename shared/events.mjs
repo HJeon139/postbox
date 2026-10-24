@@ -4,6 +4,7 @@
 // from what was actually sent: an app’s own summary is kept apart, as a quote from the app (#51).
 
 import { LIMITS, limitText } from './limits.mjs';
+import { commentErrors } from './review-comments.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 const fmtNum = (n) => Number(n).toLocaleString('en-US');
@@ -127,6 +128,10 @@ const BUILDERS = {
       if (c.line === undefined && c.anchor === undefined && c.threadId === undefined)
         return { ok: false, error: 'Each comment needs a line, an anchor or a thread.' };
     }
+    // The one comment shape (#179): a line, or a selection with its quote, an app’s part, or a thread.
+    if (comments.length > 200) return { ok: false, error: 'A review takes up to 200 comments.' };
+    const wrong = comments.flatMap((c, i) => commentErrors(c, `Comment ${i + 1}`))[0];
+    if (wrong) return { ok: false, error: wrong };
     if (v.verdict !== 'approve' && comments.length === 0) return { ok: false, error: 'Add a comment, or approve.' };
     const n = comments.length;
     return {

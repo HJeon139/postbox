@@ -1,0 +1,225 @@
+// A headless Chrome check of how the transcript renders what agents write, beside tools/check-transcript.mjs (which
+// is at its length ceiling), driven with real mouse and keyboard input:
+//   • a reply shared back from a topic thread draws its math and diagrams and links the thread’s glossary, as an
+//     agent’s reply does (#99);
+//   • a glossary term inside a definition opens a card of its own over its parent’s, by mouse and by keyboard;
+//     leaving the child closes only the child, a cycle (U → U:13 → U) and a fourth level open nothing, and the cards
+//     stay on screen at 375 px (#103).
+//
+//   node tools/check-transcript-render.mjs
+//
+// It runs its own Postbox, with the demo seed (mock agents) on a fresh data folder, and its own headless Chrome.
+// PB_PORT and PB_CHROME_PORT move them, so sessions working in parallel don’t collide.
+
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { start } from '../server/index.mjs';
+import { launch, sleep } from './cdp.mjs';
+import { record as check, finish, ports } from './harness.mjs';
+
+const { PORT, CHROME_PORT: CHROME } = await ports(5060, 10260);
+
+process.env.POSTBOX_BACKENDS = 'mock';
+const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-transcript-render-'));
+const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
+const page = await launch({ port: CHROME });
+const until = async (fn, ms = 15000) => {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(100)) {
+    const v = await fn();
+    if (v) return v;
+  }
+  return null;
+};
+
+try {
+  const { rt, store } = app;
+  const project = Object.values(rt.s.projects)[0];
+  const persona = rt.createPersona({ handle: 'analyst' });
+  const thread = rt.createThread({ projectId: project.id, title: 'Render checks', personaIds: [persona.id] });
+  const se = rt.sessionsIn(thread.id)[0];
+  const tools = rt.toolsFor(se.id);
+  const say = (text) => rt.addItem(thread.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+  tools.define_term({ term: 'macro-F1', definition: 'The mean of the F1 score of each label, so a rare label counts as much as a common one.' });
+  await page.size(1280, 900);
+
+  // ── #99: a reply shared back from a topic thread ──
+  // The formula is the one wave 2’s SciFact UAT saw as source in the conversation’s copy (#99).
+  const { threadId: topic } = rt.startTopic(thread.id, say('The scores are in.').id);
+  // A term defined in the topic thread, where the summary was written, and not in the conversation. The topic has no
+  // session of its own (#228): the agent’s one session answers there, in a turn that speaks in the topic.
+  rt.toolsFor(se.id, { threadId: topic }).define_term({ term: 'label weight', definition: 'How many of the 300 claims carry a label.' });
+  const shared = rt.shareText(thread.id, {
+    fromThreadId: topic,
+    handle: 'analyst',
+    summary: true,
+    text: [
+      'The macro-F1 over both labels, each by its label weight:',
+      '',
+      '$$',
+      '(188 \\times 0.812 + 112 \\times 0.409)/300 = 0.661',
+      '$$',
+      '',
+      '```mermaid',
+      'flowchart LR',
+      '  claims[Claims] --> abstracts[Abstracts]',
+      '```',
+    ].join('\n'),
+  });
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await page.synced(store.state.seq);
+  const CARD = `document.querySelector('[data-key="${shared.id}"] .shared-card')`;
+  await page.waitFor(CARD, { label: 'the shared summary' });
+  // KaTeX keeps the source in its MathML, so what’s read is whether every formula was drawn.
+  const math = await until(() =>
+    page.evaluate(`(() => { const m = [...${CARD}.querySelectorAll('.md-math')]; return m.length > 0 && m.every((x) => x.querySelector('.katex-html')); })()`),
+  );
+  check(math, 'a shared summary draws its math, not its source');
+  const diagram = await until(() => page.evaluate(`!!${CARD}.querySelector('figure.diagram iframe')?.dataset.sized`));
+  check(diagram, 'a shared summary draws its Mermaid diagram in a frame');
+  const term = await page.evaluate(`${CARD}.querySelector('.term')?.dataset.term ?? ''`);
+  check(term === 'macro-f1', `a shared summary links the conversation’s glossary (“${term}”)`);
+  const TOPIC_TERM = `${CARD}.querySelector('.term[data-term="label-weight"]')`;
+  const linked = await page.evaluate(`!!${TOPIC_TERM} && !${TOPIC_TERM}.classList.contains('undef')`);
+  const at = await page.evaluate(
+    `(() => { const r = ${TOPIC_TERM}?.getBoundingClientRect(); return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : { x: 0, y: 0 }; })()`,
+  );
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at, button: 'none' });
+  const card = await page.evaluate(`document.querySelector('.hovercard')?.getAttribute('aria-label') ?? ''`);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1270, y: 890, button: 'none' });
+  check(linked && card === 'Glossary: label weight', `and the glossary of the topic it was written in, with its card (“${card}”)`);
+
+  // ── #103: nested glossary cards ──
+  // The terms from #103’s report: U’s definition names U:13, and U:13’s names U back. alpha → beta → gamma → delta
+  // is one level deeper than the cards go.
+  const nested = rt.createThread({ projectId: project.id, title: 'Nested glossary', personaIds: [persona.id] });
+  const ns = rt.sessionsIn(nested.id)[0];
+  const define = rt.toolsFor(ns.id).define_term;
+  define({ term: 'U', definition: 'The utility of a claim: U is the sum over its labels, such as U:13.' });
+  define({ term: 'U:13', definition: 'The utility of label 13, one term of U.' });
+  for (const [term, next] of [
+    ['alpha', 'beta'],
+    ['beta', 'gamma'],
+    ['gamma', 'delta'],
+  ])
+    define({ term, definition: `Leads on to ${next}.` });
+  define({ term: 'delta', definition: 'The last one.' });
+  rt.addItem(nested.id, { kind: 'agent', sessionId: ns.id, personaId: ns.personaId, handle: ns.handle, text: 'Rank by U. Start at alpha.', status: 'done' });
+  await page.synced(store.state.seq);
+  await page.evaluate(`location.hash = '#/t/${nested.id}'`);
+  await page.waitFor(`document.querySelector('.transcript[data-thread="${nested.id}"] .term')`, { label: 'the nested glossary thread' });
+
+  const HC = (term) => `[...document.querySelectorAll('.hovercard')].find((c) => c.getAttribute('aria-label') === 'Glossary: ${term}')`;
+  const TERM = (scope, key) => `${scope}?.querySelector('.term[data-term="${key}"]')`;
+  const REPLY = `document.querySelector('.transcript[data-thread="${nested.id}"] .turn .md')`;
+  const open = () => page.evaluate(`[...document.querySelectorAll('.hovercard')].map((c) => c.getAttribute('aria-label').replace('Glossary: ', ''))`);
+  const moveTo = async (expr) => {
+    const p = await page.evaluate(`(() => { const r = ${expr}?.getBoundingClientRect(); return r && { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    assert.ok(p, `Nothing to point at: ${expr}`);
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y, button: 'none' });
+  };
+  const press = async (key, code, keyCode) => {
+    const base = { key, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
+    await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  };
+  const pinned = (term) => page.waitFor(`${HC(term)}?.classList.contains('pinned')`, { label: `the card for ${term}, pinned` });
+  /** Hovers a term inside the card for `from` (or the reply) and waits for its own card to pin. */
+  const hover = async (from, term, k = term.toLowerCase()) => {
+    await moveTo(TERM(from ? HC(from) : REPLY, k));
+    await pinned(term);
+  };
+  const scenario = async (name, fn) => {
+    try {
+      await fn();
+      check(true, name);
+    } catch (e) {
+      check(false, name, e.message);
+    }
+    // Every card closed before the next: the pointer away, and Escape for any that stay.
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1270, y: 890, button: 'none' });
+    for (let i = 0; i < 4 && (await open()).length; i++) await press('Escape', 'Escape', 27);
+    await page.waitFor(`!document.querySelector('.hovercard')`, { label: 'every card to close' });
+  };
+
+  await scenario('#103 hovering U, then U:13 in its card, shows both; leaving U:13 for U’s card closes only U:13', async () => {
+    await hover(null, 'U');
+    assert.ok(!(await page.evaluate(`!!${TERM(HC('U'), 'u')}`)), 'U’s definition doesn’t link U itself');
+    await hover('U', 'U:13', 'u-13');
+    assert.deepEqual(await open(), ['U', 'U:13']);
+    await moveTo(`${HC('U:13')}.querySelector('.hc-head')`);
+    await moveTo(`${HC('U')}.querySelector('.hc-head')`);
+    await page.waitFor(`!${HC('U:13')}`, { label: 'U:13’s card to close' });
+    await sleep(900);
+    assert.deepEqual(await open(), ['U'], 'U’s card stays');
+  });
+
+  await scenario('#103 a cycle opens no more cards: U inside U:13’s card, under U’s', async () => {
+    await hover(null, 'U');
+    await hover('U', 'U:13', 'u-13');
+    await moveTo(TERM(HC('U:13'), 'u'));
+    await sleep(1200);
+    assert.deepEqual(await open(), ['U', 'U:13']);
+  });
+
+  await scenario('#103 cards go three deep: delta inside gamma’s card opens nothing', async () => {
+    await hover(null, 'alpha');
+    await hover('alpha', 'beta');
+    await hover('beta', 'gamma');
+    await moveTo(TERM(HC('gamma'), 'delta'));
+    await sleep(1200);
+    assert.deepEqual(await open(), ['alpha', 'beta', 'gamma']);
+  });
+
+  await scenario('#103 by keyboard: Enter pins and moves into the card, Tab reaches U:13, Escape closes one card at a time', async () => {
+    const at = () =>
+      page.evaluate(
+        `(() => { const a = document.activeElement; return (a.closest('.hovercard')?.getAttribute('aria-label') ?? 'page') + ' ' + (a.dataset.term ?? a.className); })()`,
+      );
+    await page.evaluate(`${TERM(REPLY, 'u')}.focus()`);
+    await press('Enter', 'Enter', 13);
+    await pinned('U');
+    assert.equal(await at(), 'Glossary: U hovercard pinned', 'Enter pins U’s card and moves into it');
+    await press('Tab', 'Tab', 9);
+    assert.equal(await at(), 'Glossary: U u-13', 'Tab reaches U:13');
+    await press(' ', 'Space', 32);
+    await pinned('U:13');
+    assert.deepEqual(await open(), ['U', 'U:13'], 'Space pins U:13’s card over U’s');
+    await press('Escape', 'Escape', 27);
+    assert.deepEqual(await open(), ['U'], 'Escape closes the top card');
+    assert.equal(await at(), 'Glossary: U u-13', 'and focus returns to its term');
+    await press('Escape', 'Escape', 27);
+    assert.deepEqual(await open(), []);
+    assert.equal(await at(), 'page u', 'focus returns to U in the reply');
+  });
+
+  await scenario('#103 a card that closes while it has focus, as the pointer opens another, gives focus back to its term', async () => {
+    await page.evaluate(`${TERM(REPLY, 'u')}.focus()`);
+    await press('Enter', 'Enter', 13);
+    await pinned('U');
+    await hover(null, 'alpha');
+    assert.deepEqual(await open(), ['alpha'], 'the pointer’s card replaces U’s');
+    assert.ok(await page.evaluate(`document.activeElement === ${TERM(REPLY, 'u')}`), 'focus is back on U in the reply');
+  });
+
+  await page.size(375, 812);
+  await scenario('#103 at 375 px, both cards stay on screen, and nothing scrolls sideways', async () => {
+    await hover(null, 'U');
+    await hover('U', 'U:13', 'u-13');
+    const box = await page.evaluate(
+      `[...document.querySelectorAll('.hovercard')].map((c) => { const r = c.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; })`,
+    );
+    assert.deepEqual(box, [true, true], 'each card inside the window');
+    assert.ok(await page.evaluate('document.scrollingElement.scrollWidth <= innerWidth'), 'no sideways scroll');
+  });
+  await page.size(1280, 900);
+
+  check(!page.logs.length, `no errors in the page${page.logs.length ? `: ${page.logs.join('; ')}` : ''}`);
+} finally {
+  await page.close?.();
+  await app.close();
+  await rm(dataDir, { recursive: true, force: true });
+}
+
+finish();

@@ -86,8 +86,8 @@
       "includes": ["app/js/blocks.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1138 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 323 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 663 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 124 } } }
         }
       }
     },
@@ -95,7 +95,7 @@
       "includes": ["app/js/main.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 357 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 309 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 83 } } }
         }
       }
@@ -110,6 +110,15 @@
         "rules": {
           "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 690 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 489 } } }
+        }
+      }
+    },
+    {
+      "includes": ["app/js/review.mjs"],
+      "linter": {
+        "rules": {
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 340 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 275 } } }
         }
       }
     },
@@ -135,7 +144,7 @@
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 2505 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 2485 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 806 } } }
         }
       }
@@ -144,8 +153,8 @@
       "includes": ["app/js/ui.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 547 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 93 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 414 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 73 } } }
         }
       }
     },
@@ -271,7 +280,7 @@
       "includes": ["server/runtime.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3461 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3459 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 194 } } }
         }
       }
@@ -285,11 +294,15 @@
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 54 } } } } }
     },
     {
+      "includes": ["shared/markdown-inline.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 61 } } } } }
+    },
+    {
       "includes": ["shared/markdown.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 423 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 106 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 299 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 98 } } }
         }
       }
     },
@@ -427,7 +440,7 @@
       "linter": {
         "rules": {
           "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 997 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 519 } } }
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 518 } } }
         }
       }
     },
@@ -439,8 +452,8 @@
       "includes": ["tools/uat/driver.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 478 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 405 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 463 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 391 } } }
         }
       }
     },

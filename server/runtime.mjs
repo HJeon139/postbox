@@ -9,6 +9,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
+import { commentAt } from '../shared/review-comments.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
@@ -35,10 +36,11 @@ import {
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { parseDataset } from './corpus.mjs';
-import { clip, clipText, httpError } from './helpers.mjs';
+import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
+import { reviewBlock } from './review-comments.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -107,13 +109,6 @@ const clipItem = (s, n, id) => {
   const t = String(s ?? '');
   return t.length > n ? `${t.slice(0, n)}… (${count(n)} of ${count(t.length)} characters; read_message { id: "${id}" } has the rest)` : t;
 };
-/** Code in a fence longer than any run of backticks in it. */
-const fenced = (code, language = '') => {
-  const ticks = '`'.repeat(Math.max(3, ...[...String(code).matchAll(/`+/g)].map((m) => m[0].length + 1)));
-  return `${ticks}${language}\n${code}\n${ticks}`;
-};
-/** Where a review comment points: a line, a part of an app, or a thread it answers. */
-const commentAt = (c) => (c.line != null ? `line ${c.line}` : c.anchor != null ? `“${c.anchor}”` : c.threadId != null ? `thread ${c.threadId}` : 'the draft');
 
 /**
  * What a block holds, as text an agent can read and quote (#153): a review, card or code block’s content, a choice
@@ -632,6 +627,8 @@ export class Runtime {
     const turn = {
       id: newId('turn'),
       kind: message.kind,
+      // Whether this is the person moving on (#69): their message or an event of theirs, not another agent’s review (#133).
+      movesOn: message.kind === 'user' || (message.kind === 'event' && !message.event?.from),
       from:
         message.kind === 'agent'
           ? String(message.from ?? '')
@@ -679,7 +676,7 @@ export class Runtime {
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
       state: 'think',
-      needs: message.kind === 'event' || message.kind === 'user' ? null : se.needs,
+      needs: turn.movesOn ? null : se.needs,
       currentStep: 'Thinking',
       finishedAt: null,
     });
@@ -1019,11 +1016,11 @@ export class Runtime {
     }
     // Only this turn’s asking blocks make the agent need you. Older ones you left open stay open, and the
     // client shows them quietly (“1 open review”), so moving on clears needs-you (#69). A turn you didn’t start
-    // (a lint or app-check pass, another agent’s wake) isn’t moving on: the block it was waiting on still counts.
+    // (a lint or app-check pass, another agent’s wake or review) isn’t moving on: the block it was waiting on still counts.
     const open = items.filter(
       (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
     );
-    const waiting = se.needs?.kind === 'block' && turn.kind !== 'user' && turn.kind !== 'event' ? items.find((it) => it.id === se.needs?.itemId) : null;
+    const waiting = se.needs?.kind === 'block' && !turn.movesOn ? items.find((it) => it.id === se.needs?.itemId) : null;
     if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
@@ -3519,6 +3516,7 @@ export class Runtime {
       update_block(args) {
         return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment });
       },
+      review_block: (args) => reviewBlock(rt, sessionId, args),
       /**
        * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
        * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
