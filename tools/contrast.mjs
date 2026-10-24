@@ -98,6 +98,11 @@ const checks = [
   ['text', 'diff-add', 4.5],
   ['text', 'diff-del', 4.5],
   ['good', 'diff-add', 3],
+  // The head of an overview card that needs you: its name, where it is, and the state line (#8).
+  ['text', 'needs-band', 4.5],
+  ['dim', 'needs-band', 4.5],
+  ['accent', 'needs-band', 4.5],
+  ['alert-ink', 'needs-band', 4.5],
   ['alert-ink', 'diff-del', 3],
 ];
 

@@ -18,6 +18,8 @@
   --alert: #e23b2e;
   --alert-ink: #f0705f;
   --overlay: rgba(21, 17, 14, .84);
+  /* Needs you is a state, not an action: the head band of a card that waits on you (#8). */
+  --needs-band: rgba(216, 154, 58, .12);
 
   /* Agent-app stage: a cool surface family, so agent-written software reads as a different place.
      Inside the sandbox these values replace --bg, --panel, --sunk, --chip, --line, --text and --dim.
@@ -79,6 +81,7 @@
   --alert: #c42b1f;
   --alert-ink: #a8261b;
   --overlay: rgba(246, 241, 232, .85);
+  --needs-band: rgba(147, 86, 15, .09);
 
   --stage-bg: #f3f6f9;
   --stage-panel: #fcfdfe;
@@ -776,7 +779,9 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .ov-proj { display: flex; flex-direction: column; gap: 10px; }
 .ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
 .ov-col { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; position: relative; }
-.ov-col.needs { border-color: var(--accent); }
+/* Needs you is a state: a heavier amber top edge and a tinted head band, not the 1 px amber outline a button has (#8). */
+.ov-col.needs { border-top: 3px solid var(--accent); }
+.ov-col.needs .oc-head { background: var(--needs-band); border-radius: 7px 7px 0 0 / 5px 5px 0 0; }
 .ov-col .oc-head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 12px 14px; border-bottom: 1px solid var(--line); }
 .ov-col .oc-head .who-name { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .ov-col .oc-head .who-name b { font-size: 16px; }

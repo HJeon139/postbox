@@ -132,6 +132,7 @@ sequenceDiagram
 | After 3 agent-to-agent wakes in a row, the next waits for your confirm | This stops two agents from looping on each other. |
 | An agent replying to another agent doesn’t wake it again by mentioning it; mentioning the agent that just wrote to it wakes it only if the reply asks it to check again. Only one wake waits for your confirm at a time | Found while building Stage 2: a polite “Thanks @researcher” was enough to start a loop. |
 | Two tiers of “needs you”: blocking (waiting on a block, failed, stuck) pulses and notifies; informational (`@me`, finished) shows a still badge | If everything pulses, the pulse means nothing. |
+| Needs you has a look of its own: the ring’s pulse, and on an overview card a 3 px amber top edge and a head band tinted with `--needs-band`. It never borrows the 1 px amber outline of a control | Decided 24 October 2026 (#8, critique 1.6): needs you is a state, not an action. Outlined like every button, the cards that waited on you stopped standing out from the controls on them. |
 | Notifications are an in-app toast plus a count in the tab title and favicon | No OS notifications and no sound, by choice. |
 | In a room, the last agent to speak answers unaddressed messages | It reads like a natural conversation, and the composer always shows who will reply. |
 | A side thread holds each exchange between agents, and you can join it | Your thread stays readable, and you can still step in. |

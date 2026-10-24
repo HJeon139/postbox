@@ -1,8 +1,10 @@
 // A headless Chrome check of how Postbox’s controls and states look, in both themes, at 375 and 1280 px:
 //   - #181: a selected segment, a chosen chip and a toggle that’s on are an amber outline, never a solid amber fill
 //     bigger than a glyph: in Postbox, in Settings, and in an app’s kit (intent.md, Visual language).
+//   - #8: an overview card that needs you has a look of its own, a heavier amber top edge and a tinted head band,
+//     not the 1 px amber outline of a button.
 //
-//   node tools/checks/look.mjs            (ONLY=#181 runs the cases whose name has that in it)
+//   node tools/checks/look.mjs            (ONLY=#8 runs the cases whose name has that in it)
 //
 // It starts its own server with the demo seed (mock agents) on a fresh data folder in the temp directory.
 // PB_PORT and PB_CHROME_PORT move it (5400 and 10700 by default), so sessions working in parallel don’t collide.
@@ -149,6 +151,35 @@ for (const theme of ['dark', 'light'])
         await page.waitFor(`document.querySelector('.dialog .seg button[aria-checked=true]')`);
         bad.push(...unmarked(await page.evaluate(amberIn('.dialog')), 'Settings', ['seg']));
         assert.deepEqual(bad, []);
+      },
+    );
+
+// ── #8: needs you is a state, with a look of its own ────────────────────────────────────
+
+// A card that needs you, one that’s working, and a button with the interaction amber outline, side by side.
+const CARDS = `(() => {
+  const card = (sel) => { const n = document.querySelector(sel); if (!n) return null; const s = getComputedStyle(n); const head = getComputedStyle(n.querySelector('.oc-head'));
+    return { top: s.borderTopWidth, topColor: s.borderTopColor, side: s.borderRightColor, sideWidth: s.borderRightWidth, head: head.backgroundColor }; };
+  const probe = (v) => { const p = document.createElement('span'); p.style.background = v; document.body.append(p); const c = getComputedStyle(p).backgroundColor; p.remove(); return c; };
+  return { needs: card('.ov-col.needs'), working: card('.ov-col:not(.needs)'), accent: probe('var(--accent)'), band: probe('var(--needs-band)') };
+})()`;
+const worker = rt.sessionsIn(rt.createThread({ projectId: project.id, title: 'Working', personaIds: [persona('researcher').id] }).id)[0];
+for (const theme of ['dark', 'light'])
+  for (const width of [1280, 375])
+    await check(
+      `#8 at ${width} px (${theme}): a card that needs you has a heavier amber top edge and a tinted head, not a button’s amber outline`,
+      async () => {
+        rt.updateSession(se.id, { state: 'needs', needs: { kind: 'block', text: 'Which mode should the search use?' } });
+        rt.updateSession(worker.id, { state: 'tool', startedAt: Date.now() });
+        await page.size(width, 900, { theme });
+        await open('#/');
+        await page.waitFor(`document.querySelector('.ov-col.needs') && document.querySelector('.ov-col:not(.needs)')`);
+        const m = await page.evaluate(CARDS);
+        assert.ok(parseFloat(m.needs.top) >= 3 && m.needs.topColor === m.accent, `its top edge is ${m.needs.top} in ${m.needs.topColor}`);
+        assert.ok(m.needs.side !== m.accent, 'its sides are the amber outline a button has');
+        assert.equal(m.needs.side, m.working.side, 'its sides aren’t the card edge every card has');
+        assert.ok(m.band !== 'rgba(0, 0, 0, 0)' && m.needs.head === m.band, `its head is ${m.needs.head}, not the needs-you band (${m.band})`);
+        assert.notEqual(m.working.head, m.band, 'a working card has the needs-you band too');
       },
     );
 
