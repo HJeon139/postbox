@@ -3,12 +3,11 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { open, realpath, stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
+import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { buildEvent } from '../shared/events.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { turnLine } from '../shared/work.mjs';
@@ -16,12 +15,30 @@ import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses, runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
+import { retireApp } from './app-retire.mjs';
+import {
+  APP_HOLD_MAX,
+  APP_SEND_LIMIT,
+  APP_SEND_WINDOW_MS,
+  appCheck,
+  appEvent,
+  appFile,
+  appQuery,
+  appState,
+  hostTool,
+  needAppSend,
+  registerApp,
+  resolveAppSend,
+  updateApp,
+} from './apps.mjs';
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { parseDataset } from './corpus.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { Ledger } from './ledger.mjs';
 import { addAllowRule, alwaysAllow, BEHAVIORS, changeRule, cleanRule, readRules, rulesFor, settingsFiles } from './permission-rules.mjs';
+import { readCapped } from './read-capped.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -41,8 +58,13 @@ import { newId } from './store.mjs';
 import { askForTool } from './tool-ask.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
+export { AgentFileError } from './agent-files.mjs';
+export { hostTool } from './apps.mjs';
 export { httpError } from './helpers.mjs';
 export { HOP_LIMIT } from './side-threads.mjs';
+export { readCapped };
+
+/** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
 const DELETE_UNDO_MS = 10000;
 /** The days a conversation can sit with nothing happening before it archives itself (#101), unless Settings says otherwise. */
@@ -52,8 +74,6 @@ export const ARCHIVE_AFTER_CHOICES = [0, 1, 3, 7, 30]; // 0: never
 const LINT_SETTLE_MS = 1500;
 /** …and at most, while an app of the agent’s is still being checked. */
 const LINT_WAIT_MAX_MS = 12000;
-/** App check problems that are warnings: the app is shown, with notes, and the agent is told. */
-const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error']);
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
  * actions and asks you only when it can’t decide. ask: ask before anything risky. acceptEdits: edit files
@@ -1982,7 +2002,7 @@ export class Runtime {
     const send = () => {
       e.timer = null;
       // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
-      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending');
+      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending' && !a.retired);
       if (wait > 0 && checking && Date.now() < until) {
         e.timer = setTimeout(send, wait);
         e.timer.unref?.();
@@ -3292,239 +3312,43 @@ export class Runtime {
     for (const sc of Object.values(this.s.schedules)) this.arm(sc);
   }
 
-  // ── Apps ───────────────────────────────────────────────────────────────────────────
+  // ── Apps (server/apps.mjs) ─────────────────────────────────────────────────────────
 
-  /** The browser reports its pre-display check. The first failure goes back to the agent to fix. */
-  appCheck(appId, { version, problems = [] }) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    if (version !== app.current) return { ignored: true };
-    const clean = (Array.isArray(problems) ? problems : [])
-      .slice(0, 20)
-      .map((p) => ({ code: String(p?.code).slice(0, 40), message: String(p?.message).slice(0, 300) }));
-    if (!clean.length) {
-      this.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
-      return { status: 'passed' };
-    }
-    if (clean.some((p) => p.code === 'script-error')) {
-      this.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
-      return { status: 'crashed' };
-    }
-    // Problems the agent can’t fix (the frame never answered) are shown as a note, not sent back. Warnings (marks or
-    // text too small, an app showing only an error) don’t hold the app back: it’s shown with notes, and the agent
-    // hears of them through the lint pipeline, unless it’s already fixing the app.
-    const fixable = clean.filter((p) => p.code !== 'no-answer');
-    const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
-    if (app.check.attempt === 0 && blocking.length && this.s.sessions[app.sessionId]) {
-      this.store.emit('app', { ...app, check: { status: 'fixing', attempt: 1, problems: fixable } });
-      this.deliver(app.sessionId, { kind: 'app-check', appId, problems: fixable }, { threadId: app.threadId });
-      return { status: 'fixing' };
-    }
-    const notes = clean.every((p) => APP_WARNINGS.has(p.code));
-    this.store.emit('app', { ...app, check: { status: 'note', attempt: app.check.attempt, problems: clean, ...(notes ? { notes } : {}) } });
-    if (notes) {
-      // The version was made by the agent’s turn that’s running, or else the last one that ended.
-      const turnId = [...this.turns.values()].find((t) => t.sessionId === app.sessionId)?.id ?? this.lastTurn.get(app.sessionId);
-      const scope = { kind: 'app', id: appId, title: app.title };
-      this.lint(
-        app.sessionId,
-        turnId,
-        clean.map((p) => ({ ...p, scope })),
-      );
-    }
-    return { status: 'note' };
+  static APP_SEND_LIMIT = APP_SEND_LIMIT;
+  static APP_SEND_WINDOW_MS = APP_SEND_WINDOW_MS;
+  static APP_HOLD_MAX = APP_HOLD_MAX;
+  appCheck(appId, report) {
+    return appCheck(this, appId, report);
   }
-
-  // An app writes lines in your voice, and each one starts an agent turn, so its sends are limited (#38). The
-  // browser accepts a send only right after a click or key press in that app (app/js/apps.mjs); here, where a
-  // script calling the API lands too, an app gets APP_SEND_LIMIT sends per APP_SEND_WINDOW_MS. More wait on
-  // a card for you to allow or not, and nothing is dropped silently: the app is told its send is waiting.
-  // The browser keeps the same limit (SEND_LIMIT in app/js/apps.mjs), and the agent guide says so.
-  static APP_SEND_LIMIT = 5;
-  static APP_SEND_WINDOW_MS = 60_000;
-  /** Sends one card holds; past that, a send is refused with a reason. */
-  static APP_HOLD_MAX = 20;
-
-  /**
-   * An event an app sends in your voice. Within the limit, it goes to the agent; past it (or when the browser
-   * asks, with hold), it waits on the app’s card. The card and its events are items, so they survive a restart.
-   * @param {string} appId @param {string} action @param {object} values
-   * @param {{ hold?: boolean, now?: number }} [opts]
-   */
-  appEvent(appId, action, values, { hold = false, now = Date.now() } = {}) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
-    if (!r.ok) throw httpError(422, r.error);
-    const items = this.store.items(app.threadId);
-    const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
-    // Sends you allowed on a card don’t count against the next minute.
-    const recent = items.filter((x) => x.kind === 'voice' && x.appId === appId && !x.approved && now - (x.sentAt ?? x.at) < Runtime.APP_SEND_WINDOW_MS).length;
-    // Once some sends wait, later ones wait behind them, so the agent gets them in order.
-    if (card || hold || recent >= Runtime.APP_SEND_LIMIT) {
-      const held = { action: r.event.action, values: r.event.values, voice: r.voice, sent: r.event.sent, ...(r.quote ? { quote: r.quote } : {}) };
-      const waiting = (card?.events.length ?? 0) + 1;
-      if (card) {
-        if (card.events.length >= Runtime.APP_HOLD_MAX)
-          throw httpError(429, `${card.events.length} messages from ${app.title} are already waiting for the person to allow them. Wait for their answer.`);
-        this.patchItem(app.threadId, card.id, { events: [...card.events, held] });
-      }
-      const cardId =
-        card?.id ?? this.addItem(app.threadId, { kind: 'appsend', appId, title: app.title, sessionId: app.sessionId, events: [held], status: 'open' }).id;
-      this.needAppSend(app, cardId, waiting);
-      return {
-        ok: true,
-        held: true,
-        waiting,
-        message: `Held for the person to allow: an app sends up to ${Runtime.APP_SEND_LIMIT} messages a minute. ${waiting === 1 ? '1 message is' : `${waiting} messages are`} waiting.`,
-      };
-    }
-    this.addItem(app.threadId, { kind: 'voice', text: r.voice, ...(r.quote ? { quote: r.quote } : {}), appId, sentAt: now });
-    if (this.s.sessions[app.sessionId]) this.deliver(app.sessionId, { kind: 'event', event: r.event }, { threadId: app.threadId });
-    return { ok: true, voice: r.voice };
+  appEvent(appId, action, values, opts) {
+    return appEvent(this, appId, action, values, opts);
   }
-
-  /** An open app card makes its agent need you and tells you, like a permission card, unless it already needs you. */
   needAppSend(app, itemId, waiting) {
-    const se = this.s.sessions[app.sessionId];
-    if (!se || (se.needs && se.needs.itemId !== itemId)) return;
-    const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
-    this.updateSession(se.id, { needs: { kind: 'appsend', itemId, text }, state: this.turns.has(se.id) ? se.state : 'needs' });
-    if (waiting === 1) this.notify('blocking', se, text, `Apps send up to ${Runtime.APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
+    return needAppSend(this, app, itemId, waiting);
   }
-
-  /** Your answer on an app’s card: allow sends the waiting events as they were sent; don’t allow drops them. */
-  resolveAppSend(threadId, itemId, action, { now = Date.now() } = {}) {
-    const it = this.store.item(threadId, itemId);
-    if (it?.kind !== 'appsend' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
-    if (action !== 'allow' && action !== 'deny') throw httpError(400, 'An app’s request takes “allow” or “deny”.');
-    const allow = action === 'allow';
-    this.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
-    const owner = this.s.sessions[it.sessionId];
-    if (owner?.needs?.itemId === itemId) this.updateSession(owner.id, { needs: null, state: this.turns.has(owner.id) ? owner.state : 'idle' });
-    if (!allow) {
-      const n = it.events.length;
-      this.addItem(threadId, { kind: 'voice', text: `Didn’t allow ${it.title} to send ${n === 1 ? '1 message' : `${n} messages`}` });
-      return { ok: true };
-    }
-    const se = this.s.sessions[it.sessionId];
-    for (const ev of it.events) {
-      this.addItem(threadId, { kind: 'voice', text: ev.voice, ...(ev.quote ? { quote: ev.quote } : {}), appId: it.appId, sentAt: now, approved: true });
-      const event = {
-        blockId: it.appId,
-        action: ev.action,
-        values: ev.values,
-        ...(ev.sent ? { sent: ev.sent } : {}),
-        ...(ev.quote ? { appSummary: ev.quote } : {}),
-      };
-      if (se && !se.archived) this.deliver(se.id, { kind: 'event', event }, { threadId });
-    }
-    return { ok: true };
+  resolveAppSend(threadId, itemId, action, opts) {
+    return resolveAppSend(this, threadId, itemId, action, opts);
   }
-
   appState(appId, state) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    const json = JSON.stringify(state ?? null);
-    if (json.length > 256 * 1024) throw httpError(413, 'Saved app state is limited to 256 KB.');
-    // An app that saves the same state again (on every load, say) changes nothing.
-    if (json === JSON.stringify(app.state ?? null)) return;
-    this.store.emit('app', { ...app, state: JSON.parse(json) });
+    return appState(this, appId, state);
   }
-
-  /** An app asks the host for data. It can use only tools both it and its agent were granted. */
   appQuery(appId, tool, args) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    const se = this.s.sessions[app.sessionId];
-    const persona = se && this.personaFor(se);
-    const allowed = new Set((app.versions[app.current - 1].permissions ?? []).filter((t) => persona?.tools?.includes(t)));
-    if (!allowed.has(tool)) throw httpError(403, `This app can’t use “${tool}”. It needs the permission, and its agent needs the tool.`);
-    return hostTool(this, tool, args);
+    return appQuery(this, appId, tool, args);
   }
-
-  /**
-   * A data file of an app’s version (#54), as the app reads it with postbox.file(name).
-   * @param {string} appId @param {string} name @param {number} [v]  the version; the current one by default
-   */
-  async appFile(appId, name, v) {
-    const app = this.s.apps[appId];
-    if (!app) throw httpError(404, 'That app doesn’t exist.');
-    const ver = app.versions[(Number(v) || app.current) - 1];
-    const f = ver?.files?.find((x) => x.name === name);
-    if (!f || !this.blobs) throw httpError(404, `This version of ${app.title} has no file “${name}”.`);
-    return this.blobs.get(f.sha256);
+  appFile(appId, name, v) {
+    return appFile(this, appId, name, v);
   }
-
-  // ── Files an agent names (#54) ─────────────────────────────────────────────────────
-
-  /** The folders an agent works in: its own (where it starts), the project’s, and any added for the conversation. */
-  async agentFolders(sessionId) {
-    const se = this.session(sessionId);
-    const persona = this.personaFor(se);
-    const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
-    const adapter = this.adapters.get(persona?.backend);
-    const own = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona?.folder || project?.folder || null;
-    return [...new Set([own, project?.folder, ...(se.addDirs ?? [])].filter(Boolean))];
+  agentFolders(sessionId) {
+    return agentFolders(this, sessionId);
   }
-
-  /**
-   * Reads a file an agent named for an app: a path in one of its folders (relative to its own), followed through
-   * links, so a link can’t reach outside them. Larger than max bytes is refused before it’s read.
-   * @param {string} sessionId @param {unknown} path @param {number} max @param {string} what  how the error names it
-   */
-  async agentFile(sessionId, path, max, what) {
-    if (typeof path !== 'string' || !path.trim()) throw new AgentFileError(`${what} needs a path to a file in your folder.`);
-    const folders = await this.agentFolders(sessionId);
-    if (!folders.length) throw new AgentFileError(`You have no folder to read ${what} from. Send it inline instead.`);
-    const real = await realpath(resolve(folders[0], path)).catch(() => null);
-    if (!real) throw new AgentFileError(`There’s no file at ${path} (${what}).`);
-    const roots = await Promise.all(folders.map((f) => realpath(f).catch(() => null)));
-    if (!roots.some((r) => r && (real === r || real.startsWith(r + sep))))
-      throw new AgentFileError(`${path} is outside your folders, so Postbox didn’t read it (${what}).`);
-    const st = await stat(real);
-    if (!st.isFile()) throw new AgentFileError(`${path} isn’t a file (${what}).`);
-    const over = () => new AgentFileError(`${path} is over the limit for ${what}.`);
-    if (st.size > max) throw over();
-    const buf = await readCapped(real, max);
-    if (!buf) throw over();
-    return buf;
+  agentFile(sessionId, path, max, what) {
+    return agentFile(this, sessionId, path, max, what);
   }
-
-  /**
-   * show_app and update_app as an agent calls them over MCP (#54): code may come from codePath, a file in its folder,
-   * and files names data files there for the app to read. Postbox reads both itself, under the same limits as an
-   * inline call, and stores the data files with the version. Returns the call’s arguments with code filled in, and
-   * the files as Postbox stored them; a call can’t name stored files itself.
-   * @param {string} sessionId @param {any} args
-   * @returns {Promise<{ args: any, files?: AppFile[] }>}
-   */
-  async appFiles(sessionId, args) {
-    const { codePath, files: wanted, ...rest } = args ?? {};
-    const out = { ...rest };
-    if (codePath !== undefined) {
-      if (typeof rest.code === 'string' && rest.code) throw new AgentFileError('Send code or codePath, not both.');
-      // A character is at most 4 bytes, so a file within the limit in characters is within 4 times it in bytes.
-      out.code = (await this.agentFile(sessionId, codePath, LIMITS.appCode * 4, 'codePath')).toString('utf8');
-      if (out.code.length > LIMITS.appCode)
-        throw new AgentFileError(`${codePath} has ${out.code.length.toLocaleString('en-US')} characters; an app’s code is up to ${limitText('appCode')}.`);
-    }
-    if (wanted === undefined) return { args: out };
-    if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
-    if (wanted.length > LIMITS.appFiles) throw new AgentFileError(`An app carries up to ${limitText('appFiles')} data files.`);
-    if (!this.blobs) throw new AgentFileError('This Postbox can’t store files.');
-    /** @type {AppFile[]} */
-    const stored = [];
-    for (const f of wanted) {
-      const path = typeof f === 'string' ? f : f?.path;
-      const name = String((typeof f === 'object' && f?.name) || basename(String(path ?? '')));
-      if (!FILE_NAME.test(name)) throw new AgentFileError(`“${name}” can’t name a file: use letters, digits and - _ . (up to 64).`);
-      if (stored.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
-      const buf = await this.agentFile(sessionId, path, LIMITS.appFileBytes, `the file “${name}” (up to ${limitText('appFileBytes')})`);
-      const { sha256, size } = await this.blobs.put(buf);
-      stored.push({ name, sha256, size });
-    }
-    return { args: out, files: stored };
+  appFiles(sessionId, args) {
+    return appFiles(this, sessionId, args);
+  }
+  registerApp(sessionId, block, itemId, threadId, files) {
+    return registerApp(this, sessionId, block, itemId, threadId, files);
   }
 
   // ── Datasets (#47) ─────────────────────────────────────────────────────────────────
@@ -3710,41 +3534,11 @@ export class Runtime {
           given,
         );
       },
-      /**
-       * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
-       * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
-       */
-      update_app({ id, code, permissions, title, summary = '' }, given = {}) {
-        const app = rt.s.apps[id];
-        if (!app || app.sessionId !== sessionId) return { ok: false, message: `There’s no app with id ${id} from you.` };
-        const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
-        if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
-        const versions = [
-          ...app.versions,
-          {
-            v: app.versions.length + 1,
-            code,
-            permissions: v.block.permissions ?? [],
-            files: given.files ?? app.versions[app.current - 1].files ?? [],
-            summary: String(summary ?? '').slice(0, 300),
-            at: Date.now(),
-          },
-        ];
-        const next = {
-          ...app,
-          title: typeof title === 'string' && title.trim() ? title.slice(0, 200) : app.title,
-          versions,
-          current: versions.length,
-          check: { status: 'pending', attempt: app.check.attempt },
-        };
-        rt.store.emit('app', next);
-        // A new version always comes to the newest point, where the agent says what changed (#49).
-        let moved = false;
-        if (followsConversation({ type: 'app' })) {
-          if (app.threadId === threadId()) endSegment();
-          moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
-        }
-        return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
+      update_app(args, given) {
+        return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
+      },
+      retire_app(args) {
+        return retireApp(rt, sessionId, args);
       },
       define_term({ term, definition, key, source }) {
         if (!term || !definition) return { ok: false, message: 'define_term needs a term and a definition.' };
@@ -3820,76 +3614,11 @@ export class Runtime {
       },
     };
   }
-
-  /** @param {string} sessionId @param {any} block @param {string} itemId @param {string} [threadId] @param {AppFile[]} [files] */
-  registerApp(sessionId, block, itemId, threadId = this.s.sessions[sessionId]?.threadId, files = []) {
-    this.store.emit('app', {
-      id: block.id,
-      threadId,
-      sessionId,
-      itemId,
-      title: block.title ?? 'App',
-      versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], files, at: Date.now(), summary: '' }],
-      current: 1,
-      state: null,
-      check: { status: 'pending', attempt: 0, problems: [] },
-    });
-  }
 }
 
 const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 /** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */
 const datasetDir = (folder) => join(folder, '.postbox', 'datasets');
-
-/** A data file of an app’s version, stored by its hash (#54). @typedef {{ name: string, sha256: string, size: number }} AppFile */
-const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
-/** A file an agent named that Postbox can’t use; its message goes back to the agent. */
-export class AgentFileError extends Error {}
-
-/**
- * Reads a file, but never more than max bytes of it: null when it has more. Its size was checked before, but a file
- * that’s still being written can grow after that, so the read itself stops past the limit.
- * @param {string} path @param {number} max
- */
-export async function readCapped(path, max) {
-  const fh = await open(path, 'r');
-  try {
-    const chunks = [];
-    let total = 0;
-    for (;;) {
-      // One byte past the limit is enough to know it’s over.
-      const chunk = Buffer.alloc(Math.min(1024 * 1024, max + 1 - total));
-      const { bytesRead } = await fh.read(chunk, 0, chunk.length, total);
-      if (!bytesRead) break;
-      chunks.push(chunk.subarray(0, bytesRead));
-      total += bytesRead;
-      if (total > max) return null;
-    }
-    return Buffer.concat(chunks, total);
-  } finally {
-    await fh.close();
-  }
-}
-
-/** Host tools that apps (through the bridge) and agents can use, if granted. */
-export function hostTool(rt, tool, args = {}) {
-  switch (tool) {
-    case 'corpus.search': {
-      const q = String(args.query ?? '').slice(0, 200);
-      const mode = ['both', 'lexical', 'semantic'].includes(args.mode) ? args.mode : 'both';
-      return rt.corpus.search(q, { mode, k: Math.min(50, +args.k || 12), books: Array.isArray(args.books) ? args.books : undefined });
-    }
-    case 'corpus.read':
-      return rt.corpus.read(String(args.id ?? ''));
-    case 'corpus.stats':
-      return rt.corpus.stats();
-    case 'narrate.speak':
-      if (!rt.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');
-      return rt.narrator.speak(args);
-    default:
-      throw httpError(404, `There’s no host tool called “${tool}”.`);
-  }
-}
 
 /** What Postbox asks when you stop an agent whose background jobs are running (#129). */
 export function stopAskText(handle, n) {

@@ -71,7 +71,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     el.append(working); // keep it last
   };
 
-  const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0]);
+  const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0, app.retired?.at ?? null]);
   const render = (it, prev) => {
     const ctx = { threadId, kind: S().threads[threadId]?.kind, rerender: () => rerender(it.id) };
     const node = renderItem(it, prev, ctx);
@@ -303,7 +303,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       for (const it of itemsOf(threadId))
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
           if (it.block.type === 'app') {
-            // Only what changes the frame re-renders it: a new version, a version picked, or the check’s result.
+            // Only what changes the frame re-renders it: a new version, a version picked, the check’s result, or retiring (#193).
             // Saved state never does; the running app already has it, and reloading would make it save again.
             const sig = appSig(d);
             const node = nodes.get(it.id);

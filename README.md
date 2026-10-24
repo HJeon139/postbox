@@ -275,7 +275,7 @@ The two real adapters share a system prompt that teaches the catalog, the kit an
 
 **MCP.** The UI tools are served over JSON-RPC 2.0 at `POST /mcp?session=<session id>&turn=<token>` ([`server/mcp.mjs`](server/mcp.mjs)). Postbox gives each turn it starts its own token, and a tool call without the running turn’s token is refused (#54), so only an agent turn Postbox started can call them, not a script that knows a session id. A large app goes by `codePath`, a file in the agent’s folder, and an app’s data files by `files`, which the app reads with `postbox.file(name)`. The tools:
 - `show_block`, `update_block`
-- `show_app`, `update_app`
+- `show_app`, `update_app`, and `retire_app`, which leaves an app that’s no longer needed as one line in its place, with a link to what replaced it and its versions (#193)
 - `define_term`
 - `propose_agent`
 - `schedule_wake`, `wake_agent`

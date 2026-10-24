@@ -3,9 +3,12 @@
 // Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
-import { api, client } from './client.mjs';
-import { $$, ago, h, icon, plural } from './dom.mjs';
+import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
+import { api, client, itemsOf } from './client.mjs';
+import { $$, ago, h, icon } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
+
+export { renderAppSendCard };
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
 const checks = new Map(); // `${appId}:${v}` → { results: Map(width → problems), frames }
@@ -40,7 +43,7 @@ addEventListener('message', async (e) => {
   }
   const reply = (result, error) => e.source.postMessage({ __pb: 1, type: 'reply', id: m.id, result, error }, '*');
   const app = client.state.apps[rec.appId];
-  const current = app && rec.version === app.current && !rec.check;
+  const current = app && !app.retired && rec.version === app.current && !rec.check;
   switch (m.type) {
     case 'hello':
       e.source.postMessage({ __pb: 1, type: 'init', theme: theme(), state: rec.check ? null : (app?.state ?? null) }, '*');
@@ -81,7 +84,15 @@ addEventListener('message', async (e) => {
       }
       break;
     case 'event':
-      if (!current) return reply(null, rec.check ? 'Events are off during the check.' : 'This is an older version, shown read-only.');
+      if (!current)
+        return reply(
+          null,
+          rec.check
+            ? 'Events are off during the check.'
+            : app?.retired
+              ? 'This app was retired, so it’s shown read-only.'
+              : 'This is an older version, shown read-only.',
+        );
       {
         const refused = activated(e, rec);
         if (refused) return reply(null, refused);
@@ -286,7 +297,6 @@ function activated(e, rec) {
 // At most SEND_LIMIT sends a minute per app go straight to the agent; past that, the server holds them on a card
 // for you to allow. The server keeps the same limit (Runtime.APP_SEND_LIMIT) for anything calling its API.
 // Only sends the server took straight through count, so a refused or held send doesn’t use up the minute.
-const SEND_LIMIT = 5;
 const SEND_WINDOW_MS = 60_000;
 const sent = new Map(); // appId → times of sends that went straight through
 function overLimit(appId, now = Date.now()) {
@@ -477,14 +487,14 @@ const observer = new IntersectionObserver(
 /**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.
  */
-export function mountApp(container, appId, { review = false, onPin } = {}) {
+export function mountApp(container, appId, { review = false, onPin, onBack } = {}) {
   const app = client.state.apps[appId];
   if (!app) {
     container.replaceChildren(h('p.small.dim', 'This app isn’t available any more.'));
     return;
   }
   const v = viewing.get(appId) ?? app.current;
-  const old = v !== app.current;
+  const old = v !== app.current || !!app.retired; // a retired app’s versions open read-only, the current one too, unchecked (#193)
   const key = `${appId}:${v}`;
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
@@ -508,7 +518,7 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
                 type: 'button',
                 onclick: () => {
                   stopped.delete(key);
-                  mountApp(container, appId, { review, onPin });
+                  mountApp(container, appId, { review, onPin, onBack });
                 },
               },
               icon('retry', 'i-sm'),
@@ -536,7 +546,7 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
                 onclick: () => {
                   crashes.delete(key);
                   reloaded.add(key);
-                  mountApp(container, appId, { review, onPin });
+                  mountApp(container, appId, { review, onPin, onBack });
                 },
               },
               icon('retry', 'i-sm'),
@@ -576,11 +586,7 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
       ),
     );
   } else {
-    const mount = () => {
-      const f = frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin }) });
-      body.replaceChildren(f);
-      return f;
-    };
+    const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin, onBack }) }));
     mount();
     body._remount = () => mount();
     body._unmount = () => {
@@ -611,12 +617,14 @@ export function mountApp(container, appId, { review = false, onPin } = {}) {
             'button.btn.sm.ghost',
             {
               type: 'button',
+              // A retired app in a review has no line to go back to.
+              hidden: !!app.retired && !onBack,
               onclick: () => {
                 viewing.delete(appId);
-                mountApp(container, appId, { review, onPin });
+                (onBack ?? (() => mountApp(container, appId, { review, onPin, onBack })))();
               },
             },
-            `Back to v${app.current}`,
+            onBack ? 'Close' : `Back to v${app.current}`,
           ),
         ),
       ),
@@ -668,7 +676,7 @@ export function renderAppItem(item, ctx) {
               // Opens on the version shown, scrolled into view among many (#36).
               current: ver.v === v,
               run: () => {
-                if (ver.v === app.current) viewing.delete(app.id);
+                if (ver.v === app.current && !app.retired) viewing.delete(app.id);
                 else viewing.set(app.id, ver.v);
                 ctx.rerender();
               },
@@ -680,6 +688,11 @@ export function renderAppItem(item, ctx) {
     `v${app.current} · updated ${ago(last.at)}`,
     icon('down', 'i-sm'),
   );
+  // Retired (#193): one line in its place, and no sandbox until you open a version from its menu.
+  if (app.retired && !viewing.has(app.id)) {
+    if (full?.appId === app.id) exitFull({ focus: false });
+    return retiredLine(app, versionBtn, ctx);
+  }
   const titleId = `app-${app.id}`;
   const fullBtn = h('button.btn.icon.sm', { type: 'button', 'aria-label': 'Full screen' }, icon('expand'));
   const node = h(
@@ -693,7 +706,13 @@ export function renderAppItem(item, ctx) {
   const slot = h('div.app-slot', overlay);
   const rec = { appId: app.id, slot, overlay, btn: fullBtn, titleId };
   fullBtn.onclick = () => (full?.overlay === overlay ? exitFull() : enterFull(rec));
-  mountApp(holder, app.id);
+  // Close goes back to a retired app’s line, out of full screen, with focus on its version menu.
+  const back = () => {
+    if (full?.appId === app.id) exitFull({ focus: false });
+    ctx.rerender();
+    document.querySelector(`[data-key="${CSS.escape(item.id)}"] .app-retired [aria-haspopup]`)?.focus();
+  };
+  mountApp(holder, app.id, app.retired ? { onBack: back } : {});
   // Re-rendered while full screen (another version, say): the new box takes the old one’s place.
   // (Only a re-render: the old box is still on the page. Coming back to the conversation later starts in the column.)
   if (full && !full.overlay.isConnected) exitFull({ focus: false });
@@ -706,6 +725,30 @@ export function renderAppItem(item, ctx) {
       enterFull(rec, { focus: refocus });
     });
   return slot;
+}
+
+/**
+ * A retired app (#193): one quiet line where it was, saying who retired it and why, with a link to what replaced it
+ * when that’s shown in this conversation, and its version menu.
+ */
+function retiredLine(app, versionBtn, ctx) {
+  const r = app.retired;
+  const to = r.replacedBy && itemsOf(ctx.threadId).some((x) => x.id === r.replacedBy.itemId) ? r.replacedBy : null;
+  const goTo = (e) => {
+    const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
+    const node = box?.querySelector(`:scope > [data-key="${CSS.escape(to.itemId)}"]`);
+    if (!(node instanceof HTMLElement)) return;
+    node.scrollIntoView({ block: 'center' });
+    (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
+  };
+  return h(
+    'div.col.sys-line.app-retired',
+    { role: 'group', 'aria-label': `${app.title}, retired` },
+    icon('archive', 'i-sm'),
+    h('span.grow', h('b', app.title), ` · Retired by @${r.by}: ${r.reason}`),
+    to ? h('button.btn.sm.ghost', { type: 'button', onclick: goTo }, `Go to ${to.title}`) : null,
+    versionBtn,
+  );
 }
 
 // ── Full screen ──────────────────────────────────────────────────────────────────────────
@@ -777,71 +820,6 @@ addEventListener('focusin', (e) => {
   if (to instanceof HTMLIFrameElement) tabbing = { frame: to, at: Date.now() };
   to?.focus();
 });
-
-// ── An app’s sends waiting for you ───────────────────────────────────────────────────────
-// Past the limit, an app’s sends wait on this card (the server’s appsend item). Postbox draws it, like the
-// permission and refusal cards: Allow sends them to the agent as they were sent, Don’t allow drops them.
-export function renderAppSendCard(it, ctx) {
-  const open = it.status === 'open';
-  const n = it.events.length;
-  // One answer: the buttons turn off at the first press (a double click would answer twice), and back on if it
-  // didn’t go through. Then focus goes to the composer of the thread the card is in, a panel’s or the main one.
-  /** @param {string} action @param {MouseEvent} e */
-  const act = (action, e) => {
-    const card = /** @type {HTMLElement} */ (e.currentTarget).closest('.appsend');
-    const buttons = [...(card?.querySelectorAll('button') ?? [])];
-    for (const b of buttons) b.disabled = true;
-    const composer = card?.closest('.sidepanel') ? document.getElementById('side-input') : document.getElementById('composer-input');
-    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
-      .then(() => composer?.focus())
-      .catch((err) => {
-        for (const b of buttons) b.disabled = false;
-        toast({ title: 'That didn’t go through', text: err.message, level: 'blocking' });
-      });
-  };
-  const titleId = `as-${it.id}`;
-  return h(
-    'div.col.block.appsend',
-    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
-    h(
-      'div.block-head',
-      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h(
-        'span.title.grow',
-        { id: titleId },
-        open ? `${it.title} wants to send ${plural(n, 'message')} for you` : `${it.title} asked to send ${plural(n, 'message')} for you`,
-      ),
-      h('span.kind', 'Approve · from Postbox'),
-    ),
-    h(
-      'div.block-body',
-      open
-        ? h(
-            'p.small',
-            `An app can send up to ${SEND_LIMIT} messages a minute in your voice. These came after that, so they wait for you. Each one starts a turn for the agent.`,
-          )
-        : null,
-      h(
-        'ul.appsend-list',
-        it.events.map((ev) => h('li', ev.voice, ev.quote ? h('span.app-says', 'The app’s summary: ', h('q', ev.quote)) : null)),
-      ),
-      !open
-        ? h(
-            'span.answered-note',
-            icon(it.status === 'allowed' ? 'check' : 'x', 'i-sm'),
-            it.status === 'allowed' ? `Allowed. ${n === 1 ? 'It was' : 'They were'} sent.` : `Not allowed. ${n === 1 ? 'It wasn’t' : 'They weren’t'} sent.`,
-          )
-        : null,
-    ),
-    open
-      ? h(
-          'div.block-foot',
-          h('button.btn', { type: 'button', onclick: (e) => act('allow', e) }, 'Allow'),
-          h('button.btn', { type: 'button', onclick: (e) => act('deny', e) }, 'Don’t allow'),
-        )
-      : null,
-  );
-}
 
 // ── Diagrams and math in messages ────────────────────────────────────────────────────────
 

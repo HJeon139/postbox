@@ -3,6 +3,9 @@
   "files": {
     "includes": [
       "app/js/**",
+      "app/kit/check-controls.js",
+      "app/kit/check-layout.js",
+      "app/kit/check.js",
       "app/kit/kit.js",
       "app/kit/diagram.js",
       "app/theme.js",
@@ -69,6 +72,10 @@
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 158 } } }
         }
       }
+    },
+    {
+      "includes": ["app/js/app-send-card.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 55 } } } } }
     },
     {
       "includes": ["app/js/apps.mjs"],
@@ -156,6 +163,18 @@
       }
     },
     {
+      "includes": ["app/kit/check-controls.js"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 50, "skipIifes": true } } } } }
+    },
+    {
+      "includes": ["app/kit/check-layout.js"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 50, "skipIifes": true } } } } }
+    },
+    {
+      "includes": ["app/kit/check.js"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 69, "skipIifes": true } } } } }
+    },
+    {
       "includes": ["app/kit/diagram.js"],
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 54 } } } } }
     },
@@ -164,7 +183,7 @@
       "linter": {
         "rules": {
           "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 753 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 619 } } }
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 66, "skipIifes": true } } }
         }
       }
     },
