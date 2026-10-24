@@ -5,23 +5,30 @@
 import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { diffLines, followLines, splitLines } from '/shared/review-diff.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
-import { mountApp } from './apps.mjs';
+import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
+import { focusQuote, renderPreview } from './review-preview.mjs';
+import { threadBox as threadsFor } from './review-threads.mjs';
+import { fullScreen, seg, setView, viewOf } from './review-view.mjs';
 
 // ── Review ──────────────────────────────────────────────────────────────────────────────
-// Markdown and code are commented line by line; apps by the anchors they register. Comments stay
-// drafts until you submit them all with a verdict. A revision shows as a diff, with each of your
-// comments marked resolved or open.
+// Markdown is read in Preview, and commented on by selection there or line by line in Lines (#179); code is
+// commented line by line; apps by the anchors they register. Comments stay drafts until you submit them all with a
+// verdict. A revision shows as a diff, with each of your comments marked resolved or open.
 
 export function renderReview(b, item, ctx, kit) {
   const { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine } = kit;
   const d = draft(item.id, () => ({ comments: [], composing: null, verdict: 'request_changes', view: 'diff', error: null, on: b.content }));
   // Draft comments name lines of the text they were written on. If the agent changed it under them (#123), each
-  // follows its line into the new text; one whose line changed or went moves to the next line, marked.
+  // follows its line into the new text; one whose line changed or went moves to the next line, marked. One on a
+  // selection follows its quote (#179).
   if (b.format !== 'app' && d.on !== b.content) {
     d.comments = followLines(d.comments, d.on, b.content);
-    // An open comment box goes with its line too.
-    if (typeof d.composing === 'number') d.composing = followLines([{ line: d.composing, text: '' }], d.on, b.content)[0].line ?? null;
+    // An open comment box goes with its line, or its selection, too.
+    if (d.composing !== null && typeof d.composing !== 'string') {
+      const [c] = followLines([typeof d.composing === 'number' ? { line: d.composing } : d.composing], d.on, b.content);
+      d.composing = typeof c.col === 'number' ? c : (c.line ?? null);
+    }
     d.on = b.content;
   }
   const rerender = () => {
@@ -33,12 +40,12 @@ export function renderReview(b, item, ctx, kit) {
     d.composing = key;
     rerender();
   };
-  // Closing a comment box puts focus back on the line it was for, so the keyboard keeps its place.
+  // Closing a comment box puts focus back where it was opened: the line, or the text selected in Preview.
   const closeComposer = (key) => {
     d.composing = null;
-    rerender()
-      .querySelector(`.g-mark[data-line="${CSS.escape(String(key))}"]`)
-      ?.focus();
+    const n = rerender();
+    if (typeof key === 'object' && key) return focusQuote(n, key);
+    /** @type {HTMLElement | null} */ (n.querySelector(`.g-mark[data-line="${CSS.escape(String(key))}"]`))?.focus();
   };
   const done = item.answered;
   // After an answer refused because the draft changed, the diff is from the text the person saw.
@@ -46,147 +53,54 @@ export function renderReview(b, item, ctx, kit) {
   const since = stale && b.format !== 'app' ? String(stale.block.content ?? '') : null;
   const before = since ?? b.previous;
   const hasDiff = since !== null || !!b.previous;
-  const isDiff = hasDiff && d.view === 'diff';
-  const viewSeg = hasDiff
-    ? h(
-        'span.seg',
-        { role: 'radiogroup', 'aria-label': 'View' },
-        h(
-          'button',
-          {
-            type: 'button',
-            role: 'radio',
-            'aria-checked': String(isDiff),
-            onclick: () => {
-              d.view = 'diff';
-              rerender();
-            },
-          },
-          since !== null ? 'Changes since you looked' : `Diff v${(b.revision ?? 2) - 1} → v${b.revision ?? 2}`,
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            role: 'radio',
-            'aria-checked': String(!isDiff),
-            onclick: () => {
-              d.view = 'plain';
-              rerender();
-            },
-          },
-          since !== null ? 'Current' : `v${b.revision ?? 2}`,
-        ),
-      )
-    : h('span.small.dim', `v${b.revision ?? 1}`);
-  const [hd, titleId] = head(b, [viewSeg], `Review · ${{ markdown: 'Markdown', code: 'Code', app: 'App' }[b.format]}`);
+  const mode = viewOf(item, b, d, hasDiff);
+  const isDiff = hasDiff && d.view === 'diff' && mode === 'lines';
+  const views = [];
+  if (b.format === 'markdown')
+    views.push(
+      seg(
+        'View',
+        [
+          ['preview', 'Preview'],
+          ['lines', 'Lines'],
+        ],
+        mode,
+        (m) => {
+          setView(item, b, d, /** @type {'preview' | 'lines'} */ (m));
+          return rerender();
+        },
+      ),
+    );
+  if (hasDiff && mode === 'lines') {
+    const diff = since !== null ? 'Changes since you looked' : `Diff v${(b.revision ?? 2) - 1} → v${b.revision ?? 2}`;
+    const plain = since !== null ? 'Current' : `v${b.revision ?? 2}`;
+    views.push(
+      seg(
+        'Changes',
+        [
+          ['diff', diff],
+          ['plain', plain],
+        ],
+        isDiff ? 'diff' : 'plain',
+        (v) => {
+          d.view = v;
+          return rerender();
+        },
+      ),
+    );
+  } else views.push(h('span.small.dim', `v${b.revision ?? 1}`));
+  const full = b.format === 'app' ? null : fullScreen(item.id, rerender);
+  const [hd, titleId] = head(b, [...views, full?.btn], `Review · ${{ markdown: 'Markdown', code: 'Code', app: 'App' }[b.format]}`);
   hd.querySelector('.title').classList.add('mono');
   hd.querySelector('.title').style.fontSize = '13px';
-  const node = h('div', { 'aria-labelledby': titleId }, hd);
+  // A review takes the transcript’s width (#179); box is what goes full screen.
+  const box = h('div.rv-box', hd);
+  const node = h('div.rv-wide', { 'aria-labelledby': titleId }, box);
+  full?.fit(node, box, titleId);
 
   const threadsAt = (key) => (b.threads ?? []).filter((t) => (b.format === 'app' ? t.anchor === key : t.line === key));
   const draftsAt = (key) => d.comments.filter((c) => (b.format === 'app' ? c.anchor === key : c.line === key));
-  const threadBox = (key) => {
-    const parts = [];
-    for (const t of threadsAt(key))
-      parts.push(
-        h(
-          'div.rv-thread',
-          { class: t.status === 'resolved' ? 'resolved' : '' },
-          t.comments.map((c, i) =>
-            h(
-              'div.c',
-              h(
-                'span.meta',
-                h('b', c.author),
-                i === 0
-                  ? h(
-                      'span.status-tag',
-                      { class: t.status === 'resolved' ? 'ok' : 'open' },
-                      t.status === 'resolved' ? [icon('check', 'i-sm'), 'Resolved'] : 'Open',
-                    )
-                  : null,
-              ),
-              h('div', { html: trusted(renderMarkdown(c.text)) }),
-            ),
-          ),
-        ),
-      );
-    for (const c of draftsAt(key))
-      parts.push(
-        h(
-          'div.rv-thread',
-          h(
-            'div.c',
-            h(
-              'span.meta',
-              h('b', 'You'),
-              h('span.status-tag.draft', 'Draft'),
-              c.moved ? h('span.status-tag', 'Its line changed') : null,
-              done
-                ? null
-                : h(
-                    'button.btn.sm.ghost',
-                    {
-                      type: 'button',
-                      style: { marginLeft: 'auto' },
-                      onclick: () => {
-                        d.comments = d.comments.filter((x) => x !== c);
-                        rerender();
-                      },
-                    },
-                    'Delete',
-                  ),
-            ),
-            h('div', c.text),
-          ),
-        ),
-      );
-    if (!done && d.composing === key) {
-      const ta = h('textarea.textarea', {
-        'aria-label': b.format === 'app' ? `Comment on ${key}` : `Comment on line ${key}`,
-        style: { minHeight: '56px' },
-        onkeydown: (e) => {
-          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            add();
-          }
-          if (e.key === 'Escape') closeComposer(key);
-        },
-      });
-      const add = () => {
-        const text = ta.value.trim();
-        if (!text) return;
-        d.comments.push(b.format === 'app' ? { anchor: key, text } : { line: key, text });
-        closeComposer(key);
-      };
-      parts.push(
-        h(
-          'div.rv-thread',
-          h(
-            'div.reply',
-            { style: { flexDirection: 'column' } },
-            ta,
-            h(
-              'div.row-flex',
-              h('button.btn.sm.send', { type: 'button', onclick: add }, 'Add draft comment'),
-              h(
-                'button.btn.sm.ghost',
-                {
-                  type: 'button',
-                  onclick: () => closeComposer(key),
-                },
-                'Cancel',
-              ),
-              h('span.small.dim', 'Ctrl+Enter adds it'),
-            ),
-          ),
-        ),
-      );
-      queueMicrotask(() => ta.focus());
-    }
-    return parts;
-  };
+  const threadBox = (key) => threadsFor(key, { b, d, done, rerender, closeComposer });
 
   if (b.format === 'app') {
     const appEl = h('div');
@@ -205,7 +119,18 @@ export function renderReview(b, item, ctx, kit) {
         }
       },
     });
-    node.append(h('div.app-review-wrap', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, appEl, pins));
+    box.append(h('div.app-review-wrap', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, appEl, pins));
+  } else if (mode === 'preview') {
+    const all = [...(b.threads ?? []), ...d.comments];
+    // The lines with threads or drafts, and a line’s open comment box, which a revision can leave on a line (#123).
+    const keys = [...new Set([...all.map((x) => x.line), d.composing].filter((n) => typeof n === 'number'))].sort((x, y) => x - y);
+    const ranged = all.filter((x) => typeof x.col === 'number');
+    // A click that selects nothing chooses its line: Lines, with that line’s comment box open.
+    const pick = (line) => {
+      setView(item, b, d, 'lines');
+      compose(line);
+    };
+    box.append(renderPreview(b.content, { id: item.id, done, keys, composing: d.composing, ranged, threadBox, comment: compose, pick }));
   } else {
     const lines = splitLines(b.content);
     const doc = h('div.rv-doc', { class: b.format === 'code' ? 'code-doc code' : '', role: 'list', 'aria-label': 'Lines' });
@@ -303,8 +228,20 @@ export function renderReview(b, item, ctx, kit) {
       });
       return [h('div.rv-line.rv-block', { role: 'listitem' }, h('span.g-ln', { 'aria-hidden': 'true' }), box), hiddenRows(g.hidden, g.depth).flat()];
     };
+    // A Mermaid or math fence renders whole, with one comment target for its lines, unless a diff changed it (#179).
+    const wholeFence = (g) => (g.lang === 'mermaid' || g.lang === 'math') && [...g.hidden, ...g.units.flatMap((u) => u.rows)].every((r) => r.kind === 'same');
+    const fenceRow = (g) => {
+      const rows = [g.hidden[0], ...g.units.flatMap((u) => u.rows), ...g.hidden.slice(1)];
+      const u = { key: g.hidden[0].n, lines: rows.map((r) => r.n), kind: 'same', rows };
+      const md = h('div.tx.md', { class: quoted(g.depth), html: trusted(renderMarkdown(rows.map((r) => r.t).join('\n'))) });
+      return [
+        h('div.rv-line.rv-block', { role: 'listitem', class: [unitClass(u), onLine(u) ? 'can-c' : ''].join(' '), onclick: onLine(u) }, gutter(u), md),
+        threadsOf(u),
+      ];
+    };
     for (const g of groups) {
       if (g.type === 'line') doc.append(...lineRow(g.unit, g.depth).flat());
+      else if (g.type === 'code' && wholeFence(g)) doc.append(...fenceRow(g).flat(2));
       else if (g.type === 'code') {
         const [open, ...close] = g.hidden;
         doc.append(...hiddenRows([open], g.depth).flat(2));
@@ -315,11 +252,13 @@ export function renderReview(b, item, ctx, kit) {
         doc.append(...hiddenRows(close, g.depth).flat(2));
       } else doc.append(...blockRows(g).flat(2));
     }
-    node.append(doc);
+    box.append(doc);
+    // Diagrams and math draw once the lines are on the page.
+    queueMicrotask(() => enhanceMarkdown(doc));
   }
 
   if (done) {
-    node.append(h('div.block-foot', h('span.answered-note', icon('check', 'i-sm'), `${item.answer.voice} · ${timeOf(item.answer.at)}`), outcomeLine(item)));
+    box.append(h('div.block-foot', h('span.answered-note', icon('check', 'i-sm'), `${item.answer.voice} · ${timeOf(item.answer.at)}`), outcomeLine(item)));
   } else {
     const resolved = (b.threads ?? []).filter((t) => t.status === 'resolved').length;
     const verdicts = [
@@ -333,7 +272,7 @@ export function renderReview(b, item, ctx, kit) {
       err.replaceChildren(errLine(m) ?? '');
     };
     setError(d.error);
-    node.append(
+    box.append(
       h(
         'div.block-foot.review-bar',
         h(
@@ -371,8 +310,8 @@ export function renderReview(b, item, ctx, kit) {
                 item,
                 ctx,
                 'submit',
-                // moved is only for the person: the agent gets each comment as its line now.
-                { verdict: d.verdict, comments: d.comments.map(({ moved: _, ...c }) => c) },
+                // moved and gone are only for the person: the agent gets each comment where it is now.
+                { verdict: d.verdict, comments: d.comments.map(({ moved: _m, gone: _g, ...c }) => c) },
                 setError,
               ),
           },
@@ -387,7 +326,7 @@ export function renderReview(b, item, ctx, kit) {
         ? 'This draft changed while you were answering. What changed since you looked is marked above, and your comments are kept. Check them, then submit again.'
         : 'This changed while you were answering. Your comments are kept: look it over, then submit again.',
     );
-    if (note) node.lastElementChild?.before(note);
+    if (note) box.lastElementChild?.before(note);
   }
   return node;
 }

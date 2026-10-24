@@ -9,6 +9,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { LIMITS, limitText, READING } from '../shared/limits.mjs';
+import { commentAt } from '../shared/review-comments.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
@@ -111,8 +112,6 @@ const fenced = (code, language = '') => {
   const ticks = '`'.repeat(Math.max(3, ...[...String(code).matchAll(/`+/g)].map((m) => m[0].length + 1)));
   return `${ticks}${language}\n${code}\n${ticks}`;
 };
-/** Where a review comment points: a line, a part of an app, or a thread it answers. */
-const commentAt = (c) => (c.line != null ? `line ${c.line}` : c.anchor != null ? `“${c.anchor}”` : c.threadId != null ? `thread ${c.threadId}` : 'the draft');
 
 /**
  * What a block holds, as text an agent can read and quote (#153): a review, card or code block’s content, a choice

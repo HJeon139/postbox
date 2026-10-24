@@ -121,8 +121,8 @@
       "includes": ["app/js/review.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 400 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 324 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 340 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 275 } } }
         }
       }
     },

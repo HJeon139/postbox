@@ -3,6 +3,7 @@
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
 import { LIMITS, limitText, PALETTES } from '../../shared/limits.mjs';
+import { commentAt } from '../../shared/review-comments.mjs';
 import { formatLint } from '../checks.mjs';
 import { TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
 
@@ -142,6 +143,13 @@ Plain English, sentence case, American spelling, curly quotes and apostrophes (�
 }
 
 /**
+ * Whether an event is the person’s review (a verdict). An app’s isn’t, whatever its values hold: Postbox counted what
+ * it sent, and its values aren’t the person’s words (#51).
+ * @param {any} event
+ */
+const isReview = (event) => !event.sent && typeof event.values?.verdict === 'string' && Array.isArray(event.values?.comments);
+
+/**
  * Writes one Postbox message as the text of a turn for the agent.
  * @param {any} message  see server/adapters/adapter.mjs
  * @param {(a: any) => string|null} [pathOf]  where an attachment can be read on disk
@@ -165,6 +173,13 @@ function formatBody(message, pathOf) {
     case 'event':
       return [
         `[Postbox] The person acted in block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`,
+        // A review’s comments, as the history gives them (#179): “line 12, col 5–23 “the quoted text”: the comment”.
+        isReview(message.event)
+          ? message.event.values.comments
+              .filter((c) => c && typeof c === 'object')
+              .map((c) => `- ${commentAt(c)}: ${c.text}`)
+              .join('\n')
+          : '',
         // From an app (#51): what Postbox counted, and the app’s own summary, which the person didn’t write.
         message.event.sent ? `What Postbox counted in it: ${message.event.sent}` : '',
         message.event.appSummary ? `The app’s own summary, not the person’s words: “${message.event.appSummary}”` : '',

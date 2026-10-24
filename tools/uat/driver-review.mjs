@@ -4,8 +4,8 @@
 import { ITEM, J } from './selectors.mjs';
 
 /**
- * Answers a review block as a person does: a draft comment on each line (its gutter button, the box, “Add draft
- * comment”), then the verdict, then Submit review. Request changes and Comment need a comment to say what.
+ * Answers a review block as a person does: a draft comment on each line, in Lines (its gutter button, the box, “Add
+ * draft comment”), then the verdict, then Submit review. Request changes and Comment need a comment to say what.
  * @param {string} key  @param {{ verdict?: string, comments?: { line: string, text: string }[] }} review
  */
 export async function review({ ev, clickAt, byText, typeInto }, key, { verdict = 'comment', comments = [] } = {}) {
@@ -13,6 +13,9 @@ export async function review({ ev, clickAt, byText, typeInto }, key, { verdict =
   if (!names[verdict]) throw new Error(`A review’s verdict is approve, request_changes or comment, not “${verdict}”.`);
   if (verdict !== 'approve' && !comments.length) throw new Error('Request changes and Comment need at least one comment on a line, saying what to change.');
   if (!(await ev(`!!${ITEM(key)}?.querySelector('[aria-label="Verdict"]')`))) throw new Error('That item isn’t a review waiting for an answer.');
+  // A Markdown draft opens in Preview (#179); its lines take their comments in Lines.
+  const view = `${ITEM(key)}?.querySelector('[aria-label="View"]')`;
+  if (comments.length && (await ev(`!!${view}`))) await clickAt(byText(view, '[role=radio]', 'Lines'), '“Lines”');
   for (const { line, text } of comments) {
     const n = String(line)
       .replace(/^line\s*/i, '')

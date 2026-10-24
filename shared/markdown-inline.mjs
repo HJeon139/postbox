@@ -11,24 +11,40 @@ export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
 
 // ── Inline ──────────────────────────────────────────────────────────────────────────────
 
-export function inline(s, ctx) {
+/**
+ * One line of text as HTML. at, when the render marks source positions (#179), is where s starts in the source: the
+ * 0-based line n and offset c. Each run of text, and each link, image, math or citation, is then wrapped in a span
+ * naming the line (data-sl, 1-based) and the offsets in it (data-sc to data-se, 0-based, end exclusive) it came from.
+ * @param {string} s @param {any} ctx @param {{ n: number, c: number }} [at]
+ */
+export function inline(s, ctx, at) {
   let out = '',
     buf = '',
-    i = 0;
+    i = 0,
+    from = 0;
   // Code spans bind tighter than emphasis, so **`x`** is bold: each span waits in the text run as a
   // U+0000 and goes back in, in order, once the run's emphasis is applied.
   const codes = [];
+  const mark = (html, a, z) => (at && html ? `<span data-sl="${at.n + 1}" data-sc="${at.c + a}" data-se="${at.c + z}">${html}</span>` : html);
   const flush = () => {
-    out += textRun(buf, ctx).replace(/\0/g, () => codes.shift());
+    out += mark(
+      textRun(buf, ctx).replace(/\0/g, () => codes.shift()),
+      from,
+      i,
+    );
     buf = '';
+  };
+  // Something drawn from s[i] to s[end], after the text before it.
+  const piece = (html, end) => {
+    flush();
+    out += mark(html, i, end);
+    i = from = end;
   };
   while (i < s.length) {
     const c = s[i];
     const math = c === '$' || c === '\\' ? mathAt(s, i) : null;
     if (math) {
-      flush();
-      out += `<span class="md-math"${math.display ? ' data-display="true"' : ''}>${escapeHtml(math.tex)}</span>`;
-      i = math.end;
+      piece(`<span class="md-math"${math.display ? ' data-display="true"' : ''}>${escapeHtml(math.tex)}</span>`, math.end);
       continue;
     }
     if (c === '\\' && /[\\`*_{}[\]()#+\-.!|$~>@]/.test(s[i + 1] ?? '')) {
@@ -38,10 +54,11 @@ export function inline(s, ctx) {
     }
 
     if (c === '`') {
-      const run = s.slice(i).match(/^`+/)[0];
+      const run = /** @type {RegExpMatchArray} */ (s.slice(i).match(/^`+/))[0];
       const end = s.indexOf(run, i + run.length);
       if (end > -1) {
-        codes.push(`<code>${escapeHtml(s.slice(i + run.length, end).replace(/^ (.*) $/, '$1'))}</code>`);
+        const code = s.slice(i + run.length, end).replace(/^ (.*) $/, '$1');
+        codes.push(`<code>${escapeHtml(ctx.cell ? code.replace(/\\\|/g, '|') : code)}</code>`);
         buf += '\0';
         i = end + run.length;
         continue;
@@ -53,9 +70,7 @@ export function inline(s, ctx) {
 
     const ref = c === '[' || (c === '!' && s[i + 1] === '[') ? bracket(s, i, ctx) : null;
     if (ref) {
-      flush();
-      out += ref.html;
-      i = ref.end;
+      piece(ref.html, ref.end);
       continue;
     }
 
@@ -64,9 +79,7 @@ export function inline(s, ctx) {
     if (bare) {
       const url = bare[0].replace(/[.,;:!?)\]'”’]+$/, '');
       if (isSafeUrl(url)) {
-        flush();
-        out += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
-        i += url.length;
+        piece(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`, i + url.length);
         continue;
       }
     }
