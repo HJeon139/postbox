@@ -154,8 +154,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
             {
               type: 'button',
               id: 'work-button',
-              'aria-pressed': String(route().work),
-              onclick: () => (route().work ? closeWork(t.id) : openWork(t.id)),
+              'aria-pressed': String(route().slot === 'work'),
+              onclick: () => (route().slot === 'work' ? closeWork(t.id) : openWork(t.id)),
             },
             icon('file', 'i-sm'),
             // The visible word is its name; on a phone it’s hidden from sight but still read, and the icon stays.

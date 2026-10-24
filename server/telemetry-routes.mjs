@@ -8,7 +8,7 @@ import { httpError } from './helpers.mjs';
 import { convOf, deleteRecordings, startRecording, stopRecording, telemetryRoot } from './telemetry.mjs';
 import { fileIssue, issuePreview } from './telemetry-file.mjs';
 import { draftView, makeReport } from './telemetry-report.mjs';
-import { deleteReport, discardDraft, savedReports, saveReport, setLeftOut } from './telemetry-save.mjs';
+import { deleteReport, discardDraft, savedBytes, savedReports, saveReport, setLeftOut } from './telemetry-save.mjs';
 
 const done = (status, body) => ({ status, body });
 const decoded = (s) => {
@@ -49,6 +49,10 @@ export async function telemetryRoute(rt, path, method, body) {
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/delete$/)) && method === 'POST') return done(200, deleteRecordings(rt, m[1]));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports$/)) && method === 'POST')
     return done(201, await makeReport(rt, m[1], { history: b.history === true }));
+  if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/saved$/)) && method === 'GET') {
+    const { text, hash } = savedBytes(rt, convOf(rt, m[1])?.id, m[2]);
+    return done(200, { text, hash });
+  }
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)$/)) && method === 'GET')
     return done(200, draftView(rt, convOf(rt, m[1]).id, m[2]));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)$/)) && method === 'DELETE') return done(200, deleteReport(rt, m[1], m[2]));

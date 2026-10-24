@@ -30,7 +30,7 @@ function render({ rebuild = false } = {}) {
   if (!rebuild && pane && current?.view === 'thread' && r.view === 'thread' && r.threadId === current.threadId) {
     current = r;
     pane.set(r);
-    document.getElementById('work-button')?.setAttribute('aria-pressed', String(r.work));
+    document.getElementById('work-button')?.setAttribute('aria-pressed', String(r.slot === 'work'));
     view(r.threadId);
     return;
   }

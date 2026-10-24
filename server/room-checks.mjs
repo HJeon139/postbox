@@ -1200,8 +1200,8 @@ export const CHECKS = [
 ];
 
 /**
- * Runs every check, or only those named; each finding carries its check id and issue number. checks: the list to run,
- * for the UAT’s, which adds its own (tools/uat/checks.mjs).
+ * Runs every check, or only those named; each finding carries its check id and issue number. checks: another list to
+ * run instead, as a test passes.
  * @param {any} facts  @param {{ only?: string[] | null, checks?: any[] }} [opts]
  */
 export function runChecks(facts, { only = null, checks = CHECKS } = {}) {

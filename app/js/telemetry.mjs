@@ -6,6 +6,7 @@
 
 import { api, client } from './client.mjs';
 import { h, icon } from './dom.mjs';
+import { fileIssue, showSaved } from './telemetry-issue.mjs';
 import { navigate, openDialog, paneHref, route, setPaneFull, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -76,7 +77,13 @@ export function recordingBadge(t) {
     badge.textContent = rec?.on ? `Recording since ${time(rec.startedAt ?? rec.since)}` : '';
   };
   paint();
-  client.on((ch) => (ch.type === 'thread' && ch.data.id === t?.id && badge.isConnected ? paint() : null));
+  // The top bar is rebuilt often: a badge that’s left it stops listening, so listeners don’t pile up.
+  let shown = false;
+  const off = client.on((ch) => {
+    if (badge.isConnected) shown = true;
+    else if (shown) return off();
+    if (ch.type === 'thread' && ch.data.id === t?.id) paint();
+  });
   return t ? badge : null;
 }
 
@@ -110,11 +117,22 @@ export function mountTelemetryView(convId) {
     api(`/api/threads/${convId}/telemetry`, undefined, 'GET')
       .then(async (o) => {
         const draft = o.draft ? await api(`/api/threads/${convId}/telemetry/reports/${o.draft}`, undefined, 'GET') : null;
-        body.replaceChildren(...(draft ? draftView(convId, draft, load) : askView(convId, o, load)), ...savedView(convId, o.saved, load));
+        // Focus stays on the control you used, found again by its id after the repaint, and the history box keeps its tick.
+        const had = body.contains(document.activeElement) ? document.activeElement?.id : null;
+        body.replaceChildren(...(draft ? draftView(convId, draft, load) : askView(convId, o, load, ask)), ...savedView(convId, o.saved, load));
+        const back = had ? document.getElementById(had) : null;
+        (back && body.contains(back) ? back : had ? body.querySelector('button, input') : null)?.focus();
       })
       .catch(fail('Couldn’t open Telemetry'));
+  const ask = { history: false };
   load();
-  const off = client.on((ch) => (ch.type === 'thread' && ch.data.id === convId && !body.querySelector('.tv-lines') ? load() : null));
+  // A message in the room changes nothing here: only a change to the recording repaints.
+  let rec = JSON.stringify(S().threads[convId]?.recording ?? null);
+  const off = client.on((ch) => {
+    if (ch.type !== 'thread' || ch.data.id !== convId || JSON.stringify(ch.data.recording ?? null) === rec) return;
+    rec = JSON.stringify(ch.data.recording ?? null);
+    load();
+  });
   const setFull = (on) => {
     el.classList.toggle('tv-full', !!on);
     return fullBtn;
@@ -123,12 +141,13 @@ export function mountTelemetryView(convId) {
 }
 
 /** Before a report: whether to include the history (R2), and Make report. */
-function askView(convId, o, load) {
-  const history = h('input', { type: 'checkbox', id: 'tv-history' });
+function askView(convId, o, load, ask) {
+  const history = h('input', { type: 'checkbox', id: 'tv-history', checked: ask.history, onchange: () => (ask.history = history.checked) });
   const make = h(
     'button.btn.send',
     {
       type: 'button',
+      id: 'tv-make',
       disabled: !o.recording,
       onclick: () => {
         make.disabled = true;
@@ -173,11 +192,13 @@ function draftView(convId, d, load) {
             'button.btn.sm.ghost',
             {
               type: 'button',
+              id: `tv-out-${l.n}`,
+              // One name; pressed says whether it’s left out.
               'aria-pressed': String(l.out),
-              'aria-label': `${l.out ? 'Put back' : 'Leave out'} line ${l.n}`,
+              'aria-label': `Leave out line ${l.n}`,
               onclick: () => api(`${at}/leave-out`, { line: l.n, out: !l.out }).then(load, fail('Couldn’t change it')),
             },
-            l.out ? 'Put back' : 'Leave out',
+            'Leave out',
           ),
       ),
     ),
@@ -196,8 +217,12 @@ function draftView(convId, d, load) {
     h('p.small.mono.tv-hash', `${d.bytes.length.toLocaleString('en-US')} bytes · sha256 ${d.hash}`),
     h(
       'div.tv-actions',
-      h('button.btn.send', { type: 'button', onclick: () => api(`${at}/save`, { hash: d.hash }).then(load, fail('Couldn’t save it')) }, 'Save report'),
-      h('button.btn', { type: 'button', onclick: () => api(`${at}/discard`, {}).then(load, fail('Couldn’t discard it')) }, 'Discard'),
+      h(
+        'button.btn.send',
+        { type: 'button', id: 'tv-save', onclick: () => api(`${at}/save`, { hash: d.hash }).then(load, fail('Couldn’t save it')) },
+        'Save report',
+      ),
+      h('button.btn', { type: 'button', id: 'tv-discard', onclick: () => api(`${at}/discard`, {}).then(load, fail('Couldn’t discard it')) }, 'Discard'),
     ),
     h('p.small', 'Closing the view keeps this report as it is until you save or discard it.'),
   ];
@@ -213,6 +238,7 @@ function savedView(convId, saved, load) {
         'section.tv-saved',
         { 'aria-label': `Saved report ${r.id}` },
         h('p.small.mono', `${r.id} · sha256 ${r.hash.slice(0, 12)}`),
+        r.broken ? h('p.small', r.broken) : showSaved(convId, r.id),
         h(
           'ul.tv-findings',
           r.findings.map((f) =>
@@ -221,48 +247,14 @@ function savedView(convId, saved, load) {
         ),
         h(
           'button.btn.sm.danger',
-          { type: 'button', onclick: () => api(`/api/threads/${convId}/telemetry/reports/${r.id}`, null, 'DELETE').then(load, fail('Couldn’t delete it')) },
+          {
+            type: 'button',
+            id: `tv-delete-${r.id}`,
+            onclick: () => api(`/api/threads/${convId}/telemetry/reports/${r.id}`, null, 'DELETE').then(load, fail('Couldn’t delete it')),
+          },
           'Delete report',
         ),
       ),
     ),
   ];
-}
-
-/** File issue: the exact text and its hash first; then gh, or the text copied and GitHub’s new-issue page opened. */
-async function fileIssue(convId, id, f, opener) {
-  const at = `/api/threads/${convId}/telemetry/reports/${id}/issues/${encodeURIComponent(f.key)}`;
-  const p = await api(at, undefined, 'GET').catch(fail('Couldn’t show the issue'));
-  if (!p) return;
-  const dlg = openDialog({
-    title: 'File this issue?',
-    sub: 'In HJeon139/postbox, under your own GitHub account, or copied for you to paste',
-    anchor: opener,
-    body: [h('pre.tv-issue', { tabindex: '0', 'aria-label': 'The issue’s exact text' }, p.text), h('p.small.mono', `sha256 ${p.hash}`)],
-    foot: [
-      h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'),
-      h(
-        'button.btn.send',
-        {
-          type: 'button',
-          onclick: () =>
-            api(at, { hash: p.hash }).then((r) => {
-              dlg.close();
-              if (typeof r.copy === 'string') {
-                navigator.clipboard?.writeText(r.copy).catch(() => {});
-                if (r.open?.startsWith('https://github.com/')) window.open(r.open, '_blank', 'noopener');
-                toast({ title: 'Copied the issue’s text', text: 'Paste it into the GitHub page that opened, then submit it there.' });
-              } else if (r.filed) toast({ title: `Filed #${r.filed}` });
-              else if (r.duplicate && r.closed)
-                toast({
-                  title: `This may be a regression of #${r.duplicate}`,
-                  text: 'That issue is closed. Reopen it, or comment there that it happened again.',
-                });
-              else if (r.duplicate) toast({ title: `Already filed as #${r.duplicate}` });
-            }, fail('Couldn’t file it')),
-        },
-        'Send',
-      ),
-    ],
-  });
 }
