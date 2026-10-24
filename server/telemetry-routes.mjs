@@ -4,12 +4,20 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { httpError } from './helpers.mjs';
 import { convOf, deleteRecordings, startRecording, stopRecording, telemetryRoot } from './telemetry.mjs';
 import { fileIssue, issuePreview } from './telemetry-file.mjs';
 import { draftView, makeReport } from './telemetry-report.mjs';
 import { deleteReport, discardDraft, savedReports, saveReport, setLeftOut } from './telemetry-save.mjs';
 
 const done = (status, body) => ({ status, body });
+const decoded = (s) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    throw httpError(400, 'That finding’s key doesn’t decode.');
+  }
+};
 
 /** What the Telemetry view opens on: the recording’s state, the newest report not yet saved, and the saved ones. */
 function overview(rt, threadId) {
@@ -29,7 +37,10 @@ function overview(rt, threadId) {
  * @returns {Promise<{ status: number, body: any } | null>}
  */
 export async function telemetryRoute(rt, path, method, body) {
-  if (!/^\/api\/threads\/[^/]+\/telemetry(\/|$)/.test(path)) return null;
+  const thread = /^\/api\/threads\/([^/]+)\/telemetry(\/|$)/.exec(path)?.[1];
+  if (!thread) return null;
+  // An unknown conversation or a key that doesn’t decode is the request’s mistake, not the server’s.
+  if (!rt.s.threads[thread]) throw httpError(404, 'That conversation doesn’t exist.');
   const b = body ?? {};
   let m;
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry$/)) && method === 'GET') return done(200, overview(rt, m[1]));
@@ -46,8 +57,8 @@ export async function telemetryRoute(rt, path, method, body) {
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/save$/)) && method === 'POST') return done(200, saveReport(rt, m[1], m[2], b));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/discard$/)) && method === 'POST') return done(200, discardDraft(rt, m[1], m[2]));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/issues\/([^/]+)$/)) && method === 'GET')
-    return done(200, issuePreview(rt, convOf(rt, m[1])?.id, m[2], decodeURIComponent(m[3])));
+    return done(200, issuePreview(rt, convOf(rt, m[1])?.id, m[2], decoded(m[3])));
   if ((m = path.match(/^\/api\/threads\/([^/]+)\/telemetry\/reports\/([^/]+)\/issues\/([^/]+)$/)) && method === 'POST')
-    return done(200, await fileIssue(rt, convOf(rt, m[1])?.id, m[2], decodeURIComponent(m[3]), b));
+    return done(200, await fileIssue(rt, convOf(rt, m[1])?.id, m[2], decoded(m[3]), b));
   return null;
 }

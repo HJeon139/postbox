@@ -3,6 +3,7 @@
 // with gh or without it; and a classifier that fails costs labels, never the report.
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -13,13 +14,15 @@ import { deleteReport, findingsOf, savedReports, saveReport, setLeftOut } from '
 import { CANARIES, filesUnder, flaggedRoom, GOOD, labelEach, report, settle, setup, turn } from './telemetry-fixture.mjs';
 
 /** A gh that records its calls: signed in or not, and able to set labels or not. */
-function gh({ signedIn = true, labels = true } = {}) {
+function gh({ signedIn = true, labels = ['uat', 'live'], listed = [] } = {}) {
   const calls = [];
   const run = async (args) => {
     calls.push(args);
     if (args[0] === 'auth') return { status: signedIn ? 0 : 1, stdout: '', stderr: '' };
-    if (args[1] === 'list') return { status: 0, stdout: '[]', stderr: '' };
-    if (!labels && args.includes('--label')) return { status: 1, stdout: '', stderr: 'could not add label: uat not found' };
+    if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(listed), stderr: '' };
+    const asked = args.filter((_, i) => args[i - 1] === '--label');
+    const missing = asked.find((l) => !labels.includes(l));
+    if (missing) return { status: 1, stdout: '', stderr: `could not add label: '${missing}' not found` };
     return { status: 0, stdout: 'https://github.com/HJeon139/postbox/issues/901\n', stderr: '' };
   };
   return { calls, run };
@@ -51,7 +54,7 @@ test('acceptance 3: a classifier that answers with every canary in every field l
   }
   const dir = join(f.data, 'telemetry', f.t.id, 'reports', id);
   const files = filesUnder(dir).map((p) => readFileSync(join(dir, p), 'utf8'));
-  assert.deepEqual(filesUnder(dir), ['findings.json', 'report.json', 'run.json']);
+  assert.deepEqual(filesUnder(dir), ['findings.json', 'meta.json', 'report.json', 'run.json']);
   for (const out of [...files, ...texts, JSON.stringify(g.calls)]) for (const c of all) assert.ok(!out.toLowerCase().includes(c.toLowerCase()), `${c} leaked`);
   f.stop();
 });
@@ -90,7 +93,15 @@ test('acceptance 6: what’s saved and sent are the bytes and hash shown, less t
   // A byte that changes the issue: the label’s confidence, edited on disk after you looked.
   writeFileSync(file, readFileSync(file, 'utf8').replaceAll('"confidence": "low"', '"confidence": "high"'));
   f.rt.gh = gh().run;
-  await assert.rejects(fileIssue(f.rt, f.t.id, id, key, { hash: shown.hash }), /isn’t the one you were shown/);
+  await assert.rejects(fileIssue(f.rt, f.t.id, id, key, { hash: shown.hash }), /changed after it was saved/);
+  assert.throws(() => issuePreview(f.rt, f.t.id, id, key), /changed after it was saved/);
+  // An edit that keeps the hash file in step still has to pass the final check: a key where a model belongs doesn’t.
+  const meta = join(f.data, 'telemetry', f.t.id, 'reports', id, 'meta.json');
+  const keyed = readFileSync(file, 'utf8').replace('"model": "mock"', `"model": "${CANARIES.key}"`);
+  writeFileSync(file, keyed);
+  writeFileSync(meta, JSON.stringify({ ...JSON.parse(readFileSync(meta, 'utf8')), hash: createHash('sha256').update(keyed).digest('hex') }));
+  assert.throws(() => issuePreview(f.rt, f.t.id, id, key), /fails the final check \(agents\[0\]\.model/);
+  assert.equal(savedReports(f.rt, f.t.id)[0].findings.length, 0, 'listed, with nothing to file');
   f.stop();
 });
 
@@ -112,15 +123,15 @@ test('acceptance 9: signed out, File issue copies the text and opens the new-iss
 test('acceptance 9: signed in without label rights, it files without labels, with the fingerprint; the fingerprint is the same for two rooms', async () => {
   const a = await flaggedRoom();
   const id = await saved(a);
-  const g = gh({ labels: false });
+  const g = gh({ labels: [] });
   a.rt.gh = g.run;
   const [finding] = savedReports(a.rt, a.t.id)[0].findings;
   const r = await fileIssue(a.rt, a.t.id, id, finding.key, { hash: issuePreview(a.rt, a.t.id, id, finding.key).hash });
   assert.equal(r.filed, 901);
   const creates = g.calls.filter((c) => c[1] === 'create');
-  assert.equal(creates.length, 2);
-  assert.ok(!creates[1].includes('--label'));
-  const body = creates[1][creates[1].indexOf('--body') + 1];
+  assert.equal(creates.length, 3);
+  assert.ok(!creates[2].includes('--label'));
+  const body = creates[2][creates[2].indexOf('--body') + 1];
   const b = await flaggedRoom();
   await b.rt.createPersona({ handle: 'zorvex-helper' });
   const other = await saved(b);
@@ -131,6 +142,31 @@ test('acceptance 9: signed in without label rights, it files without labels, wit
   assert.match(fingerprintOf(fa[0]), /^live:[a-z0-9-]+:(\d+|none):[\w.-]+:[\w-]+$/);
   a.stop();
   b.stop();
+});
+
+test('R19: without the live label it files with uat alone; a fingerprint on a closed issue is a possible regression', async () => {
+  const f = await flaggedRoom();
+  const id = await saved(f);
+  const key = savedReports(f.rt, f.t.id)[0].findings[0].key;
+  const hash = issuePreview(f.rt, f.t.id, id, key).hash;
+  const g = gh({ labels: ['uat'] });
+  f.rt.gh = g.run;
+  await fileIssue(f.rt, f.t.id, id, key, { hash });
+  const creates = g.calls.filter((c) => c[1] === 'create');
+  assert.deepEqual(
+    creates.at(-1).filter((_, i, a) => a[i - 1] === '--label'),
+    ['uat'],
+  );
+  f.rt.gh = gh({ listed: [{ number: 77, state: 'CLOSED' }] }).run;
+  assert.deepEqual(await fileIssue(f.rt, f.t.id, id, key, { hash }), { ok: true, duplicate: 77, closed: true });
+  f.rt.gh = gh({
+    listed: [
+      { number: 77, state: 'CLOSED' },
+      { number: 90, state: 'OPEN' },
+    ],
+  }).run;
+  assert.deepEqual(await fileIssue(f.rt, f.t.id, id, key, { hash }), { ok: true, duplicate: 90, closed: false });
+  f.stop();
 });
 
 test('acceptance 14: no classifier, one that throws, and one that answers with no JSON each give a saved report, unlabeled, with a gap saying why', async () => {

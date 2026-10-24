@@ -3,11 +3,11 @@
 // history only when a report asks.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, utimesSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { freshInstall } from '../server/seed.mjs';
-import { deleteRecordings, KEEP_MS, startRecording, sweep } from '../server/telemetry.mjs';
+import { deleteRecordings, KEEP_MS, startRecording, stopRecording, sweep, watchTelemetry, within } from '../server/telemetry.mjs';
 import { draftView } from '../server/telemetry-report.mjs';
 import { saveReport } from '../server/telemetry-save.mjs';
 import { held } from './side-threads-fixture.mjs';
@@ -83,6 +83,11 @@ test('acceptance 8: folders are 0700 and files 0600; recording is refused when t
   const g = setup();
   g.rt.config.telemetryRoot = join(g.folder, '.postbox', 'telemetry');
   assert.throws(() => startRecording(g.rt, g.t.id), /inside this project’s folder/);
+  // Through a link, and in another case where the file system doesn’t tell them apart.
+  symlinkSync(g.folder, join(g.data, 'project-link'));
+  assert.ok(within(join(g.data, 'project-link', 'x', 'telemetry'), g.folder));
+  if (process.platform === 'darwin') assert.ok(within(join(g.folder.toUpperCase(), 'x'), g.folder));
+  assert.ok(!within(join(g.data, 'telemetry'), g.folder));
   assert.ok(!existsSync(join(g.folder, '.postbox')));
   f.stop();
   g.stop();
@@ -109,7 +114,8 @@ test('acceptance 8: a stream last written 31 days ago is swept, and a recording 
   const f = await flaggedRoom();
   const rec = join(f.data, 'telemetry', f.t.id, 'recording');
   const old = (Date.now() - KEEP_MS - 864e5) / 1000;
-  const keep = join(f.data, 'telemetry', 'th_other', 'recording', 'streams');
+  const other = f.rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [f.a.id] });
+  const keep = join(f.data, 'telemetry', other.id, 'recording', 'streams');
   mkdirSync(keep, { recursive: true });
   for (const p of filesUnder(rec)) utimesSync(join(rec, p), old, old);
   const gone = sweep(f.rt);
@@ -167,4 +173,41 @@ test('acceptance 11: a 🚩 is recorded on the item it was put on, with its time
   assert.equal(draft.report.labels.find((l) => l.on === r.ref).mast, 'FM-3.2');
   assert.ok(readFileSync(join(f.data, 'telemetry', f.t.id, 'recording', 'events.jsonl'), 'utf8').includes('reaction'));
   f.stop();
+});
+
+test('review 1: a recording write that fails drops the line and marks a gap; Postbox and the room carry on', async () => {
+  const f = setup({ record: true });
+  const rec = join(f.data, 'telemetry', f.t.id, 'recording');
+  chmodSync(join(rec, 'streams'), 0o500);
+  chmodSync(rec, 0o500);
+  try {
+    f.adapter.next.push(turn('Still here.'));
+    f.rt.sendMessage(f.t.id, { text: '@alpha go' });
+    await settle(f.rt);
+    assert.ok(f.store.items(f.t.id).some((x) => x.kind === 'agent' && x.text === 'Still here.'));
+  } finally {
+    chmodSync(rec, 0o700);
+    chmodSync(join(rec, 'streams'), 0o700);
+  }
+  const { draft } = await report(f);
+  assert.ok(draft.report.gaps.some((g) => g.kind === 'events' && g.reason === 'write-failed'));
+  f.stop();
+});
+
+test('review 2: saved reports go with their conversation after Delete recordings and a restart, and the sweep takes orphans', async () => {
+  const f = await flaggedRoom();
+  const { id } = await report(f);
+  saveReport(f.rt, f.t.id, id, { hash: draftView(f.rt, f.t.id, id).hash });
+  stopRecording(f.rt, f.t.id);
+  deleteRecordings(f.rt, f.t.id);
+  f.stop();
+  const again = watchTelemetry(f.rt);
+  const dir = join(f.data, 'telemetry', f.t.id);
+  assert.ok(existsSync(join(dir, 'reports', id)));
+  f.rt.deleteThread(f.t.id);
+  f.rt.purgeThread(f.t.id);
+  assert.ok(!existsSync(dir));
+  mkdirSync(join(f.data, 'telemetry', 'th_gone', 'reports', 'rep_x'), { recursive: true });
+  assert.ok(sweep(f.rt).includes('th_gone'));
+  again();
 });

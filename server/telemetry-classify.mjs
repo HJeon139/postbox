@@ -24,7 +24,8 @@ const data = (s) => String(s ?? '').replace(/<\s*(\/?)\s*room/gi, '<$1_room');
 const said = (it, ref) => {
   const who = it.kind === 'user' ? 'the person' : `an agent (${it.kind === 'block' ? `${it.block?.type ?? 'block'} block` : 'message'})`;
   const text = it.kind === 'block' ? (it.block?.title ?? it.block?.fallback ?? '') : (it.text ?? '');
-  return `[${ref}] ${who}: ${clipText(String(text).replace(/\s+/g, ' '), ITEM_CHARS)}`;
+  // Secrets out before the clip, so a key cut at the edge can’t go out as a fragment no pattern matches.
+  return `[${ref}] ${who}: ${clipText(trimSecrets(String(text)).replace(/\s+/g, ' '), ITEM_CHARS)}`;
 };
 
 /**

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { finalCheck, labelsOf } from '../shared/telemetry.mjs';
+import { finalCheck, labelsOf, MAX_REFS } from '../shared/telemetry.mjs';
 import { blurred, jsonLines, leaveOut, pruned } from '../shared/telemetry-bytes.mjs';
 import { FLAG } from '../shared/telemetry-vocab.mjs';
 import { httpError } from './helpers.mjs';
@@ -63,7 +63,10 @@ function checksOf(c, live) {
   const found = new Map();
   for (const f of live.findings.filter((x) => !threw.includes(x))) found.set(f.check, [...(found.get(f.check) ?? []), f]);
   const rows = [...found.entries()].map(([check, fs], i) => {
-    const refs = [...new Set(fs.map((f) => c.byItem.get(f.key) ?? c.byTurn.get(f.key)).filter(Boolean))];
+    // Its earliest five, by ordinal (R16): refs number the room in order.
+    const refs = [...new Set(fs.map((f) => c.byItem.get(f.key) ?? c.byTurn.get(f.key)).filter(Boolean))]
+      .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+      .slice(0, MAX_REFS);
     return { ref: `c${i + 1}`, check, issue: fs[0].issue ?? null, count: fs.length, refs };
   });
   return { rows, threw: threw.map((f) => ({ kind: 'check', check: f.check, reason: 'threw' })) };
@@ -80,7 +83,7 @@ function askedOf(c, itemRefs, rows, reactions) {
   return [
     ...rows.map((k) => {
       // A check that cites more than five offers its earliest five (R16), by ordinal: refs number the room in order.
-      const refs = [...k.refs].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))).slice(0, BEFORE + 1);
+      const refs = k.refs;
       return { ref: k.ref, item: refs.find((x) => x.startsWith('i')) ?? null, refs, named: withTurns(refs) };
     }),
     ...reactions

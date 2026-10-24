@@ -77,12 +77,16 @@ export async function fileIssue(rt, convId, id, key, { hash } = {}) {
   const gh = rt.gh ?? runGh;
   if ((await gh(['auth', 'status'])).status !== 0) return { ok: true, copy: text, open: NEW_ISSUE, hash: now };
   const fp = fingerprintOf(f);
-  const seen = await gh(['issue', 'list', '--repo', REPO, '--state', 'all', '--search', `"${fp}" in:body`, '--json', 'number', '--limit', '5']);
-  const dup = seen.status === 0 ? (JSON.parse(seen.stdout || '[]')[0]?.number ?? null) : null;
-  if (dup) return { ok: true, duplicate: dup };
-  let made = await gh(['issue', 'create', '--repo', REPO, '--title', title, '--body', body, '--label', 'uat', '--label', 'live']);
-  // An account that can’t set labels files without them; the fingerprint marks it, and triage labels it.
-  if (made.status !== 0 && /label/i.test(made.stderr)) made = await gh(['issue', 'create', '--repo', REPO, '--title', title, '--body', body]);
+  const seen = await gh(['issue', 'list', '--repo', REPO, '--state', 'all', '--search', `"${fp}" in:body`, '--json', 'number,state', '--limit', '5']);
+  const found = seen.status === 0 ? (JSON.parse(seen.stdout || '[]') ?? []) : [];
+  const dup = found.find((i) => i.state === 'OPEN') ?? found[0];
+  // A closed issue caught again is a regression to verify, not a plain duplicate (tests/uat/e2e/README.md, “Recurring findings”).
+  if (dup) return { ok: true, duplicate: dup.number, closed: dup.state !== 'OPEN' };
+  const create = (labels) => gh(['issue', 'create', '--repo', REPO, '--title', title, '--body', body, ...labels.flatMap((l) => ['--label', l])]);
+  // A label the repository or account can’t set is dropped, uat last; the fingerprint marks the issue, and triage labels it.
+  let made = await create(['uat', 'live']);
+  if (made.status !== 0 && /label/i.test(made.stderr)) made = await create(['uat']);
+  if (made.status !== 0 && /label/i.test(made.stderr)) made = await create([]);
   if (made.status !== 0) throw httpError(502, `gh couldn’t file it: ${made.stderr.trim().slice(0, 300)}`);
   return { ok: true, filed: Number(made.stdout.trim().split('/').pop()) || null, url: made.stdout.trim(), hash: now };
 }

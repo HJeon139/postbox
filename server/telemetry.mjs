@@ -5,8 +5,8 @@
 // (thread.recording), which only the header shows; no agent reads it. The whole folder goes with the conversation (after
 // Undo’s window); recording/ goes at once with Delete recordings, and each stream 30 days after it was last written.
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setStreamTap } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
@@ -45,6 +45,23 @@ export const append = (file, text) => appendFileSync(file, text, { mode: 0o600 }
 /** The conversation a thread belongs to: itself, or the one its side or topic thread branched from. */
 export const convOf = (rt, threadId) => rt.s.threads[rt.lineage(threadId).at(-1)] ?? null;
 
+/** A path as the file system finds it: through links, from its nearest folder that exists, and case-folded where names are. */
+function real(p) {
+  let head = resolve(p);
+  const tail = [];
+  while (!existsSync(head) && dirname(head) !== head) {
+    tail.unshift(basename(head));
+    head = dirname(head);
+  }
+  const out = join(realpathSync(head), ...tail);
+  return ['darwin', 'win32'].includes(process.platform) ? out.toLowerCase() : out;
+}
+/** Whether a path is a folder or inside it, through links and case (R11). */
+export function within(p, folder) {
+  const rel = relative(real(folder), real(p));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
 /** Record this room: from now on, never before (R2). */
 export function startRecording(rt, threadId) {
   const conv = convOf(rt, threadId);
@@ -52,8 +69,7 @@ export function startRecording(rt, threadId) {
   if (conv.recording?.on) return { ok: true, recording: conv.recording };
   const project = rt.s.projects[conv.projectId]?.folder;
   const root = telemetryRoot(rt);
-  const rel = project && root ? relative(resolve(project), resolve(root)) : '..';
-  if (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+  if (project && root && within(root, project))
     throw httpError(
       409,
       'Postbox keeps recordings in its data folder, which is inside this project’s folder, where its agents could read them. Start Postbox with --data outside the project to record.',
@@ -104,6 +120,27 @@ export function recordingDir(rt, threadId) {
  */
 function tapFor(rt) {
   const begun = new Map(); // turn id → stream file
+  const keep = recordLine(rt, begun);
+  return (ctx, line, backend) => {
+    // A failed write (a full disk, a folder made read-only) drops the line and marks the turn a gap: it never reaches
+    // the adapter’s stream reader, which would end the turn, or Postbox (R10).
+    try {
+      keep(ctx, line, backend);
+    } catch {
+      const sid = /[?&]session=([^&]+)/.exec(String(ctx?.mcpUrl ?? ''))?.[1];
+      const turn = sid ? rt.turns.get(decodeURIComponent(sid)) : null;
+      if (turn) lostOf(rt).turns.add(turn.id);
+    }
+  };
+}
+
+/** What a failed write lost, per runtime: the turns, and the conversations whose events it couldn’t keep (R10). */
+export const lostOf = (rt) => {
+  rt.telemetryLost ??= { turns: new Set(), events: new Set() };
+  return rt.telemetryLost;
+};
+
+function recordLine(rt, begun) {
   return (ctx, line, backend) => {
     const sid = /[?&]session=([^&]+)/.exec(String(ctx?.mcpUrl ?? ''))?.[1];
     const turn = sid ? rt.turns.get(decodeURIComponent(sid)) : null;
@@ -130,21 +167,9 @@ function tapFor(rt) {
       };
       append(join(dir, 'turns.jsonl'), `${JSON.stringify(t)}\n`);
     }
-    try {
-      append(file, `${line}\n`);
-    } catch {
-      /* the recording was deleted meanwhile */
-    }
+    append(file, `${line}\n`);
   };
 }
-
-/** The recorded rooms, by id: a removed conversation’s recordings go with it. */
-const recorded = (rt) =>
-  new Set(
-    Object.values(rt.s.threads)
-      .filter((t) => t.recording)
-      .map((t) => t.id),
-  );
 
 /**
  * Starts telemetry for a runtime (server/index.mjs calls it at start): the stream tap, the events of recorded rooms, the
@@ -152,19 +177,20 @@ const recorded = (rt) =>
  * @param {any} rt @returns {() => void} stops it
  */
 export function watchTelemetry(rt) {
-  const known = recorded(rt);
   const off = setStreamTap(rt, tapFor(rt));
   const unsubscribe = rt.store.subscribe((ev) => {
-    if (ev.type === 'thread' && ev.data?.recording) known.add(ev.data.id);
-    if (ev.type === 'remove' && ev.data?.kind === 'thread' && known.has(ev.data.id)) {
-      known.delete(ev.data.id);
-      purgeRoom(rt, ev.data.id);
-    }
+    // Whether or not it records now: a room that once did may have saved reports (R11).
+    if (ev.type === 'remove' && ev.data?.kind === 'thread') purgeRoom(rt, ev.data.id);
     const threadId = ev.data?.threadId;
     if (!threadId || !rt.s.threads[threadId]) return;
     const kept = keepEvent(ev.seq, ev.type, ev.data);
     const dir = kept && recordingDir(rt, threadId);
-    if (dir) append(join(dir, 'events.jsonl'), `${JSON.stringify(kept)}\n`);
+    // A failed write here would throw into the store’s other listeners: it’s a gap instead.
+    try {
+      if (dir) append(join(dir, 'events.jsonl'), `${JSON.stringify({ ...kept, t: Date.now() })}\n`);
+    } catch {
+      lostOf(rt).events.add(rt.lineage(threadId).at(-1));
+    }
   });
   sweep(rt);
   const timer = setInterval(() => sweep(rt), SWEEP_MS);
@@ -179,25 +205,36 @@ export function watchTelemetry(rt) {
 /** A removed conversation’s telemetry folder: its recording and the reports saved from it (R11). */
 function purgeRoom(rt, convId) {
   const root = telemetryRoot(rt);
-  if (root) rmSync(join(root, convId), { recursive: true, force: true });
+  try {
+    if (root && /^[\w-]+$/.test(convId)) rmSync(join(root, convId), { recursive: true, force: true });
+  } catch {
+    /* the next sweep tries again */
+  }
 }
 
 /**
- * Each stream last written more than 30 days ago is deleted, and a recording with no stream left and nothing newer
- * goes with its ref map (R11). Saved reports stay until you delete them. Returns the paths it deleted.
+ * The 30-day rule (R11): each stream and draft last written more than 30 days ago is deleted, and each event recorded
+ * that long ago; a recording with nothing newer goes with its ref map. A folder whose conversation is gone goes whole,
+ * saved reports included, as when it was deleted while Postbox wasn’t running. Returns the paths it deleted.
  */
 export function sweep(rt, now = Date.now()) {
   const root = telemetryRoot(rt);
   if (!root || !existsSync(root)) return [];
   const gone = [];
   for (const name of readdirSync(root)) {
+    if (!rt.s.threads[name]) {
+      rmSync(join(root, name), { recursive: true, force: true });
+      gone.push(name);
+      continue;
+    }
     const rec = join(root, name, 'recording');
     if (!existsSync(rec)) continue;
-    const streams = filesIn(join(rec, 'streams'));
-    for (const f of streams.filter((f) => now - statSync(f).mtimeMs > KEEP_MS)) {
+    const old = [...filesIn(join(rec, 'streams')), ...filesIn(join(rec, 'drafts'))].filter((f) => now - statSync(f).mtimeMs > KEEP_MS);
+    for (const f of old) {
       rmSync(f, { force: true });
       gone.push(relative(root, f));
     }
+    ageEvents(join(rec, 'events.jsonl'), now);
     const rest = filesIn(rec);
     const fresh = rest.length ? rest.some((f) => now - statSync(f).mtimeMs <= KEEP_MS) : now - statSync(rec).mtimeMs <= KEEP_MS;
     if (filesIn(join(rec, 'streams')).length || fresh) continue;
@@ -205,6 +242,14 @@ export function sweep(rt, now = Date.now()) {
     gone.push(relative(root, rec));
   }
   return gone;
+}
+
+/** Keeps the events recorded in the last 30 days, by when each was recorded. */
+function ageEvents(file, now) {
+  if (!existsSync(file)) return;
+  const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
+  const kept = lines.filter((l) => !(now - (Number(/"t":(\d+)/.exec(l)?.[1]) || now) > KEEP_MS));
+  if (kept.length < lines.length) write(file, kept.length ? `${kept.join('\n')}\n` : '');
 }
 
 /** Every file under a folder; none if it’s missing. */

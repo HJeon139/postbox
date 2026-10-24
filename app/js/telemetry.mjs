@@ -253,6 +253,11 @@ async function fileIssue(convId, id, f, opener) {
                 if (r.open?.startsWith('https://github.com/')) window.open(r.open, '_blank', 'noopener');
                 toast({ title: 'Copied the issue’s text', text: 'Paste it into the GitHub page that opened, then submit it there.' });
               } else if (r.filed) toast({ title: `Filed #${r.filed}` });
+              else if (r.duplicate && r.closed)
+                toast({
+                  title: `This may be a regression of #${r.duplicate}`,
+                  text: 'That issue is closed. Reopen it, or comment there that it happened again.',
+                });
               else if (r.duplicate) toast({ title: `Already filed as #${r.duplicate}` });
             }, fail('Couldn’t file it')),
         },

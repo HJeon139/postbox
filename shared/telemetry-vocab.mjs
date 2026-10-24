@@ -125,8 +125,18 @@ export const BUCKETS = ['0', '1-9', '10-99', '100-999', '1000-9999', '10000-9999
 /** A duration’s bucket, and a cost’s, in cents to the nearest power of ten (R12). */
 export const DURATIONS = ['under-1s', '1-9s', '10-59s', 'minutes', 'hours'];
 export const COSTS = ['0', 'under-1c', '1c', '10c', '1usd', '10usd', '100usd'];
-export const GAP_KINDS = ['no-stream', 'transcript', 'check', 'classifier'];
-export const GAP_REASONS = ['before-recording', 'not-recorded', 'running', 'unreadable', 'threw', 'over-budget', 'failed-call', 'no-classifier'];
+export const GAP_KINDS = ['no-stream', 'transcript', 'check', 'classifier', 'events'];
+export const GAP_REASONS = [
+  'before-recording',
+  'not-recorded',
+  'running',
+  'unreadable',
+  'threw',
+  'over-budget',
+  'failed-call',
+  'no-classifier',
+  'write-failed',
+];
 /** Why a label is unlabeled (R3, R16): the gate rejected its value, or the classifier had no say in it. */
 export const UNLABELED_REASONS = ['rejected', 'over-budget', 'failed-call', 'no-classifier'];
 /** The facts a check may need (server/room-checks.mjs, inputs). */

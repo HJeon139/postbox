@@ -149,3 +149,10 @@ test('U1: the file-fallback trigger needs the shown text copied and the new-issu
   assert.equal(TELEMETRY_TRIGGERS['telemetry-file-fallback'].run({ telemetry: { shown } }).length, 1);
   assert.equal(TELEMETRY_TRIGGERS['telemetry-file-fallback'].run({ telemetry: { shown: { ...shown, opened: [] } } }).length, 0);
 });
+
+test('should-fix: telemetry GETs answer 404 for an unknown conversation and 400 for a key that doesn’t decode', async () => {
+  const f = await flaggedRoom();
+  await assert.rejects(telemetryRoute(f.rt, '/api/threads/th_nope/telemetry', 'GET', null), (e) => e.status === 404);
+  await assert.rejects(telemetryRoute(f.rt, `/api/threads/${f.t.id}/telemetry/reports/rep_x/issues/%E0%A4%A`, 'GET', null), (e) => e.status === 400);
+  f.stop();
+});

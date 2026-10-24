@@ -64,7 +64,8 @@ export function labelsOf(answer, { asked, sent, turns, failed = null, proposals 
     (l.turn === undefined || l.turn === null || (typeof l.turn === 'string' && named.has(l.turn)));
   const pick = (l) => ({ mast: l.mast, area: l.area, attribution: l.attribution, confidence: l.confidence, ...(l.turn ? { turn: l.turn } : {}) });
   const labels = asked.map(({ ref: on, refs }, i) => {
-    const why = i >= MAX_LABELS || !sent.has(on) ? 'over-budget' : (failed ?? (fine(byRef.get(on), new Set(refs)) ? null : 'rejected'));
+    // The newest 60 are the window, as boundedInput sends them.
+    const why = i < asked.length - MAX_LABELS || !sent.has(on) ? 'over-budget' : (failed ?? (fine(byRef.get(on), new Set(refs)) ? null : 'rejected'));
     return why ? { on, label: UNLABELED, reason: why } : { on, ...pick(byRef.get(on)) };
   });
   const proposed = proposals
@@ -82,6 +83,9 @@ const en = (list) => (v) => list.includes(v);
 const re = (pattern) => (v) => typeof v === 'string' && pattern.test(v);
 const num = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v < 1e13;
 const bool = (v) => typeof v === 'boolean';
+const int = (v) => Number.isInteger(v) && v > 0 && v < 1e7;
+/** The refs a finding offers its label: at most five (R16). */
+export const MAX_REFS = 5;
 const n = en(BUCKETS);
 const ms = en(DURATIONS);
 const usd = en(COSTS);
@@ -108,7 +112,7 @@ const SCHEMA = obj({
         k,
         n,
       ]),
-      ['initiativeEntropy', num],
+      ['initiativeEntropy', (v) => num(v) && Math.round(v * 10) === v * 10],
     ]),
   ),
   agents: list(
@@ -142,7 +146,7 @@ const SCHEMA = obj({
   work: obj({ files: n, lines: n, commands: n, commits: n, pushes: n }),
   gaps: list(obj({ kind: en(GAP_KINDS), turn: T, check: 'check', agent: AGENT, reason: en(GAP_REASONS) })),
   checks: obj({
-    found: list(obj({ ref: 'ref:c', check: 'check', issue: num, count: n, refs: list('ref:ti') })),
+    found: list(obj({ ref: 'ref:c', check: 'check', issue: int, count: n, refs: { item: 'ref:ti', max: MAX_REFS } })),
     notRun: list(obj({ check: 'check', missing: list(en(INPUTS)) })),
   }),
   reactions: list(obj({ ref: 'ref:r', emoji: en(EMOJIS), on: ITEM, detectMs: ms })),
@@ -158,7 +162,7 @@ const SCHEMA = obj({
       confidence: en(CONFIDENCE),
     }),
   ),
-  proposed: list(obj({ mast: en(MAST), area: en(AREAS), attribution: en(ATTRIBUTIONS), turn: T, confidence: en(CONFIDENCE) })),
+  proposed: { item: obj({ mast: en(MAST), area: en(AREAS), attribution: en(ATTRIBUTIONS), turn: T, confidence: en(CONFIDENCE) }), max: MAX_PROPOSED },
 });
 
 /**
@@ -181,7 +185,7 @@ export function finalCheck(report, { checkIds, build = {}, refs, uat = false }) 
     if (spec === 'version' || spec === 'commit') return (typeof v === 'string' && v === build[spec]) || out.push(path);
     if (typeof spec === 'function') return spec(v) || out.push(path);
     if (spec.item) {
-      if (!Array.isArray(v)) return out.push(path);
+      if (!Array.isArray(v) || (spec.max && v.length > spec.max)) return out.push(path);
       for (const [i, x] of v.entries()) check(spec.item, x, `${path}[${i}]`);
       return;
     }
@@ -200,5 +204,7 @@ export function finalCheck(report, { checkIds, build = {}, refs, uat = false }) 
     }
   };
   check(SCHEMA, report, '');
+  // The bound on what labels carry (R16) holds only with at most 60 labels: the gate counts them itself.
+  if (Array.isArray(report?.labels) && report.labels.filter((l) => !l?.label).length > MAX_LABELS) out.push('labels (more than 60)');
   return out;
 }

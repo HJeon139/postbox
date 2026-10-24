@@ -8,7 +8,7 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { BACKENDS, bucket, MODELS, OUTCOMES, TOOL_CLASSES } from '../shared/telemetry-vocab.mjs';
 import { freshInstall } from './seed.mjs';
-import { readLines, running } from './telemetry.mjs';
+import { lostOf, readLines, running } from './telemetry.mjs';
 import { callClass, turnStats } from './telemetry-streams.mjs';
 
 const WOKE = { user: 'person', agent: 'wake', event: 'answer', wake: 'schedule', lint: 'postbox', 'app-check': 'postbox' };
@@ -86,7 +86,8 @@ function turnsOf(rt, dir, all, since, agents) {
     // When it last wrote is when it ended (R7).
     const file = join(dir, r.stream);
     const last = events.length && existsSync(file) ? statSync(file).mtimeMs : null;
-    out.push({ ...r, running: live, recorded: events.length > 0, events, endedAt: last, agent: agents.get(r.personaId)?.id ?? 'agent-1' });
+    const lost = lostOf(rt).turns.has(r.turnId);
+    out.push({ ...r, running: live, lost, recorded: events.length > 0 && !lost, events, endedAt: last, agent: agents.get(r.personaId)?.id ?? 'agent-1' });
   }
   const shown = new Map();
   for (const it of all)
@@ -121,7 +122,11 @@ export function tierA(rt, c) {
   const turns = c.turns.map((t) => turnRow(c, t));
   const gaps = c.turns
     .filter((t) => !t.recorded)
-    .map((t) => ({ kind: 'no-stream', turn: c.byTurn.get(t.turnId), reason: t.before ? 'before-recording' : t.running ? 'running' : 'not-recorded' }));
+    .map((t) => ({
+      kind: 'no-stream',
+      turn: c.byTurn.get(t.turnId),
+      reason: t.before ? 'before-recording' : t.running ? 'running' : t.lost ? 'write-failed' : 'not-recorded',
+    }));
   const wakes = items.filter((x) => x.kind === 'system' && x.variant === 'wake' && x.from !== 'you' && !x.scheduled);
   const others = c.threads.map((id) => rt.s.threads[id]).filter((t) => t && t.id !== c.conv.id);
   return {
@@ -152,7 +157,7 @@ export function tierA(rt, c) {
     blocks: items.filter((x) => x.kind === 'block' && x.valid).map((x) => blockRow(rt, c, x)),
     work: workOf(rt, c),
     reactions: reactionsOf(c),
-    gaps,
+    gaps: [...gaps, ...(lostOf(rt).events.has(c.conv.id) ? [{ kind: 'events', reason: 'write-failed' }] : [])],
   };
 }
 

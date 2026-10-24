@@ -10,6 +10,7 @@ import { finalCheck } from '../shared/telemetry.mjs';
 import { jsonLines } from '../shared/telemetry-bytes.mjs';
 import { FLAG } from '../shared/telemetry-vocab.mjs';
 import { httpError } from './helpers.mjs';
+import { CHECKS } from './room-checks.mjs';
 import { convOf, recFolder, reportFolder, telemetryRoot, write } from './telemetry.mjs';
 import { bytesOf, draftView, readDraft, vocabOf } from './telemetry-report.mjs';
 
@@ -44,25 +45,58 @@ export function saveReport(rt, threadId, id, { hash } = {}) {
   if (hash !== now) throw httpError(409, 'The report changed since you looked at it. Look at it again, then save.');
   const problems = finalCheck(report, vocabOf(rt, draft));
   if (problems.length) throw httpError(422, `The report fails the final check (${problems.slice(0, 3).join(', ')}).`);
+  const run = runOf(report);
+  const findings = { scenario: 'A live room', day: report.recording?.day ?? null, findings: findingsOf(report), timeline: [] };
+  // The same check on what’s derived from it: every string in them is one of the report’s, or a template over them (R19).
+  const derived = [...derivedProblems(run, report, 'run.json'), ...derivedProblems(findings, report, 'findings.json')];
+  if (derived.length) throw httpError(422, `A file derived from the report fails the final check (${derived.slice(0, 3).join(', ')}).`);
   const dir = reportFolder(rt, conv.id, id);
   write(join(dir, 'report.json'), text);
-  write(join(dir, 'run.json'), `${JSON.stringify(runOf(report), null, 2)}\n`);
-  write(
-    join(dir, 'findings.json'),
-    `${JSON.stringify({ scenario: 'A live room', day: report.recording?.day ?? null, findings: findingsOf(report), timeline: [] }, null, 2)}\n`,
-  );
+  write(join(dir, 'run.json'), `${JSON.stringify(run, null, 2)}\n`);
+  write(join(dir, 'findings.json'), `${JSON.stringify(findings, null, 2)}\n`);
+  // What File issue checks the bytes against later: their hash, the refs issued, and the build they were saved by.
+  write(join(dir, 'meta.json'), JSON.stringify({ hash: now, refs: draft.refs ?? [], uat: draft.uat === true, build: rt.config.build ?? {} }));
   draft.saved = { at: Date.now(), hash: now };
   write(join(recFolder(rt, conv.id, 'drafts'), `${id}.json`), JSON.stringify(draft));
   return { ok: true, id, hash: now };
 }
 
-/** A saved report’s bytes and their hash, read back from report.json: what File issue sends from. */
+/**
+ * A saved report’s bytes, read back from report.json: what File issue sends from. They must be the bytes saved, by the
+ * hash recorded at Save, and pass the final check again, so a report.json edited on disk is never sent (R19).
+ */
 export function savedBytes(rt, convId, id) {
   if (!convId || !/^rep_[A-Za-z0-9]{1,16}$/.test(String(id))) throw httpError(404, 'There’s no such report.');
-  const file = join(telemetryRoot(rt) ?? '', convId, 'reports', id, 'report.json');
-  if (!existsSync(file)) throw httpError(404, 'That report isn’t saved.');
-  const text = readFileSync(file, 'utf8');
-  return { text, hash: sha(text), report: JSON.parse(text) };
+  const dir = join(telemetryRoot(rt) ?? '', convId, 'reports', id);
+  if (!existsSync(join(dir, 'report.json'))) throw httpError(404, 'That report isn’t saved.');
+  const text = readFileSync(join(dir, 'report.json'), 'utf8');
+  const meta = existsSync(join(dir, 'meta.json')) ? JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8')) : null;
+  if (!meta || meta.hash !== sha(text)) throw httpError(409, 'This report’s file changed after it was saved, so Postbox won’t send it. Delete it.');
+  /** @type {any} */
+  let report = null;
+  try {
+    report = JSON.parse(text);
+  } catch {
+    throw httpError(409, 'This report’s file doesn’t parse. Delete it.');
+  }
+  const problems = finalCheck(report, { checkIds: CHECKS.map((c) => c.id), build: meta.build, refs: meta.refs, uat: meta.uat });
+  if (problems.length) throw httpError(422, `This report fails the final check (${problems.slice(0, 3).join(', ')}), so Postbox won’t send it.`);
+  return { text, hash: sha(text), report };
+}
+
+/** Strings in a file derived from the report that aren’t the report’s own or a fixed template’s, as paths. */
+function derivedProblems(obj, report, name) {
+  const ok = new Set(['A live room', 'live', 'check', 'flag']);
+  const walk = (v) => (typeof v === 'string' ? ok.add(v) : v && typeof v === 'object' ? Object.values(v).forEach(walk) : null);
+  walk(report);
+  for (const f of findingsOf(report)) for (const s of [f.title, f.key]) ok.add(s);
+  const out = [];
+  const check = (v, path) => {
+    if (typeof v === 'string' && !ok.has(v)) out.push(path);
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) check(x, `${path}.${k}`);
+  };
+  check(obj, name);
+  return out;
 }
 
 /** The reports saved from this conversation, newest first. */
@@ -74,7 +108,14 @@ export function savedReports(rt, threadId) {
   return readdirSync(dir)
     .filter((id) => existsSync(join(dir, id, 'report.json')))
     .map((id) => {
-      const { hash, report } = savedBytes(rt, conv.id, id);
+      let saved;
+      try {
+        saved = savedBytes(rt, conv.id, id);
+      } catch (e) {
+        // A report that no longer checks out is listed, so you can delete it, with nothing to file.
+        return { id, hash: '', at: statSync(join(dir, id, 'report.json')).mtimeMs, broken: e.message, findings: [] };
+      }
+      const { hash, report } = saved;
       return { id, hash, at: statSync(join(dir, id, 'report.json')).mtimeMs, findings: findingsOf(report).map((f) => ({ key: f.key, title: f.title })) };
     })
     .sort((a, b) => b.at - a.at);

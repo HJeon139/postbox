@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { classifierInput } from '../server/telemetry-classify.mjs';
 import { vocabOf } from '../server/telemetry-report.mjs';
 import { setLeftOut } from '../server/telemetry-save.mjs';
 import { finalCheck, labelsOf } from '../shared/telemetry.mjs';
@@ -148,5 +149,33 @@ test('acceptance 15: Leave out on any field or list item gives valid JSON that p
   assert.ok(fixed.has(idLine));
   assert.throws(() => setLeftOut(f.rt, f.t.id, id, { line: idLine + 1, out: true }), /opens or closes|says what it is/);
   assert.throws(() => setLeftOut(f.rt, f.t.id, id, { line: 1, out: true }), /opens or closes/);
+  f.stop();
+});
+
+test('review 4 and 5: secrets are trimmed before an item is clipped, and the newest 60 refs are all labeled', () => {
+  const key = `sk-ant-api03-${'Zq7x'.repeat(12)}`;
+  const items = [{ id: 'a', kind: 'agent', text: `${'filler '.repeat(84)}${key}` }];
+  const input = classifierInput({ record: {}, asked: [{ ref: 'r1', item: 'i1' }], items, byItem: new Map([['a', 'i1']]) });
+  assert.ok(!input.includes('sk-ant'), 'no fragment of the key');
+  const asked = Array.from({ length: 70 }, (_, i) => ({ ref: `r${i + 1}`, refs: [] }));
+  const sent = new Set(asked.slice(-60).map((a) => a.ref));
+  const out = labelsOf({ labels: asked.map((a) => ({ on: a.ref, ...GOOD })) }, { asked, sent, turns: new Set() });
+  assert.equal(out.labels.filter((l) => !l.label).length, 60);
+  assert.equal(out.labels[9].reason, 'over-budget');
+  assert.equal(out.labels[10].mast, GOOD.mast);
+});
+
+test('should-fix: the gate itself caps labels at 60, proposals at 10 and a finding’s refs at 5, and issue numbers are integers', async () => {
+  const f = await flaggedRoom();
+  const { draft } = await report(f);
+  const vocab = vocabOf(f.rt, { ...draft, uat: true });
+  const turn = draft.refs.find((r) => r.startsWith('t'));
+  const item = draft.refs.find((r) => r.startsWith('i'));
+  const label = { on: draft.report.labels[0].on, ...GOOD };
+  assert.ok(finalCheck({ ...draft.report, labels: Array(61).fill(label) }, vocab).includes('labels (more than 60)'));
+  assert.ok(finalCheck({ ...draft.report, proposed: Array(11).fill({ ...GOOD, turn }) }, vocab).includes('proposed'));
+  const found = draft.report.checks.found[0];
+  assert.ok(finalCheck(set(draft.report, ['checks', 'found', 0], { ...found, refs: Array(6).fill(item) }), vocab).includes('checks.found[0].refs'));
+  assert.ok(finalCheck(set(draft.report, ['checks', 'found', 0], { ...found, issue: 0.123456789012 }), vocab).includes('checks.found[0].issue'));
   f.stop();
 });
