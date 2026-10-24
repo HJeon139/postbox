@@ -5,6 +5,8 @@
 //     not the 1 px amber outline of a button.
 //   - #199: nothing with a border that wraps to a second line has fully rounded (pill) ends.
 //   - #116: the composer in a topic thread and in a side thread is as tall as the conversation’s, and sits as high.
+//   - #182: every text button has the --line-strong border or the one inline-action style, an underline in
+//     --line-strong; only an icon button may be bare.
 //
 //   node tools/checks/look.mjs            (ONLY=#8 runs the cases whose name has that in it)
 //
@@ -272,6 +274,66 @@ for (const width of [1280, 375])
     }
     assert.ok(Math.abs(seen[0].top - seen[1].top) < 1, `the topic thread’s box starts at ${seen[0].top} px, the side thread’s at ${seen[1].top}`);
   });
+
+// ── #182: a text button looks like a control ────────────────────────────────────────────
+
+// Every .btn with words on it whose edge you can’t see and that isn’t underlined in --line-strong.
+const BARE = `(() => {
+  const probe = (v) => { const p = document.createElement('span'); p.style.color = v; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; };
+  const strong = probe('var(--line-strong)');
+  const clear = (c) => c === 'transparent' || /rgba\\(.*, 0\\)$/.test(c);
+  return [...document.querySelectorAll('.btn')].filter((b) => b.getClientRects().length).flatMap((b) => {
+    const words = [...b.childNodes].map((n) => (n.nodeType === 3 || !n.matches('.sr-only, [aria-hidden=true], svg, .i') ? n.textContent : '')).join('').trim();
+    if (!words) return [];
+    const s = getComputedStyle(b);
+    const edge = s.borderTopStyle !== 'none' && parseFloat(s.borderTopWidth) > 0 && !clear(s.borderTopColor);
+    const inline = s.textDecorationLine.includes('underline') && s.textDecorationColor === strong;
+    return edge || inline ? [] : ['“' + words.slice(0, 30) + '” (' + b.className + ')'];
+  });
+})()`;
+tools.show_block({
+  block: {
+    id: 'hits',
+    type: 'table',
+    version: 1,
+    title: 'Passages',
+    fallback: 'Passages',
+    columns: [
+      { id: 'book', label: 'Book' },
+      { id: 'hits', label: 'Hits', kind: 'number' },
+    ],
+    rows: [
+      { id: 'r1', cells: { book: 'Middlemarch', hits: 12 } },
+      { id: 'r2', cells: { book: 'Emma', hits: 4 } },
+    ],
+    rowAction: { id: 'open', label: 'Open' },
+  },
+});
+const said = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'I found 16 passages.', status: 'done' });
+const asked = rt.startTopic(t.id, said.id).threadId;
+for (const width of [1280, 375])
+  await check(
+    `#182 at ${width} px: every text button has a border or the inline-action underline, in a conversation, its thread panel and the overview`,
+    async () => {
+      await page.size(width, 900, { theme: 'dark' });
+      rt.updateSession(se.id, { state: 'needs', needs: { kind: 'block', text: 'Which mode should the search use?' } });
+      await open(`#/t/${t.id}/side/${asked}`);
+      await page.waitFor(`document.querySelector('.tbl .btn') && document.querySelector('.sidepanel .sp-head .btn')`);
+      const bare = (await page.evaluate(BARE)).map((b) => `conversation: ${b}`);
+      // Two actions of the same weight, side by side, look the same.
+      const head = await page.evaluate(
+        `Object.fromEntries([...document.querySelectorAll('.sidepanel .btn')].filter((b) => /^(Copy link|Summarize back)$/.test(b.textContent)).map((b) => [b.textContent, getComputedStyle(b).borderTopColor]))`,
+      );
+      assert.ok(
+        head['Copy link'] && head['Copy link'] === head['Summarize back'],
+        `Copy link and Summarize back have different edges: ${JSON.stringify(head)}`,
+      );
+      await open('#/');
+      await page.waitFor(`document.querySelector('.ov-col')`);
+      bare.push(...(await page.evaluate(BARE)).map((b) => `overview: ${b}`));
+      assert.deepEqual(bare, []);
+    },
+  );
 
 await page.close();
 await app.close();

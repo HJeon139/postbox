@@ -410,6 +410,10 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .btn.sm { height: 26px; padding: 0 9px; font-size: 12px; }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--dim); }
 .btn.ghost:hover { border-color: var(--line); color: var(--text); }
+/* A text button with no border is an inline action: underlined in --line-strong, so it reads as a control at rest.
+   Only an icon button is bare: its icon is its shape (#182, intent.md). */
+.btn.ghost:not(.icon) { text-decoration: underline 1px var(--line-strong); text-underline-offset: 3px; }
+.btn.ghost:not(.icon):hover { text-decoration-color: var(--accent); }
 .btn.icon { width: 32px; padding: 0; }
 .btn.icon.sm { width: 26px; }
 .btn.send { border-color: var(--accent); }
