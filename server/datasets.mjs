@@ -32,10 +32,9 @@ export async function addDataset(rt, sessionId, { id, path, title } = {}) {
       ok: false,
       message: 'This conversation’s project has no folder, so there’s no .postbox/datasets/ to load from. Ask the person to give the project a folder.',
     };
-  const dir = datasetDir(project.folder);
   let raw;
   try {
-    raw = await datasetFile(dir, path);
+    raw = await datasetFile(project.folder, path);
   } catch (e) {
     return { ok: false, message: e.message };
   }
@@ -58,13 +57,16 @@ export async function addDataset(rt, sessionId, { id, path, title } = {}) {
 
 /**
  * Reads a dataset file: a path in the project’s .postbox/datasets/ (relative to it), followed through links, so a
- * link can’t lead outside it, and up to datasetBytes.
- * @param {string} dir @param {unknown} path
+ * link can’t lead outside it, and up to datasetBytes. The folder itself is followed too, and must be in the project’s:
+ * a .postbox or datasets that links elsewhere would load any file there (#351).
+ * @param {string} folder  the project’s folder @param {unknown} path
  */
-export async function datasetFile(dir, path) {
+export async function datasetFile(folder, path) {
+  const dir = datasetDir(folder);
   if (typeof path !== 'string' || !path.trim()) throw new Error(`add_dataset needs the path of a .jsonl file in ${dir}.`);
-  const root = await realpath(dir).catch(() => null);
+  const [project, root] = await Promise.all([realpath(folder), realpath(dir)].map((p) => p.catch(() => null)));
   if (!root) throw new Error(`There’s no folder ${dir} yet. Write the dataset there, then load it.`);
+  if (!project || !root.startsWith(project + sep)) throw new Error(`${dir} links outside the project’s folder, so Postbox doesn’t load datasets from it.`);
   const real = await realpath(resolve(root, path)).catch(() => null);
   if (!real) throw new Error(`There’s no file at ${path} in ${dir}.`);
   if (!real.startsWith(root + sep)) throw new Error(`${path} is outside ${dir}. Datasets load only from there.`);
@@ -84,7 +86,7 @@ export async function reloadDatasets(rt) {
     const folder = rt.s.projects[ds.projectId]?.folder;
     try {
       if (!folder) throw new Error('its project has no folder now');
-      const { text } = await datasetFile(datasetDir(folder), ds.path);
+      const { text } = await datasetFile(folder, ds.path);
       rt.corpus.addRecords(ds.id, parseDataset(text), { title: ds.title, author: ds.author });
       n++;
     } catch (e) {

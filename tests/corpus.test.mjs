@@ -2,7 +2,7 @@
 // only when a search names them, and loaded again after a restart.
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -123,6 +123,23 @@ test('#47: add_dataset reads only from .postbox/datasets/, by path or link, and 
   assert.match((await tools.add_dataset({ id: 'x', path: 'broken.jsonl' })).message, /line 2 isn’t JSON/);
   assert.deepEqual(store.state.datasets, {});
   assert.equal(rt.corpus.stats().books.length, 1);
+});
+
+test('#351: add_dataset refuses a .postbox or datasets folder that links out of the project', async () => {
+  for (const linked of ['.postbox', join('.postbox', 'datasets')]) {
+    const root = await mkdtemp(join(tmpdir(), 'pb-datasets-'));
+    const outside = await mkdtemp(join(tmpdir(), 'pb-outside-'));
+    await mkdir(join(outside, 'datasets'));
+    await writeFile(join(outside, 'datasets', 'x.jsonl'), jsonl([{ text: 'not the project’s' }]));
+    await writeFile(join(outside, 'x.jsonl'), jsonl([{ text: 'not the project’s' }]));
+    await mkdir(join(root, '.postbox'), { recursive: true });
+    if (linked === '.postbox') await rm(join(root, '.postbox'), { recursive: true });
+    await symlink(outside, join(root, linked));
+    const { rt, store, tools } = await setup(root);
+    assert.match((await tools.add_dataset({ id: 'x', path: 'x.jsonl' })).message, /outside the project’s folder/, linked);
+    assert.deepEqual(store.state.datasets, {});
+    assert.equal(rt.corpus.stats().books.length, 1);
+  }
 });
 
 test('#47: a project with no folder has nowhere to load from, and says so', async () => {
