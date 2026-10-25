@@ -70,6 +70,18 @@ test('Delete session moved from the overview’s card menu to the agent’s quic
   await page.keyboard.press('Escape');
 });
 
+test('deleting a one-to-one conversation’s only agent leaves the conversation, which goes with it (#320)', async ({ page }) => {
+  const persona = Object.values(app.store.state.personas).find((p) => p.handle === 'shelly');
+  const doomed = app.rt.createThread({ projectId: 'pr_shell', title: 'Doomed', personaIds: [persona.id] });
+  await open(page, `#/t/${doomed.id}`);
+  await page.locator('.rail .agent-row .agent-btn').first().click();
+  await page.locator('.backdrop .dialog.quick').getByRole('button', { name: 'Delete session…' }).click();
+  await page.locator('.dialog').getByRole('button', { name: 'Delete session', exact: true }).click();
+  // Before, `#/` went back to the last conversation, this one, for the 10 s until it was erased.
+  await expect(page).toHaveURL(/#\/t\//);
+  await expect(page).not.toHaveURL(new RegExp(`#/t/${doomed.id}`));
+});
+
 test('nothing archives a conversation by itself: Settings has no idle archiving (#320)', async ({ page }) => {
   await open(page, `#/t/${threads[0].id}`);
   await page.getByRole('button', { name: 'Settings' }).click();

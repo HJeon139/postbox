@@ -1,13 +1,22 @@
 // Where Postbox opens (#320): the conversation you were last in, for `#/`, and per project, for a project’s link. There’s
 // no overview, so `#/` and the old `#/archived` come here too. Moved from main.mjs.
 
-import { client, itemsOf, threadsOf } from './client.mjs';
+import { client, itemsOf, sessionsOf, threadsOf } from './client.mjs';
 import { h, icon } from './dom.mjs';
 import { openSettings } from './sheets.mjs';
 import { installLine, topbar } from './shell.mjs';
 import { navigate, setAttention } from './ui.mjs';
 
-const usable = (t) => t && !t.archived && !t.deleting && t.kind !== 'side' && t.kind !== 'topic';
+// Conversations you’ve just deleted the last agent of, which go with it (#320): skipped at once, before the page hears
+// that the session is being deleted.
+const gone = new Set();
+const usable = (t) => t && !gone.has(t.id) && !t.archived && !t.deleting && t.kind !== 'side' && t.kind !== 'topic' && sessionsOf(t.id).length > 0;
+
+/** Leaves a conversation whose last agent is being deleted, for where `#/` goes, and never opens it again. */
+export function leave(threadId) {
+  gone.add(threadId);
+  navigate('#/');
+}
 
 // The conversation you were last in, per project, so a project’s tab returns you there, and of all, for `#/`.
 export function remember(t) {
@@ -25,7 +34,7 @@ function home() {
   const t = id && client.state.threads[id];
   if (usable(t) && client.state.projects[t.projectId]) return `#/t/${t.id}`;
   const projects = Object.values(client.state.projects);
-  const p = projects.find((x) => threadsOf(x.id).some((y) => !y.archived)) ?? projects[0];
+  const p = projects.find((x) => threadsOf(x.id).some(usable)) ?? projects[0];
   return p ? `#/p/${p.id}` : null;
 }
 export function lastIn(projectId) {
@@ -39,7 +48,7 @@ export function lastIn(projectId) {
 export function latestIn(projectId) {
   const at = (t) => itemsOf(t.id).at(-1)?.at ?? t.createdAt ?? 0;
   return threadsOf(projectId)
-    .filter((t) => !t.archived)
+    .filter(usable)
     .sort((a, b) => at(b) - at(a))[0]?.id;
 }
 

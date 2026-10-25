@@ -72,6 +72,7 @@ import {
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
+import { eraseThreads } from './thread-erase.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -2893,20 +2894,11 @@ export class Runtime {
     const t = this.s.threads[threadId];
     if (!t?.deleting) return;
     // Everything under it, a side thread of a topic thread too, and their sessions with them (#320).
-    const ids = this.archiveScope(threadId).map((x) => x.id);
-    // Background jobs Postbox kept running for them would run on with no record (#129).
-    this.stopKeptJobs(
-      ids.flatMap((id) => this.s.threads[id]?.members ?? []),
+    eraseThreads(
+      this,
+      this.archiveScope(threadId).map((x) => x.id),
       'Its conversation was deleted.',
     );
-    for (const id of ids) {
-      for (const sid of this.s.threads[id]?.members ?? []) {
-        this.stopMirrorFor(sid);
-        if (this.s.sessions[sid]) this.store.emit('remove', { kind: 'session', id: sid });
-      }
-      for (const app of Object.values(this.s.apps)) if (app.threadId === id) this.store.emit('remove', { kind: 'app', id: app.id });
-    }
-    for (const id of ids.reverse()) this.store.emit('remove', { kind: 'thread', id });
   }
 
   stopMirrorFor(sessionId) {
@@ -2940,17 +2932,16 @@ export class Runtime {
     const t = this.s.threads[se.threadId];
     const others = (t?.members ?? []).filter((id) => id !== sessionId && this.s.sessions[id]);
     if (t && !others.length) {
-      // Its own thread: erase the thread, its apps and its side threads.
-      for (const app of Object.values(this.s.apps)) if (app.threadId === t.id) this.store.emit('remove', { kind: 'app', id: app.id });
-      for (const side of Object.values(this.s.threads)) if (side.parentId === t.id) this.store.emit('remove', { kind: 'thread', id: side.id });
-      this.store.emit('remove', { kind: 'thread', id: t.id });
+      // Its own conversation goes with it, as deleting the conversation does: every thread under it, with its sessions
+      // and apps (#320).
+      eraseThreads(this, t.kind === 'topic' || t.kind === 'side' ? [t.id] : this.archiveScope(t.id).map((x) => x.id), 'Its session was deleted.', [sessionId]);
     } else if (t) {
       // In a room: it leaves, and its past messages stay, marked deleted.
       this.putThread({ ...t, members: others, lastSpeaker: t.lastSpeaker === sessionId ? (others[0] ?? null) : t.lastSpeaker });
       for (const it of this.store.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
       this.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
     }
-    this.store.emit('remove', { kind: 'session', id: sessionId });
+    if (this.s.sessions[sessionId]) this.store.emit('remove', { kind: 'session', id: sessionId });
   }
 
   // ── Scheduled wake-ups ─────────────────────────────────────────────────────────────

@@ -844,7 +844,7 @@ export function confirmDelete(se) {
               const r = await api(`/api/sessions/${se.id}`, undefined, 'DELETE');
               const { afterDelete } = await import('./shell.mjs');
               afterDelete(se, r.until);
-              if (location.hash.includes(se.threadId) && !room) navigate('#/');
+              if (location.hash.includes(se.threadId) && !room) (await import('./last-place.mjs')).leave(se.threadId);
             } catch (e) {
               toast({ title: 'Couldn’t delete', text: e.message, level: 'blocking' });
             }

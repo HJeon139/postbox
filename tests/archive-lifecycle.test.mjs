@@ -102,6 +102,37 @@ test('deleting a room deletes every session in it, and in its threads’ threads
   );
 });
 
+test('deleting a conversation’s only agent deletes it as deleting the conversation does, its threads’ threads too (#320)', async () => {
+  const { app } = await install();
+  const { rt, store } = app;
+  const [a, b] = Object.values(store.state.personas);
+  const dm = rt.createThread({ projectId: Object.keys(store.state.projects)[0], title: 'One to one', personaIds: [a.id] });
+  const topic = rt.createThread({ projectId: dm.projectId, title: 'Topic', kind: 'topic', parentId: dm.id, personaIds: [a.id] });
+  const side = rt.createThread({ projectId: dm.projectId, title: 'Side', kind: 'side', parentId: topic.id, personaIds: [b.id] });
+  store.emit('app', {
+    id: 'app_side',
+    threadId: side.id,
+    sessionId: store.state.threads[side.id].members[0],
+    title: 'In the side thread',
+    versions: [],
+    check: { status: 'passed', attempt: 0, problems: [] },
+  });
+  const ids = [dm, topic, side].flatMap((t) => store.state.threads[t.id].members);
+  const [own] = store.state.threads[dm.id].members;
+  rt.deleteSession(own);
+  rt.purgeSession(own);
+  // Before, only the conversation's own side threads went: the topic thread's side thread, its agent and its app stayed.
+  assert.deepEqual(
+    [dm, topic, side].filter((t) => store.state.threads[t.id]).map((t) => t.title),
+    [],
+  );
+  assert.deepEqual(
+    ids.filter((id) => store.state.sessions[id]).map((id) => `@${store.state.sessions[id].handle}`),
+    [],
+  );
+  assert.equal(store.state.apps.app_side, undefined);
+});
+
 test('an agent’s session can’t be archived on its own: only its conversation can (#320)', async () => {
   const { app } = await install();
   const call = (r) => fakeRequest(app.handle, { host: new URL(app.origin).host, ...r });
