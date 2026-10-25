@@ -42,6 +42,8 @@ export async function codexApproval(ctx, msg) {
     const answer = await ctx.askPermission({
       tool: `mcp__${server}__elicitation`,
       summary: `respond to ${server}`,
+      // It asks the person for input, not for leave to act, so Run everything doesn’t answer it (#371).
+      kind: 'input',
       detail: String(p.message ?? 'The MCP server requests input.'),
       toolUseId: msg.id,
       suppressAlways: true,

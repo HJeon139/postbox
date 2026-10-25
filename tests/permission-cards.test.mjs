@@ -184,3 +184,39 @@ test('#220 a card answered before the wait ends keeps its answer when the wait w
   t.mock.timers.reset();
   await settle(rt);
 });
+
+// Codex fixes its approval policy at turn/start and has no way to change it mid-turn, so it asks Postbox for every
+// command until the turn ends. Switching the agent to Run everything answers those asks at once (#371).
+test('#371 switching to Run everything mid-turn allows the turn’s later asks without a card', async () => {
+  const { store, rt, adapter, t, se } = await setup();
+  /** @type {any[]} */
+  const answers = [];
+  adapter.next.push(async (c) => {
+    await rt.setPermissionMode(se.personaId, 'bypass');
+    answers.push(await c.askPermission({ tool: 'Bash', summary: 'run a command', input: { command: 'npm test' } }));
+  });
+  rt.sendMessage(t.id, { text: 'run the tests' });
+  await settle(rt);
+  assert.deepEqual(answers, [{ allow: true }]);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'permission').length, 0, 'no card');
+  // Still carded in Run everything: a write outside Postbox, by command or by MCP tool, as the panel’s writes rule asks
+  // (#112); and an MCP server asking the person for input, which isn’t leave to act.
+  const asks = [
+    { tool: 'Bash', summary: 'open a pull request', input: { command: 'gh pr create --title x' } },
+    { tool: 'mcp__github__create_issue', summary: 'use github tool create_issue', input: { title: 'x', body: 'The draft' } },
+    { tool: 'mcp__github__elicitation', summary: 'respond to github', detail: 'Pick a repository', kind: 'input' },
+  ];
+  for (const ask of asks) {
+    adapter.next.push(async (c) => {
+      answers.push(await c.askPermission(ask));
+    });
+    rt.sendMessage(t.id, { text: 'go on' });
+    for (let i = 0; i < 100 && !store.items(t.id).some((x) => x.kind === 'permission' && x.status === 'open'); i++) await sleep(5);
+    const card = store.items(t.id).find((x) => x.kind === 'permission' && x.status === 'open');
+    assert.equal(card?.summary, ask.summary);
+    // The MCP write shows its draft on the card, as #112’s cards do.
+    if (ask.input?.body) assert.deepEqual(card.draft, { field: 'body', text: 'The draft' });
+    rt.stop(se.id);
+    await settle(rt);
+  }
+});
