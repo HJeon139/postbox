@@ -72,7 +72,8 @@ async function measure(h, script) {
 /**
  * Before setup: what the run measures with on each host, what listens here and there, and what of Postbox already
  * runs there. A host without pgrep, pkill, ps, ss, sed or readlink stops the run, since its checks would read nothing as
- * nothing there. A host where Postbox’s daemon already runs is another Postbox’s, and the run won’t take it over.
+ * nothing there. A host where Postbox’s daemon already runs, or where it’s installed (unless --replace-host-install),
+ * is another Postbox’s, and the run won’t take it over.
  * @param {HostRun} hr
  */
 export async function baseline(hr) {
@@ -89,10 +90,23 @@ export async function baseline(hr) {
       throw new Error(
         `Postbox already runs on ${h.label} (${h.destination}), so another Postbox may be using it: ${running.slice(0, 3).join('; ')}. Stop it there first.`,
       );
+    const installed = installRefusal(h, (await must(h, SCRIPTS.removed)).trim() === 'present');
+    if (installed) throw new Error(installed);
     hr.record.before[h.label] = linesOf(await must(h, SCRIPTS.turns)).filter((t) => UUID.test(t));
     hr.record.listeners.baseline[h.label] = addrs(await remoteListeners(h.destination));
     hr.log(`${h.label}: home ${h.home}, ${hr.record.listeners.baseline[h.label].length} TCP listeners, ${hr.record.before[h.label].length} turns from before.`);
   }
+}
+
+/**
+ * Why the run won’t use a host where Postbox is installed but idle, or null. That install is someone’s too: the run
+ * would install over it, and its Remove at the end deletes all of ~/.postbox-remote, every version, the token and the
+ * turn records, locking that Postbox out. --replace-host-install lets it.
+ * @param {{ label: string, destination: string, replaceInstall?: boolean }} h @param {boolean} present  ~/.postbox-remote is there
+ */
+export function installRefusal(h, present) {
+  if (!present || h.replaceInstall) return null;
+  return `Postbox is installed on ${h.label} (${h.destination}): ~/.postbox-remote is there, and the run’s Remove at its end would delete it, with its token and turn records. Remove it there first, use another host, or pass --replace-host-install to let the run replace it.`;
 }
 
 /**

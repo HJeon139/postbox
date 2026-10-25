@@ -45,6 +45,8 @@ export const HOST_OPTIONS = {
   host: { type: 'string', multiple: true },
   'host-setting': { type: 'string', multiple: true },
   place: { type: 'string', multiple: true },
+  // Lets the run install over a Postbox already installed on a host, which its Remove at the end then deletes.
+  'replace-host-install': { type: 'boolean', default: false },
 };
 
 /** One `hostN.key=value`, checked against the hosts given. @param {string} spec @param {number} count */
@@ -60,14 +62,14 @@ function settingOf(spec, count) {
 
 /**
  * The hosts the options name, each with its settings checked as the server checks them.
- * @param {{ host?: string[], 'host-setting'?: string[] }} opt
- * @returns {{ label: string, destination: string, settings: Record<string, any> }[]}
+ * @param {{ host?: string[], 'host-setting'?: string[], place?: string[], 'replace-host-install'?: boolean }} opt
+ * @returns {{ label: string, destination: string, settings: Record<string, any>, replaceInstall: boolean }[]}
  */
 export function hostsOf(opt) {
   const hosts = (opt.host ?? []).map((d, i) => {
     const r = checkDestination(d);
     if (!r.ok) throw new Error(`--host “${d}”: ${r.error}`);
-    return { label: `host${i + 1}`, destination: r.value, settings: {} };
+    return { label: `host${i + 1}`, destination: r.value, settings: {}, replaceInstall: opt['replace-host-install'] === true };
   });
   if (new Set(hosts.map((h) => h.destination)).size !== hosts.length) throw new Error('--host names the same destination twice.');
   if (!hosts.length && opt.place?.length) throw new Error('--place puts an agent on a host, and this run has no --host.');

@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { hostMode, hostsOf, placementOf, refusal, settingValue } from '../tools/uat/hosts-options.mjs';
 import { localListeners, newListeners, parseLsof, treeOf } from '../tools/uat/hosts-probe.mjs';
+import { installRefusal } from '../tools/uat/hosts-run.mjs';
 import { forHosts } from '../tools/uat/hosts-scenario.mjs';
 import {
   cleanUpScript,
@@ -42,6 +43,15 @@ test('#120 host mode: --host makes host1, host2… in order, each destination ch
   assert.throws(() => hostsOf({ host: ['a.example.com', 'a.example.com'] }), /same destination twice/);
   assert.deepEqual(hostsOf({}), []);
   assert.throws(() => hostsOf({ place: ['researcher=host1'] }), /no --host/);
+});
+
+test('#120 host mode: a host where Postbox is installed but idle is refused, unless --replace-host-install', () => {
+  const [h] = hostsOf({ host: ['a.example.com'] });
+  assert.equal(h.replaceInstall, false);
+  assert.equal(installRefusal(h, false), null, 'nothing there: the run goes ahead');
+  assert.match(String(installRefusal(h, true)), /installed on host1 \(a\.example\.com\).*--replace-host-install/);
+  const [r] = hostsOf({ host: ['a.example.com'], 'replace-host-install': true });
+  assert.equal(installRefusal(r, true), null, 'the flag lets it replace that install');
 });
 
 test('#120 host mode: --host-setting sets hostN’s settings, in units, checked with shared/remote-settings.mjs', () => {
