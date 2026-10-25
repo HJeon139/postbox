@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { blocks, findingsReport, newFindings } from './prompt-findings.mjs';
 
 /** The globs in a paths file. @param {string} text */
 export const globsOf = (text) =>
@@ -142,46 +143,6 @@ export function reviewComment(files, { repo, pr, runUrl, tooMany = false }) {
     '- Does it change how permissions, cards or reviews are decided, or the gate itself (`.github/`, `tools/prompt-*.mjs`)?',
     '',
     `Read what agents will see, before and after, in the “Prompt surface diff and SkillSpector” summary under [Checks](https://github.com/${repo}/pull/${pr}/checks). Then approve in [the gate’s run](${runUrl}): **Review deployments**, then **Approve and deploy**. Each push asks again.`,
-  ].join('\n');
-}
-
-const RANK = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-/**
- * The findings in `head` that aren’t in `base`, matched by SkillSpector’s fingerprint, so a finding main already has
- * doesn’t fail every pull request.
- * @param {{ issues?: any[] }} base @param {{ issues?: any[] }} head
- */
-export function newFindings(base, head) {
-  const known = new Set((base.issues ?? []).map((i) => i.match_fingerprint));
-  return (head.issues ?? []).filter((i) => !known.has(i.match_fingerprint));
-}
-/** Whether a finding should stop a merge: high or critical. */
-export const blocks = (i) => RANK.indexOf(String(i.severity).toUpperCase()) >= RANK.indexOf('HIGH');
-
-/** A Markdown table cell: pipes escaped, newlines folded, cut to length. */
-const cell = (s, n = 160) =>
-  String(s ?? '')
-    .slice(0, n)
-    .replace(/[\\|]/g, '\\$&')
-    .replace(/\s+/g, ' ');
-
-/** The findings report for a job summary. */
-export function findingsReport(base, head) {
-  const added = newFindings(base, head);
-  const score = (r) => r.risk_assessment?.score ?? '—';
-  const lines = [
-    `SkillSpector, static rules only: risk score ${score(base)} on the base, ${score(head)} with this pull request. It scanned ${head.analysis_completeness?.scanned_components ?? '?'} files.`,
-  ];
-  if (!added.length) return [...lines, '', 'No new findings.'].join('\n');
-  return [
-    ...lines,
-    '',
-    '| Severity | Rule | File | Line | What matched |',
-    '|---|---|---|---|---|',
-    ...added.map(
-      (i) =>
-        `| ${cell(i.severity)} | ${cell(`${i.id} ${i.category ?? ''}`)} | ${cell(i.location?.file)} | ${i.location?.start_line ?? ''} | ${cell(i.finding)} |`,
-    ),
   ].join('\n');
 }
 
