@@ -6,11 +6,15 @@
 //                                                            exit 1 if any is high or critical
 //   node tools/prompt-gate.mjs spoofs <check> <gate> <root> <file>...  the head’s workflow files (under root) that
 //                                                            could post a check named <check>; exit 1 if any
+//   node tools/prompt-gate.mjs notices <touched file>        the run page’s notices: what to read before approving
+//   node tools/prompt-gate.mjs comment <touched file>        the pull request comment that says the same, as Markdown
+// The last two read REPO, PR and RUN_URL from the environment.
 //
 // The paths file lists globs, one per line, with # for comments: `*` matches within a folder, `**/` any folders.
 // The gate workflow runs this from main’s checkout, never the pull request’s, so a pull request can’t change its own
 // verdict.
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -86,6 +90,59 @@ export function spoofs(check, gate, files) {
   return files.filter(({ path, text }) => text.includes(check) && (path !== gate || triggersOf(text).join() !== 'pull_request_target')).map((f) => f.path);
 }
 
+/** A file’s diff in a pull request: GitHub anchors each one by the SHA-256 of its path. */
+export const diffUrl = (repo, pr, path) => `https://github.com/${repo}/pull/${pr}/files#diff-${createHash('sha256').update(path).digest('hex')}`;
+
+/** Text as a workflow command’s message, which ends at a newline and reads % as an escape. */
+const commandText = (s) => String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+
+/**
+ * The notices the gate’s run page shows above its jobs, where the approval dialog opens: each prompt-surface file with
+ * its diff, then where the rendered text of what agents read is. The dialog itself can’t say more.
+ * @param {string[]} files @param {{ repo: string, pr: string|number }} where
+ */
+export function notices(files, { repo, pr }) {
+  return [
+    ...files.map((f) => `::notice title=Review before approving::${commandText(`${f} changed: ${diffUrl(repo, pr, f)}`)}`),
+    `::notice title=Review before approving::${commandText(`What agents will read, before and after, is in the “Prompt surface diff and SkillSpector” job summary: https://github.com/${repo}/pull/${pr}/checks`)}`,
+  ];
+}
+
+/** A path as inline code, fenced past any backticks in it, so a file name can’t be read as Markdown or a mention. */
+function code(s) {
+  const text = String(s).replace(/[\r\n]+/g, ' ');
+  const fence = '`'.repeat(Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length)) + 1);
+  const pad = text.startsWith('`') || text.endsWith('`') ? ' ' : '';
+  return `${fence}${pad}${text}${pad}${fence}`;
+}
+
+/** The first line of the gate’s comment, which finds it again to update it rather than add another. */
+export const COMMENT_MARK = '<!-- prompt-surface-gate -->';
+
+/**
+ * The comment the gate keeps on a pull request that touches the prompt surface: the files, what to check, and where
+ * to approve. Built from file names alone, never the pull request’s title or text.
+ * @param {string[]} files @param {{ repo: string, pr: string|number, runUrl: string }} where
+ */
+export function reviewComment(files, { repo, pr, runUrl }) {
+  if (!files.length) return `${COMMENT_MARK}\n**Prompt surface:** this pull request no longer changes what agents read, so it needs no approval.`;
+  return [
+    COMMENT_MARK,
+    '**Prompt surface: this pull request changes what agents read, so it waits for your approval.**',
+    '',
+    'The files:',
+    ...files.map((f) => `- [${code(f)}](${diffUrl(repo, pr, f)})`),
+    '',
+    'What to check before you approve:',
+    '- Does it loosen a rule an agent follows, such as when to show a review or confirm block (`server/adapters/guide.mjs`, the tool descriptions in `server/mcp.mjs`)?',
+    '- Does it tell an agent to send data somewhere, fetch or run something new, or take files, web pages or other agents’ messages as instructions?',
+    '- Does a persona’s text change what the agent may do without asking you?',
+    '- Does it change how permissions, cards or reviews are decided, or the gate itself (`.github/`, `tools/prompt-*.mjs`)?',
+    '',
+    `Read what agents will see, before and after, in the “Prompt surface diff and SkillSpector” summary under [Checks](https://github.com/${repo}/pull/${pr}/checks). Then approve in [the gate’s run](${runUrl}): **Review deployments**, then **Approve and deploy**. Each push asks again.`,
+  ].join('\n');
+}
+
 const RANK = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 /**
  * The findings in `head` that aren’t in `base`, matched by SkillSpector’s fingerprint, so a finding main already has
@@ -140,13 +197,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     );
     for (const f of found) console.log(f);
     process.exitCode = found.length ? 1 : 0;
+  } else if ((cmd === 'notices' || cmd === 'comment') && a) {
+    const files = readFileSync(a, 'utf8').split('\n').filter(Boolean);
+    const where = { repo: process.env.REPO ?? '', pr: process.env.PR ?? '', runUrl: process.env.RUN_URL ?? '' };
+    console.log(cmd === 'notices' ? notices(files, where).join('\n') : reviewComment(files, where));
   } else if (cmd === 'findings' && a && b) {
     const [base, head] = [a, b].map((f) => JSON.parse(readFileSync(f, 'utf8')));
     console.log(findingsReport(base, head));
     process.exitCode = newFindings(base, head).some(blocks) ? 1 : 0;
   } else {
     console.error(
-      'Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings <base.json> <head.json> | spoofs <check> <gate> <root> <file>...',
+      'Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings <base.json> <head.json> | spoofs <check> <gate> <root> <file>... | notices|comment <touched file>',
     );
     process.exitCode = 2;
   }
