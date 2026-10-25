@@ -14,6 +14,7 @@
 // up. PB_PORT and PB_CHROME_PORT move it (4600 and 9800 by default).
 
 import assert from 'node:assert/strict';
+import { js } from './cdp.mjs';
 import { A, B, coder, cx, dm, room, root, rt, runner, solo, store } from './remote-turns-kit.mjs';
 import { axe, check, click, end, go, overflow, page, q, settle, text, until } from './remote-turns-page.mjs';
 
@@ -65,7 +66,7 @@ await check('#120 the ! hint says it runs on this computer, in the project’s f
 
 await check('#120 the persona sheet’s Runs on: this computer or a host, and Codex only on a host, with what the daemon found', async () => {
   await go(solo.id);
-  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(coder.id)}))`);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${js(coder.id)}))`);
   await page.waitFor(`!!${q('#pe-where')}`, { label: 'Runs on' });
   const opts = () => page.evaluate(`[...${q('#pe-where')}.options].map((o) => [o.textContent, o.disabled, o.selected])`);
   assert.deepEqual(await opts(), [
@@ -78,7 +79,7 @@ await check('#120 the persona sheet’s Runs on: this computer or a host, and Co
   assert.equal(await page.evaluate(`${q('label[for="pe-b"]')}.textContent`), 'Backend');
   // Codex isn’t on this computer: only a host, and the model reads as Codex’s default.
   await page.evaluate(
-    `import('/app/js/sheets.mjs').then((m) => { document.querySelector('.dialog .x, .dialog [aria-label="Close"]')?.click(); m.openSettings('personas', ${JSON.stringify(cx.id)}); })`,
+    `import('/app/js/sheets.mjs').then((m) => { document.querySelector('.dialog .x, .dialog [aria-label="Close"]')?.click(); m.openSettings('personas', ${js(cx.id)}); })`,
   );
   await page.waitFor(`${q('#pe-b')}?.value === 'codex'`, { label: 'Codex’s sheet' });
   assert.deepEqual((await opts())[0], ['This computer (Codex isn’t here)', true, false]);
@@ -87,7 +88,7 @@ await check('#120 the persona sheet’s Runs on: this computer or a host, and Co
   assert.match(await text(`${q('#pe-m')}.closest('.field')`), /auto is Codex’s default/);
   assert.deepEqual(await axe(), [], 'axe, on the persona sheet');
   // On a host whose daemon didn’t find Codex: said before saving, and the server’s refusal shows under Runs on.
-  await page.evaluate(`(() => { const s = ${q('#pe-where')}; s.value = ${JSON.stringify(A.id)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const s = ${q('#pe-where')}; s.value = ${js(A.id)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await settle();
   assert.match(
     await text(`${q('#pe-where')}.closest('.field').querySelector('.err')`),

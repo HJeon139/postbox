@@ -13,7 +13,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { record as check, finish, ports } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4930, 9530);
@@ -28,7 +28,6 @@ const AXE_RUN = `axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 
 
 /** @type {any} */
 let page = null;
-const js = JSON.stringify;
 const text = (/** @type {string} */ sel) => page.evaluate(`document.querySelector(${js(sel)})?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
 const focused = () => page.evaluate('document.activeElement?.id ?? null');
 

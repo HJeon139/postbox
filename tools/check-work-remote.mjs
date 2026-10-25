@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4760, 9960);
@@ -83,9 +83,9 @@ async function press(key) {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   await settle();
 }
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
 const text = (sel) => page.evaluate(`${q(sel)}?.textContent ?? null`);
-const count = (sel) => page.evaluate(`document.querySelectorAll(${JSON.stringify(sel)}).length`);
+const count = (sel) => page.evaluate(`document.querySelectorAll(${js(sel)}).length`);
 const focusedId = () => page.evaluate('document.activeElement?.id ?? ""');
 
 async function check(name, fn) {
@@ -103,7 +103,7 @@ async function check(name, fn) {
   }
 }
 async function open(hashTo) {
-  await page.evaluate(`location.hash = ${JSON.stringify(hashTo)}`);
+  await page.evaluate(`location.hash = ${js(hashTo)}`);
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();
 }

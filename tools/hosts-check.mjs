@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { describeInstall } from '../server/remote/install.mjs';
 import { failure } from '../server/remote/ssh.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { record as check, finish, ports } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4500, 9700);
@@ -104,7 +104,8 @@ export async function begin() {
   else check(false, 'axe-core is installed', 'Run npm install.');
 }
 
-export const js = JSON.stringify;
+// Values go into page code through js() (SECURITY.md, #343); the checks that use this kit take it from here.
+export { js };
 export const q = (sel) => `document.querySelector(${js(sel)})`;
 export const text = (sel) => page.evaluate(`${q(sel)}?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
 export const click = (sel) => page.evaluate(`(${q(sel)}).click()`);

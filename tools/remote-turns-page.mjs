@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, record } from './harness.mjs';
 import { app, CHROME_PORT, room, root } from './remote-turns-kit.mjs';
 
@@ -20,7 +20,7 @@ export async function click(expr) {
     await page.send('Input.dispatchMouseEvent', { type: t, x: r.x, y: r.y, button: t === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
   await settle();
 }
-export const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+export const q = (sel) => `document.querySelector(${js(sel)})`;
 /** Opens a conversation in the page that’s loaded, as a link would. */
 export async function go(threadId) {
   await page.evaluate(`location.hash = '#/t/${threadId}'`);
@@ -58,7 +58,7 @@ export async function axe() {
 /** Elements of a selector that spill past the window’s sides. */
 export const overflow = (sel) =>
   page.evaluate(
-    `[...document.querySelectorAll(${JSON.stringify(sel)})].filter((n) => { const b = n.getBoundingClientRect(); return b.width && (b.right > innerWidth + 1 || b.left < -1); }).map((n) => n.className || n.tagName)`,
+    `[...document.querySelectorAll(${js(sel)})].filter((n) => { const b = n.getBoundingClientRect(); return b.width && (b.right > innerWidth + 1 || b.left < -1); }).map((n) => n.className || n.tagName)`,
   );
 
 export async function check(name, fn) {

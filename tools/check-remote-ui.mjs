@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4880, 9680);
@@ -144,7 +144,7 @@ const AXE = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.
 const AXE_RUN = `axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] })
   .then((r) => r.violations.map((v) => v.id + ' (' + v.impact + '): ' + v.help + ' at ' + v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(', ')))`;
 const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
 const text = (sel) => page.evaluate(`${q(sel)}?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
 async function axe(where) {
   if (!(await page.evaluate('typeof axe === "object"'))) await page.evaluate(`${AXE};0`);
@@ -154,7 +154,7 @@ async function axe(where) {
 /** Visible elements under a selector that run past the window’s sides, and whether the page scrolls sideways. */
 async function fits(sel, where) {
   const over = await page.evaluate(`(() => {
-    const out = [...document.querySelectorAll(${JSON.stringify(sel)})]
+    const out = [...document.querySelectorAll(${js(sel)})]
       .filter((n) => { const b = n.getBoundingClientRect(); return b.width && n.offsetParent !== null && (b.right > innerWidth + 1 || b.left < -1); })
       .map((n) => n.tagName + '.' + n.className).slice(0, 5);
     const d = document.documentElement;
@@ -190,7 +190,7 @@ const closeDialogs = async () => {
 };
 async function go(hashTo) {
   await closeDialogs();
-  await page.evaluate(`location.hash = ${JSON.stringify(hashTo)}`);
+  await page.evaluate(`location.hash = ${js(hashTo)}`);
   await page.waitFor(`document.querySelector('#main.transcript')?.dataset.thread === '${conv.id}' && !!document.querySelector('#composer-input')`, {
     label: 'the conversation',
   });
@@ -254,7 +254,7 @@ for (const [width, height] of [
 
   await check(`${at}: the persona sheet’s Runs on names the host`, async () => {
     await closeDialogs();
-    await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(persona.id)}))`);
+    await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${js(persona.id)}))`);
     await page.waitFor(`!!${q('#pe-where')}`, { label: 'Runs on' });
     const chosen = await page.evaluate(`[...${q('#pe-where')}.options].filter((o) => o.selected).map((o) => o.textContent)`);
     assert.deepEqual(chosen, ['host.example.com']);
