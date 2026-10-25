@@ -31,6 +31,7 @@ import { launch, sleep } from './cdp.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
+import { observe as observeScreen } from './uat/observe.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
@@ -380,45 +381,7 @@ async function main() {
     const told = new Set();
     const settle = (handBack = false) => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log });
 
-    const observe = async () => {
-      const out = [];
-      const items = await d.items();
-      for (const it of items) {
-        if (!labels.has(it.key)) {
-          const l = `I${labels.size + 1}`;
-          labels.set(it.key, l);
-          keys.set(l, it.key);
-        }
-        if (seen.get(it.key) === it.text) continue;
-        const changed = seen.has(it.key);
-        seen.set(it.key, it.text);
-        const label = labels.get(it.key);
-        const lines = [
-          `[${label}] ${changed ? '(changed) ' : ''}${it.where}${it.block ? ` · ${it.block}` : ''}${it.app ? ' · agent app' : ''}${it.diagram ? ' · diagram' : ''}`,
-        ];
-        lines.push(it.text.length > 1800 ? `${it.text.slice(0, 1800)}…` : it.text);
-        if (it.buttons.length) lines.push(`Buttons: ${it.buttons.join(' | ')}`);
-        if (it.fields.length) lines.push(`Fields: ${it.fields.join(' | ')}`);
-        if (it.block || it.app || it.diagram || it.math) {
-          const shot = await d.shotItem(it.key, join(paths.shots, `${String(timeline.length).padStart(2, '0')}-${label}.png`));
-          if (shot) lines.push(`Screenshot: ${relative(dir, shot)}`);
-        }
-        if (it.app) {
-          const inside = await d.appInside(it.key);
-          facts.apps[it.key] = inside;
-          if (inside) lines.push(`Inside the app: ${inside.text.slice(0, 700)}`);
-          else lines.push('Inside the app: (couldn’t be read)');
-        }
-        out.push(lines.join('\n'));
-      }
-      const st = facts.state;
-      const states = facts.threads
-        .flatMap((t) => st.threads[t]?.members ?? [])
-        .map((id) => st.sessions[id])
-        .filter(Boolean)
-        .map((se) => `@${se.handle} in “${st.threads[se.threadId]?.title}”: ${se.state}${se.needs ? ` (needs you: ${se.needs.text})` : ''}`);
-      return { items: out, states };
-    };
+    const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
 
     for (let step = 1; step <= steps; step++) {
       const timedOut = await settle(true);
