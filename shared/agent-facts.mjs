@@ -12,6 +12,59 @@ export const BACKEND_NAMES = {
   codex: 'Codex',
   mock: 'Mock agent',
 };
+export const BACKENDS = [
+  ['claude-code', 'Claude Code', 'Runs the claude CLI you’re signed in to.'],
+  ['agent-sdk', 'Agent SDK', 'Runs the Claude Agent SDK in Postbox’s server.'],
+  ['kiro-cli', 'Kiro CLI', 'Runs the kiro-cli you’re signed in to. It can’t ask you: what would need asking is refused.'],
+  ['antigravity-cli', 'Antigravity CLI', 'Runs the agy CLI you’re signed in to, with Gemini models. It can’t ask you: what would need asking is refused.'],
+  ['codex', 'Codex', 'Runs the Codex app-server with your local Codex sign-in and configuration.'],
+  ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
+];
+export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
+export const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+export const PERMISSIONS = [
+  ['auto', 'Auto', 'A safety check approves routine actions; it asks you only when it can’t decide.'],
+  ['ask', 'Ask me', 'It asks before running commands or changing files.'],
+  ['acceptEdits', 'Accept edits', 'It edits files in its folders freely, and asks before running commands.'],
+  ['bypass', 'Run everything', 'It never asks. Use it only in a folder you can lose.'],
+];
+const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
+  'kiro-cli': {
+    auto: 'Kiro has no safety check, so this is Ask me: it reads in its folders and runs a few read-only commands, such as git status, and refuses the rest.',
+    ask: 'It reads in its folders and runs a few read-only commands, such as git status, and refuses the rest: it can’t ask you.',
+    acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
+  },
+  'antigravity-cli': {
+    auto: 'Antigravity’s auto mode: it edits and runs commands in its sandbox, and a safety check decides the rest. Where your account doesn’t offer it, this is Ask me.',
+    ask: 'It reads in its folders and refuses edits and commands that would need asking: it can’t ask you.',
+    acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
+  },
+  codex: {
+    auto: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval. Auto and Accept edits have the same Codex permissions.',
+    ask: 'Codex uses a read-only sandbox. It requests approval before a command can go beyond it.',
+    acceptEdits: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval.',
+    bypass: 'Codex runs with full filesystem and network access and no approval prompts.',
+  },
+});
+/** The effort an Antigravity model id names (gemini-3.8-flash-high runs at high), or null (server/adapters/antigravity-cli.mjs). */
+export const effortNamedBy = (backend, model) => (backend === 'antigravity-cli' ? (/-(low|medium|high)$/.exec(String(model ?? ''))?.[1] ?? null) : null);
+/** What a permission mode means on a backend: its own words where it reads the modes differently. */
+export const modeHelp = (backend, [id, , help]) => BACKEND_MODES[backend]?.[id] ?? help;
+export const MCP_STATUS = {
+  connected: 'Connected',
+  failed: 'Couldn’t connect',
+  'needs-auth': 'Needs sign-in',
+  pending: 'Starting',
+  disabled: 'Turned off in your Claude Code settings',
+  'not-started': 'Not started yet',
+};
+export const MCP_SCOPE = {
+  user: 'your settings',
+  project: 'this project',
+  local: 'your settings for this folder',
+  plugin: 'plugin',
+  'claude.ai': 'claude.ai connector',
+};
 const EFFORT_WORDS = { low: 'low', medium: 'medium', high: 'high', xhigh: 'extra high', max: 'max' };
 const effortWord = (e) => (Object.hasOwn(EFFORT_WORDS, e) ? EFFORT_WORDS[e] : String(e));
 
