@@ -2,8 +2,10 @@
 //
 //   node tools/prompt-gate.mjs touched <paths file>          the changed files (one per line, on stdin) that are prompt
 //                                                            surface; exit 0 either way
-//   node tools/prompt-gate.mjs findings <base.json> <head.json>  SkillSpector’s findings the head adds, as Markdown;
-//                                                            exit 1 if any is high or critical
+//   node tools/prompt-gate.mjs findings <base.json> <head.json> [accepted.json]  SkillSpector’s findings the head
+//                                                            adds, as Markdown; exit 1 if one is high or critical
+//                                                            and not accepted, or an accepted one no longer matches
+//   node tools/prompt-gate.mjs annotations <base.json> <head.json> [accepted.json]  the same, as run-page annotations
 //   node tools/prompt-gate.mjs spoofs <check> <gate> <root> <file>...  the head’s workflow files (under root) that
 //                                                            could post a check named <check>; exit 1 if any
 //   node tools/prompt-gate.mjs notices <touched file>        the run page’s notices: what to read before approving
@@ -15,8 +17,9 @@
 // verdict.
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { acceptedProblems, annotations, findingsReport, judge } from './prompt-findings.mjs';
 
 /** The globs in a paths file. @param {string} text */
 export const globsOf = (text) =>
@@ -145,46 +148,6 @@ export function reviewComment(files, { repo, pr, runUrl, tooMany = false }) {
   ].join('\n');
 }
 
-const RANK = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-/**
- * The findings in `head` that aren’t in `base`, matched by SkillSpector’s fingerprint, so a finding main already has
- * doesn’t fail every pull request.
- * @param {{ issues?: any[] }} base @param {{ issues?: any[] }} head
- */
-export function newFindings(base, head) {
-  const known = new Set((base.issues ?? []).map((i) => i.match_fingerprint));
-  return (head.issues ?? []).filter((i) => !known.has(i.match_fingerprint));
-}
-/** Whether a finding should stop a merge: high or critical. */
-export const blocks = (i) => RANK.indexOf(String(i.severity).toUpperCase()) >= RANK.indexOf('HIGH');
-
-/** A Markdown table cell: pipes escaped, newlines folded, cut to length. */
-const cell = (s, n = 160) =>
-  String(s ?? '')
-    .slice(0, n)
-    .replace(/[\\|]/g, '\\$&')
-    .replace(/\s+/g, ' ');
-
-/** The findings report for a job summary. */
-export function findingsReport(base, head) {
-  const added = newFindings(base, head);
-  const score = (r) => r.risk_assessment?.score ?? '—';
-  const lines = [
-    `SkillSpector, static rules only: risk score ${score(base)} on the base, ${score(head)} with this pull request. It scanned ${head.analysis_completeness?.scanned_components ?? '?'} files.`,
-  ];
-  if (!added.length) return [...lines, '', 'No new findings.'].join('\n');
-  return [
-    ...lines,
-    '',
-    '| Severity | Rule | File | Line | What matched |',
-    '|---|---|---|---|---|',
-    ...added.map(
-      (i) =>
-        `| ${cell(i.severity)} | ${cell(`${i.id} ${i.category ?? ''}`)} | ${cell(i.location?.file)} | ${i.location?.start_line ?? ''} | ${cell(i.finding)} |`,
-    ),
-  ].join('\n');
-}
-
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [cmd, a, b] = process.argv.slice(2);
   if (cmd === 'touched' && a) {
@@ -203,13 +166,26 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const files = readFileSync(a, 'utf8').split('\n').filter(Boolean);
     const where = { repo: process.env.REPO ?? '', pr: process.env.PR ?? '', runUrl: process.env.RUN_URL ?? '', tooMany: process.env.TOO_MANY === 'true' };
     console.log(cmd === 'notices' ? notices(files, where).join('\n') : reviewComment(files, where));
-  } else if (cmd === 'findings' && a && b) {
+  } else if ((cmd === 'findings' || cmd === 'annotations') && a && b) {
     const [base, head] = [a, b].map((f) => JSON.parse(readFileSync(f, 'utf8')));
-    console.log(findingsReport(base, head));
-    process.exitCode = newFindings(base, head).some(blocks) ? 1 : 0;
+    const list = process.argv[5] && existsSync(process.argv[5]) ? JSON.parse(readFileSync(process.argv[5], 'utf8')) : [];
+    const problems = acceptedProblems(list);
+    if (problems.length) {
+      console.log(
+        cmd === 'annotations'
+          ? problems.map((p) => `::error title=Accepted findings::${p}`).join('\n')
+          : ['The accepted findings list has problems:', ...problems.map((p) => `- ${p}`)].join('\n'),
+      );
+      process.exitCode = 1;
+    } else if (cmd === 'annotations') console.log(annotations(base, head, list).join('\n'));
+    else {
+      console.log(findingsReport(base, head, list));
+      const { blocking, stale } = judge(base, head, list);
+      process.exitCode = blocking.length || stale.length ? 1 : 0;
+    }
   } else {
     console.error(
-      'Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings <base.json> <head.json> | spoofs <check> <gate> <root> <file>... | notices|comment <touched file>',
+      'Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings|annotations <base.json> <head.json> [accepted.json] | spoofs <check> <gate> <root> <file>... | notices|comment <touched file>',
     );
     process.exitCode = 2;
   }

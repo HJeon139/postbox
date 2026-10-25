@@ -48,4 +48,5 @@ designs/prompts/**
 .github/**
 tools/prompt-surface.mjs
 tools/prompt-gate.mjs
+tools/prompt-findings.mjs
 tests/prompt-*.test.mjs

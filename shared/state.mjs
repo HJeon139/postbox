@@ -31,6 +31,11 @@ export function emptyState() {
   };
 }
 
+const putBoilerplate = (s, d) => {
+  delete s.boilerplates[d.id];
+  s.boilerplates[d.id] = d;
+};
+
 /** The collections of records by id: every map() in an empty state. */
 const MAPS = Object.entries(emptyState()).flatMap(([k, v]) => (v && typeof v === 'object' && Object.getPrototypeOf(v) === null ? [k] : []));
 
@@ -54,7 +59,7 @@ export function apply(s, type, d) {
       s.personas[d.id] = d;
       break;
     case 'boilerplate':
-      s.boilerplates[d.id] = d;
+      putBoilerplate(s, d);
       break;
     case 'thread':
       s.threads[d.id] = d;
