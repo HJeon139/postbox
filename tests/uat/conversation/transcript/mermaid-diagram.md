@@ -20,6 +20,6 @@ Agents explain structure with diagrams; they render in a sandbox so diagram text
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Open “ReAct, step by step”, toggle Show source, switch light/dark.
 
-3. For a broken diagram, run `node tools/check-feedback.mjs`: it has an agent send one and checks that the agent hears back.
+3. For a broken diagram, run `npx playwright test feedback` (`tests/browser/feedback.spec.mjs`): it has an agent send one and checks that the agent hears back.
 
 **Pass if:** The diagram renders in both themes and the source toggles, and a broken diagram reaches its agent once.
