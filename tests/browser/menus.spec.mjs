@@ -30,13 +30,13 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 test.use({ viewport: { width: 1280, height: 1000 } });
 
-const versions = (page) => page.locator('.appframe button[aria-haspopup=menu]');
+const versions = (page) => page.locator('.appframe').getByRole('button', { name: /^v\d+ · / });
 /** What the app’s frame shows. */
-const shown = (page) => page.frameLocator('.transcript .appframe iframe').first().locator('main p');
+const shown = (page) => page.frameLocator('.transcript iframe.app-iframe').locator('main p');
 const menu = (page) => page.locator('.menu');
 const item = (page, start) =>
   menu(page)
-    .locator('.mi')
+    .getByRole('menuitem')
     .filter({ hasText: new RegExp(`^${start}`) });
 
 /** The conversation, with its app at v30. */
@@ -75,14 +75,14 @@ test('#36 the version menu with 30 versions fits a 1,000 px window, starts insid
   await open(page);
   const m = await opensInside(page, versions(page), 'the version menu');
   expect(m.scroll, 'it scrolls, so every version can be reached').toBeGreaterThan(0);
-  await expect(menu(page).locator('.mi')).toHaveCount(30);
+  await expect(menu(page).getByRole('menuitem')).toHaveCount(30);
 });
 
 test('#36 each version’s summary is clipped to one line', async ({ page }) => {
   await open(page);
   await opensInside(page, versions(page), 'the version menu');
   const rows = await menu(page)
-    .locator('.mi')
+    .getByRole('menuitem')
     .evaluateAll((items) =>
       items.map((b) => {
         const g = b.querySelector('.grow');
@@ -122,12 +122,12 @@ test('#36 in a short window, the composer’s + menu (above its button) and ⋯ 
   await page.setViewportSize({ width: 1280, height: 420 });
   for (const [what, button] of [
     ['the + menu', page.getByRole('button', { name: 'Add a file or a new agent' })],
-    ['the ⋯ menu', page.locator('header.topbar button[aria-label^="Actions for"]')],
+    ['the ⋯ menu', page.locator('header.topbar').getByRole('button', { name: /^Actions for / })],
   ]) {
     await opensInside(page, button, what);
     // Short menus keep their height: nothing in them is squeezed.
     const squeezed = await menu(page)
-      .locator('.mi')
+      .getByRole('menuitem')
       .evaluateAll((items) => items.filter((b) => b.scrollHeight > b.clientHeight + 1).map((b) => b.textContent));
     expect(squeezed, `nothing in ${what} is squeezed`).toEqual([]);
     await page.keyboard.press('Escape');

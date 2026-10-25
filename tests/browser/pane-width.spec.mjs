@@ -45,7 +45,7 @@ for (const [view, how, sel] of [
       expect(m.focusIn, 'focus is in the full-screen view').toBe(true);
       expect(await page.evaluate(() => location.hash)).not.toMatch(/full=/);
       // Its icon goes back to the conversation, since there’s no pane to go back to, and says so.
-      await expect(page.locator('.pane-full .btn[id$="-full"]')).toHaveAttribute('aria-label', 'Back to the conversation');
+      await expect(page.locator('.pane-full').getByRole('button', { name: 'Back to the conversation', exact: true })).toBeVisible();
       // Escape brings the conversation back.
       await page.keyboard.press('Escape');
       await expect(page.locator('.pane-full')).toHaveCount(0);
@@ -77,7 +77,7 @@ test('#197 a wider window puts the pane back beside the conversation, since what
 
 test('#7 at 1280 px, a thread hides the sidebar while it’s open, so an app keeps its room, and closing it brings the sidebar back', async ({ page }) => {
   await fresh(page, room, 1280);
-  await expect(page.locator('.transcript .appframe iframe').first(), 'the app').toBeAttached();
+  await expect(page.locator('.transcript iframe.app-iframe'), 'the app').toBeAttached();
   await settled(page);
   const before = await measure(page);
   expect(before.rail).toBe(248);

@@ -46,7 +46,7 @@ async function work(page, width) {
 
 test('#86 the pane’s handle resizes it by keyboard, within the column’s minimum, and the app resizes with it', async ({ page }) => {
   await work(page, 1280);
-  await expect(page.locator('.transcript .appframe iframe').first(), 'the app beside Work').toBeAttached();
+  await expect(page.locator('.transcript iframe.app-iframe'), 'the app beside Work').toBeAttached();
   await settled(page);
   const h = handle(page);
   await expect(h).toHaveAttribute('role', 'separator');

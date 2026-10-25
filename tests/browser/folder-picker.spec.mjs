@@ -51,7 +51,7 @@ async function picker(page) {
   await page.goto(`${app.origin}/#/t/${threadId}`);
   await synced(page, app);
   await page.getByRole('button', { name: 'Add a file or a new agent' }).click();
-  await page.locator('.menu .mi', { hasText: 'From the project folder' }).click();
+  await page.getByRole('menuitem', { name: /^From the project folder/ }).click();
   await expect(button(page, 'Open docs'), 'the folder picker’s list').toBeVisible();
 }
 

@@ -65,12 +65,17 @@ async function stopWith(page, title, choice, text = 'Start a background loop tha
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
   rt.sendMessage(room.id, { text });
-  await expect(page.locator('.bg-jobs li').first()).toBeVisible();
-  await page.locator('.composer .btn.stop').click();
-  await page.locator(choice === 'stop' ? '.stop-ask .btn.send' : '.stop-ask .btn:not(.send):not(.ghost)').click();
+  await expect(jobStop(page), 'the job’s row, with its own Stop').toBeVisible();
+  await page.locator('.composer').getByRole('button', { name: 'Stop @developer’s reply', exact: true }).click();
+  await page
+    .locator('.stop-ask')
+    .getByRole('button', { name: choice === 'stop' ? 'Stop it too' : 'Keep running', exact: true })
+    .click();
   await expect.poll(() => store.state.sessions[se.id].state, { message: 'the agent’s process to exit' }).toBe('idle');
   await synced(page, app);
 }
+/** The background job’s own Stop, by its label. */
+const jobStop = (page) => page.locator('.bg-jobs').getByRole('button', { name: `Stop the background job “${BG}”`, exact: true });
 /** The last reply’s header and its steps, and the last stopped tag. */
 async function lastReply(page) {
   const d = page.locator('details.activity').last();
@@ -106,7 +111,7 @@ for (const [how, text] of [
     expect(r.tag).toMatch(/^Stopped by you at \d\d:\d\d · its background work kept running$/);
     expect(r.header).toMatch(/^Used 3 tools · 21 s in tools · background work running$/);
     expect(r.steps).toEqual([`${BG} Running in the background`, WAIT, `${WAIT} Stopped`]);
-    await expect(page.locator('.bg-jobs li button'), 'the kept job keeps its row, with its own Stop').toHaveCount(1);
-    await page.locator('.bg-jobs li button').click();
+    await expect(jobStop(page), 'the kept job keeps its row, with its own Stop').toHaveCount(1);
+    await jobStop(page).click();
     await expect(page.locator('.bg-jobs li'), 'the row goes').toHaveCount(0);
   });
