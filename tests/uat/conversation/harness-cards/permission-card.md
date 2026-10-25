@@ -26,7 +26,7 @@ In ask mode (and when auto mode can’t decide) you approve exactly what will ru
 
 ## Steps to reproduce
 
-1. Run `node tools/check-permissions.mjs`. It answers a card each way with real clicks and key presses, including a subagent’s prompt, a Codex MCP tool call, and a write outside Postbox with its draft. Every line should say ok. `node tools/checks/permission-cards.mjs` checks how an expired card reads.
+1. Run `npx playwright test permissions` (`tests/browser/permissions.spec.mjs`). It answers a card each way with real clicks and key presses, including a subagent’s prompt, a Codex MCP tool call, and a write outside Postbox with its draft. Every test should pass. `node tools/checks/permission-cards.mjs` checks how an expired card reads.
 2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open. Scene 10 (“Clear the index cache”): answer Allow.
 3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. In a project whose folder you can lose, set an agent to Ask me and send: “Run `echo hi > note.txt` yourself, then have a general-purpose subagent run `echo bye > note2.txt`.”
 4. On the first card, choose Edit…, change the command to `echo edited > note.txt`, and allow it. On the subagent’s card, choose Always allow.
