@@ -173,37 +173,42 @@ test('#370 condition 4: runAgyHook asks through permission_prompt with its own r
   assert.match(results[2].reason, /Nobody answered within/);
 });
 
-test('#370 condition 4: disconnecting permission_prompt expires the open card so a later click is rejected', async () => {
+test('#370 condition 4: disconnecting permission_prompt expires only that request’s card when two requests overlap', async () => {
   const { store, adapter, rt, t, se } = setupHookRuntime();
   /** @type {any} */
   let outcome = null;
+  const callPrompt = (id, cmd, sig) => {
+    const body = {
+      jsonrpc: '2.0',
+      id,
+      method: 'tools/call',
+      params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: cmd }, tool_use_id: id } },
+    };
+    return handleMcp(rt, se.id, body, rt.turns.get(se.id)?.token ?? null, sig);
+  };
   adapter.next.push(async () => {
-    const ac = new AbortController();
-    const p = handleMcp(
-      rt,
-      se.id,
-      {
-        jsonrpc: '2.0',
-        id: 'agy-hook-disconnect',
-        method: 'tools/call',
-        params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'touch b.txt' }, tool_use_id: 'agy-hook-disconnect' } },
-      },
-      rt.turns.get(se.id)?.token ?? null,
-      ac.signal,
-    );
+    const [ac1, ac2] = [new AbortController(), new AbortController()];
+    const [p1, p2] = [callPrompt('agy-hook-1', 'touch one.txt', ac1.signal), callPrompt('agy-hook-2', 'touch two.txt', ac2.signal)];
     await sleep(10);
-    const card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
-    assert.ok(card, 'card is open before disconnect');
-    ac.abort();
-    const rpc = /** @type {any} */ (await p);
-    outcome = { cardStatus: store.item(t.id, card.id).status, needs: rt.session(se.id).needs, decision: JSON.parse(rpc.result.content[0].text) };
-    assert.throws(() => rt.act(t.id, card.id, 'allow', {}), /already answered/);
+    const card1 = store.items(t.id).find((i) => i.kind === 'permission' && i.toolUseId === 'agy-hook-1');
+    const card2 = store.items(t.id).find((i) => i.kind === 'permission' && i.toolUseId === 'agy-hook-2');
+    assert.deepEqual([card1.status, card2.status], ['open', 'open']);
+    ac1.abort();
+    const rpc1 = /** @type {any} */ (await p1);
+    assert.deepEqual([store.item(t.id, card1.id).status, store.item(t.id, card2.id).status], ['expired', 'open']);
+    assert.throws(() => rt.act(t.id, card1.id, 'allow', {}), /already answered/);
+    rt.act(t.id, card2.id, 'allow', {});
+    const rpc2 = /** @type {any} */ (await p2);
+    outcome = [
+      store.item(t.id, card1.id).status,
+      store.item(t.id, card2.id).status,
+      JSON.parse(rpc1.result.content[0].text).behavior,
+      JSON.parse(rpc2.result.content[0].text).behavior,
+    ];
   });
   rt.sendMessage(t.id, { text: 'go' });
   for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);
-  assert.equal(outcome.cardStatus, 'expired');
-  assert.equal(outcome.needs, null);
-  assert.equal(outcome.decision.behavior, 'deny');
+  assert.deepEqual(outcome, ['expired', 'allowed', 'deny', 'allow']);
 });
 
 test('#370 condition 2: runAgyHook fails closed to deny on every error path and never outputs ask, force_ask or empty stdout', async () => {
@@ -249,7 +254,7 @@ test('#370 condition 2: runAgyHook fails closed to deny on every error path and 
   assert.equal(m.endedOnRefusal, null);
 });
 
-test('#370 condition 4: mcpPost uses node:http with a 12-hour timeout instead of undici’s 300s headersTimeout', async () => {
+test('#370 condition 4: mcpPost uses node:http with HOOK_TIMEOUT_S instead of undici’s 300s headersTimeout', async () => {
   let capturedOpts = null;
   let capturedTimeout = 0;
   let sentBody = '';

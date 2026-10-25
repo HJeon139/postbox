@@ -178,7 +178,7 @@ function resolveHookContext(event, cwd, env) {
 
 /**
  * Posts JSON to Postbox’s local /mcp endpoint over node:http instead of global fetch, avoiding undici’s 300-second
- * headersTimeout while waiting up to CARD_WAIT_MS (12 hours) for the person to answer a permission card.
+ * headersTimeout while waiting up to CARD_WAIT_MS for the person to answer a permission card.
  * @param {string} url
  * @param {{ method?: string, headers?: Record<string, string>, body?: string, timeoutMs?: number, requestImpl?: typeof httpRequest }} [opts]
  */

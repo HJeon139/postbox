@@ -23,10 +23,11 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
     return { content: [{ type: 'text', text: JSON.stringify({ behavior: 'deny', message: 'The permission request closed before anyone answered.' }) }] };
   const { tool_name, input = {}, tool_use_id, permission_suggestions, agent_id } = args ?? {};
   const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
-  const before = new Set(rt.permissionWaits?.keys?.() ?? []);
+  const useId = tool_use_id ? String(tool_use_id) : null;
   const onAbort = () => {
     for (const [id, w] of rt.permissionWaits ?? [])
-      if (w.sessionId === sessionId && !before.has(id)) rt.settlePermission(id, 'expired', 'The permission request closed before anyone answered.');
+      if (w.sessionId === sessionId && useId && rt.store.item(w.threadId, id)?.toolUseId === useId)
+        rt.settlePermission(id, 'expired', 'The permission request closed before anyone answered.');
   };
   signal?.addEventListener?.('abort', onAbort, { once: true });
   try {
