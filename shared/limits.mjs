@@ -47,6 +47,18 @@ export const READING = Object.freeze({
   part: 40_000,
 });
 
+/**
+ * What agents send each other and the conversation (#351). Past it a send is refused, and the refusal and the tool
+ * descriptions (wake_agent, bring_to_conversation) name it, so the guide doesn’t list it.
+ */
+export const SENDING = Object.freeze({
+  /** A message to another agent with wake_agent, and a post to the conversation with bring_to_conversation. */
+  message: 50_000,
+});
+
+/** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
+export const HOP_LIMIT = 10;
+
 /** @typedef {keyof typeof LIMITS} LimitName */
 
 /**

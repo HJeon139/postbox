@@ -1,14 +1,12 @@
 // A headless Chrome check of how Postbox’s controls and states look, in both themes, at 375 and 1280 px:
 //   - #181: in dark mode, a selected segment, a chosen chip and a toggle that’s on are an amber outline, never a solid fill
 //     bigger than a glyph: in Postbox, in Settings, and in an app’s kit (intent.md, Visual language).
-//   - #8: an overview card that needs you has a look of its own, a heavier amber top edge and a tinted head band,
-//     not the 1 px amber outline of a button.
 //   - #199: nothing with a border that wraps to a second line has fully rounded (pill) ends.
 //   - #116: the composer in a topic thread and in a side thread is as tall as the conversation’s, and sits as high.
 //   - #182: every text button has the --line-strong border or the one inline-action style, an underline in
 //     --line-strong; only an icon button may be bare.
 //
-//   node tools/checks/look.mjs            (ONLY=#8 runs the cases whose name has that in it)
+//   node tools/checks/look.mjs            (ONLY=#181 runs the cases whose name has that in it)
 //
 // It starts its own server with the demo seed (mock agents) on a fresh data folder in the temp directory.
 // PB_PORT and PB_CHROME_PORT move it (5400 and 10700 by default), so sessions working in parallel don’t collide.
@@ -18,7 +16,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch } from '../cdp.mjs';
+import { js, launch } from '../cdp.mjs';
 import { finish, ports, record } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(5400, 10700);
@@ -60,7 +58,7 @@ async function inside(session, expr) {
 }
 /** The CDP session of the app frame the selector finds. */
 async function frameOf(selector) {
-  const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(selector)})` });
+  const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector(${js(selector)})` });
   assert.ok(result.objectId, `No frame: ${selector}`);
   const { node } = await page.send('DOM.describeNode', { objectId: result.objectId });
   const session = page.frameSession(node.frameId);
@@ -106,7 +104,7 @@ tools.show_app({
 // Every element of a control (a button, a radio, a switch, a checkbox) bigger than a glyph whose background is
 // amber; and, for each selected or on control, the colors that mark it.
 const amberIn = (sel = 'body') => `(() => {
-  const root = document.querySelector(${JSON.stringify(sel)});
+  const root = document.querySelector(${js(sel)});
   const probe = (v) => { const p = document.createElement('span'); p.style.background = v; document.body.append(p); const c = getComputedStyle(p).backgroundColor; p.remove(); return c; };
   const accent = probe('var(--accent)');
   const amber = new Set([accent, probe('var(--on)')]);
@@ -155,35 +153,6 @@ for (const theme of ['dark'])
         await page.waitFor(`document.querySelector('.dialog .seg button[aria-checked=true]')`);
         bad.push(...unmarked(await page.evaluate(amberIn('.dialog')), 'Settings', ['seg']));
         assert.deepEqual(bad, []);
-      },
-    );
-
-// ── #8: needs you is a state, with a look of its own ────────────────────────────────────
-
-// A card that needs you, one that’s working, and a button with the interaction amber outline, side by side.
-const CARDS = `(() => {
-  const card = (sel) => { const n = document.querySelector(sel); if (!n) return null; const s = getComputedStyle(n); const head = getComputedStyle(n.querySelector('.oc-head'));
-    return { top: s.borderTopWidth, topColor: s.borderTopColor, side: s.borderRightColor, sideWidth: s.borderRightWidth, head: head.backgroundColor }; };
-  const probe = (v) => { const p = document.createElement('span'); p.style.background = v; document.body.append(p); const c = getComputedStyle(p).backgroundColor; p.remove(); return c; };
-  return { needs: card('.ov-col.needs'), working: card('.ov-col:not(.needs)'), accent: probe('var(--accent)'), band: probe('var(--needs-band)') };
-})()`;
-const worker = rt.sessionsIn(rt.createThread({ projectId: project.id, title: 'Working', personaIds: [persona('researcher').id] }).id)[0];
-for (const theme of ['dark', 'light'])
-  for (const width of [1280, 375])
-    await check(
-      `#8 at ${width} px (${theme}): a card that needs you has a heavier amber top edge and a tinted head, not a button’s amber outline`,
-      async () => {
-        rt.updateSession(se.id, { state: 'needs', needs: { kind: 'block', text: 'Which mode should the search use?' } });
-        rt.updateSession(worker.id, { state: 'tool', startedAt: Date.now() });
-        await page.size(width, 900, { theme });
-        await open('#/');
-        await page.waitFor(`document.querySelector('.ov-col.needs') && document.querySelector('.ov-col:not(.needs)')`);
-        const m = await page.evaluate(CARDS);
-        assert.ok(parseFloat(m.needs.top) >= 3 && m.needs.topColor === m.accent, `its top edge is ${m.needs.top} in ${m.needs.topColor}`);
-        assert.ok(m.needs.side !== m.accent, 'its sides are the amber outline a button has');
-        assert.equal(m.needs.side, m.working.side, 'its sides aren’t the card edge every card has');
-        assert.ok(m.band !== 'rgba(0, 0, 0, 0)' && m.needs.head === m.band, `its head is ${m.needs.head}, not the needs-you band (${m.band})`);
-        assert.notEqual(m.working.head, m.band, 'a working card has the needs-you band too');
       },
     );
 
@@ -328,9 +297,6 @@ for (const width of [1280, 375])
         head['Copy link'] && head['Copy link'] === head['Summarize back'],
         `Copy link and Summarize back have different edges: ${JSON.stringify(head)}`,
       );
-      await open('#/');
-      await page.waitFor(`document.querySelector('.ov-col')`);
-      bare.push(...(await page.evaluate(BARE)).map((b) => `overview: ${b}`));
       assert.deepEqual(bare, []);
     },
   );

@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { js } from './cdp.mjs';
 import { BOX_MIN, begin, COL_MIN, check, click, conv, end, fresh, has, hash, ids, measure, open, page, press, q, settle, THREAD, WORK } from './pane-check.mjs';
 
 const AXE = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -16,7 +17,7 @@ const { topic, other } = ids;
 
 // ── #86: a handle on the pane’s edge ───────────────────────────────────────────────────
 
-const handle = (attr) => page.evaluate(`${q('.rp-handle')}.getAttribute(${JSON.stringify(attr)})`);
+const handle = (attr) => page.evaluate(`${q('.rp-handle')}.getAttribute(${js(attr)})`);
 /** Drags the handle to x, as a person does: press, two moves, release. */
 async function drag(x, clicks = 0) {
   const b = await page.evaluate(`(() => { const r = ${q('.rp-handle')}.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 200 }; })()`);
@@ -102,7 +103,7 @@ await check('#122 a thread left open in a conversation opens again when you come
   await open(conv(`/side/${topic}`));
   await page.waitFor(q(THREAD), { label: 'the thread' });
   await open(`#/t/${other}`);
-  await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${other}`)} && ${q('.rpane[hidden]')}`, { label: 'the other conversation, alone' });
+  await page.waitFor(`location.hash === ${js(`#/t/${other}`)} && ${q('.rpane[hidden]')}`, { label: 'the other conversation, alone' });
   await open(conv(''));
   await page.waitFor(q(THREAD), { label: 'the thread, open again' });
   assert.equal(await hash(), conv(`/side/${topic}`));

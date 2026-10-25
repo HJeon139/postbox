@@ -6,6 +6,7 @@
 //   node tools/check-pane-width.mjs        (PB_PORT and PB_CHROME_PORT move it)
 
 import assert from 'node:assert/strict';
+import { js } from './cdp.mjs';
 import { BOX_MIN, begin, COL_MIN, check, click, conv, end, fresh, has, hash, ids, measure, open, page, press, q, settle, THREAD, WORK } from './pane-check.mjs';
 
 await begin('check-pane-width', 4950, 10250);
@@ -126,7 +127,7 @@ await check('#7 leaving a conversation whose pane hid the sidebar, the next one 
   await open(conv(`/side/${topic}`));
   await page.waitFor(`${q(THREAD)} && ${q('.app.rail-auto')}`, { label: 'the thread, with the sidebar hidden' });
   await open(`#/t/${other}`);
-  await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${other}`)}`, { label: 'the other conversation' });
+  await page.waitFor(`location.hash === ${js(`#/t/${other}`)}`, { label: 'the other conversation' });
   const m = await measure();
   const pressed = await page.evaluate(`${q('#rail-toggle')}.getAttribute('aria-pressed')`);
   assert.deepEqual([m.rail, m.toggle, pressed], [248, 'Hide the sidebar', 'true']);

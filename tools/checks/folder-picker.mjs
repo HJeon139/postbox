@@ -13,7 +13,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch } from '../cdp.mjs';
+import { js, launch } from '../cdp.mjs';
 import { finish, ports, record } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4886, 10186);
@@ -64,10 +64,10 @@ async function check(name, fn) {
 /** The listed entry named `name`: its row’s words, and the names of the buttons in it. */
 const row = (name) =>
   page.evaluate(
-    `(() => { const li = [...document.querySelectorAll('.d-body li')].find((l) => l.querySelector('.grow')?.textContent === ${JSON.stringify(name)}); return li ? { text: li.textContent, buttons: [...li.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent) } : null; })()`,
+    `(() => { const li = [...document.querySelectorAll('.d-body li')].find((l) => l.querySelector('.grow')?.textContent === ${js(name)}); return li ? { text: li.textContent, buttons: [...li.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent) } : null; })()`,
   );
 const button = (label) =>
-  `[...document.querySelectorAll('.d-body li button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent.trim()) === ${JSON.stringify(label)})`;
+  `[...document.querySelectorAll('.d-body li button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent.trim()) === ${js(label)})`;
 const where = () => page.evaluate(`document.querySelector('.d-body p.mono').textContent`);
 
 const project = { id: 'pr-links', name: 'Linked files', folder: root };

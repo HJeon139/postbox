@@ -1,6 +1,6 @@
 {
   "name": "postbox",
-  "version": "0.32.4",
+  "version": "0.33.3",
   "description": "A chat room for directing several AI agents, where agents reply with software they write.",
   "license": "Apache-2.0",
   "type": "module",
@@ -27,7 +27,7 @@
     "lint": "biome check --error-on-warnings .",
     "format": "biome check --write .",
     "typecheck": "tsc -p jsconfig.json",
-    "lint:project": "node tools/lint-tokens.mjs && node tools/lint-dom.mjs && node tools/lint-copy.mjs",
+    "lint:project": "node tools/lint-tokens.mjs && node tools/lint-dom.mjs && node tools/lint-copy.mjs && node tools/lint-security.mjs",
     "check:contrast": "node tools/contrast.mjs",
     "check": "npm run lint && npm run typecheck && npm run lint:project && npm run check:contrast && npm test && npm run test:integration",
     "check:browser": "node tools/check-all.mjs",
@@ -49,5 +49,10 @@
   "optionalDependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.306",
     "kokoro-js": "1.2.1"
+  },
+  "overrides": {
+    "@huggingface/transformers": {
+      "sharp": "^0.35.5"
+    }
   }
 }

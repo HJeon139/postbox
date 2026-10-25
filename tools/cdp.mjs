@@ -9,6 +9,14 @@ import { join } from 'node:path';
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * A value as a JavaScript literal, to put in code the page runs. JSON alone leaves `<`, `>`, U+2028 and U+2029 as they
+ * are, so they’re escaped as `\uXXXX`, which reads back as the same string (#343). Use it, not `JSON.stringify`, for
+ * every value spliced into a `page.evaluate` or `page.waitFor` expression.
+ * @param {unknown} value
+ */
+export const js = (value) => String(JSON.stringify(value)).replace(/[<>\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+
 // How long Chrome may take to open its DevTools port. A fresh CI runner’s first launch, with nothing cached, took
 // longer than the 12 s this used to allow (run 39977434749).
 const START_MS = 45000;

@@ -20,7 +20,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { record as check, finish, ports } from './harness.mjs';
 
 const { PORT, CHROME_PORT: CHROME } = await ports(5150, 10450);
@@ -103,10 +103,10 @@ try {
   const radio = (group, label) => `[...${block()}.querySelectorAll('[aria-label="${group}"] [role="radio"]')].find((x) => x.textContent === '${label}')`;
   /** Selects the first word in Preview, then waits for the Comment button beside it, which moves as the page hears it. */
   const select = async (word) => {
-    await page.evaluate(`(() => { const word = ${JSON.stringify(word)}, s = getSelection(), w = document.createTreeWalker(${block()}.querySelector('.rv-preview .md'), NodeFilter.SHOW_TEXT);
+    await page.evaluate(`(() => { const word = ${js(word)}, s = getSelection(), w = document.createTreeWalker(${block()}.querySelector('.rv-preview .md'), NodeFilter.SHOW_TEXT);
       for (let t = w.nextNode(); t; t = w.nextNode()) if (t.data.includes(word)) { const r = document.createRange(), k = t.data.indexOf(word);
         r.setStart(t, k); r.setEnd(t, k + word.length); s.removeAllRanges(); s.addRange(r); return; } })()`);
-    const beside = `(() => { const word = ${JSON.stringify(word)}, s = getSelection(), c = ${block()}.querySelector('.rv-sel'), r = s.rangeCount && s.getRangeAt(0);
+    const beside = `(() => { const word = ${js(word)}, s = getSelection(), c = ${block()}.querySelector('.rv-sel'), r = s.rangeCount && s.getRangeAt(0);
       return !c.hidden && s.toString() === word && !!c.previousElementSibling?.contains(r.endContainer)
         && { near: Math.abs(c.getBoundingClientRect().top - r.getBoundingClientRect().bottom) < 40, text: c.textContent }; })()`;
     return until(() => page.evaluate(beside));
@@ -115,7 +115,7 @@ try {
   const commentOn = async (word, text) => {
     await select(word);
     await page.evaluate(`${block()}.querySelector('.rv-sel').click()`);
-    await until(() => page.evaluate(`document.activeElement?.tagName === 'TEXTAREA' && (document.activeElement.value = ${JSON.stringify(text)})`));
+    await until(() => page.evaluate(`document.activeElement?.tagName === 'TEXTAREA' && (document.activeElement.value = ${js(text)})`));
     await press('Enter', 'Enter', 13, { modifiers: 2 });
   };
   const shown = () =>

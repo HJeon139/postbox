@@ -1,36 +1,26 @@
-// The UAT runner’s go_to_needs action (#285): the top bar’s “Next that needs you” button, or an agent’s needs-you ring
-// wherever it shows, clicked as a person would, and where focus landed. Kept out of tools/uat/driver.mjs and
+// The UAT runner’s go_to_needs action (#285, #320): the top bar’s “Next that needs you” button, or an agent’s needs-you
+// ring wherever it shows, clicked as a person would, and where focus landed. Kept out of tools/uat/driver.mjs and
 // tools/uat-run.mjs, to keep those files to their size; it uses the driver’s clickAt and press.
 
 import { needsAt } from '../../server/room-checks-needs.mjs';
-import { sleep } from '../cdp.mjs';
-import { J } from './selectors.mjs';
+import { js, sleep } from '../cdp.mjs';
 
 /**
  * Clicks the place named and returns where focus landed a moment later: the item it’s in, whether that’s on screen
  * and outlined, and the page before and after.
- * @param {any} d  the driver  @param {any} page  @param {'next'|'rail'|'agents'|'overview'|'message'|'topbar'} from  @param {string} handle
+ * @param {any} d  the driver  @param {any} page  @param {'next'|'rail'|'agents'|'message'} from  @param {string} handle
  */
 export async function goToNeeds(d, page, from, handle = '') {
   const ev = (expr) => page.evaluate(expr);
-  const ring = (scope) => `[...document.querySelectorAll(${J(`${scope} pb-ring[name="@${handle}"]`)})].filter((r) => r.offsetParent !== null).at(-1)`;
-  if (from === 'overview' && !(await ev(`location.hash === '#/' || location.hash === ''`))) {
-    await ev(`location.hash = '#/'`);
-    await page.waitFor(`!!document.querySelector('.ov-col')`, { label: 'the overview' });
-  }
+  const ring = (scope) => `[...document.querySelectorAll(${js(`${scope} pb-ring[name="@${handle}"]`)})].filter((r) => r.offsetParent !== null).at(-1)`;
   await ev('document.activeElement?.blur?.()');
   const target = {
     next: [`document.getElementById('next-needs')`, 'the “Next that needs you” button'],
     rail: [ring('.rail a.row'), `@${handle}’s ring in its conversation’s rail row`],
-    agents: [
-      `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${J(`@${handle}`)}))`,
-      `@${handle}’s row in the Agents section`,
-    ],
-    overview: [ring('.ov'), `@${handle}’s ring on the overview`],
+    agents: [ring('.rail .agent-line'), `@${handle}’s ring in its Agents-section row`],
     message: [ring('#main .who'), `the ring beside @${handle}’s newest message`],
-    topbar: [ring('header.topbar'), `@${handle}’s ring in the top bar`],
   }[from];
-  if (!target) throw new Error(`go_to_needs goes from next, rail, agents, overview, message or topbar, not “${from}”.`);
+  if (!target) throw new Error(`go_to_needs goes from next, rail, agents or message, not “${from}”.`);
   const before = await ev('location.hash');
   await d.clickAt(target[0], target[1]);
   const landed = `(() => {

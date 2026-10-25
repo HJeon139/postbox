@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
 import { Runtime } from '../../server/runtime.mjs';
-import { launch, sleep } from '../cdp.mjs';
+import { js, launch, sleep } from '../cdp.mjs';
 import { record as check, finish, ports } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4411, 9611);
@@ -86,7 +86,7 @@ try {
     }
     throw new Error(`Timed out waiting for ${label}. Apps: ${JSON.stringify(Object.values(app.rt.s.apps).map((a) => [a.id, a.check]))}`);
   };
-  const frameOf = (title) => `[...document.querySelectorAll('iframe.app-iframe')].find((f) => f.title === ${JSON.stringify(title)})`;
+  const frameOf = (title) => `[...document.querySelectorAll('iframe.app-iframe')].find((f) => f.title === ${js(title)})`;
   const ready = async (id, title) => {
     await until(() => ['passed', 'note'].includes(rt.s.apps[id]?.check.status), `${title} to pass its check`);
     await until(() => page.evaluate(`!!${frameOf(title)}?.dataset.sized`), `${title} to load`);
@@ -114,7 +114,7 @@ try {
     await click(r.x, r.y);
     await sleep(250);
     return page.evaluate(
-      `JSON.stringify({ at: ${JSON.stringify(r)}, live: ${frameOf(title)}.className, focus: document.activeElement?.title || document.activeElement?.tagName, under: document.elementFromPoint(${r.x}, ${r.y})?.className })`,
+      `JSON.stringify({ at: ${js(r)}, live: ${frameOf(title)}.className, focus: document.activeElement?.title || document.activeElement?.tagName, under: document.elementFromPoint(${r.x}, ${r.y})?.className })`,
     );
   };
   const clickSpam = () => clickApp('Spam');

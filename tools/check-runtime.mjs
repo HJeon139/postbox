@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { record as check, finish, ports } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4410, 9610);
@@ -94,7 +94,7 @@ try {
   };
 
   // The persona editor lists the servers found and the ones the last init reported, each on by default.
-  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(persona.id)}))`);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${js(persona.id)}))`);
   await page.waitFor(`document.querySelectorAll('.dialog [data-server]').length >= 3`, { label: 'the MCP list' });
   let list = await servers();
   check(
@@ -147,7 +147,7 @@ try {
   await close();
 
   // Reopened, it’s still off; Isolated says only Postbox’s server loads.
-  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(persona.id)}))`);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${js(persona.id)}))`);
   await page.waitFor(`document.querySelectorAll('.dialog [data-server]').length >= 3`, { label: 'the MCP list again' });
   list = await servers();
   check(list.find((s) => s.name === 'claude.ai Google Drive')?.checked === 'false', 'reopened, the server is still off');
@@ -162,7 +162,7 @@ try {
   await close();
 
   // The new-agent sheet lists them too, all on.
-  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openNewAgent({ projectId: ${JSON.stringify(projectId)} }))`);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openNewAgent({ projectId: ${js(projectId)} }))`);
   await page.waitFor(`document.querySelectorAll('.dialog [data-server]').length >= 2`, { label: 'the new-agent MCP list' });
   list = await servers();
   check(
@@ -191,7 +191,7 @@ try {
     mcpServers: { at: Date.now(), servers: [{ name: 'plugin:engineering:google calendar and a much longer name', status: 'failed', source: 'plugin' }] },
   });
   await page.size(375, 812);
-  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(persona.id)}))`);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${js(persona.id)}))`);
   await page.waitFor(`!!document.querySelector('.dialog [data-server^="plugin:"]')`, { label: 'the MCP list at 375 px' });
   // Anything that sticks out past the dialog’s right edge (a field’s own text scrolling inside it is fine).
   const wide = await page.evaluate(`(() => {

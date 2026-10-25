@@ -16,10 +16,11 @@
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import { offersBring } from './bring.mjs';
+import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
 import { reactTool } from './reactions.mjs';
 import { AgentFileError } from './runtime.mjs';
-import { offersBring } from './side-threads.mjs';
 import { withUrgent } from './subagent-end.mjs';
 
 const PROTOCOL = '2025-06-18';
@@ -67,7 +68,7 @@ async function one(rt, sessionId, msg, turnToken) {
           -32001,
           'Postbox runs tool calls only from an agent turn it started, which carries its own token, so it didn’t run this one. Call the tool from your turn; for a large app, use codePath.',
         );
-      if (rt.turns.get(sessionId)?.token !== turnToken)
+      if (!sameToken(rt.turns.get(sessionId)?.token, turnToken))
         return fail(-32001, 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.');
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
@@ -98,6 +99,6 @@ async function one(rt, sessionId, msg, turnToken) {
  */
 function offered(rt, sessionId, turnToken, name) {
   const turn = rt.turns.get(sessionId);
-  if (name === 'bring_to_conversation') return turn?.token === turnToken && offersBring(rt, turn);
+  if (name === 'bring_to_conversation') return sameToken(turn?.token, turnToken) && offersBring(rt, turn);
   return name !== 'permission_prompt' || asksByPrompt(rt, sessionId);
 }

@@ -21,7 +21,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(5037, 10237);
@@ -92,7 +92,7 @@ async function click(expr) {
     await page.send('Input.dispatchMouseEvent', { type: t, x: r.x, y: r.y, button: t === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
   await settle();
 }
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
 const text = (expr) => page.evaluate(`(${expr})?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
 const focused = () => page.evaluate('document.activeElement?.textContent?.trim() || document.activeElement?.getAttribute("aria-label") || ""');
 const until = async (fn, label) => {

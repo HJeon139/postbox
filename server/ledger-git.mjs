@@ -14,31 +14,74 @@ export const clip = (s, n) => {
 /** Git’s state is asked for at most this many files per view; the rest show as uncommitted. */
 const GIT_FILES = 300;
 
-/**
- * Runs git with an argument array, never through a shell. GIT_OPTIONAL_LOCKS=0 keeps `git status` from taking the
- * index lock, so an agent committing at the same moment doesn’t fail on Postbox’s account.
- * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
- */
-export function runGit(cwd, args, { timeoutMs = 10000 } = {}) {
+// Settings that make git run a command, set off for every read here: a repository’s own config can name one, and an
+// agent that may only edit files can write that config (#351). Pagers and editors need a terminal, which execFile
+// doesn’t give.
+const NO_COMMANDS = [
+  ['core.fsmonitor', 'false'],
+  ['core.hooksPath', '/dev/null'],
+  ['diff.external', ''],
+  ['log.showSignature', 'false'],
+];
+/** The subcommands that can run a diff driver or a textconv, which these flags turn off. */
+const DIFFS = new Set(['show', 'log', 'diff']);
+
+/** One git process, as execFile runs it; tests pass a fake. */
+function gitOnce(exec, cwd, args, env, timeoutMs) {
   return new Promise((done) => {
     try {
-      execFile(
-        'git',
-        args,
-        { cwd, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } },
-        (err, stdout, stderr) => {
-          const code = err ? (typeof (/** @type {any} */ (err).code) === 'number' ? /** @type {any} */ (err).code : 1) : 0;
-          done({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
-        },
-      );
+      exec('git', args, { cwd, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, env }, (err, stdout, stderr) => {
+        const code = err ? (typeof (/** @type {any} */ (err).code) === 'number' ? /** @type {any} */ (err).code : 1) : 0;
+        done({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
+      });
     } catch (e) {
       done({ code: 127, stdout: '', stderr: e.message });
     }
   });
 }
 
+/**
+ * Runs git with an argument array, never through a shell. GIT_OPTIONAL_LOCKS=0 keeps `git status` from taking the
+ * index lock, so an agent committing at the same moment doesn’t fail on Postbox’s account. Every command a
+ * repository’s config could have git run is set off (NO_COMMANDS), through git’s environment config, which wins over
+ * the repository’s and takes any key as it is; that includes each content filter the repository names, so a read
+ * that hashes a file doesn’t run one.
+ * @param {string} cwd @param {string[]} args @param {{ timeoutMs?: number, exec?: typeof execFile }} [opts]
+ * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
+ */
+export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile } = {}) {
+  const base = { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' };
+  const withConfig = (pairs) => ({
+    ...base,
+    GIT_CONFIG_COUNT: String(pairs.length),
+    ...Object.fromEntries(
+      pairs.flatMap(([k, v], i) => [
+        [`GIT_CONFIG_KEY_${i}`, k],
+        [`GIT_CONFIG_VALUE_${i}`, v],
+      ]),
+    ),
+  });
+  const named = await gitOnce(exec, cwd, ['config', '--null', '--name-only', '--get-regexp', '^filter\\.'], withConfig(NO_COMMANDS), timeoutMs);
+  // A key is filter.<name>.<setting>; the name may hold dots.
+  const filters = new Set(named.stdout.split('\0').flatMap((k) => (k.startsWith('filter.') && k.lastIndexOf('.') > 6 ? [k.slice(7, k.lastIndexOf('.'))] : [])));
+  const off = [...filters]
+    .flatMap((f) => ['clean', 'smudge', 'process'].map((k) => [`filter.${f}.${k}`, '']))
+    .concat([...filters].map((f) => [`filter.${f}.required`, 'false']));
+  const [sub, ...rest] = args;
+  const argv = DIFFS.has(sub) ? [sub, '--no-ext-diff', '--no-textconv', ...rest] : args;
+  return gitOnce(exec, cwd, argv, withConfig([...NO_COMMANDS, ...off]), timeoutMs);
+}
+
+/**
+ * A commit’s sha as git abbreviates or prints it, SHA-1 (40) or SHA-256 (64). Anything else is refused before it becomes
+ * git’s argument (#351).
+ */
+const SHA = /^[0-9a-f]{7,64}$/;
+
 /** A commit, with its files and lines from git, so they match `git show --numstat`. */
 export async function recordCommit(ledger, turn, cmdId, { sha, branch }, cwd, message) {
+  // A tool result’s gitOperation is the backend’s word, not git’s: a sha of --output=<file> would have git write a file.
+  if (!SHA.test(sha)) return;
   const w = turn.work;
   const entry = ledger.add(
     w.convId,
@@ -60,7 +103,7 @@ export async function recordCommit(ledger, turn, cmdId, { sha, branch }, cwd, me
       binary: m?.[1] === '-',
     }));
   ledger.patch(w.convId, entry.id, {
-    sha: /^[0-9a-f]{40}$/.test(full) ? full : sha,
+    sha: /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(full) ? full : sha,
     message: clip(subject || message, 300),
     files: files.slice(0, 500),
     added: files.reduce((n, f) => n + f.added, 0),
@@ -85,6 +128,7 @@ export async function tracked(ledger, path) {
   return r.code === 0;
 }
 export async function pushed(ledger, root, sha) {
+  if (!SHA.test(sha)) return false;
   const key = `${root}:${sha}`;
   if (ledger.pushedCache.has(key)) return true;
   const r = await ledger.git(root, ['branch', '-r', '--contains', sha]);

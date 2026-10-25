@@ -14,7 +14,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch, sleep } from '../cdp.mjs';
+import { js, launch, sleep } from '../cdp.mjs';
 import { finish, ports, record } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(5310, 10610);
@@ -57,7 +57,7 @@ const expect = (ok, what) => {
 };
 async function open(hash) {
   await page.synced(store.state.seq);
-  await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+  await page.evaluate(`location.hash = ${js(hash)}`);
   await settle();
 }
 

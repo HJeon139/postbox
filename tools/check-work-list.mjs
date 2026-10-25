@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { turnLine } from '../shared/work.mjs';
 import { turnRows } from '../shared/work-list.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4860, 10160);
@@ -30,7 +30,7 @@ const page = await launch({ port: CHROME_PORT });
 const { rt, store } = app;
 const AXE = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
 const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
 async function press(key) {
   const code = { Escape: 27, Enter: 13 }[key];
@@ -67,7 +67,7 @@ async function check(name, fn) {
 async function axe(sel, where) {
   await page.evaluate(`${AXE};0`);
   const found = await page.evaluate(
-    `axe.run({ include: [[${JSON.stringify(sel)}]] }, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] }).then((r) => r.violations.map((v) => v.id + ': ' + v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(', ')))`,
+    `axe.run({ include: [[${js(sel)}]] }, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] }).then((r) => r.violations.map((v) => v.id + ': ' + v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(', ')))`,
   );
   assert.deepEqual(found, [], `axe, ${where}`);
 }
@@ -90,7 +90,7 @@ const items = store.items(conv.id).filter((i) => i.turnId === turn.id);
 const last = items.findLast((i) => i.kind === 'agent' || i.kind === 'block');
 const rows = turnRows(entries(), turn.id, { folders: [store.state.projects[conv.projectId].folder] });
 const LIST = `[data-key="${last.id}"] .work-list-turn`;
-const ROW = (n) => `document.querySelectorAll(${JSON.stringify(`${LIST} .wl-row`)})[${n}]`;
+const ROW = (n) => `document.querySelectorAll(${js(`${LIST} .wl-row`)})[${n}]`;
 
 await page.goto(`${app.origin}/#/t/${conv.id}`);
 await page.waitFor(q('header.topbar'));
@@ -103,7 +103,7 @@ for (const [width, height] of [
   await page.size(width, height);
   await page.evaluate(`(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('pb-work-')) localStorage.removeItem(k); })()`);
   await page.synced(store.state.seq);
-  await page.evaluate(`location.hash = ${JSON.stringify(`#/t/${conv.id}`)}`);
+  await page.evaluate(`location.hash = ${js(`#/t/${conv.id}`)}`);
   await page.reload();
   await page.waitFor(q(`${LIST} ul`), { label: 'the list under the turn’s last reply' });
   await settle();
@@ -115,15 +115,15 @@ for (const [width, height] of [
     assert.equal(await page.evaluate(`${q(`${LIST} ul`)}.getAttribute('aria-label')`), 'What this turn did');
     const kinds = [...new Set(rows.map((r) => r.kind))];
     assert.deepEqual(kinds, ['file', 'publish', 'external', 'command', 'reads'], 'files, the app, the issue, the commands, then reads');
-    assert.equal(await page.evaluate(`document.querySelectorAll(${JSON.stringify(`${LIST} .wl-row`)}).length`), 5, 'five rows before “more”');
+    assert.equal(await page.evaluate(`document.querySelectorAll(${js(`${LIST} .wl-row`)}).length`), 5, 'five rows before “more”');
     assert.equal(await page.evaluate(`${q(`${LIST} .wl-more`)}.textContent`), `${rows.length - 5} more`);
   });
 
   await check(`${at}: “N more” expands in place, with focus on the first row it showed, and the rows match Work`, async () => {
     await click(q(`${LIST} .wl-more`));
-    await page.waitFor(`document.querySelectorAll(${JSON.stringify(`${LIST} .wl-row`)}).length === ${rows.length}`, { label: 'every row' });
+    await page.waitFor(`document.querySelectorAll(${js(`${LIST} .wl-row`)}).length === ${rows.length}`, { label: 'every row' });
     assert.equal(await page.evaluate(`document.activeElement === ${ROW(5)}`), true, 'focus isn’t on the sixth row');
-    const shown = await page.evaluate(`[...document.querySelectorAll(${JSON.stringify(`${LIST} .wl-row`)})].map((a) => a.dataset.at)`);
+    const shown = await page.evaluate(`[...document.querySelectorAll(${js(`${LIST} .wl-row`)})].map((a) => a.dataset.at)`);
     assert.deepEqual(
       shown,
       rows.map((r) => r.at),
@@ -164,7 +164,7 @@ for (const [width, height] of [
 
   await check(`${at}: a long path keeps its file name, nothing scrolls sideways, and axe finds nothing in the list`, async () => {
     const cut = await page.evaluate(
-      `[...document.querySelectorAll(${JSON.stringify(`${LIST} .wl-file`)})].map((a) => { const n = a.querySelector('.wl-name'); const b = n.getBoundingClientRect(); const row = a.getBoundingClientRect(); return { name: n.textContent, whole: n.scrollWidth <= n.clientWidth + 1 && b.right <= row.right + 1 }; })`,
+      `[...document.querySelectorAll(${js(`${LIST} .wl-file`)})].map((a) => { const n = a.querySelector('.wl-name'); const b = n.getBoundingClientRect(); const row = a.getBoundingClientRect(); return { name: n.textContent, whole: n.scrollWidth <= n.clientWidth + 1 && b.right <= row.right + 1 }; })`,
     );
     assert.ok(cut.length >= 4, 'the four files');
     for (const f of cut) assert.ok(f.whole, `${f.name} is cut`);

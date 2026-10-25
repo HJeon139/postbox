@@ -1,6 +1,7 @@
 // Small text helpers shared by the server and the browser.
 
 import { renderMarkdown, TABLE_SEP } from './markdown.mjs';
+import { stripTags } from './markdown-inline.mjs';
 
 /** Text on one line, cut to n characters with an ellipsis. */
 export const clip = (s, n = 240) => {
@@ -90,8 +91,9 @@ function nextEnd(rest, from) {
   const fence = /^(\s*)(`{3,}|~{3,})[^`\n]*\n/.exec(rest.slice(from));
   if (fence && (from === 0 || rest[from - 1] === '\n' || fence[1].includes('\n'))) {
     const body = from + fence[0].length;
-    const close = new RegExp(`^[ \\t]*${fence[2][0]}{${fence[2].length},}[ \\t]*$`, 'm').exec(rest.slice(body));
-    return close ? body + close.index + close[0].length : -1;
+    // A line of the fence’s character, at least as long as its opening, closes it (#344).
+    for (const close of rest.slice(body).matchAll(/^[ \t]*(`+|~+)[ \t]*$/gm)) if (close[1].startsWith(fence[2])) return body + close.index + close[0].length;
+    return -1;
   }
   END.lastIndex = from;
   for (let m = END.exec(rest); m; m = END.exec(rest)) {
@@ -120,19 +122,17 @@ export function plainText(src) {
   if (TABLE_SEP.test(src)) return '';
   const row = /^\s*\|(.*)\|\s*$/.exec(src);
   if (row) return row[1].split('|').map(plainText).filter(Boolean).join(', ');
-  return (
-    renderMarkdown(String(src).replace(/<\/?(details|summary)>/g, ' '))
-      .replace(/<pre[\s\S]*?<\/pre>/g, ' ')
-      // A sentence cut out of the middle of bold or code keeps a mark the renderer couldn’t pair; code keeps its own.
-      .split(/(<code>[\s\S]*?<\/code>)/)
-      .map((part, i) => (i % 2 ? part : part.replace(/\*\*|__|~~|`/g, '')))
-      .join('')
-      .replace(/<(br|hr|\/p|\/li|\/h\d|\/blockquote|\/div|\/t[dh])>/g, ' ')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&(amp|lt|gt|quot|#39);/g, (e) => ENTITIES[e])
-      .replace(/\s+/g, ' ')
-      .trim()
-  );
+  const html = renderMarkdown(String(src).replace(/<\/?(details|summary)>/g, ' '))
+    .replace(/<pre[\s\S]*?<\/pre>/g, ' ')
+    // A sentence cut out of the middle of bold or code keeps a mark the renderer couldn’t pair; code keeps its own.
+    .split(/(<code>[\s\S]*?<\/code>)/)
+    .map((part, i) => (i % 2 ? part : part.replace(/\*\*|__|~~|`/g, '')))
+    .join('')
+    .replace(/<(br|hr|\/p|\/li|\/h\d|\/blockquote|\/div|\/t[dh])>/g, ' ');
+  return stripTags(html)
+    .replace(/&(amp|lt|gt|quot|#39);/g, (e) => ENTITIES[e])
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** “3 min”, “2 s”, “1 h 5 min”: durations as Postbox shows them. */

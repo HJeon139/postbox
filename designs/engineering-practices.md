@@ -156,7 +156,8 @@ The target is WCAG 2.1 AA, with zero axe violations in every demo scene.
 ## Narration (Kokoro)
 
 **Do**
-- Run Kokoro (`kokoro-js`) only in its own child process. It starts on first use and stops after five idle minutes. It brings native packages with open advisories (`sharp`, `onnxruntime-node`), which must never load into the server.
+- Run Kokoro (`kokoro-js`) only in its own child process. It starts on first use and stops after five idle minutes. It brings native packages that have had advisories (`sharp`, `onnxruntime-node`), and they must never load into the server.
+- Keep its packages patched even so. `package.json` overrides `sharp` to a fixed release that `@huggingface/transformers` 3.x doesn’t allow yet (#348). Remove the override once a `kokoro-js` release depends on a transformers version that does.
 - Keep it optional. Without it, the player says narration isn’t installed, and the transcript still reads.
 - Download the voice model to the data folder on first use, never into the repo, and never during tests.
 - Cache audio by the SHA-256 of the text and voice, so the same passage is synthesized once.

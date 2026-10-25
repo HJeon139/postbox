@@ -2,10 +2,13 @@
 // there (its one session in the conversation: no forks, #228), the card that asks to add an agent the conversation
 // doesn’t have, and the side-thread line in the conversation. Functions take the Runtime first (architecture.md, “What a move may change”).
 
-import { clip, httpError } from './helpers.mjs';
+import { HOP_LIMIT } from '../shared/limits.mjs';
+import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 
-export const HOP_LIMIT = 3;
+// Agent wakes in a row, without you, before the next waits for your Allow (shared/limits.mjs: wake_agent’s
+// description on a host names it too).
+export { HOP_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 
@@ -186,7 +189,8 @@ function needsCard(rt, from, parent, it, text) {
 export function wakeAgent(rt, sessionId, { handle, message }) {
   if (rt.turns.get(sessionId)?.summarizeTo)
     return { ok: false, message: 'A summary for the conversation wakes no one: finish it, and the person decides the rest.' };
-  return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
+  const text = String(message ?? '');
+  return tooLongToSend('A message to another agent', text) ?? rt.agentWake(sessionId, String(handle).replace(/^@/, ''), text);
 }
 
 /**
@@ -305,35 +309,4 @@ export function recordAgentMessage(rt, sessionId, dir, other, text) {
   const se = rt.s.sessions[sessionId];
   if (!se) return;
   rt.updateSession(sessionId, { agentMessages: [{ dir, other, text: clip(text, 120), at: Date.now() }, ...se.agentMessages].slice(0, 6) });
-}
-
-/**
- * Whether a turn may use bring_to_conversation (#128): one the person started, with a message in a side or topic
- * thread. A turn another agent started can’t, so nothing reaches the conversation unless the person asked for it.
- * @param {any} rt @param {any} turn
- */
-export function offersBring(rt, turn) {
-  return turn?.kind === 'user' && ['side', 'topic'].includes(rt.s.threads[turn.threadId]?.kind);
-}
-
-/**
- * bring_to_conversation { text } (#128): an agent in a side or topic thread, asked by the person to put something in the
- * main chat, posts it in the conversation, marked as shared by that agent from that thread. It wakes no one, so it
- * doesn’t count against the wake limit, and under principle 7 the person who asked is the one sending it.
- * @param {any} rt @param {string} sessionId @param {any} turn  the turn calling it @param {{ text?: unknown }} [args]
- */
-export function bringToConversation(rt, sessionId, turn, { text } = {}) {
-  const t = rt.s.threads[turn?.threadId];
-  if (t?.kind !== 'side' && t?.kind !== 'topic')
-    return { ok: false, message: 'bring_to_conversation works only in a side thread or a topic thread. Here you’re in the conversation: just reply.' };
-  if (!offersBring(rt, turn))
-    return { ok: false, message: 'Only the person can ask for this: a turn another agent started can’t post to the conversation. Reply in the thread.' };
-  const body = String(text ?? '').trim();
-  if (!body) return { ok: false, message: 'Give the text to post in the conversation.' };
-  // The main chat, as the person asked and the tool says: the conversation itself, from a side thread of a topic too.
-  let main = rt.s.threads[t.parentId];
-  while (main && (main.kind === 'side' || main.kind === 'topic')) main = rt.s.threads[main.parentId];
-  const se = rt.session(sessionId);
-  rt.shareText(main.id, { fromThreadId: t.id, handle: se.handle, text: body, agent: true });
-  return { ok: true, message: `Posted in “${main.title}”. Its agents read it at their next turn; no one was woken.` };
 }

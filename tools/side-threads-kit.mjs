@@ -2,12 +2,12 @@
 // @indexer and @researcher on a fake Claude Code backend that holds each turn open until the check lets it go or Stop
 // aborts it, a room with both, and the keyboard, waiting and opening the check uses.
 
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
-import { ports, record } from './harness.mjs';
+import { js, launch } from './cdp.mjs';
+import { finish, ports, record } from './harness.mjs';
 
 export const { PORT, CHROME_PORT } = await ports(4890, 10090);
 
@@ -94,7 +94,7 @@ export async function until(test, label) {
   }
   throw new Error(`Timed out waiting for ${label}`);
 }
-export const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+export const q = (sel) => `document.querySelector(${js(sel)})`;
 /** An agent’s row in the sidebar, the li around its button. */
 export const row = (handle) => `[...document.querySelectorAll('.rail .agent-row')].find((r) => r.querySelector('.agent-btn b')?.textContent === '@${handle}')`;
 export const subs = (handle) =>
@@ -123,9 +123,19 @@ export async function open(hash) {
   if (loaded) {
     // What the check changed on the server must have reached the page first, or it shows what was there before.
     await page.synced(store.state.seq);
-    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+    await page.evaluate(`location.hash = ${js(hash)}`);
   } else await page.goto(`${app.origin}/${hash}`);
   loaded = true;
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();
+}
+
+/** The check’s last step: close the page and the server, remove their folders, and report. */
+export async function done() {
+  await page.close();
+  await app.close();
+  await rm(dataDir, { recursive: true, force: true });
+  await rm(claudeHome, { recursive: true, force: true });
+  record(!page.logs.length, 'the page logged no errors', page.logs.join('\n'));
+  finish();
 }

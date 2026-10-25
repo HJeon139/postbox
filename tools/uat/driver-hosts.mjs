@@ -4,11 +4,11 @@
 // d.kit), as the review module’s do. Where the page offers no control for a step a run needs, the step says so in
 // what it returns, and does what the control would.
 
-import { sleep } from '../cdp.mjs';
-import { byText, J } from './selectors.mjs';
+import { js, sleep } from '../cdp.mjs';
+import { byText } from './selectors.mjs';
 
 const TOP = `[...document.querySelectorAll('.dialog')].at(-1)`;
-const CARD = (id) => `document.querySelector(${J(`[data-host="${id}"]`)})`;
+const CARD = (id) => `document.querySelector(${js(`[data-host="${id}"]`)})`;
 // A setting’s field holds it in the unit it shows: durations in minutes, and these in theirs.
 const SCALE = /** @type {Record<string, number>} */ ({ 'keepAlive.interval': 1000, logMaxBytes: 1024 * 1024 });
 
@@ -37,11 +37,11 @@ async function typeOver(kit, sel, value) {
   // A host’s status arriving late can still move the panel as the click lands, so the click misses the field and
   // the text would go nowhere: click again until the field has focus.
   for (let i = 0; ; i++) {
-    await kit.clickAt(`document.querySelector(${J(sel)})`, sel);
-    if (await kit.ev(`document.activeElement === document.querySelector(${J(sel)})`)) break;
+    await kit.clickAt(`document.querySelector(${js(sel)})`, sel);
+    if (await kit.ev(`document.activeElement === document.querySelector(${js(sel)})`)) break;
     if (i === 4) throw new Error(`Clicking ${sel} didn’t give it focus.`);
   }
-  await kit.ev(`(() => { const el = document.querySelector(${J(sel)}); el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await kit.ev(`(() => { const el = document.querySelector(${js(sel)}); el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   if (value !== '') await kit.page.send('Input.insertText', { text: String(value) });
   // Leaving it checks it, as a person tabbing on does: its error shows now, not as the next click lands, when it
   // would move what that click aims at.
@@ -52,7 +52,7 @@ async function typeOver(kit, sel, value) {
 /** Picks an option of a select, as the driver’s act does. @param {any} kit */
 const pick = (kit, sel, value) =>
   kit.ev(
-    `(() => { const s = document.querySelector(${J(sel)}); s.value = ${J(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); s.dispatchEvent(new Event('input', { bubbles: true })); })()`,
+    `(() => { const s = document.querySelector(${js(sel)}); s.value = ${js(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); s.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   );
 
 /**
@@ -63,7 +63,7 @@ export async function addHost(kit, destination) {
   await openHosts(kit);
   await typeOver(kit, '#ho-add', destination);
   await kit.clickAt(`document.getElementById('ho-add-btn')`, 'Add host');
-  const card = `[...document.querySelectorAll('[data-host]')].find((c) => c.querySelector('h3')?.textContent === ${J(destination)})`;
+  const card = `[...document.querySelectorAll('[data-host]')].find((c) => c.querySelector('h3')?.textContent === ${js(destination)})`;
   for (let i = 0; i < 40; i++) {
     const id = await kit.ev(`${card}?.dataset.host ?? null`);
     if (id) return id;
@@ -78,12 +78,12 @@ export async function addHost(kit, destination) {
 async function setField(kit, id, key, value) {
   const cid = `#ho-${id}-${key.replace('.', '-')}`;
   const kind = await kit.ev(
-    `(() => { const el = document.querySelector(${J(cid)}); if (!el) return null; if (el.getAttribute('role') === 'checkbox') return 'check'; if (document.querySelector(${J(`${cid}-unit`)})) return 'duration'; return el.tagName === 'SELECT' ? 'select' : el.tagName === 'TEXTAREA' ? 'argv' : el.type === 'number' ? 'number' : 'text'; })()`,
+    `(() => { const el = document.querySelector(${js(cid)}); if (!el) return null; if (el.getAttribute('role') === 'checkbox') return 'check'; if (document.querySelector(${js(`${cid}-unit`)})) return 'duration'; return el.tagName === 'SELECT' ? 'select' : el.tagName === 'TEXTAREA' ? 'argv' : el.type === 'number' ? 'number' : 'text'; })()`,
   );
   if (!kind) throw new Error(`The host’s editor has no field for ${key}.`);
   if (kind === 'check') {
-    if ((await kit.ev(`document.querySelector(${J(cid)}).getAttribute('aria-checked') === 'true'`)) !== value)
-      await kit.clickAt(`document.querySelector(${J(cid)})`, key);
+    if ((await kit.ev(`document.querySelector(${js(cid)}).getAttribute('aria-checked') === 'true'`)) !== value)
+      await kit.clickAt(`document.querySelector(${js(cid)})`, key);
   } else if (kind === 'duration') {
     await pick(kit, `${cid}-unit`, 'min');
     await typeOver(kit, cid, String(value / 60_000));
@@ -104,15 +104,15 @@ const flat = (settings) =>
  */
 export async function editHost(kit, id, settings, { project, folder } = {}) {
   await openHosts(kit);
-  await kit.clickAt(`document.getElementById(${J(`ho-${id}-edit`)})`, 'Edit settings');
-  await until(kit, `document.getElementById(${J(`ho-${id}-save`)})`, 'the host’s editor');
+  await kit.clickAt(`document.getElementById(${js(`ho-${id}-edit`)})`, 'Edit settings');
+  await until(kit, `document.getElementById(${js(`ho-${id}-save`)})`, 'the host’s editor');
   for (const [k, v] of flat(settings)) await setField(kit, id, k, v);
   if (project && folder) await typeOver(kit, `#ho-${id}-pf-${project}`, folder);
-  await kit.clickAt(`document.getElementById(${J(`ho-${id}-save`)})`, 'Save');
+  await kit.clickAt(`document.getElementById(${js(`ho-${id}-save`)})`, 'Save');
   for (let i = 0; i < 60; i++) {
-    if (!(await kit.ev(`!!document.getElementById(${J(`ho-${id}-save`)})`))) return;
+    if (!(await kit.ev(`!!document.getElementById(${js(`ho-${id}-save`)})`))) return;
     const err = await kit.ev(
-      `(() => { const e = document.getElementById(${J(`ho-${id}-form-err`)}); if (!e || e.hidden || !e.textContent) return null; return [e.textContent, ...[...${CARD(id)}.querySelectorAll('.err:not([hidden])')].map((x) => x.textContent)].filter(Boolean).join(' '); })()`,
+      `(() => { const e = document.getElementById(${js(`ho-${id}-form-err`)}); if (!e || e.hidden || !e.textContent) return null; return [e.textContent, ...[...${CARD(id)}.querySelectorAll('.err:not([hidden])')].map((x) => x.textContent)].filter(Boolean).join(' '); })()`,
     );
     if (err) throw new Error(`The host’s settings weren’t saved: ${err}`);
     await sleep(250);
@@ -127,14 +127,14 @@ export async function editHost(kit, id, settings, { project, folder } = {}) {
  */
 export async function install(kit, id) {
   await openHosts(kit);
-  const button = `document.getElementById(${J(`ho-${id}-install`)})`;
+  const button = `document.getElementById(${js(`ho-${id}-install`)})`;
   let installOffered = false;
   for (let i = 0; i < 20 && !(installOffered = await kit.ev(`!!${button}`)); i++) await sleep(250);
   const card = String(await kit.ev(`${CARD(id)}?.innerText ?? ''`)).replace(/\s+/g, ' ');
   if (installOffered) await kit.clickAt(button, 'Install…');
   else
     await kit.ev(
-      `Promise.all([import('/app/js/hosts-confirm.mjs'), import('/app/js/client.mjs')]).then(([m, c]) => { m.confirmInstall(c.client.state.hosts[${J(id)}]); })`,
+      `Promise.all([import('/app/js/hosts-confirm.mjs'), import('/app/js/client.mjs')]).then(([m, c]) => { m.confirmInstall(c.client.state.hosts[${js(id)}]); })`,
     );
   await until(kit, `document.querySelector('.ho-install-text')`, 'the install confirm');
   const confirm = await kit.ev(`document.querySelector('.ho-install-text').textContent`);
@@ -158,7 +158,7 @@ export async function placePersona(kit, handle, hostId) {
   await closeAll(kit);
   await kit.clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
   await kit.clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Personas'), 'the Personas tab');
-  await kit.clickAt(`document.querySelector(${J(`.dialog [aria-label="Edit @${handle}"]`)})`, `Edit @${handle}`);
+  await kit.clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit @${handle}"]`)})`, `Edit @${handle}`);
   await until(kit, `document.getElementById('pe-where')`, `Runs on in @${handle}’s editor`);
   await pick(kit, '#pe-where', hostId ?? '');
   await kit.clickAt(byText(TOP, 'button.send', 'Save'), 'Save');
@@ -177,7 +177,7 @@ export async function placePersona(kit, handle, hostId) {
  */
 export async function removeHost(kit, id) {
   await openHosts(kit);
-  await kit.clickAt(`document.getElementById(${J(`ho-${id}-remove`)})`, 'Remove…');
+  await kit.clickAt(`document.getElementById(${js(`ho-${id}-remove`)})`, 'Remove…');
   await until(kit, `document.getElementById('ho-remove-go')`, 'the remove confirm');
   const confirm = String(await kit.ev(`${TOP}?.innerText ?? ''`)).replace(/\s+/g, ' ');
   await kit.clickAt(`document.getElementById('ho-remove-go')`, 'Remove Postbox from the host');

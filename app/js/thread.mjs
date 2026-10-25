@@ -3,6 +3,7 @@
 
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { activityLabel, stepTree } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
 import { subagentNow } from './agents.mjs';
@@ -170,7 +171,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const n = anchor && nodes.get(anchor.key);
     if (!s || !n?.isConnected) return;
     const d = n.getBoundingClientRect().top - viewTop(s) - anchor.at;
-    if (Math.abs(d) >= 1) s.scrollTop += d;
+    if (Math.abs(d) < 1) return;
+    s.scrollTop += d;
+    lastTop = s.scrollTop;
   };
   const seen = () => {
     unseen = 0;
@@ -225,6 +228,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const onScroll = () => {
     const s = box();
     if (!s) return;
+    // The event for a scroll the transcript made itself, holding what you read in place, comes in a later frame, maybe
+    // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place (#297).
+    const moved = s.scrollTop !== lastTop;
     if (atEnd(s)) {
       if (!stuck) held = measure(s);
       stuck = true;
@@ -232,9 +238,20 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     // However you got near the end, there’s nothing unread below any more (#91).
     if (gapOf(s) <= PILL_ROOM) seen();
     lastTop = s.scrollTop;
-    if (!stuck) anchor = findAnchor();
+    if (stuck) return;
+    if (!moved) holdAnchor();
+    anchor = findAnchor();
   };
   const sizes = new ResizeObserver(follow);
+  // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
+  // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
+  // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
+  // before its scroll event too, and only that one leaves it above the end.
+  const changes = new MutationObserver(() => {
+    const s = box();
+    if (stuck && s && !dead && atEnd(s)) lastTop = Math.min(lastTop, s.scrollTop);
+  });
+  changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   let bound = null;
   const bind = () => {
     const s = box();
@@ -377,6 +394,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
         queueMicrotask(() => kept.delete(key));
       }
       sizes.disconnect();
+      changes.disconnect();
       bound?.removeEventListener('scroll', onScroll);
       removeEventListener('resize', follow);
     },
@@ -658,82 +676,6 @@ function failureText(msg = 'This reply didn’t finish.') {
   return m ? [h('b', m[1]), ' ', m[2]] : [h('b', msg)];
 }
 
-function activityLabel(all) {
-  const steps = all.filter((s) => s.kind !== 'thought' && s.kind !== 'said');
-  const thoughts = all.filter((s) => s.kind === 'thought').length;
-  const refused = steps.filter((s) => s.state === 'denied').length;
-  const reads = steps.filter((s) => /^(read|grep|arxiv\.fetch|corpus\.read)/.test(s.label)).length;
-  const verb = steps.some((s) => s.label.startsWith('grep')) ? 'Searched' : 'Read';
-  const used = !steps.length
-    ? null
-    : reads === steps.length
-      ? `${verb} ${plural(steps.length, steps.some((s) => s.label.startsWith('arxiv')) ? 'paper' : 'file')}`
-      : `Used ${plural(steps.length, 'tool')}`;
-  return [used, thoughts ? plural(thoughts, 'thought') : null, refused ? `${refused} refused` : null].filter(Boolean).join(' · ');
-}
-
-/**
- * The activity list as a tree (#73): what a subagent did, said and thought nests under the step that started it, at
- * any depth, so a refused or failed step points at the subagent that took it.
- */
-function stepTree(steps) {
-  const ids = new Set(steps.map((s) => s.id));
-  /** @type {Map<string, any[]>} */
-  const kids = new Map();
-  for (const s of steps) if (s.parent && s.parent !== s.id && ids.has(s.parent)) kids.set(s.parent, [...(kids.get(s.parent) ?? []), s]);
-  const seen = new Set();
-  const row = (s) => {
-    seen.add(s);
-    const li = stepRow(s);
-    const under = (kids.get(s.id) ?? []).filter((x) => !seen.has(x));
-    if (under.length) li.append(h('ul.steps', under.map(row)));
-    return li;
-  };
-  const top = steps.filter((s) => !s.parent || s.parent === s.id || !ids.has(s.parent)).map(row);
-  // Any a bad parent left out (a loop) is listed at the top, rather than gone.
-  for (const s of steps) if (!seen.has(s)) top.push(row(s));
-  return h('ul.steps', top);
-}
-
-// One step in an agent’s activity list: a tool call (the agent’s or a subagent’s), a thought, or a subagent’s
-// narration, which open to their whole text. A failed step says why; a refused one says why too when its backend does
-// (the Kiro and Antigravity CLIs refuse headless, with no card: #152), and otherwise points to its card. A subagent’s
-// step says what it returned once it has (#73).
-const GLYPH = { running: 'running', failed: 'failed', denied: 'failed', done: 'done', stopped: 'stalled' };
-function stepRow(s) {
-  const dur = h('span.dur', s.ms ? `${(s.ms / 1000).toFixed(1)} s` : '');
-  // A subagent’s thought or narration is labeled with its name: it’s its own, never the agent’s (#73).
-  const who = s.who ? h('span.step-who', `${s.who}:`) : null;
-  if (s.kind === 'thought' || s.kind === 'said')
-    return h(
-      `li.${s.kind}`,
-      // Narration is read as “name: what it said”, so its glyph isn’t read too.
-      s.kind === 'said' ? h('span.g.g-said', { 'aria-hidden': 'true' }) : h('span.g.g-thought', { role: 'img', 'aria-label': 'thought' }),
-      s.detail && s.detail !== s.label
-        ? h('details.step-text', h('summary', who ? [who, ' '] : null, s.label), h('p', s.detail))
-        : h('span.step-text', who ? [who, ' '] : null, h('span', s.label)),
-      dur,
-    );
-  const note =
-    s.state === 'denied'
-      ? s.detail || 'Refused: see the card below.'
-      : s.state === 'failed'
-        ? s.detail
-        : s.state === 'stopped'
-          ? `Stopped${s.detail ? `: ${s.detail}` : ''}`
-          : s.job && s.state === 'running'
-            ? s.detail || 'Running in the background'
-            : s.kind === 'agent'
-              ? s.detail || null
-              : null;
-  return h(
-    'li',
-    { class: s.state === 'denied' ? 'denied' : '' },
-    h(`span.g.g-${GLYPH[s.state] ?? 'done'}`, { role: 'img', 'aria-label': s.state === 'denied' ? 'refused' : s.state }),
-    h('span.step-text', s.who ? h('span.step-who', `${s.who} ·`) : null, h('span.mono', s.label), note ? h('span.step-note', note) : null),
-    dur,
-  );
-}
 const fileSize = (size) => (size > 1e6 ? `${(size / 1e6).toFixed(1)} MB` : `${Math.ceil(size / 1000)} KB`);
 
 /**
@@ -1315,7 +1257,6 @@ export function mountComposer(threadId, { side = false } = {}) {
     ['compact', 'Summarize its context to make room', () => compact()],
     ['stop', 'Stop the agents that are working', () => stopAll()],
     ['rename', 'Rename this conversation', () => openRename(threadId)],
-    ['archive', 'Archive its session; restore it any time', () => archive()],
   ];
   const POSTBOX_NAMES = new Set(POSTBOX.map(([n]) => n));
   function addDir() {
@@ -1348,14 +1289,6 @@ export function mountComposer(threadId, { side = false } = {}) {
         (r) => (r?.ask ? askStop(se, r.ask) : say(`Stopped @${se.handle}.`)),
         (e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }),
       );
-  }
-  function archive() {
-    const se = target();
-    if (!se) return;
-    api(`/api/sessions/${se.id}/archive`, {}).then(
-      () => toast({ title: `Archived @${se.handle}’s session`, action: { label: 'Restore', run: () => api(`/api/sessions/${se.id}/restore`, {}) } }),
-      (e) => toast({ title: 'Couldn’t archive', text: e.message, level: 'blocking' }),
-    );
   }
   /** An agent’s skills and commands: its session’s, else the latest from another session of its persona. */
   function agentCommands(se) {
@@ -1826,15 +1759,14 @@ export function mountComposer(threadId, { side = false } = {}) {
               'span.pill',
               { role: 'status' },
               `Archived: read-only. `,
-              archived.map((se) =>
-                h(
-                  'button.btn.sm',
-                  {
-                    type: 'button',
-                    onclick: () => api(`/api/sessions/${se.id}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message })),
-                  },
-                  `Restore @${se.handle}`,
-                ),
+              // Its agents are archived with it, and come back with it (#320).
+              h(
+                'button.btn.sm',
+                {
+                  type: 'button',
+                  onclick: () => api(`/api/threads/${threadId}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message })),
+                },
+                'Restore conversation',
               ),
             ),
           )

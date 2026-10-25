@@ -136,7 +136,8 @@ async function newCommits(ledger, c, root, before, after, overlap) {
   for (const [sha, branch] of found) {
     if (known(sha)) continue;
     await ledger.recordCommit(c.turn, c.id, { sha, branch }, root, '');
-    if (overlap) ledger.patch(conv, known(sha).id, { overlap: true });
+    // A sha the ledger refused records nothing, so there’s nothing to mark.
+    if (overlap && known(sha)) ledger.patch(conv, known(sha).id, { overlap: true });
   }
 }
 

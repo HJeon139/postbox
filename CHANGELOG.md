@@ -2,6 +2,51 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.33.3 (2026-10-25)
+
+### Fixes
+
+- **server:** missing or bare static folders answer 404, and page files go through servedFile
+- **ledger:** record a SHA-256 repository’s commits, whose shas are 64 hex
+- **ledger:** git reads ignore commands a repository’s config names
+- **server:** serve static files only from inside their folders, through links too
+- **side-threads:** refuse a wake_agent message or post past 50,000 characters
+- **datasets:** refuse a datasets folder that links out of the project
+- **corpus:** hold corpus_search to 1–50 results and its first 50 book ids
+- **mcp:** compare a tool call’s turn token in constant time
+- **ledger:** refuse a commit sha that isn’t hex before it becomes git’s argument
+
+## 0.33.2 (2026-10-25)
+
+### Fixes
+
+- **thread:** note a clamp only when it left the view at the page's end
+- **thread:** keep the view on what you read when the page changes under it
+
+## 0.33.1 (2026-10-25)
+
+### Fixes
+
+- **deps:** move sharp to 0.35.5 and body-parser to 2.4.0
+- **uat:** pick canary words with randomInt, not a byte modulo the list
+- **uat:** escape backslashes in report table cells
+- **markdown:** strip tags in one place, until none is left
+- **markdown:** close a fence by comparing its run, not a regular expression built from text
+
+## 0.33.0 (2026-10-25)
+
+### Features
+
+- **archive:** sessions are archived and deleted with their conversation; nothing archives itself
+- **wakes:** raise the wake limit from 3 to 10
+- **shell:** ring-only to the ask, and no overview, Archived page or top-bar rings
+- **reactions:** all five inline beside Reply in thread, with who reacted
+
+### Fixes
+
+- **shell:** deleting a conversation's only agent leaves it, not back into it
+- **css:** the live regions don't make the page taller than the app
+
 ## 0.32.4 (2026-10-25)
 
 ### Fixes

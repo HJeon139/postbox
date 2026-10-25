@@ -5,8 +5,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { offersBring } from '../bring.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
-import { offersBring } from '../side-threads.mjs';
 import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';

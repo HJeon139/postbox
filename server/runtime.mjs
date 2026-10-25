@@ -3,12 +3,11 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { LIMITS, limitText, READING } from '../shared/limits.mjs';
+import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
@@ -33,9 +32,11 @@ import {
   resolveAppSend,
   updateApp,
 } from './apps.mjs';
+import { restoreArchives } from './archive-lifecycle.mjs';
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
+import { bringToConversation } from './bring.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
-import { parseDataset } from './corpus.mjs';
+import { addDataset, reloadDatasets } from './datasets.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
@@ -71,7 +72,6 @@ import { runShell } from './shell.mjs';
 import {
   agentWake,
   archiveForks,
-  bringToConversation,
   bumpSideLink,
   deliverWake,
   dropWakes,
@@ -83,6 +83,7 @@ import {
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
+import { eraseThreads } from './thread-erase.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
@@ -97,9 +98,6 @@ export { PERMISSION_MODES, readCapped };
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
 const DELETE_UNDO_MS = 10000;
-/** The days a conversation can sit with nothing happening before it archives itself (#101), unless Settings says otherwise. */
-export const ARCHIVE_AFTER_DAYS = 7;
-export const ARCHIVE_AFTER_CHOICES = [0, 1, 3, 7, 30]; // 0: never
 /** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
 const LINT_SETTLE_MS = 1500;
 /** …and at most, while an app of the agent’s is still being checked. */
@@ -245,6 +243,8 @@ export class Runtime {
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     // Forks are gone (#228): any left from before are archived, once.
     archiveForks(this);
+    // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
+    restoreArchives(this);
   }
 
   get s() {
@@ -2797,7 +2797,7 @@ export class Runtime {
 
   /**
    * A conversation or room and every thread under it, a side thread a topic thread’s fork woke included: what
-   * archiving or restoring it covers (#101).
+   * archiving, restoring or deleting it covers (#101, #320).
    */
   archiveScope(threadId) {
     const t = this.thread(threadId);
@@ -2807,7 +2807,8 @@ export class Runtime {
 
   /**
    * Archives a conversation (#101): every session in it, its side and topic threads’ forks too, through archive(),
-   * so each keeps its transcript and its backend session for Restore. It leaves the overview and the rail.
+   * so each keeps its transcript and its backend session for Restore. It leaves the rail. A session is archived only
+   * this way, with its conversation (#320): archive() has no route of its own.
    */
   archiveThread(threadId) {
     const threads = this.archiveScope(threadId);
@@ -2817,7 +2818,7 @@ export class Runtime {
       .map((se) => se.id);
     for (const id of ids) this.archive(id);
     for (const t of threads) if (!this.s.threads[t.id].archived) this.putThread({ ...this.s.threads[t.id], archived: true });
-    // What it archived, so Restore in its toast brings back only these, not an agent archived on its own before.
+    // What it archived: every agent here that wasn’t yet.
     return ids;
   }
 
@@ -2827,43 +2828,6 @@ export class Runtime {
     // A fork retired by #228’s migration stays archived.
     for (const t of threads) for (const se of this.sessionsIn(t.id)) if (se.archived && !se.retiredFork) this.restore(se.id);
     for (const t of threads) if (this.s.threads[t.id].archived) this.putThread({ ...this.s.threads[t.id], archived: false });
-  }
-
-  /**
-   * Archives each conversation where nothing has happened for the days Settings says (#101): no message, no turn,
-   * nothing waiting on you (a question, an unread reply, a queued message), nothing working, no background job
-   * running and no wake scheduled, in it or the threads under it. The server runs it at startup and every hour. It
-   * only archives: deleting stays the person’s action.
-   * @param {number} [now]
-   * @returns {string[]} the conversations it archived
-   */
-  archiveIdle(now = Date.now()) {
-    const days = this.s.settings.archiveAfterDays ?? ARCHIVE_AFTER_DAYS;
-    if (!days) return [];
-    const done = [];
-    for (const t of Object.values(this.s.threads)) {
-      if (t.kind === 'topic' || t.kind === 'side' || t.archived || t.deleting) continue;
-      const threads = this.archiveScope(t.id);
-      const ses = threads.flatMap((x) => this.sessionsIn(x.id)).filter((se) => !se.archived);
-      const waiting = (se) =>
-        se.needs ||
-        se.unread ||
-        ['think', 'gen', 'tool', 'stopping'].includes(se.state) ||
-        this.turns.has(se.id) ||
-        // A background job still running (#129), or a wake an agent scheduled, is something happening too.
-        (se.jobs ?? []).some((j) => j.state === 'running') ||
-        Object.values(this.s.schedules).some((sc) => sc.sessionId === se.id);
-      if (!ses.length || ses.some(waiting) || threads.some((x) => x.queue?.length)) continue;
-      const last = Math.max(
-        t.createdAt ?? 0,
-        ...ses.map((se) => Math.max(se.updatedAt ?? 0, se.finishedAt ?? 0, se.startedAt ?? 0)),
-        ...threads.map((x) => this.store.items(x.id).at(-1)?.at ?? 0),
-      );
-      if (now - last < days * 864e5) continue;
-      this.archiveThread(t.id);
-      done.push(t.id);
-    }
-    return done;
   }
 
   /** Deletes after DELETE_UNDO_MS unless undone. The persona always stays. */
@@ -2891,10 +2855,11 @@ export class Runtime {
     if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Delete the conversation it belongs to instead.');
     const until = Date.now() + DELETE_UNDO_MS;
     // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).
-    for (const se of this.sessionsIn(threadId)) {
-      this.stop(se.id, { silent: true });
-      this.remote.cancel(se.id);
-    }
+    for (const x of this.archiveScope(threadId))
+      for (const se of this.sessionsIn(x.id)) {
+        this.stop(se.id, { silent: true });
+        this.remote.cancel(se.id);
+      }
     this.putThread({ ...t, deleting: until });
     clearTimeout(this.timers.get(`delt:${threadId}`));
     this.timers.set(`delt:${threadId}`, setTimeout(() => this.purgeThread(threadId), DELETE_UNDO_MS).unref());
@@ -2912,25 +2877,12 @@ export class Runtime {
     this.timers.delete(`delt:${threadId}`);
     const t = this.s.threads[threadId];
     if (!t?.deleting) return;
-    const ids = [
-      threadId,
-      ...Object.values(this.s.threads)
-        .filter((x) => x.parentId === threadId)
-        .map((x) => x.id),
-    ];
-    // Background jobs Postbox kept running for them would run on with no record (#129).
-    this.stopKeptJobs(
-      ids.flatMap((id) => this.s.threads[id]?.members ?? []),
+    // Everything under it, a side thread of a topic thread too, and their sessions with them (#320).
+    eraseThreads(
+      this,
+      this.archiveScope(threadId).map((x) => x.id),
       'Its conversation was deleted.',
     );
-    for (const id of ids) {
-      for (const sid of this.s.threads[id]?.members ?? []) {
-        this.stopMirrorFor(sid);
-        if (this.s.sessions[sid]) this.store.emit('remove', { kind: 'session', id: sid });
-      }
-      for (const app of Object.values(this.s.apps)) if (app.threadId === id) this.store.emit('remove', { kind: 'app', id: app.id });
-    }
-    for (const id of ids.reverse()) this.store.emit('remove', { kind: 'thread', id });
   }
 
   stopMirrorFor(sessionId) {
@@ -2964,17 +2916,16 @@ export class Runtime {
     const t = this.s.threads[se.threadId];
     const others = (t?.members ?? []).filter((id) => id !== sessionId && this.s.sessions[id]);
     if (t && !others.length) {
-      // Its own thread: erase the thread, its apps and its side threads.
-      for (const app of Object.values(this.s.apps)) if (app.threadId === t.id) this.store.emit('remove', { kind: 'app', id: app.id });
-      for (const side of Object.values(this.s.threads)) if (side.parentId === t.id) this.store.emit('remove', { kind: 'thread', id: side.id });
-      this.store.emit('remove', { kind: 'thread', id: t.id });
+      // Its own conversation goes with it, as deleting the conversation does: every thread under it, with its sessions
+      // and apps (#320).
+      eraseThreads(this, t.kind === 'topic' || t.kind === 'side' ? [t.id] : this.archiveScope(t.id).map((x) => x.id), 'Its session was deleted.', [sessionId]);
     } else if (t) {
       // In a room: it leaves, and its past messages stay, marked deleted.
       this.putThread({ ...t, members: others, lastSpeaker: t.lastSpeaker === sessionId ? (others[0] ?? null) : t.lastSpeaker });
       for (const it of this.store.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
       this.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
     }
-    this.store.emit('remove', { kind: 'session', id: sessionId });
+    if (this.s.sessions[sessionId]) this.store.emit('remove', { kind: 'session', id: sessionId });
   }
 
   // ── Scheduled wake-ups ─────────────────────────────────────────────────────────────
@@ -3064,86 +3015,11 @@ export class Runtime {
 
   // ── Datasets (#47) ─────────────────────────────────────────────────────────────────
 
-  /**
-   * add_dataset: loads a JSON Lines file from the project’s own Postbox folder, .postbox/datasets/, into the corpus,
-   * without a restart, which would end every agent’s session. Its records are searched only when a search names the
-   * dataset, so they don’t mix into other agents’ results. An event keeps it, so it’s loaded again after a restart,
-   * and a line in the conversation says it was loaded. Loading the same id again replaces it.
-   * @param {string} sessionId @param {{ id?: unknown, path?: unknown, title?: unknown }} args
-   */
-  async addDataset(sessionId, { id, path, title } = {}) {
-    const se = this.session(sessionId);
-    const project = this.s.projects[this.s.threads[se.threadId]?.projectId];
-    const name = String(id ?? '');
-    if (!DATASET_ID.test(name)) return { ok: false, message: 'A dataset id is letters, digits, - and _ (up to 64), such as “scifact-abstracts”.' };
-    const taken = this.corpus.stats().books.find((b) => b.id === name);
-    if (taken && !taken.dataset) return { ok: false, message: `“${name}” is a book in the corpus. Pick another id.` };
-    if (!project?.folder)
-      return {
-        ok: false,
-        message: 'This conversation’s project has no folder, so there’s no .postbox/datasets/ to load from. Ask the person to give the project a folder.',
-      };
-    const dir = datasetDir(project.folder);
-    let raw;
-    try {
-      raw = await this.datasetFile(dir, path);
-    } catch (e) {
-      return { ok: false, message: e.message };
-    }
-    let records;
-    try {
-      records = parseDataset(raw.text);
-    } catch (e) {
-      return { ok: false, message: e.message };
-    }
-    const meta = { title: clip(String(title ?? '') || name, 200), author: `@${se.handle}` };
-    this.corpus.addRecords(name, records, meta);
-    this.corpus.reindex();
-    this.store.emit('dataset', { id: name, projectId: project.id, path: raw.path, ...meta, records: records.length, by: se.handle, at: Date.now() });
-    this.addItem(se.threadId, { kind: 'system', variant: 'dataset', handle: se.handle, dataset: name, records: records.length });
-    return {
-      ok: true,
-      message: `Loaded ${records.length.toLocaleString('en-US')} records as the dataset “${name}”. It’s searched only when a search names it: corpus.search with books: ["${name}"]. corpus.read with id "${name}:<record id>" reads one record.`,
-    };
+  addDataset(sessionId, args) {
+    return addDataset(this, sessionId, args);
   }
-
-  /**
-   * Reads a dataset file: a path in the project’s .postbox/datasets/ (relative to it), followed through links, so a
-   * link can’t lead outside it, and up to datasetBytes.
-   * @param {string} dir @param {unknown} path
-   */
-  async datasetFile(dir, path) {
-    if (typeof path !== 'string' || !path.trim()) throw new Error(`add_dataset needs the path of a .jsonl file in ${dir}.`);
-    const root = await realpath(dir).catch(() => null);
-    if (!root) throw new Error(`There’s no folder ${dir} yet. Write the dataset there, then load it.`);
-    const real = await realpath(resolve(root, path)).catch(() => null);
-    if (!real) throw new Error(`There’s no file at ${path} in ${dir}.`);
-    if (!real.startsWith(root + sep)) throw new Error(`${path} is outside ${dir}. Datasets load only from there.`);
-    const st = await stat(real);
-    if (!st.isFile()) throw new Error(`${path} isn’t a file.`);
-    const over = () => new Error(`${path} is over ${limitText('datasetBytes')}, the limit for a dataset.`);
-    if (st.size > LIMITS.datasetBytes) throw over();
-    const buf = await readCapped(real, LIMITS.datasetBytes);
-    if (!buf) throw over();
-    return { path: relative(root, real), text: buf.toString('utf8') };
-  }
-
-  /** At startup: loads the datasets agents added before the restart, from where they were. Returns how many loaded. */
-  async reloadDatasets() {
-    let n = 0;
-    for (const ds of Object.values(this.s.datasets ?? {})) {
-      const folder = this.s.projects[ds.projectId]?.folder;
-      try {
-        if (!folder) throw new Error('its project has no folder now');
-        const { text } = await this.datasetFile(datasetDir(folder), ds.path);
-        this.corpus.addRecords(ds.id, parseDataset(text), { title: ds.title, author: ds.author });
-        n++;
-      } catch (e) {
-        console.warn(`Couldn’t load the dataset “${ds.id}” again: ${e.message}`);
-      }
-    }
-    if (n) this.corpus.reindex();
-    return n;
+  reloadDatasets() {
+    return reloadDatasets(this);
   }
 
   // ── Presence ───────────────────────────────────────────────────────────────────────
@@ -3340,10 +3216,6 @@ export class Runtime {
     };
   }
 }
-
-const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-/** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */
-const datasetDir = (folder) => join(folder, '.postbox', 'datasets');
 
 /** What Postbox asks when you stop an agent whose background jobs are running (#129). */
 export function stopAskText(handle, n) {

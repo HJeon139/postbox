@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from '../server/index.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { play } from './demo.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -22,10 +22,10 @@ const PORT = Number(process.env.PB_PORT ?? 4291);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 
 // Finders: JS expressions run in the page.
-const item = (text) => `[...document.querySelectorAll('.transcript > .item')].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+const item = (text) => `[...document.querySelectorAll('.transcript > .item')].find((n) => n.textContent.includes(${js(text)}))`;
 const block = (title) =>
-  `[...document.querySelectorAll('.transcript > .item')].find((n) => n.querySelector('.block-head, .app-head, .appframe') && n.textContent.includes(${JSON.stringify(title)}))`;
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+  `[...document.querySelectorAll('.transcript > .item')].find((n) => n.querySelector('.block-head, .app-head, .appframe') && n.textContent.includes(${js(title)}))`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
 /** Captures taken during the demo, at the moment a scene is on screen: [scene, name, finder, prepare?]. */
 const DURING = [
   ['15-permission', 'permission-card', item('Let @indexer run a command')],
@@ -55,10 +55,6 @@ const AFTER = [
   ['rail-row', 'Corpus planning', q('nav.rail a.row[aria-current]')],
   ['agents-section', 'Corpus planning', q('nav.rail .agents-sec')],
   ['agent-quick-panel', 'Corpus planning', q('.dialog.quick'), 'agent-panel'],
-  ['overview', '#/', q('main.ov')],
-  ['overview-card', '#/', `[...document.querySelectorAll('.ov-col')].find((n) => n.classList.contains('needs'))`],
-  ['session-menu', '#/', q('.menu'), 'session-menu'],
-  ['archived-sessions', '#/archived', q('main.ov')],
   ['threads-view', 'threads', q('main.threads-view')],
   ['composer', 'Corpus explorer', q('.composer')],
   ['mention-menu', 'Corpus planning', q('.mention-menu, .menu'), 'mention'],
@@ -113,7 +109,7 @@ const AFTER = [
   ['new-room-sheet', 'Corpus explorer', q('.dialog'), 'new-room'],
   ['rename-sheet', 'Corpus planning', q('.dialog'), 'rename'],
   ['delete-conversation-sheet', 'Corpus planning', q('.dialog'), 'delete-conversation'],
-  ['delete-session-sheet', '#/', q('.dialog'), 'delete-session'],
+  ['delete-session-sheet', 'Corpus planning', q('.dialog'), 'delete-session'],
   ['command-palette', 'Corpus explorer', q('.dialog'), 'palette'],
   ['settings-appearance', 'Corpus explorer', q('.dialog'), 'settings:appearance'],
   ['settings-personas', 'Corpus explorer', q('.dialog'), 'settings:personas'],
@@ -135,7 +131,6 @@ const PREPARE = {
   'postbox-menu': `document.querySelector('button.brand').click()`,
   'conversation-menu': `document.querySelector('header.topbar [aria-label^="Actions for"]').click()`,
   'agent-panel': `document.querySelector('nav.rail .agent-btn').click()`,
-  'session-menu': `[...document.querySelectorAll('.ov-col')][0].querySelector('[aria-haspopup="menu"]').click()`,
   mention: `(() => { const t = document.getElementById('composer-input'); t.focus(); t.value = '@'; t.setSelectionRange(1, 1); t.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   'open-activity': `document.querySelector('.transcript details.activity')?.setAttribute('open', '')`,
   'open-activity-last': `(() => { const d = [...document.querySelectorAll('.transcript details.activity')].at(-1); d?.setAttribute('open', ''); d?.querySelector('li.thought details')?.setAttribute('open', ''); })()`,
@@ -145,7 +140,7 @@ const PREPARE = {
   'new-room': `document.querySelector('[aria-label="New room"]').click()`,
   rename: `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Rename')).click(); })()`,
   'delete-conversation': `(() => { document.querySelector('header.topbar [aria-label^="Actions for"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Delete')).click(); })()`,
-  'delete-session': `(() => { [...document.querySelectorAll('.ov-col')][0].querySelector('[aria-haspopup="menu"]').click(); [...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Delete')).click(); })()`,
+  'delete-session': `(() => { document.querySelector('nav.rail .agent-btn').click(); [...document.querySelectorAll('.dialog.quick button')].find((b) => b.textContent.includes('Delete session')).click(); })()`,
   palette: `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))`,
   'settings:appearance': `document.querySelector('[aria-label="Settings"]').click()`,
   'settings:personas': `(() => { document.querySelector('[aria-label="Settings"]').click(); [...document.querySelectorAll('.dialog [role=tab], .dialog button')].find((b) => b.textContent.trim() === 'Personas').click(); })()`,

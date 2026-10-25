@@ -17,12 +17,11 @@ import { toolSwitch } from './agent-tools.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
-import { panelWhileNeeds } from './needs-nav.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
 import { hostLine, stopNote, turnLine } from './remote.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { capsOf, EFFORT_NAMES, modeHelp, openSettings } from './sheets.mjs';
+import { capsOf, confirmDelete, EFFORT_NAMES, modeHelp, openSettings } from './sheets.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
 export { subagentNow } from './agent-tree.mjs';
@@ -80,7 +79,10 @@ export function inThreadLine(threadId) {
   return { el, destroy: off };
 }
 
-/** One agent’s row: a button that opens its quick panel, and its open asks under it. */
+/**
+ * One agent’s row: its ring, which goes to what it needs while it needs you (#320, needs-nav.mjs), then a button with its
+ * name that opens its quick panel, always, and its open asks under it.
+ */
 function agentRow(se) {
   const button = h('button.agent-btn', {
     type: 'button',
@@ -92,11 +94,11 @@ function agentRow(se) {
   // Its ring is made once and kept, so its animation keeps running; the words beside it repaint.
   const ring = ringFor(se, 'sm');
   ring.dataset.session = se.id;
-  button.append(h('span.ring-slot', { 'aria-hidden': 'true' }, ring), h('span.name'));
+  button.append(h('span.name'));
   const n = h(
     'li.agent-row',
-    button,
-    h('div.agent-asks', openAsksEl(se, true), panelWhileNeeds(se, button, openAgentPanel)),
+    h('div.agent-line', h('span.ring-slot', ring), button),
+    h('div.agent-asks', openAsksEl(se)),
     h('ul.agent-subs', { 'aria-label': `Where @${se.handle} is at work, and its subagents` }),
   );
   paintRow(n, se, true);
@@ -111,7 +113,7 @@ function paintRow(n, se, fresh = false) {
   const where = hostLine(se);
   const there = turnLine(se);
   const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined, where, there]);
-  ringFor(se, 'sm', n.querySelector('.agent-btn pb-ring'));
+  ringFor(se, 'sm', n.querySelector('.agent-line pb-ring'));
   const tree = treeOf(se);
   const subagents = subagentsOf(se);
   const subs = n.querySelector('.agent-subs');
@@ -190,7 +192,7 @@ export function openAgentPanel(sessionId, from = null) {
         body,
         h(
           'div.qp-asks',
-          openAsksEl(se, true, () => dlg?.close()),
+          openAsksEl(se, () => dlg?.close()),
         ),
         hostSection(se),
         // This conversation’s: the session’s snapshot, as /model and /effort set it.
@@ -284,23 +286,8 @@ export function openAgentPanel(sessionId, from = null) {
                 },
                 'Compact',
               ),
-          h(
-            'button.btn.sm',
-            {
-              type: 'button',
-              onclick: () =>
-                api(`/api/sessions/${se.id}/archive`, {}).then(
-                  () =>
-                    handOff(() => {
-                      toast({ title: `Archived @${se.handle}’s session`, action: { label: 'Restore', run: () => api(`/api/sessions/${se.id}/restore`, {}) } });
-                      // Its row has gone, so focus has nowhere to go back to: the composer, as after acting in a block.
-                      if (document.activeElement === document.body) document.getElementById('composer-input')?.focus();
-                    }),
-                  failed,
-                ),
-            },
-            'Archive',
-          ),
+          // Delete moved here from the overview’s card menu, which went with Archive (#320); its Undo stays.
+          h('button.btn.sm.danger', { type: 'button', onclick: () => handOff(() => confirmDelete(se)) }, 'Delete session…'),
         ),
       ),
     );

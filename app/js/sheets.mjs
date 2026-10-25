@@ -852,21 +852,10 @@ export function confirmDelete(se) {
           li(true, `Files in ${S().projects[t?.projectId]?.folder ?? 'the project folder'}`),
         ),
       ),
-      h('p.small.dim', 'You’ll have 10 seconds to undo. To keep the conversation but stop the session, archive it instead.'),
+      h('p.small.dim', 'You’ll have 10 seconds to undo.'),
     ],
     foot: [
       h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'),
-      h(
-        'button.btn',
-        {
-          type: 'button',
-          onclick: () => {
-            dlg.close();
-            api(`/api/sessions/${se.id}/archive`, {}).then(() => toast({ title: `Archived @${se.handle}’s session` }));
-          },
-        },
-        'Archive instead',
-      ),
       h(
         'button.btn.danger',
         {
@@ -877,7 +866,7 @@ export function confirmDelete(se) {
               const r = await api(`/api/sessions/${se.id}`, undefined, 'DELETE');
               const { afterDelete } = await import('./shell.mjs');
               afterDelete(se, r.until);
-              if (location.hash.includes(se.threadId) && !room) navigate('#/');
+              if (location.hash.includes(se.threadId) && !room) (await import('./last-place.mjs')).leave(se.threadId);
             } catch (e) {
               toast({ title: 'Couldn’t delete', text: e.message, level: 'blocking' });
             }
@@ -896,8 +885,6 @@ export function confirmDelete(se) {
 
 export function openSettings(tab = 'appearance', personaId = null) {
   let cur = tab;
-  // What the server answered for Archive idle conversations: the page may not have heard the change yet (#101).
-  let archiveDays = null;
   const tabs = h('div.tabs', { role: 'tablist' });
   const panel = h('div', { role: 'tabpanel', style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // The tabs and the panel repaint together; focus stays on the tab or control you used (#26).
@@ -1135,46 +1122,6 @@ export function openSettings(tab = 'appearance', personaId = null) {
         ),
       ),
       h('p.small.dim', 'The folder bounds the file picker and is where Claude Code sessions start.'),
-      // A conversation where nothing has happened for this long archives itself, in every project (#101).
-      h(
-        'div.field',
-        h('span.label', { id: 'pj-archive' }, 'Archive idle conversations'),
-        h(
-          'div.seg',
-          { role: 'radiogroup', 'aria-labelledby': 'pj-archive' },
-          [
-            [1, 'After 1 day'],
-            [3, '3 days'],
-            [7, '7 days'],
-            [30, '30 days'],
-            [0, 'Never'],
-          ].map(([v, l]) =>
-            h(
-              'button',
-              {
-                type: 'button',
-                role: 'radio',
-                'aria-checked': String((archiveDays ?? S().settings.archiveAfterDays ?? 7) === v),
-                // Marked in place, not repainted: that would clear a project you’re typing in the form above.
-                onclick: (e) => {
-                  const picked = e.currentTarget;
-                  api('/api/settings', { archiveAfterDays: v }, 'PUT')
-                    .then((r) => {
-                      archiveDays = r.archiveAfterDays;
-                      for (const b of picked.parentElement.children) b.setAttribute('aria-checked', String(b === picked));
-                    })
-                    .catch((err) => toast({ title: 'Couldn’t change it', text: err.message, level: 'blocking' }));
-                },
-              },
-              l,
-            ),
-          ),
-        ),
-      ),
-      h(
-        'p.small.dim',
-        'When nothing has happened in a conversation for that long, and nothing waits on you there, it moves to Archived with its agents. Nothing is deleted, and Restore brings it back.',
-      ),
     ];
   };
   paint();
@@ -1208,7 +1155,6 @@ export function openPalette() {
         icon: 'thread',
         run: () => navigate(`#/t/${t.id}`),
       })),
-    { label: 'Overview', sub: 'All live sessions', icon: 'agent', run: () => navigate('#/') },
     { label: 'New agent', sub: 'From a boilerplate', icon: 'plus', run: () => openNewAgent({}) },
     { label: 'Settings', sub: 'Mode, personas, projects', icon: 'gear', run: () => openSettings() },
     ...['system', 'light', 'dark'].map((m) => ({

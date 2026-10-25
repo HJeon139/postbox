@@ -2,7 +2,7 @@
 
 ![Wake-limit confirm](../../screenshots/hop-confirm.png)
 
-**Where:** After three agent-to-agent wakes in a row.
+**Where:** After ten agent-to-agent wakes in a row (three until #320).
 
 ## Why it exists
 
@@ -16,6 +16,6 @@ Stops two agents from looping on each other.
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Scene 7 in “Corpus planning”: allow the fourth wake.
+2. Scene 7 in “Corpus planning”: allow the eleventh wake.
 
 **Pass if:** The wake happens only after you allow it.
