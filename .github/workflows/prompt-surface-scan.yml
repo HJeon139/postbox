@@ -126,10 +126,17 @@ jobs:
             skillspector/.venv/bin/skillspector scan "out/$side/scan" --no-llm --format json --output "$side.json" > /dev/null || code=$?
             if [ "$code" -gt 1 ]; then echo "::error::SkillSpector couldn't scan the $side ($code)."; exit 1; fi
           done
-          side=base; [ -f base/tools/prompt-gate.mjs ] || side=head
+          # The base's judge, or the pull request's while the base has no accepted-findings list yet.
+          side=base; grep -qs ACCEPTED_FILE base/tools/prompt-findings.mjs || side=head
+          # The pull request's own list of accepted findings: it's under .github/, so adding to it waits for the
+          # maintainer's approval at the prompt gate.
+          accepted=head/.github/prompt-surface-accepted.json
+          # The run page's annotations name each finding that stops it, for a viewer who can't open the summary.
+          node "$side/tools/prompt-gate.mjs" annotations base.json head.json "$accepted" || true
           echo "## SkillSpector" >> "$GITHUB_STEP_SUMMARY"
-          # Fails on a finding the pull request adds that is high or critical; one main already has doesn't count.
+          # Fails on a finding the pull request adds that is high or critical and not accepted, or on an accepted one
+          # that no longer matches; one main already has doesn't count.
           status=0
-          node "$side/tools/prompt-gate.mjs" findings base.json head.json >> "$GITHUB_STEP_SUMMARY" || status=$?
-          if [ "$status" -ne 0 ]; then echo "::error::This pull request adds a high or critical SkillSpector finding to what agents read. See the job summary."; fi
+          node "$side/tools/prompt-gate.mjs" findings base.json head.json "$accepted" >> "$GITHUB_STEP_SUMMARY" || status=$?
+          if [ "$status" -ne 0 ]; then echo "::error::A high or critical SkillSpector finding this pull request adds isn't accepted, or an accepted one no longer matches. The annotations name each; the job summary says how to accept one."; fi
           exit "$status"
