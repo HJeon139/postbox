@@ -6,10 +6,12 @@
 //   node tools/uat-run.mjs --scenario scifact
 //   node tools/uat-run.mjs --scenario hotpotqa --steps 30 --budget 6 --tester-model claude-opus-5-5
 //
-// Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. A scenario
+// Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. --budget caps
+// the tester; --max-cost caps the whole run (agents, tester, verifier and telemetry), stopping it, report and all, before
+// a step or an agent turn could pass the cap (tools/uat/budget.mjs). Without --max-cost the agents are uncapped. A scenario
 // can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
-// the scenario is a compatibility run, which needs --compat. The Antigravity CLI is on a free tier, so it runs only
-// for a version release: --release (releaseGate), which also counts as --compat:
+// the scenario is a compatibility run, which needs --compat, the Antigravity CLI’s included. A backend kept to version
+// releases (none today) needs --release (releaseGate), which also counts as --compat:
 //
 //   node tools/uat-run.mjs --scenario mixedroom --compat
 //
@@ -31,17 +33,22 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { launch, sleep } from './cdp.mjs';
+import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
+import { goToNeedsStep } from './uat/driver-needs.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { hostMode } from './uat/hosts-options.mjs';
 import { createHostRun, readHosts, startHosts } from './uat/hosts-run.mjs';
 import { forHosts } from './uat/hosts-scenario.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
+import { observe as observeScreen } from './uat/observe.mjs';
 import { startPostbox } from './uat/postbox.mjs';
+import { newProbes } from './uat/probes.mjs';
 import { presetFindings } from './uat/regressions.mjs';
-import { agentsSpent, writeReport } from './uat/report.mjs';
+import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
 import { readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
@@ -51,7 +58,9 @@ import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
+import { sendThenStop, settle as settleTurns, stopThroughPage, WAIT_MAX_S, watchBudget } from './uat/turns.mjs';
 import { withoutPreset } from './uat/verdicts.mjs';
+import { makeWorkspace } from './uat/workspace.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const { values: opt } = parseArgs({
@@ -65,6 +74,8 @@ const { values: opt } = parseArgs({
     phase: { type: 'string', default: '1' },
     'turn-timeout': { type: 'string', default: '900' },
     budget: { type: 'string', default: '8' },
+    // The most the whole run may spend, in dollars (tools/uat/budget.mjs). Unset, only --budget caps the tester.
+    'max-cost': { type: 'string' },
     'tester-model': { type: 'string', default: 'claude-sonnet-5-5' },
     // The agents’ model and effort. A pass checks that Postbox works, and a fast model shows that as well as the
     // default one does. Scenarios that measure what agents choose say `- models: persona`, and `persona` here keeps
@@ -87,8 +98,6 @@ const { values: opt } = parseArgs({
     host: { type: 'string', multiple: true },
     'host-setting': { type: 'string', multiple: true },
     place: { type: 'string', multiple: true },
-    // The run’s whole spend, agents and tester, in dollars: the run stops before a step that would start past it.
-    'run-budget': { type: 'string' },
     // Every run records itself and saves one telemetry report (designs/telemetry-persona.md, U4); no opts out.
     telemetry: { type: 'string', default: 'yes' },
   },
@@ -117,13 +126,14 @@ async function main() {
     throw new Error(
       `This scenario puts agents on ${other.join(' and ')}, so it’s a compatibility run, which runs only when asked: it uses that harness’s credits, and a regular pass is Claude only. Pass --compat to run it.`,
     );
-  // A release-only backend (the Antigravity CLI, on a free tier) runs only in a release run; otherwise Postbox starts
+  // A release-only backend (none today: tools/uat/scenario.mjs) runs only in a release run; otherwise Postbox starts
   // without it, so the tester can’t put an agent on it from a sheet either.
   const gate = releaseGate(scenario, { release: opt.release });
   if (gate.error) throw new Error(gate.error);
   const unknown = unknownTriggers(scenario);
   if (unknown.length) throw new Error(`This scenario names triggers that don’t exist: ${unknown.join(', ')}. See tools/uat/triggers.mjs.`);
   const steps = stepCap(scenario, opt.steps);
+  const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = {
@@ -136,10 +146,7 @@ async function main() {
     shots: join(dir, 'shots'),
   };
   for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
-  // The workspace is a git repository of its own. It lies inside the Postbox checkout, so without one an agent’s
-  // git add and commit would land in Postbox’s history; a workroom agent had to notice and make a nested repo.
-  spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
-  const canaries = scenario.seed === 'canaries' ? tm.seedCanaries(paths.workspace, dir) : null;
+  const canaries = makeWorkspace(scenario, paths, dir);
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -201,15 +208,13 @@ async function main() {
     transcripts: [],
     console: page.logs,
     apps: {},
-    // stale: the page’s notices that Postbox refused an answer as stale (#123); interrupts: how the runner answered
-    // Stop’s question about background jobs (#126). The triggers read both. panels, panes and drafts: what the Agents
-    // section, the right pane and full screen showed (#105, #146).
-    probes: { fullScreen: [], attachments: [], answers: [], stale: [], interrupts: [], panels: [], panes: [], drafts: [] },
+    probes: newProbes(),
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
     ...(hr ? { hosts: hr.record } : {}),
   };
+  let unwatch = () => {};
   try {
     await page.size(1440, 1000, { theme: 'light' });
     await page.goto(`${origin}/`);
@@ -225,6 +230,7 @@ async function main() {
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
+    budget.track({ streams: streamResults(paths.streams), tester, log });
     const system = systemPrompt({ scenario, issues });
     const labels = new Map(); // item key → I1…
     const keys = new Map(); // I1… → item key
@@ -321,73 +327,18 @@ async function main() {
       midTurn.push(...newFindings(MID_TURN));
     };
 
-    /** Waits until no agent under test is working, sampling what the screen says meanwhile. */
-    const settle = async () => {
-      const end = Date.now() + Number(opt['turn-timeout']) * 1000;
-      let calm = 0;
-      while (Date.now() < end) {
-        await sleep(1500);
-        const st = (await api('/api/state')).state;
-        const ids = threadsUnderTest(st);
-        const sessions = ids
-          .flatMap((t) => st.threads[t]?.members ?? [])
-          .map((id) => st.sessions[id])
-          .filter(Boolean);
-        const working = sessions.filter((se) => ['think', 'tool', 'gen'].includes(se.state));
-        const checking = Object.values(st.apps).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
-        const thinking = working.filter((se) => se.state !== 'gen').map((se) => se.handle);
-        if (thinking.length) facts.samples.push({ busy: thinking, rows: (await d.working()).length });
-        if (working.length) await midTurnChecks(st);
-        calm = working.length || checking ? 0 : calm + 1;
-        if (calm >= 2) return null;
-      }
-      await d.stopAll();
-      return `An agent was still working after ${opt['turn-timeout']} s, so the run pressed Stop.`;
-    };
+    // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289).
+    const told = new Set();
+    const settle = (handBack = false) => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log });
 
-    const observe = async () => {
-      const out = [];
-      const items = await d.items();
-      for (const it of items) {
-        if (!labels.has(it.key)) {
-          const l = `I${labels.size + 1}`;
-          labels.set(it.key, l);
-          keys.set(l, it.key);
-        }
-        if (seen.get(it.key) === it.text) continue;
-        const changed = seen.has(it.key);
-        seen.set(it.key, it.text);
-        const label = labels.get(it.key);
-        const lines = [
-          `[${label}] ${changed ? '(changed) ' : ''}${it.where}${it.block ? ` · ${it.block}` : ''}${it.app ? ' · agent app' : ''}${it.diagram ? ' · diagram' : ''}`,
-        ];
-        lines.push(it.text.length > 1800 ? `${it.text.slice(0, 1800)}…` : it.text);
-        if (it.buttons.length) lines.push(`Buttons: ${it.buttons.join(' | ')}`);
-        if (it.fields.length) lines.push(`Fields: ${it.fields.join(' | ')}`);
-        if (it.block || it.app || it.diagram || it.math) {
-          const shot = await d.shotItem(it.key, join(paths.shots, `${String(timeline.length).padStart(2, '0')}-${label}.png`));
-          if (shot) lines.push(`Screenshot: ${relative(dir, shot)}`);
-        }
-        if (it.app) {
-          const inside = await d.appInside(it.key);
-          facts.apps[it.key] = inside;
-          if (inside) lines.push(`Inside the app: ${inside.text.slice(0, 700)}`);
-          else lines.push('Inside the app: (couldn’t be read)');
-        }
-        out.push(lines.join('\n'));
-      }
-      const st = facts.state;
-      const states = facts.threads
-        .flatMap((t) => st.threads[t]?.members ?? [])
-        .map((id) => st.sessions[id])
-        .filter(Boolean)
-        .map((se) => `@${se.handle} in “${st.threads[se.threadId]?.title}”: ${se.state}${se.needs ? ` (needs you: ${se.needs.text})` : ''}`);
-      return { items: out, states };
-    };
+    const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
 
+    // With --max-cost, the budget watches the agents’ turns through the steps and the wait after them.
+    unwatch = watchBudget({ budget, api, threadsUnderTest, stop: stopThroughPage(page), log });
     for (let step = 1; step <= steps; step++) {
       if (signals.stopping) throw new Error('The run was stopped by a signal.');
-      const timedOut = await settle();
+      const timedOut = await settle(true);
+      if (budget.stopped) break;
       await refreshFacts();
       if (hr) await afterStep(hr, facts);
       if (timedOut)
@@ -431,11 +382,9 @@ async function main() {
       ]
         .filter(Boolean)
         .join('\n\n');
-      const spent = agentsSpent(facts.streams) + tester.spent;
-      if (spent >= Number(opt['run-budget'] ?? Infinity)) {
-        log(`The run has spent $${spent.toFixed(2)} of its $${opt['run-budget']} (--run-budget), so it stops here.`);
-        break;
-      }
+      // With --max-cost, the step goes ahead only if it, and an agent turn it may start, fit what’s left.
+      const busy = obs.states.filter((s) => /: (?:think|tool|gen)\b/.test(s)).length;
+      if (budget.beforeStep({ step, working: busy })) break;
       const answer = await tester.step(prompt, system);
       goals.took(phase);
       timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action });
@@ -453,14 +402,23 @@ async function main() {
       actionError = null;
       actionResult = null;
       log(`action: ${JSON.stringify(a)}`);
+      // The budget’s watch can stop the run while the tester thinks: its action would start a turn past the cap.
+      if (budget.stopped) break;
       // Moving on, or waiting while no agent works, past something that waits on the person: say so once, and ask
       // again. A second try with the same list goes ahead, so a run can’t loop on a block it can’t answer.
-      const idle = !obs.states.some((s) => /: (?:think|tool|gen)\b/.test(s));
+      const idle = !busy;
       if (waiting.length && (a.type === 'next_phase' || a.type === 'done' || (a.type === 'wait' && idle)) && pushedBack !== waiting.join('\n')) {
         pushedBack = waiting.join('\n');
         // The same again goes ahead, so a scenario that says to leave a card open (for a minute, say) still can.
         actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first, or, to leave ${waiting.length === 1 ? 'it' : 'them'} waiting on purpose, as the scenario says to, ask for the same again: the second time it goes ahead.`;
         log(`action held: ${waiting.length} waiting on the person`);
+        continue;
+      }
+      // An interrupt acts on the turn running when it starts, and the wait can hand back while one runs (#289).
+      if (a.interrupt && !idle) {
+        actionError =
+          'Not yet: an agent is still working, so an interrupt would act on its turn, not the one this starts. Answer what needs you, or wait, first.';
+        log('action held: an interrupt while an agent works');
         continue;
       }
       // Moving on from a phase whose triggers haven’t happened: held once, then a coverage gap.
@@ -480,6 +438,7 @@ async function main() {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
         if (a.type === 'telemetry') actionResult = await tm.telemetryAction(td, a, key, tel);
+        else if (a.type === 'go_to_needs') actionResult = await goToNeedsStep({ d, page, api, keys, facts, step }, a);
         else if (a.type === 'send') {
           await d.send(a.text ?? '');
           // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
@@ -495,12 +454,8 @@ async function main() {
           );
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
-        } else if (a.type === 'send_then_stop') {
-          await d.send(a.text ?? '');
-          await sleep(Math.max(1, Math.min(10, a.seconds ?? 2)) * 1000);
-          await d.stopAll();
-          actionResult = 'Pressed Stop on the active reply.';
-        } else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
+        } else if (a.type === 'send_then_stop') actionResult = await sendThenStop(d, a, { step, probes: facts.probes, log, onWait: () => midTurnChecks() });
+        else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
         else if (a.type === 'act' || a.type === 'review') {
           // An answer is for the revision the tester read. If the block changed while it decided, a person would see
@@ -576,7 +531,7 @@ async function main() {
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
         } else if (a.type === 'fault') actionResult = await hostFault(a);
-        else if (a.type === 'wait') await sleep(Math.min(300, a.seconds ?? 30) * 1000);
+        else if (a.type === 'wait') await sleep(Math.min(WAIT_MAX_S, a.seconds ?? 30) * 1000);
         else if (a.type === 'stop') await d.stopAll();
         // Stop or Send now while the turn this action started is running (#126).
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
@@ -598,6 +553,7 @@ async function main() {
       }
     }
     await settle();
+    unwatch();
     // After the last step, no agent takes another turn: the runner’s 🚩s and its report (U4).
     if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ td, flags: tel.flags, dir, data: paths.data, main: mainThread, shown: tel.shown, log });
     await refreshFacts();
@@ -614,17 +570,23 @@ async function main() {
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
+    if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
+    facts.budget = budget.summary();
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     if (opt.verify !== 'no' || opt.file !== 'no') {
-      await reviewFindings({ ...REVIEW, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
+      const review = { ...REVIEW, ask: budget.verifier() };
+      await reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
+      facts.budget = budget.summary();
       await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     }
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
     writeJsonAtomic(join(dir, 'run.json'), {
       ...runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
       ...(facts.telemetry ? { telemetry: tm.telemetryBlock(facts.telemetry, all) } : {}),
+      ...(facts.budget ? { budget: facts.budget } : {}),
     });
   } finally {
+    unwatch();
     await stop();
   }
 }
@@ -694,8 +656,9 @@ async function recheck(dir) {
       events: readHistory(dir),
       console: page.logs,
       apps: {},
-      probes: { fullScreen: [], attachments: [], answers: [], ...(saved.probes ?? {}) },
+      probes: { ...newProbes(), ...(saved.probes ?? {}) },
       samples: saved.samples ?? [],
+      budget: saved.budget ?? null,
       ui: {},
       ...userSetup(join(dir, 'workspace')),
       ...(hostsRec ? { hosts: hostsRec } : {}),

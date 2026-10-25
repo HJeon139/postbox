@@ -2,6 +2,65 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.32.4 (2026-10-25)
+
+### Fixes
+
+- **uat:** keep the checkout's AGENTS.md from the tester and verifier too
+- **uat:** keep the checkout's AGENTS.md out of a run's Claude Code agents
+
+## 0.32.3 (2026-10-25)
+
+### Fixes
+
+- **permissions:** bound the command scan's work, and read a backslash-newline out of each part
+- **uat:** the allow-once triggers import the scanner from shared/
+- **permissions:** read a command's parts as the shell does for the write guard
+
+## 0.32.2 (2026-10-25)
+
+### Fixes
+
+- **shell:** a waiting agent's ring and row don't say they open a dialog, or whether one is open
+- **shell:** a menu closed before it listened no longer closes every later menu
+
+## 0.32.1 (2026-10-25)
+
+### Fixes
+
+- **permissions:** read a backslash-newline and escaped quotes around a heredoc as the shell does
+- **permissions:** read a heredoc's word as the shell does, so a quoted or dashed one isn't chained
+- **permissions:** no Allow once or Always allow for a chained command, which no rule can match
+
+## 0.32.0 (2026-10-25)
+
+### Features
+
+- **shell:** a needs-you ring or row goes to that agent's ask, and ⌃J lands reliably
+
+### Fixes
+
+- **shell:** leave modifier clicks and the top bar's ring stack to their own behavior
+- **checks:** a headless check that recorded no case fails
+- **checks:** keep headless Chrome's page focused, so an Escape doesn't freeze it
+
+## 0.31.0 (2026-10-25)
+
+### Features
+
+- **uat:** cap a whole run's cost with --max-cost, and stop it with its report
+
+### Fixes
+
+- **uat:** count each resumed session's cost once
+
+## 0.30.2 (2026-10-25)
+
+### Fixes
+
+- **uat:** honor send_then_stop's delay and hand the job question to the tester
+- **stop:** settle a stopped turn's running steps, and its reply's header
+
 ## 0.30.1 (2026-10-24)
 
 ### Fixes

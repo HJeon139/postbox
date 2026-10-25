@@ -121,6 +121,15 @@ class PbRing extends HTMLElement {
       parts.push(more);
     }
     this.replaceChildren(...parts);
+    // While its agent needs you, a ring outside any link or button is a button of its own, to what it needs (#285,
+    // needs-nav.mjs). In a link or a button, that control goes there instead.
+    if (this.dataset.session && (state === 'needs' || state === 'failed') && !this.parentElement?.closest('a, button')) {
+      this.setAttribute('role', 'button');
+      this.setAttribute('tabindex', '0');
+      this.setAttribute('aria-label', `${label}. Go to what ${name} needs`);
+    } else if (this.getAttribute('role') === 'button') {
+      for (const a of ['role', 'tabindex', 'aria-label']) this.removeAttribute(a);
+    }
   }
 }
 if (!customElements.get('pb-ring')) customElements.define('pb-ring', PbRing);

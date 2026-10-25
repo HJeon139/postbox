@@ -332,7 +332,7 @@ export function driver(page, hooks = {}) {
      */
     async agentPanel(handle, set = {}) {
       await clickAt(
-        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${J(`@${handle}`)}))`,
+        `document.querySelector(${J(`.agent-row [aria-label="More for @${handle}"]:not([hidden])`)}) ?? [...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${J(`@${handle}`)}))`,
         `@${handle}’s row in the Agents section`,
       );
       await page.waitFor(`!!document.querySelector('.dialog [role=radiogroup], .dialog [role=switch]')`, { label: 'the quick panel' });

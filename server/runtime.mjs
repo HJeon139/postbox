@@ -86,6 +86,7 @@ import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
+import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -1196,7 +1197,7 @@ export class Runtime {
     turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
     turn.closed = true;
     this.turns.delete(sessionId);
-    this.settleSubagentSteps(turn);
+    settleStoppedSteps(this, turn);
     this.endWork(turn, 'stopped');
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', 'You stopped the agent.');
@@ -1400,23 +1401,8 @@ export class Runtime {
     }
   }
 
-  /**
-   * A subagent that worked in the background, and its own calls, still running when its turn ends: nothing will say
-   * how they ended now (Stop, or its CLI exited without saying), so they read as stopped (#73).
-   */
   settleSubagentSteps(turn) {
-    const open = new Set((turn.steps ?? []).filter((s) => s.kind === 'agent' && s.state === 'running').map((s) => s.id));
-    if (!open.size) return;
-    for (let grew = true; grew; ) {
-      grew = false;
-      for (const s of turn.steps)
-        if (s.state === 'running' && !s.job && s.parent && open.has(s.parent) && !open.has(s.id)) {
-          open.add(s.id);
-          grew = true;
-        }
-    }
-    turn.steps = turn.steps.map((s) => (open.has(s.id) ? { ...s, state: 'stopped', detail: 'its turn ended before it finished' } : s));
-    if (turn.first) this.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+    return settleSubagentSteps(this, turn);
   }
 
   /** The keys (`item:step`) of a session’s progress steps running in a thread. */

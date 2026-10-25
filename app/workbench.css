@@ -229,6 +229,15 @@ pb-ring .dot.still { animation: none; }
   32% { transform: rotate(var(--a2)); }
   50% { transform: rotate(var(--a2)); animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
   82%, 100% { transform: rotate(var(--a1)); } }
+/* A ring that goes to what its agent needs (#285); the ask it lands on is outlined for a moment: eased in, a rest, then
+   faded. With motion off, the outline holds still until it goes. */
+pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
+[data-key].arrived { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; animation: pb-arrived 1.5s forwards; }
+@keyframes pb-arrived {
+  0% { outline-color: transparent; animation-timing-function: ease-in; }
+  20% { outline-color: var(--accent); }
+  65% { outline-color: var(--accent); animation-timing-function: ease-out; }
+  100% { outline-color: transparent; } }
 /* Screenshots freeze the pulse at a visible frame. */
 .shot pb-ring[state="needs"] .pulse { animation: none; opacity: .7; transform: scale(1.18); }
 .shot * { animation-play-state: paused !important; }

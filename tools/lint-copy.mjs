@@ -128,6 +128,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const code = files(ROOT, ['app', 'server', 'shared', 'tools/demo.mjs'], ['.js', '.mjs'], ['app/kit/vendor', 'server/corpus/books']);
   for (const f of code) findings.push(...checkJs(read(ROOT, f), f));
   for (const f of files(ROOT, ['app/index.html'], ['.html'])) findings.push(...checkHtml(read(ROOT, f), f));
-  for (const f of files(ROOT, ['designs', 'README.md'], ['.md'])) findings.push(...checkMarkdown(read(ROOT, f), f));
+  // The agents’ steering too (#315): each folder’s AGENTS.md is read as the rules for working there.
+  for (const f of files(ROOT, ['designs', 'README.md', 'AGENTS.md', 'app/AGENTS.md', 'server/AGENTS.md', 'tests/AGENTS.md', 'tools/AGENTS.md'], ['.md']))
+    findings.push(...checkMarkdown(read(ROOT, f), f));
   report('lint-copy', findings);
 }

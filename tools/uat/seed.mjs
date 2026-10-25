@@ -53,12 +53,12 @@ const fast = (scenario, opt, p) => {
 async function checkClis(scenario, opt, log) {
   if (opt.release) log('A release run: the release-only backends are on.');
   // Postbox registers the Kiro CLI only when it can run it, and seeding an agent on a backend it doesn’t have fails.
-  // The same for the Antigravity CLI, which a release run alone may use (releaseGate). It always runs with the
+  // The same for the Antigravity CLI, which a compatibility run may use. It always runs with the
   // person’s own agy setup: it has no Isolated mode (server/adapters/antigravity-cli.mjs).
   if (Object.values(scenario.backends).some((b) => b.backend === 'antigravity-cli')) {
     const v = await agyVersion(findAgy());
     if (!v) throw new Error('This scenario puts agents on the Antigravity CLI, and agy isn’t installed here (or set POSTBOX_AGY_BIN).');
-    log(`Antigravity CLI ${v}, on a free tier: this run uses its quota.`);
+    log(`Antigravity CLI ${v}: this run uses its quota.`);
   }
   if (Object.values(scenario.backends).some((b) => b.backend === 'kiro-cli')) {
     const v = await kiroVersion(findKiro());

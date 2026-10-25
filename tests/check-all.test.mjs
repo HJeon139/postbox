@@ -40,6 +40,10 @@ test('a check passes on its results: every case passed, and it exited 0', () => 
   assert.deepEqual(verdict({ code: 0, results: cases({ name: 'a', ok: true }, { name: 'b', ok: true }) }), { ok: true, passed: 2, failed: 0, first: '' });
 });
 
+test('a check that exited 0 but recorded no case fails: it checked nothing (designs/developing.md)', () => {
+  assert.deepEqual(verdict({ code: 0, results: cases() }), { ok: false, passed: 0, failed: 1, first: 'it recorded no cases, so it checked nothing' });
+});
+
 test('a failing check names its first failing case, with the first line of the reason', () => {
   const r = verdict({
     code: 1,

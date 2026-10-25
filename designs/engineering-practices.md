@@ -31,7 +31,15 @@ npm run check:browser
 
 It runs every headless Chrome check (`tools/check-*.mjs` and `tools/checks/*.mjs`, found by name) in parallel, 4 at a time. Each check gets its own free ports and a timeout that kills it and its Chrome. The run prints each check’s counts, time and first failure, and keeps each full log. CI runs it on every pull request. `node tools/check-all.mjs shell header` runs only the checks whose name has one of those in it. `--lag 300` holds each server’s events back 300 ms, as a busy runner can: a check that passes with it waits for the page to hear a change, not for a fixed time.
 
-A change that’s visible in the UI also gets a headless Chrome check (`tools/cdp.mjs`) from whoever writes it. It reports through `tools/harness.mjs`: `ports()` for `PB_PORT` and `PB_CHROME_PORT`, `record()` for each case, and `finish()` at the end. That way the run reads its results, not its text.
+A change that’s visible in the UI also gets a browser spec from whoever writes it: Playwright Test, in `tests/browser/*.spec.mjs` (architecture.md, “Browser checks on Playwright Test”, #303). Each spec file starts its own Postbox with `startPostbox()` from `tests/browser/postbox.mjs` and calls `failOnPageErrors(test)`. It waits with web-first assertions or `expect.poll`, never for a fixed time: Biome’s `no-fixed-waits` rule fails `npm run check` on `page.waitForTimeout` or `setTimeout` in a spec.
+
+```bash
+npx playwright test                               # every spec
+POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events late, as CI’s second pass
+npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs a new or changed one
+```
+
+The checks not yet moved stay in `tools/check-*.mjs` and `tools/checks/*.mjs`. They report through `tools/harness.mjs`, with `ports()` for `PB_PORT` and `PB_CHROME_PORT`, `record()` for each case, and `finish()` at the end, so the run reads their results, not their text.
 
 ## Node
 
@@ -207,7 +215,7 @@ Postbox follows [Conventional Commits](https://www.conventionalcommits.org/en/v1
 
 **A release after each merge to main:**
 - CI releases it: [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on every push to main. It runs `npm run release`, which finds the commits since the last tag, takes the largest bump among them, and writes the version to package.json and package-lock.json. That adds a CHANGELOG.md section, commits `chore(release): vX.Y.Z` and tags `vX.Y.Z`. The workflow then pushes the commit and the tag to main together.
-- It pushes with the workflow’s own token (`contents: write`). The `protect-main` ruleset only keeps main from being deleted, so no other credential is needed. A push made with that token starts no other workflow, so check.yml doesn’t run again on a release commit, which changes only the version and the changelog.
+- It pushes with the repository’s `release` deploy key, an SSH key with write access to this repository only. Its private half is the secret `RELEASE_DEPLOY_KEY` in the `release` environment, which only main may use, so a pull request’s workflow can’t read it. The workflow’s own token only reads (`contents: read`). Deploy keys are on the `protect-main` ruleset’s bypass list, so the release commit reaches main without a pull request even once main requires pull requests and checks. A push made with a deploy key starts workflows: check.yml runs on the release commit, which changes only the version and the changelog, and the release job skips any commit that starts with `chore(release):`, so it never releases its own commit.
 - A merge that moves no version (`docs`, `ci`, `test` and the rest) releases nothing. The run ends by checking that every change on main is released (`tools/release.mjs --check`).
 - By hand, if the workflow can’t run: run `npm run release` on main’s tip and push with `git push --atomic origin HEAD:main vX.Y.Z`.
 - The sidebar shows the build under Personas, as `vX.Y.Z · commit`, so a screenshot says which build it came from.

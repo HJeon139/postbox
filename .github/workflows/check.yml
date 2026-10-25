@@ -9,10 +9,18 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request replaces its run still in progress. Keyed on the pull request’s number, not its branch’s
+# name, so two forks' branches of the same name don't cancel each other. A push to main gets a group of its own.
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: Lint, types, project rules and tests
     runs-on: ubuntu-latest
+    # It takes under a minute; a hung step would otherwise hold the runner for GitHub’s default of 360.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,14 +37,22 @@ jobs:
       # Conventional Commits, from v0.2.0 on: older commits on long-running branches keep their plain messages.
       - name: Commit messages follow Conventional Commits
         if: github.event_name == 'pull_request'
-        run: node tools/lint-commits.mjs "origin/${{ github.base_ref }}..HEAD" --since "$(git log -1 --format=%cI v0.2.0)"
+        # Through the environment, not written into the script, as GitHub’s security guide says for context values.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node tools/lint-commits.mjs "origin/$BASE_REF..HEAD" --since "$(git log -1 --format=%cI v0.2.0)"
 
   end-to-end:
     name: Demo in Chrome, with accessibility checks
     runs-on: ubuntu-latest
     needs: check
+    # About 11 minutes on this runner (#287); each headless check also has check-all’s own 600 s limit.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The base branch too, for the specs a pull request adds or changes (--only-changed, below).
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -62,9 +78,34 @@ jobs:
       - name: Headless Chrome checks, with the server’s events late
         if: success() || failure()
         run: CHROME="$(command -v google-chrome)" npm run check:browser -- --jobs 4 --lag 300 --logs check-logs/lag
+      # The browser specs on Playwright Test (#303), on the Chromium build its version pins.
+      - name: Install Playwright’s Chromium
+        if: success() || failure()
+        run: npx playwright install --with-deps chromium
+      - name: Browser specs
+        if: success() || failure()
+        run: npx playwright test
+      - name: Browser specs, with the server’s events late
+        if: success() || failure()
+        run: npx playwright test
+        env:
+          POSTBOX_STREAM_LAG: 300
+      # A spec a pull request adds or changes runs ten times, with the events late, before it counts: one failure fails it.
+      - name: New and changed specs, ten times
+        if: github.event_name == 'pull_request' && (success() || failure())
+        run: npx playwright test --only-changed="origin/$BASE_REF" --repeat-each=10 --pass-with-no-tests
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          POSTBOX_STREAM_LAG: 300
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: check-logs
           path: check-logs/
+          retention-days: 14
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
           retention-days: 14

@@ -223,6 +223,8 @@ export function denialBlock(it, ctx) {
       .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
   const titleId = `dn-${it.id}`;
   const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
+  // A chained command gets no rule (server/permission-rules.mjs, chains): one for the whole line would never match (#238).
+  const chained = !it.rules.once;
   return h(
     'div.col.block',
     { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
@@ -238,20 +240,25 @@ export function denialBlock(it, ctx) {
       it.reason || DENIAL_WHY[it.reasonType]
         ? h('p.small', h('b', 'Why: '), it.reason || '', DENIAL_WHY[it.reasonType] ? ` (${DENIAL_WHY[it.reasonType]})` : '')
         : null,
-      open
+      open && chained
         ? h(
-            'p.small.dim',
-            'Always allow adds ',
-            h('code', it.rules.always),
-            ' to .claude/settings.local.json in the agent’s folder, so your terminal sessions follow it too. A deny rule in your Claude Code settings still wins.',
+            'p.small',
+            `Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &, or inside $( )) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run the parts as separate commands: a part that’s refused again gets a card of its own.`,
           )
-        : h('span.answered-note', icon(it.status === 'left' ? 'x' : 'check', 'i-sm'), DENIAL_DONE[it.status] ?? it.status),
+        : open
+          ? h(
+              'p.small.dim',
+              'Always allow adds ',
+              h('code', it.rules.always),
+              ' to .claude/settings.local.json in the agent’s folder, so your terminal sessions follow it too. A deny rule in your Claude Code settings still wins.',
+            )
+          : h('span.answered-note', icon(it.status === 'left' ? 'x' : 'check', 'i-sm'), DENIAL_DONE[it.status] ?? it.status),
     ),
     open
       ? h(
           'div.block-foot',
-          h('button.btn', { type: 'button', onclick: () => act('once') }, 'Allow once and retry'),
-          h('button.btn', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`),
+          it.rules.once ? h('button.btn', { type: 'button', onclick: () => act('once') }, 'Allow once and retry') : null,
+          it.rules.always ? h('button.btn', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`) : null,
           h('button.btn.ghost', { type: 'button', onclick: () => act('leave') }, 'Leave it'),
         )
       : null,

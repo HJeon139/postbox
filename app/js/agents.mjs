@@ -17,6 +17,7 @@ import { toolSwitch } from './agent-tools.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
+import { panelWhileNeeds } from './needs-nav.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
 import { hostLine, stopNote, turnLine } from './remote.mjs';
@@ -25,7 +26,6 @@ import { capsOf, EFFORT_NAMES, modeHelp, openSettings } from './sheets.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
 export { subagentNow } from './agent-tree.mjs';
-export { openAsks, openAsksEl } from './open-asks.mjs';
 
 const S = () => client.state;
 
@@ -96,7 +96,7 @@ function agentRow(se) {
   const n = h(
     'li.agent-row',
     button,
-    h('div.agent-asks', openAsksEl(se, true)),
+    h('div.agent-asks', openAsksEl(se, true), panelWhileNeeds(se, button, openAgentPanel)),
     h('ul.agent-subs', { 'aria-label': `Where @${se.handle} is at work, and its subagents` }),
   );
   paintRow(n, se, true);

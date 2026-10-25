@@ -8,9 +8,10 @@
 // compatibility run. It checks that a harness still works with Postbox, and it costs that harness’s credits, so it runs
 // only when asked (--compat), never as part of a regular pass.
 //
-// Some of those also run only for a version release (RELEASE_ONLY): `--release`. The Antigravity CLI (#143) is on a
-// free tier, and even an occasional compatibility run would use up its quota. Outside a release run, a scenario that
-// puts an agent on one is refused, and Postbox starts without it, so the tester can’t pick it in a sheet either.
+// A backend can also be kept to version releases (RELEASE_ONLY): `--release`. Outside a release run, a scenario that
+// puts an agent on one is refused, and Postbox starts without it, so the tester can’t pick it in a sheet either. None is
+// today. The Antigravity CLI (#143) was, while it ran on a free tier; since 25 October 2026 the maintainer pays for it,
+// so it runs with --compat like Codex and the Kiro CLI.
 //
 // How long a run is (see tests/uat/e2e/README.md, “How long a run is”): `- steps: N` in the header caps a scenario’s
 // steps, and --steps overrides it. A phase can open with its own settings, before its text:
@@ -93,7 +94,8 @@ export function parseScenario(md) {
     // (M1’s exit check, #63). Without it, a run puts the agents on the fast model it’s given (--agent-model).
     models: meta.models === 'persona' ? 'persona' : 'run',
     // Telemetry (designs/telemetry-persona.md, U2): `- seed: canaries` plants the run’s canaries in the workspace,
-    // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario.
+    // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario. `- seed:
+    // fake-env` plants the allow-once scenario’s fake .env (tools/uat/workspace.mjs).
     seed: meta.seed ?? null,
     gh: meta.gh === 'none' ? 'none' : 'yes',
     telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
@@ -104,9 +106,7 @@ export function parseScenario(md) {
 }
 
 /** Compatibility backends that run only for a version release, and the variable that names each one’s binary. */
-export const RELEASE_ONLY = /** @type {Record<string, { name: string, bin: string }>} */ ({
-  'antigravity-cli': { name: 'the Antigravity CLI', bin: 'POSTBOX_AGY_BIN' },
-});
+export const RELEASE_ONLY = /** @type {Record<string, { name: string, bin: string }>} */ ({});
 // A binary that isn’t there, so Postbox doesn’t register the backend.
 const NO_BIN = '/nonexistent/postbox-release-only';
 
@@ -122,7 +122,7 @@ export function releaseGate(scenario, { release = false } = {}) {
   const on = Object.entries(scenario.backends).filter(([, b]) => gated.has(b.backend));
   if (on.length)
     return {
-      error: `This scenario puts ${on.map(([h, b]) => `@${h} on ${RELEASE_ONLY[b.backend].name}`).join(', ')}, which runs only for a version release: its quota is a free tier. Pass --release for the release’s run.`,
+      error: `This scenario puts ${on.map(([h, b]) => `@${h} on ${RELEASE_ONLY[b.backend].name}`).join(', ')}, which runs only for a version release. Pass --release for the release’s run.`,
       env: {},
     };
   return { error: null, env: Object.fromEntries(Object.values(RELEASE_ONLY).map((b) => [b.bin, NO_BIN])) };

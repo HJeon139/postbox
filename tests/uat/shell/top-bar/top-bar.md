@@ -19,7 +19,8 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 - “⋯” opens the [conversation menu](conversation-menu.md).
 - In a conversation, “Work”, with a page icon, opens and closes the conversation’s Work in the right pane, and shows pressed while it’s open (#183). On a phone only its icon shows, and a screen reader still reads “Work”.
 - “Jump to… ⌘K” opens the [command palette](../command-palette.md).
-- The needs-you button counts agents waiting on you; it is disabled with “Nothing needs you” when none are, and ⌃J goes to the next one and focuses what it’s waiting on.
+- The needs-you button counts agents waiting on you, a refused step and a tool request too; it is disabled with “Nothing needs you” when none are. It and ⌃J go first to an agent in the open conversation (or its side and topic threads) that needs you, else to the one that has waited longest; pressed again, they move on through the rest, oldest first, so each one comes up in turn. Each lands on the ask itself, scrolled into view, focused and outlined for a moment (#285).
+- While an agent needs you, its ring here goes to what it needs instead of its quick panel; the panel stays a click away from its row in the Agents section (#285).
 - The gear opens Settings.
 - Under `--demo`, “Demo mode: scripted agents” sits beside “Jump to…” on every view: overview, project, Threads, conversation and Archived (#12). It can’t be closed; where room is short it folds to “Demo”, and a screen reader still reads the whole sentence. It isn’t a live region. Without `--demo` it isn’t there.
 
@@ -30,10 +31,10 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 3. Check the breadcrumbs: Book corpus › Corpus planning, in full, and a ring for each of its two agents.
 4. Send “@indexer index the shelf” and watch @indexer’s ring change as it works. Tab to the ring and press Enter: its quick panel opens; Escape returns to the ring.
 5. Press ⌘\ twice; reload in between and check the rail state persists.
-6. Press ⌃J while something needs you.
+6. Press ⌃J while two agents in different conversations need you, from a conversation whose agent needs you, then again. Click a waiting agent’s ring.
 7. Add two more agents to “Corpus planning” (⋯ › Add an agent…), so it has four. Narrow the window from full width to its narrowest, then widen it again.
 
-**Pass if:** Every item above behaves as described, and the rings change within a second of the agent’s state. The demo banner shows on every view. In step 7, the top bar never overflows, every agent is reachable from a ring or the stack, the parts drop and come back in the order above, and ⋯ lists each agent’s backend, model, effort and state at every width. `node tools/check-header.mjs` and `node tools/check-work-pane.mjs` pass.
+**Pass if:** Every item above behaves as described, and the rings change within a second of the agent’s state. The demo banner shows on every view. In step 7, the top bar never overflows, every agent is reachable from a ring or the stack, the parts drop and come back in the order above, and ⋯ lists each agent’s backend, model, effort and state at every width. `node tools/check-header.mjs`, and `node tools/check-work-pane.mjs` pass, and so does `npx playwright test needs-nav`.
 
 ## Related
 

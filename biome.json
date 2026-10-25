@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "plugins": [{ "path": "./tools/biome/no-fixed-waits.grit", "includes": ["tests/browser/**"] }],
   "files": {
     "includes": [
       "app/js/**",
@@ -13,6 +14,7 @@
       "shared/**",
       "tools/**",
       "tests/**",
+      "playwright.config.mjs",
       "!server/corpus/books",
       "!.claude",
       "!app/kit/vendor"
@@ -139,7 +141,7 @@
       "includes": ["app/js/shell.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1178 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1159 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 139 } } }
         }
       }
@@ -148,7 +150,7 @@
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1991 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1990 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 760 } } }
         }
       }
@@ -284,7 +286,7 @@
       "includes": ["server/runtime.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3151 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3140 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 193 } } }
         }
       }
@@ -391,7 +393,7 @@
     },
     {
       "includes": ["tools/cdp.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 144 } } } } }
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 148 } } } } }
     },
     {
       "includes": ["tools/check-agents.mjs"],
@@ -443,14 +445,14 @@
       "includes": ["tools/uat-run.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 801 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 467 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 764 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 428 } } }
         }
       }
     },
     {
       "includes": ["server/room-checks.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1204 } } } } }
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1200 } } } } }
     },
     {
       "includes": ["tools/uat/driver.mjs"],
@@ -463,7 +465,7 @@
     },
     {
       "includes": ["tools/uat/report.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 94 } } } } }
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 91 } } } } }
     },
     {
       "includes": ["tools/uat/review.mjs"],
@@ -477,7 +479,7 @@
       "includes": ["tools/uat/triggers.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 376 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 365 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 102 } } }
         }
       }

@@ -11,32 +11,19 @@
 //   facts.probes     what the runner saw on the page: a notice that Postbox refused an answer as stale (#123)
 
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
+import { NEEDS_TRIGGERS } from '../../server/room-checks-needs.mjs';
+import { ALLOW_ONCE_TRIGGERS } from './allowonce-triggers.mjs';
 import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
+import { clip, itemsOf, resultText } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
 import { answeredStop, jobsRecorded, jobTimeline } from './triggers-jobs.mjs';
 
 export { jobTimeline } from './triggers-jobs.mjs';
 
-const clip = (s, n = 120) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
 const timeOf = (ts) => {
   const n = typeof ts === 'string' ? Date.parse(ts) : Number.NaN;
   return Number.isFinite(n) ? n : null;
 };
-const itemsOf = (f) => (f.threads ?? []).flatMap((t) => (f.state?.items?.[t] ?? []).map((it) => ({ ...it, threadId: t })));
-const resultText = (r) =>
-  typeof r?.content === 'string'
-    ? r.content
-    : Array.isArray(r?.content)
-      ? r.content
-          .map((c) => (typeof c?.text === 'string' ? c.text : ''))
-          .filter(Boolean)
-          .join('\n')
-      : '';
 
 /**
  * Every Postbox tool call in the recorded streams, with what Postbox answered.
@@ -169,6 +156,8 @@ export const TRIGGERS = {
   },
   ...HOST_TRIGGERS,
   ...TELEMETRY_TRIGGERS,
+  ...NEEDS_TRIGGERS,
+  ...ALLOW_ONCE_TRIGGERS,
 };
 
 /**

@@ -12,11 +12,11 @@ An agent can start a command in the background (Bash with `run_in_background`, a
 
 ## Expected functionality
 
-- While a background job runs, its reply shows “Background job · <what it runs>” with a Stop button. The glyph holds still, in the quiet color. In the folded activity list, its step says “Running in the background”.
+- While a background job runs, its reply shows “Background job · <what it runs>” with a Stop button. The glyph holds still, in the quiet color. In the folded activity list, its step says “Running in the background”, and the list’s header ends “· background work running” once nothing else in it runs (#288).
 - Stop, with a job running, asks “@developer has 1 background job running. Stop it too?” with **Stop it too**, **Keep running**, and an × (Don’t stop). Focus moves to Stop it too. Nothing stops until you answer.
   - Escape, or ×, closes the ask; the agent carries on, and focus goes back to Stop.
-  - **Stop it too** stops the agent and its jobs. Their steps read “Stopped”.
-  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop, and the reply reads “Stopped by you at hh:mm · its background work kept running” (#249). The agent’s next turn is told the job is still running, that you stopped the turn but kept the job, that its CLI may say the job was stopped though it wasn’t, and where its output is, and to leave a progress step that follows it running. The progress steps that were running when you chose Keep running stay running, not stalled, while a job you kept runs on; a step a later turn leaves running stalls as usual. When the last kept job ends, those steps read as stalled, and the agent’s next turn is told to close them. Postbox never kills a job you kept (#164):
+  - **Stop it too** stops the agent and its jobs. Their steps read “Stopped”, and so does a call it was still making, such as a wait (#288). The reply’s header doesn’t say “running”.
+  - **Keep running** stops the agent; its jobs keep running, still listed with their own Stop, and the reply reads “Stopped by you at hh:mm · its background work kept running” (#249). Its header ends “· background work running”, not “· running”, and a call it was still making reads “Stopped” (#288). The agent’s next turn is told the job is still running, that you stopped the turn but kept the job, that its CLI may say the job was stopped though it wasn’t, and where its output is, and to leave a progress step that follows it running. The progress steps that were running when you chose Keep running stay running, not stalled, while a job you kept runs on; a step a later turn leaves running stalls as usual. When the last kept job ends, those steps read as stalled, and the agent’s next turn is told to close them. Postbox never kills a job you kept (#164):
     - When it can’t tell which of the agent’s processes is the job, it keeps them all running. The job row says “Postbox couldn’t tell which of 2 processes is this job, so it kept them all running; stopping the job stops them all.”, the agent hears the same, and the job’s Stop stops them all ([screenshot](../../screenshots/kept-job-unsure.png)).
     - Two such jobs in one turn are kept with the same processes, so stopping either stops both. The other one’s step reads “Stopped: Postbox couldn’t tell its processes from those of the background job “…”, so stopping that job stopped this one too.”, never “done” (#167).
     - When the job has no process left to keep, its step reads “Stopped: Postbox couldn’t find its process to keep it running: it may have ended with the agent, and Postbox can’t show it or stop it.”
@@ -27,7 +27,7 @@ An agent can start a command in the background (Bash with `run_in_background`, a
 
 ## Steps to reproduce
 
-Automated: `node tools/check-stop.mjs` (headless Chrome, a scripted agent, no real processes). `PB_SHOT=tests/uat/screenshots/kept-job-unsure.png node tools/check-stop.mjs` retakes the screenshot.
+Automated: `node tools/check-stop.mjs` and `node tools/check-stop-steps.mjs` (headless Chrome, a scripted agent, no real processes). `PB_SHOT=tests/uat/screenshots/kept-job-unsure.png node tools/check-stop.mjs` retakes the screenshot.
 
 With a real agent:
 1. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>.
@@ -37,7 +37,7 @@ With a real agent:
 5. Press Stop again and choose Keep running. Check the agent reads “stopping”, then “Stopped by you”, the reply reads “Stopped by you at hh:mm · its background work kept running”, and the job row stays. Ask the agent whether the job is still running: it should say it is. In a terminal, `ps axo pid,ppid,pgid,command | grep 'sleep 300'` still lists it.
 6. Press the job row’s Stop. Check the row goes, the step reads “Stopped”, and `ps` no longer lists it.
 7. Repeat steps 2 to 4, and choose Stop it too. Check the job row goes, and `ps` lists neither the CLI nor the job.
-8. Ask it: “Use the Bash tool with run_in_background set to true to run exactly: cd /tmp && for i in $(seq 1 60); do date >> pbx-heartbeat.log; sleep 5; done. Then wait for it with the Bash tool: sleep 120.” While it waits, press Stop and choose Keep running. Check the job row stays, and `tail -f /tmp/pbx-heartbeat.log` keeps growing (#164: Claude Code runs the job without its `cd`, which Postbox once failed to match, and killed). Then press the job row’s Stop.
+8. Ask it: “Use the Bash tool with run_in_background set to true to run exactly: cd /tmp && for i in $(seq 1 60); do date >> pbx-heartbeat.log; sleep 5; done. Then wait for it with the Bash tool: sleep 120.” While it waits, press Stop and choose Keep running. Check the job row stays, the wait’s step reads “Stopped”, the reply’s header ends “· background work running”, and `tail -f /tmp/pbx-heartbeat.log` keeps growing (#164: Claude Code runs the job without its `cd`, which Postbox once failed to match, and killed). Then press the job row’s Stop.
 
 9. Repeat step 2, and while the agent works, send “Reply with one line of status.” and choose Send now on it in the queue. Check the interrupted reply reads “Interrupted by Send now at hh:mm”, the job row stays, and the agent’s answer says the job is still running. Then press the job row’s Stop.
 

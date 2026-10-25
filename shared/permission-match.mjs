@@ -5,8 +5,8 @@
 // - a tool on its own (`Bash`, `WebFetch`), or with `(*)`, matches every use of it;
 // - Bash: `Bash(npm run build)` exactly; `Bash(npm test:*)` the command and anything after it; `Bash(git * main)`
 //   a glob, where `*` is any text and `ls *` (a space before the star) needs a word break, so it doesn’t match lsof.
-//   A command that chains (&&, ||, ;, |) is split: a deny or ask rule that matches any part decides, and an allow
-//   rule has to cover every part;
+//   A command that chains (&&, ||, ;, |, &, a command substitution) is split as the shell reads it
+//   (command-chains.mjs): a deny or ask rule that matches any part decides, and an allow rule has to cover every part;
 // - WebFetch: `WebFetch(domain:example.com)` the host, `domain:*.example.com` its subdomains too;
 // - Read and Edit: gitignore-style paths. `//abs` is absolute, `~/x` is under the home folder, `/x` is under the
 //   settings file’s folder (the agent’s folder; the home folder for user settings), and `x` or `./x` under the
@@ -16,6 +16,10 @@
 // - anything else, such as `Agent(Explore)`: the tool, and its specifier exactly.
 // Claude Code has the final say: hooks, managed settings and its own checks (paths outside the working folders,
 // auto mode’s safety check) aren’t in here, and the panel says so.
+
+import { splitCommand } from './command-chains.mjs';
+
+export { splitCommand };
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'NotebookRead']);
@@ -69,46 +73,6 @@ function bashMatches(spec, cmd) {
   let src = escapeRe(spec).replace(/\*/g, '.*');
   if (src.endsWith(' .*')) src = `${src.slice(0, -3)}(?: .*)?`;
   return new RegExp(`^${src}$`, 's').test(cmd);
-}
-
-/**
- * A command split where it chains, outside quotes: `npm test && rm -rf x` → ['npm test', 'rm -rf x'].
- * @param {string} cmd
- */
-export function splitCommand(cmd) {
-  const parts = [];
-  let cur = '';
-  let quote = '';
-  const s = String(cmd ?? '');
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (quote) {
-      cur += c;
-      if (c === quote) quote = '';
-      else if (c === '\\' && quote === '"' && i + 1 < s.length) cur += s[++i];
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      quote = c;
-      cur += c;
-      continue;
-    }
-    const two = s.slice(i, i + 2);
-    if (two === '&&' || two === '||') {
-      parts.push(cur);
-      cur = '';
-      i++;
-      continue;
-    }
-    if (c === ';' || c === '|' || c === '\n') {
-      parts.push(cur);
-      cur = '';
-      continue;
-    }
-    cur += c;
-  }
-  parts.push(cur);
-  return parts.map((p) => p.trim()).filter(Boolean);
 }
 
 /** A glob over a path: `*` and `?` within one folder, `**` across folders. */

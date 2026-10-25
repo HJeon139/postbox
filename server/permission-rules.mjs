@@ -6,10 +6,13 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { chains } from '../shared/command-chains.mjs';
+
+export { chains };
 
 // Commands whose second word is the real command (git status, npm test): “always” allows that pair.
 const TWO_WORD = new Set(['git', 'npm', 'npx', 'pnpm', 'yarn', 'bun', 'node', 'python', 'python3', 'pip', 'cargo', 'go', 'make', 'docker', 'kubectl', 'gh']);
-// A command that chains, pipes or substitutes only ever gets its exact text allowed.
+// Any other command with shell syntax in it (a redirect, a quoted | or ;) only ever gets its exact text allowed.
 const COMPOUND = /[|;&`<>]|\$\(/;
 
 const hostOf = (url) => {
@@ -21,9 +24,10 @@ const hostOf = (url) => {
 };
 
 /**
+ * once and always are null for a chained command, which no one rule can allow (chains).
  * @param {string} tool
  * @param {Record<string, any>} [input]
- * @returns {{ once: string, always: string, alwaysWords: string }}
+ * @returns {{ once: string|null, always: string|null, alwaysWords: string }}
  */
 export function rulesFor(tool, input = {}) {
   const i = input ?? {};
@@ -32,6 +36,7 @@ export function rulesFor(tool, input = {}) {
       const cmd = String(i.command ?? '').trim();
       if (!cmd) return { once: 'Bash', always: 'Bash', alwaysWords: 'any command' };
       const exact = `Bash(${cmd})`;
+      if (chains(cmd)) return { once: null, always: null, alwaysWords: '' };
       if (COMPOUND.test(cmd)) return { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
       const words = cmd.split(/\s+/);
       const prefix = TWO_WORD.has(words[0]) && words[1] && /^[\w:.-]+$/.test(words[1]) ? `${words[0]} ${words[1]}` : words[0];

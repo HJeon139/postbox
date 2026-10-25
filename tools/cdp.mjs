@@ -124,6 +124,10 @@ export async function launch({ port = 9333, detached = false } = {}) {
   });
   await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
   await send('Page.enable');
+  // The page always counts as focused, as Playwright makes it. Without this, one Escape sent with
+  // Input.dispatchKeyEvent leaves headless Chrome’s page hidden (Chrome 156): it draws no more frames, so anything
+  // after it that waits for one waits forever, and a later hover can miss.
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Runtime.enable');
   await send('Log.enable');
   // Track requests in flight, to explain a page that never finishes loading.

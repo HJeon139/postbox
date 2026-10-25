@@ -1,5 +1,5 @@
-// What a reply shows about Stop: why it stopped (#215, #249), and the background jobs it started that are still running,
-// each with its own Stop (#129). jobRows moved from app/js/thread.mjs.
+// What a reply shows about Stop: why it stopped (#215, #249), the background jobs it started that are still running,
+// each with its own Stop (#129), and whether its header says it’s running (#288). jobRows moved from app/js/thread.mjs.
 
 import { api } from './client.mjs';
 import { h, timeOf } from './dom.mjs';
@@ -58,4 +58,15 @@ export function stoppedTag(it) {
       ? `Interrupted by Send now at ${at}`
       : `Stopped by you at ${at}${it.stopReason === 'kept-jobs' ? ' · its background work kept running' : ''}`;
   return h('span.stopped-tag', text);
+}
+
+/**
+ * What a reply’s header adds while one of its steps runs. A background job’s step runs on after its call returned,
+ * and after a Stop that kept it (#288): that’s its background work running, as a stopped reply’s tag says, not the
+ * reply. A stopped turn settled every other step, so a stopped reply never reads as running.
+ */
+export function runningNote(it, steps) {
+  const running = steps.filter((s) => s.state === 'running');
+  if (it.status !== 'stopped' && running.some((s) => !s.job)) return ' · running';
+  return running.some((s) => s.job) ? ' · background work running' : '';
 }

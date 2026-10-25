@@ -18,8 +18,7 @@
 //   transcripts,     [{ handle, lines }]: each agent’s Claude Code transcript, as text lines
 //   console,         the page’s console errors and exceptions
 //   apps,            { [itemId]: { text, marks, tinyMarks, svgText, tinyText, fonts } } read from inside each app
-//   probes,          { fullScreen: [{ key, before, after, viewport }], attachments: [{ key, images, attachments }],
-//                    answers: [{ key, revision, at }]: the revision of a block the runner read just before answering it }
+//   probes,          what the runner saw on the page, by kind (tools/uat/probes.mjs), such as answers: [{ key, revision, at }]
 //   samples,         [{ busy: [handles thinking or calling tools], rows: number }]: the working row while agents worked
 //   ui,              { headerText, reviewRawRows: { [itemId]: rows of a review block shown as raw “| … |” text } }
 //   userMcpServers,  names of MCP servers in the person’s own Claude Code config
@@ -31,9 +30,11 @@
 
 import { ASKING } from '../shared/catalog.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
+import { clip } from '../shared/text.mjs';
 import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from './adapters/setup.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
+import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
@@ -43,12 +44,6 @@ import { freshInstall } from './seed.mjs';
 export { callsFor, LONG_TURN_MS, LONG_TURN_TOOLS } from './block-use.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
-const clip = (s, n = 240) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
 
 /**
  * What’s waiting on the person in these threads, as the “needs you” count sees it: a block that asks (choice,
@@ -826,6 +821,7 @@ export const CHECKS = [
   // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): server/room-checks-backends.mjs.
   ...BACKEND_CHECKS,
   ...TELEMETRY_CHECKS,
+  ...NEEDS_CHECKS,
   {
     // Two processes in one Claude Code session (#126): a turn that started while the session’s previous turn was still
     // making requests, or a stopped turn whose process went on calling Postbox’s tools after Stop. Claude Code turns

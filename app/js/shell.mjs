@@ -4,10 +4,13 @@
 
 import { factsText, installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
+import { needsYouNow } from '/shared/needs.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
-import { agentsSection, joinedWhy, openAgentPanel, openAsks, openAsksEl } from './agents.mjs';
+import { agentsSection, joinedWhy, openAgentPanel } from './agents.mjs';
 import { api, busy, client, hrefOf, liveSessions, needsYou, sessionsOf, stopSession, threadState, threadsOf, topicsOf, whereOf } from './client.mjs';
 import { ago, fill, h, icon, plural, syncList, timeOf } from './dom.mjs';
+import { nextNeedsYou } from './needs-nav.mjs';
+import { openAsks, openAsksEl } from './open-asks.mjs';
 import { openPermissions } from './permissions.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -47,8 +50,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
             {
               type: 'button',
               id: `top-ring-${se.id}`,
-              'aria-haspopup': 'dialog',
-              'aria-expanded': 'false',
+              'aria-haspopup': needsYouNow(se) ? null : 'dialog',
+              'aria-expanded': needsYouNow(se) ? null : 'false',
               title: joinedWhy(se),
               onclick: () => openAgentPanel(se.id, b),
             },
@@ -258,28 +261,6 @@ function buildLine() {
     { 'aria-label': `Postbox version ${b.version}${b.commit ? `, commit ${b.commit}` : ''}` },
     `v${b.version}${b.commit ? ` · ${b.commit}` : ''}`,
   );
-}
-
-/** ⌃J: go to the next agent that needs you, and focus what it’s waiting on. */
-export function nextNeedsYou() {
-  const list = needsYou().sort((a, b) => (a.needs.kind === 'failed') - (b.needs.kind === 'failed') || (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
-  if (!list.length) {
-    toast({ title: 'Nothing needs you right now' });
-    return;
-  }
-  const cur = route();
-  // One in a side thread opens there, in the panel beside its conversation (#121).
-  const at = (se) => whereOf(se);
-  const i = list.findIndex((se) => at(se) === (cur.sideId ?? cur.threadId));
-  const se = list[(i + 1) % list.length];
-  navigate(hrefOf(at(se)));
-  setTimeout(() => {
-    const node = document.querySelector(`[data-key="${CSS.escape(se.needs.itemId ?? '')}"]`);
-    if (node) {
-      node.scrollIntoView({ block: 'center' });
-      (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus();
-    }
-  }, 120);
 }
 
 // ── Rail ────────────────────────────────────────────────────────────────────────────────
@@ -984,8 +965,8 @@ function quickAnswer(se) {
             h('button.btn.sm', { type: 'button', onclick: () => act('deny') }, 'Don’t allow'),
           ]
         : [
-            h('button.btn.sm', { type: 'button', onclick: () => act('once') }, 'Allow once and retry'),
-            h('button.btn.sm', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`),
+            it.rules.once ? h('button.btn.sm', { type: 'button', onclick: () => act('once') }, 'Allow once and retry') : null,
+            it.rules.always ? h('button.btn.sm', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`) : null,
           ];
     return h(
       'div.col',
