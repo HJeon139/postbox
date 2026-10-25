@@ -3,9 +3,40 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { agyRules } from '../server/adapters/antigravity-cli.mjs';
 import { agentGuide, guideText } from '../server/adapters/guide.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
 import { freshInstall } from '../server/seed.mjs';
+
+test('#131: the guide says to check a setup before blaming it, and to rerun only what just reads or checks', () => {
+  const g = agentGuide({
+    persona: { handle: 'developer', backend: 'claude-code' },
+    session: { personaSnapshot: { model: 'claude-opus-5-5', effort: 'medium' } },
+    handles: ['developer'],
+  });
+  assert.match(g, /Your own model calls work, so don’t ask the person to change their setup or credentials on a hunch/);
+  assert.match(g, /Compare the failing command with a working one that changes one thing/);
+  assert.match(g, /rerun it yourself only if it just reads or checks something, and otherwise ask first/);
+  assert.match(g, /If you can’t confirm the cause, say it’s a guess/);
+  // agy’s rules file has no room for it.
+  assert.doesNotMatch(agentGuide({ persona: { handle: 'developer' }, handles: ['developer'], setup: false }), /Before blaming the setup|Your session/);
+});
+
+test('#131: the guide says what this session runs on, and not that another command does', () => {
+  const persona = { handle: 'developer', backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium' };
+  const answered = agentGuide({
+    persona,
+    session: { personaSnapshot: { model: 'claude-opus-5-5', effort: 'medium' }, lastModel: 'claude-sonnet-5-5', lastEffort: 'high' },
+    handles: ['developer'],
+  });
+  assert.match(
+    answered,
+    /Your last turn ran on Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · high effort on the last turn, set to medium/,
+  );
+  assert.match(answered, /That’s this session; a command you run may use other settings/);
+  const unrun = agentGuide({ persona, session: { personaSnapshot: { model: persona.model, effort: persona.effort } }, handles: ['developer'] });
+  assert.match(unrun, /Postbox has you set to Claude Code · claude-opus-5-5 · medium effort, and hasn’t recorded an answered turn yet/);
+});
 
 test('the guide starts from what a reply contains, not from what the person asked for', () => {
   const g = guideText();
@@ -87,4 +118,23 @@ test('the room tells an agent who else is in the conversation and what each does
   assert.match(alone, /Agents in Postbox: @critic\. Mention one with @handle/);
   // The persona’s own prompt names no other agent: the team comes from the room.
   for (const p of freshInstall().personas) assert.doesNotMatch(p.instructions, /@(?:researcher|developer|critic)\b/, p.handle);
+});
+
+// Antigravity reads its rules file up to 12,000 characters (antigravity.google/docs/rules). A busy room’s fits, without
+// the session and setup sections (#131), which would take it to about 12,300.
+test('agy’s rules file for a busy room stays within its 12,000 characters', () => {
+  const persona = { handle: 'researcher', tools: ['shell', 'web.fetch', 'agents.outside'], canPublish: false };
+  const role = 'Finds sources, checks claims against the corpus, and writes short summaries with citations for the room.';
+  const room = ['critic', 'developer', 'analyst'].map((handle) => ({ handle, role }));
+  const brief = '@critic asked you to join to check the retrieval numbers in the review block, and to say what the corpus supports.';
+  const guide = agentGuide({
+    persona,
+    handles: ['researcher', ...room.map((r) => r.handle)],
+    room,
+    project: { name: 'A project with a long descriptive name' },
+    brief,
+    toolRules: null,
+    setup: false,
+  });
+  assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity/mcp/postbox' }).length <= 12000);
 });

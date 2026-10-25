@@ -2,6 +2,27 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.30.2 (2026-10-25)
+
+### Fixes
+
+- **uat:** honor send_then_stop's delay and hand the job question to the tester
+- **stop:** settle a stopped turn's running steps, and its reply's header
+
+## 0.30.1 (2026-10-24)
+
+### Fixes
+
+- **agents:** shorter setup guidance, safe in bypass mode, and none in agy's full rules file
+- **agents:** ground setup diagnosis in evidence
+- **uat:** count filed findings in recurrence
+
+## 0.30.0 (2026-10-24)
+
+### Features
+
+- **reactions:** switch to the person's final icon set
+
 ## 0.29.0 (2026-10-24)
 
 ### Features

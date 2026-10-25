@@ -686,11 +686,11 @@ test('#73: a subagent still working in the background when its turn is stopped r
     [
       ['ag', 'stopped'],
       ['sh', 'stopped'],
-      ['own', 'running'],
+      ['own', 'stopped'],
     ],
-    'only the subagent and its calls: nothing else changes here',
+    'the subagent and its calls, and the agent’s own call too (#288)',
   );
-  assert.equal(steps[0].detail, 'its turn ended before it finished');
+  assert.deepEqual([steps[0].detail, steps[2].detail], ['its turn ended before it finished', undefined], 'only the subagent’s say its turn ended');
 });
 
 test('#129: a kept job whose group is gone has ended; shutting down stops the ones still running', async () => {

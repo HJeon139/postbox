@@ -49,6 +49,14 @@ await check('#251 a reaction by mouse shows under the reply, and the server keep
   assert.deepEqual(await chips(), ['👎']);
   await page.waitFor(`${REPLY}.querySelector('.react-chip img').naturalWidth === 64`, { label: 'the reaction’s icon' });
   assert.equal(await page.evaluate(`${REPLY}.querySelector('.react-chip').hasAttribute('aria-pressed')`), false);
+  // On light the icon has a rim, which keeps its cream border off the wash; on dark it has none.
+  const rim = (theme) =>
+    page.evaluate(
+      `(document.documentElement.dataset.theme = '${theme}', getComputedStyle(${REPLY}.querySelector('.react-icon')).filter.includes('drop-shadow'))`,
+    );
+  const was = await page.evaluate('document.documentElement.dataset.theme');
+  assert.deepEqual([await rim('light'), await rim('dark')], [true, false], 'the icon’s rim is on light only');
+  await page.evaluate(`document.documentElement.dataset.theme = '${was}'`);
   assert.deepEqual(await onServer(), ['👎']);
 });
 

@@ -7,7 +7,9 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { sessionTotal } from './cost.mjs';
 import { TELEMETRY_ACTION } from './telemetry-action.mjs';
+import { STOP_AFTER_MAX_S, WAIT_MAX_S } from './turns.mjs';
 
 export { unaddressed } from '../../shared/text.mjs';
 
@@ -186,7 +188,7 @@ ${issues.map((i) => `#${i.number} ${i.title}`).join('\n') || '(none listed)'}
 
 Then choose one action:
 - send {text}: a message in the conversation. To talk to an agent, write its handle with the @, as in “@critic, what’s your biggest concern?”. “critic: …” or the bare name isn’t addressing: a message that @-mentions no agent goes to whichever agent spoke last.
-- send_then_stop {text, seconds?}: send a message, wait that many seconds (default 2), then press Stop on the active reply. Use this for a deliberate cancellation check.
+- send_then_stop {text, seconds?}: send a message, wait that many seconds (default 2, at most ${STOP_AFTER_MAX_S}), then press Stop on the active reply. Use this for a deliberate cancellation check. If Postbox asks whether to stop background jobs too, you get its question: answer it with jobs.
 - thread {item, text}: reply in a topic thread on that message, which opens it in the right pane.
 - thread_reply {text}: reply in the thread that’s open in the right pane. Messages inside the pane have no “Reply in thread” of their own.
 - act {item, fills?, choose?, button?}: use a block or card: fill fields by label, pick options by label, press a button by its text. A wake request (“Let @a wake @b?”) is a card: allow it or not with its button.
@@ -202,7 +204,7 @@ Then choose one action:
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.
 - full_screen {item}: press that app’s Expand button.
 - jobs {answer}: answer Postbox’s question about an agent’s background jobs, when it’s on screen: stop (“Stop it too”) or keep (“Keep running”).
-- wait {seconds}: when an agent is still working.
+- wait {seconds}: when an agent is still working (at most ${WAIT_MAX_S}).
 - stop: press Stop on a reply that is currently working, if one is visible.
 - telemetry {telemetry: {do, …}, item?}: record (Record this room in the ⋯ menu; you get the header), stop, react {emoji} to item, report {history} (Telemetry report… then Make report; you get every line of the report and its hash), leave_out {line}, save, file {finding} (File issue: you get the text it showed and what Postbox did with it).
 - next_phase: when this phase’s goal is met, or blocked after two honest tries.
@@ -210,7 +212,7 @@ Then choose one action:
 
 Each step also lists what’s waiting on you: blocks that ask you something, review drafts, wake requests, permission cards, failed turns to retry. Answer them before you move to the next phase or finish, as a person clearing “needs you” would: an agent that asked is stuck until you do. If one isn’t on screen, open the thread it’s in.
 
-The run waits for the agents to finish before each step. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep); send_now, to write text and press Send now on it; or answer, to answer the block item while the agent works, as review (verdict, comments) or act (choose, button) would. Answer a draft that way while its agent is revising it, as a person reading along would.
+The run waits for the agents to finish before each step, or until something needs you while one works, such as Stop’s question about background jobs: answer it, or wait, before you give an interrupt. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep); send_now, to write text and press Send now on it; or answer, to answer the block item while the agent works, as review (verdict, comments) or act (choose, button) would. Answer a draft that way while its agent is revising it, as a person reading along would.
 
 Scenario: ${scenario.title}
 ${scenario.summary}`;
@@ -306,7 +308,8 @@ export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2 }) {
     child.on('close', () => {
       try {
         const r = JSON.parse(out);
-        if (r.is_error || !r.structured_output) return reject(new Error(r.result || 'No answer.'));
+        // A failed call spent too: its cost goes with the error, for a run budget to count (tools/uat/budget.mjs).
+        if (r.is_error || !r.structured_output) return reject(Object.assign(new Error(r.result || 'No answer.'), { cost: r.total_cost_usd ?? 0 }));
         resolve({ value: r.structured_output, cost: r.total_cost_usd ?? 0 });
       } catch {
         reject(new Error(`No answer: ${out.slice(-300)}`));
@@ -317,9 +320,9 @@ export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2 }) {
 }
 
 /**
- * @param {{ cwd: string, model: string, budgetUsd: number, log: (line: string) => void }} opts
+ * @param {{ cwd: string, model: string, budgetUsd: number, log: (line: string) => void, run?: typeof spawn }} opts  run: a fake spawn, in tests
  */
-export function createTester({ cwd, model, budgetUsd, log }) {
+export function createTester({ cwd, model, budgetUsd, log, run = spawn }) {
   let session = null;
   let spent = 0;
   const ask = (prompt, system) =>
@@ -343,7 +346,7 @@ export function createTester({ cwd, model, budgetUsd, log }) {
         String(Math.max(0.5, budgetUsd - spent)),
         ...(session ? ['--resume', session] : ['--system-prompt', system]),
       ];
-      const child = spawn(process.env.POSTBOX_CLAUDE_BIN ?? 'claude', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = run(process.env.POSTBOX_CLAUDE_BIN ?? 'claude', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
       let out = '';
       let err = '';
       child.stdout.on('data', (d) => (out += d));
@@ -352,7 +355,8 @@ export function createTester({ cwd, model, budgetUsd, log }) {
       child.on('close', () => {
         try {
           const r = JSON.parse(out);
-          spent += r.total_cost_usd ?? 0;
+          // The session is resumed every step, so its result’s total is the running one (tools/uat/cost.mjs).
+          spent = sessionTotal(spent, r);
           session = r.session_id ?? session;
           if (r.is_error || !r.structured_output) return reject(new Error(r.result || 'The tester gave no answer.'));
           resolve(r.structured_output);

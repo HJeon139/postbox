@@ -1,0 +1,489 @@
+{
+  "run": "2026-10-24T21-54-03-longresearch",
+  "about": "Each turn’s init and result events from the run’s recorded streams (streams/*.jsonl), cut to the fields the runner reads; result text and usage dropped. The run was stopped by an outside watchdog with SIGINT, so it has no report.md.",
+  "streams": [
+    {
+      "handle": "researcher",
+      "started": 1792878858671,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 6,
+          "duration_ms": 38263,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.2928898
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792878900711,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 1,
+          "duration_ms": 6314,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.3173334
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792878922261,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 4,
+          "duration_ms": 30873,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.4103776
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792878967617,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 38468,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.5414662
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879014376,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 3,
+          "duration_ms": 10942,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.5845966
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879035429,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 3,
+          "duration_ms": 42956,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.7089830000000001
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879093408,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 27332,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.7906970000000002
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879131995,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 11036,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.8388304000000003
+        }
+      ]
+    },
+    {
+      "handle": "critic",
+      "started": 1792879151516,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 4,
+          "duration_ms": 71680,
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "total_cost_usd": 0.33475879999999997
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879225657,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 1,
+          "duration_ms": 29940,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.9262740000000003
+        }
+      ]
+    },
+    {
+      "handle": "critic",
+      "started": 1792879227156,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 3,
+          "duration_ms": 9400,
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "total_cost_usd": 0.37751159999999995
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879258217,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 10788,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 0.9914522000000003
+        }
+      ]
+    },
+    {
+      "handle": "critic",
+      "started": 1792879271227,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 3,
+          "duration_ms": 21533,
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "total_cost_usd": 0.45754539999999994
+        }
+      ]
+    },
+    {
+      "handle": "critic",
+      "started": 1792879335751,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 3,
+          "duration_ms": 20002,
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "total_cost_usd": 0.5253113999999999
+        }
+      ]
+    },
+    {
+      "handle": "critic",
+      "started": 1792879374575,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 1,
+          "duration_ms": 4719,
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "total_cost_usd": 0.5442513999999998
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879381635,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 1,
+          "duration_ms": 6428,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 1.0249592000000003
+        }
+      ]
+    },
+    {
+      "handle": "critic",
+      "started": 1792879390468,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 1,
+          "duration_ms": 4901,
+          "session_id": "92745faa-7ca1-4a72-8ec9-95a2efc7ad4e",
+          "total_cost_usd": 0.5675285999999998
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879406413,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 21600,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 1.0869340000000003
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879431803,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 3,
+          "duration_ms": 10477,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 1.1449900000000002
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879461373,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 23444,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 1.2213878000000002
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879495457,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 13088,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 1.2682398000000001
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879519726,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 10941,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 1.3135884000000002
+        }
+      ]
+    },
+    {
+      "handle": "researcher",
+      "started": 1792879540719,
+      "events": [
+        {
+          "type": "system",
+          "subtype": "init",
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "type": "result",
+          "subtype": "success",
+          "is_error": false,
+          "num_turns": 2,
+          "duration_ms": 15091,
+          "session_id": "7f31e7af-da16-4778-99c7-0bf018bbc1e7",
+          "total_cost_usd": 1.370567
+        }
+      ]
+    }
+  ]
+}
