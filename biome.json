@@ -338,7 +338,7 @@
     },
     {
       "includes": ["tests/browser/transcript.spec.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 435 } } } } }
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 497 } } } } }
     },
     {
       "includes": ["tests/claude-code.test.mjs"],

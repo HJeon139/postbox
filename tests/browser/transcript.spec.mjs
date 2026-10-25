@@ -234,6 +234,71 @@ test('#88 at the bottom: a card that needs you stays still while what follows it
   expect(await last.evaluate((n) => Math.round(n.getBoundingClientRect().top)), 'the pill going didn’t move anything').toBe(at);
 });
 
+// ── #88: scrolling up while an agent streams ────────────────────────────────────────────
+
+/**
+ * Streams a long reply a few words a frame, the way an agent does, with a message from you every few frames, until
+ * stop() is called; then ends the reply. The wheel moves the view before its scroll event fires.
+ */
+function streamOn(page, t, se) {
+  const { rt, store } = app;
+  const it = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
+  let on = true;
+  const words =
+    Array.from({ length: 30 }, (_, i) => LONG(600 + i))
+      .join(' ')
+      .match(/\S+\s*/g) ?? [];
+  const done = (async () => {
+    for (let i = 0; on && i < words.length; i++) {
+      store.emit('item.text', { threadId: t.id, id: it.id, text: words[i] });
+      // A message from someone else now and then: unlike the reply’s text, which the page draws in its next animation
+      // frame, the page adds it as soon as it hears it, so it can land between a wheel turn and its scroll event.
+      if (i % 4 === 3) rt.addItem(t.id, { kind: 'user', text: `Meanwhile ${i}` });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
+    }
+    rt.patchItem(t.id, it.id, { status: 'done' });
+  })();
+  return async () => {
+    on = false;
+    await done;
+  };
+}
+/** The gap to the end in each of the next frames, read in the page, while the reply goes on streaming. */
+const gapsOver = (page, n) =>
+  page.evaluate(async (count) => {
+    const gaps = [];
+    for (let i = 0; i < count; i++) {
+      await new Promise((r) => requestAnimationFrame(r));
+      gaps.push(Math.round(document.scrollingElement.scrollHeight - scrollY - innerHeight));
+    }
+    return gaps;
+  }, n);
+
+for (const [how, steps] of [
+  ['one turn of the wheel', [-300]],
+  ['small steps of the wheel', [-60, -60, -60, -60, -60]],
+])
+  test(`#88 while an agent streams, ${how} up leaves the view up: nothing pulls it back to the end`, async ({ page }) => {
+    const { t, researcher } = room(`Scroll up while streaming: ${how}`);
+    await open(page, t);
+    await atTheEnd(page, 'stuck at the end');
+    const stop = streamOn(page, t, researcher);
+    try {
+      // A few chunks in, so the view is following the reply as it grows.
+      await expect.poll(() => page.locator('.caret').count(), { message: 'the reply streaming' }).toBe(1);
+      await gapsOver(page, 5);
+      await page.mouse.move(760, 400);
+      for (const dy of steps) await page.mouse.wheel(0, dy);
+      await expect.poll(() => gap(page), { message: 'the view off the end' }).toBeGreaterThan(2);
+      const gaps = await gapsOver(page, 30);
+      expect(Math.min(...gaps), `the gap in each frame after: ${gaps.join(', ')}`).toBeGreaterThan(100);
+    } finally {
+      await stop();
+    }
+    await settled(page);
+    expect(await gap(page), 'still up once the reply ends').toBeGreaterThan(100);
+  });
+
 // ── #88: scrolled up, nothing moves you ─────────────────────────────────────────────────
 
 test('#88 scrolled up: streaming, patches, new items, an app growing above, the panel and a resize don’t move what you’re reading', async ({ page }) => {
