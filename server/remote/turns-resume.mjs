@@ -5,6 +5,7 @@
 
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { releaseHost } from './turns-need.mjs';
+import { continuing } from './turns-origin.mjs';
 import { AUTO_RESUMES, clock, hostOf, isBack, ON_HOST, SIGN_IN_RECHECK_MS, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
@@ -81,7 +82,9 @@ function autoResume(rts, sessionId) {
   // An interruption that keeps coming back waits for the person after a few resumes.
   if (r.resume.why === 'interrupted' && (r.autoResumes ?? 0) >= AUTO_RESUMES) return;
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: true }, autoResumes: (r.autoResumes ?? 0) + 1 });
-  rt.deliver(sessionId, { kind: 'notice', text: 'Postbox resumed your turn on its own. Carry on where you left off.' });
+  // It goes on as the turn it continues: where it spoke, who it answers, what it was asked (turns-origin.mjs).
+  const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'Postbox resumed your turn on its own. Carry on where you left off.' });
+  rt.deliver(sessionId, go.message, go.opts);
 }
 
 /** The person’s Resume, after Sign-in needed or Interrupted. @param {RemoteTurns} rts @param {string} sessionId */
@@ -92,7 +95,8 @@ export function resume(rts, sessionId) {
   if (!r?.resume) return { ok: false, message: `@${se.handle} has no stopped turn on a host to resume.` };
   if (rt.turns.has(sessionId)) return { ok: false, message: `@${se.handle} is already at work.` };
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: false }, autoResumes: 0 });
-  rt.deliver(sessionId, { kind: 'notice', text: 'The person asked you to resume. Carry on where you left off.' });
+  const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'The person asked you to resume. Carry on where you left off.' });
+  rt.deliver(sessionId, go.message, go.opts);
   return { ok: true };
 }
 
@@ -126,7 +130,8 @@ export async function reattach(rts, sessionId) {
       if (it.kind === 'agent' && it.turnId && it.turnId === r.rtTurn && it.status !== 'replaced')
         rt.patchItem(threadId, it.id, { status: 'replaced', text: '' });
   rt.updateSession(sessionId, { state: 'think', currentStep: `Reconnecting to ${rt.s.hosts?.[r.hostId]?.name ?? 'the host'}` });
-  rt.deliver(sessionId, { kind: 'notice', text: '', attach: r.turn }, { threadId: r.threadId ?? null });
+  const go = continuing(rt, now, { kind: 'notice', text: '', attach: r.turn });
+  rt.deliver(sessionId, go.message, go.opts);
 }
 
 /** A turn that was on a host and is gone: Interrupted, and resumed once the host is back. @param {RemoteTurns} rts @param {string} sessionId @param {string} why */

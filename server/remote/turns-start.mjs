@@ -7,8 +7,10 @@ import { randomUUID } from 'node:crypto';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
 import { offersBring } from '../side-threads.mjs';
+import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
+import { continueAs, keepOrigin } from './turns-origin.mjs';
 import { signInCheck } from './turns-resume.mjs';
 import { abortError, OFFSET_SAVE_MS, updateRemote, whyLine } from './turns-shared.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
@@ -22,6 +24,8 @@ import { sendSnapshot } from './turns-snapshot.mjs';
  * @param {RemoteTurns} rts @param {any} turn @param {string} hostId @param {any} adapter
  */
 export function begin(rts, turn, hostId, adapter) {
+  // A turn that continues one on the host is that turn from here on (turns-origin.mjs).
+  continueAs(turn);
   const caps = adapter?.capabilities?.remote ?? null;
   /** @type {Live} */
   const live = {
@@ -42,6 +46,7 @@ export function begin(rts, turn, hostId, adapter) {
     attach: false,
     started: false,
     startSent: false,
+    origin: null,
   };
   turn.remote = live;
   rts.live.set(turn.sessionId, live);
@@ -81,6 +86,10 @@ export async function prepare(rts, turn, ctx, message) {
   const folder = project?.hostFolders?.[live.hostId] ?? `${welcome.home === '/' ? '' : welcome.home}/postbox-work/${persona.handle}`;
   const prior = se.remoteTurn ?? null;
   const resume = !attach && prior?.resume ? prior.resume : null;
+  // What it was asked, a large request written to Postbox’s store first, so the record allocate saves never names a
+  // copy that isn’t there (turns-origin.mjs).
+  live.origin = await keepOrigin(rt, turn, wokeOf(turn).woke);
+  if (ctx.signal.aborted) throw abortError();
   /** @type {import('../adapters/adapter.mjs').RemoteContext} */
   const remote = {
     link: live.link,
@@ -189,6 +198,8 @@ function allocate(rts, live, folder) {
       autoResumes: prior.resume?.auto ? (prior.autoResumes ?? 0) : 0,
       replies: prior.replies ?? [],
       stopping: prior.stopping ?? [],
+      // What it was asked, so a turn that continues it ends as it would have (prepare, turns-origin.mjs).
+      origin: live.origin,
     },
   });
   sendSnapshot(rts, live, id);

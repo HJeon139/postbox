@@ -85,6 +85,7 @@ import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
+import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -113,22 +114,6 @@ const STOP_WATCHDOG_MS = 15000;
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
 const count = (n) => n.toLocaleString('en-US');
-/**
- * What a turn was asked, kept on its failed reply so Retry sends it again as it was, with its own kind (#151): a wake
- * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s.
- */
-const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
-/**
- * What woke a turn, on each item it shows, for its sender line (#135): another agent, with a message, or with its
- * answer to one (endTurn sends that with saidIn, where it answered); or a wake it scheduled.
- */
-const wokeOf = (turn) => {
-  const m = turn?.asked?.message;
-  if (m?.kind === 'wake') return { woke: { scheduled: true } };
-  return m?.kind === 'agent' ? { woke: { by: String(m.from ?? '').replace(/^@/, ''), ...(m.saidIn ? { reply: true, in: m.saidIn } : {}) } } : {};
-};
-/** What each reply of a turn carries: what woke it, and that a reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check. */
-const replyMarks = (turn) => ({ ...(turn.kind === 'lint' ? { lintReply: true } : {}), ...wokeOf(turn) });
 /**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
  * read_message takes, so the agent can read the rest (#109).
@@ -1542,16 +1527,16 @@ export class Runtime {
         this.endJob(se.id, j.id, 'stopped', 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.');
   }
 
-  /** Retry a failed reply: sends the same message again. */
+  /** Retry a failed reply: sends the same message again, or a promise of that when it’s read back from the store first. */
   retry(threadId, itemId) {
     const it = this.store.item(threadId, itemId);
     if (it?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
-    const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
-    this.patchItem(threadId, itemId, { status: 'retried' });
-    this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-    if (it.asked) this.deliver(it.sessionId, { ...it.asked.message, retry: true }, { replyTo: it.asked.replyTo, summarizeTo: it.asked.summarizeTo, threadId });
-    // A failed reply stored before #151 kept nothing of what it was asked: the person’s last message is the best guess.
-    else this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
+    // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
+    return askedAgain(this, threadId, it, (asked) => {
+      this.patchItem(threadId, itemId, { status: 'retried' });
+      this.updateSession(it.sessionId, { needs: null, state: 'idle' });
+      this.deliver(it.sessionId, { ...asked.message, retry: true }, { replyTo: asked.replyTo, summarizeTo: asked.summarizeTo, threadId });
+    });
   }
 
   // ── Agents waking agents ───────────────────────────────────────────────────────────

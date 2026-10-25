@@ -395,7 +395,7 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/diagram$/)) && req.method === 'POST')
       return send(res, 200, rt.diagramCheck(m[1], m[2], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/retry$/)) && req.method === 'POST') {
-      rt.retry(m[1], m[2]);
+      await rt.retry(m[1], m[2]);
       return send(res, 200, { ok: true });
     }
     // Resume, after a turn on a host stopped with Sign-in needed or Interrupted (#120): a 409 says why when there’s

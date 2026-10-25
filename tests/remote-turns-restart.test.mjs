@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readOrigin } from '../server/remote/turns-origin.mjs';
 import { FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { messageOf, restarted, rig, running, settled, sleep, starts, startUp, until } from './remote-turns-helpers.mjs';
 
@@ -43,6 +44,84 @@ test('#120 L5: after a restart a turn the welcome says ended is applied by repla
   assert.match(r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'done' && i.text).text, /hello\.txt/);
   // Its card’s prompt never came back once the turn was over: it can’t be answered now.
   assert.equal(r.store.items(r.t.id).find((i) => i.kind === 'permission').status, 'expired');
+});
+
+test('#120 L5, #135: a turn another agent woke, attached again after a restart, keeps its sender line’s woke', async () => {
+  const { store, d } = restarted({ welcome: 'ended' });
+  const r = rig({ store, d });
+  const origin = { kind: 'agent', movesOn: false, from: 'lead', replyTo: null, replyIn: null, summarizeTo: null, woke: { by: 'lead' }, message: null };
+  r.rt.updateSession(r.se().id, { remoteTurn: { ...r.se().remoteTurn, origin } });
+  startUp(r);
+  await settled(r);
+  await until(() => r.se().remoteTurn.state === 'done', 'the turn to be applied');
+  const reply = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'done' && i.text);
+  assert.notEqual(reply.turnId, 'turn_old');
+  assert.deepEqual(reply.woke, { by: 'lead' });
+  assert.deepEqual(r.se().remoteTurn.origin, origin, 'kept for a second restart');
+});
+
+test('#120 L5, #228: an agent woken by another, attached again after a restart, still sends its answer back to it', async () => {
+  // The waker runs on this computer; what it’s sent is what each Postbox’s mock got.
+  const lead = (/** @type {any} */ r, /** @type {any[]} */ got) => {
+    r.rt.adapters.register({ name: 'mock', deliver: async (/** @type {any} */ _se, /** @type {any} */ m) => void got.push(m) });
+    const p = r.rt.personaByHandle('lead') ?? r.rt.createPersona({ handle: 'lead', backend: 'mock' });
+    return r.rt.ensureSession(r.t.id, p.id);
+  };
+  const first = rig();
+  const a = lead(first, []);
+  assert.equal(first.rt.agentWake(a.id, 'coder', 'Is hello.txt there?').ok, true);
+  await until(() => starts(first.d).length === 1, 'the woken turn to start on the host');
+  const turn = starts(first.d)[0].turn;
+  await first.rt.stopTurns({ graceMs: 0 });
+  first.d.drop();
+  first.d.connect();
+  const next = rig({ store: first.store, d: first.d });
+  const got = [];
+  lead(next, got);
+  startUp(next);
+  await until(() => next.d.received.filter((m) => m.type === 'read' && m.turn === turn).length > 1, 'the attach’s read');
+  next.d.end(turn);
+  await until(() => got.length === 1, 'the answer to reach the waker');
+  assert.equal(got[0].from, '@coder');
+  assert.match(got[0].text, /hello\.txt/);
+  assert.equal(starts(next.d).length, 1, 'attached, not started again');
+  await settled(next);
+});
+
+test('#120 L5: a record on disk naming no session, no thread, or the session itself is ignored when the turn is attached again', async () => {
+  const { store, d } = restarted({ welcome: 'ended' });
+  const r = rig({ store, d });
+  const se = r.se();
+  const origin = {
+    kind: 'agent',
+    from: 'Lead',
+    replyTo: se.id,
+    replyIn: '__proto__',
+    summarizeTo: 'constructor',
+    woke: { by: 'lead', reply: true, in: '__proto__' },
+  };
+  r.rt.updateSession(se.id, { remoteTurn: { ...se.remoteTurn, threadId: 'hasOwnProperty', origin: { ...origin, message: { kind: 'user', text: 7 } } } });
+  startUp(r);
+  await settled(r);
+  await until(() => r.se().remoteTurn.state === 'done', 'the turn to be applied');
+  const reply = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'done' && i.text);
+  assert.match(reply.text, /hello\.txt/);
+  assert.deepEqual(reply.woke, { by: 'lead', reply: true });
+  assert.equal(r.store.items(r.t.id).filter((i) => i.kind === 'shared').length, 0, 'no summary posted anywhere');
+  // An unknown kind is an ordinary turn.
+  assert.equal(readOrigin(r.rt, se.id, { ...origin, kind: 'bogus' }), null);
+  assert.deepEqual(readOrigin(r.rt, se.id, { ...origin, message: { kind: 'user', text: 'hi' } }), {
+    kind: 'agent',
+    movesOn: false,
+    from: 'lead',
+    replyTo: null,
+    replyIn: null,
+    summarizeTo: null,
+    woke: { by: 'lead', reply: true },
+    // A request of another kind than the record’s isn’t one Retry can send: it’s lost, so Retry refuses it.
+    message: null,
+    lost: true,
+  });
 });
 
 test('#120 L5: after a restart a turn the welcome doesn’t list is Interrupted, and resumes once the host is back', async () => {

@@ -38,9 +38,10 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
  * @typedef {{ sessionId: string, hostId: string, rt: any, link: any, hostTurns: Set<string>, current: string | null,
  *   work: string, signInError: Record<string, unknown> | null, lastEvent: number, signIn: boolean,
  *   exit: { code: number | null, signal: string | null } | null | undefined, hung: { at: number, text: string } | null,
- *   offset: number, offsetSaved: number, attach: boolean, started: boolean, startSent: boolean }} Live
+ *   offset: number, offsetSaved: number, attach: boolean, started: boolean, startSent: boolean, origin: any }} Live
  *   exit: the current host turn’s, from `ended` (null: interrupted), undefined until then; started: the daemon said
- *   `started` (or turn-exists) for it, or it’s attached; startSent: its `start` was written to a connected link
+ *   `started` (or turn-exists) for it, or it’s attached; startSent: its `start` was written to a connected link;
+ *   origin: what it was asked, as se.remoteTurn.origin keeps it (turns-origin.mjs), once prepare has it
  */
 
 /**
