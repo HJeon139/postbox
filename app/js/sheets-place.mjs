@@ -35,7 +35,11 @@ export function placeField(st, paint, { idp, hosts, here, name }) {
             'select.select',
             {
               id: `${idp}-where`,
-              'aria-describedby': `${idp}-where-help`,
+              // Its errors are read with it, and mark it invalid.
+              'aria-describedby': [`${idp}-where-help`, missing ? `${idp}-where-missing` : '', st.placeError ? `${idp}-where-err` : '']
+                .filter(Boolean)
+                .join(' '),
+              'aria-invalid': missing || st.placeError ? 'true' : null,
               onchange: (e) => {
                 st.remote = e.target.value || null;
                 st.placeError = null;
@@ -52,6 +56,7 @@ export function placeField(st, paint, { idp, hosts, here, name }) {
     missing
       ? h(
           'span.err',
+          { id: `${idp}-where-missing` },
           icon('warn'),
           `${name} wasn’t found on ${host.name}${found?.looked?.length ? `: Postbox’s daemon looked in ${found.looked.join(', ')}` : ''}. Install it there, or set its path in the host’s settings.`,
         )

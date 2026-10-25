@@ -94,8 +94,12 @@ await check('#120 the persona sheet’s Runs on: this computer or a host, and Co
     await text(`${q('#pe-where')}.closest('.field').querySelector('.err')`),
     /^Codex wasn’t found on host\.example\.com: Postbox’s daemon looked in \/home\/user\/\.local\/bin, \/usr\/local\/bin\. Install it there, or set its path in the host’s settings\.$/,
   );
+  // Each error is the select’s, read with it.
+  assert.equal(await page.evaluate(`${q('#pe-where')}.getAttribute('aria-describedby')`), 'pe-where-help pe-where-missing');
+  assert.equal(await page.evaluate(`${q('#pe-where')}.getAttribute('aria-invalid')`), 'true');
   await click(`[...document.querySelectorAll('.dialog button.send')].find((b) => b.textContent === 'Save')`);
   await page.waitFor(`!!${q('#pe-where-err')}`, { label: 'the server’s refusal' });
+  assert.equal(await page.evaluate(`${q('#pe-where')}.getAttribute('aria-describedby')`), 'pe-where-help pe-where-missing pe-where-err');
   assert.match(await text(q('#pe-where-err')), /^Codex isn’t installed on host\.example\.com, so this agent can’t run there\./);
   assert.equal(await page.evaluate(`document.activeElement?.id`), 'pe-where', 'focus on Runs on');
   assert.equal(rt.persona(cx.id).remote.hostId, B.id, 'unchanged');
