@@ -136,6 +136,15 @@ export const BOILERPLATES = [
     instructions: 'Build and maintain search indexes. Report progress as you go.',
     tools: ['corpus.search', 'corpus.read', 'corpus.stats', 'shell'],
   },
+  {
+    id: 'bp-gpt',
+    name: 'GPT',
+    description: 'Helps with questions, writing and code using Codex',
+    backend: 'codex',
+    model: '',
+    instructions: prompt('gpt'),
+    tools: ['shell', 'web.fetch'],
+  },
   { id: 'bp-blank', name: 'Blank', description: 'Write it yourself', instructions: '', tools: [] },
 ];
 
@@ -155,6 +164,7 @@ export const KNOWN_TOOLS = [
  */
 export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = false }) {
   const s = rt.store.state;
+  for (const b of BOILERPLATES) if (!Object.hasOwn(s.boilerplates, b.id)) rt.store.emit('boilerplate', b);
   if (Object.keys(s.personas).length) return false;
   const fresh = freshInstall();
   let personas = demo ? DEMO_PERSONAS : fresh.personas;
@@ -166,7 +176,6 @@ export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = fal
   }
   // The seeded agents run on a real model when one is available here, and on the mock otherwise.
   for (const p of personas) rt.createPersona({ backend, ...p });
-  for (const b of BOILERPLATES) rt.store.emit('boilerplate', b);
   if (!demo) {
     for (const pr of fresh.projects) rt.store.emit('project', { id: newId('pr'), ...pr });
     return true;

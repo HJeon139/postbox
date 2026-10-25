@@ -100,3 +100,26 @@ test('agents.json in the data folder replaces the agents in either mode', async 
   // The demo's conversations need the demo's agents, so they go too.
   assert.deepEqual(await seeded({ demo: true, agents }), { agents: ['@scout on claude-code'], projects: [], threads: 0 });
 });
+
+test('the GPT boilerplate uses Codex and supplies general assistant instructions', () => {
+  const bp = BOILERPLATES.find((b) => b.id === 'bp-gpt');
+  assert.ok(bp);
+  assert.equal(bp.backend, 'codex');
+  assert.match(bp.instructions, /^# GPT\n/);
+  assert.deepEqual(bp.tools, ['shell', 'web.fetch']);
+});
+
+test('an existing installation gains missing boilerplates once and keeps saved customizations', async () => {
+  const store = new Store(null);
+  store.emit('persona', { id: 'existing', handle: 'existing' });
+  store.emit('boilerplate', { id: 'bp-critic', name: 'My critic' });
+  const rt = { store };
+  const opts = { dataDir: '/unused', booksDir: '/unused' };
+  assert.equal(await seed(rt, opts), false);
+  assert.equal(store.state.boilerplates['bp-gpt'].backend, 'codex');
+  assert.equal(store.state.boilerplates['bp-critic'].name, 'My critic');
+  const seq = store.state.seq;
+  assert.equal(await seed(rt, opts), false);
+  assert.equal(store.state.seq, seq);
+  assert.deepEqual(Object.keys(store.state.personas), ['existing']);
+});
