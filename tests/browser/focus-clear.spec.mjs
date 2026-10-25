@@ -54,6 +54,7 @@ function conversation() {
 /** Until the browser has drawn two more frames: focus-clear.mjs scrolls in the frame after focus moves. */
 const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 const scrollY = (page) => page.evaluate(() => window.scrollY);
+const composerTop = (page) => page.locator('.composer').evaluate((c) => c.getBoundingClientRect().top);
 /** Whether the transcript’s messages kept their heights for two frames. */
 const still = (page) =>
   page.evaluate(async () => {
@@ -68,7 +69,7 @@ async function nearTheEnd(page, t, width) {
   await page.setViewportSize({ width, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
-  await expect(page.locator('.chips .chip').first()).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Third' }), 'the choice’s options').toBeVisible();
   // Settled at the end: the transcript scrolls there in a frame of its own once it has drawn.
   await expect
     .poll(() => page.evaluate(() => document.scrollingElement.scrollHeight - innerHeight - scrollY), { message: 'the view at the end' })
@@ -148,16 +149,26 @@ for (const width of [1280, 375]) {
   test(`#232 at ${width} px: Shift+Tab from the composer to the conversation’s last control leaves it in view`, async ({ page }) => {
     const { t } = conversation();
     await nearTheEnd(page, t, width);
-    // Focus in the composer, with the view still a little above the end: you scrolled up to read, say.
+    // The conversation’s last control, in the window but just under the composer: you scrolled up a little to read,
+    // say. Below the window, the browser would scroll it in as far as the page goes, to the end, where it’s clear.
+    // Last by position, as Shift+Tab finds it: whichever control ends the conversation is the one under test.
+    const last = page.locator('#main > .item').last().getByRole('button').last();
+    const under = async () => ((await last.boundingBox())?.y ?? 0) - (await composerTop(page));
+    await page.evaluate((by) => scrollBy(0, by), (await under()) - 4);
+    await expect.poll(async () => Math.round(await under()), { message: 'the last control 4 px under the composer' }).toBe(4);
+    const box = await last.boundingBox();
+    expect((box?.y ?? 0) + (box?.height ?? 0), 'the last control in the window').toBeLessThan(800);
+    await frames(page);
+    const before = await scrollY(page);
     await page.evaluate(() => document.getElementById('composer-input')?.focus({ preventScroll: true }));
     await frames(page);
-    expect(await page.evaluate(() => document.scrollingElement.scrollHeight - innerHeight - scrollY), 'the view stayed above the end').toBeGreaterThan(100);
+    expect(await scrollY(page), 'focus in the composer left the view where it was').toBe(before);
     let f;
     for (let i = 0; i < 6 && (!f || f.inComposer); i++) {
       await page.keyboard.press('Shift+Tab');
       f = await focus(page);
     }
-    expect(f?.inComposer, 'Shift+Tab left the composer').toBe(false);
+    await expect(last, 'Shift+Tab left the composer for the conversation’s last control').toBeFocused();
     await expect.poll(async () => (await focus(page)).covered, { message: `“${f?.name}” clear of the composer` }).toBe(0);
   });
 
@@ -167,13 +178,12 @@ for (const width of [1280, 375]) {
     // The long reply, scrolled so its last 40 px are under the composer, whatever the fonts make its height and the
     // blocks’ after it.
     const long = page.locator('#main > .item', { hasText: 'Shelf note 6' });
-    const composerTop = () => page.locator('.composer').evaluate((c) => c.getBoundingClientRect().top);
-    const below = async () => ((await long.boundingBox())?.y ?? 0) + ((await long.boundingBox())?.height ?? 0) - (await composerTop());
+    const below = async () => ((await long.boundingBox())?.y ?? 0) + ((await long.boundingBox())?.height ?? 0) - (await composerTop(page));
     await page.evaluate((by) => scrollBy(0, by), (await below()) - 40);
     await expect.poll(async () => Math.round(await below()), { message: 'the long reply’s last 40 px under the composer' }).toBe(40);
     // A point at its edge, just above the composer.
     const box = await long.boundingBox();
-    const top = await composerTop();
+    const top = await composerTop(page);
     expect(box && box.y < top - 12, 'the long reply starts above the composer').toBe(true);
     const before = await scrollY(page);
     await page.mouse.click((box?.x ?? 0) + 4, top - 6);
