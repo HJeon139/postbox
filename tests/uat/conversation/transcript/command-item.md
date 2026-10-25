@@ -19,7 +19,7 @@ Checking something in the shell shouldn’t mean leaving Postbox for a terminal,
 
 ## Steps to reproduce
 
-1. Run `node tools/check-commands.mjs`. Every line should say ok.
+1. Run `npx playwright test commands` (`tests/browser/commands.spec.mjs`). Every test should pass.
 2. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>, in a project whose folder you can lose.
 3. Send `!ls`, then `!npm test` in a folder without a package.json, so it fails.
 4. Send `!sleep 30`, and press Stop.
