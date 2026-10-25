@@ -55,12 +55,18 @@ jobs:
       - name: Diff the prompt surface
         id: diff
         run: |
+          # SkillSpector runs when the text it reads changed, or when this workflow or its scripts did, so a change to
+          # how it's installed or run is proven on the runner before it merges.
+          if ! diff -rq out/base/scan out/head/scan > /dev/null \
+            || ! cmp -s {base,head}/.github/workflows/prompt-surface-scan.yml \
+            || ! cmp -s {base,head}/tools/prompt-gate.mjs; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+          fi
           if diff -ruN out/base out/head > prompt-surface.diff; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "## Prompt surface: unchanged" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            if diff -rq out/base/scan out/head/scan > /dev/null; then echo "scan=false" >> "$GITHUB_OUTPUT"; else echo "scan=true" >> "$GITHUB_OUTPUT"; fi
             {
               echo "## Prompt surface: what agents read changes"
               echo
