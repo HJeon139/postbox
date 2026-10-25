@@ -35,7 +35,7 @@ A change that’s visible in the UI also gets a browser spec from whoever writes
 ```bash
 npx playwright test                               # every spec
 POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events late, as CI’s second pass
-npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs a new or changed one
+npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs one a pull request adds or edits
 ```
 
 The checks not yet moved stay in `tools/check-*.mjs` and `tools/checks/*.mjs`. They report through `tools/harness.mjs`, with `ports()` for `PB_PORT` and `PB_CHROME_PORT`, `record()` for each case, and `finish()` at the end, so the run reads their results, not their text.
