@@ -36,6 +36,7 @@ const NOT_SURFACE = {
   'server/helpers.mjs': 'mcp.mjs takes sameToken(), a token comparison',
   'server/runtime.mjs': 'mcp.mjs takes AgentFileError, an error class; what the runtime says to agents is out of the render (SECURITY.md, “Prompt changes”)',
   'server/store.mjs': 'seed.mjs takes newId()',
+  'server/adapters/agy-hook.mjs': 'PreToolUse hook script and hooks.json check, not prompt text',
   'server/adapters/claude-stream.mjs': 'describeTool() and isQuietTool() label tool calls for the person’s transcript',
   'server/adapters/folder.mjs': 'agentFolder(), a path',
   'server/adapters/process-group.mjs': 'process control',
