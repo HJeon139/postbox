@@ -106,7 +106,10 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
   return { ok: true, voice: r.voice };
 }
 
-/** An open app card makes its agent need you and tells you, like a permission card, unless it already needs you. */
+/**
+ * An open app card makes its agent need you and tells you, like a permission card, unless it already needs you. It
+ * waits until you answer it: the agent’s turns, and you moving on (#69), leave it (runtime.mjs keeps it, as a hop).
+ */
 export function needAppSend(rt, app, itemId, waiting) {
   const se = rt.s.sessions[app.sessionId];
   if (!se || (se.needs && se.needs.itemId !== itemId)) return;

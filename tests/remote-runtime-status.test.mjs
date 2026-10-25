@@ -20,7 +20,7 @@ test('#120: each host’s status reaches the state, at each change the manager e
   store.emit('host.status', { id: gone, status: { state: 'connected', failure: null, welcome: null, lastHeard: 1 } });
   hosts.statuses.set(h.id, { state: 'disconnected', failure: null, welcome: null, lastHeard: 1 });
   rt.watchHosts();
-  assert.deepEqual(store.state.hostStatus, { [h.id]: { state: 'disconnected', failure: null, welcome: null, lastHeard: 1 } });
+  assert.deepEqual({ ...store.state.hostStatus }, { [h.id]: { state: 'disconnected', failure: null, welcome: null, lastHeard: 1 } });
 
   const events = [];
   store.subscribe((ev) => ev.type === 'host.status' && events.push(ev.data));
@@ -51,7 +51,7 @@ test('#120: each host’s status reaches the state, at each change the manager e
 
   // A host removed takes its status with it.
   store.emit('host', { id: h.id, removed: true });
-  assert.deepEqual(store.state.hostStatus, {});
+  assert.deepEqual({ ...store.state.hostStatus }, {});
 });
 
 test('#120: without a host manager, status from before a restart is cleared and host actions say why they can’t run', async () => {
@@ -65,7 +65,7 @@ test('#120: without a host manager, status from before a restart is cleared and 
   const h = rt.addHost({ name: 'host.example.com' });
   store.emit('host.status', { id: h.id, status: { state: 'connected', failure: null, welcome: null, lastHeard: 1 } });
   rt.watchHosts();
-  assert.deepEqual(store.state.hostStatus, {});
+  assert.deepEqual({ ...store.state.hostStatus }, {});
   assert.equal(rt.hostStatus(h.id), null);
   await assert.rejects(rt.installHost(h.id), (e) => e.status === 503 && /wasn’t started with remote hosts/.test(e.message));
   assert.deepEqual(await rt.removeHost(h.id), { ok: true, stopped: 0 });

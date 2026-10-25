@@ -138,14 +138,15 @@ export async function settled(page) {
 }
 
 /**
- * Watches the page’s writes to the server (its POST requests) from now on. answered() waits until at least one has
- * been made and every one has been answered, so a test can then check what a refused one would have shown.
- * @param {import('@playwright/test').Page} page
+ * Watches the page’s writes to the server (its POST requests) from now on, those to an address url matches. answered()
+ * waits until at least one has been made and every one has been answered, so a test can then check what a refused one
+ * would have shown. Name the writes the test makes: an app saving its state writes too, and may still be in flight.
+ * @param {import('@playwright/test').Page} page  @param {RegExp} [url]
  */
-export function watchWrites(page) {
+export function watchWrites(page, url = /./) {
   const flying = new Set();
   let landed = 0;
-  page.on('request', (r) => r.method() === 'POST' && flying.add(r));
+  page.on('request', (r) => r.method() === 'POST' && url.test(new URL(r.url()).pathname) && flying.add(r));
   for (const ev of /** @type {const} */ (['requestfinished', 'requestfailed'])) page.on(ev, (r) => flying.delete(r) && landed++);
   return { answered: () => expect.poll(() => flying.size === 0 && landed > 0, { message: 'every write the page made answered' }).toBe(true) };
 }

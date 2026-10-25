@@ -3,31 +3,49 @@
 
 import { applyHost } from './state-hosts.mjs';
 
+/**
+ * Records by id with nothing but their own keys (#352). An id comes from a request, a tool call or an agent, and in a
+ * plain object constructor, toString or __proto__ would find Object, a method or Object.prototype instead of nothing.
+ * @param {Record<string, any>} [entries]
+ * @returns {Record<string, any>}
+ */
+export const map = (entries = {}) => Object.assign(Object.create(null), entries);
+
 export function emptyState() {
   return {
     version: 1,
     seq: 0,
     settings: { theme: 'system' },
-    projects: {},
-    personas: {},
-    boilerplates: {},
-    threads: {},
-    sessions: {},
-    items: {},
-    glossary: {},
-    apps: {},
-    files: {},
+    projects: map(),
+    personas: map(),
+    boilerplates: map(),
+    threads: map(),
+    sessions: map(),
+    items: map(),
+    glossary: map(),
+    apps: map(),
+    files: map(),
     // Datasets agents loaded into the corpus (#47), so they’re loaded again after a restart.
-    datasets: {},
-    schedules: {},
+    datasets: map(),
+    schedules: map(),
     // Remote hosts agents can run on (#120), each with its settings (shared/remote-settings.mjs).
-    hosts: {},
+    hosts: map(),
     // Each host’s connection as the host manager last reported it (#120): { state, failure, welcome, lastHeard }.
     // Live state, like a session’s: the server replaces it at each start, since the link it described is gone.
-    hostStatus: {},
+    hostStatus: map(),
     // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
-    work: {},
+    work: map(),
   };
+}
+
+/** The collections of records by id: every map() in an empty state. */
+const MAPS = Object.entries(emptyState()).flatMap(([k, v]) => (v && typeof v === 'object' && Object.getPrototypeOf(v) === null ? [k] : []));
+
+/** A state read from JSON (a snapshot, /api/state), with its collections and each conversation’s glossary as map()s. */
+export function ownState(s) {
+  for (const c of MAPS) s[c] = map(s[c] ?? {});
+  for (const t of Object.keys(s.glossary)) s.glossary[t] = map(s.glossary[t]);
+  return s;
 }
 
 // The reducer. Events carry whole objects for upserts, and small patches for items.
@@ -58,14 +76,14 @@ export function apply(s, type, d) {
       s.files[d.id] = d;
       break;
     case 'dataset':
-      (s.datasets ??= {})[d.id] = d;
+      (s.datasets ??= map())[d.id] = d;
       break;
     case 'schedule':
       if (d.removed) delete s.schedules[d.id];
       else s.schedules[d.id] = d;
       break;
     case 'glossary':
-      (s.glossary[d.threadId] ??= {})[d.entry.key] = d.entry;
+      (s.glossary[d.threadId] ??= map())[d.entry.key] = d.entry;
       break;
     case 'item.add':
       (s.items[d.threadId] ??= []).push(d.item);
@@ -91,7 +109,7 @@ export function apply(s, type, d) {
       break;
     }
     case 'work.add':
-      ((s.work ??= {})[d.convId] ??= []).push(d.entry);
+      ((s.work ??= map())[d.convId] ??= []).push(d.entry);
       break;
     case 'work.patch': {
       const e = s.work?.[d.convId]?.find((x) => x.id === d.id);

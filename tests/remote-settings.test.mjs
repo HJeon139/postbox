@@ -194,7 +194,7 @@ test('the runtime adds, updates and removes hosts, with clear errors', async () 
     refused(() => rt.addHost({ name: 'devbox', settings: { stallTimeout: MIN } })),
     /stallTimeout must be 10 min to 24 h/,
   );
-  assert.deepEqual(rt.s.hosts, {}, 'a refused host isn’t stored');
+  assert.deepEqual({ ...rt.s.hosts }, {}, 'a refused host isn’t stored');
 
   const h = rt.addHost({ name: 'devbox', settings: { forwardAgent: true } });
   assert.match(h.id, /^ho_/);
@@ -275,13 +275,13 @@ test('hosts and project host folders survive a store reload', async () => {
     await store.flush();
 
     const again = await new Store(dir).load();
-    assert.deepEqual(again.state.hosts, { [h.id]: h });
+    assert.deepEqual({ ...again.state.hosts }, { [h.id]: h });
     assert.deepEqual(again.state.projects.p1.hostFolders, { [h.id]: '/home/user/app' });
 
     // And from a snapshot, as after a restart that wrote one.
     await again.snapshot();
     const fromSnapshot = await new Store(dir).load();
-    assert.deepEqual(fromSnapshot.state.hosts, { [h.id]: h });
+    assert.deepEqual({ ...fromSnapshot.state.hosts }, { [h.id]: h });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
