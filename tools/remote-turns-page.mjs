@@ -1,5 +1,5 @@
-// The page tools/check-remote-turns.mjs and tools/check-remote-stop.mjs drive, open at the seeded room
-// (tools/remote-turns-kit.mjs) at 1280 px, and what they drive it with: real clicks, a conversation opened as a link
+// The page tools/check-remote-stop.mjs drives, open at the seeded room
+// (tools/remote-turns-kit.mjs) at 1280 px, and what it drives it with: real clicks, a conversation opened as a link
 // would, an agent’s row and ring, a reply’s item, axe, what spills past the window, and each case with a time limit.
 
 import assert from 'node:assert/strict';

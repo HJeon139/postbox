@@ -6,7 +6,7 @@
 // - the persona sheet’s Runs on offers this computer or a host, only a host for a backend not on this computer, says
 //   what the host’s daemon found, and shows the server’s refusal; Codex’s `auto` reads as Codex’s default;
 // - at 375 px the states, cards, notes and the sheet fit.
-// The agents list, the rings and the transcript’s turn states are tools/check-remote-turns.mjs.
+// The agents list, the rings and the transcript’s turn states are tests/browser/remote-turns.spec.mjs.
 //
 //   node tools/check-remote-stop.mjs
 //

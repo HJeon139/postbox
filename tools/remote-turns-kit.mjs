@@ -1,5 +1,5 @@
-// What tools/check-remote-turns.mjs and tools/check-remote-stop.mjs check agents whose turns run on a host (#120)
-// against: their own Postbox on a fresh data folder in the temp directory, with a fake host manager (no ssh, no host,
+// What tools/check-remote-stop.mjs checks agents whose turns run on a host (#120)
+// against: its own Postbox on a fresh data folder in the temp directory, with a fake host manager (no ssh, no host,
 // no daemon: each host’s status is set here, as the real manager reports it) and a scripted Claude Code agent whose
 // turns run “on” a host through the runtime’s remote path. The other states are seeded on the sessions as
 // server/remote/turns.mjs keeps them. PB_PORT and PB_CHROME_PORT move it (4600 and 9800 by default). The page and
