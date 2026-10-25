@@ -8,7 +8,7 @@
 // glossary-cards.spec.mjs checks nested glossary cards (#103). Moved from tools/check-transcript-render.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -119,8 +119,24 @@ const senders = (page, threadId) =>
       }),
   );
 
-test('#135 a later turn of the same agent has its own sender line with its time and what woke it, and wakes from two turns each have one', async ({ page }) => {
+/** A turn a scheduled wake started says so on its sender line. */
+async function scheduledWake(page, room, an, idle) {
   const { rt, store } = app;
+  // As the timer delivers it ({ kind: 'wake', note }, server/adapters/adapter.mjs).
+  const replies = () => store.items(room.id).filter((x) => x.kind === 'agent' && x.handle === 'analyst').length;
+  const had = replies();
+  rt.schedule(an.id, { inMs: 1000, note: 'Look at the totals again.' });
+  await expect.poll(replies, { message: 'the scheduled turn' }).toBeGreaterThan(had);
+  await idle();
+  await synced(page, app);
+  const last = async () => (await senders(page, room.id)).at(-1);
+  await expect.poll(last, { message: 'the scheduled turn’s sender line' }).toMatch(/^@analyst.*woken by a scheduled wake/);
+  await frames(page);
+  expect(await last(), 'and it held').toMatch(/^@analyst.*woken by a scheduled wake/);
+}
+
+test('#135 a later turn of the same agent has its own sender line with its time and what woke it, and wakes from two turns each have one', async ({ page }) => {
+  const { rt } = app;
   // The mixed-room UAT run (22 October 2026), step 6: @critic replied, then spoke again in a new turn after @researcher
   // answered it in their side thread, and the second message showed with no sender line. Here @analyst wakes
   // @reviewer, which answers in the side thread, and a second answer comes back as endTurn sends one (saidIn).
@@ -146,16 +162,7 @@ test('#135 a later turn of the same agent has its own sender line with its time 
     expect(second).toMatch(/^@analyst.*after @reviewer replied in a side thread.*\[time\]$/);
     expect([one, two]).toEqual([expect.stringMatching(/^@analyst.*\[time\]$/), '']);
   });
-  await test.step('a turn a scheduled wake started says so on its sender line', async () => {
-    // As the timer delivers it ({ kind: 'wake', note }, server/adapters/adapter.mjs).
-    const replies = () => store.items(room.id).filter((x) => x.kind === 'agent' && x.handle === 'analyst').length;
-    const had = replies();
-    rt.schedule(an.id, { inMs: 1000, note: 'Look at the totals again.' });
-    await expect.poll(replies, { message: 'the scheduled turn' }).toBeGreaterThan(had);
-    await idle();
-    await synced(page, app);
-    await expect.poll(async () => (await senders(page, room.id)).at(-1)).toMatch(/^@analyst.*woken by a scheduled wake/);
-  });
+  await test.step('a turn a scheduled wake started says so on its sender line', () => scheduledWake(page, room, an, idle));
   await test.step('two wakes from two turns each have a sender line in the side thread, and one turn’s two share it', async () => {
     // As agentWake records them while @reviewer was busy: each says the turn it came from.
     for (const [n, text] of ['Check the totals.', 'And the dates, please.', 'And the names.'].entries())

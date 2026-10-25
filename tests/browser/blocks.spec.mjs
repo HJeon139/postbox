@@ -111,13 +111,13 @@ test('#106 the person dismisses an open choice by keyboard, after its Send: the 
     .locator('button:not([disabled])')
     .evaluateAll((bs) => bs.map((b) => b.textContent).slice(-2));
   expect(order, 'Dismiss, after Send choice').toEqual(['Send choice', 'Dismiss']);
-  await block('where').locator('button.dismiss').focus();
+  await block('where').getByRole('button', { name: 'Dismiss', exact: true }).focus();
   await page.keyboard.press('Enter');
-  await expect
-    .poll(() => calls.find((m) => m.kind === 'event' && m.event.blockId === 'where')?.event.action, { message: 'the agent hears “dismiss”' })
-    .toBe('dismiss');
+  const heard = () => calls.filter((m) => m.kind === 'event' && m.event.blockId === 'where').map((m) => m.event.action);
+  await expect.poll(heard, { message: 'the agent hears “dismiss”' }).toEqual(['dismiss']);
   expect(store.state.sessions[se.id].needs, 'its agent no longer needs you').toBe(null);
   await expect(block('where').locator('.closed-note')).toHaveText(/^Dismissed by you at \d\d:\d\d$/);
+  expect(heard(), 'once').toEqual(['dismiss']);
   const s = await shown(block('where'));
   expect([s.dismiss, s.answered, s.enabled], 'it’s closed: no Dismiss, and nothing to answer').toEqual([false, true, 0]);
 });

@@ -114,7 +114,7 @@ test('#67 /mode runs without a turn: the choice changes the agent’s mode and s
     await page.keyboard.type('/mo');
     await expect(page.locator('#slash-list')).toContainText('/mode');
     await page.keyboard.press('Enter');
-    await page.locator('.dialog [aria-label="Permission mode"] button', { hasText: 'Accept edits' }).click();
+    await page.locator('.dialog').getByRole('radiogroup', { name: 'Permission mode' }).getByRole('radio', { name: 'Accept edits', exact: true }).click();
     await expect(page.locator('.dialog .perm-status')).toContainText('uses Accept edits, in every conversation, from its next turn');
     const who = store.state.sessions[store.state.threads[t.id].lastSpeaker ?? seA.id]?.personaId ?? alpha.id;
     expect(store.state.personas[who].permissionMode).toBe('acceptEdits');
@@ -130,7 +130,7 @@ test('#67 /effort sets this conversation’s effort; /rename opens the rename sh
   const { t } = await room(page, 'Effort');
   await page.keyboard.type('/effort');
   await page.keyboard.press('Enter');
-  await page.locator('.dialog [aria-label="Effort"] button', { hasText: /^High$/ }).click();
+  await page.locator('.dialog').getByRole('radiogroup', { name: 'Effort' }).getByRole('radio', { name: 'High', exact: true }).click();
   await expect(page.locator('.dialog .perm-status')).toContainText('uses High in this conversation, from its next turn');
   expect(rt.sessionsIn(t.id).some((se) => store.state.sessions[se.id].personaSnapshot.effort === 'high')).toBe(true);
   await page.keyboard.press('Escape');

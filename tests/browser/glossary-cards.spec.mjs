@@ -113,6 +113,13 @@ test('#103 cards go three deep: delta inside gamma’s card opens nothing', asyn
   await opensNothing(page, 'gamma', 'delta', ['alpha', 'beta', 'gamma']);
 });
 
+/** Waits for read() to give want, and checks it still does two frames on, so a value that flips back fails. */
+async function holds(page, read, want, message) {
+  await expect.poll(read, { message }).toEqual(want);
+  await frames(page);
+  expect(await read(), `${message}, and it held`).toEqual(want);
+}
+
 test('#103 by keyboard: Enter pins and moves into the card, Tab reaches U:13, Escape closes one card at a time', async ({ page }) => {
   await openNested(page);
   const at = () =>
@@ -123,16 +130,16 @@ test('#103 by keyboard: Enter pins and moves into the card, Tab reaches U:13, Es
   await pinU(page);
   expect(await at(), 'Enter pins U’s card and moves into it').toBe('Glossary: U hovercard pinned');
   await page.keyboard.press('Tab');
-  await expect.poll(at, { message: 'Tab reaches U:13' }).toBe('Glossary: U u-13');
+  await holds(page, at, 'Glossary: U u-13', 'Tab reaches U:13');
   await page.keyboard.press('Space');
   await expect(card(page, 'U:13')).toHaveClass(/\bpinned\b/);
   expect(await openCards(page), 'Space pins U:13’s card over U’s').toEqual(['U', 'U:13']);
   await page.keyboard.press('Escape');
-  await expect.poll(() => openCards(page), { message: 'Escape closes the top card' }).toEqual(['U']);
-  await expect.poll(at, { message: 'and focus returns to its term' }).toBe('Glossary: U u-13');
+  await holds(page, () => openCards(page), ['U'], 'Escape closes the top card');
+  await holds(page, at, 'Glossary: U u-13', 'and focus returns to its term');
   await page.keyboard.press('Escape');
-  await expect.poll(() => openCards(page)).toEqual([]);
-  await expect.poll(at, { message: 'focus returns to U in the reply' }).toBe('page u');
+  await holds(page, () => openCards(page), [], 'the second Escape closes U’s card');
+  await holds(page, at, 'page u', 'focus returns to U in the reply');
 });
 
 test('#103 a card that closes while it has focus, as the pointer opens another, gives focus back to its term', async ({ page }) => {
