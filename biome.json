@@ -150,7 +150,7 @@
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1983 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1928 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 768 } } }
         }
       }
