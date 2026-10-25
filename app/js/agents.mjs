@@ -7,8 +7,8 @@
 // topic thread, then the subagents at work in its turn (#73), its only children (#228), each under the one that
 // started it, with what it was asked and what it’s doing now, a line each, without hover.
 
-import { BACKEND_NAMES, chipEffort, chipModel, shortModel } from '/shared/agent-facts.mjs';
-import { factsOf, isMock, mockMarker, modeWhen } from './agent-facts.mjs';
+import { BACKEND_NAMES, chipEffort, chipModel, modeWhen, shortModel } from '/shared/agent-facts.mjs';
+import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
@@ -353,7 +353,7 @@ function modeChoice(se, p, done, failed) {
       (id, name) =>
         api('/api/permissions/mode', { personaId: se.personaId, mode: id }).then(
           // A running turn its backend can’t change keeps the old mode until it ends (#371, #381): say so, and that Stop does.
-          (r) => done(`Permission mode: ${name} for @${se.handle} in every conversation, ${modeWhen(r, se.handle)}`),
+          (r) => done(`Permission mode: ${name} for @${se.handle} in every conversation, ${modeWhen(r, se.id)}`),
           failed,
         ),
     ),

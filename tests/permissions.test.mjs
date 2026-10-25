@@ -331,7 +331,7 @@ test('#66: the mode changes the persona, and a running turn too where the backen
   rt.sendMessage(t.id, { text: 'go' });
   await sleep(20);
   const r = await rt.setPermissionMode(p.id, 'acceptEdits');
-  assert.deepEqual(r, { ok: true, now: ['coder'], later: [] });
+  assert.deepEqual(r, { ok: true, now: [rt.sessionsIn(t.id)[0].id], later: [] });
   assert.deepEqual(set, ['acceptEdits']);
   assert.equal(rt.persona(p.id).permissionMode, 'acceptEdits');
   release();

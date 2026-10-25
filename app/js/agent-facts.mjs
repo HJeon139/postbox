@@ -27,12 +27,3 @@ export function mockMarker(agent) {
   // The space is text, so the name and the marker read as two words (“@critic mock”), wherever it goes.
   return isMock(agent) ? h('span.mock-mark', ' ', h('span.mock-tag', 'mock')) : null;
 }
-
-/**
- * When a permission mode change applies, as the quick panel says it: now, where the backend changed the running turn;
- * else from the next turns, and a running turn that keeps the old mode says Stop applies it now (#371, #381).
- */
-export const modeWhen = (/** @type {{ now: string[], later?: string[] }} */ r, /** @type {string} */ handle) =>
-  r.now.includes(handle)
-    ? 'from now: its running turn changed too.'
-    : `from their next turns.${(r.later ?? []).includes(handle) ? ' Its running turn keeps the mode it started with until it ends: Stop it to apply this now.' : ''}`;

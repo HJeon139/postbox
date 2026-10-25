@@ -50,7 +50,7 @@ test('the quick panel says a running turn keeps its mode until it ends, and that
     .getByRole('radio', { name: /^Run everything/ })
     .click();
   await expect(panel.locator('.perm-status')).toHaveText(
-    'Permission mode: Run everything for @coder in every conversation, from their next turns. Its running turn keeps the mode it started with until it ends: Stop it to apply this now.',
+    'Permission mode: Run everything for @coder in every conversation, from their next turns. Its running turn here keeps the mode it started with until it ends: Stop it to apply this now.',
   );
   await expect(panel.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
   // With no turn running, it says only when it applies.
