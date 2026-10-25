@@ -106,6 +106,8 @@ Merge order: M1 core, then transcript and threads.
 
 ## Rules for every session
 
+The root `AGENTS.md` carries these rules, short, for any agent working in the repo, prompted or not (#315). A change to a rule here changes it there too, in the same commit.
+
 **Ports and data.** Use only your ports, for any server you start (`node server/index.mjs --port …`) and any headless Chrome (`launch({ port })` in `tools/cdp.mjs`). Give every server you start `--data` with a folder of your own, such as one in your scratchpad: without it, Postbox uses `~/.postbox`, which every clone, worktree and installed copy shares (#90). Never touch the preview on 4173, another tool’s server on 4320, the clone’s `data/`, or `~/.postbox`.
 
 **Length limits** (architecture.md, “Module and function size”). Biome fails any file or function past its default length (`biome.json`), and a file already past it can shrink but not grow. So:
@@ -143,7 +145,7 @@ Merge order: M1 core, then transcript and threads.
 
 **Gate.** Before you hand off, these pass in your worktree:
 - `npm run check`
-- `npm run check:browser`, which runs every headless Chrome check in parallel, with ports of its own. A change you can see in the UI adds or extends a check (`tools/check-*.mjs`, reporting through `tools/harness.mjs`), and the run picks it up.
+- `npm run check:browser`, which runs every headless Chrome check in parallel, with ports of its own. It covers the checks not yet moved to Playwright. A change you can see in the UI adds or extends a browser spec in `tests/browser/` (`npx playwright test`, and again with `POSTBOX_STREAM_LAG=300`), as the root `AGENTS.md` and engineering-practices.md, “The gate”, say.
 - `node tools/check-all.mjs <your checks> --lag 300` for each check you add or change. It holds the server’s events back 300 ms, so a check that reads the page before it has heard a change fails here rather than now and then on main (#174). Wait with `page.synced(store.state.seq)`, never a fixed time. Both arrive with #174: until it’s on `main`, merge `main` into your branch once it lands, then run this.
 
 Then an adversarial review subagent goes through your diff against the practices doc, and you fix what it confirms, under the scope rule below.

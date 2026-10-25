@@ -3,6 +3,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { seedFakeEnv } from './allowonce-triggers.mjs';
+import { hideSteeringAbove } from './steering.mjs';
 import * as tm from './telemetry-run.mjs';
 
 /**
@@ -15,5 +16,8 @@ export function makeWorkspace(scenario, paths, dir) {
   spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
   const canaries = scenario.seed === 'canaries' ? tm.seedCanaries(paths.workspace, dir) : null;
   if (scenario.seed === 'fake-env') seedFakeEnv(paths.workspace);
+  // After the seeds, so the excludes join any settings one planted. The run’s folder is the tester’s.
+  hideSteeringAbove(paths.workspace);
+  hideSteeringAbove(dir);
   return canaries;
 }

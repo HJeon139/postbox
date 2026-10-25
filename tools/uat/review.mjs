@@ -3,6 +3,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { commentRegressions, verifyRegressions } from './regressions.mjs';
+import { hideSteeringAbove } from './steering.mjs';
 import { askOnce, VERIFY_SCHEMA, verifyPrompt } from './tester.mjs';
 import { setVerdict } from './verdicts.mjs';
 
@@ -23,6 +24,8 @@ const fingerprint = (f) =>
  * @param {{ root: string, testerModel: string, dir: string, scenario: any, findings: any[], timeline: any[], log: (l: string) => void, verify: boolean, file: boolean, ask?: typeof askOnce }} o
  */
 export async function reviewFindings(o) {
+  // The verifier runs in the run’s folder: a run recorded before the steering had no settings there (steering.mjs).
+  if (o.verify) hideSteeringAbove(o.dir);
   if (o.verify) await verifyRegressions(o);
   if (o.file) commentRegressions(o);
   await verifyAndFile(o);
