@@ -9,9 +9,10 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PROGRAMS, paths } from '../../server/remote/host/paths.mjs';
-import { createMessageReader, DIR_MODE, encode, FILE_MODE, message } from '../../shared/remote-protocol.mjs';
+import { createMessageReader, DIR_MODE, encode, FILE_MODE, message, TURN_FILES } from '../../shared/remote-protocol.mjs';
 
 const TOKEN = 'shim-test-token-0123456789abcdefghijklmn';
+const TURN_TOKEN = 'shim-test-turn-token-0123456789abcdefghij';
 export const TURN = 'turn-shim-1';
 const MINUTE = 60_000;
 
@@ -23,6 +24,9 @@ function makeHome() {
   mkdirSync(P.code, { recursive: true, mode: DIR_MODE });
   chmodSync(P.root, DIR_MODE);
   writeFileSync(P.token, `${TOKEN}\n`, { mode: FILE_MODE });
+  // The turn’s own token, which a shim proves in its hello, as the daemon writes it at the turn’s start.
+  mkdirSync(P.turn(TURN), { recursive: true, mode: DIR_MODE });
+  writeFileSync(P.turn(TURN, TURN_FILES.shimToken), `${TURN_TOKEN}\n`, { mode: FILE_MODE });
   return { home, P };
 }
 /**
@@ -96,7 +100,7 @@ function acceptShim(st, c, permissionWaitMax) {
     onMessage(m) {
       st.received.push(m);
       if (m.type === 'hello') {
-        assert.equal(m.token, TOKEN);
+        assert.equal(m.token, TURN_TOKEN, 'its turn’s token, not the host’s');
         st.current = c;
         c.write(encode(message('daemon-to-shim', 'welcome', { turn: m.turn, permissionWaitMax })));
       }

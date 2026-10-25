@@ -42,7 +42,7 @@ test('idle: exits after idleTimeout with nobody attached and no turn running, an
   }
 });
 
-test('the socket: a relayed Postbox is served, and a shim goes to the broker, which refuses a turn it didn’t start', async () => {
+test('the socket: a relayed Postbox is served, and a shim goes to the broker, which refuses a turn it didn’t start, with no token for it', async () => {
   const s = setup();
   try {
     const pair = () => {
@@ -61,7 +61,8 @@ test('the socket: a relayed Postbox is served, and a shim goes to the broker, wh
     b.fromDaemon.on('data', (d) => got.push(String(d)));
     b.toDaemon.write(`${JSON.stringify({ type: 'hello', token: TOKEN, turn: 't1' })}\n`);
     await new Promise((r) => b.fromDaemon.on('end', r));
-    assert.match(got.join(''), /"type":"error","code":"no-turn".*There’s no turn t1/);
+    // A turn it didn’t start has no token of its own, and the host’s isn’t a shim’s (#120), so it’s refused there.
+    assert.match(got.join(''), /"type":"error","code":"bad-token".*turn t1’s, in its folder on this host/);
   } finally {
     s.done();
   }

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, rmSync } from 'node:fs';
 import { test } from 'node:test';
 import { encode, message, TURN_FILES } from '../shared/remote-protocol.mjs';
-import { BLOCK, blockFile, connectShim, lines, makeBroker, makeHome, REQUEST, sleep, TOKEN, until } from './remote-broker-fixtures.mjs';
+import { BLOCK, blockFile, connectShim, lines, makeBroker, makeHome, REQUEST, sleep, turnToken, until } from './remote-broker-fixtures.mjs';
 
 test('a call or prompt the broker can’t write down isn’t acknowledged: the shim hears why, and nothing crosses to Postbox', async () => {
   const h = makeHome();
@@ -114,7 +114,7 @@ test('an answer is on disk before the shim hears it, and an expiry before Postbo
     /** @type {string[][]} what prompts.jsonl held as the shim heard each answer */
     const heard = [];
     const c = k.b.shim({
-      first: JSON.stringify({ type: 'hello', token: TOKEN, turn: 't1' }),
+      first: JSON.stringify({ type: 'hello', token: turnToken('t1'), turn: 't1' }),
       write: (line) => {
         if (line.includes('"permission-answer"')) heard.push(lines(file).map((x) => x.op));
         return true;

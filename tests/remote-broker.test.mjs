@@ -9,7 +9,7 @@ import { appendFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { STOPPED_TEXT } from '../server/remote/host/broker.mjs';
 import { HOST_DEFAULTS, TURN_FILES } from '../shared/remote-protocol.mjs';
-import { BLOCK, connectShim, lines, makeBroker, makeHome, until } from './remote-broker-fixtures.mjs';
+import { BLOCK, connectShim, lines, makeBroker, makeHome, TOKEN, turnToken, until } from './remote-broker-fixtures.mjs';
 
 // ── Shim connections ──
 
@@ -25,7 +25,11 @@ test('a shim’s hello: the token, then the turn; unknown, ended and stopping tu
     const bad = connectShim(k.b, 't1', 'c'.repeat(64));
     assert.equal((await bad.next('error')).code, 'bad-token');
     assert.ok(bad.ended, 'a refused shim’s connection is closed');
-    assert.equal((await connectShim(k.b, 'nope').next('error')).code, 'no-turn');
+    // The host’s token is no longer a shim’s: each turn has its own, and one turn’s doesn’t open another (#120).
+    assert.equal((await connectShim(k.b, 't1', TOKEN).next('error')).code, 'bad-token');
+    assert.equal((await connectShim(k.b, 't2', turnToken('t1')).next('error')).code, 'bad-token');
+    // A turn with no folder has no token to match, so nothing about it is said.
+    assert.equal((await connectShim(k.b, 'nope').next('error')).code, 'bad-token');
     const over = await connectShim(k.b, 't2').next('error');
     assert.deepEqual([over.code, over.message], ['turn-ended', STOPPED_TEXT]);
     await k.b.stopping('t1');

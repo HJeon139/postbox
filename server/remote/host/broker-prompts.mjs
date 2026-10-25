@@ -90,7 +90,7 @@ export async function permission(b, c, turn, m) {
   /** A prompt that couldn’t be written down is denied, never left waiting or allowed. @param {string} text */
   const deny = (text) => c.send('permission-answer', { id: m.id, result: { behavior: 'deny', message: text.slice(0, REMOTE_LIMITS.messageChars) } });
   if (known) {
-    // The same id asking something else gets nothing of the first one’s answer: any client with the host’s token can
+    // The same id asking something else gets nothing of the first one’s answer: any client with a turn’s token can
     // name a turn, so an allow planted for a harmless request would otherwise answer a dangerous one.
     if (!isDeepStrictEqual(m.request, known.request))
       return deny(`Permission request ${m.id} was asked already, with a different request, so this one isn’t allowed. Ask again under a new id.`);

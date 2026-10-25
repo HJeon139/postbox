@@ -8,7 +8,7 @@ import { createBroker } from './broker.mjs';
 import { createCleanup, SWEEP_MS } from './cleanup.mjs';
 import { acceptSocket, connectStreams } from './daemon-conn.mjs';
 import { POLL_MS, REMOVE_WAIT_MS, RUNNER_START_MS, STOP_GRACE_MS } from './daemon-constants.mjs';
-import { ensureToken, tokenMatches } from './daemon-files.mjs';
+import { ensureToken } from './daemon-files.mjs';
 import { attached, fail, toPostbox } from './daemon-reply.mjs';
 import { armSweep, checkIdle, scan } from './daemon-scan.mjs';
 import { stopTurn } from './daemon-stop.mjs';
@@ -144,7 +144,6 @@ function daemonBroker(d) {
     now: d.now,
     timers: d.timers,
     log: d.log,
-    tokenMatches: (given) => tokenMatches(d, given),
     settings: () => d.settings,
     toPostbox: (type, body) => toPostbox(d, type, body),
     attached: () => attached(d),

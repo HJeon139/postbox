@@ -56,6 +56,9 @@ export function fakeClock(t0 = 1_760_000_000_000) {
   };
 }
 
+/** A test turn’s own token, which its shims prove (broker-shim.mjs). @param {string} turn */
+export const turnToken = (turn) => `${TOKEN}-${turn}`;
+
 /** A temp home with turn folders written as the daemon writes them. */
 export function makeHome() {
   const home = mkdtempSync(join(tmpdir(), 'pbb-'));
@@ -69,6 +72,8 @@ export function makeHome() {
     mkdirSync(dir, { mode: 0o700 });
     const rec = { turn, harness: 'claude-code', program: '/usr/bin/claude', argv: [], env: {}, stdin: 'none', folder: work, ...start };
     writeFileSync(join(dir, TURN_FILES.start), JSON.stringify(rec), { mode: 0o600 });
+    // The turn’s own token, as the daemon writes it before start.json (daemon-start.mjs).
+    writeFileSync(join(dir, TURN_FILES.shimToken), turnToken(turn), { mode: 0o600 });
     return dir;
   };
   return { home, p, work, turn, done: () => rmSync(home, { recursive: true, force: true }) };
@@ -86,7 +91,6 @@ export function makeBroker(h, over = {}) {
   const state = { attached: true };
   const b = createBroker({
     paths: h.p,
-    tokenMatches: (t) => t === TOKEN,
     toPostbox: (type, body) => {
       if (!state.attached) return false;
       // What the daemon would send, checked as Postbox checks it.
@@ -130,7 +134,7 @@ export function makeBroker(h, over = {}) {
  * A shim connected to the broker: its lines, checked as the shim checks them.
  * @param {ReturnType<typeof createBroker>} b @param {string} turn
  */
-export function connectShim(b, turn, token = TOKEN) {
+export function connectShim(b, turn, token = turnToken(turn)) {
   /** @type {any[]} */
   const got = [];
   const taken = new Set();

@@ -4,7 +4,7 @@
 // tests/integration/remote-broker.test.mjs.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Duplex, PassThrough } from 'node:stream';
@@ -94,7 +94,8 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
     send('start', { turn: 't1', harness: 'claude-code', folder: work, argv: [], env: {}, stdin: 'file', files: [{ name: MESSAGE_FILE, text: '{}\n' }] });
     await msgs.next('started');
     const { got, shimSend } = socketShim(daemon);
-    shimSend('hello', { token: TOKEN, turn: 't1' });
+    // The turn’s own token, which the daemon wrote at its start.
+    shimSend('hello', { token: readFileSync(p.turn('t1', TURN_FILES.shimToken), 'utf8'), turn: 't1' });
     await until(() => got.find((m) => m.type === 'welcome'), 'the welcome');
     assert.equal(got[0].permissionWaitMax, 60_000, 'the setting from Postbox’s hello');
     shimSend('call', { id: 'c1', name: 'read_conversation', args: {} });

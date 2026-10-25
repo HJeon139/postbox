@@ -2,6 +2,7 @@
 // file where the runner’s Kiro reads agents, start.json, and the runner’s launch, answered `started` once the runner
 // is up.
 
+import { randomBytes } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { dirname, posix } from 'node:path';
 import { ATTACHMENTS_DIR, DIR_MODE, FILE_MODE, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
@@ -163,6 +164,8 @@ async function launch(d, m, { node, dir, agents, record }, failStart) {
   try {
     for (const f of m.files) await fsp.writeFile(`${dir}/${f.name}`, f.text, { mode: FILE_MODE, flag: 'wx' });
     await writeAttachments(dir, m.attachments);
+    // The turn’s own token for its shims, so one turn’s shim can’t speak for another’s (broker-shim.mjs’s hello).
+    await fsp.writeFile(`${dir}/${TURN_FILES.shimToken}`, randomBytes(32).toString('hex'), { mode: FILE_MODE, flag: 'wx' });
     await d.brk.starting?.(m.turn);
     // Outside the turn folder (a Kiro home’s agents folder), recorded in it, so it goes when the turn ends.
     if (m.agentFile && agents && 'dir' in agents) await d.cleanup.writeAgentFile(m.turn, { dir: agents.dir, name: m.agentFile.name, text: m.agentFile.text });

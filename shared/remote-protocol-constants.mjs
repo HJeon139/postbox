@@ -171,6 +171,8 @@ export const TURN_FILES = Object.freeze({
   start: 'start.json',
   /** The runner’s Unix socket. */
   socket: 'sock',
+  /** The turn’s own token, which its shims prove in their hello (#120): written by the daemon before start.json. */
+  shimToken: 'shim.token',
   /** The conversation snapshot the reading tools answer from. */
   snapshot: 'snapshot.json',
   /** The daemon’s queue of prompts and tool calls for Postbox. */

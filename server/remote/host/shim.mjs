@@ -7,8 +7,9 @@
 // messages of shared/remote-protocol.mjs; the design is architecture.md, “Remote hosts”, “Postbox’s tools on the host”
 // and “Permission prompts while nobody is connected”.
 //
-// - The turn’s token comes from ~/.postbox-remote/token, read on each connect, never from arguments or the
-//   environment, which other users can read through /proc. The daemon refuses a call from a turn that has ended.
+// - The turn’s own token comes from its folder (TURN_FILES.shimToken, which the daemon writes as the turn starts),
+//   read on each connect, never from arguments or the environment, which other users can read through /proc. The
+//   daemon takes no other token from a shim, and refuses a call from a turn that has ended.
 // - A `queue` tool (TOOL_ROUTES) returns at once, connected or not: the call waits here until the daemon answers it
 //   with `result`, and is sent again, with the same ID, after each reconnect. Its text says it was sent, not what
 //   the laptop would say: the laptop’s text depends on its state (an id already taken, a block it refuses), which the

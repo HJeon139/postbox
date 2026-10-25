@@ -39,7 +39,7 @@ export const key = (turn, id) => `${turn} ${id}`;
  * @typedef {{ setTimeout: (fn: () => void, ms: number) => any, clearTimeout: (t: any) => void }} Timers
  * @typedef {import('./broker-reading.mjs').Snapshot} Snapshot
  * @typedef {{ paths: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>, now?: () => number, timers?: Timers,
- *   log?: (line: string) => void, tokenMatches: (token: string) => boolean, settings?: () => Record<string, any>,
+ *   log?: (line: string) => void, settings?: () => Record<string, any>,
  *   toPostbox: (type: string, body: Record<string, unknown>) => boolean, attached: () => boolean,
  *   interrupted?: (turn: string) => boolean, writeStdin?: (turn: string, line: string) => Promise<unknown>, codexPollMs?: number,
  *   queueLimits?: { calls: number, bytes: number, recordBytes: number } }} BrokerOptions
@@ -58,7 +58,6 @@ export function brokerState({
   now = Date.now,
   timers = { setTimeout: (fn, ms) => setTimeout(fn, ms).unref(), clearTimeout: (t) => clearTimeout(t) },
   log = () => {},
-  tokenMatches,
   settings = () => HOST_DEFAULTS,
   toPostbox,
   attached,
@@ -75,7 +74,6 @@ export function brokerState({
     now,
     timers,
     log,
-    tokenMatches,
     settings,
     toPostbox,
     attached,

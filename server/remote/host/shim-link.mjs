@@ -1,9 +1,9 @@
 // The host’s shim’s link to the daemon (#120): its Unix socket, connected again with a backoff whenever it drops, the
-// hello with the host’s token (read on each connect), and what the daemon sends back.
+// hello with its turn’s token (read on each connect), and what the daemon sends back.
 
 import { readFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
-import { createMessageReader, encode, message } from '../../../shared/remote-protocol.mjs';
+import { createMessageReader, encode, message, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { armExpiry, watchDown } from './shim-calls.mjs';
 import { log, respond, textResult } from './shim-harness.mjs';
 import { deliver, settle, TIMINGS } from './shim-state.mjs';
@@ -14,11 +14,13 @@ import { deliver, settle, TIMINGS } from './shim-state.mjs';
 export function connect(sh) {
   sh.retry = null;
   if (sh.stopping) return;
+  // Its own turn’s token, which the daemon wrote in the turn’s folder before the turn started (broker-shim.mjs).
+  const tokenPath = sh.P.turn(sh.turn, TURN_FILES.shimToken);
   let token;
   try {
-    token = readFileSync(sh.P.token, 'utf8').trim();
+    token = readFileSync(tokenPath, 'utf8').trim();
   } catch (e) {
-    if (!sh.quiet) log(`Couldn’t read the host’s token at ${sh.P.token} (${e.code ?? e.message}); trying again until it can.`);
+    if (!sh.quiet) log(`Couldn’t read this turn’s token at ${tokenPath} (${e.code ?? e.message}); trying again until it can.`);
     sh.quiet = true;
     return reconnectLater(sh);
   }
@@ -26,7 +28,7 @@ export function connect(sh) {
   try {
     hello = encode(message('shim-to-daemon', 'hello', { token, turn: sh.turn }));
   } catch (e) {
-    log(`The token at ${sh.P.token} isn’t one the daemon takes: ${e.message}`);
+    log(`The token at ${tokenPath} isn’t one the daemon takes: ${e.message}`);
     return reconnectLater(sh);
   }
   const s = createConnection(sh.P.socket);

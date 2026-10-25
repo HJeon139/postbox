@@ -1,7 +1,9 @@
-// A shim’s connection to the daemon’s broker (#120): its hello, with the host’s token and its turn, then its calls,
+// A shim’s connection to the daemon’s broker (#120): its hello, with its turn and that turn’s own token, then its calls,
 // prompts and the notices that a prompt ended, each handled in the order it came.
 
-import { encode, HOST_DEFAULTS, message, parseLine, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
+import { timingSafeEqual } from 'node:crypto';
+import { promises as fsp } from 'node:fs';
+import { encode, HOST_DEFAULTS, message, parseLine, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { endPrompt, permission } from './broker-prompts.mjs';
 import { refusal } from './broker-records.mjs';
 import { CANCELED, CANCELED_MSG } from './broker-state.mjs';
@@ -80,10 +82,26 @@ async function handle(b, c, refuse, text) {
   }
 }
 
+/**
+ * Whether a shim’s token is its turn’s, compared in constant time. Read each time: a turn’s folder can go.
+ * @param {Broker} b @param {string} turn  checked by the protocol, so a turn ID, not a path @param {unknown} given
+ */
+async function turnTokenMatches(b, turn, given) {
+  let want;
+  try {
+    want = Buffer.from((await fsp.readFile(b.p.turn(turn, TURN_FILES.shimToken), 'utf8')).trim());
+  } catch {
+    return false;
+  }
+  const got = Buffer.from(String(given ?? ''));
+  return want.length > 0 && got.length === want.length && timingSafeEqual(got, want);
+}
+
 /** A shim’s first message, which must be its hello. @param {Broker} b @param {ShimConn} c @param {Refuse} refuse @param {any} m */
 async function hello(b, c, refuse, m) {
-  if (m.type !== 'hello') return refuse('not-ready', 'Say hello with the host’s token and your turn first.');
-  if (!b.tokenMatches(m.token)) return refuse('bad-token', 'The token doesn’t match the host’s, in ~/.postbox-remote/token.');
+  if (m.type !== 'hello') return refuse('not-ready', 'Say hello with your turn and its token first.');
+  // The turn’s own token, not the host’s: a shim speaks only for the turn it was started for (#120).
+  if (!(await turnTokenMatches(b, m.turn, m.token))) return refuse('bad-token', `The token doesn’t match turn ${m.turn}’s, in its folder on this host.`);
   const no = await refusal(b, m.turn);
   if (no) return refuse(no.code, no.text);
   if (c.closed) return;
