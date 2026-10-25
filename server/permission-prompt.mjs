@@ -3,26 +3,54 @@
 
 import { describePermission } from './adapters/claude-stream.mjs';
 
+function toAbortSignal(closeOrSignal) {
+  if (!closeOrSignal) return null;
+  if ('aborted' in closeOrSignal) return closeOrSignal;
+  const ac = new AbortController();
+  if (closeOrSignal.destroyed) ac.abort();
+  else closeOrSignal.on?.('close', () => !closeOrSignal.writableEnded && ac.abort());
+  return ac.signal;
+}
+
 /**
  * Asks the person whether a tool may run, and answers in the shape Claude Code expects from a
  * permission prompt tool: { behavior: "allow", updatedInput } or { behavior: "deny", message }.
+ * @param {any} rt @param {string} sessionId @param {any} args @param {AbortSignal|import('node:http').ServerResponse|null} [closeOrSignal]
  */
-export async function permission(rt, sessionId, args) {
+export async function permission(rt, sessionId, args, closeOrSignal = null) {
+  const signal = toAbortSignal(closeOrSignal);
+  if (signal?.aborted)
+    return { content: [{ type: 'text', text: JSON.stringify({ behavior: 'deny', message: 'The permission request closed before anyone answered.' }) }] };
   const { tool_name, input = {}, tool_use_id, permission_suggestions, agent_id } = args ?? {};
   const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
-  const answer = await rt.requestPermission(sessionId, {
-    tool: String(tool_name ?? ''),
-    summary,
-    detail,
-    toolUseId: tool_use_id,
-    input,
-    suggestions: permission_suggestions,
-    agentId: typeof agent_id === 'string' ? agent_id : null,
-  });
-  const decision = answer.allow
-    ? { behavior: 'allow', updatedInput: answer.updatedInput ?? input, ...(answer.updatedPermissions ? { updatedPermissions: answer.updatedPermissions } : {}) }
-    : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
-  return { content: [{ type: 'text', text: JSON.stringify(decision) }] };
+  const useId = tool_use_id ? String(tool_use_id) : null;
+  const onAbort = () => {
+    for (const [id, w] of rt.permissionWaits ?? [])
+      if (w.sessionId === sessionId && useId && rt.store.item(w.threadId, id)?.toolUseId === useId)
+        rt.settlePermission(id, 'expired', 'The permission request closed before anyone answered.');
+  };
+  signal?.addEventListener?.('abort', onAbort, { once: true });
+  try {
+    const answer = await rt.requestPermission(sessionId, {
+      tool: String(tool_name ?? ''),
+      summary,
+      detail,
+      toolUseId: tool_use_id,
+      input,
+      suggestions: permission_suggestions,
+      agentId: typeof agent_id === 'string' ? agent_id : null,
+    });
+    const decision = answer.allow
+      ? {
+          behavior: 'allow',
+          updatedInput: answer.updatedInput ?? input,
+          ...(answer.updatedPermissions ? { updatedPermissions: answer.updatedPermissions } : {}),
+        }
+      : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
+    return { content: [{ type: 'text', text: JSON.stringify(decision) }] };
+  } finally {
+    signal?.removeEventListener?.('abort', onAbort);
+  }
 }
 
 /**
