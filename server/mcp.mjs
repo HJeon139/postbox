@@ -23,6 +23,9 @@ import { reactTool } from './reactions.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { withUrgent } from './subagent-end.mjs';
 
+// The tools live in shared/mcp-tools.mjs, which the host’s shim serves too (#120); this keeps their old import working.
+export { TOOL_DEFS };
+
 const PROTOCOL = '2025-06-18';
 
 /**
