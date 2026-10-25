@@ -34,7 +34,7 @@ These are the boundaries, from designs/developing.md, “Security”, and design
 - **Agent content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()`. Agent apps and diagrams run in pages sandboxed by their `Content-Security-Policy` header that load nothing from a URL (architecture.md, “Sandboxed pages that load nothing”).
 - **Every input is untrusted,** including an agent’s own tool call. The rule is to refuse rather than clean up: a URL with control characters is refused, and so is a path that resolves outside its folder (designs/developing.md, “Security”). Whether every route and tool follows it is being audited in #351.
 - **Processes start with an argument array, never a shell string.** The one exception is a `!` command, which runs your own text, as you, only on loopback.
-- **Postbox holds no key of its own.** A backend signs in on its own, or with a key in your environment, which Postbox passes on to it unread.
+- **Postbox never reads, stores or sends an API key.** Every backend is its harness’s own CLI, which signs in on its own, with your sign-in or a key in your environment. The CLI inherits that environment, as any program you start does. Postbox doesn’t look at it.
 
 **Out of scope:**
 - What an agent does with the permissions you gave it. That’s the backend’s permission model, which Postbox shows you as cards (architecture.md, “Permissions: a card in the thread, and an explicit mode”).
