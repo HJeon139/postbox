@@ -145,7 +145,7 @@ The root `AGENTS.md` carries these rules, short, for any agent working in the re
 
 **Gate.** Before you hand off, these pass in your worktree:
 - `npm run check`
-- `npm run check:browser`, which runs every headless Chrome check in parallel, with ports of its own. A change you can see in the UI adds or extends a check (`tools/check-*.mjs`, reporting through `tools/harness.mjs`), and the run picks it up.
+- `npm run check:browser`, which runs every headless Chrome check in parallel, with ports of its own. It covers the checks not yet moved to Playwright. A change you can see in the UI adds or extends a browser spec in `tests/browser/` (`npx playwright test`, and again with `POSTBOX_STREAM_LAG=300`), as the root `AGENTS.md` and engineering-practices.md, “The gate”, say.
 - `node tools/check-all.mjs <your checks> --lag 300` for each check you add or change. It holds the server’s events back 300 ms, so a check that reads the page before it has heard a change fails here rather than now and then on main (#174). Wait with `page.synced(store.state.seq)`, never a fixed time. Both arrive with #174: until it’s on `main`, merge `main` into your branch once it lands, then run this.
 
 Then an adversarial review subagent goes through your diff against the practices doc, and you fix what it confirms, under the scope rule below.

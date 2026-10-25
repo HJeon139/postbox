@@ -31,18 +31,19 @@ node tools/check-all.mjs <your checks> --lag 300   # the same, for the older che
 
 - Fix the cause and look for the same class of error everywhere: a bug in one adapter is a question about all of them (designs/developing.md, “Responding to a prompt”).
 - Anything beyond the task needs evidence (a repro, a measurement, a UAT result, an issue, the person’s request) and a reason it serves designs/intent.md: one person directing two to four agents on their own computer, with the loop right before the looks. Otherwise decline it, or file it with its evidence (designs/prompts/README.md, “Rules for every session”).
+- `tools/uat-run.mjs` runs real agents and costs real usage. Run it, and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`), only when the task asks for them, or when you’re the reviewing session (designs/prompts/README.md, “Rules for every session”).
 - Make simple, minimal changes, and use what Node, the browser and the repo already have (`h()`, `shared/limits.mjs`, `tools/harness.mjs`). A new dependency needs a decision in designs/architecture.md first.
 
 ## Code size
 
 - Biome fails a file or function past its default length. A file already past it has a ceiling in `biome.json` that only comes down (designs/architecture.md, “Module and function size”).
-- When a change would grow a file at its ceiling, move a concern into a module of its own first, as its own commit, with nothing else in it. Never raise a ceiling. When a file shrinks, lower its ceiling to the new size in the same change.
+- When a change would grow a file at its ceiling, move a concern into a module of its own first, as its own commit, with nothing else in it. Never raise a ceiling. Give a new module past the default an override at its size, and don’t edit the override of a file you moved code from: the integrator lowers it after each merge (designs/prompts/README.md, “Rules for every session”).
 - A circular import means a missing module: the shared value goes in a third module (designs/developing.md, “Modules”).
 - Don’t reformat code you didn’t change. Never edit `app/kit/vendor/`.
 
 ## Writing
 
-- Plain American English, sentence case and curly quotes (‘ ’ “ ”), in the UI, the docs and code comments. Buttons say what they do. Errors say what happened and what to do next (designs/intent.md, “Writing”). `lint-copy` checks spelling and quotes.
+- Plain American English, sentence case and curly quotes (‘ ’ “ ”), in the UI, the docs and code comments. Buttons say what they do. Errors say what happened and what to do next (designs/intent.md, “Writing”). `lint-copy` checks American spelling everywhere, and curly quotes in what people read in the app; quotes in the docs are on you.
 - Diagrams are Mermaid, never ASCII art (designs/engineering-practices.md, “Words, diagrams and commits”).
 - A comment points at what lasts, an issue number or a design section by its title, never a prompt or a step number. It’s readable without following the link (designs/developing.md, “Code comments”).
 
@@ -52,7 +53,7 @@ node tools/check-all.mjs <your checks> --lag 300   # the same, for the older che
 - One commit per fix, so each can be reviewed and reverted alone. A move of code is its own commit.
 - Branch from `main` and stay based on it. Don’t push to `main`.
 - A pull request’s body says why, what changed, how it was verified, and what’s not done (designs/developing.md, “The pull request’s body”).
-- Keep the issue’s state current: the `in progress` label and a comment naming the PR while you work on it (CONTRIBUTING.md).
+- When you take an issue for a pull request, claim it as CONTRIBUTING.md says: a comment, and the `in progress` label, or ask the maintainer to add it.
 
 ## Servers, ports and data
 
@@ -63,6 +64,6 @@ node tools/check-all.mjs <your checks> --lag 300   # the same, for the older che
 ## Security boundaries
 
 A change to any of these is reviewed as a security change (designs/developing.md, “Security”):
-- Postbox answers 127.0.0.1 alone. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token (designs/architecture.md, “Writes need the page’s token”).
+- Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1` or `localhost` on its port. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token (designs/architecture.md, “Writes need the page’s token”).
 - Agent and app content is data. It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()`. Agent apps run only in CSP-sandboxed pages that load nothing (designs/architecture.md, “Sandboxed pages that load nothing”).
 - Spawn processes with an argument array, never a shell string.

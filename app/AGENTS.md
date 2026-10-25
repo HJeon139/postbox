@@ -5,7 +5,7 @@ Plain ES modules in `app/js/`, no framework and no build (designs/architecture.m
 ## The DOM and agent content
 
 - Build the DOM with `h()` from `app/js/dom.mjs`. Agent and app text goes in as text nodes (designs/engineering-practices.md, “The DOM, and agent content”).
-- HTML comes only from `renderMarkdown()` output wrapped in `trusted()`; `h()` ignores any other `html`. Never pass agent data where `h()` takes props: a plain object there became `innerHTML` (#30).
+- HTML comes only from `renderMarkdown()` output wrapped in `trusted()`; `h()` adds any other `html` as text, never markup. Never pass agent data where `h()` takes props: a plain object there became `innerHTML` (#30).
 - No `innerHTML` without a `lint-allow dom:` comment naming its source, and no attribute or style names chosen at run time. `lint-dom` checks both.
 - Don’t trust an id across conversations. Check who owns it (#31).
 

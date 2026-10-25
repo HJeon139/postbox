@@ -49,7 +49,8 @@ test('they’re plain Markdown any tool reads: no front matter and no @ imports,
 });
 
 test('no CLAUDE.md beside them: Claude Code reads AGENTS.md only where there is none', () => {
-  for (const f of ['CLAUDE.md', '.claude/CLAUDE.md']) assert.ok(!existsSync(join(ROOT, f)), `${f} would switch AGENTS.md off for Claude Code`);
+  for (const f of ['CLAUDE.md', '.claude/CLAUDE.md', ...files.map((x) => join(x, '..', 'CLAUDE.md'))])
+    assert.ok(!existsSync(join(ROOT, f)), `${f} would switch AGENTS.md off for Claude Code`);
 });
 
 /** A heading’s words, without the number architecture.md gives its sections. */
@@ -63,8 +64,9 @@ test('every design section a rule cites exists, by its title', () => {
       assert.ok(existsSync(join(ROOT, doc)), `${f} cites ${doc}, which isn’t there`);
       for (const [, title] of m[2].matchAll(/“([^”]+)”/g)) {
         cited++;
+        // The title, or the title and what follows its colon (“The store: an event log…”), not any heading it begins.
         assert.ok(
-          headings(doc).some((h) => h.startsWith(title)),
+          headings(doc).some((h) => h === title || h.startsWith(`${title}:`)),
           `${f} cites ${doc}, “${title}”, and it has no section by that title`,
         );
       }
