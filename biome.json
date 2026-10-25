@@ -150,7 +150,7 @@
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1983 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1928 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 768 } } }
         }
       }
@@ -333,6 +333,14 @@
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 598 } } } } }
     },
     {
+      "includes": ["tests/browser/agents.spec.mjs"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 463 } } } } }
+    },
+    {
+      "includes": ["tests/browser/transcript.spec.mjs"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 432 } } } } }
+    },
+    {
       "includes": ["tests/claude-code.test.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1010 } } } } }
     },
@@ -396,10 +404,6 @@
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 149 } } } } }
     },
     {
-      "includes": ["tools/check-agents.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 544 } } } } }
-    },
-    {
       "includes": ["tools/check-header.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 410 } } } } }
     },
@@ -410,10 +414,6 @@
     {
       "includes": ["tools/check-side-threads.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 304 } } } } }
-    },
-    {
-      "includes": ["tools/check-transcript.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 456 } } } } }
     },
     {
       "includes": ["tools/check-work-pane.mjs"],
