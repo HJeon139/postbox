@@ -13,6 +13,7 @@
 // PB_PORT and PB_CHROME_PORT move it; ONLY=<text> runs only the cases whose names include it.
 
 import assert from 'node:assert/strict';
+import { js } from './cdp.mjs';
 import {
   app,
   busy,
@@ -111,7 +112,7 @@ await check('a side-thread agent waiting on a permission prompt counts in the ta
   await page.waitFor(`document.title.startsWith('(1) ')`, { label: 'the tab title’s count' });
   await page.evaluate(`document.querySelector('#composer-input')?.blur(); document.body.focus()`);
   await press('j', { ctrl: true });
-  await page.waitFor(`location.hash === ${JSON.stringify(`#/t/${room.id}/side/${side.id}`)}`, { label: 'the side thread to open' });
+  await page.waitFor(`location.hash === ${js(`#/t/${room.id}/side/${side.id}`)}`, { label: 'the side thread to open' });
   await page.waitFor(`document.activeElement?.closest('[data-key="${card}"]')`, { label: 'focus on the card' });
   rt.act(side.id, card, 'allow');
   await until(() => !store.state.sessions[researcher.id].needs, 'the answer');
