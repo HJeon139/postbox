@@ -13,7 +13,7 @@ The root `AGENTS.md` applies here too.
 - Share setup, but keep each action and its assertions inline in the test.
 - Check that the suite’s test count went up by the tests you added.
 
-A test that must run a real process (npm, git, an installed postbox) goes in `tests/process/*.test.mjs` instead, which `npm run test:process` runs without the guard, and `npm run check` runs too. It writes only to temp folders it makes and removes, and to nothing else it doesn’t put back (`npm pack` writes and removes `server/build-commit.txt` in the clone, and npm reads your own `~/.npmrc`). It runs on a port of its own, with a timeout on every process it starts, and stays a few seconds long.
+A test that must run a real process (npm, git, an installed postbox) goes in `tests/process/*.test.mjs` instead, which `npm run test:process` runs without the guard, and `npm run check` runs too. It writes only to temp folders it makes and removes, and to nothing else it doesn’t put back (`npm pack` writes and removes `server/build-commit.txt` in the clone, and npm reads your own npm settings). It runs on a port of its own, with a timeout on every process it starts, and stays a few seconds long.
 
 ## Browser specs
 
