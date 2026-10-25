@@ -49,8 +49,9 @@ export async function paneRoom(name) {
 export async function fresh(page, room, width, { height = 800, railHidden = false, at = '' } = {}) {
   await page.setViewportSize({ width, height });
   if (railHidden)
+    // In the page only: it runs in every frame, and a sandboxed app’s has no storage.
     await page.addInitScript(() => {
-      localStorage.setItem('pb-rail', 'hidden');
+      if (window === window.top) localStorage.setItem('pb-rail', 'hidden');
     });
   await page.goto(`${room.app.origin}/${room.conv(at)}`);
   await synced(page, room.app);
