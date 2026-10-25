@@ -582,25 +582,18 @@ test('a scenario can put agents on another backend, with a model', () => {
   assert.deepEqual(parseScenario('# T\n- permission_modes: @critic=ask, reviewer=bypass\n').permissionModes, { critic: 'ask', reviewer: 'bypass' });
 });
 
-test('the Antigravity CLI runs only in a release run: refused in a scenario, and off for the tester, otherwise (#143)', () => {
+test('the Antigravity CLI is a compatibility backend like the others, no longer kept to release runs (#143)', () => {
+  // Since 25 October 2026 the maintainer pays for Antigravity, so no backend is release-only today.
+  assert.deepEqual(RELEASE_ONLY, {});
   const gem = parseScenario('# T\n- backends: critic=antigravity-cli:gemini-3.8-flash-high, researcher=kiro-cli\n');
-  const refused = releaseGate(gem);
-  assert.match(String(refused.error), /@critic on the Antigravity CLI, which runs only for a version release.*--release/);
-  assert.doesNotMatch(String(refused.error), /@researcher/);
+  assert.deepEqual(releaseGate(gem), { error: null, env: {} });
   assert.deepEqual(releaseGate(gem, { release: true }), { error: null, env: {} });
-  // Any other scenario runs, with Postbox started without the Antigravity CLI.
-  const plain = releaseGate(parseScenario(readFileSync(new URL('uat/e2e/scenarios/mixedroom.md', import.meta.url), 'utf8')));
-  assert.equal(plain.error, null);
-  assert.deepEqual(Object.keys(plain.env), ['POSTBOX_AGY_BIN']);
-  assert.ok(Object.hasOwn(RELEASE_ONLY, 'antigravity-cli'));
-  // A release-only backend is a compatibility backend first: it’s never one of Claude’s.
-  for (const b of Object.keys(RELEASE_ONLY)) assert.ok(!CLAUDE_BACKENDS.has(b), b);
-  // The Gemini room is the release run’s scenario.
+  // It’s still a compatibility run, which needs --compat: Antigravity is never one of Claude’s backends.
+  assert.ok(!CLAUDE_BACKENDS.has('antigravity-cli'));
   const gemini = parseScenario(readFileSync(new URL('uat/e2e/scenarios/geminiroom.md', import.meta.url), 'utf8'));
   assert.deepEqual(gemini.backends, { critic: { backend: 'antigravity-cli', model: 'gemini-3.8-flash-high' } });
   assert.deepEqual(compatBackends(gemini), ['antigravity-cli']);
-  assert.match(String(releaseGate(gemini).error), /@critic on the Antigravity CLI/);
-  assert.equal(releaseGate(gemini, { release: true }).error, null);
+  assert.equal(releaseGate(gemini).error, null);
 });
 
 test('the tester keeps how your Claude Code signs in, and nothing else of your settings', () => {

@@ -19,5 +19,5 @@ New browser checks are Playwright specs: see `tests/AGENTS.md`, “Browser specs
 ## The UAT runner and the screenshot tools
 
 - `tools/uat-run.mjs` runs real agents and costs real usage. `tools/shoot-app.mjs` and `tools/shoot-uat.mjs` refresh the screenshots and run axe. Run them only when the task asks for them, or when you’re the reviewing session (designs/prompts/README.md, “Rules for every session”).
-- Regular UAT runs are Claude only. A scenario with a Kiro or Codex agent is a compatibility run (`--compat`), and Antigravity runs only for a version release (`--release`).
+- Regular UAT runs are Claude only. A scenario with a Kiro, Codex or Antigravity agent is a compatibility run (`--compat`), and runs only when the task asks for it.
 - When the UAT finds a defect class a check can catch, add the check to `server/room-checks.mjs`, through `tools/uat/checks.mjs`.
