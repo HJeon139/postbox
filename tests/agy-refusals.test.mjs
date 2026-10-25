@@ -62,8 +62,8 @@ test('#370 the follow-up asks the agent to say that Run everything would allow t
 
 test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto and acceptEdits only when the hook is confirmed', async () => {
   assert.equal(HOOK_TIMEOUT_S, Math.ceil(CARD_WAIT_MS / 1000) + 60);
-  for (const v of ['1.4.5', '1.4.7', '1.5.0', '2.0.0']) assert.equal(agySupportsHooks(v), true, v);
-  for (const v of ['1.4.4', '1.3.9', '0.9.0', 'unknown', null, undefined, '']) assert.equal(agySupportsHooks(v), false, String(v));
+  for (const v of ['1.4.7', '1.4.8', '1.5.0', '2.0.0']) assert.equal(agySupportsHooks(v), true, v);
+  for (const v of ['1.4.6', '1.4.5', '1.4.4', '1.3.9', '0.9.0', 'unknown', null, undefined, '']) assert.equal(agySupportsHooks(v), false, String(v));
   assert.equal(agyHookCommand('/opt/postbox/server/adapters/agy-hook.mjs'), '/opt/postbox/server/adapters/agy-hook.mjs');
   for (const bad of ['/path with spaces/agy-hook.mjs', '/path/"quote"/hook.mjs', '/path/$var/hook.mjs', 'relative/hook.mjs', ''])
     assert.equal(agyHookCommand(bad), null, bad);
@@ -144,7 +144,12 @@ test('#370 condition 1: AntigravityCliAdapter writes read-only hooks.json and fa
   assert.equal(confirmed.env.POSTBOX_AGY_MODE, 'auto');
   assert.equal(confirmed.env.POSTBOX_MCP_URL, 'http://127.0.0.1:4280/mcp?session=se_1&token=t1');
 
-  const oldVer = await runDeliverTurn('auto', { version: '1.4.4' });
+  const defaultVer = await runDeliverTurn('auto');
+  assert.equal(defaultVer.hasHooks, false, 'unknown default version (null) means no hook');
+  assert.ok(!defaultVer.args.includes('--dangerously-skip-permissions'));
+  assert.deepEqual(defaultVer.args.slice(defaultVer.args.indexOf('--mode'), defaultVer.args.indexOf('--mode') + 2), ['--mode', 'auto']);
+
+  const oldVer = await runDeliverTurn('auto', { version: '1.4.5' });
   assert.equal(oldVer.hasHooks, false);
   assert.ok(!oldVer.args.includes('--dangerously-skip-permissions'));
   assert.deepEqual(oldVer.args.slice(oldVer.args.indexOf('--mode'), oldVer.args.indexOf('--mode') + 2), ['--mode', 'auto']);

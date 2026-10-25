@@ -286,7 +286,7 @@ export async function start({
 
     if (path === '/mcp') {
       if (req.method !== 'POST') return raw(res, 405, 'Use POST for MCP requests.', { allow: 'POST' });
-      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req), url.searchParams.get('turn'));
+      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req), url.searchParams.get('turn'), res);
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 

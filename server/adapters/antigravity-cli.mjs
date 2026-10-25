@@ -634,7 +634,7 @@ export class AntigravityCliAdapter {
     bin = findAgy(),
     workRoot,
     models = [],
-    version = '1.4.5',
+    version = null,
     hookScript = HOOK_SCRIPT,
     settingsFile = agySettingsFile(),
     spawnImpl = spawn,

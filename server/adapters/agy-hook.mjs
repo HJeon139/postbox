@@ -23,12 +23,12 @@ const WRITE_TOOLS = new Set(['write_file', 'write_to_file', 'edit_file', 'replac
 const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search']);
 const SUBAGENT_TOOLS = new Set(['invoke_subagent', 'define_subagent', 'send_message', 'manage_subagents', 'manage_task']);
 
-/** Whether an agy version supports PreToolUse hooks (1.4.5 and newer). */
+/** Whether an agy version supports PreToolUse hooks (1.4.7 and newer). */
 export function agySupportsHooks(version) {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(version ?? '').trim());
   if (!m) return false;
   const [maj, min, patch] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  return maj > 1 || (maj === 1 && (min > 4 || (min === 4 && patch >= 5)));
+  return maj > 1 || (maj === 1 && (min > 4 || (min === 4 && patch >= 7)));
 }
 
 /** The hook script’s path when it’s safe to pass to agy’s `/bin/sh -c` runner, or null if it has shell characters. */

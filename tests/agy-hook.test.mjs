@@ -173,6 +173,39 @@ test('#370 condition 4: runAgyHook asks through permission_prompt with its own r
   assert.match(results[2].reason, /Nobody answered within/);
 });
 
+test('#370 condition 4: disconnecting permission_prompt expires the open card so a later click is rejected', async () => {
+  const { store, adapter, rt, t, se } = setupHookRuntime();
+  /** @type {any} */
+  let outcome = null;
+  adapter.next.push(async () => {
+    const ac = new AbortController();
+    const p = handleMcp(
+      rt,
+      se.id,
+      {
+        jsonrpc: '2.0',
+        id: 'agy-hook-disconnect',
+        method: 'tools/call',
+        params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'touch b.txt' }, tool_use_id: 'agy-hook-disconnect' } },
+      },
+      rt.turns.get(se.id)?.token ?? null,
+      ac.signal,
+    );
+    await sleep(10);
+    const card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
+    assert.ok(card, 'card is open before disconnect');
+    ac.abort();
+    const rpc = /** @type {any} */ (await p);
+    outcome = { cardStatus: store.item(t.id, card.id).status, needs: rt.session(se.id).needs, decision: JSON.parse(rpc.result.content[0].text) };
+    assert.throws(() => rt.act(t.id, card.id, 'allow', {}), /already answered/);
+  });
+  rt.sendMessage(t.id, { text: 'go' });
+  for (let i = 0; i < 100 && rt.turns.size; i++) await sleep(5);
+  assert.equal(outcome.cardStatus, 'expired');
+  assert.equal(outcome.needs, null);
+  assert.equal(outcome.decision.behavior, 'deny');
+});
+
 test('#370 condition 2: runAgyHook fails closed to deny on every error path and never outputs ask, force_ask or empty stdout', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pb-agy-fail-'));
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
