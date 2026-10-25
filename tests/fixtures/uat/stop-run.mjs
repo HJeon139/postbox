@@ -1,6 +1,7 @@
-// A host-mode UAT run cut down to its start, for tools/check-uat-stop.mjs: the run’s own Postbox and Chrome, its stop
-// on a signal (tools/uat/stop.mjs) wired as tools/uat-run.mjs wires it, and one host set up through the UI (added,
-// its folder made, installed) over whatever `ssh` is first on PATH. Then it prints “ready” and waits for the signal.
+// A host-mode UAT run cut down to its start, for tests/process/uat-stop.test.mjs: the run’s own Postbox and Chrome,
+// its stop on a signal (tools/uat/stop.mjs) wired as tools/uat-run.mjs wires it, and one host set up through the UI
+// (added, its folder made, installed) over whatever `ssh` is first on PATH. Then it prints “ready” and waits for the
+// signal.
 //
 //   node tests/fixtures/uat/stop-run.mjs <port> <chrome port> <data folder> <workspace> <host’s home>
 
