@@ -155,6 +155,8 @@ function removeGo(host, status, { noToken, label }, close) {
         try {
           const r = await api(`/api/hosts/${host.id}`, undefined, 'DELETE');
           close();
+          // Its card, and the Remove… focus would go back to, are gone.
+          document.getElementById('ho-add')?.focus();
           toast({ title: `Removed ${host.name}`, text: r.stopped ? `Stopped ${plural(r.stopped, 'turn')} there first.` : '' });
         } catch (e) {
           fill(status, removeFailed(e));
@@ -184,7 +186,7 @@ const removeBody = (host, { noToken, placed, forgets }) => [
     : h(
         'p',
         { style: { margin: 0 } },
-        `Postbox stops the daemon and every turn still running on ${host.name}, and deletes ~/.postbox-remote there: its code, token, logs and turn records. Then it forgets the host here: ${forgets}.`,
+        `Postbox stops the daemon and every turn still running on ${host.name}, and deletes ~/.postbox-remote there: its code, token, logs and turn records. Then it forgets the host here: ${forgets}. The agents’ working folders there, such as ~/postbox-work/<handle>, stay. Another Postbox that uses ${host.name} loses its access too, since the token goes.`,
       ),
   placed.length
     ? h(
@@ -217,12 +219,14 @@ export const confirmRemove = (host) => {
   const label = noToken ? 'Remove host' : `Remove Postbox from ${host.name}`;
   const status = h('div.ho-remove-result', { role: 'alert' });
   const go = removeGo(host, status, { noToken, label }, () => dlg.close());
+  const cancel = h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel');
   const forgets = `its settings, ${folders ? plural(folders, 'project folder') : 'its project folders'} there, and its token on this computer`;
   const dlg = openDialog({
     title: `Remove ${host.name}?`,
     role: 'alertdialog',
     body: [...removeBody(host, { noToken, placed, forgets }), status],
-    foot: [h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'), go],
-    initialFocus: () => go,
+    foot: [cancel, go],
+    // Cancel first, as for anything that deletes.
+    initialFocus: () => cancel,
   });
 };

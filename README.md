@@ -373,7 +373,7 @@ They cover:
 - the work ledger: line counts against git’s, recorded turns that edit, commit, push and run background commands, where git says each change stands, and Restore
 - the diagram linter, against text sizes measured in Chrome
 - attaching and mirroring Claude Code sessions, narration, and the lint rules themselves
-- remote hosts, in the integration tests: the install script and the `host` launcher; the daemon, the turn runner and the stdio shim; and a remote Claude Code turn through the whole pipeline, with only ssh replaced, across an ssh drop, a killed daemon, a Postbox restart, Stop, an expired prompt and an interrupted turn. Also the idle exit and Remove, after which nothing of Postbox’s is left on the host, and no TCP listener on either side during a turn
+- remote hosts, in the integration tests: the install script and the `host` launcher; the daemon, the turn runner and the stdio shim; and a remote Claude Code turn through the whole pipeline, with only ssh replaced, across an ssh drop, a killed daemon, a Postbox restart, Stop, an expired prompt and an interrupted turn. Also the idle exit and Remove, after which nothing of Postbox’s own is left on the host (the agents’ working folders stay), and no TCP listener on either side during a turn
 
 Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.yml)) runs the same check on every pull request, then plays the demo in headless Chrome and runs axe-core on every scene. It also checks that a pull request’s commit messages follow Conventional Commits, and that every change on main is released.
 

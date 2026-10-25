@@ -165,6 +165,12 @@ try {
     rm1?.text,
   );
   check((await text('#ho-remove-go')) === 'Remove Postbox from build.example.com', 'the confirm’s action names it: Remove Postbox from the host');
+  check(
+    /working folders there, such as ~\/postbox-work\/<handle>, stay\. Another Postbox that uses build\.example\.com loses its access too/.test(rm1?.text ?? ''),
+    'it says what stays there, and that another Postbox using the host loses access',
+    rm1?.text,
+  );
+  check((await page.evaluate('document.activeElement?.textContent?.trim()')) === 'Cancel', 'Cancel has focus first, not the button that deletes');
   await audit('the remove confirm');
   await click('#ho-remove-go');
   await waitFor(`!!document.querySelector('.ho-remove-result .callout')`, 'the refusal');
@@ -205,6 +211,7 @@ try {
     order.join(','),
   );
   await waitFor(`!document.querySelector('[data-host="${id}"]')`, 'its card to go');
+  check((await page.evaluate('document.activeElement?.id')) === 'ho-add', 'focus goes to Add a host, not the page’s body');
   check(/No hosts yet/.test((await text('.hosts')) ?? ''), 'and the tab says there are none');
 
   consoleClean();
