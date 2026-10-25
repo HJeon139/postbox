@@ -56,9 +56,6 @@ test('#225 Summarize back in a side thread: pick who writes it, and the summary 
   expect(ran, 'one turn, @indexer’s, in the side thread').toEqual([['indexer', true]]);
   expect(store.state.threads[room.id].hops, 'the summary didn’t count against the wake limit').toBe(hops);
   await synced(page, app);
-  // Before #372 focus went to the side thread’s composer while the button waited; one from before it has none, and
-  // focus stays in the panel rather than falling to the page.
-  await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('.sidepanel')), { message: 'focus in the side panel' }).toBe(true);
   await expect(page.locator('#main .shared-card', { hasText: '1908' })).toContainText(/^\s*Summary of the thread “@indexer ↔ @researcher” · @indexer/);
 });
 
@@ -81,6 +78,9 @@ test('#225 Summarize back asked while its agent is busy in the side thread waits
   await synced(page, app);
   const waiting = page.locator('.sidepanel .sp-head').getByRole('button', { name: 'Summary requested…', exact: true });
   await expect(waiting, 'it can’t be asked again while the summary is written').toBeDisabled();
+  // Disabled, the button can’t keep focus. Before #372 the side thread’s composer took it; a side thread from before
+  // #372 has none, so the panel’s Close button does, rather than the page.
+  await expect(page.locator('.sidepanel .sp-head').getByRole('button', { name: 'Close side thread' })).toBeFocused();
   held.release(indexer.id);
   await idle();
   await synced(page, app);

@@ -40,7 +40,7 @@ test('#135, #372: a turn another agent started says so on its replies, and the w
   adapter.next.push(async (c) => c.text('@alpha the gap is in row 4.'));
   adapter.next.push(async (c) => c.text('Sent the fix.'));
   // The person writing starts the pair’s count again, so this is the pair’s first wake, not its third (#372).
-  rt.putThread({ ...store.state.threads[t.id], pairRun: null });
+  rt.putThread({ ...store.state.threads[t.id], pairRuns: null });
   rt.agentWake(alpha.id, 'beta', 'Where is it?');
   await settle(rt);
   const next = said('alpha').at(-1);

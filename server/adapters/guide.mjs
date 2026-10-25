@@ -214,7 +214,8 @@ function formatBody(message, pathOf) {
         .filter(Boolean)
         .join('\n');
     case 'agent':
-      return `[Postbox] ${message.from} wrote to you:\n\n${message.text}`;
+      // A reply doesn’t go back by itself (#372): say so where the agent reads the message it answers.
+      return `[Postbox] ${message.from} wrote to you. Your reply posts here; it reaches ${message.from} only if you @-mention them, so do that only when they must act next.\n\n${message.text}`;
     case 'wake':
       return `[Postbox] A wake-up you scheduled is due. Your note: ${message.note || '(none)'}`;
     case 'app-check':

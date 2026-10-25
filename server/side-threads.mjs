@@ -39,24 +39,28 @@ export function agentWake(
   // never in a side thread of their own (#372); a turn still in an old side thread hands off in the conversation.
   const back = replyIn === undefined ? replyInOf(rt, from) : replyIn;
   const at = back && rt.s.threads[back]?.kind === 'topic' ? back : parent.id;
+  // Told before any card, so a wake that waits for Allow still tells it (Allow carries no side thread).
+  if (back && rt.s.threads[back]?.kind === 'side') sideThreadsGone(rt, from);
   // A card keeps the mention’s message, so Allow wakes from it rather than posting it again.
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId };
   if (!target) return askToAdd(rt, from, parent, p, card);
   // Two agents mentioning each other in turn (“pushed @a”, “thanks @b”, “noted @a”) stop after a hand-off and its
-  // answer, as a reply that went back by itself once stopped them; a third agent or you starts the count again.
+  // answer, as a reply that went back by itself once stopped them. Each pair keeps its own count, so a third agent’s
+  // wakes in between don’t restart it; the person acting does.
   const pair = [from.handle, p.handle].sort().join('|');
-  const run = parent.pairRun?.pair === pair ? parent.pairRun.n : 0;
+  const runs = parent.pairRuns ?? {};
+  const run = Object.hasOwn(runs, pair) ? runs[pair] : 0;
   if (!confirmed && ((parent.hops ?? 0) >= HOP_LIMIT || run >= PAIR_LIMIT)) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
-  rt.putThread({ ...rt.s.threads[parent.id], hops: hop, pairRun: { pair, n: run + 1 } });
-  if (back && rt.s.threads[back]?.kind === 'side') sideThreadsGone(rt, from);
+  rt.putThread({ ...rt.s.threads[parent.id], hops: hop, pairRuns: { ...runs, [pair]: run + 1 } });
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114, telemetry) goes on the
-  // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. wake_agent’s message is
-  // posted as the waker’s.
+  // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. One message can wake several
+  // agents, so each wake’s number is kept (wakes); hop stays the first. wake_agent’s message is posted as the waker’s.
   const said = itemId ? rt.store.item(at, itemId) : null;
-  if (said) rt.patchItem(at, said.id, { hop });
+  if (said) rt.patchItem(at, said.id, { hop: said.hop ?? hop, wakes: [...(said.wakes ?? (said.hop ? [said.hop] : [])), hop] });
   const it =
-    said ?? rt.addItem(at, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop, fromTurnId });
+    said ??
+    rt.addItem(at, { kind: 'agent', sessionId: from.id, personaId: from.personaId, handle: from.handle, text, status: 'done', hop, wakes: [hop], fromTurnId });
   rt.recordAgentMessage(from.id, 'to', p.handle, text);
   rt.recordAgentMessage(target.id, 'from', from.handle, text);
   // The woken agent answers from its session in the conversation (#110). Busy, it takes the wake when its turn ends,
@@ -65,7 +69,8 @@ export function agentWake(
   const wake = { id: newId('q'), kind: 'wake', from: from.handle, fromSessionId: from.id, text, itemId: it.id, sessionIds: [target.id], at: Date.now() };
   if (waits) rt.putThread({ ...rt.s.threads[at], queue: [...(rt.s.threads[at].queue ?? []), wake] });
   else deliverWake(rt, at, wake);
-  return { ok: true, message: waits ? `Woke @${p.handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${p.handle}.` };
+  // itemId: the message the wake went out as, so a turn’s further mentions reuse it rather than post it again.
+  return { ok: true, itemId: it.id, message: waits ? `Woke @${p.handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${p.handle}.` };
 }
 
 /** An agent whose turn runs in a side thread from before #372 is told, once, that hand-offs happen in the conversation. */
@@ -265,7 +270,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
   rt.addItem(threadId, { kind: 'voice', text: voice });
   const from = rt.s.sessions[it.fromSessionId];
   if (from) rt.updateSession(from.id, { needs: null, state: rt.turns.has(from.id) ? from.state : 'idle' });
-  rt.putThread({ ...rt.s.threads[threadId], hops: 0, pairRun: null });
+  rt.putThread({ ...rt.s.threads[threadId], hops: 0, pairRuns: null });
   // Added: it joins with a note on why, as an agent the person adds does, and the wake goes on (#228).
   const p = it.join && allow ? rt.personaByHandle(it.to) : null;
   if (p) {
