@@ -1,9 +1,12 @@
 // The persona sheet’s setup controls (#57): “Uses your Claude Code setup” (on by default) and “Can publish outside
 // Postbox” (off by default) appear for a real backend, with help text, work from the keyboard, and save to the
 // persona; the new-agent sheet shows both with their defaults. With a stand-in Claude Code backend, which never runs
-// a turn here: it only makes the real backend’s fields show. Moved from tools/checks/persona-setup.mjs (#303).
+// a turn here: it only makes the real backend’s fields show. With an Antigravity CLI stand-in that reports its preferred
+// Gemini model after another, the Gemini boilerplate picks the preferred one (#358; gemini-boilerplate.spec.mjs checks
+// the rest of that boilerplate). Moved from tools/checks/persona-setup.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
 import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -11,6 +14,11 @@ let app;
 test.beforeAll(async () => {
   app = await startPostbox('persona-setup');
   app.rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
+  app.rt.adapters.register({
+    name: 'antigravity-cli',
+    capabilities: { ...AGY_CAPABILITIES, models: ['gemini-2.5-pro', 'gemini-3.8-flash-high'] },
+    deliver: async () => {},
+  });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -72,4 +80,14 @@ test('#57 the new-agent sheet shows both, with their defaults, on the real backe
   await expect(setup).toHaveAttribute('aria-checked', 'true');
   const publish = await setupBox(page, 'na-publish', 'Can publish outside Postbox', /artifacts, and connectors that post or send/);
   await expect(publish).toHaveAttribute('aria-checked', 'false');
+});
+
+test('#358 the Gemini boilerplate picks the Antigravity CLI’s preferred Gemini model, though another Gemini model comes first', async ({ page }) => {
+  await personas(page);
+  await page.locator('.dialog').getByRole('button', { name: 'New agent', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New agent' });
+  await dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini', exact: true }).click();
+  await expect.soft(dialog.getByLabel('Runs on'), 'the Antigravity CLI').toHaveValue('antigravity-cli');
+  await expect.soft(dialog.getByLabel('Model'), 'gemini-3.8-flash-high, not the first one listed').toHaveValue('gemini-3.8-flash-high');
+  await expect.soft(dialog.getByLabel('Instructions'), 'its prompt').toHaveValue(/^# Gemini\n/);
 });
