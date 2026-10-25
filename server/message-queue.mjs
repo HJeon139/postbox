@@ -1,6 +1,6 @@
 // Queued messages, their controls and delivery order; one session still runs at most one turn (#228).
 import { clip, httpError, queuedIn } from './helpers.mjs';
-import { combineMessages, plainMessage, readyGroups, superseded } from './queue-batch.mjs';
+import { combineMessages, latestMessage, plainMessage, readyGroups } from './queue-batch.mjs';
 import { deliverWake } from './side-threads.mjs';
 
 export function postAndDeliver(rt, threadId, { text, attachments }, targets) {
@@ -59,7 +59,7 @@ export function drainAll(rt) {
 }
 
 export function drainQueue(rt, threadId, wakesOnly = false) {
-  const t = pruneStaleWakes(rt, threadId);
+  const t = rt.s.threads[threadId];
   if (!t?.queue?.length) return;
   const groups = readyGroups(rt, t, wakesOnly);
   for (const batch of takeBatches(rt, threadId, groups)) deliverBatch(rt, threadId, batch.sessionIds, batch.messages);
@@ -71,22 +71,6 @@ function takeBatches(rt, threadId, groups) {
   const batches = groups.map((group) => ({ ...group, messages: queuedMessages(rt, threadId, group.entries, cache) }));
   rt.putThread({ ...rt.s.threads[threadId], queue: rt.s.threads[threadId].queue.filter((q) => !go.has(q)) });
   return batches;
-}
-
-function pruneStaleWakes(rt, threadId) {
-  const t = rt.s.threads[threadId];
-  if (!t?.queue?.length) return t;
-  const stale = t.queue.filter(
-    (q) =>
-      q.kind === 'wake' &&
-      q.sessionIds.every((id) => {
-        const se = rt.s.sessions[id];
-        return se && !se.archived && !se.deleting && !rt.turns.has(id) && !rt.exiting.has(id);
-      }) &&
-      superseded(rt, threadId, { kind: 'agent', from: `@${q.from}`, itemId: q.itemId, at: q.at }),
-  );
-  if (stale.length) rt.putThread({ ...t, queue: t.queue.filter((q) => !stale.includes(q)) });
-  return rt.s.threads[threadId];
 }
 
 function queuedMessages(rt, threadId, entries, cache = new Map()) {
@@ -101,7 +85,7 @@ function queuedMessages(rt, threadId, entries, cache = new Map()) {
       return [];
     }
     const message = { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId, at: q.at };
-    return superseded(rt, threadId, message) ? [] : [message];
+    return [latestMessage(rt, threadId, message)];
   });
 }
 
@@ -120,7 +104,7 @@ export function takePending(rt, se, turn, drain) {
   if (next) {
     const where = next.threadId ?? se.threadId;
     if (!groups.length && drain && (plainMessage(next.message) || next.message.messages)) {
-      const t = pruneStaleWakes(rt, where);
+      const t = rt.s.threads[where];
       if (t?.queue?.length) {
         const ready = readyGroups(rt, t, drain === 'wakes');
         for (const batch of takeBatches(rt, where, ready)) {
@@ -139,12 +123,12 @@ export function batchPending(rt, pending, threadId) {
   const groups = [];
   for (const entry of pending.flatMap((entry) => (entry.message.messages ?? [entry.message]).map((message) => ({ ...entry, message })))) {
     const where = entry.threadId ?? threadId;
-    if (superseded(rt, where, entry.message)) continue;
+    const message = latestMessage(rt, where, entry.message);
     const prior = groups.at(-1);
-    const canJoin = !entry.summarizeTo && plainMessage(entry.message);
+    const canJoin = !entry.summarizeTo && plainMessage(message);
     if (canJoin && prior && !prior.summarizeTo && (prior.threadId ?? threadId) === where && (plainMessage(prior.message) || prior.message.messages)) {
-      prior.message = combineMessages([prior.message, entry.message]);
-    } else groups.push({ ...entry });
+      prior.message = combineMessages([prior.message, message]);
+    } else groups.push({ ...entry, message });
   }
   return groups;
 }

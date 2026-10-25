@@ -20,8 +20,8 @@ export function readyGroups(rt, thread, wakesOnly) {
 }
 
 /** A turn’s later streaming segments are the same post, not a new instruction from its author. */
-export function superseded(rt, threadId, message) {
-  if (message.kind !== 'agent') return false;
+export function latestMessage(rt, threadId, message) {
+  if (message.kind !== 'agent') return message;
   const from = String(message.from ?? '')
     .replace(/^@/, '')
     .toLowerCase();
@@ -29,18 +29,30 @@ export function superseded(rt, threadId, message) {
   const index = items.findIndex((item) => item.id === message.itemId);
   const source = items[index];
   const turnId = source?.fromTurnId ?? source?.turnId;
-  return items.slice(index + 1).some((item) => {
+  const latest = items.slice(index + 1).findLast((item) => {
     if (item.kind !== 'agent' || String(item.handle ?? '').toLowerCase() !== from || !String(item.text ?? '').trim()) return false;
     if (index < 0 && !(item.at > message.at)) return false;
     return !turnId || turnId !== (item.fromTurnId ?? item.turnId);
   });
+  return latest ? { ...message, text: latest.text, itemId: latest.id, at: latest.at } : message;
 }
 
 export const plainMessage = (message) => ['user', 'agent'].includes(message.kind) && !message.slash && !message.messages;
 
 /** @param {any[]} messages */
 export function combineMessages(messages) {
-  const all = messages.flatMap((message) => message.messages ?? [message]);
+  const seen = new Set();
+  const all = messages
+    .flatMap((message) => message.messages ?? [message])
+    .reverse()
+    .filter((message) => {
+      if (message.kind !== 'agent' || !message.itemId) return true;
+      if (seen.has(message.itemId)) return false;
+      seen.add(message.itemId);
+      return true;
+    })
+    .reverse()
+    .sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   if (all.length === 1) return all[0];
   const last = all.at(-1);
   return {

@@ -55,7 +55,7 @@ test('a later message from a waker supersedes its old queued wake', async () => 
   assert.equal(calls[1].message.text, 'Review the new revision.');
 });
 
-test('a waker posting a newer unaddressed update drops its obsolete queued wake', async () => {
+test('a waker’s unaddressed later post replaces a queued wake and reaches its target exactly once', async () => {
   const { rt, adapter, t, alpha, beta } = setup();
   const busy = held();
   adapter.next.push(busy.step);
@@ -64,7 +64,9 @@ test('a waker posting a newer unaddressed update drops its obsolete queued wake'
   rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'I already resolved it.', status: 'done' });
   busy.release();
   await settle(rt);
-  assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id).length, 1, 'the obsolete request starts no turn');
+  const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
+  assert.equal(calls.length, 2, 'one initial turn and one turn with the newer context');
+  assert.equal(calls[1].message.text, 'I already resolved it.');
 });
 
 test('queued user messages and agent wakes share one turn without losing user transcript items', async () => {
@@ -174,7 +176,7 @@ test('a post in another thread does not supersede a queued wake in the conversat
   assert.equal(adapter.calls.filter((call) => call.sessionId === beta.id)[1].message.text, 'Still needed.');
 });
 
-test('dropping a stale wake does not strand a queued message addressed to several agents', async () => {
+test('refreshing a wake does not strand a queued message addressed to several agents', async () => {
   const { rt, store, adapter, t, alpha } = setup();
   const busy = held();
   adapter.next.push(busy.step);
@@ -185,7 +187,9 @@ test('dropping a stale wake does not strand a queued message addressed to severa
   busy.release();
   await settle(rt);
   assert.deepEqual(store.state.threads[t.id].queue, []);
-  assert.equal(adapter.calls.filter((call) => call.message.text === '@alpha @beta the shared next task.').length, 2);
+  const delivered = adapter.calls.flatMap((call) => call.message.messages ?? [call.message]);
+  assert.equal(delivered.filter((message) => message.text === '@alpha @beta the shared next task.').length, 2);
+  assert.equal(delivered.filter((message) => message.text === 'Already resolved.').length, 1);
 });
 
 test('overlapping recipient lists give each agent one batch and post shared user messages once', async () => {
@@ -264,4 +268,27 @@ test('a pending batch is reconsidered when a newer message supersedes one of its
     groups[0].message.messages.map((message) => message.text),
     ['Independent request.', 'Current request.'],
   );
+});
+
+test('a newer unaddressed post replaces a directly pending wake exactly once', async () => {
+  const { rt, adapter, t, alpha, beta } = setup();
+  const busy = held();
+  adapter.next.push(busy.step);
+  rt.sendMessage(t.id, { text: '@beta start' });
+  const old = rt.addItem(t.id, { kind: 'agent', handle: 'alpha', turnId: 'old', text: 'Please review.' });
+  rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: old.text, itemId: old.id, at: old.at });
+  const newer = rt.addItem(t.id, {
+    kind: 'agent',
+    sessionId: alpha.id,
+    handle: 'alpha',
+    turnId: 'new',
+    text: 'New context without a mention.',
+    status: 'done',
+  });
+  busy.release();
+  await settle(rt);
+  const calls = adapter.calls.filter((call) => call.sessionId === beta.id);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].message.itemId, newer.id);
+  assert.equal(calls[1].message.text, newer.text);
 });

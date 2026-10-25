@@ -103,3 +103,26 @@ test('a newer request replaces an older queued wake when the batch starts', asyn
   expect(turnsFor(r)).toHaveLength(2);
   expect(turnsFor(r)[1].message.messages.map((message) => message.text)).toEqual(['Review the current revision', 'Check the tests too']);
 });
+
+test('an unaddressed newer post reaches the waiting target exactly once', async ({ page }) => {
+  const r = await busyRoom(page);
+  const sender = r.senders[0];
+  app.rt.agentWake(sender.id, r.worker.handle, 'Review the older context');
+  const newer = app.rt.addItem(r.thread.id, {
+    kind: 'agent',
+    sessionId: sender.id,
+    handle: sender.handle,
+    text: 'New context without a mention',
+    status: 'done',
+  });
+  await synced(page, app);
+  await expect(page.locator('.outbox .queued')).toHaveCount(1);
+  releases.get(r.worker.id)();
+  await idle(r);
+  await synced(page, app);
+  await expect(page.locator('.outbox .queued')).toHaveCount(0);
+  await expect(page.getByText('Answered 1 queued messages.', { exact: true })).toBeVisible();
+  expect(turnsFor(r)).toHaveLength(2);
+  expect(turnsFor(r)[1].message.text).toBe(newer.text);
+  expect(turnsFor(r)[1].message.itemId).toBe(newer.id);
+});
