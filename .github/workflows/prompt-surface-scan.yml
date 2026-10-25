@@ -45,12 +45,18 @@ jobs:
       - name: Render the prompt surface, base and pull request
         run: |
           # Both sides render with the base’s renderer, so a change to the renderer can’t hide a change it makes. The
-          # pull request’s own is used only when the base has none yet.
+          # pull request’s own is used when the base has none yet, or when the base’s can’t render the pull request
+          # because a module it reads moved; then the warning asks for its diff to be read too.
           renderer=base/tools/prompt-surface.mjs
           [ -f "$renderer" ] || renderer=head/tools/prompt-surface.mjs
           for side in base head; do
             cp "$renderer" "$side/tools/.prompt-surface-ci.mjs"
-            node "$side/tools/.prompt-surface-ci.mjs" "out/$side"
+            if ! node "$side/tools/.prompt-surface-ci.mjs" "out/$side"; then
+              if [ "$side" != head ] || [ ! -f head/tools/prompt-surface.mjs ]; then echo "::error::Couldn't render the $side's prompt surface."; exit 1; fi
+              echo "::warning::The base's tools/prompt-surface.mjs couldn't render this pull request, so it rendered with its own. Read that file's diff with the prompt diff."
+              rm -rf out/head
+              node head/tools/prompt-surface.mjs out/head
+            fi
           done
       - name: Diff the prompt surface
         id: diff
