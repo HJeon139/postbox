@@ -184,6 +184,26 @@ test('a room’s rail row: a ring goes to its agent, the rest of the row to the 
   await landsOn(page, 'gamma');
 });
 
+test('a click that opens a new tab or window, on a rail row whose agent needs you, is left to the browser', async ({ page }) => {
+  await open(page, `#/t/${T.refused.id}`);
+  // A last listener records whether each click was taken, then keeps the browser from opening the tab.
+  await page.evaluate(() => {
+    window.__taken = [];
+    addEventListener('click', (e) => {
+      window.__taken.push(e.defaultPrevented);
+      e.preventDefault();
+    });
+  });
+  // The platform’s new-tab click (⌘ on macOS, where ⌃-click opens the context menu instead; Ctrl elsewhere), and a
+  // Shift-click for a new window.
+  for (const key of ['ControlOrMeta', 'Shift'])
+    await railRow(page, T.alpha)
+      .locator('.name')
+      .click({ modifiers: [key] });
+  expect(await page.evaluate(() => window.__taken), 'no click was taken to the ask').toEqual([false, false]);
+  await expect(page, 'the page stayed where it was').toHaveURL(new RegExp(`#/t/${T.refused.id}$`));
+});
+
 test('an agent’s row in the Agents section goes to its ask while it needs you', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
   await agentRow(page, 'delta').locator('.agent-btn').click();
@@ -225,4 +245,15 @@ test('an agent’s ring in the top bar goes to its ask', async ({ page }) => {
   // Its own button: a folded stack of rings in the top bar holds a second ring for each agent.
   await page.locator(`#top-ring-${S.gamma.id}`).click();
   await landsOn(page, 'gamma');
+});
+
+test('where the top bar’s rings fold into a stack, a waiting agent’s ring in it opens the stack’s menu', async ({ page }) => {
+  await open(page, `#/t/${T.room.id}`);
+  // Folded as fitTopbar (shell.mjs) folds it where the rings don’t fit: this case is about where the click goes.
+  await page.locator('header.topbar').evaluate((n) => {
+    n.dataset.drop = 'crumb demo rings';
+  });
+  await page.locator(`#top-ring-stack pb-ring[data-session="${S.gamma.id}"]`).click();
+  await expect(page.locator('.menu'), 'the stack’s menu').toBeVisible();
+  await expect(page, 'the page stayed where it was').toHaveURL(new RegExp(`#/t/${T.room.id}$`));
 });
