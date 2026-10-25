@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.35.0 (2026-10-25)
+
+### Features
+
+- **personas:** add the Gemini persona boilerplate
+
+### Fixes
+
+- **personas:** prefer b.model, disable unavailable boilerplates and keep seed order
+
 ## 0.34.0 (2026-10-25)
 
 ### Features
