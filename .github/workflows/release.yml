@@ -1,15 +1,17 @@
 # Releases what each merge to main brings (designs/engineering-practices.md, “Commits and versions”): npm run release
-# writes the release commit and its tag, and this pushes both to main with the workflow’s own token. The protect-main
-# ruleset only keeps main from being deleted, so that push needs no other credential.
+# writes the release commit and its tag, and this pushes both to main with the repository’s `release` deploy key. Its
+# private half is the secret RELEASE_DEPLOY_KEY in the `release` environment, which only main may use, so a pull
+# request’s workflow can’t read it. Deploy keys go on the protect-main ruleset’s bypass list, so once main requires pull
+# requests and checks, the release commit is still the one change that reaches main without them.
 name: release
 
 on:
   push:
     branches: [main]
 
-# To push the release commit and its tag.
+# The deploy key pushes; the workflow’s own token only reads.
 permissions:
-  contents: write
+  contents: read
 
 # One release at a time. A merge that lands while one runs is released by the next run, which starts from main’s tip.
 concurrency:
@@ -20,7 +22,9 @@ jobs:
   release:
     name: Release what’s merged
     runs-on: ubuntu-latest
-    # A push made with the workflow’s token doesn’t start workflows, but a release pushed by hand would.
+    # Where RELEASE_DEPLOY_KEY lives: an environment limited to main.
+    environment: release
+    # A push with the deploy key starts workflows, so this skips the release commit it pushed itself.
     if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +33,8 @@ jobs:
           ref: main
           # The whole history and its tags: the next version comes from the commits since the last tag.
           fetch-depth: 0
+          # Checked out over SSH with the deploy key, so the push below uses it too.
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
