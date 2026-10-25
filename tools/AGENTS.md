@@ -4,7 +4,7 @@ The root `AGENTS.md` applies here too.
 
 ## Headless browser checks
 
-`tools/check-*.mjs` and `tools/checks/*.mjs` drive headless Chrome through `tools/cdp.mjs`. `tools/check-all.mjs` runs them all (designs/engineering-practices.md, “The gate”). #303 is moving them to Playwright Test, one at a time.
+New browser checks are Playwright specs: see `tests/AGENTS.md`, “Browser specs”. The older `tools/check-*.mjs` and `tools/checks/*.mjs` drive headless Chrome through `tools/cdp.mjs`, and `tools/check-all.mjs` runs them all (designs/engineering-practices.md, “The gate”). #303 moves them to Playwright one at a time: a ported check keeps every case, is shown failing on the code without its fix, and its old file goes. Until a check moves, these rules hold for it:
 - Report through `tools/harness.mjs`: `ports()`, then `record()` for each case, then `finish()`. A check that records nothing fails.
 - Use the ports and data folder `ports()` gives you. Never a server you didn’t start (designs/developing.md, “Running the gate”).
 - Wait on a condition, never a fixed time. `page.synced(store.state.seq)` waits for the page to hear the server; poll anything else within a time budget. A sleep is only for asserting that something did _not_ happen. Read a position or size only once it has stopped changing (#298).

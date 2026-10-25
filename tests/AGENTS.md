@@ -13,6 +13,16 @@ The root `AGENTS.md` applies here too.
 - Share setup, but keep each action and its assertions inline in the test.
 - Check that the suite’s test count went up by the tests you added.
 
+## Browser specs
+
+New browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/architecture.md, “Browser checks on Playwright Test”, #303):
+- Each spec file starts its own Postbox in `beforeAll` with `startPostbox()` from `tests/browser/postbox.mjs`, stops it in `afterAll`, and calls `failOnPageErrors(test)`. Wait for the page to hear the server with `synced(page, app)`.
+- Wait with web-first assertions (`expect(locator)…`), `expect.poll` or `expect(…).toPass`, never for a fixed time. The `no-fixed-waits` Biome rule fails `page.waitForTimeout` and `setTimeout` in a spec.
+- Find elements by role or name where the page gives one, else by the attribute the code sets (`data-key`, `data-session`). A locator that matches two elements is a question to answer, not to work around with `.first()`.
+- Click and type as a person does, through Playwright. Never `element.click()` in the page: it skips the mouse, and a real bug hid behind one (#307).
+- Tests that don’t depend on each other stay independent; a story whose steps build on each other is one test with `test.step`s and `expect.soft`.
+- Show a new spec failing on the code without its fix. CI runs a spec a pull request adds or changes ten times, with the events late.
+
 ## UAT docs
 
 - Each UI change gets a doc under `tests/uat/`: why the component exists, what it should do, steps to reproduce, and what passes. Update the docs your change affects. Don’t refresh their screenshots; the reviewing session does that (designs/prompts/README.md, “Rules for every session”).

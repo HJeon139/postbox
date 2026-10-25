@@ -9,7 +9,7 @@ These are the rules every change follows, whoever writes it. Each names the desi
 Before you change files in a folder, read its `AGENTS.md` too. Some tools load it on their own, and some only load this one.
 - `app/AGENTS.md`: the client. DOM, agent content, tokens, accessibility, motion.
 - `server/AGENTS.md`: the server and the agent backends. Node, errors, adapters, security boundaries.
-- `tests/AGENTS.md`: unit tests and UAT docs.
+- `tests/AGENTS.md`: unit tests, the browser specs, and UAT docs.
 - `tools/AGENTS.md`: the headless browser checks, the lints, and the UAT runner.
 - `designs/AGENTS.md`: writing and updating the design docs.
 
@@ -17,11 +17,13 @@ Before you change files in a folder, read its `AGENTS.md` too. Some tools load i
 
 ```bash
 npm run check            # Biome, types, project lints, contrast, unit tests
-npm run check:browser    # every headless Chrome check, 4 at a time
-node tools/check-all.mjs <your checks> --lag 300   # with the server's events 300 ms late
+npm run check:browser    # the headless Chrome checks not yet moved to Playwright, 4 at a time
+npx playwright test      # the browser specs in tests/browser/
+POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events 300 ms late, as CI runs it
+node tools/check-all.mjs <your checks> --lag 300   # the same, for the older checks
 ```
 
-- A change is done when `npm run check` exits 0. A change you can see in the UI also passes `npm run check:browser`, and adds or extends a check (designs/engineering-practices.md, “The gate”).
+- A change is done when `npm run check` exits 0. A change you can see in the UI also passes both browser runs, and adds or extends a browser spec in `tests/browser/` (designs/engineering-practices.md, “The gate”).
 - Cite the command that proved a claim, and its exit code. A count of exactly 0, or a run that found nothing, is a finding about the harness until it’s explained (designs/developing.md, “Degenerate values are a defect until explained”).
 - Show a test or check failing on the code without the fix, when you can (designs/engineering-practices.md, “Tests”).
 
