@@ -56,12 +56,13 @@ jobs:
           gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > changed.txt
           node tools/prompt-gate.mjs touched .github/prompt-surface-paths.txt < changed.txt > touched.txt
           # The files API lists at most 3,000 files, so a pull request that large may hide one: it needs approval.
-          if [ "$(gh api "repos/$REPO/pulls/$PR" --jq .changed_files)" -ge 3000 ]; then
-            echo "(more than the 3,000 files GitHub lists)" >> touched.txt
-          fi
-          if [ -s touched.txt ]; then
+          too_many=false
+          if [ "$(gh api "repos/$REPO/pulls/$PR" --jq .changed_files)" -ge 3000 ]; then too_many=true; fi
+          echo "too_many=$too_many" >> "$GITHUB_OUTPUT"
+          if [ -s touched.txt ] || [ "$too_many" = true ]; then
             echo "touched=true" >> "$GITHUB_OUTPUT"
-            { echo "This pull request changes the prompt surface, so it waits for approval in the prompt-security-review environment:"; echo; sed 's/^/- `/; s/$/`/' touched.txt; } >> "$GITHUB_STEP_SUMMARY"
+            { echo "This pull request changes the prompt surface, so it waits for approval in the prompt-security-review environment:"; echo; sed 's/^/- `/; s/$/`/' touched.txt
+              if [ "$too_many" = true ]; then echo "- More than the 3,000 files GitHub lists changed, so some can't be checked."; fi; } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "touched=false" >> "$GITHUB_OUTPUT"
             echo "No prompt-surface file changed." >> "$GITHUB_STEP_SUMMARY"
@@ -71,12 +72,15 @@ jobs:
       # it’s updated on each run, and says so when the pull request stops touching the prompt surface. Neither can
       # fail the gate.
       - name: Say what to review
+        # A failure here leaves the gate's verdict alone, rather than read as the file list failing.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TOUCHED: ${{ steps.match.outputs.touched }}
+          TOO_MANY: ${{ steps.match.outputs.too_many }}
         run: |
           if [ "$TOUCHED" = true ]; then node tools/prompt-gate.mjs notices touched.txt; fi
           node tools/prompt-gate.mjs comment touched.txt > comment.md

@@ -8,7 +8,7 @@
 //                                                            could post a check named <check>; exit 1 if any
 //   node tools/prompt-gate.mjs notices <touched file>        the run page’s notices: what to read before approving
 //   node tools/prompt-gate.mjs comment <touched file>        the pull request comment that says the same, as Markdown
-// The last two read REPO, PR and RUN_URL from the environment.
+// The last two read REPO, PR, RUN_URL and TOO_MANY (true when over the 3,000 files GitHub lists) from the environment.
 //
 // The paths file lists globs, one per line, with # for comments: `*` matches within a folder, `**/` any folders.
 // The gate workflow runs this from main’s checkout, never the pull request’s, so a pull request can’t change its own
@@ -99,10 +99,11 @@ const commandText = (s) => String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').
 /**
  * The notices the gate’s run page shows above its jobs, where the approval dialog opens: each prompt-surface file with
  * its diff, then where the rendered text of what agents read is. The dialog itself can’t say more.
- * @param {string[]} files @param {{ repo: string, pr: string|number }} where
+ * @param {string[]} files @param {{ repo: string, pr: string|number, tooMany?: boolean }} where
  */
-export function notices(files, { repo, pr }) {
+export function notices(files, { repo, pr, tooMany = false }) {
   return [
+    ...(tooMany ? ['::notice title=Review before approving::More than the 3,000 files GitHub lists changed, so some can’t be checked here.'] : []),
     ...files.map((f) => `::notice title=Review before approving::${commandText(`${f} changed: ${diffUrl(repo, pr, f)}`)}`),
     `::notice title=Review before approving::${commandText(`What agents will read, before and after, is in the “Prompt surface diff and SkillSpector” job summary: https://github.com/${repo}/pull/${pr}/checks`)}`,
   ];
@@ -122,16 +123,17 @@ export const COMMENT_MARK = '<!-- prompt-surface-gate -->';
 /**
  * The comment the gate keeps on a pull request that touches the prompt surface: the files, what to check, and where
  * to approve. Built from file names alone, never the pull request’s title or text.
- * @param {string[]} files @param {{ repo: string, pr: string|number, runUrl: string }} where
+ * @param {string[]} files @param {{ repo: string, pr: string|number, runUrl: string, tooMany?: boolean }} where
  */
-export function reviewComment(files, { repo, pr, runUrl }) {
-  if (!files.length) return `${COMMENT_MARK}\n**Prompt surface:** this pull request no longer changes what agents read, so it needs no approval.`;
+export function reviewComment(files, { repo, pr, runUrl, tooMany = false }) {
+  if (!files.length && !tooMany) return `${COMMENT_MARK}\n**Prompt surface:** this pull request no longer changes what agents read, so it needs no approval.`;
   return [
     COMMENT_MARK,
     '**Prompt surface: this pull request changes what agents read, so it waits for your approval.**',
     '',
     'The files:',
     ...files.map((f) => `- [${code(f)}](${diffUrl(repo, pr, f)})`),
+    ...(tooMany ? ['- More than the 3,000 files GitHub lists changed, so some can’t be checked here. Review the whole diff.'] : []),
     '',
     'What to check before you approve:',
     '- Does it loosen a rule an agent follows, such as when to show a review or confirm block (`server/adapters/guide.mjs`, the tool descriptions in `server/mcp.mjs`)?',
@@ -199,7 +201,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = found.length ? 1 : 0;
   } else if ((cmd === 'notices' || cmd === 'comment') && a) {
     const files = readFileSync(a, 'utf8').split('\n').filter(Boolean);
-    const where = { repo: process.env.REPO ?? '', pr: process.env.PR ?? '', runUrl: process.env.RUN_URL ?? '' };
+    const where = { repo: process.env.REPO ?? '', pr: process.env.PR ?? '', runUrl: process.env.RUN_URL ?? '', tooMany: process.env.TOO_MANY === 'true' };
     console.log(cmd === 'notices' ? notices(files, where).join('\n') : reviewComment(files, where));
   } else if (cmd === 'findings' && a && b) {
     const [base, head] = [a, b].map((f) => JSON.parse(readFileSync(f, 'utf8')));

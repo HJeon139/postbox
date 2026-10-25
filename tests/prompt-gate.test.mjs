@@ -153,3 +153,10 @@ test('the comment lists each file as code, so a name can’t be read as Markdown
 test('a pull request that no longer touches the prompt surface gets its comment updated to say so', () => {
   assert.match(reviewComment([], WHERE), /no longer changes what agents read/);
 });
+
+test('a pull request over the 3,000 files GitHub lists says so, rather than list a file that isn’t one', () => {
+  const body = reviewComment([], { ...WHERE, tooMany: true });
+  assert.match(body, /More than the 3,000 files GitHub lists changed/);
+  assert.doesNotMatch(body, /files#diff-/);
+  assert.match(notices([], { ...WHERE, tooMany: true })[0], /More than the 3,000 files/);
+});
