@@ -7,14 +7,14 @@ import { keptMessage, readRef } from './remote/turns-origin.mjs';
 
 /**
  * What a turn was asked, kept on its failed reply so Retry sends it again as it was, with its own kind (#151): a wake
- * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s. A continued
+ * is asked again as a wake, and an agent’s or Postbox’s turn never comes back as the person’s. A continued
  * turn’s request too large to keep inline is a ref to it in Postbox’s store, with its kind, and one that couldn’t be
  * kept is lost (server/remote/turns-origin.mjs): askedAgain reads the one back and refuses the other. Null when
  * there’s nothing to send again: a turn attached again with no record of it, whose message only names the host turn.
  * @param {any} turn
  */
-export const askedOf = ({ kind, asked: { message, messageRef, lost, replyTo, summarizeTo } }) => {
-  const to = { replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null };
+export const askedOf = ({ kind, asked: { message, messageRef, lost, summarizeTo } }) => {
+  const to = { summarizeTo: summarizeTo ?? null };
   if (messageRef) return { messageRef, kind, ...to };
   if (lost === true) return { lost: true, ...to };
   return !message || typeof message.attach === 'string' ? null : { message, ...to };
@@ -30,7 +30,7 @@ const lostError = () =>
  * guess. A request that was kept but can’t be read back exactly is refused, and nothing is sent in its place.
  * Returns what send does, or for one read back, a promise of it.
  * @param {any} rt @param {string} threadId @param {any} it  the failed reply
- * @param {(asked: { message: any, replyTo: string|null, summarizeTo: string|null }) => void} sendNow
+ * @param {(asked: { message: any, summarizeTo: string|null }) => void} sendNow
  */
 export function askedAgain(rt, threadId, it, sendNow) {
   // Checked before send marks the reply retried: a session archived (or gone) while a kept request was read would
@@ -45,7 +45,7 @@ export function askedAgain(rt, threadId, it, sendNow) {
   const a = it.asked;
   if (!a) {
     const prior = [...rt.store.items(threadId)].reverse().find((/** @type {any} */ x) => x.kind === 'user' && x.at <= it.at);
-    return send({ message: { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [] }, replyTo: null, summarizeTo: null });
+    return send({ message: { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [] }, summarizeTo: null });
   }
   if (a.lost === true) throw lostError();
   if (a.messageRef === undefined) return send(a);
@@ -55,7 +55,7 @@ export function askedAgain(rt, threadId, it, sendNow) {
     if (!message) throw lostError();
     // A second Retry that came while this one read.
     if (rt.store.item(threadId, it.id)?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
-    return send({ message, replyTo: a.replyTo ?? null, summarizeTo: a.summarizeTo ?? null });
+    return send({ message, summarizeTo: a.summarizeTo ?? null });
   });
 }
 

@@ -58,6 +58,8 @@ export const SENDING = Object.freeze({
 
 /** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
 export const HOP_LIMIT = 10;
+/** Wakes in a row between the same two agents before the next waits for your Allow (#372): a hand-off and its answer. */
+export const PAIR_LIMIT = 2;
 
 /** @typedef {keyof typeof LIMITS} LimitName */
 

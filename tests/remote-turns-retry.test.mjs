@@ -22,7 +22,7 @@ function lead(r, got = []) {
 const all = (/** @type {any} */ r) => Object.values(r.store.state.items).flat();
 const threadOf = (/** @type {any} */ r, /** @type {any} */ it) => Object.keys(r.store.state.items).find((k) => r.store.state.items[k].includes(it));
 const reads = (/** @type {any} */ d, /** @type {string} */ turn) => d.received.filter((/** @type {any} */ m) => m.type === 'read' && m.turn === turn);
-const _reply = (/** @type {any} */ r) => all(r).find((i) => i.kind === 'agent' && i.handle === 'coder' && i.status === 'done' && i.text);
+const reply = (/** @type {any} */ r) => all(r).find((i) => i.kind === 'agent' && i.handle === 'coder' && i.status === 'done' && i.text);
 
 /** Waits for the newest start’s turn to run on the host, and returns its ID. @param {any} r @param {number} n */
 async function onHost(r, n) {
@@ -32,7 +32,7 @@ async function onHost(r, n) {
   return turn;
 }
 
-test('#120, #151: Retry after a resumed wake fails asks what the wake asked, and answers the agent that woke it', async () => {
+test('#120, #151, #377: Retry after a resumed wake fails asks what the wake asked, where it was woken', async () => {
   const r = rig();
   const { se: a, got } = lead(r);
   assert.equal(r.rt.agentWake(a.id, 'coder', 'Is hello.txt there?').ok, true);
@@ -48,8 +48,8 @@ test('#120, #151: Retry after a resumed wake fails asks what the wake asked, and
   await until(() => all(r).some((i) => i.status === 'failed' && /its own version/.test(i.error ?? '')), 'the resume to fail');
   const failed = all(r).find((i) => i.status === 'failed' && /its own version/.test(i.error ?? ''));
   assert.deepEqual(
-    { kind: failed.asked.message.kind, from: failed.asked.message.from, text: failed.asked.message.text, replyTo: failed.asked.replyTo },
-    { kind: 'agent', from: '@lead', text: 'Is hello.txt there?', replyTo: a.id },
+    { kind: failed.asked.message.kind, from: failed.asked.message.from, text: failed.asked.message.text },
+    { kind: 'agent', from: '@lead', text: 'Is hello.txt there?' },
   );
   // A small request is kept inline, in the record and on the failed reply.
   assert.equal(r.se().remoteTurn.origin.message.text, 'Is hello.txt there?');
@@ -59,10 +59,11 @@ test('#120, #151: Retry after a resumed wake fails asks what the wake asked, and
   r.rt.config.build = build;
   r.rt.retry(threadOf(r, failed), failed.id);
   const again = await onHost(r, 2);
-  assert.match(messageOf(starts(r.d)[1]), /@lead wrote to you:\n\nIs hello\.txt there\?/);
+  assert.match(messageOf(starts(r.d)[1]), /@lead wrote to you\. Your reply posts here;.*\n\nIs hello\.txt there\?/s);
   r.d.end(again);
-  await until(() => got.length === 1, 'the answer to reach the waker');
   await settled(r);
+  assert.equal(threadOf(r, reply(r)), threadOf(r, failed), 'it answers where it was woken');
+  assert.equal(got.length, 0, 'and wakes the agent that woke it only by an @-mention (#377)');
 });
 
 /**
@@ -104,7 +105,7 @@ test('#120, #151: Retry after a resumed turn fails sends a request over 32,000 c
     assert.equal('message' in origin, false);
     assert.deepEqual(Object.keys(origin.messageRef), ['sha256', 'size']);
     assert.ok(origin.messageRef.size > ORIGIN_MESSAGE_MAX);
-    assert.deepEqual(failed.asked, { messageRef: origin.messageRef, kind: 'user', replyTo: null, summarizeTo: null });
+    assert.deepEqual(failed.asked, { messageRef: origin.messageRef, kind: 'user', summarizeTo: null });
     await r.rt.retry(threadId, failed.id);
     const again = await onHost(r, 2);
     assert.ok(messageOf(starts(r.d)[1]).includes(LONG), 'the whole request, as it was sent');
@@ -184,7 +185,7 @@ test('#120: a turn on a host keeps a small request inline, a large one in the st
   const turn = (/** @type {any} */ message) => ({ kind: message.kind, movesOn: true, from: null, asked: { message } });
   const small = { kind: 'user', text: 'hi', attachments: [] };
   const record = await keepOrigin({ blobs }, turn(small), null);
-  assert.deepEqual(record, { kind: 'user', movesOn: true, from: null, replyTo: null, replyIn: null, summarizeTo: null, woke: null, message: small });
+  assert.deepEqual(record, { kind: 'user', movesOn: true, from: null, summarizeTo: null, woke: null, message: small });
   assert.notEqual(record.message, small, 'a copy');
   assert.equal(puts.length, 0, 'nothing written for it');
   const large = { kind: 'user', text: 'é'.repeat(ORIGIN_MESSAGE_MAX), attachments: [] };
@@ -205,9 +206,9 @@ test('#120: a turn on a host keeps a small request inline, a large one in the st
   ])
     assert.equal(readRef(v), null);
   // Retry refuses a lost one at once; one kept inline, or with nothing kept, sends as before.
-  const asked = (/** @type {any} */ a) => askedOf({ kind: 'user', asked: { replyTo: null, summarizeTo: null, ...a } });
+  const asked = (/** @type {any} */ a) => askedOf({ kind: 'user', asked: { summarizeTo: null, ...a } });
   const here = { s: { sessions: { s1: { id: 's1', handle: 'coder', archived: false } } } };
-  assert.deepEqual(asked({ message: null, lost: true }), { lost: true, replyTo: null, summarizeTo: null });
+  assert.deepEqual(asked({ message: null, lost: true }), { lost: true, summarizeTo: null });
   assert.throws(() => askedAgain(here, 't', { sessionId: 's1', asked: asked({ lost: true }) }, () => assert.fail('sent')), {
     status: 409,
     message: /couldn’t recover the request/,
@@ -215,5 +216,5 @@ test('#120: a turn on a host keeps a small request inline, a large one in the st
   assert.equal(asked({ message: null }), null);
   const sent = [];
   askedAgain(here, 't', { sessionId: 's1', asked: asked({ message: small }) }, (a) => void sent.push(a));
-  assert.deepEqual(sent, [{ message: small, replyTo: null, summarizeTo: null }]);
+  assert.deepEqual(sent, [{ message: small, summarizeTo: null }]);
 });

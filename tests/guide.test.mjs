@@ -138,3 +138,11 @@ test('agy’s rules file for a busy room stays within its 12,000 characters', ()
   });
   assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity/mcp/postbox' }).length <= 12000);
 });
+
+// A reply wakes its waker only by an @-mention (#372), so the guide says when to mention: too often loops, never stalls.
+test('#372 a room’s guide says to @mention an agent only when it must act next, and to name it without @ otherwise', () => {
+  const g = agentGuide({ persona: { handle: 'alpha' }, handles: ['alpha', 'beta'], room: [{ handle: 'beta', role: 'Reviews' }] });
+  assert.match(g, /@mention one only when it must act next \(a hand-off, a question, a review\); else write its name without @\./);
+  assert.doesNotMatch(guideText(), /side thread/i);
+  assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, /side thread/);
+});

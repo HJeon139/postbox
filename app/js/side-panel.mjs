@@ -11,8 +11,8 @@ import { mountComposer, mountTranscript } from './thread.mjs';
 import { navigate, openMenu, say, toast } from './ui.mjs';
 
 /**
- * The panel beside a conversation. It holds a topic thread (yours, from a message) or a side thread between agents
- * (which you can join by typing), each with Summarize back.
+ * The panel beside a conversation. It holds a topic thread (yours, from a message), or a side thread between agents
+ * from before #372, which reads only: agents talk in the conversation now. Each has Summarize back.
  */
 export function mountSidePanel(parentId, sideId) {
   const side = S().threads[sideId];
@@ -20,7 +20,8 @@ export function mountSidePanel(parentId, sideId) {
   const topic = side.kind === 'topic';
   const parent = S().threads[parentId];
   const tr = mountTranscript(sideId, { inPanel: true });
-  const comp = mountComposer(sideId, { side: true });
+  // A side thread from before #372 has no composer: writing there would restart what #372 ended.
+  const comp = topic ? mountComposer(sideId, { side: true }) : null;
   const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
   const body = h('div.sp-body', topic ? threadRoot(root) : null, tr.el);
   // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
@@ -47,10 +48,13 @@ export function mountSidePanel(parentId, sideId) {
     ),
     who ? h('div.sp-agents', who.el) : null,
     body,
-    h('div.sp-foot', comp.el),
+    h(
+      'div.sp-foot',
+      comp?.el ?? h('p.small.dim', { role: 'note' }, 'This side thread is read-only. Agents talk in the conversation now, where you can reply.'),
+    ),
   );
   // A file dropped anywhere on the panel attaches to the panel’s composer, not the conversation’s.
-  comp.dropZone(el);
+  comp?.dropZone(el);
   requestAnimationFrame(() => tr.settle());
   return {
     el,
@@ -58,7 +62,7 @@ export function mountSidePanel(parentId, sideId) {
       summarize.destroy();
       who?.destroy();
       tr.destroy();
-      comp.destroy();
+      comp?.destroy();
     },
   };
 }
@@ -112,8 +116,10 @@ function summarizeButton(sideId, parent) {
   );
   const paint = () => {
     const waiting = pending();
-    // Disabled, it can’t keep focus: the thread’s composer takes it.
-    if (waiting && document.activeElement === el) document.getElementById('side-input')?.focus();
+    // Disabled, it can’t keep focus: the thread’s composer takes it, or in a side thread from before #372, which has
+    // none, the panel’s Close button, so focus stays in the panel.
+    if (waiting && document.activeElement === el)
+      (document.getElementById('side-input') ?? el.closest('.sidepanel')?.querySelector('.sp-head button[aria-label^="Close"]'))?.focus();
     el.disabled = waiting || !(S().threads[sideId]?.lastSpeaker || S().threads[sideId]?.woke);
     const label = waiting ? 'Summary requested…' : 'Summarize back';
     if (el.textContent !== label) el.textContent = label;

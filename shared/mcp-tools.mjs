@@ -3,7 +3,7 @@
 // (server/remote/host/) serves the same list, so an agent on another host sees exactly these tools and limits.
 // So this file imports only node: modules and shared/, as host code must (#120); tests/host-imports.test.mjs checks it.
 
-import { HOP_LIMIT, limitText as n, PALETTES, READING, SENDING } from './limits.mjs';
+import { HOP_LIMIT, limitText as n, PAIR_LIMIT, PALETTES, READING, SENDING } from './limits.mjs';
 import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
 
@@ -135,12 +135,12 @@ export const TOOL_DEFS = [
   },
   {
     name: 'wake_agent',
-    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. The exchange happens in a side thread, and the agent answers from its one session in this conversation, so it remembers it; if it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, the person must allow the next one.`,
+    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. Your message posts where you are, the conversation or a topic thread, and the agent answers there from its one session in this conversation; its reply wakes you only if it @-mentions you. If it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, or ${PAIR_LIMIT} in a row between the same two agents, the person must allow the next one.`,
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
     name: 'bring_to_conversation',
-    description: `Post text in the main conversation from the side thread or topic thread you’re in, up to ${count(SENDING.message)} characters. Use it only when the person asks for something to go to the main chat, in a message to you there: nothing goes there on its own. It shows as shared by you from the side or topic thread, and wakes no one; the conversation’s agents read it at their next turn.`,
+    description: `Post text in the main conversation from the topic thread you’re in, up to ${count(SENDING.message)} characters. Use it only when the person asks for something to go to the main chat, in a message to you there: nothing goes there on its own. It shows as shared by you from the topic thread, and wakes no one; the conversation’s agents read it at their next turn.`,
     inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to post, in Markdown.' } }, required: ['text'] },
   },
   {

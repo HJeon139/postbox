@@ -1,11 +1,11 @@
 // What a remote turn was asked, kept with it (#120, server/remote/turns.mjs, the header). A turn continued on its host
 // (attached again after a restart or a lost link, resumed after Interrupted or Sign-in needed) is delivered as a
 // notice, and ends as the turn it continues would have: with the same kind (a lint turn isn’t linted again, an app
-// check settles its app), the same routing (the answer goes back to the agent that woke it, a summary is posted
-// back and wakes no one), the same sender line, and the same request for Retry.
+// check settles its app), the same thread (a woken agent answers where it was woken, #377), a summary posted back
+// that wakes no one, the same sender line, and the same request for Retry.
 //
 // The record is se.remoteTurn.origin, written when the turn starts (allocate) and kept through every update and
-// restart: { kind, movesOn, from, replyTo, replyIn, summarizeTo, woke }, as the runtime’s deliver sets them on its
+// restart: { kind, movesOn, from, summarizeTo, woke }, as the runtime’s deliver sets them on its
 // turn, and the request Retry sends again, exactly, in one of three ways:
 // - message: the request itself, when its JSON is within ORIGIN_MESSAGE_MAX, or null when there’s none to send again
 //   (a turn attached again with no record, whose message only names the host turn);
@@ -58,8 +58,6 @@ export async function keepOrigin(rt, turn, woke) {
     kind: turn.kind,
     movesOn: turn.movesOn === true,
     from: turn.from ?? null,
-    replyTo: turn.replyTo ?? null,
-    replyIn: turn.replyIn ?? null,
     summarizeTo: turn.summarizeTo ?? null,
     woke: woke ?? null,
     ...(await kept(rt.blobs, turn.asked?.message)),
@@ -89,9 +87,9 @@ async function kept(blobs, m) {
 /**
  * A record read back from disk, checked: null for one Postbox can’t use (missing, or of a kind it doesn’t know), else
  * each part that names a session, a thread or a handle that isn’t there, or isn’t one, is dropped.
- * @param {any} rt @param {string} sessionId  the session it’s of @param {unknown} raw
+ * @param {any} rt @param {unknown} raw
  */
-export function readOrigin(rt, sessionId, raw) {
+export function readOrigin(rt, raw) {
   if (!isObject(raw)) return null;
   const o = /** @type {Record<string, unknown>} */ (raw);
   if (typeof o.kind !== 'string' || !KINDS.has(o.kind)) return null;
@@ -100,9 +98,6 @@ export function readOrigin(rt, sessionId, raw) {
     kind: o.kind,
     movesOn: o.movesOn === true,
     from: typeof o.from === 'string' && HANDLE.test(o.from) ? o.from.toLowerCase() : null,
-    // Never the session itself: its answer would wake it again.
-    replyTo: o.replyTo !== sessionId && known(rt.s.sessions, o.replyTo) ? /** @type {string} */ (o.replyTo) : null,
-    replyIn: thread(o.replyIn),
     summarizeTo: thread(o.summarizeTo),
     woke: readWoke(rt, o.woke),
     ...readAsked(o.kind, o),
@@ -177,7 +172,7 @@ function readMessage(kind, m, max) {
 
 /**
  * What continues a session’s turn on its host: the notice, with the record of the turn it continues (checked) riding
- * on it as message.continues, and deliver’s options for that turn: where it spoke, and its reply and summary targets.
+ * on it as message.continues, and deliver’s options for that turn: where it spoke, and its summary target.
  * An agent moved off the host since gets the notice alone, as an ordinary turn where it is now.
  * @param {any} rt @param {any} se @param {{ kind: 'notice', text: string, attach?: string }} notice
  */
@@ -185,9 +180,9 @@ export function continuing(rt, se, notice) {
   const r = se.remoteTurn;
   if (hostOf(rt.personaFor(se)) !== r.hostId) return { message: notice, opts: {} };
   const threadId = known(rt.s.threads, r.threadId) ? r.threadId : null;
-  const o = readOrigin(rt, se.id, r.origin);
+  const o = readOrigin(rt, r.origin);
   if (!o) return { message: notice, opts: { threadId } };
-  return { message: { ...notice, continues: o }, opts: { threadId, replyTo: o.replyTo, summarizeTo: o.summarizeTo } };
+  return { message: { ...notice, continues: o }, opts: { threadId, summarizeTo: o.summarizeTo } };
 }
 
 /**
@@ -200,6 +195,6 @@ export function continueAs(turn) {
   const o = turn.asked?.message?.continues;
   if (!o) return;
   turn.origin = o;
-  Object.assign(turn, { kind: o.kind, movesOn: o.movesOn, from: o.from, replyTo: o.replyTo, replyIn: o.replyIn, summarizeTo: o.summarizeTo });
+  Object.assign(turn, { kind: o.kind, movesOn: o.movesOn, from: o.from, summarizeTo: o.summarizeTo });
   turn.asked = { ...turn.asked, message: o.message ?? null, messageRef: o.messageRef ?? null, lost: o.lost === true };
 }

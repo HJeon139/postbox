@@ -1,7 +1,8 @@
 // The runtime’s remote turns (#120, the plan’s L5; tests/remote-turns.test.mjs says how): a turn continued on its
 // host, attached again after a restart or resumed after Interrupted or Sign-in needed, ends as the turn it continues
-// would have (server/remote/turns-origin.mjs): its answer goes back to the agent that woke it, a summary is posted
-// back, an app check settles its app, a lint turn isn’t linted again, and Retry asks what that turn was asked.
+// would have (server/remote/turns-origin.mjs): a woken agent answers where it was woken, and wakes the agent that
+// woke it only by an @-mention (#377), a summary is posted back, an app check settles its app, a lint turn isn’t linted
+// again, and Retry asks what that turn was asked.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -53,8 +54,8 @@ const ending = () => {
   return { lines: lines.slice(0, i), result: lines[i], signIn };
 };
 
-test('#120, #228: a wake Interrupted on the host and resumed on its own answers the agent that woke it, where it was woken', async () => {
-  const r = rig();
+test('#120, #377: a wake Interrupted on the host and resumed on its own answers where it was woken, and its @-mention wakes the waker', async () => {
+  const r = rig({ daemon: { lines: mentioning('lead') } });
   const { se: a, got } = lead(r);
   assert.equal(r.rt.agentWake(a.id, 'coder', 'Is hello.txt there?').ok, true);
   const first = await onHost(r, 1);
@@ -62,16 +63,16 @@ test('#120, #228: a wake Interrupted on the host and resumed on its own answers 
   await until(() => all(r).some((i) => i.kind === 'agent' && i.status === 'failed'), 'Interrupted');
   const failed = all(r).find((i) => i.kind === 'agent' && i.status === 'failed');
   r.d.end(await onHost(r, 2));
-  await until(() => got.length === 1, 'the answer to reach the waker');
+  await until(() => got.length === 1, 'its @-mention to wake the waker');
   assert.equal(got[0].from, '@coder');
   assert.match(got[0].text, /hello\.txt/);
   const answer = reply(r);
-  assert.equal(threadOf(r, answer), threadOf(r, failed), 'it answers in the side thread it was woken in');
+  assert.equal(threadOf(r, answer), threadOf(r, failed), 'it answers where it was woken');
   assert.deepEqual(answer.woke, { by: 'lead' });
   await settled(r);
 });
 
-test('#120, #228: a wake stopped with Sign-in needed and resumed by the person answers the agent that woke it', async () => {
+test('#120, #377: a wake stopped with Sign-in needed and resumed by the person answers where it was woken, and wakes no one by itself', async () => {
   const { lines, result, signIn } = ending();
   const r = rig({ daemon: { lines } });
   const { se: a, got } = lead(r);
@@ -85,10 +86,10 @@ test('#120, #228: a wake stopped with Sign-in needed and resumed by the person a
   const again = await onHost(r, 2);
   r.d.append(again, result);
   r.d.end(again);
-  await until(() => got.length === 1, 'the answer to reach the waker');
-  assert.equal(got[0].from, '@coder');
-  assert.deepEqual(reply(r).woke, { by: 'lead' });
   await settled(r);
+  assert.deepEqual(reply(r).woke, { by: 'lead' });
+  assert.equal(threadOf(r, reply(r)), r.t.id, 'in the conversation, where it was woken');
+  assert.equal(got.length, 0, 'a reply wakes the waker only by an @-mention (#377)');
 });
 
 test('#120, #225: a summary attached again after a restart is posted back once, and its @-mentions wake no one', async () => {
