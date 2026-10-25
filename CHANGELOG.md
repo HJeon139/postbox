@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.36.1 (2026-10-25)
+
+### Fixes
+
+- **agents:** match a running turn to its own conversation in the mode note
+- **agents:** say when a running turn keeps its old permission mode
+- **permissions:** let run everything answer only codex's own sandbox asks
+- **permissions:** honor run everything in a turn that's already running
+
 ## 0.36.0 (2026-10-25)
 
 ### Features
