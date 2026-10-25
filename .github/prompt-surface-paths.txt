@@ -14,11 +14,13 @@ server/adapters/claude-code.mjs
 server/adapters/codex.mjs
 server/adapters/kiro-cli.mjs
 server/adapters/mcp-config.mjs
+server/adapters/*-remote.mjs
 shared/agent-facts.mjs
 shared/limits.mjs
 
 # The Postbox MCP tools agents call, and the text Postbox sends back to them
 server/mcp.mjs
+shared/mcp-tools.mjs
 server/review-comments.mjs
 server/checks.mjs
 server/bring.mjs
@@ -28,6 +30,8 @@ server/side-threads.mjs
 server/subagent-end.mjs
 shared/reactions.mjs
 shared/review-comments.mjs
+# Agents on remote hosts get their tools through these (#120)
+server/remote/**
 
 # Personas and boilerplates
 server/personas/**
