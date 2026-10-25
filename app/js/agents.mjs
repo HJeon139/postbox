@@ -191,7 +191,7 @@ export function openAgentPanel(sessionId, from = null) {
               choice(
                 'Model',
                 where,
-                [...new Set([...modelsFor(f.backend), f.setModel])].map((m) => [m, shortModel(m)]),
+                [...new Set([...modelsFor(f.backend), f.setModel])].map((m) => [m, m === f.setModel ? f.setModelName : shortModel(m)]),
                 f.setModel,
                 (id, name) =>
                   api(`/api/sessions/${se.id}/run`, { model: id }).then(

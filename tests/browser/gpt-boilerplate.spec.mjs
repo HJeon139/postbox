@@ -30,8 +30,27 @@ for (const models of [['gpt-example'], []]) {
     await page.getByLabel('Name', { exact: true }).fill(handle);
     await page.getByRole('button', { name: 'Create agent', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeHidden();
-    await expect.poll(() => app.rt.personaByHandle(handle)?.model).toBe(models[0] ?? 'claude-opus-5-5');
-    expect(app.rt.personaByHandle(handle)?.backend).toBe('codex');
+    await expect.poll(() => app.rt.personaByHandle(handle)?.backend).toBe('codex');
+    if (models.length) expect(app.rt.personaByHandle(handle)?.model).toBe(models[0]);
     expect(app.rt.personaByHandle(handle)?.instructions).toBe('Help me review code.');
+    if (!models.length) {
+      const session = Object.values(app.store.state.sessions).find((session) => session.handle === handle);
+      const row = page.locator(`#agent-row-${session.id}`);
+      await expect(row).toContainText('Codex’s default');
+      await expect(row).not.toContainText('Opus');
+      await row.click();
+      const defaultChoice = page.getByRole('radio', { name: 'Codex’s default', exact: true });
+      await expect(defaultChoice).toBeChecked();
+      const [response] = await Promise.all([
+        page.waitForResponse((response) => response.url().endsWith(`/api/sessions/${session.id}/run`)),
+        defaultChoice.click(),
+      ]);
+      expect(response.status()).toBe(200);
+      await page.keyboard.press('Escape');
+      app.rt.updateSession(session.id, { lastModel: 'gpt-answered' });
+      await synced(page, app);
+      await expect(row).toContainText('gpt-answered');
+      await expect(row).not.toContainText('not ');
+    }
   });
 }

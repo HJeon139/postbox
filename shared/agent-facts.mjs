@@ -4,6 +4,8 @@
 // (fixed when it started, or changed by a command), falling back to its persona’s; the server does the same
 // (server/runtime.mjs, personaFor; server/adapters/setup.mjs, modelOf and effortOf).
 
+import { CODEX_DEFAULT_LABEL, codexUsesDefault } from './codex-model.mjs';
+
 export const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
   'agent-sdk': 'Agent SDK',
@@ -95,7 +97,7 @@ export function sameModel(answered, set) {
 }
 
 /**
- * @typedef {{ backend: string, mock: true } | { backend: string, mock: false, model: string, setModel: string, answered: boolean,
+ * @typedef {{ backend: string, mock: true } | { backend: string, mock: false, model: string, setModel: string, setModelName: string, answered: boolean,
  *   modelDiffers: boolean, effort: string, setEffort: string, effortDiffers: boolean }} Facts
  */
 
@@ -105,7 +107,7 @@ export function sameModel(answered, set) {
  * turn started with (se.lastEffort), else the one it’s set to. Each says when it differs from the setting.
  * @param {any} se a session
  * @param {any} persona its persona, if it still exists
- * @param {{ defaultModel?: string, defaultEffort?: string }} config
+ * @param {{ defaultModel?: string, defaultEffort?: string, backends?: Record<string, { models?: string[] }> }} config
  * @returns {Facts}
  */
 export function runsWith(se, persona, config) {
@@ -113,6 +115,7 @@ export function runsWith(se, persona, config) {
   if (backend === 'mock') return { backend, mock: true };
   const snap = se?.personaSnapshot ?? {};
   const named = snap.model ?? persona?.model;
+  const useDefault = backend === 'codex' && codexUsesDefault(named, config.backends?.[backend]?.models ?? [], config.defaultModel ?? MODELS[0]);
   const setModel = String(named && named !== 'mock' ? named : (config.defaultModel ?? ''));
   const setEffort = String(snap.effort ?? persona?.effort ?? config.defaultEffort ?? '');
   const last = typeof se?.lastModel === 'string' && se.lastModel ? se.lastModel : null;
@@ -120,10 +123,11 @@ export function runsWith(se, persona, config) {
   return {
     backend,
     mock: false,
-    model: last ?? setModel,
+    model: last ?? (useDefault ? CODEX_DEFAULT_LABEL : setModel),
     setModel,
+    setModelName: useDefault ? CODEX_DEFAULT_LABEL : shortModel(setModel),
     answered: !!last,
-    modelDiffers: !!last && !sameModel(last, setModel),
+    modelDiffers: !!last && !useDefault && !sameModel(last, setModel),
     effort: lastEffort ?? setEffort,
     setEffort,
     effortDiffers: !!lastEffort && lastEffort !== setEffort,

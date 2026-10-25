@@ -9,7 +9,7 @@ import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { BOILERPLATES } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
-import { applyBoilerplate } from '../shared/agent-facts.mjs';
+import { applyBoilerplate, runsWith } from '../shared/agent-facts.mjs';
 
 function recordedServer(seen) {
   const child = new EventEmitter();
@@ -80,7 +80,7 @@ for (const models of [undefined, [], ['gpt-example']]) {
       assert.equal(request.params.model, models?.[0]);
       assert.equal(Object.hasOwn(request.params, 'model'), !!models?.length);
     }
-    assert.equal(snapshot.model, models?.[0] ?? 'claude-opus-5-5');
+    assert.equal(runsWith(session, persona, {}).setModelName, models?.[0] ?? 'Codex’s default');
     assert.deepEqual(reported, [{ ...(models?.length ? { model: models[0] } : {}), effort: 'medium' }]);
   });
 }
