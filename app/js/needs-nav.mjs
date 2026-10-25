@@ -115,23 +115,38 @@ export function panelWhileNeeds(se, row, open) {
   paint(row, se.id);
   return el;
 }
-/** The ⋯ shows while its agent needs you; a row or top-bar ring opens a dialog only while it doesn’t. */
+/** The agents whose quick panel is open: openAgentPanel (agents.mjs) says so as it opens and closes (#317). */
+const panelsOpen = new Set();
+/** @param {string} sessionId  @param {boolean} open */
+export function panelShown(sessionId, open) {
+  if (open) panelsOpen.add(sessionId);
+  else panelsOpen.delete(sessionId);
+  repaint();
+}
+/**
+ * The ⋯ shows while its agent needs you; a row or top-bar ring opens a dialog only while it doesn’t. Each says whether
+ * the agent’s panel is open, from whichever came last of the panel opening or closing and the agent’s needs changing.
+ */
 function paint(el, sessionId) {
   const needs = needsYouNow(S().sessions[sessionId]);
-  if (el.dataset.needsMore) el.hidden = !needs;
-  else if (needs) {
+  const open = String(panelsOpen.has(sessionId));
+  if (el.dataset.needsMore) {
+    el.hidden = !needs;
+    el.setAttribute('aria-expanded', open);
+  } else if (needs) {
     el.removeAttribute('aria-haspopup');
     el.removeAttribute('aria-expanded');
   } else {
     el.setAttribute('aria-haspopup', 'dialog');
-    // Left as it is while its panel is open, which sets it true.
-    if (!el.hasAttribute('aria-expanded')) el.setAttribute('aria-expanded', 'false');
+    el.setAttribute('aria-expanded', open);
   }
 }
-client.on((ch) => {
-  if (ch.type !== 'session' && ch.type !== 'load') return;
+function repaint() {
   for (const el of document.querySelectorAll('[data-needs-more]'))
     paint(/** @type {HTMLElement} */ (el), /** @type {HTMLElement} */ (el).dataset.needsMore ?? '');
   for (const el of document.querySelectorAll('.agent-btn[id^="agent-row-"], .ring-btn[id^="top-ring-"]'))
     paint(/** @type {HTMLElement} */ (el), el.id.replace(/^(agent-row|top-ring)-/, ''));
+}
+client.on((ch) => {
+  if (ch.type === 'session' || ch.type === 'load') repaint();
 });

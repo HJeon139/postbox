@@ -12,7 +12,7 @@ import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
-import { panelWhileNeeds } from './needs-nav.mjs';
+import { panelShown, panelWhileNeeds } from './needs-nav.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -308,7 +308,7 @@ export function openAgentPanel(sessionId, from = null) {
     anchor: from,
     onClose: () => {
       off();
-      from?.setAttribute('aria-expanded', 'false');
+      panelShown(sessionId, false);
     },
     // The model’s choice, or for a mock agent its first tool.
     initialFocus: () => body.querySelector('[role=radiogroup] [aria-checked="true"]') ?? body.querySelector('[role=switch]'),
@@ -317,7 +317,7 @@ export function openAgentPanel(sessionId, from = null) {
     const mine = ch.type === 'session' ? ch.data.id === sessionId : ['item.add', 'item.patch'].includes(ch.type) ? ch.data?.threadId === first.threadId : true;
     if (mine && ['session', 'persona', 'load', 'item.add', 'item.patch'].includes(ch.type)) paint();
   });
-  from?.setAttribute('aria-expanded', 'true');
+  panelShown(sessionId, true);
 }
 
 /** A group of settings with one scope, said in its heading. */
