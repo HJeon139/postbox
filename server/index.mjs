@@ -31,7 +31,7 @@ import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { ARCHIVE_AFTER_CHOICES, DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
-import { mediaFile, safeJoin } from './served-files.mjs';
+import { decodePath, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
@@ -253,22 +253,19 @@ export async function start({
     if (path === '/kit/workbench.css' || path === '/app/workbench.css')
       return file(res, join(ROOT, 'app', 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
     if (path.startsWith('/media/')) {
-      const rel = path.slice('/media/'.length);
-      return file(res, safeJoin(BUNDLED_MEDIA, rel), { 'access-control-allow-origin': '*' }, req).catch(async (e) => {
-        if (e.status !== 404) throw e;
-        return file(res, await mediaFile(mediaDir, rel), MEDIA_HEADERS, req);
-      });
+      const media = await mediaPath(BUNDLED_MEDIA, mediaDir, path.slice('/media/'.length));
+      return file(res, media.real, media.bundled ? { 'access-control-allow-origin': '*' } : MEDIA_HEADERS, req);
     }
     for (const [prefix, dir] of Object.entries(STATIC)) {
       if (path.startsWith(prefix))
-        return file(res, safeJoin(dir, path.slice(prefix.length)), prefix === '/kit/' ? { 'access-control-allow-origin': '*' } : {}, req);
+        return file(res, await servedFile(dir, path.slice(prefix.length)), prefix === '/kit/' ? { 'access-control-allow-origin': '*' } : {}, req);
     }
 
     // Sandbox frames: agent apps and Mermaid diagrams. Each is its own page with a strict policy and,
     // because the iframe is sandboxed without allow-same-origin, an opaque origin.
     let m;
     if ((m = path.match(/^\/sandbox\/app\/([^/]+)\/(\d+)$/))) {
-      const app = store.state.apps[decodeURIComponent(m[1])];
+      const app = store.state.apps[decodePath(m[1])];
       const v = app?.versions[+m[2] - 1];
       if (!v) throw httpError(404, 'That app version doesn’t exist.');
       const page = sandboxPage({
@@ -341,7 +338,7 @@ export async function start({
       return raw(res, 200, await rt.workOutput(m[1], m[2]), { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
     // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET')
-      return raw(res, 200, await rt.appFile(decodeURIComponent(m[1]), decodeURIComponent(m[2]), Number(url.searchParams.get('v')) || undefined), {
+      return raw(res, 200, await rt.appFile(decodePath(m[1]), decodePath(m[2]), Number(url.searchParams.get('v')) || undefined), {
         'content-type': 'text/plain; charset=utf-8',
         'x-content-type-options': 'nosniff',
         'content-security-policy': "sandbox; default-src 'none'",
@@ -458,7 +455,7 @@ export async function start({
       return send(res, 200, { ok: true, corpus: corpus.stats() });
     }
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/(check|event|state|query)$/)) && req.method === 'POST') {
-      const id = decodeURIComponent(m[1]);
+      const id = decodePath(m[1]);
       if (m[2] === 'check') return send(res, 200, rt.appCheck(id, body));
       if (m[2] === 'event') {
         // Rate-limited in the runtime, so a script calling this directly is held to the same limit (#38).
@@ -516,7 +513,7 @@ export async function start({
 
   async function upload(req) {
     const name =
-      decodeURIComponent(String(req.headers['x-filename'] ?? 'file'))
+      decodePath(String(req.headers['x-filename'] ?? 'file'))
         .replace(/[\\/]/g, '_')
         .slice(0, 200) || 'file';
     const chunks = [];
