@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 import { turnLine } from '../../shared/work.mjs';
 import { turnRows } from '../../shared/work-list.mjs';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
@@ -124,9 +124,11 @@ async function rowsOpenWork(page, { width }) {
     await expect(page.locator('.pane-full .work-view'), `Work full screen for row ${i}`).toBeVisible();
     await expect.poll(() => page.evaluate(() => location.hash)).toContain(`at=${encodeURIComponent(r.at)}`);
     expect(page.url()).toContain('full=work');
-    await expect
-      .poll(() => page.evaluate(() => document.activeElement?.id), { message: `row ${i} (${r.kind}) opens Work at ${r.at}` })
-      .toMatch(new RegExp(`^(wsum-)?${r.at}$`));
+    // Focus on its item in Work (or that item’s summary), and still there two frames on.
+    const on = async () => [r.at, `wsum-${r.at}`].includes(await page.evaluate(() => document.activeElement?.id ?? ''));
+    await expect.poll(on, { message: `row ${i} (${r.kind}) opens Work at ${r.at}` }).toBe(true);
+    await frames(page);
+    expect(await on(), `focus stays on ${r.at}`).toBe(true);
     if (i === 0) await axe(page, '.pane-full .work-view', `${width} px, full-screen Work`);
     await page.keyboard.press('Escape');
     await expect(page.locator('.pane-full'), 'Work back in the pane').toHaveCount(0);
@@ -158,7 +160,7 @@ async function fits(page, { width }) {
     cut.some((f) => f.name === 'notes.md'),
     'the note outside the project',
   ).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(width + 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(windowWidth(page) + 1);
   await axe(page, `[data-key="${last.id}"] .work-list-turn`, `${width} px`);
 }
 

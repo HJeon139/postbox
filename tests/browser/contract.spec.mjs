@@ -63,17 +63,19 @@ test('#50 a send over the event limit rejects inside the app, naming the limit a
   await page.frameLocator('iframe.app-iframe[title="Hand-off"]').locator('#go').click();
   await expect.poll(() => rt.s.apps[id].state?.ids, { message: 'the app to record what its sends returned' }).toBeTruthy();
   const st = rt.s.apps[id].state;
-  expect(st.full, 'it rejects inside the app, naming the limit').toMatch(
-    /^refused: postbox\.send: .*larger than the 64 KB one event can carry, so nothing was sent/,
-  );
-  expect(st.full, 'and says to send ids instead').toMatch(/Send ids instead/);
-  expect(st.ids, 'the same hand-off by id goes through').toBe('sent');
+  expect
+    .soft(st.full, 'it rejects inside the app, naming the limit')
+    .toMatch(/^refused: postbox\.send: .*larger than the 64 KB one event can carry, so nothing was sent/);
+  expect.soft(st.full, 'and says to send ids instead').toMatch(/Send ids instead/);
+  expect.soft(st.ids, 'the same hand-off by id goes through').toBe('sent');
   const sent = store.items(t.id).filter((x) => x.kind === 'voice' && x.appId === id);
-  expect(
-    sent.map((x) => x.quote),
-    'only the hand-off by id reaches the conversation',
-  ).toEqual(['Sent 1,258 pair ids']);
-  expect(sent[0].text).toMatch(/^Sent from Hand-off: \S+ · \w+: 1,258 items · \d+ KB$/);
+  expect
+    .soft(
+      sent.map((x) => x.quote),
+      'only the hand-off by id reaches the conversation',
+    )
+    .toEqual(['Sent 1,258 pair ids']);
+  expect.soft(sent[0].text).toMatch(/^Sent from Hand-off: \S+ · \w+: 1,258 items · \d+ KB$/);
 });
 
 test('#94 an outcome on an answered confirm shows as a Markdown line under the answer, and the block stays answered, with no needs-you', async ({ page }) => {
@@ -113,14 +115,14 @@ test('#94 an outcome on an answered confirm shows as a Markdown line under the a
     ),
     'under the person’s answer',
   ).toBe(true);
-  await expect(out.locator('strong'), 'rendered as Markdown').toHaveText('23 frames');
-  await expect(out.locator('code')).toHaveText('frames/');
-  await expect(out.locator('.i-check'), 'with a check').toHaveCount(1);
-  await expect(node).toHaveClass(/\banswered\b/);
-  await expect(node.locator('button'), 'no buttons to press again').toHaveCount(0);
-  await expect(node.locator('.title'), 'the question the person answered stays as they saw it').toHaveText('Delete the video frames?');
-  expect(rt.s.sessions[se.id].needs, 'the agent doesn’t need the person').toBeFalsy();
-  await expect(node.locator('.g-needs'), 'no needs-you mark').toHaveCount(0);
+  await expect.soft(out.locator('strong'), 'rendered as Markdown').toHaveText('23 frames');
+  await expect.soft(out.locator('code')).toHaveText('frames/');
+  await expect.soft(out.locator('.i-check'), 'with a check').toHaveCount(1);
+  await expect.soft(node).toHaveClass(/\banswered\b/);
+  await expect.soft(node.locator('button'), 'no buttons to press again').toHaveCount(0);
+  await expect.soft(node.locator('.title'), 'the question the person answered stays as they saw it').toHaveText('Delete the video frames?');
+  expect.soft(rt.s.sessions[se.id].needs, 'the agent doesn’t need the person').toBeFalsy();
+  await expect.soft(node.locator('.g-needs'), 'no needs-you mark').toHaveCount(0);
 });
 
 test('#109 asked to review another agent’s reply of over 5,000 characters, @critic quotes its last paragraph, past the cut', async ({ page }) => {

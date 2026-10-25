@@ -86,15 +86,15 @@ test('#48 a PNG sent gets a thumbnail from /api/files that opens the full image 
       name: link.textContent,
     };
   });
-  expect(thumb.src, 'served by /api/files').toMatch(/^\/api\/files\/fi/);
-  expect(thumb.alt, 'its alt text is the file name').toBe('shot.png');
-  expect([thumb.w, thumb.h], 'a fixed size').toEqual([160, 120]);
-  expect([thumb.href, thumb.target], 'a link to the full image in a new tab').toEqual([thumb.src, '_blank']);
-  expect(thumb.rel).toMatch(/noopener/);
-  expect(thumb.name, 'the link shows the name and size').toMatch(/shot\.png · \d+ KB/);
+  expect.soft(thumb.src, 'served by /api/files').toMatch(/^\/api\/files\/fi/);
+  expect.soft(thumb.alt, 'its alt text is the file name').toBe('shot.png');
+  expect.soft([thumb.w, thumb.h], 'a fixed size').toEqual([160, 120]);
+  expect.soft([thumb.href, thumb.target], 'a link to the full image in a new tab').toEqual([thumb.src, '_blank']);
+  expect.soft(thumb.rel).toMatch(/noopener/);
+  expect.soft(thumb.name, 'the link shows the name and size').toMatch(/shot\.png · \d+ KB/);
   const res = await fetch(app.origin + thumb.href);
-  expect(res.headers.get('content-type'), 'the full image, as a PNG').toBe('image/png');
-  expect(res.headers.get('content-disposition'), 'served inline').toMatch(/^inline/);
+  expect.soft(res.headers.get('content-type'), 'the full image, as a PNG').toBe('image/png');
+  expect.soft(res.headers.get('content-disposition'), 'served inline').toMatch(/^inline/);
   // Keyboard: focus the link and press Enter; the full image opens in a new tab.
   const link = sent.locator('a.att-image');
   await link.focus();

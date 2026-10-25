@@ -9,7 +9,7 @@
 
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { allowPageError, failOnPageErrors, startPostbox, synced, watchWrites } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 const V1 = ['# Draft issue', '', 'Steps to reproduce:', '1. Open a review.', '2. Answer it.'].join('\n');
 // Revision 2 adds a line near the top, so the line you commented on (“Steps to reproduce:”) moves from 3 to 4.
@@ -69,8 +69,13 @@ async function conversation(page, title, ask, id) {
   return { thread, itemOf, block, events, tools: rt.toolsFor(rt.sessionsIn(thread.id)[0].id) };
 }
 const button = (block, label) => block.getByRole('button', { name: label, exact: true });
-const focusOnNotice = (page) =>
-  expect.poll(() => page.evaluate(() => !!document.activeElement?.classList.contains('stale-note')), { message: 'focus on the notice' }).toBe(true);
+/** Focus on the block’s own notice, and still there two frames on. */
+async function focusOnNotice(page, block) {
+  const notice = block.locator('.stale-note');
+  await expect(notice, 'focus on the block’s notice').toBeFocused();
+  await frames(page);
+  expect(await notice.evaluate((n) => n === document.activeElement), 'and it stays there').toBe(true);
+}
 
 test('#123 a review that changed while you commented: refused with the diff and your comment kept, refused again on another change, then sent', async ({
   page,
@@ -80,7 +85,7 @@ test('#123 a review that changed while you commented: refused with the diff and 
   const { itemOf, block, events, tools } = await conversation(page, 'Review changes', 'review', 'issue');
   await test.step('you comment on line 3, “Steps to reproduce:”, while the agent replaces the draft with revision 2', async () => {
     // The draft opens in Preview (#179); lines take their comments in Lines.
-    await block.locator('[aria-label="View"]').getByRole('radio', { name: 'Lines', exact: true }).click();
+    await block.getByRole('radiogroup', { name: 'View' }).getByRole('radio', { name: 'Lines', exact: true }).click();
     await block.locator('.g-mark[data-line="3"]').click();
     await block.locator('textarea').fill('Say which build.');
     await button(block, 'Add draft comment').click();
@@ -92,24 +97,25 @@ test('#123 a review that changed while you commented: refused with the diff and 
     await button(block, 'Submit review').focus();
     await page.keyboard.press('Enter');
     await expect(block.locator('.stale-note')).toHaveText(/^This draft changed while you were answering\./);
-    expect(itemOf().answered, 'refused, so the block is still open').toBeFalsy();
-    expect(events().length, 'nothing reached the agent').toBe(0);
+    expect.soft(itemOf().answered, 'refused, so the block is still open').toBeFalsy();
+    expect.soft(events().length, 'nothing reached the agent').toBe(0);
     const since = block.getByRole('radiogroup', { name: 'Changes' }).getByRole('radio', { name: 'Changes since you looked', exact: true });
     await expect(since, 'the diff from the text you saw').toHaveAttribute('aria-checked', 'true');
     await expect(block.locator('.rv-line.add', { hasText: 'Seen on 22 October.' }), 'the added line is marked').toHaveCount(1);
     const draft = block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
     await expect(draft, 'your draft comment is kept').toContainText('Say which build.');
-    expect(await draft.evaluate((d) => d.previousElementSibling?.textContent ?? ''), 'it follows its line').toContain('Steps to reproduce:');
+    expect.soft(await draft.evaluate((d) => d.previousElementSibling?.textContent ?? ''), 'it follows its line').toContain('Steps to reproduce:');
     await expect(block.locator('.stale-note'), 'the notice is announced').toHaveAttribute('role', 'alert');
-    await focusOnNotice(page);
+    await focusOnNotice(page, block);
     if (process.env.SHOTS) await block.screenshot({ path: join(process.env.SHOTS, 'review-changed.png') });
   });
   await test.step('revision 3 before you submit again: refused again, and announced', async () => {
     tools.update_block({ block: review(V3) });
     await expect(block.locator('.g-mark[data-line="7"]'), 'revision 3 on screen').toBeAttached();
-    const writes = watchWrites(page);
+    // This Submit’s own refusal, not the first one’s notice still on screen.
+    const refused = page.waitForResponse((r) => r.request().method() === 'POST' && r.status() === 409);
     await button(block, 'Submit review').click();
-    await writes.answered();
+    await refused;
     expect(itemOf().answered, 'still open').toBeFalsy();
     await expect(block.locator('.stale-note')).toHaveAttribute('role', 'alert');
   });
@@ -118,6 +124,8 @@ test('#123 a review that changed while you commented: refused with the diff and 
     await expect.poll(() => events().find((m) => m.event.blockId === 'issue')?.event.revision, { message: 'the answer, for revision 3' }).toBe(3);
     expect(events()[0].event.values.comments?.[0]?.line, 'the comment on line 4').toBe(4);
     expect(itemOf().answered).toBe(true);
+    await synced(page, app);
+    expect(events().length, 'one answer reached the agent').toBe(1);
   });
 });
 
@@ -132,10 +140,12 @@ test('#123 a choice that changed while you picked: refused with a plain notice, 
   await page.keyboard.press('Enter');
   await expect(block.locator('.stale-note')).toHaveText(/^This changed while you were answering\./);
   await expect(claims, 'your pick is kept').toHaveAttribute('aria-checked', 'true');
-  await focusOnNotice(page);
+  await focusOnNotice(page, block);
   expect(itemOf().answered, 'refused, still open').toBeFalsy();
   await button(block, 'Send choice').click();
   await expect
     .poll(() => events().find((m) => m.event.blockId === 'pick')?.event, { message: 'sent again, for revision 2' })
     .toMatchObject({ revision: 2, values: { selected: ['claims'] } });
+  await synced(page, app);
+  expect(events().length, 'one answer reached the agent').toBe(1);
 });
