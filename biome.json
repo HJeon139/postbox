@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "plugins": [{ "path": "./tools/biome/no-fixed-waits.grit", "includes": ["tests/browser/**"] }],
   "files": {
     "includes": [
       "app/js/**",
@@ -13,6 +14,7 @@
       "shared/**",
       "tools/**",
       "tests/**",
+      "playwright.config.mjs",
       "!server/corpus/books",
       "!.claude",
       "!app/kit/vendor"

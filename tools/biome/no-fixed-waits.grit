@@ -1,0 +1,10 @@
+language js
+
+// The browser specs wait on what they check, never for a fixed time (#298, #303): Playwright’s assertions retry
+// until they pass, and expect.poll or expect(...).toPass waits on anything else.
+or {
+  `$page.waitForTimeout($ms)`,
+  `setTimeout($fn, $ms)`
+} as $wait where {
+  register_diagnostic(span=$wait, message="A fixed wait in a browser spec: wait on the condition instead, with a web-first assertion (expect(locator)…), expect.poll or expect(…).toPass. A wait for something not to happen also needs a condition to wait on.")
+}
