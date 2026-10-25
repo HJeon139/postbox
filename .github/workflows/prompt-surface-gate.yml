@@ -1,0 +1,112 @@
+# Holds a pull request that changes what an agent reads until the maintainer approves it (SECURITY.md, “Prompt
+# changes”). A file is prompt surface when a glob in .github/prompt-surface-paths.txt matches it.
+#
+# It runs on pull_request_target, so the workflow, the path list and tools/prompt-gate.mjs all come from main: a pull
+# request can’t loosen the check it’s judged by, as it could a pull_request workflow. So it checks out main only,
+# never the pull request, reads the changed files’ names from the API, and passes every value through the
+# environment, not into a script.
+name: prompt-surface-gate
+
+# Only pull requests into main, the branch whose copy of this workflow is the one trusted. `edited` runs it again when
+# a pull request is retargeted to main, so a pass from another base’s copy is replaced. It runs in full on every edit,
+# title and body included: a job skipped by a condition reports success to a required check.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: prompt-surface-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  paths:
+    name: Find prompt-surface changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      touched: ${{ steps.match.outputs.touched }}
+    steps:
+      # main, as pull_request_target checks out by default.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: match
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # A renamed file counts under its old name too, so moving a prompt out of the list still needs approval.
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > changed.txt
+          node tools/prompt-gate.mjs touched .github/prompt-surface-paths.txt < changed.txt > touched.txt
+          # The files API lists at most 3,000 files, so a pull request that large may hide one: it needs approval.
+          if [ "$(gh api "repos/$REPO/pulls/$PR" --jq .changed_files)" -ge 3000 ]; then
+            echo "(more than the 3,000 files GitHub lists)" >> touched.txt
+          fi
+          if [ -s touched.txt ]; then
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+            { echo "This pull request changes the prompt surface, so it waits for approval in the prompt-security-review environment:"; echo; sed 's/^/- `/; s/$/`/' touched.txt; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "touched=false" >> "$GITHUB_OUTPUT"
+            echo "No prompt-surface file changed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # Refuses a pull request whose workflows could post a check named like this gate’s, which the ruleset would take
+      # for it. Its files are read through the API, never checked out.
+      - name: Refuse a check named like the gate's
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          CHECK: Prompt surface reviewed
+          GATE: .github/workflows/prompt-surface-gate.yml
+        run: |
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | select(.status != "removed") | .filename | select(startswith(".github/workflows/"))' > workflows.txt
+          [ -s workflows.txt ] || exit 0
+          while IFS= read -r f; do
+            mkdir -p "head/$(dirname "$f")"
+            gh api "repos/$REPO/contents/$(jq -rn --arg f "$f" '$f | @uri | gsub("%2F"; "/")')?ref=refs/pull/$PR/head" -H 'Accept: application/vnd.github.raw' > "head/$f" \
+              || { echo "::error::Couldn't read $f from the pull request, so it can't be checked for a check named like the gate's."; exit 1; }
+          done < workflows.txt
+          if ! tr '\n' '\0' < workflows.txt | xargs -0 node tools/prompt-gate.mjs spoofs "$CHECK" "$GATE" head > spoofs.txt; then
+            echo "::error::These workflows could post a check named \"$CHECK\", which the ruleset would take for this gate's: $(paste -sd ' ' spoofs.txt). Rename their job."
+            exit 1
+          fi
+
+  approve:
+    name: Maintainer approves the prompt change
+    needs: paths
+    if: needs.paths.outputs.touched == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Its required reviewers are the approval. GitHub creates a missing environment with no reviewers, which would
+    # pass at once, so it must exist with a required reviewer (SECURITY.md, “Prompt changes”).
+    environment: prompt-security-review
+    steps:
+      - run: echo "Approved in the prompt-security-review environment."
+
+  gate:
+    # This name is the required check in protect-main, and the spoof check above (CHECK) looks for it.
+    name: Prompt surface reviewed
+    needs: [paths, approve]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          PATHS: ${{ needs.paths.result }}
+          TOUCHED: ${{ needs.paths.outputs.touched }}
+          APPROVE: ${{ needs.approve.result }}
+        run: |
+          if [ "$PATHS" != success ]; then echo "::error::Couldn't list the changed files ($PATHS). Re-run the gate."; exit 1; fi
+          if [ "$TOUCHED" != true ]; then echo "No prompt-surface file changed."; exit 0; fi
+          if [ "$APPROVE" = success ]; then echo "The prompt change was approved."; exit 0; fi
+          echo "::error::This pull request changes the prompt surface and isn't approved yet ($APPROVE). Approve it in the run's prompt-security-review deployment."
+          exit 1
