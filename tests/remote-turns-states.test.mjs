@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { KIRO_CAPABILITIES, KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { RemoteTurns } from '../server/remote/turns.mjs';
+import { escapeRegExp } from '../shared/regex.mjs';
 import { fixtureLines } from './fake-daemon.mjs';
 import { HOST, MIN, messageOf, rig, running, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
 
@@ -85,7 +86,7 @@ test('#120 L5: the harness’s sign-in error is Sign-in needed; with no signInCh
   await settled(r);
   assert.equal(r.se().remoteTurn.state, 'signin');
   const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
-  assert.match(failed.error, new RegExp(`^Sign-in needed on ${HOST.replace(/\./g, '\\.')}`));
+  assert.match(failed.error, new RegExp(`^Sign-in needed on ${escapeRegExp(HOST)}`));
   assert.deepEqual(failed.remote, { state: 'signin', hostId: r.host.id });
   // The host comes back, and time passes: no check, so no resume.
   r.hosts.emit('status', r.host.id, { state: 'connected' });
@@ -138,7 +139,7 @@ test('#120 L5: Interrupted (no runner, no exit.json) resumes on its own once the
   await settled(r);
   assert.equal(r.se().remoteTurn.state, 'interrupted');
   const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
-  assert.match(failed.error, new RegExp(`^Interrupted on ${HOST.replace(/\./g, '\\.')}`));
+  assert.match(failed.error, new RegExp(`^Interrupted on ${escapeRegExp(HOST)}`));
   await sleep(20);
   assert.equal(starts(r.d).length, 1, 'the host isn’t back yet');
   r.hosts.state = null;

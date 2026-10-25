@@ -66,7 +66,7 @@ test('hosts: wake contacts every configured host with a token, even one not used
     s.mgr.wake();
     await until(() => s.mgr.status('h1').state === 'connected', 'h1 connected on wake');
     assert.equal(s.ssh.calls.length, 1);
-    assert.equal(s.ssh.calls.filter((c) => c.args.includes('other.example.com')).length, 0, 'h2 isn’t installed, so it isn’t dialed');
+    assert.equal(s.ssh.calls.filter((c) => c.args.some((a) => a === 'other.example.com')).length, 0, 'h2 isn’t installed, so it isn’t dialed');
     assert.equal(s.mgr.status('h2').state, 'not-installed');
     // Nothing needs it: it idles again after the grace.
     s.clock.advance(IDLE_GRACE_MS);
@@ -109,8 +109,11 @@ test('hosts: a host renamed while nothing needs it drops its old link at once; t
     assert.notEqual(l, old);
     await s.mgr.ensureWelcome('h1');
     assert.equal(s.ssh.calls.length, 2);
-    assert.ok(s.ssh.calls[1].args.includes('renamed.example.com'), 'the new destination');
-    assert.ok(!s.ssh.calls[1].args.includes('host.example.com'));
+    assert.ok(
+      s.ssh.calls[1].args.some((a) => a === 'renamed.example.com'),
+      'the new destination',
+    );
+    assert.ok(!s.ssh.calls[1].args.some((a) => a === 'host.example.com'));
     assert.equal(s.mgr.destinationOf('h1'), 'renamed.example.com');
   } finally {
     s.done();
@@ -138,7 +141,7 @@ test('hosts: a host renamed while needed refuses new sends with host-renamed-bus
     await sleep(20); // as above: one fake daemon for both names
     await s.mgr.ensureWelcome('h1');
     assert.equal(s.ssh.calls.length, 2);
-    assert.ok(s.ssh.calls[1].args.includes('renamed.example.com'));
+    assert.ok(s.ssh.calls[1].args.some((a) => a === 'renamed.example.com'));
   } finally {
     s.done();
   }
