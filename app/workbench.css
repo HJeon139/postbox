@@ -775,21 +775,21 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; }
 .msg-actions .replies:hover { border-color: var(--accent); }
 .msg-actions .replies .dim { color: var(--dim); }
-/* The person’s reactions under a message (#251): each one a button that takes it back. */
-.reactions { display: flex; flex-wrap: wrap; gap: 6px; }
-.turn.me .reactions { justify-content: flex-end; }
-/* Each is drawn with its icon (app/media/reactions) on a light amber wash, the person’s own: an amber fill would sink the
-   red slash, the coral flag and the yellow envelope. */
-.react-chip { display: inline-flex; align-items: center; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 999px; background: var(--mark); cursor: pointer; }
-.react-chip:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+/* Reactions (#251, #320): all five in the message’s actions, beside “Reply in thread”. Yours is highlighted on the
+   light amber wash, the person’s own (an amber fill would sink the red slash, the coral flag and the yellow envelope);
+   one made only by others keeps the normal color, and a count follows any made by more than one. */
+.react-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.react-btn { display: inline-flex; align-items: center; gap: 3px; height: 28px; padding: 0 5px; border: 1px solid transparent; border-radius: 999px;
+  background: none; color: var(--text); cursor: pointer; }
+.react-btn:hover { border-color: var(--line); background: var(--panel); }
+.react-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--mark); }
+.react-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.react-count { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); }
+.react-btn[aria-pressed="true"] .react-count { color: var(--text); }
 .react-icon { display: block; flex: none; width: 20px; height: 20px; }
 /* The icons’ cream borders vanish on light: a thin rim keeps each one’s shape off the wash and the panel (at least 3:1,
    as on dark). */
 :root[data-theme="light"] .react-icon { filter: drop-shadow(1px 0 0 var(--dim)) drop-shadow(-1px 0 0 var(--dim)) drop-shadow(0 1px 0 var(--dim)) drop-shadow(0 -1px 0 var(--dim)); }
-/* Only agents reacted: the same button, quieter, until you add yours. */
-.react-chip.theirs { border-color: var(--line); background: var(--panel); }
-.react-who { margin-left: 4px; font-size: 12px; color: var(--dim); }
-.react-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* Sent back from a topic thread. */
 .shared-card { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
