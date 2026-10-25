@@ -1,11 +1,27 @@
 // Dialogs: new agent, new conversation, settings (appearance, personas, projects, connection), the command
 // palette, the delete confirm, and the project folder picker.
 
+import {
+  applyBoilerplate,
+  BACKENDS,
+  boilerplateUnavailable,
+  EFFORT_NAMES,
+  effortNamedBy,
+  GEMINI_MODEL,
+  MCP_SCOPE,
+  MCP_STATUS,
+  MODELS,
+  modeHelp,
+  PERMISSIONS,
+  selectBackend,
+} from '/shared/agent-facts.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
 import { openPermissions } from './permissions.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
+
+export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
 
 const S = () => client.state;
 const toolsInProject = (projectId) =>
@@ -15,57 +31,10 @@ const toolsInProject = (projectId) =>
       .flatMap((se) => S().personas[se.personaId]?.tools ?? []),
   );
 
-// ── Backend, model and permissions ──────────────────────────────────────────────────────
-// Shared by the new-agent sheet and the persona editor. A persona runs on the mock, on Claude Code (the
-// claude CLI you’re signed in to), on the Agent SDK, on the Kiro CLI (#117) or on the Antigravity CLI (#143); real
-// backends take a model and a permission mode.
-
-const BACKENDS = [
-  ['claude-code', 'Claude Code', 'Runs the claude CLI you’re signed in to.'],
-  ['agent-sdk', 'Agent SDK', 'Runs the Claude Agent SDK in Postbox’s server.'],
-  ['kiro-cli', 'Kiro CLI', 'Runs the kiro-cli you’re signed in to. It can’t ask you: what would need asking is refused.'],
-  ['antigravity-cli', 'Antigravity CLI', 'Runs the agy CLI you’re signed in to, with Gemini models. It can’t ask you: what would need asking is refused.'],
-  ['codex', 'Codex', 'Runs the Codex app-server with your local Codex sign-in and configuration.'],
-  ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
-];
-export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
 /** What a backend can do (server/adapters/adapter.mjs, capabilities), as /api/state serves it (#117). */
 export const capsOf = (backend) => client.config.backends?.[backend] ?? {};
-/** The models to suggest for a backend: the ones it reported, else Claude’s. */
-export const modelsFor = (backend) => capsOf(backend).models ?? MODELS;
-// The levels come from the server (server/adapters/setup.mjs, EFFORT_LEVELS); these are their names.
-export const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
-const PERMISSIONS = [
-  ['auto', 'Auto', 'A safety check approves routine actions; it asks you only when it can’t decide.'],
-  ['ask', 'Ask me', 'It asks before running commands or changing files.'],
-  ['acceptEdits', 'Accept edits', 'It edits files in its folders freely, and asks before running commands.'],
-  ['bypass', 'Run everything', 'It never asks. Use it only in a folder you can lose.'],
-];
-// Backends that read the permission modes their own way. The Kiro and Antigravity CLIs run headless, where every ask
-// is a refusal (server/adapters/kiro-cli.mjs and antigravity-cli.mjs); Codex maps the modes onto its sandbox and
-// approval policy (server/adapters/codex.mjs). The permissions panel uses them too (app/js/permissions.mjs).
-const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
-  'kiro-cli': {
-    auto: 'Kiro has no safety check, so this is Ask me: it reads in its folders and runs a few read-only commands, such as git status, and refuses the rest.',
-    ask: 'It reads in its folders and runs a few read-only commands, such as git status, and refuses the rest: it can’t ask you.',
-    acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
-  },
-  'antigravity-cli': {
-    auto: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
-    ask: 'It reads in its folders, and asks with a card before edits, commands, reads outside its folders, and web fetches.',
-    acceptEdits: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
-  },
-  codex: {
-    auto: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval. Auto and Accept edits have the same Codex permissions.',
-    ask: 'Codex uses a read-only sandbox. It requests approval before a command can go beyond it.',
-    acceptEdits: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval.',
-    bypass: 'Codex runs with full filesystem and network access and no approval prompts.',
-  },
-});
-/** The effort an Antigravity model id names (gemini-3.8-flash-high runs at high), or null (server/adapters/antigravity-cli.mjs). */
-const effortNamedBy = (backend, model) => (backend === 'antigravity-cli' ? (/-(low|medium|high)$/.exec(String(model ?? ''))?.[1] ?? null) : null);
-/** What a permission mode means on a backend: its own words where it reads the modes differently. */
-export const modeHelp = (backend, [id, , help]) => BACKEND_MODES[backend]?.[id] ?? help;
+/** The models to suggest for a backend: the ones it reported, else Gemini’s on Antigravity or Claude’s. */
+export const modelsFor = (backend) => capsOf(backend).models ?? (backend === 'antigravity-cli' ? [GEMINI_MODEL] : MODELS);
 export const defaultBackend = () => BACKENDS.map(([id]) => id).find((id) => (client.config.adapters ?? []).includes(id)) ?? 'mock';
 
 function seg(label, options, value, onPick) {
@@ -121,23 +90,6 @@ function checkField({ id, label, help, on, onToggle }) {
     h('span.help', { id: `${id}-help` }, help),
   );
 }
-
-// What an MCP server’s status and scope say, from GET /api/mcp-servers (server/adapters/mcp-config.mjs).
-export const MCP_STATUS = {
-  connected: 'Connected',
-  failed: 'Couldn’t connect',
-  'needs-auth': 'Needs sign-in',
-  pending: 'Starting',
-  disabled: 'Turned off in your Claude Code settings',
-  'not-started': 'Not started yet',
-};
-export const MCP_SCOPE = {
-  user: 'your settings',
-  project: 'this project',
-  local: 'your settings for this folder',
-  plugin: 'plugin',
-  'claude.ai': 'claude.ai connector',
-};
 
 /**
  * Your MCP servers (#59): each one found, with its status from the agent’s latest turn and a checkbox that’s on by
@@ -238,14 +190,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
                 id: `${idp}-b`,
                 'aria-describedby': `${idp}-b-help`,
                 onchange: (e) => {
-                  const id = e.target.value;
-                  st.backend = id;
-                  // A backend that lists its models gets its first one in place of a model it doesn’t offer: the
-                  // Antigravity CLI doesn’t run Claude’s default (#143).
-                  const offered = capsOf(id).models;
-                  if (id !== 'mock' && (!st.model || st.model === 'mock' || (offered && !offered.includes(st.model))))
-                    st.model = offered?.[0] ?? client.config.defaultModel ?? MODELS[0];
-                  st.effort = effortNamedBy(id, st.model) ?? st.effort;
+                  selectBackend(st, e.target.value, client.config);
                   paint();
                 },
               },
@@ -402,6 +347,41 @@ const toolsHelp = (backend) =>
 
 // ── New agent ───────────────────────────────────────────────────────────────────────────
 
+export const boilerplateDesc = () =>
+  `${Object.values(S().boilerplates)
+    .filter((b) => b.id.startsWith('bp-') && b.id !== 'bp-blank')
+    .map((b) => b.name)
+    .join(', ')}, or one you saved`;
+
+function boilerplateChips(bps, st, paint) {
+  return h(
+    'div.field',
+    h('span.label', 'Start from'),
+    h(
+      'div.chips',
+      { role: 'radiogroup', 'aria-label': 'Boilerplate' },
+      bps.map((b) => {
+        const why = boilerplateUnavailable(b, client.config);
+        return h(
+          'button.chip',
+          {
+            type: 'button',
+            role: 'radio',
+            'aria-checked': String(st.bp === b.id),
+            disabled: Boolean(why),
+            title: why,
+            class: st.bp === b.id ? 'on' : '',
+            onclick: () => {
+              if (applyBoilerplate(st, b, client.config)) paint();
+            },
+          },
+          why ? `${b.name} (${why})` : b.name,
+        );
+      }),
+    ),
+  );
+}
+
 export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
   const t = threadId ? S().threads[threadId] : null;
   const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
@@ -424,7 +404,9 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     saveBp: false,
     error: null,
   };
-  if (st.backend === 'codex' && !modelsFor(st.backend).includes(st.model) && modelsFor(st.backend).length) st.model = modelsFor(st.backend)[0];
+  if ((st.backend === 'codex' || st.backend === 'antigravity-cli') && !modelsFor(st.backend).includes(st.model) && modelsFor(st.backend).length)
+    st.model = modelsFor(st.backend)[0];
+  st.effort = effortNamedBy(st.backend, st.model) ?? st.effort;
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // Each change repaints the sheet; focus stays on the control you used (#26).
@@ -432,35 +414,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   const repaint = () => {
     fill(
       body,
-      preset
-        ? null
-        : h(
-            'div.field',
-            h('span.label', 'Start from'),
-            h(
-              'div.chips',
-              { role: 'radiogroup', 'aria-label': 'Boilerplate' },
-              bps.map((b) =>
-                h(
-                  'button.chip',
-                  {
-                    type: 'button',
-                    role: 'radio',
-                    'aria-checked': String(st.bp === b.id),
-                    class: st.bp === b.id ? 'on' : '',
-                    onclick: () => {
-                      st.bp = b.id;
-                      st.instructions = b.instructions;
-                      st.description = b.description;
-                      st.tools = new Set(b.tools);
-                      paint();
-                    },
-                  },
-                  b.name,
-                ),
-              ),
-            ),
-          ),
+      preset ? null : boilerplateChips(bps, st, paint),
       h(
         'div.form-grid',
         h(

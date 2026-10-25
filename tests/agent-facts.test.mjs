@@ -3,8 +3,22 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { AGY_DEFAULT_MODEL } from '../server/adapters/antigravity-cli.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, effortOf, modelOf } from '../server/adapters/setup.mjs';
-import { chipEffort, chipModel, factsText, installNote, runsWith, sameModel, shortModel } from '../shared/agent-facts.mjs';
+import { BOILERPLATES } from '../server/seed.mjs';
+import {
+  applyBoilerplate,
+  boilerplateUnavailable,
+  chipEffort,
+  chipModel,
+  factsText,
+  GEMINI_MODEL,
+  installNote,
+  runsWith,
+  sameModel,
+  selectBackend,
+  shortModel,
+} from '../shared/agent-facts.mjs';
 
 const config = { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT };
 
@@ -92,4 +106,54 @@ test('the overview says how to install Claude Code only when Postbox looked for 
   assert.equal(installNote({ realBackends: true, versions: { claudeCode: '2.1.296' }, adapters: ['mock', 'claude-code'] }), null);
   assert.equal(installNote({ realBackends: false, versions: { claudeCode: null }, adapters: ['mock'] }), null);
   assert.equal(installNote({}), null);
+});
+
+test('picking the Gemini boilerplate prefers its model when offered, then the first gemini-* model, then its model', () => {
+  assert.equal(GEMINI_MODEL, AGY_DEFAULT_MODEL);
+  const gemini = BOILERPLATES.find((b) => b.id === 'bp-gemini');
+  const critic = BOILERPLATES.find((b) => b.id === 'bp-critic');
+  const st = { bp: 'bp-critic', backend: 'claude-code', model: DEFAULT_MODEL, effort: DEFAULT_EFFORT, instructions: '', description: '', tools: new Set() };
+  const adapters = ['claude-code', 'antigravity-cli', 'mock'];
+  // b.model is offered, though not listed first: it still wins.
+  applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': { models: ['gemini-2.5-pro', 'gemini-3.8-flash-high'] } } });
+  assert.deepEqual([st.bp, st.backend, st.model, st.effort], ['bp-gemini', 'antigravity-cli', GEMINI_MODEL, 'high']);
+  assert.deepEqual([...st.tools], ['shell', 'web.fetch']);
+  // A Claude model is listed first, and b.model isn’t offered: the first gemini-* model wins.
+  applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': { models: ['claude-sonnet-4-6', 'gemini-2.5-pro'] } } });
+  assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', 'gemini-2.5-pro', 'medium']);
+  // Only a GPT-OSS model is offered, with no gemini-* model at all: it falls back to b.model.
+  applyBoilerplate(st, gemini, { ...config, adapters, backends: { 'antigravity-cli': { models: ['gpt-oss-120b-medium'] } } });
+  assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', GEMINI_MODEL, 'high']);
+  // Switching back to a generic boilerplate restores the default backend, model and effort.
+  applyBoilerplate(st, critic, { ...config, adapters, backends: { 'antigravity-cli': {} } });
+  assert.deepEqual([st.bp, st.backend, st.model, st.effort], ['bp-critic', 'claude-code', DEFAULT_MODEL, DEFAULT_EFFORT]);
+});
+
+test('unavailable backend boilerplates are disabled with a reason, and switching backend by hand resets incompatible models', () => {
+  const gemini = BOILERPLATES.find((b) => b.id === 'bp-gemini');
+  const st = { bp: 'bp-critic', backend: 'claude-code', model: DEFAULT_MODEL, effort: DEFAULT_EFFORT, instructions: '', description: '', tools: new Set() };
+  // Without antigravity-cli installed, the boilerplate is unavailable and doesn’t apply onto Claude.
+  assert.equal(boilerplateUnavailable(gemini, { adapters: ['claude-code', 'mock'] }), 'Antigravity CLI not on this computer');
+  assert.equal(applyBoilerplate(st, gemini, { ...config, adapters: ['claude-code', 'mock'] }), false);
+  assert.equal(st.backend, 'claude-code');
+  assert.equal(st.model, DEFAULT_MODEL);
+  // Picking Gemini and then switching Runs on to Claude Code by hand resets both model and effort.
+  const cfg = { ...config, adapters: ['claude-code', 'antigravity-cli', 'kiro-cli', 'mock'], backends: { 'antigravity-cli': {} } };
+  applyBoilerplate(st, gemini, cfg);
+  assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', GEMINI_MODEL, 'high']);
+  selectBackend(st, 'claude-code', cfg);
+  assert.deepEqual([st.backend, st.model, st.effort], ['claude-code', DEFAULT_MODEL, DEFAULT_EFFORT]);
+  // Switching from Claude Code with Sonnet selected to Kiro (which has no reported catalog) keeps Sonnet; switching from Antigravity to Kiro resets.
+  st.model = 'claude-sonnet-5-5';
+  st.effort = 'high';
+  selectBackend(st, 'kiro-cli', cfg);
+  assert.deepEqual([st.backend, st.model, st.effort], ['kiro-cli', 'claude-sonnet-5-5', 'high']);
+  applyBoilerplate(st, gemini, cfg);
+  selectBackend(st, 'kiro-cli', cfg);
+  assert.deepEqual([st.backend, st.model, st.effort], ['kiro-cli', DEFAULT_MODEL, DEFAULT_EFFORT]);
+  // A backend without a reported catalog (such as kiro-cli) keeps its own custom model when re-selected.
+  st.backend = 'kiro-cli';
+  st.model = 'gpt-5.6-terra';
+  selectBackend(st, 'kiro-cli', cfg);
+  assert.equal(st.model, 'gpt-5.6-terra');
 });

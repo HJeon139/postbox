@@ -22,7 +22,7 @@ On 22 October 2026, an agent revised a review block three times while the person
 
 ## Steps to reproduce
 
-1. Run `node tools/check-answers.mjs`. It starts its own Postbox and headless Chrome, and checks the review and choice cases above.
+1. Run `npx playwright test answers` (`tests/browser/answers.spec.mjs`). It checks the review and choice cases above.
 2. With a real agent (see the README’s real-agent setup), ask: “Show me a three-line draft as a review block, then run `sleep 40`, then update the block with a new line added above its first line.”
 3. While it sleeps, comment on line 2 and choose Request changes, but don’t submit. After the update arrives, press Submit review.
 4. Check the notice, the diff, and that your comment now sits on line 3: it moved down with its line, untagged, since the line itself didn’t change. Submit again.

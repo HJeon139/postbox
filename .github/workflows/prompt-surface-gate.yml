@@ -5,6 +5,10 @@
 # request can’t loosen the check it’s judged by, as it could a pull_request workflow. So it checks out main only,
 # never the pull request, reads the changed files’ names from the API, and passes every value through the
 # environment, not into a script.
+#
+# GitHub will stop running pull_request_target on public repositories unless the repository’s Actions policy allows
+# it (the run page’s notice says 2 December 2026). Without it this gate never reports, and since “Prompt surface
+# reviewed” is a required check, every pull request blocks. Allow it in Settings → Actions → General (#388).
 name: prompt-surface-gate
 
 # Only pull requests into main, the branch whose copy of this workflow is the one trusted. `edited` runs it again when
@@ -28,6 +32,10 @@ jobs:
     name: Find prompt-surface changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Write, to keep the one comment that says what to review. No step runs the pull request’s code.
+    permissions:
+      contents: read
+      pull-requests: write
     outputs:
       touched: ${{ steps.match.outputs.touched }}
     steps:
@@ -48,15 +56,40 @@ jobs:
           gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > changed.txt
           node tools/prompt-gate.mjs touched .github/prompt-surface-paths.txt < changed.txt > touched.txt
           # The files API lists at most 3,000 files, so a pull request that large may hide one: it needs approval.
-          if [ "$(gh api "repos/$REPO/pulls/$PR" --jq .changed_files)" -ge 3000 ]; then
-            echo "(more than the 3,000 files GitHub lists)" >> touched.txt
-          fi
-          if [ -s touched.txt ]; then
+          too_many=false
+          if [ "$(gh api "repos/$REPO/pulls/$PR" --jq .changed_files)" -ge 3000 ]; then too_many=true; fi
+          echo "too_many=$too_many" >> "$GITHUB_OUTPUT"
+          if [ -s touched.txt ] || [ "$too_many" = true ]; then
             echo "touched=true" >> "$GITHUB_OUTPUT"
-            { echo "This pull request changes the prompt surface, so it waits for approval in the prompt-security-review environment:"; echo; sed 's/^/- `/; s/$/`/' touched.txt; } >> "$GITHUB_STEP_SUMMARY"
+            { echo "This pull request changes the prompt surface, so it waits for approval in the prompt-security-review environment:"; echo; sed 's/^/- `/; s/$/`/' touched.txt
+              if [ "$too_many" = true ]; then echo "- More than the 3,000 files GitHub lists changed, so some can't be checked."; fi; } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "touched=false" >> "$GITHUB_OUTPUT"
             echo "No prompt-surface file changed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      # The approval dialog can’t be given text, so the run page’s notices, which show behind it, and one comment on the
+      # pull request say what to read before approving. The comment is built from file names only, and kept to one:
+      # it’s updated on each run, and says so when the pull request stops touching the prompt surface. Neither can
+      # fail the gate.
+      - name: Say what to review
+        # A failure here leaves the gate's verdict alone, rather than read as the file list failing.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TOUCHED: ${{ steps.match.outputs.touched }}
+          TOO_MANY: ${{ steps.match.outputs.too_many }}
+        run: |
+          if [ "$TOUCHED" = true ]; then node tools/prompt-gate.mjs notices touched.txt; fi
+          node tools/prompt-gate.mjs comment touched.txt > comment.md
+          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- prompt-surface-gate -->"))) | .id' | tail -n 1) || id=
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@comment.md > /dev/null || echo "::warning::Couldn't update the review comment."
+          elif [ "$TOUCHED" = true ]; then
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@comment.md > /dev/null || echo "::warning::Couldn't post the review comment."
           fi
       # Refuses a pull request whose workflows could post a check named like this gate’s, which the ruleset would take
       # for it. Its files are read through the API, never checked out.
@@ -88,7 +121,10 @@ jobs:
     timeout-minutes: 5
     # Its required reviewers are the approval. GitHub creates a missing environment with no reviewers, which would
     # pass at once, so it must exist with a required reviewer (SECURITY.md, “Prompt changes”).
-    environment: prompt-security-review
+    # The deployment links to the pull request’s changed files, from the run page and the pull request.
+    environment:
+      name: prompt-security-review
+      url: https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/files
     steps:
       - run: echo "Approved in the prompt-security-review environment."
 
@@ -96,15 +132,27 @@ jobs:
     # This name is the required check in protect-main, and the spoof check above (CHECK) looks for it.
     name: Prompt surface reviewed
     needs: [paths, approve]
+    # Always, even in a run a newer one cancelled: skipped, this job would report success to the required check, and
+    # stand as the commit's latest result until the newer run's gate reports. A cancelled run fails, and says why.
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # cancelled() is allowed only in an `if`, not in `env`: there it makes the whole workflow invalid, and no run
+      # starts.
+      - if: cancelled()
+        run: |
+          echo "::error::A newer run of the gate replaced this one, after an edit or a push. That run's result is the one that counts."
+          exit 1
       - env:
           PATHS: ${{ needs.paths.result }}
           TOUCHED: ${{ needs.paths.outputs.touched }}
           APPROVE: ${{ needs.approve.result }}
         run: |
+          if [ "$PATHS" = cancelled ] || [ "$APPROVE" = cancelled ]; then
+            echo "::error::A newer run of the gate replaced this one, after an edit or a push. That run's result is the one that counts."
+            exit 1
+          fi
           if [ "$PATHS" != success ]; then echo "::error::Couldn't list the changed files ($PATHS). Re-run the gate."; exit 1; fi
           if [ "$TOUCHED" != true ]; then echo "No prompt-surface file changed."; exit 0; fi
           if [ "$APPROVE" = success ]; then echo "The prompt change was approved."; exit 0; fi

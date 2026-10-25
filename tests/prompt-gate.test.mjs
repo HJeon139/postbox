@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { findingsReport, globsOf, newFindings, spoofs, touched, triggersOf } from '../tools/prompt-gate.mjs';
+import { findingsReport, newFindings } from '../tools/prompt-findings.mjs';
+import { COMMENT_MARK, diffUrl, globsOf, notices, reviewComment, spoofs, touched, triggersOf } from '../tools/prompt-gate.mjs';
 
 const GLOBS = globsOf(readFileSync(new URL('../.github/prompt-surface-paths.txt', import.meta.url), 'utf8'));
 
@@ -114,4 +115,50 @@ test('the triggers read from inline and block forms', () => {
   assert.deepEqual(triggersOf('on: push\n'), ['push']);
   assert.deepEqual(triggersOf("'on': [push, pull_request]\n"), ['push', 'pull_request']);
   assert.deepEqual(triggersOf('on:\n  pull_request:\n    types: [opened]\n  push:\n    branches: [main]\njobs:\n'), ['pull_request', 'push']);
+});
+
+const WHERE = { repo: 'HJeon139/postbox', pr: 379, runUrl: 'https://github.com/HJeon139/postbox/actions/runs/1' };
+
+test('a file’s diff link is the pull request’s files page, anchored by the SHA-256 of its path, as GitHub does', () => {
+  assert.equal(
+    diffUrl('HJeon139/postbox', 379, 'server/personas/gpt.md'),
+    'https://github.com/HJeon139/postbox/pull/379/files#diff-aabcca4d1e0e07450abf1c97dd4a380e22c50c756bc9bbb8fa4e28dfe959f393',
+  );
+});
+
+test('the run page gets a notice for each file, and one for where the rendered diff is', () => {
+  const lines = notices(['server/personas/gpt.md', 'server/mcp.mjs'], WHERE);
+  assert.equal(lines.length, 3);
+  assert.ok(lines.every((l) => l.startsWith('::notice title=Review before approving::')));
+  assert.match(
+    lines[0],
+    /^::notice title=Review before approving::server\/personas\/gpt\.md changed: https:\/\/github\.com\/HJeon139\/postbox\/pull\/379\/files#diff-[0-9a-f]{64}$/,
+  );
+  assert.match(lines[2], /pull\/379\/checks$/);
+});
+
+test('a file name can’t end a notice early or start a command of its own', () => {
+  const [line] = notices(['a%0A::error::x\nb\r'], WHERE);
+  assert.equal(line.split('\n').length, 1);
+  assert.ok(line.includes('a%250A::error::x%0Ab%0D changed'));
+});
+
+test('the comment lists each file as code, so a name can’t be read as Markdown or mention anyone', () => {
+  const body = reviewComment(['server/personas/gpt.md', '@alice', 'x`y.md', '[link](http://evil)'], WHERE);
+  assert.ok(body.startsWith(COMMENT_MARK));
+  assert.ok(body.includes('- [`@alice`]('));
+  assert.ok(body.includes('- [``x`y.md``]('));
+  assert.ok(body.includes('- [`[link](http://evil)`]('));
+  assert.ok(body.includes(`[the gate’s run](${WHERE.runUrl})`));
+});
+
+test('a pull request that no longer touches the prompt surface gets its comment updated to say so', () => {
+  assert.match(reviewComment([], WHERE), /no longer changes what agents read/);
+});
+
+test('a pull request over the 3,000 files GitHub lists says so, rather than list a file that isn’t one', () => {
+  const body = reviewComment([], { ...WHERE, tooMany: true });
+  assert.match(body, /More than the 3,000 files GitHub lists changed/);
+  assert.doesNotMatch(body, /files#diff-/);
+  assert.match(notices([], { ...WHERE, tooMany: true })[0], /More than the 3,000 files/);
 });
