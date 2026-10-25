@@ -14,13 +14,15 @@
 // (#126). So is a call with no token (#54): the session id alone let any process on this computer act as that agent,
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
-import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
+import { limitText as n, PALETTES, READING, SENDING } from '../shared/limits.mjs';
 import { REACTIONS } from '../shared/reactions.mjs';
+import { offersBring } from './bring.mjs';
+import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
 import { reactTool } from './reactions.mjs';
 import { REVIEW_BLOCK_DEF } from './review-comments.mjs';
 import { AgentFileError } from './runtime.mjs';
-import { HOP_LIMIT, offersBring } from './side-threads.mjs';
+import { HOP_LIMIT } from './side-threads.mjs';
 import { withUrgent } from './subagent-end.mjs';
 
 const PROTOCOL = '2025-06-18';
@@ -136,13 +138,12 @@ export const TOOL_DEFS = [
   },
   {
     name: 'wake_agent',
-    description: `Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its one session in this conversation, so it remembers it; if it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, the person must allow the next one.`,
+    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. The exchange happens in a side thread, and the agent answers from its one session in this conversation, so it remembers it; if it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, the person must allow the next one.`,
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
     name: 'bring_to_conversation',
-    description:
-      'Post text in the main conversation from the side thread or topic thread you’re in. Use it only when the person asks for something to go to the main chat, in a message to you there: nothing goes there on its own. It shows as shared by you from the side or topic thread, and wakes no one; the conversation’s agents read it at their next turn.',
+    description: `Post text in the main conversation from the side thread or topic thread you’re in, up to ${count(SENDING.message)} characters. Use it only when the person asks for something to go to the main chat, in a message to you there: nothing goes there on its own. It shows as shared by you from the side or topic thread, and wakes no one; the conversation’s agents read it at their next turn.`,
     inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to post, in Markdown.' } }, required: ['text'] },
   },
   {
@@ -269,7 +270,7 @@ async function one(rt, sessionId, msg, turnToken) {
           -32001,
           'Postbox runs tool calls only from an agent turn it started, which carries its own token, so it didn’t run this one. Call the tool from your turn; for a large app, use codePath.',
         );
-      if (rt.turns.get(sessionId)?.token !== turnToken)
+      if (!sameToken(rt.turns.get(sessionId)?.token, turnToken))
         return fail(-32001, 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.');
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
@@ -300,6 +301,6 @@ async function one(rt, sessionId, msg, turnToken) {
  */
 function offered(rt, sessionId, turnToken, name) {
   const turn = rt.turns.get(sessionId);
-  if (name === 'bring_to_conversation') return turn?.token === turnToken && offersBring(rt, turn);
+  if (name === 'bring_to_conversation') return sameToken(turn?.token, turnToken) && offersBring(rt, turn);
   return name !== 'permission_prompt' || asksByPrompt(rt, sessionId);
 }

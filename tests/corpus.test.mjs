@@ -2,7 +2,7 @@
 // only when a search names them, and loaded again after a restart.
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -125,6 +125,23 @@ test('#47: add_dataset reads only from .postbox/datasets/, by path or link, and 
   assert.equal(rt.corpus.stats().books.length, 1);
 });
 
+test('#351: add_dataset refuses a .postbox or datasets folder that links out of the project', async () => {
+  for (const linked of ['.postbox', join('.postbox', 'datasets')]) {
+    const root = await mkdtemp(join(tmpdir(), 'pb-datasets-'));
+    const outside = await mkdtemp(join(tmpdir(), 'pb-outside-'));
+    await mkdir(join(outside, 'datasets'));
+    await writeFile(join(outside, 'datasets', 'x.jsonl'), jsonl([{ text: 'not the project’s' }]));
+    await writeFile(join(outside, 'x.jsonl'), jsonl([{ text: 'not the project’s' }]));
+    await mkdir(join(root, '.postbox'), { recursive: true });
+    if (linked === '.postbox') await rm(join(root, '.postbox'), { recursive: true });
+    await symlink(outside, join(root, linked));
+    const { rt, store, tools } = await setup(root);
+    assert.match((await tools.add_dataset({ id: 'x', path: 'x.jsonl' })).message, /outside the project’s folder/, linked);
+    assert.deepEqual(store.state.datasets, {});
+    assert.equal(rt.corpus.stats().books.length, 1);
+  }
+});
+
 test('#47: a project with no folder has nowhere to load from, and says so', async () => {
   const { rt, store, tools } = await setup();
   store.emit('project', { ...store.state.projects.p1, folder: null });
@@ -149,4 +166,21 @@ test('#47: datasets are loaded again after a restart, from where they were', asy
   assert.equal(await rt.reloadDatasets(), 1);
   assert.equal(corpus.read('claims:c1').text, 'Vitamin D reduces fractures.');
   assert.equal(corpus.search('vitamin', { books: ['claims'] }).length, 1);
+});
+
+test('#351: corpus_search returns 1 to 50 results whatever k says, and reads at most 50 book ids', async () => {
+  const { rt, corpus, tools } = await setup();
+  corpus.addRecords('many', parseDataset(jsonl(Array.from({ length: 120 }, (_, i) => ({ id: `r${i}`, text: `Whale sighting number ${i}.` })))), {
+    title: 'Many',
+    author: '@researcher',
+  });
+  corpus.reindex();
+  const found = (args) => tools.corpus_search({ query: 'whale sighting', books: ['many'], ...args }).results.length;
+  assert.deepEqual(
+    [-1, -200, 0.5, 2.9, 1000, 'x'].map((k) => found({ k })),
+    [1, 1, 1, 2, 50, 12],
+  );
+  // A list of ids past 50 is read only to its 50th, as an app’s query through the bridge is.
+  assert.equal(found({ books: [...Array.from({ length: 50 }, (_, i) => `b${i}`), 'many'] }), 0);
+  assert.equal(hostTool(rt, 'corpus.search', { query: 'whale sighting', books: ['many'], k: -1 }).length, 1);
 });

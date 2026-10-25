@@ -3,12 +3,12 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { realpath, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, isAbsolute, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { LIMITS, limitText, READING } from '../shared/limits.mjs';
+import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
@@ -35,8 +35,9 @@ import {
 } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
+import { bringToConversation } from './bring.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
-import { parseDataset } from './corpus.mjs';
+import { addDataset, reloadDatasets } from './datasets.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
@@ -60,7 +61,6 @@ import { runShell } from './shell.mjs';
 import {
   agentWake,
   archiveForks,
-  bringToConversation,
   bumpSideLink,
   deliverWake,
   dropWakes,
@@ -3031,86 +3031,11 @@ export class Runtime {
 
   // ── Datasets (#47) ─────────────────────────────────────────────────────────────────
 
-  /**
-   * add_dataset: loads a JSON Lines file from the project’s own Postbox folder, .postbox/datasets/, into the corpus,
-   * without a restart, which would end every agent’s session. Its records are searched only when a search names the
-   * dataset, so they don’t mix into other agents’ results. An event keeps it, so it’s loaded again after a restart,
-   * and a line in the conversation says it was loaded. Loading the same id again replaces it.
-   * @param {string} sessionId @param {{ id?: unknown, path?: unknown, title?: unknown }} args
-   */
-  async addDataset(sessionId, { id, path, title } = {}) {
-    const se = this.session(sessionId);
-    const project = this.s.projects[this.s.threads[se.threadId]?.projectId];
-    const name = String(id ?? '');
-    if (!DATASET_ID.test(name)) return { ok: false, message: 'A dataset id is letters, digits, - and _ (up to 64), such as “scifact-abstracts”.' };
-    const taken = this.corpus.stats().books.find((b) => b.id === name);
-    if (taken && !taken.dataset) return { ok: false, message: `“${name}” is a book in the corpus. Pick another id.` };
-    if (!project?.folder)
-      return {
-        ok: false,
-        message: 'This conversation’s project has no folder, so there’s no .postbox/datasets/ to load from. Ask the person to give the project a folder.',
-      };
-    const dir = datasetDir(project.folder);
-    let raw;
-    try {
-      raw = await this.datasetFile(dir, path);
-    } catch (e) {
-      return { ok: false, message: e.message };
-    }
-    let records;
-    try {
-      records = parseDataset(raw.text);
-    } catch (e) {
-      return { ok: false, message: e.message };
-    }
-    const meta = { title: clip(String(title ?? '') || name, 200), author: `@${se.handle}` };
-    this.corpus.addRecords(name, records, meta);
-    this.corpus.reindex();
-    this.store.emit('dataset', { id: name, projectId: project.id, path: raw.path, ...meta, records: records.length, by: se.handle, at: Date.now() });
-    this.addItem(se.threadId, { kind: 'system', variant: 'dataset', handle: se.handle, dataset: name, records: records.length });
-    return {
-      ok: true,
-      message: `Loaded ${records.length.toLocaleString('en-US')} records as the dataset “${name}”. It’s searched only when a search names it: corpus.search with books: ["${name}"]. corpus.read with id "${name}:<record id>" reads one record.`,
-    };
+  addDataset(sessionId, args) {
+    return addDataset(this, sessionId, args);
   }
-
-  /**
-   * Reads a dataset file: a path in the project’s .postbox/datasets/ (relative to it), followed through links, so a
-   * link can’t lead outside it, and up to datasetBytes.
-   * @param {string} dir @param {unknown} path
-   */
-  async datasetFile(dir, path) {
-    if (typeof path !== 'string' || !path.trim()) throw new Error(`add_dataset needs the path of a .jsonl file in ${dir}.`);
-    const root = await realpath(dir).catch(() => null);
-    if (!root) throw new Error(`There’s no folder ${dir} yet. Write the dataset there, then load it.`);
-    const real = await realpath(resolve(root, path)).catch(() => null);
-    if (!real) throw new Error(`There’s no file at ${path} in ${dir}.`);
-    if (!real.startsWith(root + sep)) throw new Error(`${path} is outside ${dir}. Datasets load only from there.`);
-    const st = await stat(real);
-    if (!st.isFile()) throw new Error(`${path} isn’t a file.`);
-    const over = () => new Error(`${path} is over ${limitText('datasetBytes')}, the limit for a dataset.`);
-    if (st.size > LIMITS.datasetBytes) throw over();
-    const buf = await readCapped(real, LIMITS.datasetBytes);
-    if (!buf) throw over();
-    return { path: relative(root, real), text: buf.toString('utf8') };
-  }
-
-  /** At startup: loads the datasets agents added before the restart, from where they were. Returns how many loaded. */
-  async reloadDatasets() {
-    let n = 0;
-    for (const ds of Object.values(this.s.datasets ?? {})) {
-      const folder = this.s.projects[ds.projectId]?.folder;
-      try {
-        if (!folder) throw new Error('its project has no folder now');
-        const { text } = await this.datasetFile(datasetDir(folder), ds.path);
-        this.corpus.addRecords(ds.id, parseDataset(text), { title: ds.title, author: ds.author });
-        n++;
-      } catch (e) {
-        console.warn(`Couldn’t load the dataset “${ds.id}” again: ${e.message}`);
-      }
-    }
-    if (n) this.corpus.reindex();
-    return n;
+  reloadDatasets() {
+    return reloadDatasets(this);
   }
 
   // ── Presence ───────────────────────────────────────────────────────────────────────
@@ -3307,10 +3232,6 @@ export class Runtime {
     };
   }
 }
-
-const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-/** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */
-const datasetDir = (folder) => join(folder, '.postbox', 'datasets');
 
 /** What Postbox asks when you stop an agent whose background jobs are running (#129). */
 export function stopAskText(handle, n) {
