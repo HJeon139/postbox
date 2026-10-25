@@ -35,6 +35,9 @@ test('#351: a served path resolves through links, and is refused when it lands o
   await assert.rejects(servedFile(folder, '%2e%2e/secret.svg'), { status: 403 });
   await assert.rejects(servedFile(folder, 'missing.svg'), { status: 404 });
   await assert.rejects(servedFile(folder, 'sub/in.svg%00.png'), { status: 404 });
+  // The folder itself is no file, and a folder that isn’t there (an installed package ships no mockups/) has none.
+  await assert.rejects(servedFile(folder, ''), { status: 404 });
+  await assert.rejects(servedFile(join(dir, 'missing'), 'x.html'), { status: 404 });
   // The data folder’s media keeps its own rule on top: images only.
   await assert.rejects(mediaFile(folder, 'out.svg'), { status: 403 });
   assert.equal(await mediaFile(folder, 'alias.svg'), join(folder, 'sub', 'in.svg'));
@@ -47,4 +50,11 @@ test('#351: a path with a malformed % escape is the request’s fault: 400 with 
     assert.equal(res.status, 400, path);
     assert.match(res.json.error, /% escape/, path);
   }
+});
+
+test('#351: the page, its icon and the shared stylesheet are served through the same check, and still load', async () => {
+  for (const path of ['/', '/index.html', '/favicon.svg', '/kit/workbench.css', '/app/workbench.css'])
+    assert.equal((await fakeRequest(app.handle, { method: 'GET', path, host: `127.0.0.1:${PORT}` })).status, 200, path);
+  for (const path of ['/app/', '/kit/', '/mockups/no-such.html'])
+    assert.equal((await fakeRequest(app.handle, { method: 'GET', path, host: `127.0.0.1:${PORT}` })).status, 404, path);
 });

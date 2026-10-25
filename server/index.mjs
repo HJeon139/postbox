@@ -242,13 +242,13 @@ export async function start({
     if (path === '/' || path === '/index.html')
       return file(
         res,
-        join(ROOT, 'app', 'index.html'),
+        await servedFile(STATIC['/app/'], 'index.html'),
         { ...appHeaders(config), ...(fromBrowser(req) ? { 'set-cookie': `${cookieName}=${token}; HttpOnly; SameSite=Strict; Path=/` } : {}) },
         req,
       );
-    if (path === '/favicon.svg') return file(res, join(ROOT, 'app', 'media', 'favicon.svg'), {}, req);
+    if (path === '/favicon.svg') return file(res, await servedFile(BUNDLED_MEDIA, 'favicon.svg'), {}, req);
     if (path === '/kit/workbench.css' || path === '/app/workbench.css')
-      return file(res, join(ROOT, 'app', 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
+      return file(res, await servedFile(STATIC['/app/'], 'workbench.css'), { 'access-control-allow-origin': '*' }, req);
     if (path.startsWith('/media/')) {
       const media = await mediaPath(BUNDLED_MEDIA, mediaDir, path.slice('/media/'.length));
       return file(res, media.real, media.bundled ? { 'access-control-allow-origin': '*' } : MEDIA_HEADERS, req);
