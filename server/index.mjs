@@ -30,7 +30,7 @@ import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { DEFAULT_MODEL, HOP_LIMIT, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
-import { KNOWN_TOOLS, seed } from './seed.mjs';
+import { KNOWN_TOOLS, seed, toBoilerplate } from './seed.mjs';
 import { decodePath, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
@@ -120,7 +120,7 @@ export async function start({
     );
   // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
   const agy = real ? await agyVersion(findAgy()) : null;
-  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot: join(dataDir, 'workspaces'), models: await agyModels(findAgy()) }));
+  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot: join(dataDir, 'workspaces'), models: await agyModels(findAgy()), version: agy }));
   const codex = real ? await codexVersion(findCodex()) : null;
   if (codex) adapters.register(new CodexAdapter({ workRoot: join(dataDir, 'workspaces'), models: await codexModels(findCodex()) }));
   const config = {
@@ -286,7 +286,7 @@ export async function start({
 
     if (path === '/mcp') {
       if (req.method !== 'POST') return raw(res, 405, 'Use POST for MCP requests.', { allow: 'POST' });
-      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req), url.searchParams.get('turn'));
+      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req), url.searchParams.get('turn'), res);
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
@@ -410,8 +410,7 @@ export async function start({
       const p = rt.createPersona(body);
       if (body.join?.threadId) rt.ensureSession(rt.lineage(body.join.threadId).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
       else if (body.join?.projectId) rt.createThread({ projectId: body.join.projectId, title: body.join.title || `With @${p.handle}`, personaIds: [p.id] });
-      if (body.saveAsBoilerplate)
-        store.emit('boilerplate', { id: newId('bp'), name: `@${p.handle}`, description: p.description, instructions: p.instructions, tools: p.tools });
+      if (body.saveAsBoilerplate) store.emit('boilerplate', toBoilerplate(p));
       return send(res, 201, p);
     }
     if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updatePersona(m[1], body));

@@ -46,15 +46,18 @@ import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../mcp.mjs';
+import { agyHookCommand, agyHooksJson, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT, HOOK_TIMEOUT_S } from './agy-hook.mjs';
+import { clip, HEADLESS_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 
-/** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
-export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: false });
+/** What this backend can do, for the runtime and the UI (#117, #370). The adapter adds the models it found. */
+export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: true });
 
 /** The agy binary: POSTBOX_AGY_BIN, then the PATH. */
 export const findAgy = (env = process.env) => env.POSTBOX_AGY_BIN || 'agy';
@@ -125,8 +128,7 @@ export function modelIds(text) {
   return [...new Set(ids)].slice(0, 60);
 }
 
-/** The model an agy persona runs when it names none, as #143 asks. */
-export const AGY_DEFAULT_MODEL = 'gemini-3.8-flash-high';
+export { AGY_DEFAULT_MODEL };
 
 /**
  * The model to pass. A persona that names none gets Postbox’s default, Claude’s, which agy doesn’t offer: that
@@ -191,8 +193,9 @@ export async function allowPostbox(file = agySettingsFile()) {
   return 'added';
 }
 
-/** The persona’s permission mode as agy’s flags. */
-export function modeArgs(persona) {
+/** The persona’s permission mode as agy’s flags (#370: --dangerously-skip-permissions only once the PreToolUse hook is confirmed). */
+export function modeArgs(persona, { hookConfirmed = false } = {}) {
+  if (hookConfirmed) return ['--dangerously-skip-permissions'];
   switch (persona?.permissionMode) {
     case 'auto':
       return ['--mode', 'auto'];
@@ -208,16 +211,16 @@ export function modeArgs(persona) {
 /**
  * The CLI arguments for one turn. Pure, so the tests can check them. Every flag comes before the message: given
  * as --print=<message>, it is one argument whatever it starts with.
- * @param {{ persona: any, model: string, effort: string|null, sessionId?: string|null, prompt: string, addDirs?: string[] }} turn
+ * @param {{ persona: any, model: string, effort: string|null, sessionId?: string|null, prompt: string, addDirs?: string[], hookConfirmed?: boolean }} turn
  */
-export function agyArgs({ persona, model, effort, sessionId = null, prompt, addDirs = [] }) {
+export function agyArgs({ persona, model, effort, sessionId = null, prompt, addDirs = [], hookConfirmed = false }) {
   return [
     // Both always passed, where agy takes them: left out, your agy settings would decide (#60).
     '--model',
     model,
     ...(effort ? ['--effort', effort] : []),
     ...(sessionId ? ['--conversation', sessionId] : []),
-    ...modeArgs(persona),
+    ...modeArgs(persona, { hookConfirmed }),
     // A message that starts with / is the person’s text, not one of agy’s commands.
     '--disable-slash-commands',
     '--output-format',
@@ -226,17 +229,6 @@ export function agyArgs({ persona, model, effort, sessionId = null, prompt, addD
     `--print=${prompt}`,
   ];
 }
-
-// A live turn (agy 1.4.5) had a command refused as “user denied permission to run command”. Nobody was asked, so
-// the agent is told what a refusal means here, and that agy ends the turn at one, before any reply.
-const HEADLESS_NOTE =
-  '## Refused tool calls\n\nPostbox runs you headless, so Antigravity can’t ask the person to approve a tool call: one that would need approval is refused, and Antigravity reports it as “user denied permission”. The person didn’t see or decline it. A refusal ends your turn there, before you can reply, so don’t make a call that needs approval when you can do without it. If one is refused, say next turn which call it was and that your permissions in Postbox didn’t allow it.';
-
-// In the Gemini room UAT rerun, an agent looking for a plan ran `ls -la` in its folder twice: refused, and each time
-// its turn ended with no reply. agy’s file tools read its folders without asking (every read_file in that run went
-// through), so it’s pointed at them. Run everything allows commands, so it isn’t told this.
-const LOOKING_NOTE =
-  '## Looking at files\n\nUse list_dir, find_by_name, grep_search and view_file to look at files: in your folders they don’t need approval. Don’t use run_command to look around (ls, find, cat): a command needs approval here, so it’s refused, and your turn ends with nothing said. What another agent wrote or showed in a block is in your history and read_conversation, and read_message { id } gives one item in full: it isn’t on disk.';
 
 /**
  * Where agy keeps each Postbox tool’s input schema, which the model reads before a call (recorded: read_file of
@@ -268,32 +260,27 @@ export function agyRules({ persona, guide, schemas = null }) {
   return `${guide}\n\n${schemas ? `${toolsNote(schemas)}\n\n` : ''}${HEADLESS_NOTE}${persona?.permissionMode === 'bypass' ? '' : `\n\n${LOOKING_NOTE}`}${limits}\n`;
 }
 
-/** What Postbox tells the agent when agy ended its turn at a refused call. */
-export const refusalFollowUp = (label) =>
-  `[Postbox] Antigravity refused your last call (${clip(label, 120)}) and ended your turn before you replied. Nobody was asked: Postbox runs you headless. In a sentence, tell the person which call was refused and that your permissions in Postbox didn’t allow it, then carry on without it. Don’t try it again another way.`;
+export { refusalFollowUp, refusalOf };
 
-/** The plugin’s files, by path under its folder. Pure, so the tests can check them. */
-export const agyPlugin = ({ mcpUrl, rules }) => ({
+/**
+ * The plugin’s files, by path under its folder. Pure, so the tests can check them.
+ * @param {{ mcpUrl: string, rules: string, hookCommand?: string|null, hookTimeout?: number }} opts
+ */
+export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOOK_TIMEOUT_S }) => ({
   'plugin.json': `${JSON.stringify({ name: POSTBOX_SERVER })}\n`,
   'mcp_config.json': `${JSON.stringify({ mcpServers: { [POSTBOX_SERVER]: { serverUrl: mcpUrl } } }, null, 2)}\n`,
   'rules/AGENTS.md': rules,
+  ...(hookCommand ? { 'hooks.json': `${JSON.stringify(agyHooksJson(hookCommand, hookTimeout), null, 2)}\n` } : {}),
 });
 /** Where the plugin goes in the agent’s folder. */
 export const PLUGIN_DIR = join('.agents', 'plugins', POSTBOX_SERVER);
 
-const clip = (s, n) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
-};
 const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 
 // How agy refuses a call it would ask about, headless (recorded): the step ends in ERROR with “permission check
 // failed for …: user denied permission …”, and the result lists it in denied_actions. The turn still succeeds.
 export const REFUSED = /permission check failed|user denied permission/;
 // agy words a refusal as the person’s answer, but nobody was asked: the step says what happened instead.
-const REFUSAL = 'Antigravity asks before this, and can’t ask you from Postbox, so it was refused.';
 // agy keeps its own files under ~/.gemini/antigravity-cli, and the model reads them back: each MCP tool’s schema
 // before the first call (recorded: mcp/postbox_postbox/show_block.json), which is loading a tool, as Claude Code’s
 // ToolSearch is; and, in the Gemini room UAT, a long tool output agy had saved, and its own notes on the conversation
@@ -308,7 +295,9 @@ const AS_CLAUDE = /** @type {Record<string, [string, (p: any) => any]>} */ ({
   run_command: ['Bash', (p) => ({ command: p.CommandLine })],
   read_file: ['Read', (p) => ({ file_path: p.Path ?? p.AbsolutePath })],
   view_file: ['Read', (p) => ({ file_path: p.AbsolutePath ?? p.Path })],
+  write_file: ['Write', (p) => ({ file_path: p.Path ?? p.TargetFile })],
   write_to_file: ['Write', (p) => ({ file_path: p.TargetFile ?? p.Path })],
+  edit_file: ['Edit', (p) => ({ file_path: p.Path ?? p.TargetFile })],
   replace_file_content: ['Edit', (p) => ({ file_path: p.TargetFile ?? p.Path })],
   multi_replace_file_content: ['Edit', (p) => ({ file_path: p.TargetFile ?? p.Path })],
   grep_search: ['Grep', (p) => ({ pattern: p.Query ?? p.Pattern })],
@@ -410,20 +399,15 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     const failed = s.state === 'ERROR';
     const why = failed ? String(s.tool_info?.error?.message ?? '') : '';
     const refused = failed && REFUSED.test(why);
-    const state = refused ? 'denied' : failed ? 'failed' : 'done';
-    const detail = refused ? REFUSAL : failed ? firstSentence(why || 'It failed without saying why.', 300) : '';
+    const hookWhy = failed ? (/^.*denied by (?:pre-tool|PreToolUse) hook:\s*(.*)$/is.exec(why)?.[1] ?? null) : null;
+    const state = refused || hookWhy !== null ? 'denied' : failed ? 'failed' : 'done';
+    const detail = refused ? refusalOf(ctx.persona?.permissionMode) : failed ? firstSentence(hookWhy || why || 'It failed without saying why.', 300) : '';
     const ms = typeof s.duration_seconds === 'number' ? Math.round(s.duration_seconds * 1000) : now() - t.started;
     Object.assign(t, { state, ms, output: s.tool_info?.output !== undefined });
     if (refused) st.refusedLast = t.label;
     // Postbox’s own tools stay quiet, unless agy refused one: then the allow rule in your settings is missing.
-    if (refused && t.quiet)
-      ctx.activity({
-        id: t.id,
-        label: t.label,
-        state,
-        ms,
-        detail: `Antigravity refused Postbox’s own tool. Add "${ALLOW_POSTBOX}" to permissions.allow in your agy settings.`,
-      });
+    const ownRefused = `Antigravity refused Postbox’s own tool. Add "${ALLOW_POSTBOX}" to permissions.allow in your agy settings.`;
+    if (refused && t.quiet) ctx.activity({ id: t.id, label: t.label, state, ms, detail: ownRefused });
     else if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state, ms, ...(detail ? { detail } : {}) });
     // The model thinks next, and agy sends nothing until that step is done (recorded: 14 s after read_conversation in
     // the Gemini room UAT, with the ring still on the tool). So the ring says so now, as Claude Code’s does.
@@ -441,14 +425,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
       if (!t) continue;
       t.state = 'denied';
       if (t === [...st.tools.values()].at(-1) && !st.textSinceTool) st.refusedLast = t.label;
-      if (!t.quiet)
-        ctx.activity({
-          id: t.id,
-          label: t.label,
-          state: 'denied',
-          ms: t.ms,
-          detail: REFUSAL,
-        });
+      if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state: 'denied', ms: t.ms, detail: refusalOf(ctx.persona?.permissionMode) });
     }
   };
   const step = (s) => {
@@ -649,14 +626,16 @@ export class AntigravityCliAdapter {
   name = 'antigravity-cli';
 
   /**
-   * @param {{ bin?: string, workRoot: string, models?: string[], settingsFile?: string, spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv,
-   *           kill?: typeof process.kill, listProcesses?: typeof listProcesses }} opts
+   * @param {{ bin?: string, workRoot: string, models?: string[], version?: string|null, hookScript?: string, settingsFile?: string,
+   *           spawnImpl?: typeof spawn, env?: NodeJS.ProcessEnv, kill?: typeof process.kill, listProcesses?: typeof listProcesses }} opts
    *   models: what agyModels found, offered in the model field; settingsFile: your agy settings
    */
   constructor({
     bin = findAgy(),
     workRoot,
     models = [],
+    version = null,
+    hookScript = HOOK_SCRIPT,
     settingsFile = agySettingsFile(),
     spawnImpl = spawn,
     env = process.env,
@@ -667,6 +646,8 @@ export class AntigravityCliAdapter {
     this.list = list;
     this.capabilities = { ...AGY_CAPABILITIES, ...(models.length ? { models } : {}) };
     this.models = models;
+    this.version = version;
+    this.hookScript = hookScript;
     this.bin = bin;
     this.workRoot = workRoot;
     this.settingsFile = settingsFile;
@@ -709,25 +690,31 @@ export class AntigravityCliAdapter {
         this.excluded.add(cwd);
         await excludePlugin(cwd).catch(() => false);
       }
-      for (const [path, text] of Object.entries(agyPlugin({ mcpUrl: ctx.mcpUrl, rules }))) {
-        await mkdir(dirname(join(plugin, path)), { recursive: true });
-        await writeFile(join(plugin, path), text);
+      const useHook = persona?.permissionMode !== 'bypass' && agySupportsHooks(this.version);
+      const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
+      for (const [path, text] of Object.entries(agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand }))) {
+        const file = join(plugin, path);
+        await mkdir(dirname(file), { recursive: true });
+        if (path === 'hooks.json') await rm(file, { force: true }).catch(() => {});
+        await writeFile(file, text, path === 'hooks.json' ? { mode: 0o444 } : undefined);
       }
+      const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
       try {
-        let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null });
+        let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
         if (done.missingSession && !ctx.signal.aborted) {
           ctx.saveState({ agySessionId: null });
           ctx.state.agySessionId = null;
           const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
-          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null });
+          done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null, hookConfirmed });
         }
         // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that
         // high: the person saw a refused step and silence). So the conversation goes on once, for the agent to say
         // what was refused and carry on. A refusal in that run isn’t followed up again.
         if (done.endedOnRefusal && !ctx.signal.aborted && ctx.state.agySessionId) {
           ctx.status({ state: 'think', currentStep: 'Telling you about the refused call' });
-          await this.run({ ctx, cwd, addDirs, prompt: refusalFollowUp(done.endedOnRefusal), sessionId: ctx.state.agySessionId, wrote: done.wrote });
+          const followUp = refusalFollowUp(done.endedOnRefusal);
+          await this.run({ ctx, cwd, addDirs, prompt: followUp, sessionId: ctx.state.agySessionId, wrote: done.wrote, hookConfirmed });
         }
       } finally {
         await rm(plugin, { recursive: true, force: true }).catch(() => {});
@@ -738,20 +725,26 @@ export class AntigravityCliAdapter {
   }
 
   /**
-   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, sessionId: string|null, wrote?: boolean }} turn
+   * @param {{ ctx: any, cwd: string, addDirs: string[], prompt: string, sessionId: string|null, wrote?: boolean, hookConfirmed?: boolean }} turn
    * @returns {Promise<{ missingSession?: boolean, endedOnRefusal?: string|null, wrote?: boolean }>}
    */
-  run({ ctx, cwd, addDirs, prompt, sessionId, wrote = false }) {
+  run({ ctx, cwd, addDirs, prompt, sessionId, wrote = false, hookConfirmed = false }) {
     const persona = ctx.persona;
     const model = agyModel(persona, this.models);
     const effort = agyEffort(model, effortOf(persona));
-    const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs });
+    const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
+    const hookVars = {
+      POSTBOX_MCP_URL: ctx.mcpUrl,
+      POSTBOX_AGY_MODE: persona?.permissionMode ?? 'auto',
+      POSTBOX_AGY_FOLDERS: JSON.stringify([cwd, ...addDirs]),
+    };
+    const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
     return new Promise((resolve, reject) => {
       let child;
       try {
         // Its own process group, so Stop reaches everything it started (#126).
-        child = this.spawn(this.bin, args, { cwd, env: this.env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+        child = this.spawn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
       } catch (e) {
         reject(new Error(`Couldn’t start the Antigravity CLI (${this.bin}): ${e.message}`));
         return;
