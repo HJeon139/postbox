@@ -10,7 +10,7 @@ import { realpathSync } from 'node:fs';
 import { mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
-import { extname, join, normalize, relative, resolve, sep } from 'node:path';
+import { extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
@@ -31,6 +31,7 @@ import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { ARCHIVE_AFTER_CHOICES, DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
+import { mediaFile, safeJoin } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
@@ -70,7 +71,6 @@ const BUNDLED_MEDIA = join(ROOT, 'app', 'media');
 // The data folder’s media is images only, each sent as a sandboxed page with no script if it’s opened: an agent, or an
 // archive it unpacked, could put an HTML page or a scripted SVG there, and on Postbox’s origin it would carry the page’s
 // token cookie. It goes without the open CORS header, too, which would let another site’s script read it.
-const MEDIA_TYPES = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.svg']);
 const MEDIA_HEADERS = { 'content-security-policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'" };
 
 /**
@@ -607,22 +607,6 @@ function appHeaders(config) {
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
   };
-}
-
-/** An image in the data folder’s media, followed through links, which can’t lead out of it. */
-async function mediaFile(dir, rel) {
-  const isImage = (p) => MEDIA_TYPES.has(extname(p).toLowerCase());
-  const asked = safeJoin(dir, rel);
-  const [root, real] = await Promise.all([realpath(dir), realpath(asked).catch(() => null)]);
-  if (!real || !isImage(asked) || !isImage(real)) throw httpError(404, 'Not found.');
-  if (!real.startsWith(root + sep)) throw httpError(403, 'That path isn’t allowed.');
-  return real;
-}
-
-function safeJoin(dir, rel) {
-  const p = normalize(join(dir, decodeURIComponent(rel)));
-  if (p !== dir && !p.startsWith(dir + sep)) throw httpError(403, 'That path isn’t allowed.');
-  return p;
 }
 
 // Static files carry an ETag, so a reload revalidates cheaply (304) instead of downloading everything,
