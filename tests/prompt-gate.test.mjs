@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { COMMENT_MARK, diffUrl, findingsReport, globsOf, newFindings, notices, reviewComment, spoofs, touched, triggersOf } from '../tools/prompt-gate.mjs';
+import { findingsReport, newFindings } from '../tools/prompt-findings.mjs';
+import { COMMENT_MARK, diffUrl, globsOf, notices, reviewComment, spoofs, touched, triggersOf } from '../tools/prompt-gate.mjs';
 
 const GLOBS = globsOf(readFileSync(new URL('../.github/prompt-surface-paths.txt', import.meta.url), 'utf8'));
 

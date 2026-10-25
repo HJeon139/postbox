@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { GEMINI_MODEL } from '../shared/agent-facts.mjs';
 import { newId } from './store.mjs';
 
 // Read once, when the module loads: freshInstall() is synchronous, and the UAT's checks call it as well as seed().
@@ -13,6 +14,7 @@ const prompt = (name) => readFileSync(new URL(`./personas/${name}.md`, import.me
 const RESEARCHER = prompt('researcher');
 const DEVELOPER = prompt('developer');
 const CRITIC = prompt('critic');
+const GEMINI = prompt('gemini');
 
 /**
  * What a fresh install (no --demo) starts with: three generic agents, and no projects or conversations.
@@ -119,6 +121,15 @@ export const BOILERPLATES = [
     tools: ['shell', 'web.fetch'],
   },
   {
+    id: 'bp-gemini',
+    name: 'Gemini',
+    description: 'Collaborates, compares options and gives a second opinion on Gemini',
+    instructions: GEMINI,
+    tools: ['shell', 'web.fetch'],
+    backend: 'antigravity-cli',
+    model: GEMINI_MODEL,
+  },
+  {
     id: 'bp-indexer',
     name: 'Indexer',
     description: 'Builds search indexes',
@@ -127,6 +138,15 @@ export const BOILERPLATES = [
   },
   { id: 'bp-blank', name: 'Blank', description: 'Write it yourself', instructions: '', tools: [] },
 ];
+
+export const toBoilerplate = (p) => ({
+  id: newId('bp'),
+  name: `@${p.handle}`,
+  description: p.description,
+  instructions: p.instructions,
+  tools: p.tools,
+  ...(p.backend && p.backend !== 'mock' ? { backend: p.backend, model: p.model } : {}),
+});
 
 export const KNOWN_TOOLS = [
   ['corpus.search', 'Search the corpus'],
@@ -144,7 +164,13 @@ export const KNOWN_TOOLS = [
  */
 export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = false }) {
   const s = rt.store.state;
-  if (Object.keys(s.personas).length) return false;
+  if (Object.keys(s.personas).length) {
+    if (!BOILERPLATES.every((b) => s.boilerplates[b.id])) {
+      const custom = Object.values(s.boilerplates).filter((b) => !BOILERPLATES.some((x) => x.id === b.id));
+      for (const b of [...BOILERPLATES, ...custom]) rt.store.emit('boilerplate', b);
+    }
+    return false;
+  }
   const fresh = freshInstall();
   let personas = demo ? DEMO_PERSONAS : fresh.personas;
   try {
