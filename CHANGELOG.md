@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.32.0 (2026-10-25)
+
+### Features
+
+- **shell:** a needs-you ring or row goes to that agent's ask, and ⌃J lands reliably
+
+### Fixes
+
+- **shell:** leave modifier clicks and the top bar's ring stack to their own behavior
+- **checks:** a headless check that recorded no case fails
+- **checks:** keep headless Chrome's page focused, so an Escape doesn't freeze it
+
 ## 0.31.0 (2026-10-25)
 
 ### Features
