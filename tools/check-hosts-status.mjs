@@ -3,7 +3,8 @@
 // daemon’s findings with the linger warning and where it looked for a missing harness; and removing a host: the
 // confirm saying it removes Postbox from the host (or, with no token here, only forgets it), refused with a 409 that
 // names the turn it can’t stop, refused again when the host can’t be reached, with the next step, then removed. Each
-// step is checked at 375 and 1280 px, with axe. Adding, installing and editing a host are tools/check-hosts.mjs.
+// step is checked at 375 and 1280 px, with axe. Adding, installing and editing a host are
+// tests/browser/hosts.spec.mjs.
 //
 //   node tools/check-hosts-status.mjs
 //
@@ -15,7 +16,7 @@ import { classifyExit, failure } from '../server/remote/ssh.mjs';
 import { record as check } from './harness.mjs';
 import { app, audit, begin, click, consoleClean, end, fake, js, MINUTE, page, text, top, until, waitFor } from './hosts-check.mjs';
 
-// The host as Add host leaves it: tools/check-hosts.mjs checks adding, installing and editing it.
+// The host as Add host leaves it: tests/browser/hosts.spec.mjs checks adding, installing and editing it.
 const id = app.rt.addHost({ name: 'build.example.com' }).id;
 
 try {

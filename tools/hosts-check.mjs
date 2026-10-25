@@ -1,8 +1,8 @@
-// What tools/check-hosts.mjs and tools/check-hosts-status.mjs drive the Hosts tab of Settings (#120) with: their own
-// fresh Postbox (demo mode) with a fake host manager in place of server/remote/hosts.mjs, so nothing connects to a
-// host (each check sets each status the manager would report, and records what the page asks of it), and the page,
-// with axe and a check that nothing runs off the window at 375 and 1280 px. PB_PORT and PB_CHROME_PORT move the ports
-// (4500 and 9700 by default). They report through tools/harness.mjs.
+// What tools/check-hosts-status.mjs drives the Hosts tab of Settings (#120) with: its own fresh Postbox (demo mode)
+// with a fake host manager in place of server/remote/hosts.mjs, so nothing connects to a host (the check sets each
+// status the manager would report, and records what the page asks of it), and the page, with axe and a check that
+// nothing runs off the window at 375 and 1280 px. PB_PORT and PB_CHROME_PORT move the ports (4500 and 9700 by
+// default). It reports through tools/harness.mjs.
 
 import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
