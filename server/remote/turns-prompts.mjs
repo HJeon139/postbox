@@ -148,6 +148,14 @@ export function onPromptExpired(rts, m) {
 
 /** @param {RemoteTurns} rts @param {any} m */
 export function onError(rts, m) {
+  // An allow that reached the host after it stopped waiting: the host denied the call, so the card, which read
+  // Allowed, says it expired, and why.
+  if (m.re === 'answer' && m.code === 'no-prompt' && typeof m.turn === 'string' && typeof m.id === 'string') {
+    const card = cardOf(rts, m.turn, m.id);
+    if (card && String(card.it.status).startsWith('allowed'))
+      rts.rt.patchItem(card.threadId, card.it.id, { status: 'expired', lateAnswer: true, endedAt: rts.now() });
+    return;
+  }
   // The daemon couldn’t write down that a prompt of this turn ended: it can’t be answered any more. The error names
   // the prompt (its id), so exactly that card is marked ended; one from a daemon that doesn’t name it marks a lone
   // open card only, since nothing says which when more than one is open. A card already answered keeps its answer.

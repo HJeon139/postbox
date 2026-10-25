@@ -89,7 +89,9 @@ async function dispatch(d, c, m) {
   if (!c.ready) return fail(c, 'not-ready', 'Say hello with the host’s token first.', m.type, m.turn);
   if (d.removing) return fail(c, 'internal', 'Postbox is being removed from this host.', m.type, m.turn);
   if (Object.hasOwn(handlers, m.type)) return handlers[m.type](d, c, m);
-  const reply = { send: (type, body) => send(c, type, body), fail: (code, text) => fail(c, code, text, m.type, m.turn) };
+  // A refused answer or reply names its prompt or call, so Postbox knows which card or call it was (#120).
+  const of = typeof m.prompt === 'string' ? m.prompt : typeof m.id === 'string' ? m.id : undefined;
+  const reply = { send: (type, body) => send(c, type, body), fail: (code, text) => fail(c, code, text, m.type, m.turn, of) };
   if (d.brk.message && (await d.brk.message(m, reply))) return;
   const code = { answer: 'no-prompt', reply: 'no-tool' }[m.type] ?? 'internal';
   fail(c, code, `This daemon doesn’t handle ${m.type} yet.`, m.type, m.turn);

@@ -27,11 +27,13 @@ const PERMISSION_DONE = {
  * whose host’s wait ran out says nobody answered in time (#120).
  */
 const doneText = (it) =>
-  it.waitedMs
-    ? `Expired: nobody answered within ${Math.round(it.waitedMs / 3600000)} hours`
-    : it.status === 'expired' && it.noAnswer
-      ? 'Expired: nobody answered in time'
-      : (PERMISSION_DONE[it.status] ?? it.status);
+  it.lateAnswer
+    ? 'Expired: your answer reached the host after it stopped waiting, so it didn’t allow it'
+    : it.waitedMs
+      ? `Expired: nobody answered within ${Math.round(it.waitedMs / 3600000)} hours`
+      : it.status === 'expired' && it.noAnswer
+        ? 'Expired: nobody answered in time'
+        : (PERMISSION_DONE[it.status] ?? it.status);
 /**
  * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
  * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.

@@ -224,6 +224,24 @@ test('#120 L5 invariant: a prompt-expired for a prompt the person already answer
   await settled(r);
 });
 
+test('#120: an allow that reached the host after it stopped waiting turns the card from Allowed to expired, and says why', async () => {
+  const r = rig();
+  const turn = await running(r);
+  const id = r.d.prompt(turn);
+  await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === id), 'the card');
+  const card = r.store.items(r.t.id).find((i) => i.remote?.prompt === id);
+  r.rt.resolvePermission(r.t.id, card.id, 'allow');
+  await until(() => r.d.answers.length === 1, 'the answer');
+  assert.equal(r.store.item(r.t.id, card.id).status, 'allowed');
+  // The daemon names the prompt its no-prompt refuses (server/remote/host/daemon-conn.mjs).
+  r.link.hear({ type: 'error', code: 'no-prompt', re: 'answer', turn, id, message: `Prompt ${id} in turn ${turn} ended before its answer reached the agent.` });
+  const after = r.store.item(r.t.id, card.id);
+  assert.equal(after.status, 'expired');
+  assert.equal(after.lateAnswer, true);
+  r.d.end(turn);
+  await settled(r);
+});
+
 test('#120 L5: an expiry the daemon couldn’t record marks the open card ended', async () => {
   const r = rig();
   const turn = await running(r);

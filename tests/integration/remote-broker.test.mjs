@@ -120,6 +120,10 @@ async function promptAcrossRestart(s, shim, pb) {
   pb2.send('answer', { turn: 't1', prompt: prompt.id, result: { behavior: 'allow', updatedInput: { command: 'make' } } });
   const allowed = await shim.response(asking);
   assert.deepEqual(JSON.parse(allowed.text), { behavior: 'allow', updatedInput: { command: 'make' } });
+  // An answer the daemon can’t take names the prompt it refuses, so Postbox can say so on that card.
+  pb2.send('answer', { turn: 't1', prompt: 'gone', result: { behavior: 'allow', updatedInput: {} } });
+  const refused = await pb2.msgs.next('error', 5000);
+  assert.deepEqual([refused.code, refused.re, refused.turn, refused.id], ['no-prompt', 'answer', 't1', 'gone']);
   return pb2;
 }
 
