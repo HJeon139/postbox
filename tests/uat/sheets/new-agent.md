@@ -2,7 +2,7 @@
 
 ![New agent sheet](../screenshots/new-agent-sheet.png)
 
-**Where:** + › From a boilerplate, Add an agent…, or New agent on the overview.
+**Where:** + › From a boilerplate, or the conversation’s ⋯ › Add an agent….
 
 ## Why it exists
 

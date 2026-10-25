@@ -16,7 +16,7 @@ Each message an app sends shows in your voice (“Sent from Spam: …”) and st
 - More sends from the same app while the card is open join it, in order. One card holds up to 20; past that, the app’s send is refused with a reason.
 - The app is told its send is waiting (`postbox.send` resolves with `held: true`), so nothing is dropped silently.
 - The card survives a reload and a server restart, and can still be answered.
-- The agent needs you while the card is open, as with a permission card: the overview card has Allow and Don’t allow too, and a notice says so once per card.
+- The agent needs you while the card is open, as with a permission card: its ring in the sidebar pulses and goes to the card, and a notice says so once per card.
 - Amber border while open; both buttons work by keyboard. The first press turns both off, so a double click answers once. Focus then moves to the composer of the thread the card is in (the panel’s, in a thread panel).
 - In a browser without per-frame activation (`MessageEvent.userActivation`, which Chrome has), every send waits on this card.
 - Sends allowed on a card don’t count against the next minute.
@@ -29,7 +29,7 @@ Each message an app sends shows in your voice (“Sent from Spam: …”) and st
 4. Answer the card with the keyboard (Tab to Allow, then Enter). Repeat step 3, reload the page, restart the server, and answer Don’t allow.
 
 **Pass if:**
-- The overview shows the agent as needing you, with the card’s buttons, until you answer.
+- The sidebar shows the agent as needing you until you answer.
 - The first 5 show as lines in your voice and the sixth waits on the card, by keyboard or mouse.
 - Allow sends the waiting lines; Don’t allow sends none.
 - An open card is still there, and still works, after a reload and a restart.

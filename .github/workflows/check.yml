@@ -97,6 +97,8 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           POSTBOX_STREAM_LAG: 300
+          # Its own report, so it doesn’t overwrite the lag pass’s (#317).
+          PB_REPORT: check-logs/lag/playwright-repeat.json
       - if: always()
         uses: actions/upload-artifact@v4
         with:

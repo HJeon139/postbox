@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.33.0 (2026-10-25)
+
+### Features
+
+- **archive:** sessions are archived and deleted with their conversation; nothing archives itself
+- **wakes:** raise the wake limit from 3 to 10
+- **shell:** ring-only to the ask, and no overview, Archived page or top-bar rings
+- **reactions:** all five inline beside Reply in thread, with who reacted
+
+### Fixes
+
+- **shell:** deleting a conversation's only agent leaves it, not back into it
+- **css:** the live regions don't make the page taller than the app
+
 ## 0.32.4 (2026-10-25)
 
 ### Fixes

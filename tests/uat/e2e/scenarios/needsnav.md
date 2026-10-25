@@ -19,4 +19,4 @@ Ask @critic which of two load formats it would pick for the logs, Parquet or com
 - triggers: side-thread-need
 - steps: 8
 
-Open a topic thread on @researcher’s write-up and ask it, there, to pick between two retention periods for the raw logs, 90 days or a year, and to let you choose. Don’t answer in the thread yet. Go to the overview, then go to that ask by clicking @researcher’s ring on the overview: the topic thread should open beside the conversation, with the ask focused. Go back to the overview and do it once more with the “Next that needs you” button. Then answer it.
+Open a topic thread on @researcher’s write-up and ask it, there, to pick between two retention periods for the raw logs, 90 days or a year, and to let you choose. Don’t answer in the thread yet. Close the thread, then go to that ask by clicking @researcher’s ring in the Agents section (its ring, not its name, which opens its quick panel): the topic thread should open beside the conversation, with the ask focused. Close the thread again and do it once more with the “Next that needs you” button. Then answer it.
