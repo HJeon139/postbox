@@ -19,7 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4437, 9637);
@@ -83,8 +83,8 @@ async function click(expr) {
     await page.send('Input.dispatchMouseEvent', { type: t, x: r.x, y: r.y, button: t === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
   await settle();
 }
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
-const byText = (sel, text) => `[...document.querySelectorAll(${JSON.stringify(sel)})].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
+const byText = (sel, text) => `[...document.querySelectorAll(${js(sel)})].find((n) => n.textContent.includes(${js(text)}))`;
 const text = (expr) => page.evaluate(`(${expr})?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
 const composer = q('#composer-input');
 const clearComposer = () => page.evaluate(`(() => { const t = ${composer}; t.value = ''; t.dispatchEvent(new Event('input')); t.focus(); })()`);

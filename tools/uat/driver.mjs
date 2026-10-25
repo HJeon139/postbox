@@ -4,16 +4,16 @@
 // and click them as a person would.
 
 import { writeFile } from 'node:fs/promises';
-import { sleep } from '../cdp.mjs';
+import { js, sleep } from '../cdp.mjs';
 import { review } from './driver-review.mjs';
-import { ITEM, J } from './selectors.mjs';
+import { ITEM } from './selectors.mjs';
 
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
 export const JOBS_ANSWERS = { stop: ['Stop it too', 'Stop them too'], keep: ['Keep running'] };
 /** The visible answer button of Postbox’s ask: in its row above the composer, or outside any agent block or app. */
 const JOBS_BUTTON = (answer) =>
-  `[...document.querySelectorAll('button')].find((b) => b.offsetParent !== null && (b.closest('.stop-ask') || !b.closest('[data-key]')) && ${J(JOBS_ANSWERS[answer] ?? [])}.includes(b.textContent.replace(/\\s+/g, ' ').trim()))`;
+  `[...document.querySelectorAll('button')].find((b) => b.offsetParent !== null && (b.closest('.stop-ask') || !b.closest('[data-key]')) && ${js(JOBS_ANSWERS[answer] ?? [])}.includes(b.textContent.replace(/\\s+/g, ' ').trim()))`;
 /** The text of the ask a button belongs to. */
 const JOBS_BOX = (b) =>
   `((${b}.closest('.stop-ask, [role=dialog], [role=alertdialog], .dialog, .toast') ?? ${b}.parentElement)?.innerText ?? ${b}.textContent).replace(/\\s+/g, ' ').trim().slice(0, 400)`;
@@ -39,7 +39,7 @@ export function driver(page) {
   }
   // Matches a control by its visible text or its label, since icon buttons (Expand table) have only a label.
   const byText = (scope, sel, text) =>
-    `[...(${scope}?.querySelectorAll(${J(sel)}) ?? [])].find((e) => e.offsetParent !== null && (e.textContent + ' ' + (e.getAttribute('aria-label') ?? '')).replace(/\\s+/g, ' ').trim().toLowerCase().includes(${J(String(text).toLowerCase())}))`;
+    `[...(${scope}?.querySelectorAll(${js(sel)}) ?? [])].find((e) => e.offsetParent !== null && (e.textContent + ' ' + (e.getAttribute('aria-label') ?? '')).replace(/\\s+/g, ' ').trim().toLowerCase().includes(${js(String(text).toLowerCase())}))`;
   const press = async (key) => {
     const codes = { Enter: 13, Escape: 27, Tab: 9 };
     for (const type of ['keyDown', 'keyUp'])
@@ -109,7 +109,7 @@ export function driver(page) {
       await clickAt(byText('document', '.menu .mi, [role=menuitem]', project), `“${project}” in the Postbox menu`);
       await sleep(500);
       const room = handles.length > 1;
-      await clickAt(`document.querySelector('[aria-label=${J(room ? 'New room' : 'New conversation')}]')`, 'the new conversation button');
+      await clickAt(`document.querySelector('[aria-label=${js(room ? 'New room' : 'New conversation')}]')`, 'the new conversation button');
       await typeInto(`document.getElementById('nt-title')`, title, 'the conversation title');
       // The sheet preselects one agent for a direct message, so set each chip to what's wanted rather than toggling it.
       const chips = await ev(
@@ -153,14 +153,14 @@ export function driver(page) {
       for (const { field, value } of fills) {
         const control = `(() => {
           const item = ${ITEM(key)};
-          const label = [...item.querySelectorAll('label')].find((l) => l.textContent.toLowerCase().includes(${J(String(field).toLowerCase())}));
+          const label = [...item.querySelectorAll('label')].find((l) => l.textContent.toLowerCase().includes(${js(String(field).toLowerCase())}));
           return label?.htmlFor ? document.getElementById(label.htmlFor) : label?.querySelector('input, textarea, select');
         })()`;
         const tag = await ev(`${control}?.tagName ?? null`);
         if (!tag) throw new Error(`Couldn’t find the field “${field}”.`);
         if (tag === 'SELECT')
           await ev(
-            `(() => { const s = ${control}; const o = [...s.options].find((o) => o.textContent.toLowerCase().includes(${J(String(value).toLowerCase())})); if (o) { s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); s.dispatchEvent(new Event('input', { bubbles: true })); } })()`,
+            `(() => { const s = ${control}; const o = [...s.options].find((o) => o.textContent.toLowerCase().includes(${js(String(value).toLowerCase())})); if (o) { s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); s.dispatchEvent(new Event('input', { bubbles: true })); } })()`,
           );
         else await typeInto(control, String(value), `the field “${field}”`);
       }
@@ -206,7 +206,7 @@ export function driver(page) {
       try {
         await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
         await clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Personas'), 'the Personas tab');
-        await clickAt(`document.querySelector(${J(`.dialog [aria-label="Edit @${h}"]`)})`, `Edit @${h}`);
+        await clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit @${h}"]`)})`, `Edit @${h}`);
         await page.waitFor(`!!document.getElementById('pe-d')`, { label: 'the persona editor' });
         await sleep(300);
         const editor = await read();
@@ -246,7 +246,7 @@ export function driver(page) {
       const fresh = await appContext(key);
       const r = await inApp(
         fresh,
-        `(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=tab], label, summary, option, li, td, text, g')].find((e) => e.textContent.trim().toLowerCase().includes(${J(String(text).toLowerCase())})); if (!el) return null; if (el.tagName === 'OPTION') { const s = el.closest('select'); s.value = el.value; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); return { selected: true }; } const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
+        `(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=tab], label, summary, option, li, td, text, g')].find((e) => e.textContent.trim().toLowerCase().includes(${js(String(text).toLowerCase())})); if (!el) return null; if (el.tagName === 'OPTION') { const s = el.closest('select'); s.value = el.value; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); return { selected: true }; } const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
       );
       if (!r) throw new Error(`Couldn’t find “${text}” in the app.`);
       // A native dropdown’s options can’t be clicked where they’re drawn, so the option is chosen the way a person’s pick ends.
@@ -339,13 +339,13 @@ export function driver(page) {
      */
     async agentPanel(handle, set = {}) {
       await clickAt(
-        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${J(`@${handle}`)}))`,
+        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${js(`@${handle}`)}))`,
         `@${handle}’s row in the Agents section`,
       );
       await page.waitFor(`!!document.querySelector('.dialog [role=radiogroup], .dialog [role=switch]')`, { label: 'the quick panel' });
       try {
         const group = (label) =>
-          `[...document.querySelectorAll('.dialog [role=radiogroup]')].find((g) => (g.getAttribute('aria-label') ?? '').toLowerCase().startsWith(${J(label.toLowerCase())}))`;
+          `[...document.querySelectorAll('.dialog [role=radiogroup]')].find((g) => (g.getAttribute('aria-label') ?? '').toLowerCase().startsWith(${js(label.toLowerCase())}))`;
         for (const [label, value] of [
           ['Model', set.model],
           ['Effort', set.effort],
@@ -353,7 +353,7 @@ export function driver(page) {
         ]) {
           if (!value) continue;
           await clickAt(
-            `[...(${group(label)}?.querySelectorAll('[role=radio]') ?? [])].find((r) => r.textContent.toLowerCase().includes(${J(String(value).toLowerCase())}))`,
+            `[...(${group(label)}?.querySelectorAll('[role=radio]') ?? [])].find((r) => r.textContent.toLowerCase().includes(${js(String(value).toLowerCase())}))`,
             `“${value}” under ${label}`,
           );
         }
@@ -423,7 +423,7 @@ export function driver(page) {
       await clickAt(byText(`document.querySelector('.rpane .workpane')`, 'button', 'Full screen'), 'Work’s full-screen button');
       await sleep(600);
       await clickAt(
-        `[...document.querySelectorAll('.pane-full button[id^=restore-]')].find((b) => (b.closest('li, tr, section, div')?.textContent ?? '').includes(${J(file)}))`,
+        `[...document.querySelectorAll('.pane-full button[id^=restore-]')].find((b) => (b.closest('li, tr, section, div')?.textContent ?? '').includes(${js(file)}))`,
         `Restore… for ${file}`,
       );
       await clickAt(`document.querySelector('.dialog .btn.danger')`, 'the confirm button');
@@ -525,7 +525,7 @@ export function driver(page) {
         const input = panel ? `document.getElementById('side-input')` : `document.getElementById('composer-input')`;
         await typeInto(input, String(text), 'the composer');
         await press('Enter');
-        const row = `[...(${composer}?.querySelectorAll('.queued:not(.stop-ask)') ?? [])].find((r) => r.textContent.includes(${J(String(text).trim().slice(0, 60))}))`;
+        const row = `[...(${composer}?.querySelectorAll('.queued:not(.stop-ask)') ?? [])].find((r) => r.textContent.includes(${js(String(text).trim().slice(0, 60))}))`;
         for (let i = 0; i < 20 && !(await ev(`!!${row}`)); i++) await sleep(150);
         if (await ev(`!!${row}`)) {
           await clickAt(byText(row, 'button', 'Send now'), 'Send now on the queued message');

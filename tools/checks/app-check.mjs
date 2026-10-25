@@ -14,7 +14,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch, sleep } from '../cdp.mjs';
+import { js, launch, sleep } from '../cdp.mjs';
 import { record as check, finish, ports } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4910, 10210);
@@ -189,7 +189,7 @@ try {
   // How text-overlap measures, on its own in a blank page: an overlap counts only when it’s there both times.
   await page.goto('about:blank');
   const layout = await readFile(new URL('../../app/kit/check-layout.js', import.meta.url), 'utf8');
-  await page.evaluate(`window.__pbCheck = {}; (0, eval)(${JSON.stringify(layout)});`);
+  await page.evaluate(`window.__pbCheck = {}; (0, eval)(${js(layout)});`);
   await page.evaluate(
     `document.body.innerHTML = '<p style="position:absolute;left:0;top:0;margin:0">Still label</p><p style="position:absolute;left:4px;top:2px;margin:0">Stays here</p><p id="m" style="position:absolute;left:0;top:60px;margin:0">Moving label</p><p style="position:absolute;left:4px;top:62px;margin:0">Moved from</p>'`,
   );

@@ -16,7 +16,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch } from '../cdp.mjs';
+import { js, launch } from '../cdp.mjs';
 import { finish, ports, record } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(5400, 10700);
@@ -58,7 +58,7 @@ async function inside(session, expr) {
 }
 /** The CDP session of the app frame the selector finds. */
 async function frameOf(selector) {
-  const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(selector)})` });
+  const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector(${js(selector)})` });
   assert.ok(result.objectId, `No frame: ${selector}`);
   const { node } = await page.send('DOM.describeNode', { objectId: result.objectId });
   const session = page.frameSession(node.frameId);
@@ -104,7 +104,7 @@ tools.show_app({
 // Every element of a control (a button, a radio, a switch, a checkbox) bigger than a glyph whose background is
 // amber; and, for each selected or on control, the colors that mark it.
 const amberIn = (sel = 'body') => `(() => {
-  const root = document.querySelector(${JSON.stringify(sel)});
+  const root = document.querySelector(${js(sel)});
   const probe = (v) => { const p = document.createElement('span'); p.style.background = v; document.body.append(p); const c = getComputedStyle(p).backgroundColor; p.remove(); return c; };
   const accent = probe('var(--accent)');
   const amber = new Set([accent, probe('var(--on)')]);

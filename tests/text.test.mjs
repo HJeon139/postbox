@@ -85,6 +85,13 @@ test('#196: a fence indented in a list closes, inline backticks aren’t a fence
   assert.equal(plainText('Run `__init__.py` now.'), 'Run __init__.py now.');
 });
 
+test('#344: a spoken fence closes only on its own character, at least as long as it opened', () => {
+  const tilde = 'Here:\n~~~~\n```\nnot. said.\n~~~~~\nDone.';
+  assert.deepEqual(spokenSentences(tilde, 0, true).sentences, ['Here:', 'Done.']);
+  const open = 'Here:\n````\n```\nnot said.';
+  assert.deepEqual(spokenSentences(open, 0).sentences, ['Here:'], 'a shorter run doesn’t close it');
+});
+
 test('#196: a table is heard as its cells, and a link whose text has a full stop as one sentence, without its URL', () => {
   const table = 'Results:\n| Book | Score |\n|---|---|\n| **Emma** | 3.5 |\nDone.';
   assert.deepEqual(spokenSentences(table, 0, true).sentences, ['Results:', 'Book, Score', 'Emma, 3.5', 'Done.']);

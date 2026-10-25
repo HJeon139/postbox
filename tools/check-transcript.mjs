@@ -13,7 +13,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4580, 9780);
@@ -44,8 +44,8 @@ async function click(expr, { times = 1 } = {}) {
     for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: 'left', clickCount: 1 });
   await settle();
 }
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
-const byText = (sel, text) => `[...document.querySelectorAll(${JSON.stringify(sel)})].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
+const byText = (sel, text) => `[...document.querySelectorAll(${js(sel)})].find((n) => n.textContent.includes(${js(text)}))`;
 // How far the view is from the end of the conversation, and of the panel.
 const gap = () => page.evaluate('Math.round(document.scrollingElement.scrollHeight - scrollY - innerHeight)');
 const panelGap = () => page.evaluate(`(() => { const b = ${q('.sp-body')}; return b ? Math.round(b.scrollHeight - b.scrollTop - b.clientHeight) : null; })()`);
@@ -99,7 +99,7 @@ async function stream(t, se, text) {
     await sleep(15);
   }
   rt.patchItem(t.id, it.id, { status: 'done' });
-  const end = JSON.stringify(text.trim().slice(-24));
+  const end = js(text.trim().slice(-24));
   await page.waitFor(
     `(() => { const n = document.querySelector('[data-key="${it.id}"]'); return n && !n.querySelector('.caret') && n.querySelector('.md')?.textContent.includes(${end}); })()`,
     {
@@ -135,11 +135,10 @@ async function open(hash) {
   else {
     await page.synced(store.state.seq);
     const pane = side ? `!!document.querySelector('.sidepanel .transcript[data-thread="${side}"]')` : `!document.querySelector('.sidepanel')`;
-    await page.evaluate(`(() => { const a = document.querySelector('.app'); if (a) a.dataset.old = '1'; location.hash = ${JSON.stringify(hash)}; })()`);
-    await page.waitFor(
-      `document.querySelector('.app') && (!document.querySelector('.app').dataset.old || (location.hash === ${JSON.stringify(hash)} && ${pane}))`,
-      { label: `the view for ${hash}` },
-    );
+    await page.evaluate(`(() => { const a = document.querySelector('.app'); if (a) a.dataset.old = '1'; location.hash = ${js(hash)}; })()`);
+    await page.waitFor(`document.querySelector('.app') && (!document.querySelector('.app').dataset.old || (location.hash === ${js(hash)} && ${pane}))`, {
+      label: `the view for ${hash}`,
+    });
   }
   if (thread) await page.waitFor(`document.querySelector('.transcript[data-thread="${thread}"] .item')`, { label: 'the transcript' });
   if (side) await page.waitFor(`document.querySelector('.sidepanel .transcript[data-thread="${side}"]')`, { label: 'the panel’s transcript' });

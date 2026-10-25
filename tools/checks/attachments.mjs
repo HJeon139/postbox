@@ -19,7 +19,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch, sleep } from '../cdp.mjs';
+import { js, launch, sleep } from '../cdp.mjs';
 import { pageCookie } from '../demo.mjs';
 import { finish, ports, record } from '../harness.mjs';
 
@@ -54,7 +54,7 @@ const DROP = `window.__drop = async (selector, kind, name) => {
   return { allowed: fire('dragover'), taken: fire('drop') };
 };`;
 
-const chips = (scope) => `[...document.querySelectorAll(${JSON.stringify(`${scope} .composer .attachments .att`)})].map((n) => n.textContent)`;
+const chips = (scope) => `[...document.querySelectorAll(${js(`${scope} .composer .attachments .att`)})].map((n) => n.textContent)`;
 
 try {
   page = await launch({ port: CHROME_PORT });

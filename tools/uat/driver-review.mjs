@@ -1,7 +1,8 @@
 // The UAT driver’s answer to a review block, as a person gives it. Moved out of tools/uat/driver.mjs; the driver’s own
 // helpers it reads come in as its first parameter: ev, clickAt, byText and typeInto.
 
-import { ITEM, J } from './selectors.mjs';
+import { js } from '../cdp.mjs';
+import { ITEM } from './selectors.mjs';
 
 /**
  * Answers a review block as a person does: a draft comment on each line, in Lines (its gutter button, the box, “Add
@@ -20,8 +21,8 @@ export async function review({ ev, clickAt, byText, typeInto }, key, { verdict =
     const n = String(line)
       .replace(/^line\s*/i, '')
       .trim();
-    await clickAt(`${ITEM(key)}?.querySelector(${J(`button[aria-label="Comment on line ${n}"]`)})`, `line ${n}’s comment button`);
-    const box = `${ITEM(key)}?.querySelector(${J(`textarea[aria-label="Comment on line ${n}"]`)})`;
+    await clickAt(`${ITEM(key)}?.querySelector(${js(`button[aria-label="Comment on line ${n}"]`)})`, `line ${n}’s comment button`);
+    const box = `${ITEM(key)}?.querySelector(${js(`textarea[aria-label="Comment on line ${n}"]`)})`;
     await typeInto(box, String(text), `the comment box on line ${n}`);
     await clickAt(byText(ITEM(key), 'button', 'Add draft comment'), '“Add draft comment”');
   }

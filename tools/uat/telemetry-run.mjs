@@ -4,7 +4,7 @@
 // findings, its proposals under telemetry, and run.json gets what the run says about telemetry. The telemetry scenario
 // starts recording itself (`- telemetry: manual`), and plants canaries made fresh for the run (`- seed: canaries`).
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { LIVE_INPUTS, liveChecks } from '../../server/room-checks.mjs';
@@ -23,7 +23,8 @@ export const telemetryEnv = (scenario, dir, opt) => ({
 });
 
 const WORDS = ['brannoch', 'quillmorph', 'zorvex', 'tramontane', 'vellichor', 'ostrander', 'pelliwick', 'marrowgate', 'thistlebeck', 'corvane'];
-const pick = (n) => [...randomBytes(n)].map((b) => WORDS[b % WORDS.length]);
+// randomInt, not a byte modulo the list’s length, which favors the first words (#347).
+const pick = (n) => Array.from({ length: n }, () => WORDS[randomInt(WORDS.length)]);
 
 /**
  * Canaries made fresh for the run, so none is in a model’s training data or Postbox’s vocabulary (U2), planted in the

@@ -14,7 +14,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4795, 9995, { span: 2 });
@@ -64,8 +64,8 @@ const focused = () =>
   page.evaluate(
     `(() => { const a = document.activeElement; if (!a || a === document.body) return 'body'; return (a.getAttribute('role') ?? a.tagName.toLowerCase()) + ': ' + (a.getAttribute('aria-label') ?? a.textContent.trim().replace(/\\s+/g, ' ')).slice(0, 60); })()`,
   );
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
-const byText = (sel, text) => `[...document.querySelectorAll(${JSON.stringify(sel)})].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
+const byText = (sel, text) => `[...document.querySelectorAll(${js(sel)})].find((n) => n.textContent.includes(${js(text)}))`;
 const threadNamed = (title) => Object.values(store.state.threads).find((t) => t.title === title);
 
 async function check(name, fn) {
@@ -92,7 +92,7 @@ async function open(hash) {
   if (loaded) {
     // What the check changed on the server must have reached the page first, or it shows what was there before.
     await page.synced(store.state.seq);
-    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+    await page.evaluate(`location.hash = ${js(hash)}`);
   } else await page.goto(`${app.origin}/${hash}`);
   loaded = true;
   await page.waitFor(`document.querySelector('header.topbar')`);

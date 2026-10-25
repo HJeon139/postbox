@@ -16,7 +16,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4440, 9640, { span: 2 });
@@ -50,8 +50,7 @@ rt.updateSession(sessionOf('indexer').id, { lastModel: 'claude-sonnet-5-5', last
 
 const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
 /** An agent’s row in the sidebar’s Agents section (#105): the button that opens its quick panel. */
-const row = (handle) =>
-  `[...document.querySelectorAll('.rail .agent-row .agent-btn')].find((c) => c.querySelector('b')?.textContent === ${JSON.stringify(`@${handle}`)})`;
+const row = (handle) => `[...document.querySelectorAll('.rail .agent-row .agent-btn')].find((c) => c.querySelector('b')?.textContent === ${js(`@${handle}`)})`;
 /** The text a person sees in an element (what’s rendered, not what’s hidden), as one line. */
 const seenText = (expr) => `(() => { const el = ${expr}; return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null; })()`;
 const seen = (expr) => page.evaluate(seenText(expr));
@@ -98,7 +97,7 @@ async function open(hash) {
   if (loaded) {
     // What the check changed on the server must have reached the page first, or it shows what was there before.
     await page.synced(store.state.seq);
-    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+    await page.evaluate(`location.hash = ${js(hash)}`);
   }
   // Not page.goto(): it waits for an animation frame, which headless Chrome can hold back.
   else await page.send('Page.navigate', { url: `${app.origin}/${hash}` });

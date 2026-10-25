@@ -8,6 +8,15 @@ import { isSafeUrl, LOCAL_HTTP, onPageOrigin } from './urls.mjs';
 const LABEL_MAX = 1000;
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
+/** HTML as text, its tags removed. One pass of this pattern leaves none; the loop says so where CodeQL can see it (#345). */
+export function stripTags(html) {
+  let text = String(html);
+  for (let was = ''; was !== text; ) {
+    was = text;
+    text = text.replace(/<[^>]+>/g, '');
+  }
+  return text;
+}
 
 // ── Inline ──────────────────────────────────────────────────────────────────────────────
 

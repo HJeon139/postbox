@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { codexApproval } from '../server/adapters/codex.mjs';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4435, 9635);
@@ -88,8 +88,8 @@ async function click(expr) {
     await page.send('Input.dispatchMouseEvent', { type: t, x: r.x, y: r.y, button: t === 'mouseMoved' ? 'none' : 'left', clickCount: 1 });
   await settle();
 }
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
-const byText = (sel, text) => `[...document.querySelectorAll(${JSON.stringify(sel)})].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
+const byText = (sel, text) => `[...document.querySelectorAll(${js(sel)})].find((n) => n.textContent.includes(${js(text)}))`;
 /** Clicks a menu item once the menu has opened: in a long run Chrome can be slow to paint it. */
 async function openMenuItem(label) {
   await page.waitFor(`!!${byText('.menu button.mi', label)}`, { label: `the menu item “${label}”` });
@@ -418,7 +418,7 @@ await check('#66 a folder added from the panel’s folder picker is listed for t
 });
 
 await check('#66 the persona editor opens the same panel', async () => {
-  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(persona.id)}))`);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${js(persona.id)}))`);
   await page.waitFor(`!!document.getElementById('pe-perms')`, { label: 'the persona editor’s Permissions…' });
   await click(q('#pe-perms'));
   await page.waitFor(

@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { js } from './cdp.mjs';
 import { begin, check, click, conv, end, fresh, hash, ids, page, q, server, settle } from './pane-check.mjs';
 
 // No gh, so File issue takes the copy path; and a classifier that answers at once, labeling nothing.
@@ -21,7 +22,7 @@ async function enter() {
     await page.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
   await settle();
 }
-const menuItem = (label) => `[...document.querySelectorAll('.menu [role=menuitem]')].find((b) => b.textContent.includes(${JSON.stringify(label)}))`;
+const menuItem = (label) => `[...document.querySelectorAll('.menu [role=menuitem]')].find((b) => b.textContent.includes(${js(label)}))`;
 async function menu(label) {
   await click(q('#conversation-actions'));
   await page.waitFor(menuItem(label), { label: `“${label}” in the ⋯ menu` });
@@ -35,7 +36,7 @@ async function tap(expr) {
   await settle();
   await click(expr);
 }
-const button = (text) => `[...document.querySelectorAll('${VIEW} button')].find((b) => b.textContent.includes(${JSON.stringify(text)}))`;
+const button = (text) => `[...document.querySelectorAll('${VIEW} button')].find((b) => b.textContent.includes(${js(text)}))`;
 /** Whether focus is on a control in the Telemetry view, not dropped to the page. */
 const focusInView = () => page.evaluate(`!!document.activeElement?.closest('${VIEW}') && /^(BUTTON|INPUT|SUMMARY)$/.test(document.activeElement.tagName)`);
 const shownHash = () => page.evaluate(`(/sha256 ([0-9a-f]{64})/.exec(${q('.tv-hash')}?.textContent ?? '') ?? [])[1] ?? null`);
@@ -44,7 +45,7 @@ async function axe(include) {
   if (!axeIn) await page.evaluate(`${AXE};0`);
   axeIn = true;
   return page.evaluate(
-    `axe.run({ include: [[${JSON.stringify(include)}]] }, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }).then((r) => r.violations.map((v) => v.id + ': ' + v.help))`,
+    `axe.run({ include: [[${js(include)}]] }, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }).then((r) => r.violations.map((v) => v.id + ': ' + v.help))`,
   );
 }
 
@@ -72,7 +73,7 @@ await check('R18: Telemetry swaps in for Work, the Work button brings Work back,
 });
 
 await check('R18: a reload at ?telemetry keeps the view, with Work remembered', async () => {
-  await page.evaluate(`location.hash = ${JSON.stringify(conv('?telemetry'))}`);
+  await page.evaluate(`location.hash = ${js(conv('?telemetry'))}`);
   await page.reload();
   await page.waitFor(q(VIEW), { label: 'the Telemetry view after a reload' });
   assert.match(await hash(), /telemetry/);
@@ -94,12 +95,12 @@ await check('R18: a message in the room leaves the history ticked; Make report; 
   assert.ok(await focusInView(), 'focus stayed in the view through Make report');
   const before = await shownHash();
   const id = await page.evaluate(`${q('.tv-lines button[aria-label^="Leave out line"]')}.id`);
-  await page.evaluate(`document.getElementById(${JSON.stringify(id)}).focus()`);
+  await page.evaluate(`document.getElementById(${js(id)}).focus()`);
   await enter();
-  await page.waitFor(`(/sha256 ([0-9a-f]{64})/.exec(${q('.tv-hash')}?.textContent ?? '') ?? [])[1] !== ${JSON.stringify(before)}`, { label: 'the new hash' });
+  await page.waitFor(`(/sha256 ([0-9a-f]{64})/.exec(${q('.tv-hash')}?.textContent ?? '') ?? [])[1] !== ${js(before)}`, { label: 'the new hash' });
   assert.equal(await page.evaluate('document.activeElement.id'), id, 'focus stayed on the toggle');
-  assert.equal(await page.evaluate(`document.getElementById(${JSON.stringify(id)}).getAttribute('aria-pressed')`), 'true');
-  assert.match(await page.evaluate(`document.getElementById(${JSON.stringify(id)}).getAttribute('aria-label')`), /^Leave out line \d+$/, 'one name');
+  assert.equal(await page.evaluate(`document.getElementById(${js(id)}).getAttribute('aria-pressed')`), 'true');
+  assert.match(await page.evaluate(`document.getElementById(${js(id)}).getAttribute('aria-label')`), /^Leave out line \d+$/, 'one name');
   assert.deepEqual(await axe(VIEW), []);
 });
 
@@ -150,7 +151,7 @@ await check('R5: the header’s badge adds no listener that stays, on the Thread
   const threads = await listeners();
   await churn();
   assert.ok((await listeners()) <= threads, 'the Threads page');
-  await page.evaluate(`location.hash = ${JSON.stringify(conv(''))}`);
+  await page.evaluate(`location.hash = ${js(conv(''))}`);
   await page.waitFor(q('#recording-badge'), { label: 'the conversation’s badge' });
   const here = await listeners();
   await churn();

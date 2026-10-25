@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
 import { expireWait } from '../../server/permission-cards.mjs';
-import { launch } from '../cdp.mjs';
+import { js, launch } from '../cdp.mjs';
 import { finish, ports, record } from '../harness.mjs';
 import { ALLOW_ONCE_TRIGGERS } from '../uat/allowonce-triggers.mjs';
 import { readUi } from '../uat/run-files.mjs';
@@ -61,7 +61,7 @@ async function click(expr) {
   await settle();
 }
 const text = (expr) => page.evaluate(`(${expr})?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
-const byText = (sel, text) => `[...document.querySelectorAll(${JSON.stringify(sel)})].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+const byText = (sel, text) => `[...document.querySelectorAll(${js(sel)})].find((n) => n.textContent.includes(${js(text)}))`;
 // A time budget, not a count of tries: with other checks running beside it, a count runs out (#162).
 const until = async (fn, label, timeout = 15000) => {
   for (const end = Date.now() + timeout; Date.now() < end; ) {

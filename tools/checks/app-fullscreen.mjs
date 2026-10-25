@@ -12,7 +12,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch, sleep } from '../cdp.mjs';
+import { js, launch, sleep } from '../cdp.mjs';
 import { record as check, finish, ports } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4413, 9613);
@@ -179,7 +179,7 @@ try {
   await go(`#/t/${t2.id}`);
   tools2.show_app({ id: 'grow', title: 'Grow', code: GROW, permissions: [] });
   tools2.show_app({ id: 'own-escape', title: 'Own escape', code: OWN_ESCAPE, permissions: [] });
-  const box = (title) => `[...document.querySelectorAll('.appframe')].find((n) => n.querySelector('.title')?.textContent === ${JSON.stringify(title)})`;
+  const box = (title) => `[...document.querySelectorAll('.appframe')].find((n) => n.querySelector('.title')?.textContent === ${js(title)})`;
   const btnOf = (title) => `${box(title)}?.querySelector('.app-bar button.icon')`;
   const frameOf = (title) => `${box(title)}?.querySelector('iframe.app-iframe')`;
   for (const id of ['grow', 'own-escape']) await until(() => ['passed', 'note'].includes(rt.s.apps[id]?.check.status), `${id} to pass its check`);
