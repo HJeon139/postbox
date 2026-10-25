@@ -33,3 +33,9 @@ export function tooLongToSend(what, text) {
   const n = (k) => k.toLocaleString('en-US');
   return { ok: false, message: `${what} is up to ${n(SENDING.message)} characters, and this one has ${n(text.length)}, so nothing was sent. Send less.` };
 }
+/** A message waiting in a conversation’s queue, or a 404: an edit, a removal or a Send now of one that isn’t there does nothing (#352). */
+export function queuedIn(t, queueId) {
+  const q = (t.queue ?? []).find((x) => x.id === queueId);
+  if (!q) throw httpError(404, 'That queued message was already sent or removed.');
+  return q;
+}

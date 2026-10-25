@@ -78,10 +78,11 @@ const BUILDERS = {
 
   form(b, action, v) {
     if (action !== 'submit') return { ok: false, error: 'A form only accepts the “submit” action.' };
+    // Field ids are the agent’s, and constructor or toString is a fine one: only the values sent count (#352).
     const out = {},
       fieldErrors = {};
     for (const f of b.fields) {
-      const r = checkField(f, v[f.id]);
+      const r = checkField(f, Object.hasOwn(v, f.id) ? v[f.id] : undefined);
       if (r.error) fieldErrors[f.id] = r.error;
       else if (r.value !== undefined) out[f.id] = r.value;
     }

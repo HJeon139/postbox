@@ -9,9 +9,6 @@
  */
 export const map = (entries = {}) => Object.assign(Object.create(null), entries);
 
-/** The collections of records by id, each a map(). */
-const MAPS = ['projects', 'personas', 'boilerplates', 'threads', 'sessions', 'items', 'glossary', 'apps', 'files', 'datasets', 'schedules', 'work'];
-
 export function emptyState() {
   return {
     version: 1,
@@ -33,6 +30,9 @@ export function emptyState() {
     work: map(),
   };
 }
+
+/** The collections of records by id: every map() in an empty state. */
+const MAPS = Object.entries(emptyState()).flatMap(([k, v]) => (v && typeof v === 'object' && Object.getPrototypeOf(v) === null ? [k] : []));
 
 /** A state read from JSON (a snapshot, /api/state), with its collections and each conversation’s glossary as map()s. */
 export function ownState(s) {
