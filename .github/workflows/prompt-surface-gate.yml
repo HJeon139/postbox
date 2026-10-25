@@ -138,13 +138,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # cancelled() is allowed only in an `if`, not in `env`: there it makes the whole workflow invalid, and no run
+      # starts.
+      - if: cancelled()
+        run: |
+          echo "::error::A newer run of the gate replaced this one, after an edit or a push. That run's result is the one that counts."
+          exit 1
       - env:
-          CANCELLED: ${{ cancelled() }}
           PATHS: ${{ needs.paths.result }}
           TOUCHED: ${{ needs.paths.outputs.touched }}
           APPROVE: ${{ needs.approve.result }}
         run: |
-          if [ "$CANCELLED" = true ] || [ "$PATHS" = cancelled ] || [ "$APPROVE" = cancelled ]; then
+          if [ "$PATHS" = cancelled ] || [ "$APPROVE" = cancelled ]; then
             echo "::error::A newer run of the gate replaced this one, after an edit or a push. That run's result is the one that counts."
             exit 1
           fi

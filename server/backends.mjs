@@ -48,7 +48,7 @@ export async function registerBackends(adapters, { dataDir, demo, probes }) {
     });
   // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
   const agy = real ? await look.agy() : null;
-  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, models: await look.agyModels() }));
+  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot, models: await look.agyModels(), version: agy }));
   const codex = real ? await look.codex() : null;
   if (real) adapters.register(new CodexAdapter({ workRoot, models: codex ? await look.codexModels() : [] }), { here: !!codex });
   return { real, claude, kiro, agy, codex };

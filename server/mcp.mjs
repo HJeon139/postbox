@@ -32,16 +32,17 @@ const PROTOCOL = '2025-06-18';
  * Handles one JSON-RPC message (or a batch). Returns the response body, or null for notifications.
  * @param {import('./runtime.mjs').Runtime} rt @param {string|null} sessionId @param {any} body
  * @param {string|null} [turnToken]  the turn’s token from the URL, if it carried one
+ * @param {AbortSignal|import('node:http').ServerResponse|null} [closeOrSignal]  aborted/closed when the HTTP client disconnects
  */
-export async function handleMcp(rt, sessionId, body, turnToken = null) {
+export async function handleMcp(rt, sessionId, body, turnToken = null, closeOrSignal = null) {
   if (Array.isArray(body)) {
-    const out = (await Promise.all(body.map((m) => one(rt, sessionId, m, turnToken)))).filter(Boolean);
+    const out = (await Promise.all(body.map((m) => one(rt, sessionId, m, turnToken, closeOrSignal)))).filter(Boolean);
     return out.length ? out : null;
   }
-  return one(rt, sessionId, body, turnToken);
+  return one(rt, sessionId, body, turnToken, closeOrSignal);
 }
 
-async function one(rt, sessionId, msg, turnToken) {
+async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
   if (msg?.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
     return { jsonrpc: '2.0', id: msg?.id ?? null, error: { code: -32600, message: 'Not a JSON-RPC 2.0 request.' } };
   }
@@ -77,7 +78,7 @@ async function one(rt, sessionId, msg, turnToken) {
       const args = msg.params?.arguments ?? {};
       // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools.
       const tools = { ...rt.toolsFor(sessionId, rt.turns.get(sessionId) ?? null), react: (a) => reactTool(rt, rt.session(sessionId), a) };
-      if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args) : NOT_YOUR_PROMPT);
+      if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args, closeOrSignal) : NOT_YOUR_PROMPT);
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {
         // An app’s code and data files may come from files in the agent’s folder, which Postbox reads itself (#54).

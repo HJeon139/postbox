@@ -38,9 +38,9 @@ const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
     acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
   },
   'antigravity-cli': {
-    auto: 'Antigravity’s auto mode: it edits and runs commands in its sandbox, and a safety check decides the rest. Where your account doesn’t offer it, this is Ask me.',
-    ask: 'It reads in its folders and refuses edits and commands that would need asking: it can’t ask you.',
-    acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
+    auto: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
+    ask: 'It reads in its folders, and asks with a card before edits, commands, reads outside its folders, and web fetches.',
+    acceptEdits: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
   },
   codex: {
     auto: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval. Auto and Accept edits have the same Codex permissions.',
