@@ -25,3 +25,6 @@ jobs:
           fail-on-severity: moderate
           # Development dependencies too: they run on contributors’ machines and in CI.
           fail-on-scopes: runtime, development
+          # No OpenSSF Scorecard lookups: they call deps.dev for each new package, and an outage there would fail this check
+          # on a clean pull request.
+          show-openssf-scorecard: false

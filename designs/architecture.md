@@ -93,7 +93,7 @@ flowchart LR
 
 ## 4. Code quality: linters and checks
 
-**Decision.** These run locally (`npm run check`) and in continuous integration on every pull request. Every tool is a development dependency, pinned in a lockfile and never shipped.
+**Decision.** These run locally (`npm run check`) and in continuous integration on every pull request, except the two marked CI only, which are GitHub services. Every other tool is a development dependency, pinned in a lockfile and never shipped.
 
 | Check | Tool | What it enforces |
 |---|---|---|
