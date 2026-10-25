@@ -160,7 +160,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const n = anchor && nodes.get(anchor.key);
     if (!s || !n?.isConnected) return;
     const d = n.getBoundingClientRect().top - viewTop(s) - anchor.at;
-    if (Math.abs(d) >= 1) s.scrollTop += d;
+    if (Math.abs(d) < 1) return;
+    s.scrollTop += d;
+    lastTop = s.scrollTop;
   };
   const seen = () => {
     unseen = 0;
@@ -215,6 +217,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const onScroll = () => {
     const s = box();
     if (!s) return;
+    // The event for a scroll the transcript made itself, holding what you read in place, comes in a later frame, maybe
+    // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place (#297).
+    const moved = s.scrollTop !== lastTop;
     if (atEnd(s)) {
       if (!stuck) held = measure(s);
       stuck = true;
@@ -222,9 +227,19 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     // However you got near the end, there’s nothing unread below any more (#91).
     if (gapOf(s) <= PILL_ROOM) seen();
     lastTop = s.scrollTop;
-    if (!stuck) anchor = findAnchor();
+    if (stuck) return;
+    if (!moved) holdAnchor();
+    anchor = findAnchor();
   };
   const sizes = new ResizeObserver(follow);
+  // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
+  // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
+  // back, and read as you scrolling up (#297). Nothing you do scrolls between a change and this, so note where it is.
+  const changes = new MutationObserver(() => {
+    const s = box();
+    if (stuck && s && !dead) lastTop = Math.min(lastTop, s.scrollTop);
+  });
+  changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   let bound = null;
   const bind = () => {
     const s = box();
@@ -366,6 +381,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
         queueMicrotask(() => kept.delete(key));
       }
       sizes.disconnect();
+      changes.disconnect();
       bound?.removeEventListener('scroll', onScroll);
       removeEventListener('resize', follow);
     },
