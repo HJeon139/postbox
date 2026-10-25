@@ -54,7 +54,8 @@ async function conversation(page, title) {
   return { t, tools, show, checked };
 }
 const boxOf = (page, title) => page.locator('.appframe').filter({ has: page.locator('.title', { hasText: new RegExp(`^${title}$`) }) });
-const fullButton = (box) => box.locator('.app-bar button.icon').first();
+/** The app’s full-screen button, which says Exit full screen while it’s full screen. */
+const fullButton = (box) => box.getByRole('button', { name: /^(Full screen|Exit full screen)$/ });
 const overlay = (page) => page.locator('.fullscreen');
 /** The app’s own document, through its frame. */
 const contentOf = async (box) => {
