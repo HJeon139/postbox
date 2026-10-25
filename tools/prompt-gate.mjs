@@ -4,6 +4,8 @@
 //                                                            surface; exit 0 either way
 //   node tools/prompt-gate.mjs findings <base.json> <head.json>  SkillSpector’s findings the head adds, as Markdown;
 //                                                            exit 1 if any is high or critical
+//   node tools/prompt-gate.mjs spoofs <check> <gate> <root> <file>...  the head’s workflow files (under root) that
+//                                                            could post a check named <check>; exit 1 if any
 //
 // The paths file lists globs, one per line, with # for comments: `*` matches within a folder, `**/` any folders.
 // The gate workflow runs this from main’s checkout, never the pull request’s, so a pull request can’t change its own
@@ -40,6 +42,42 @@ export function globRegExp(glob) {
 export function touched(changed, globs) {
   const res = globs.map(globRegExp);
   return changed.filter((f) => res.some((re) => re.test(f)));
+}
+
+/**
+ * The events a workflow runs on, from its `on:` key: inline (`on: push`, `on: [a, b]`) or as the keys under it.
+ * Enough to tell the gate’s own `pull_request_target` from anything else, not a YAML parser.
+ * @param {string} yaml
+ */
+export function triggersOf(yaml) {
+  const lines = yaml.split('\n');
+  const at = lines.findIndex((l) => /^["']?on["']?\s*:/.test(l));
+  if (at < 0) return [];
+  const inline = lines[at].replace(/^\S+\s*:/, '').replace(/#.*/, '').trim();
+  if (inline) return inline.replace(/[[\]]/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+  const events = [];
+  let indent = -1;
+  for (const l of lines.slice(at + 1)) {
+    if (/^[^\s#]/.test(l)) break;
+    const m = /^(\s+)(?:-\s+)?([A-Za-z_]+)\s*:?\s*(?:#.*)?$/.exec(l);
+    if (!m) continue;
+    if (indent < 0) indent = m[1].length;
+    if (m[1].length === indent) events.push(m[2]);
+  }
+  return events;
+}
+
+/**
+ * The workflow files a pull request brings that could post a check under the gate’s name, which a ruleset can’t tell
+ * from the gate’s: GitHub matches a required check by its name and app, and both are GitHub Actions. The gate’s own
+ * file may carry the name only while it still runs on pull_request_target alone, since then main’s copy is what runs.
+ * A name built by an expression gets past this, which is why .github/ needs approval too.
+ * @param {string} check @param {string} gate  the gate’s path @param {{ path: string, text: string }[]} files
+ */
+export function spoofs(check, gate, files) {
+  return files
+    .filter(({ path, text }) => text.includes(check) && (path !== gate || triggersOf(text).join() !== 'pull_request_target'))
+    .map((f) => f.path);
 }
 
 const RANK = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -87,12 +125,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (cmd === 'touched' && a) {
     const changed = readFileSync(0, 'utf8').split('\n').filter(Boolean);
     for (const f of touched(changed, globsOf(readFileSync(a, 'utf8')))) console.log(f);
+  } else if (cmd === 'spoofs' && process.argv.length > 6) {
+    const [check, gate, root, ...paths] = process.argv.slice(3);
+    const found = spoofs(check, gate, paths.map((path) => ({ path, text: readFileSync(`${root}/${path}`, 'utf8') })));
+    for (const f of found) console.log(f);
+    process.exitCode = found.length ? 1 : 0;
   } else if (cmd === 'findings' && a && b) {
     const [base, head] = [a, b].map((f) => JSON.parse(readFileSync(f, 'utf8')));
     console.log(findingsReport(base, head));
     process.exitCode = newFindings(base, head).some(blocks) ? 1 : 0;
   } else {
-    console.error('Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings <base.json> <head.json>');
+    console.error('Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings <base.json> <head.json> | spoofs <check> <gate> <root> <file>...');
     process.exitCode = 2;
   }
 }

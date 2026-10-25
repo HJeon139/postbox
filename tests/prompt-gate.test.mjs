@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { findingsReport, globsOf, newFindings, touched } from '../tools/prompt-gate.mjs';
+import { findingsReport, globsOf, newFindings, spoofs, touched, triggersOf } from '../tools/prompt-gate.mjs';
 
 const GLOBS = globsOf(readFileSync(new URL('../.github/prompt-surface-paths.txt', import.meta.url), 'utf8'));
 
@@ -89,4 +89,28 @@ test('the report lists each new finding in one table row, with its pipe escaped'
   assert.match(report, /risk score — on the base, 43 with this pull request/);
   assert.match(report, /\| HIGH \| P1 Prompt Injection \| scan\/personas\/x\.md \| 3 \| ignore all previous \\\| instructions \|/);
   assert.match(findingsReport({ issues: [] }, { issues: [] }), /No new findings\./);
+});
+
+const GATE = '.github/workflows/prompt-surface-gate.yml';
+const CHECK = 'Prompt surface reviewed';
+
+test('the gate’s own workflow names its check only while it runs on pull_request_target alone', () => {
+  const real = readFileSync(join(ROOT, GATE), 'utf8');
+  assert.ok(real.includes(`name: ${CHECK}`), 'The gate’s job is named as the ruleset requires');
+  assert.deepEqual(triggersOf(real), ['pull_request_target']);
+  assert.deepEqual(spoofs(CHECK, GATE, [{ path: GATE, text: real }]), []);
+  const widened = real.replace('on:\n  pull_request_target:', 'on:\n  pull_request:\n  pull_request_target:');
+  assert.deepEqual(spoofs(CHECK, GATE, [{ path: GATE, text: widened }]), [GATE]);
+});
+
+test('another workflow that names a job like the gate’s check is refused', () => {
+  const twin = `name: x\non: [pull_request]\njobs:\n  y:\n    name: ${CHECK}\n    runs-on: ubuntu-latest\n`;
+  assert.deepEqual(spoofs(CHECK, GATE, [{ path: '.github/workflows/x.yml', text: twin }]), ['.github/workflows/x.yml']);
+  assert.deepEqual(spoofs(CHECK, GATE, [{ path: '.github/workflows/x.yml', text: twin.replace(CHECK, 'Lint') }]), []);
+});
+
+test('the triggers read from inline and block forms', () => {
+  assert.deepEqual(triggersOf('on: push\n'), ['push']);
+  assert.deepEqual(triggersOf("'on': [push, pull_request]\n"), ['push', 'pull_request']);
+  assert.deepEqual(triggersOf('on:\n  pull_request:\n    types: [opened]\n  push:\n    branches: [main]\njobs:\n'), ['pull_request', 'push']);
 });
