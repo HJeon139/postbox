@@ -141,6 +141,9 @@ kbd { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; backgro
 .small { font-size: 12px; }
 .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* The page’s live regions come after the app: at its top, they don’t make the page a pixel taller than the app, which
+   scrolled the conversation’s sticky composer up off the window’s bottom. */
+#live, #live-urgent { top: 0; }
 .grow { flex: 1; min-width: 0; }
 /* Flex and grid children must be allowed to shrink, or wide code and tables push the page past the phone's width. */
 .turn, .md, .block, .block-body, .appframe, .col, section, figure { min-width: 0; }
