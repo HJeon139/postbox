@@ -42,6 +42,8 @@ export function verdict({ code, signal = null, timedOut = false, timeout = 0, re
     const how = signal ? `was killed (${signal})` : `exited with code ${code}`;
     return { ok: false, passed: 0, failed: 1, first: `${how} before it reported${last ? `: ${last.trim()}` : ''}` };
   }
+  // A check that recorded nothing checked nothing, whatever its exit code (designs/developing.md, “Degenerate values”).
+  if (!results.cases.length) return { ok: false, passed: 0, failed: 1, first: 'it recorded no cases, so it checked nothing' };
   const bad = results.cases.find((c) => !c.ok);
   const first = bad ? `${bad.name}${bad.detail ? ` (${bad.detail.split('\n')[0]})` : ''}` : code ? `exited with code ${code}` : '';
   return { ok: code === 0 && !results.failed, passed: results.passed, failed: results.failed, first };
