@@ -4,7 +4,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, effortOf, modelOf } from '../server/adapters/setup.mjs';
-import { chipEffort, chipModel, factsText, installNote, runsWith, sameModel, shortModel } from '../shared/agent-facts.mjs';
+import { BOILERPLATES } from '../server/seed.mjs';
+import { applyBoilerplate, chipEffort, chipModel, factsText, GEMINI_MODEL, installNote, runsWith, sameModel, shortModel } from '../shared/agent-facts.mjs';
 
 const config = { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT };
 
@@ -92,4 +93,32 @@ test('the overview says how to install Claude Code only when Postbox looked for 
   assert.equal(installNote({ realBackends: true, versions: { claudeCode: '2.1.296' }, adapters: ['mock', 'claude-code'] }), null);
   assert.equal(installNote({ realBackends: false, versions: { claudeCode: null }, adapters: ['mock'] }), null);
   assert.equal(installNote({}), null);
+});
+
+test('picking the Gemini boilerplate selects the Antigravity CLI and its first reported model, or gemini-3.8-flash-high', () => {
+  const gemini = BOILERPLATES.find((b) => b.id === 'bp-gemini');
+  const critic = BOILERPLATES.find((b) => b.id === 'bp-critic');
+  const st = { bp: 'bp-critic', backend: 'claude-code', model: DEFAULT_MODEL, effort: DEFAULT_EFFORT, instructions: '', description: '', tools: new Set() };
+  // With models reported by `agy models`, the first one wins.
+  applyBoilerplate(st, gemini, {
+    ...config,
+    adapters: ['claude-code', 'antigravity-cli', 'mock'],
+    backends: { 'antigravity-cli': { models: ['gemini-2.5-pro', 'gemini-3.8-flash-high'] } },
+  });
+  assert.equal(st.bp, 'bp-gemini');
+  assert.equal(st.backend, 'antigravity-cli');
+  assert.equal(st.model, 'gemini-2.5-pro');
+  assert.equal(st.effort, 'medium');
+  assert.deepEqual([...st.tools], ['shell', 'web.fetch']);
+  // Without reported models, it falls back to gemini-3.8-flash-high and syncs effort to high.
+  applyBoilerplate(st, gemini, { ...config, adapters: ['claude-code', 'antigravity-cli', 'mock'], backends: { 'antigravity-cli': {} } });
+  assert.equal(st.backend, 'antigravity-cli');
+  assert.equal(st.model, GEMINI_MODEL);
+  assert.equal(st.effort, 'high');
+  // Switching back to a generic boilerplate restores the default backend, model and effort.
+  applyBoilerplate(st, critic, { ...config, adapters: ['claude-code', 'antigravity-cli', 'mock'], backends: { 'antigravity-cli': {} } });
+  assert.equal(st.bp, 'bp-critic');
+  assert.equal(st.backend, 'claude-code');
+  assert.equal(st.model, DEFAULT_MODEL);
+  assert.equal(st.effort, DEFAULT_EFFORT);
 });

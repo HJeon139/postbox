@@ -1,7 +1,18 @@
 // Dialogs: new agent, new conversation, settings (appearance, personas, projects, connection), the command
 // palette, the delete confirm, and the project folder picker.
 
-import { BACKENDS, EFFORT_NAMES, effortNamedBy, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp, PERMISSIONS } from '/shared/agent-facts.mjs';
+import {
+  applyBoilerplate,
+  BACKENDS,
+  EFFORT_NAMES,
+  effortNamedBy,
+  GEMINI_MODEL,
+  MCP_SCOPE,
+  MCP_STATUS,
+  MODELS,
+  modeHelp,
+  PERMISSIONS,
+} from '/shared/agent-facts.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
@@ -20,8 +31,8 @@ const toolsInProject = (projectId) =>
 
 /** What a backend can do (server/adapters/adapter.mjs, capabilities), as /api/state serves it (#117). */
 export const capsOf = (backend) => client.config.backends?.[backend] ?? {};
-/** The models to suggest for a backend: the ones it reported, else Claude’s. */
-export const modelsFor = (backend) => capsOf(backend).models ?? MODELS;
+/** The models to suggest for a backend: the ones it reported, else Gemini’s on Antigravity or Claude’s. */
+export const modelsFor = (backend) => capsOf(backend).models ?? (backend === 'antigravity-cli' ? [GEMINI_MODEL] : MODELS);
 export const defaultBackend = () => BACKENDS.map(([id]) => id).find((id) => (client.config.adapters ?? []).includes(id)) ?? 'mock';
 
 function seg(label, options, value, onPick) {
@@ -178,10 +189,11 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
                 'aria-describedby': `${idp}-b-help`,
                 onchange: (e) => {
                   const id = e.target.value;
+                  st.bpFromBackend = false;
                   st.backend = id;
                   // A backend that lists its models gets its first one in place of a model it doesn’t offer: the
                   // Antigravity CLI doesn’t run Claude’s default (#143).
-                  const offered = capsOf(id).models;
+                  const offered = capsOf(id).models ?? (id === 'antigravity-cli' ? [GEMINI_MODEL] : null);
                   if (id !== 'mock' && (!st.model || st.model === 'mock' || (offered && !offered.includes(st.model))))
                     st.model = offered?.[0] ?? client.config.defaultModel ?? MODELS[0];
                   st.effort = effortNamedBy(id, st.model) ?? st.effort;
@@ -363,7 +375,9 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     saveBp: false,
     error: null,
   };
-  if (st.backend === 'codex' && !modelsFor(st.backend).includes(st.model) && modelsFor(st.backend).length) st.model = modelsFor(st.backend)[0];
+  if ((st.backend === 'codex' || st.backend === 'antigravity-cli') && !modelsFor(st.backend).includes(st.model) && modelsFor(st.backend).length)
+    st.model = modelsFor(st.backend)[0];
+  st.effort = effortNamedBy(st.backend, st.model) ?? st.effort;
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // Each change repaints the sheet; focus stays on the control you used (#26).
@@ -388,10 +402,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
                     'aria-checked': String(st.bp === b.id),
                     class: st.bp === b.id ? 'on' : '',
                     onclick: () => {
-                      st.bp = b.id;
-                      st.instructions = b.instructions;
-                      st.description = b.description;
-                      st.tools = new Set(b.tools);
+                      applyBoilerplate(st, b, client.config);
                       paint();
                     },
                   },

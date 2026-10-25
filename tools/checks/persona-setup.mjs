@@ -11,6 +11,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
 import { start } from '../../server/index.mjs';
 import { launch, sleep } from '../cdp.mjs';
 import { record as check, finish, ports } from '../harness.mjs';
@@ -23,6 +24,11 @@ let page = null;
 try {
   // A stand-in for the Claude Code backend: it never runs a turn here, it only makes the real fields show.
   app.rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
+  app.rt.adapters.register({
+    name: 'antigravity-cli',
+    capabilities: { ...AGY_CAPABILITIES, models: ['gemini-2.5-pro', 'gemini-3.8-flash-high'] },
+    deliver: async () => {},
+  });
   const persona = app.rt.createPersona({ handle: 'checker', backend: 'claude-code' });
   check(persona.usesHostSetup === true && persona.canPublish === false, 'a new persona uses your setup and can’t publish');
 
@@ -107,6 +113,20 @@ try {
     'the new-agent sheet shows both, with the defaults',
     JSON.stringify(na),
   );
+
+  // Picking the Gemini boilerplate switches to the Antigravity CLI, its first model and its prompt; Critic restores Claude Code.
+  await page.evaluate(`[...document.querySelectorAll('.dialog [role=radio]')].find((b) => b.textContent.trim() === 'Gemini').click()`);
+  const gem = await page.evaluate(
+    `({ b: document.getElementById('na-b')?.value, m: document.getElementById('na-m')?.value, i: document.getElementById('na-i')?.value })`,
+  );
+  check(
+    gem.b === 'antigravity-cli' && gem.m === 'gemini-2.5-pro' && /^# Gemini\n/.test(gem.i ?? ''),
+    'the Gemini boilerplate selects the Antigravity CLI, its first Gemini model and its prompt',
+    JSON.stringify(gem),
+  );
+  await page.evaluate(`[...document.querySelectorAll('.dialog [role=radio]')].find((b) => b.textContent.trim() === 'Critic').click()`);
+  const back = await page.evaluate(`({ b: document.getElementById('na-b')?.value, m: document.getElementById('na-m')?.value })`);
+  check(back.b === 'claude-code' && back.m === 'claude-opus-5-5', 'picking Critic restores the default backend and model', JSON.stringify(back));
 } catch (e) {
   check(false, 'the check ran to the end', e.message);
 } finally {

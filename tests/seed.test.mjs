@@ -59,6 +59,16 @@ test('the fresh-install agents and their boilerplates carry the same prompts and
     assert.deepEqual(BOILERPLATES.find((b) => b.id === `bp-${handle}`)?.tools, personas.find((p) => p.handle === handle)?.tools, handle);
 });
 
+test('the Gemini boilerplate carries its prompt from server/personas/gemini.md and targets the Antigravity CLI', () => {
+  const gemini = BOILERPLATES.find((b) => b.id === 'bp-gemini');
+  assert.ok(gemini, 'bp-gemini is in BOILERPLATES');
+  assert.equal(gemini.name, 'Gemini');
+  assert.equal(gemini.backend, 'antigravity-cli');
+  assert.equal(gemini.model, 'gemini-3.8-flash-high');
+  assert.deepEqual(gemini.tools, ['shell', 'web.fetch']);
+  assert.match(gemini.instructions, /^# Gemini\n/);
+});
+
 test('#5: the fresh-install developer and critic can run commands and read the web, but not reach agents outside Postbox', () => {
   for (const persona of freshInstall().personas.filter((p) => p.handle !== 'researcher')) {
     const denied = deniedTools({ backend: 'claude-code', ...persona });

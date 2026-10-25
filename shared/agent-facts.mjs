@@ -21,6 +21,8 @@ export const BACKENDS = [
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
 export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
+/** The default Gemini model when the Antigravity CLI didn’t report its list (#143). */
+export const GEMINI_MODEL = 'gemini-3.8-flash-high';
 export const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 export const PERMISSIONS = [
   ['auto', 'Auto', 'A safety check approves routine actions; it asks you only when it can’t decide.'],
@@ -161,4 +163,34 @@ export function installNote({ realBackends, versions, adapters = [] }) {
   return adapters.some((a) => a !== 'mock')
     ? 'Claude Code isn’t installed here, so agents run on the Agent SDK or the mock until it is.'
     : 'Claude Code isn’t installed here, so agents run on the mock until it is: scripted replies, not a model.';
+}
+
+/**
+ * Applies a boilerplate to the new-agent sheet’s state. A boilerplate that names a backend (such as Gemini on
+ * the Antigravity CLI) selects that backend when it’s available on this computer, and picks the first model the
+ * backend reported, falling back to the boilerplate’s model. Picking a generic boilerplate after a backend-bound
+ * one restores the default backend, model and effort.
+ * @param {any} st @param {any} b @param {any} [config]
+ */
+export function applyBoilerplate(st, b, config = {}) {
+  const prevFromBp = st.bpFromBackend === true;
+  st.bp = b.id;
+  st.instructions = b.instructions ?? '';
+  st.description = b.description ?? '';
+  st.tools = new Set(b.tools ?? []);
+  const adapters = config?.adapters ?? [];
+  if (b.backend && adapters.includes(b.backend)) {
+    st.bpFromBackend = true;
+    st.backend = b.backend;
+    const offered = config?.backends?.[b.backend]?.models;
+    st.model = (Array.isArray(offered) && offered.length ? offered[0] : null) ?? b.model ?? config?.defaultModel ?? MODELS[0];
+    st.effort = effortNamedBy(st.backend, st.model) ?? config?.defaultEffort ?? 'medium';
+  } else if (prevFromBp) {
+    st.bpFromBackend = false;
+    const def = BACKENDS.map(([id]) => id).find((id) => adapters.includes(id)) ?? 'mock';
+    st.backend = def;
+    const offered = config?.backends?.[def]?.models ?? (def === 'antigravity-cli' ? [GEMINI_MODEL] : null);
+    st.model = (Array.isArray(offered) && offered.length ? offered[0] : null) ?? config?.defaultModel ?? MODELS[0];
+    st.effort = effortNamedBy(def, st.model) ?? config?.defaultEffort ?? 'medium';
+  }
 }

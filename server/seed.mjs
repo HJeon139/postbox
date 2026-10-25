@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { GEMINI_MODEL } from '../shared/agent-facts.mjs';
 import { newId } from './store.mjs';
 
 // Read once, when the module loads: freshInstall() is synchronous, and the UAT's checks call it as well as seed().
@@ -13,6 +14,7 @@ const prompt = (name) => readFileSync(new URL(`./personas/${name}.md`, import.me
 const RESEARCHER = prompt('researcher');
 const DEVELOPER = prompt('developer');
 const CRITIC = prompt('critic');
+const GEMINI = prompt('gemini');
 
 /**
  * What a fresh install (no --demo) starts with: three generic agents, and no projects or conversations.
@@ -117,6 +119,15 @@ export const BOILERPLATES = [
     description: 'Changes code and verifies it',
     instructions: DEVELOPER,
     tools: ['shell', 'web.fetch'],
+  },
+  {
+    id: 'bp-gemini',
+    name: 'Gemini',
+    description: 'Collaborates, compares options and gives a second opinion on Gemini',
+    instructions: GEMINI,
+    tools: ['shell', 'web.fetch'],
+    backend: 'antigravity-cli',
+    model: GEMINI_MODEL,
   },
   {
     id: 'bp-indexer',
