@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
+import { batchPending } from '../server/message-queue.mjs';
+import { combineMessages } from '../server/queue-batch.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
 test('three queued wakes from different agents become one turn with each sender and time', async () => {
@@ -243,4 +245,23 @@ test('stopping a turn preserves each agent’s message from a mixed pending batc
   const context = store.state.sessions[beta.id].context.join('\n');
   assert.match(context, /@alpha’s message came while your turn was stopped: “Alpha’s request\.”/);
   assert.match(context, /@gamma’s message came while your turn was stopped: “Gamma’s request\.”/);
+});
+
+test('a pending batch is reconsidered when a newer message supersedes one of its children', () => {
+  const { rt, t } = setup();
+  const messages = [
+    ['alpha', 'old', 'Old request.'],
+    ['gamma', 'other', 'Independent request.'],
+    ['alpha', 'new', 'Current request.'],
+  ].map(([handle, turnId, text]) => {
+    const item = rt.addItem(t.id, { kind: 'agent', handle, turnId, text, status: 'done' });
+    return { kind: 'agent', from: `@${handle}`, text, itemId: item.id, at: item.at };
+  });
+  const pending = [{ message: combineMessages(messages.slice(0, 2)) }, { message: messages[2] }];
+  const groups = batchPending(rt, pending, t.id);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(
+    groups[0].message.messages.map((message) => message.text),
+    ['Independent request.', 'Current request.'],
+  );
 });

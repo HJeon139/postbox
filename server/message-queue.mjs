@@ -137,7 +137,7 @@ export function takePending(rt, se, turn, drain) {
 
 export function batchPending(rt, pending, threadId) {
   const groups = [];
-  for (const entry of pending) {
+  for (const entry of pending.flatMap((entry) => (entry.message.messages ?? [entry.message]).map((message) => ({ ...entry, message })))) {
     const where = entry.threadId ?? threadId;
     if (superseded(rt, where, entry.message)) continue;
     const prior = groups.at(-1);
