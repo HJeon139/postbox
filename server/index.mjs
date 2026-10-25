@@ -120,7 +120,7 @@ export async function start({
     );
   // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
   const agy = real ? await agyVersion(findAgy()) : null;
-  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot: join(dataDir, 'workspaces'), models: await agyModels(findAgy()) }));
+  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot: join(dataDir, 'workspaces'), models: await agyModels(findAgy()), version: agy }));
   const codex = real ? await codexVersion(findCodex()) : null;
   if (codex) adapters.register(new CodexAdapter({ workRoot: join(dataDir, 'workspaces'), models: await codexModels(findCodex()) }));
   const config = {
@@ -286,7 +286,7 @@ export async function start({
 
     if (path === '/mcp') {
       if (req.method !== 'POST') return raw(res, 405, 'Use POST for MCP requests.', { allow: 'POST' });
-      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req), url.searchParams.get('turn'));
+      const out = await handleMcp(rt, url.searchParams.get('session'), await json(req), url.searchParams.get('turn'), res);
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 

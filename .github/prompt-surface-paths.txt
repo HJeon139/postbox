@@ -9,6 +9,7 @@
 server/adapters/guide.mjs
 server/adapters/setup.mjs
 server/adapters/agent-sdk.mjs
+server/adapters/agy-refusals.mjs
 server/adapters/antigravity-cli.mjs
 server/adapters/claude-code.mjs
 server/adapters/codex.mjs

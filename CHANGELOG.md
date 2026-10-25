@@ -2,6 +2,24 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.36.0 (2026-10-25)
+
+### Features
+
+- **adapters:** ask with a permission card via PreToolUse hook on Antigravity CLI (#370)
+
+### Fixes
+
+- **mcp:** match disconnected permission_prompt card by tool_use_id (#370)
+- **adapters:** expire open permission card on disconnect and set agy hook floor to 1.4.7 (#370)
+- **adapters:** use node:http without a 300s headers timeout in agy-hook (#370)
+
+## 0.35.1 (2026-10-25)
+
+### Fixes
+
+- **ci:** call cancelled() only in an if, so the prompt gate runs again
+
 ## 0.35.0 (2026-10-25)
 
 ### Features
