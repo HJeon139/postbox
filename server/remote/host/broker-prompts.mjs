@@ -2,6 +2,7 @@
 // down and sent to the turn’s shims, and a prompt’s end, when its shim gave up, its turn stopped, or no shim waits on
 // it any more. broker.mjs’s header says what’s written down when.
 
+import { isDeepStrictEqual } from 'node:util';
 import { HOST_DEFAULTS, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 import { note, record, refusal, unrecorded, written } from './broker-records.mjs';
 import { CANCELED, key, STOPPED_TEXT, toShims } from './broker-state.mjs';
@@ -89,6 +90,10 @@ export async function permission(b, c, turn, m) {
   /** A prompt that couldn’t be written down is denied, never left waiting or allowed. @param {string} text */
   const deny = (text) => c.send('permission-answer', { id: m.id, result: { behavior: 'deny', message: text.slice(0, REMOTE_LIMITS.messageChars) } });
   if (known) {
+    // The same id asking something else gets nothing of the first one’s answer: any client with the host’s token can
+    // name a turn, so an allow planted for a harmless request would otherwise answer a dangerous one.
+    if (!isDeepStrictEqual(m.request, known.request))
+      return deny(`Permission request ${m.id} was asked already, with a different request, so this one isn’t allowed. Ask again under a new id.`);
     // A shim still waits on it: it ends the prompt itself.
     known.replayed = false;
     const saved = await known.saved;

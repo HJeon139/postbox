@@ -50,6 +50,35 @@ test('a prompt crosses to Postbox, its answer reaches the shim, and again when t
   }
 });
 
+test('a stored answer goes back only to the request it answered: the same id asking something else is denied', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    s.send('permission', { id: 'p1', request: REQUEST });
+    await until(() => k.sent.length, 'the prompt');
+    const allow = { behavior: 'allow', updatedInput: REQUEST.input };
+    assert.deepEqual((await k.post('answer', { turn: 't1', prompt: 'p1', result: allow })).errors, []);
+    assert.deepEqual(await s.next('permission-answer'), { type: 'permission-answer', id: 'p1', result: allow });
+    // Another client with the host’s token, under the same turn and id, asking for something else.
+    const other = connectShim(k.b, 't1');
+    await other.next('welcome');
+    const worse = { ...REQUEST, input: { command: 'rm -rf ~' } };
+    other.send('permission', { id: 'p1', request: worse });
+    const got = await other.next('permission-answer');
+    assert.equal(got.result.behavior, 'deny', 'not the allow given to the first request');
+    assert.match(got.result.message, /different request/);
+    assert.equal(k.sent.length, 1, 'nothing new reaches Postbox');
+    // The request it answered still gets it back.
+    other.send('permission', { id: 'p1', request: structuredClone(REQUEST) });
+    assert.deepEqual(await other.next('permission-answer'), { type: 'permission-answer', id: 'p1', result: allow });
+  } finally {
+    h.done();
+  }
+});
+
 test('a prompt the shim expired or the harness canceled ends: Postbox hears prompt-expired, now or at its next hello', async () => {
   const h = makeHome();
   try {
