@@ -2,6 +2,8 @@
 // asked it to there. Moved from server/side-threads.mjs; functions take the Runtime first (architecture.md, “What a
 // move may change”).
 
+import { tooLongToSend } from './helpers.mjs';
+
 /**
  * Whether a turn may use bring_to_conversation (#128): one the person started, with a message in a side or topic
  * thread. A turn another agent started can’t, so nothing reaches the conversation unless the person asked for it.
@@ -25,6 +27,8 @@ export function bringToConversation(rt, sessionId, turn, { text } = {}) {
     return { ok: false, message: 'Only the person can ask for this: a turn another agent started can’t post to the conversation. Reply in the thread.' };
   const body = String(text ?? '').trim();
   if (!body) return { ok: false, message: 'Give the text to post in the conversation.' };
+  const over = tooLongToSend('A post to the conversation', body);
+  if (over) return over;
   // The main chat, as the person asked and the tool says: the conversation itself, from a side thread of a topic too.
   let main = rt.s.threads[t.parentId];
   while (main && (main.kind === 'side' || main.kind === 'topic')) main = rt.s.threads[main.parentId];

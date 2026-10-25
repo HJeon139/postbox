@@ -2,7 +2,7 @@
 // there (its one session in the conversation: no forks, #228), the card that asks to add an agent the conversation
 // doesn’t have, and the side-thread line in the conversation. Functions take the Runtime first (architecture.md, “What a move may change”).
 
-import { clip, httpError } from './helpers.mjs';
+import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 
 export const HOP_LIMIT = 3;
@@ -186,7 +186,8 @@ function needsCard(rt, from, parent, it, text) {
 export function wakeAgent(rt, sessionId, { handle, message }) {
   if (rt.turns.get(sessionId)?.summarizeTo)
     return { ok: false, message: 'A summary for the conversation wakes no one: finish it, and the person decides the rest.' };
-  return rt.agentWake(sessionId, String(handle).replace(/^@/, ''), String(message ?? ''));
+  const text = String(message ?? '');
+  return tooLongToSend('A message to another agent', text) ?? rt.agentWake(sessionId, String(handle).replace(/^@/, ''), text);
 }
 
 /**

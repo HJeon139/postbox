@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
+import { SENDING } from '../shared/limits.mjs';
 import { held, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
 
 const linkOf = (store, t) => store.items(t.id).find((x) => x.kind === 'sidelink');
@@ -119,6 +120,44 @@ test('#128: a topic thread’s agent can bring something to the conversation too
       .filter((x) => x.kind === 'shared')
       .map((x) => [x.fromThreadId, x.agent]),
     [[topic.id, true]],
+  );
+});
+
+test('#351: a wake_agent message or bring_to_conversation text past the limit is refused, and nothing is sent or posted', async () => {
+  const { store, rt, adapter, t, alpha } = setup();
+  const long = 'x'.repeat(SENDING.message + 1);
+  let result;
+  adapter.next.push(async (c) => {
+    result = c.tools.wake_agent({ handle: 'beta', message: long });
+  });
+  rt.sendMessage(t.id, { text: '@alpha ask beta' });
+  await settle(rt);
+  assert.equal(result.ok, false);
+  assert.match(result.message, /up to 50,000 characters, and this one has 50,001, so nothing was sent/);
+  assert.deepEqual(
+    adapter.calls.map((c) => c.handle),
+    ['alpha'],
+    'beta wasn’t woken',
+  );
+  assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0, 'no side thread was opened');
+  // From a side thread the person asked in, at the limit it posts; past it, it doesn’t.
+  rt.agentWake(alpha.id, 'beta', 'Hello.');
+  await settle(rt);
+  const side = sideOf(store, t);
+  for (const text of [long, 'y'.repeat(SENDING.message)]) {
+    adapter.next.push(async (c) => {
+      result = c.tools.bring_to_conversation({ text });
+    });
+    rt.sendMessage(side.id, { text: '@beta post it in the main chat' });
+    await settle(rt);
+    assert.equal(result.ok, text !== long, result.message);
+  }
+  assert.deepEqual(
+    store
+      .items(t.id)
+      .filter((x) => x.kind === 'shared')
+      .map((x) => x.text.length),
+    [SENDING.message],
   );
 });
 

@@ -1,6 +1,7 @@
 // Helpers that the runtime and the modules moved out of it share (architecture.md, “What a move may change”).
 
 import { timingSafeEqual } from 'node:crypto';
+import { SENDING } from '../shared/limits.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 
 export function httpError(status, message) {
@@ -21,4 +22,14 @@ export function sameToken(want, got) {
   const a = Buffer.from(String(want ?? ''));
   const b = Buffer.from(String(got ?? ''));
   return a.length > 0 && a.length === b.length && timingSafeEqual(a, b);
+}
+/**
+ * What an agent sends another agent or the conversation, refused past SENDING.message rather than cut, so it knows
+ * nothing arrived (#351). Null when it’s within the limit.
+ * @param {string} what  how the refusal names it @param {string} text
+ */
+export function tooLongToSend(what, text) {
+  if (text.length <= SENDING.message) return null;
+  const n = (k) => k.toLocaleString('en-US');
+  return { ok: false, message: `${what} is up to ${n(SENDING.message)} characters, and this one has ${n(text.length)}, so nothing was sent. Send less.` };
 }
