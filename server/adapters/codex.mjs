@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { codexApproval } from './codex-approval.mjs';
-import { codexContextPercent, codexWindowFor } from './context-usage.mjs';
+import { codexContextPercent } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
@@ -168,16 +168,10 @@ export function createCodexMapper(ctx) {
       }
       case 'thread/tokenUsage/updated': {
         const u = p.tokenUsage ?? p.token_usage;
-        const win = p.modelContextWindow ?? p.model_context_window ?? codexWindowFor(p.model ?? ctx.persona?.model);
-        const pct = codexContextPercent(u, win);
-        if (pct !== null) ctx.status({ ctx: pct });
-        break;
-      }
-      case 'token_count': {
-        const info = p.info ?? {};
-        const u = info.last_token_usage ?? info.total_token_usage;
-        const win = info.model_context_window ?? codexWindowFor(info.model ?? ctx.persona?.model);
-        const pct = codexContextPercent(u, win);
+        const win = u?.modelContextWindow ?? u?.model_context_window ?? null;
+        const last = u?.last ?? u?.total ?? {};
+        const input = last.inputTokens ?? last.input_tokens ?? 0;
+        const pct = codexContextPercent(input, win);
         if (pct !== null) ctx.status({ ctx: pct });
         break;
       }

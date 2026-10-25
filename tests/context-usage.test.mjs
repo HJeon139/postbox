@@ -2,30 +2,28 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { createCodexMapper } from '../server/adapters/codex.mjs';
-import { agyContextPercent, agyWindowFor, codexContextPercent, codexWindowFor } from '../server/adapters/context-usage.mjs';
+import { agyContextPercent, agyWindowFor, codexContextPercent } from '../server/adapters/context-usage.mjs';
 
-test('Antigravity resolves context windows and calculates active context percentage', () => {
+test('Antigravity resolves cited context windows and calculates active context percentage with cache', () => {
   assert.equal(agyWindowFor('gemini-3.8-flash'), 1_000_000);
   assert.equal(agyWindowFor('gemini-3.8-flash-high'), 1_000_000);
   assert.equal(agyWindowFor('gemini-1.5-pro'), 2_000_000);
+  assert.equal(agyWindowFor('gemini-2.0-flash'), 1_000_000);
   assert.equal(agyWindowFor('unknown-model'), null);
 
+  // Uncached prompt only
   assert.equal(agyContextPercent({ input_tokens: 10_000, cache_read_tokens: 0 }, 1_000_000), 1);
-  assert.equal(agyContextPercent({ input_tokens: 25_000, cache_read_tokens: 225_000 }, 1_000_000), 25);
+  // Real agy step 245 evidence: 2,787 input_tokens + 23,525 cache_read_tokens = 26,312 prompt tokens
+  assert.equal(agyContextPercent({ input_tokens: 2787, cache_read_tokens: 23525 }, 1_000_000), 3);
   assert.equal(agyContextPercent(null, 1_000_000), null);
   assert.equal(agyContextPercent({ input_tokens: 100 }, null), null);
 });
 
-test('Codex resolves fallback context windows and calculates active context percentage', () => {
-  assert.equal(codexWindowFor('gpt-6.1-sol'), 475_000);
-  assert.equal(codexWindowFor('gpt-5.6-terra'), 475_000);
-  assert.equal(codexWindowFor('gpt-4o'), 128_000);
-  assert.equal(codexWindowFor('o3-mini'), 200_000);
-  assert.equal(codexWindowFor('claude-opus-5-5'), null);
-
-  assert.equal(codexContextPercent({ inputTokens: 47_500 }, 475_000), 10);
-  assert.equal(codexContextPercent({ input_tokens: 95_000 }, 475_000), 20);
+test('Codex calculates active context percentage from reported modelContextWindow', () => {
+  assert.equal(codexContextPercent(47_500, 475_000), 10);
+  assert.equal(codexContextPercent(106_596, 475_000), 22);
   assert.equal(codexContextPercent(null, 475_000), null);
+  assert.equal(codexContextPercent(10_000, null), null);
 });
 
 test('Antigravity mapper emits ctx status from step_update usage', () => {
@@ -50,7 +48,7 @@ test('Antigravity mapper emits ctx status from step_update usage', () => {
   assert.equal(ctxUpdates[0].ctx, 10);
 });
 
-test('Codex mapper emits ctx status from thread/tokenUsage/updated notifications', () => {
+test('Codex mapper emits ctx status from thread/tokenUsage/updated with generated shape', () => {
   const statusUpdates = [];
   const ctx = {
     status: (patch) => statusUpdates.push(patch),
@@ -62,12 +60,17 @@ test('Codex mapper emits ctx status from thread/tokenUsage/updated notifications
   mapper.push({
     method: 'thread/tokenUsage/updated',
     params: {
-      tokenUsage: { inputTokens: 95_000 },
-      modelContextWindow: 475_000,
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      tokenUsage: {
+        total: { totalTokens: 107088, inputTokens: 106596, cachedInputTokens: 103680, cacheWriteInputTokens: 0, outputTokens: 492, reasoningOutputTokens: 12 },
+        last: { totalTokens: 107088, inputTokens: 106596, cachedInputTokens: 103680, cacheWriteInputTokens: 0, outputTokens: 492, reasoningOutputTokens: 12 },
+        modelContextWindow: 475000,
+      },
     },
   });
 
   const ctxUpdates = statusUpdates.filter((x) => typeof x.ctx === 'number');
   assert.equal(ctxUpdates.length, 1);
-  assert.equal(ctxUpdates[0].ctx, 20);
+  assert.equal(ctxUpdates[0].ctx, 22);
 });
