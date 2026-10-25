@@ -38,7 +38,7 @@ import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unread
 import { bringToConversation } from './bring.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
-import { clip, clipText, fenced, httpError } from './helpers.mjs';
+import { clip, clipText, fenced, httpError, queuedIn } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import {
@@ -533,14 +533,14 @@ export class Runtime {
 
   editQueued(threadId, queueId, text) {
     const t = this.thread(threadId);
-    if ((t.queue ?? []).find((q) => q.id === queueId)?.kind === 'wake') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
+    if (queuedIn(t, queueId).kind === 'wake') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
     const queue = (t.queue ?? []).map((q) => (q.id === queueId ? { ...q, text: String(text) } : q));
     this.putThread({ ...t, queue });
   }
 
   cancelQueued(threadId, queueId) {
     const t = this.thread(threadId);
-    const q = (t.queue ?? []).find((x) => x.id === queueId);
+    const q = queuedIn(t, queueId);
     this.putThread({ ...t, queue: (t.queue ?? []).filter((x) => x.id !== queueId) });
     // A wake you removed: its agent was told it would be answered, so it hears it won’t be (#228).
     if (q?.kind === 'wake' && this.s.sessions[q.fromSessionId] && !this.s.sessions[q.fromSessionId].archived)
@@ -550,8 +550,7 @@ export class Runtime {
   /** Send now: stops the agent’s current turn and delivers the queued message at once. */
   sendQueuedNow(threadId, queueId) {
     const t = this.thread(threadId);
-    const q = (t.queue ?? []).find((x) => x.id === queueId);
-    if (!q) throw httpError(404, 'That queued message was already sent or removed.');
+    const q = queuedIn(t, queueId);
     this.putThread({ ...t, queue: t.queue.filter((x) => x.id !== queueId) });
     for (const id of q.sessionIds) this.stop(id, { silent: true, jobs: 'keep', sendNow: true });
     if (q.kind === 'wake') return deliverWake(this, threadId, q);

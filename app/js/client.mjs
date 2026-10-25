@@ -4,7 +4,7 @@
 // applied twice. If the server no longer has the events, it says "resync" and the state is refetched.
 
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
-import { apply } from '/shared/state.mjs';
+import { apply, ownState } from '/shared/state.mjs';
 
 const EVENT_TYPES = [
   'settings',
@@ -48,7 +48,7 @@ export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
   const { seq, state, config } = await r.json();
-  client.state = state;
+  client.state = ownState(state);
   client.config = config;
   client.seq = seq;
   client.emit({ type: 'load' });
