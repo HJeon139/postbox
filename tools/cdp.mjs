@@ -26,13 +26,6 @@ const flags = (port, profile) => [
   // cancel the page’s first requests (net::ERR_ABORTED before anything is sent), so a check sometimes never sees
   // the page load. CI’s runners have none; this makes a laptop run match. It touches only this test browser.
   '--disable-extensions',
-  // A page Chrome takes for one in the background gets no frames and 1 s timers: then every mouse event waits out
-  // its 5 s frame deadline (Input.dispatchMouseEvent), and a 250 ms settle takes 1 s. check-agents’ cases went from
-  // 2 s to 9–27 s that way after its first two, and past their 30 s limit on a loaded computer. A test page is the
-  // one in front, always.
-  '--disable-background-timer-throttling',
-  '--disable-renderer-backgrounding',
-  '--disable-backgrounding-occluded-windows',
   'about:blank',
 ];
 
