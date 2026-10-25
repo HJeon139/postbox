@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.31.0 (2026-10-25)
+
+### Features
+
+- **uat:** cap a whole run's cost with --max-cost, and stop it with its report
+
+### Fixes
+
+- **uat:** count each resumed session's cost once
+
 ## 0.30.2 (2026-10-25)
 
 ### Fixes
