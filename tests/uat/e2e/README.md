@@ -221,10 +221,17 @@ Options:
 - `--telemetry no`: don’t record the run or save its telemetry report (see the telemetry scenario, above)
 - `--turn-timeout` (seconds per agent turn, default 900)
 - `--budget` (the tester’s spend cap, in dollars)
+- `--max-cost` (the most the whole run may spend, in dollars), below
 - `--tester-model`
 - `--port`, `--chrome-port`, for two runs at once
 - `--phase` (start at that phase, to rerun a later one; the tester sets up what it needs first)
 - `--release`: the run for a version release, the only one that may use the Antigravity CLI. Its quota is a free tier, and a run for every merge would use it up. Without `--release`, a scenario that puts an agent on `antigravity-cli` is refused, and Postbox starts without the Antigravity CLI, so the tester can’t pick it in a sheet either. A merge’s validation pass leaves it off; the Antigravity adapter’s recorded streams (`tests/antigravity-cli.test.mjs`) cover it there, at no cost.
+
+**A run’s budget.** `--budget` caps only the tester, so a run’s agents are unbounded unless it’s given `--max-cost` (#290), which caps everything the run spends: the agents’ turns, the tester, the verifier and the telemetry report. The cap is split before the run starts: $1 is held for the verifier and the telemetry report after the last step, the tester gets its `--budget`, and the agents get the rest. A cap too small for those and one agent turn is refused before anything starts, so give the tester less of it with `--budget` (in the recorded runs, the tester spent about a cent a step on Sonnet, each step counted once as `run.json` below says). Before each step, the run checks that the step and an agent turn it may start both fit what’s left of their shares, and through the whole run, whatever it’s doing, it reads the turns’ reported costs from their streams every 1.5 seconds. A step reserves the tester’s largest step so far, or $0.50 before its first; an agent turn reserves the largest turn so far, or $1 before any has reported (the largest in the recorded runs was $0.62). Once the next step or turn could pass the cap, the run stops at its budget: it stops the newest turns at work until the rest fit, and any turn that starts after (agents waking each other), through the page’s own Stop request for that agent, with its background jobs. It takes no more steps, and finishes like any run: the verifier, whose calls are each capped at what’s left, then `report.md`, `findings.json` and `run.json`, which say it stopped at its budget, when and why, and what the agents (each of them), the tester, the verifier and the telemetry report spent. Where the cap can still be passed: a step or turn costlier than every one before it passes its reservation by the difference, and a stopped turn reports nothing, so it’s charged a turn’s reservation, an estimate the report names. A topic thread’s fork starts from its parent’s running total, which counts again: that overstates, never understates. Only dollars count: Kiro credits, Antigravity tokens and Codex turns aren’t, and neither are Postbox’s own short summaries, which no stream records. Without `--max-cost`, a run is as before.
+
+```bash
+node tools/uat-run.mjs --scenario longresearch --budget 2 --max-cost 12
+```
 
 #126 showed up where `claude` is a launcher that starts the CLI as its child and doesn’t pass SIGINT on. Where `claude` is the CLI itself, Stop reaches it either way, so the P0 run puts the launcher in front of it:
 
@@ -238,8 +245,8 @@ A run needs Claude Code installed and signed in, Chrome, and network access for 
 
 Each run writes to `uat-runs/<time>-<scenario>/` in the main checkout, which git ignores, or to `POSTBOX_UAT_RUNS` when it’s set. A run started in a worktree still lands there (the runner finds the main checkout through git’s common dir), so deleting the worktree doesn’t delete the run: the wave 1 and 2 runs were lost that way, with their findings unreviewed. `--recheck` takes any run folder. A run holds:
 - `report.md`: coverage (for a targeted run), the issues caught again, new findings with their verdicts, and the timeline
-- `findings.json`: every finding with its verdict, the timeline, and what the runner probed
-- `run.json`: what a refit reads, so it needn’t parse the report: the scenario and its kind, the branch and commit, the model the agents ran on (from their streams) and their effort when the runner knows it, the tester’s model, the steps and the cap, the minutes, the cost, and the coverage
+- `findings.json`: every finding with its verdict, the timeline, and what the runner probed, and with `--max-cost`, the budget: the cap, its shares, what each spent, and where the run stopped at it
+- `run.json`: what a refit reads, so it needn’t parse the report: the scenario and its kind, the branch and commit, the model the agents ran on (from their streams) and their effort when the runner knows it, the tester’s model, the steps and the cap, the minutes, the cost, the coverage, and with `--max-cost`, the budget, as in `findings.json`. The cost counts each agent turn and tester step once: a result’s `total_cost_usd` is its Claude Code session’s running total, so the runner takes each turn’s total less its session’s last one (`tools/uat/cost.mjs`). Runs recorded before that added the totals, which counts every earlier turn of a resumed session again: their agents’ and tester’s costs are too high, the more so the longer their sessions ran.
 - `run.log`
 - `shots/`: screenshots of every block and app the tester saw
 - `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/` and Antigravity turns in `streams/agy/` (release runs)
@@ -365,7 +372,7 @@ The tester also judged the agents’ work, catching a renaming that leaked ident
 - The tester wasn’t told when the run pressed Stop.
 - The runner talked to whatever already held its port.
 
-A run costs real usage: about $30 to $45 for agents, and $5 to $7 for the tester, over 30 to 70 minutes.
+A run costs real usage: about $30 to $45 for agents, and $5 to $7 for the tester, over 30 to 70 minutes, as those runs added their costs up (see `run.json`, above: added that way, they’re too high).
 
 To apply improved checks to a finished run without running agents again:
 
