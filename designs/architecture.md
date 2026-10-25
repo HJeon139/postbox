@@ -451,3 +451,38 @@ flowchart LR
 - Later changes hold the moved code to its carried ceilings, like any other.
 
 **Revisit when** the overrides are gone, or ceilings left loose after a file shrank become common: then a test that each ceiling equals its file’s size makes the lowering automatic.
+
+## 16. Browser checks on Playwright Test
+
+**Decision** (24 October 2026, #303). The headless browser checks move from the repo’s own runner (`tools/cdp.mjs`, `tools/harness.mjs`, `tools/check-all.mjs`) to Playwright Test, `@playwright/test`, a dev dependency at an exact version. New specs go in `tests/browser/*.spec.mjs`. The rest move one check at a time, and `check-all.mjs` runs those not yet moved. `tools/cdp.mjs` stays while the screenshot tools and the UAT driver use it.
+
+**What it rests on**
+- **The repo had rebuilt a test runner, and each part it lacked became a flake.**
+  - Without focus emulation, one Escape left the page drawing no frames (#277).
+  - Positions were read once after a fixed wait (#298), and a pointer-dwell gesture was used where the case needed none (#271).
+  - Clicks landed under the sticky top bar or on a leftover backdrop.
+  - Cases shared one page (#302), and Chrome’s version floated with the runner image (#301).
+- **Playwright Test does each by default.**
+  - Before a click it waits until the element is visible, stable for two frames, enabled, and the one under the pointer ([actionability](https://playwright.dev/docs/actionability)).
+  - Its assertions retry until they pass.
+  - Each test gets a fresh browser context ([browser contexts](https://playwright.dev/docs/browser-contexts)).
+  - `--repeat-each`, `--only-changed` and `failOnFlakyTests` find flaky specs ([CLI](https://playwright.dev/docs/test-cli)).
+  - Each version pins its own Chromium build.
+- **Its strict locators caught what `querySelector` hid.** Porting the first two checks found three such things:
+  - two top-bar rings for one agent (its own, and the one in the folded stack)
+  - two menu buttons in a retired app’s item
+  - a real bug: a menu closed before its deferred mousedown listener attached left that listener behind, and it closed every later menu on the press that picks an item (`openMenu` in `app/js/ui.mjs`). The old check clicked menu items with a script `click()`, so it never saw it.
+- **A dev dependency, not a runtime one.** engineering-practices.md keeps runtime dependencies at zero; Biome, TypeScript and axe-core are dev dependencies already. CI downloads the pinned Chromium (`npx playwright install --with-deps chromium`).
+
+**What stays Postbox’s own**
+- **Each spec file starts its own Postbox** in its `beforeAll` (`tests/browser/postbox.mjs`): in the worker’s process, so a spec reaches its runtime and store; on a fresh data folder and a free port; with scripted agents. `synced()` waits for the page to hear the server.
+- **`POSTBOX_STREAM_LAG`** is a server setting, so CI’s lag pass runs the specs too.
+- **`failOnPageErrors(test)`** fails any test whose page threw or logged an error.
+- **A Biome GritQL rule** (`tools/biome/no-fixed-waits.grit`) fails `npm run check` on `page.waitForTimeout` or `setTimeout` in a spec. Playwright’s own rule only lives in ESLint, which the repo doesn't use.
+
+**How a spec is written**
+- **Locators by role or name** where the page gives one, else by the attribute the code sets (`data-key`, `data-session`), never by position.
+- **Web-first assertions** (`expect(locator)…`), `expect.poll` for anything else. A story whose steps build on each other is one test with `test.step`s and `expect.soft`.
+- **Shown failing first.** A ported check is run against code without the fix it guards, as `needs-nav` was against the code before #285 (10 of 11 failed).
+
+**Revisit when** the last check has moved: then `tools/harness.mjs` and `tools/check-all.mjs` go, and the remaining users of `tools/cdp.mjs` are reconsidered.
