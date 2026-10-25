@@ -302,7 +302,7 @@ An agent’s turns can run on another computer you reach with `ssh`, such as a b
 **Set it up**
 1. **Settings → Hosts → Add a host.** Type the SSH destination as you would after `ssh`: an alias from `~/.ssh/config`, a host name, or `user@host.example.com`.
 2. **Install…** The confirm says what it writes outside Postbox’s folder, on both computers, and shows the commands `ssh` runs there:
-   - Postbox’s host program (`server/remote/host/` and the `shared/` modules it imports) in `~/.postbox-remote/<version>/` on the host, readable only by you (folders `0700`, files `0600`), each checked against a SHA-256 manifest that comes in the same archive: that catches a broken copy, not a tampered one.
+   - Postbox’s host program (`server/remote/host/` and the `shared/` modules it imports) in `~/.postbox-remote/<version>/` on the host, readable only by you (folders `0700`, files `0600`, and the launcher `0700`), each checked against a SHA-256 manifest that comes in the same archive: that catches a broken copy, not a tampered one.
    - The daemon’s token in `~/.postbox-remote/token` there (`0600`), and a copy on this computer in `data/remote-tokens/<host id>` (`0600`), outside what the page reads.
    - With **Node’s path** set, a `node-path` file beside the code that names it.
 
