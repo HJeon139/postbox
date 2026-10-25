@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.33.3 (2026-10-25)
+
+### Fixes
+
+- **server:** missing or bare static folders answer 404, and page files go through servedFile
+- **ledger:** record a SHA-256 repository’s commits, whose shas are 64 hex
+- **ledger:** git reads ignore commands a repository’s config names
+- **server:** serve static files only from inside their folders, through links too
+- **side-threads:** refuse a wake_agent message or post past 50,000 characters
+- **datasets:** refuse a datasets folder that links out of the project
+- **corpus:** hold corpus_search to 1–50 results and its first 50 book ids
+- **mcp:** compare a tool call’s turn token in constant time
+- **ledger:** refuse a commit sha that isn’t hex before it becomes git’s argument
+
 ## 0.33.2 (2026-10-25)
 
 ### Fixes
