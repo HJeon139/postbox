@@ -125,12 +125,11 @@ async function ctrlJ() {
   await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
 }
-/**
- * Closes the quick panel with its Close button. Not with Escape: a key event sent with CDP leaves headless Chrome’s page
- * hidden, and a hidden page draws no frames, so every jump after it would wait for a frame that never comes.
- */
+/** Closes the quick panel with Escape, as a person would, and waits for it to go. */
 async function closePanel() {
-  await click(`document.querySelector('.backdrop .dialog [aria-label="Close"]')`);
+  const base = { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 };
+  await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   await page.waitFor(`!document.querySelector('.backdrop')`, { label: 'the quick panel to close', timeout: 3000 });
 }
 async function go(hash) {

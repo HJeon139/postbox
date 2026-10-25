@@ -13,22 +13,13 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // longer than the 12 s this used to allow (run 39977434749).
 const START_MS = 45000;
 
+const FLAGS = ['--headless=new', '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--force-color-profile=srgb'];
+
 export async function launch({ port = 9333 } = {}) {
   const profile = join(tmpdir(), `pb-cdp-${process.pid}-${port}`);
-  const chrome = spawn(
-    CHROME,
-    [
-      '--headless=new',
-      `--remote-debugging-port=${port}`,
-      `--user-data-dir=${profile}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--hide-scrollbars',
-      '--force-color-profile=srgb',
-      'about:blank',
-    ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
-  );
+  const chrome = spawn(CHROME, [...FLAGS, `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
   // What Chrome last said, and whether it ended, to say why when it doesn’t start.
   let said = '';
   chrome.stderr.on('data', (d) => {
@@ -109,6 +100,10 @@ export async function launch({ port = 9333 } = {}) {
   });
   await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
   await send('Page.enable');
+  // The page always counts as focused, as Playwright makes it. Without this, one Escape sent with
+  // Input.dispatchKeyEvent leaves headless Chrome’s page hidden (Chrome 156): it draws no more frames, so anything
+  // after it that waits for one waits forever, and a later hover can miss.
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Runtime.enable');
   await send('Log.enable');
   // Track requests in flight, to explain a page that never finishes loading.

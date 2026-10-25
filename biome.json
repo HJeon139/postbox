@@ -391,7 +391,7 @@
     },
     {
       "includes": ["tools/cdp.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 156 } } } } }
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 149 } } } } }
     },
     {
       "includes": ["tools/check-agents.mjs"],
