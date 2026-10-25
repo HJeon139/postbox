@@ -166,7 +166,7 @@ export async function start({
   // port, and two Postboxes on one computer don’t overwrite each other’s.
   const token = Buffer.from(randomBytes(32).toString('base64url'));
   const cookieName = `pb_token_${port}`;
-  const cookieRe = new RegExp(`(?:^|;\\s*)${cookieName}=([^;]*)`);
+  const cookieRe = new RegExp(`(?:^|;\\s*)${cookieName}=([^;]*)`); // lint-allow regex: pb_token_ and the port number
   const hasToken = (req) => {
     const sent = Buffer.from(String(req.headers.cookie ?? '').match(cookieRe)?.[1] ?? '');
     return sent.length === token.length && timingSafeEqual(sent, token);

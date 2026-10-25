@@ -62,9 +62,12 @@ export function commandFacts(command, output = '') {
   const cmd = String(command ?? '');
   const out = String(output ?? '');
   const branches = new Set();
+  // lint-allow regex: ARG is a constant pattern.
   for (const m of cmd.matchAll(new RegExp(String.raw`\bgit\s+(?:-C\s+\S+\s+)?(?:checkout|switch)\s+(?:-b|-B|-c|-C|--create|--force-create)\s+${ARG}`, 'g')))
     branches.add(unquote(m[1]));
+  // lint-allow regex: ARG is a constant pattern.
   for (const m of cmd.matchAll(new RegExp(String.raw`\bgit\s+(?:-C\s+\S+\s+)?worktree\s+add\s+(?:\S+\s+)*?-[bB]\s+${ARG}`, 'g'))) branches.add(unquote(m[1]));
+  // lint-allow regex: ARG is a constant pattern.
   for (const m of cmd.matchAll(new RegExp(String.raw`\bgit\s+(?:-C\s+\S+\s+)?branch\s+(?!-)${ARG}`, 'g'))) branches.add(unquote(m[1]));
   const c = /^\[([^\s\]]+)(?: \([^)]*\))? ([0-9a-f]{7,64})\] (.*)$/m.exec(out);
   const commit = /\bgit\b[^;&|]*\bcommit\b/.test(cmd) && c ? { branch: c[1], sha: c[2], message: c[3] } : null;

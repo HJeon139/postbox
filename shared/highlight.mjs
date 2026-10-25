@@ -26,6 +26,7 @@ const CALL = /\s*\(/y;
 
 /** @param {{ comment: string, strings: string[], keywords: string, caseless?: boolean }} f */
 const family = ({ comment, strings, keywords, caseless = false }) => ({
+  // lint-allow regex: each language family's patterns are constants in this file.
   re: new RegExp(`(${comment})|(${strings.join('|')})|(${NUM})|(${WORD})`, 'g'),
   keywords: new Set(keywords.split(' ')),
   caseless,
