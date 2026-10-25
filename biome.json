@@ -357,6 +357,10 @@
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 349 } } } } }
     },
     {
+      "includes": ["tests/browser/side-threads.spec.mjs"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 303 } } } } }
+    },
+    {
       "includes": ["tests/browser/transcript.spec.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 432 } } } } }
     },
@@ -422,10 +426,6 @@
     {
       "includes": ["tools/cdp.mjs"],
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 149 } } } } }
-    },
-    {
-      "includes": ["tools/check-side-threads.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 304 } } } } }
     },
     {
       "includes": ["tools/demo.mjs"],
