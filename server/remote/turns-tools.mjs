@@ -7,6 +7,7 @@
 import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
 import { reactTool } from '../reactions.mjs';
+import { withUrgent } from '../subagent-end.mjs';
 import { linkOf } from './turns-need.mjs';
 import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn, TOOL_QUEUED, updateRemote } from './turns-shared.mjs';
 
@@ -37,7 +38,9 @@ export async function onTool(rts, hostId, m) {
   } finally {
     rts.applying.delete(k);
   }
-  const text = r.text.slice(0, REMOTE_LIMITS.replyChars);
+  // An urgent note for the agent comes first, as on the laptop (server/mcp.mjs, #229), in an answer it waits for: a
+  // queued call’s reply never reaches it (the shim answered at once), so its note waits for the next.
+  const text = (TOOL_QUEUED.has(m.name) ? r.text : withUrgent(rts.rt, live.sessionId, r.text)).slice(0, REMOTE_LIMITS.replyChars);
   // A queued call’s agent already has its answer (the shim’s), so its reply is kept for the daemon’s repeats, and
   // a failure goes to the agent at its next turn instead.
   if (TOOL_QUEUED.has(m.name)) {

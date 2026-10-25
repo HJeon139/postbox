@@ -88,10 +88,12 @@ test('#120 L5: a queued tool from the host goes through the laptop’s tools onc
   r.link.hear({ type: 'tool', turn, id, name: 'show_block', args: { block } });
   await until(() => r.link.sent.filter((m) => m.type === 'reply' && m.id === id).length === 2, 'the repeat’s reply');
   assert.equal(r.store.items(r.t.id).filter((i) => i.kind === 'block' && i.block?.id === 'pick').length, 1);
-  // An asked one gets its answer’s text.
+  // An asked one gets its answer’s text, after an urgent note waiting for the agent, as on the laptop (#229).
+  r.rt.updateSession(r.se().id, { context: ['[Postbox] URGENT: a subagent needs you.'] });
   r.d.tool(turn, 'corpus_search', { query: 'whales' });
   await until(() => r.d.replies.length === 2, 'the search’s reply');
-  assert.match(r.d.replies[1].text, /about whales/);
+  assert.match(r.d.replies[1].text, /^\[Postbox\] URGENT: a subagent needs you\.\n\n.*about whales/s);
+  assert.deepEqual(r.se().context, [], 'the note is given once');
   r.d.end(turn);
   await settled(r);
   // A call from a turn that has ended, heard while the next one runs, is refused, as on the laptop.
