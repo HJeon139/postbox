@@ -882,7 +882,7 @@ export class Runtime {
         if (!live()) return;
         const allowed = {};
         if (patch.state && ['think', 'gen', 'tool'].includes(patch.state)) allowed.state = patch.state;
-        if (typeof patch.ctx === 'number') allowed.ctx = Math.max(0, Math.min(100, Math.round(patch.ctx)));
+        if (patch.ctx === null || typeof patch.ctx === 'number') allowed.ctx = patch.ctx === null ? null : Math.max(0, Math.min(100, Math.round(patch.ctx)));
         if (Array.isArray(patch.subagents))
           // Each with what it was asked, its step now, its latest narration and the subagent that started it (#73).
           allowed.subagents = patch.subagents.slice(0, 12).map((x) => ({

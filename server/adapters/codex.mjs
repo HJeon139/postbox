@@ -172,7 +172,7 @@ export function createCodexMapper(ctx) {
         const last = u?.last ?? u?.total ?? {};
         const input = last.inputTokens ?? last.input_tokens ?? 0;
         const pct = codexContextPercent(input, win);
-        if (pct !== null) ctx.status({ ctx: pct });
+        ctx.status({ ctx: pct });
         break;
       }
       case 'turn/started':

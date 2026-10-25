@@ -1,14 +1,14 @@
 // Context window resolution and active context usage percentage calculation across backends.
 
 /**
- * Context window sizes from official model documentation / model cards:
- * - Gemini 1.5 Pro, 2.5 Pro: 2,000,000 tokens (Google AI Gemini model cards).
- * - Gemini 1.5 Flash, 2.0 Flash, 3.8 Flash: 1,000,000 tokens (Google AI Gemini model cards).
+ * Context window sizes for models offered by agy (see `agy models`):
+ * - Gemini 4 Argon: 1,000,000 tokens (https://ai.google.dev/gemini-api/docs/models)
+ * - Gemini 3.8 Flash: 1,000,000 tokens (https://ai.google.dev/gemini-api/docs/models)
  * Models not listed here return null so no percentage is guessed.
  */
 const CITED_AGY_WINDOWS = /** @type {[RegExp, number][]} */ ([
-  [/^gemini-(?:1\.5-pro|2\.5-pro)/, 2_000_000],
-  [/^gemini-(?:1\.5-flash|2\.0-flash|3\.8-flash(?:-low|-medium|-high)?)/, 1_000_000],
+  [/^gemini-4-argon(?:-low|-medium|-high)?/, 1_000_000],
+  [/^gemini-3\.8-flash(?:-low|-medium|-high)?/, 1_000_000],
 ]);
 
 /** The cited context window for a Gemini model, or null if unlisted. */
@@ -19,6 +19,8 @@ export const agyWindowFor = (model) => CITED_AGY_WINDOWS.find(([re]) => re.test(
  * In Antigravity CLI usage reporting, total_tokens = input_tokens + output_tokens, meaning
  * input_tokens counts only uncached prompt tokens and cache_read_tokens counts cached prompt tokens.
  * Together, input_tokens + cache_read_tokens represent the full prompt context loaded into the model.
+ * Evidence recorded in ~/.gemini/antigravity-cli/brain/93aa5dd9-c75c-4c80-8b5a-206e898de577/.system_generated/logs/transcript.jsonl step 245:
+ * input_tokens (2,787) + output_tokens (148) = 2,935 total_tokens, while cache_read_tokens is 23,525.
  */
 export function agyContextPercent(usage, window) {
   if (!usage || typeof window !== 'number' || window <= 0) return null;

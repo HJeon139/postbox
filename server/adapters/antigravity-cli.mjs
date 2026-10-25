@@ -367,6 +367,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     if (patch.state) st.state = patch.state;
     ctx.status(patch);
   };
+  if (!st.contextWindow) status({ ctx: null });
   const key = (s) => `${s.conversation_id ?? ''}:${s.step_index}`;
   const startTool = (s) => {
     const tool = toolOf(s);
@@ -420,11 +421,13 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
       st.went = true;
       st.stuck = false;
     }
-    if (s?.usage && st.contextWindow) {
+    if (s?.usage) {
       const pct = agyContextPercent(s.usage, st.contextWindow);
       if (pct !== null && pct !== st.ctx) {
         st.ctx = pct;
         status({ ctx: pct });
+      } else if (!st.contextWindow) {
+        status({ ctx: null });
       }
     }
     switch (s?.step_type) {
@@ -498,7 +501,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           const model = typeof e.init?.model === 'string' && e.init.model ? e.init.model : null;
           if (model) {
             st.model = model;
-            st.contextWindow = agyWindowFor(model) ?? st.contextWindow;
+            st.contextWindow = agyWindowFor(model);
+            if (!st.contextWindow) status({ ctx: null });
             const ran = effortRun(model, effort);
             ctx.reported?.({ model, ...(ran ? { effort: ran } : {}) });
           }
@@ -512,11 +516,13 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           const r = e.result ?? {};
           st.finished = r;
           deniedAfter(r.denied_actions, st, ctx);
-          if (st.ctx === null && r.usage && st.contextWindow) {
+          if (st.ctx === null && r.usage) {
             const pct = agyContextPercent(r.usage, st.contextWindow);
             if (pct !== null) {
               st.ctx = pct;
               status({ ctx: pct });
+            } else if (!st.contextWindow) {
+              status({ ctx: null });
             }
           }
           if (r.status === 'SUCCESS') return;

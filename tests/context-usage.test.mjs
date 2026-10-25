@@ -5,10 +5,12 @@ import { createCodexMapper } from '../server/adapters/codex.mjs';
 import { agyContextPercent, agyWindowFor, codexContextPercent } from '../server/adapters/context-usage.mjs';
 
 test('Antigravity resolves cited context windows and calculates active context percentage with cache', () => {
+  assert.equal(agyWindowFor('gemini-4-argon'), 1_000_000);
+  assert.equal(agyWindowFor('gemini-4-argon-medium'), 1_000_000);
   assert.equal(agyWindowFor('gemini-3.8-flash'), 1_000_000);
   assert.equal(agyWindowFor('gemini-3.8-flash-high'), 1_000_000);
-  assert.equal(agyWindowFor('gemini-1.5-pro'), 2_000_000);
-  assert.equal(agyWindowFor('gemini-2.0-flash'), 1_000_000);
+  assert.equal(agyWindowFor('gemini-1.5-pro'), null);
+  assert.equal(agyWindowFor('gemini-2.0-flash'), null);
   assert.equal(agyWindowFor('unknown-model'), null);
 
   // Uncached prompt only
@@ -32,7 +34,7 @@ test('Antigravity mapper emits ctx status from step_update usage', () => {
     status: (patch) => statusUpdates.push(patch),
     activity: () => {},
     text: () => {},
-    persona: { model: 'gemini-3.8-flash-high' },
+    persona: { model: 'gemini-4-argon-medium' },
   };
   const mapper = createAgyMapper(ctx);
   mapper.push({
@@ -46,6 +48,27 @@ test('Antigravity mapper emits ctx status from step_update usage', () => {
   const ctxUpdates = statusUpdates.filter((x) => typeof x.ctx === 'number');
   assert.equal(ctxUpdates.length, 1);
   assert.equal(ctxUpdates[0].ctx, 10);
+});
+
+test('Antigravity mapper clears context status when model window is unknown', () => {
+  const statusUpdates = [];
+  const ctx = {
+    status: (patch) => statusUpdates.push(patch),
+    activity: () => {},
+    text: () => {},
+    persona: { model: 'custom-unlisted-model' },
+  };
+  const mapper = createAgyMapper(ctx);
+  assert.ok(statusUpdates.some((x) => x.ctx === null));
+
+  mapper.push({
+    event: 'step_update',
+    step_update: {
+      step_type: 'agent_response',
+      usage: { input_tokens: 50_000, cache_read_tokens: 50_000 },
+    },
+  });
+  assert.ok(statusUpdates.some((x) => x.ctx === null));
 });
 
 test('Codex mapper emits ctx status from thread/tokenUsage/updated with generated shape', () => {
@@ -73,4 +96,19 @@ test('Codex mapper emits ctx status from thread/tokenUsage/updated with generate
   const ctxUpdates = statusUpdates.filter((x) => typeof x.ctx === 'number');
   assert.equal(ctxUpdates.length, 1);
   assert.equal(ctxUpdates[0].ctx, 22);
+
+  // When modelContextWindow is null, clear ctx
+  mapper.push({
+    method: 'thread/tokenUsage/updated',
+    params: {
+      threadId: 'thr_1',
+      turnId: 'turn_1',
+      tokenUsage: {
+        total: { totalTokens: 500, inputTokens: 500, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 },
+        last: { totalTokens: 500, inputTokens: 500, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 },
+        modelContextWindow: null,
+      },
+    },
+  });
+  assert.ok(statusUpdates.some((x) => x.ctx === null));
 });
