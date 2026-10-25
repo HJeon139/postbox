@@ -224,6 +224,21 @@ await check('a room’s rail row: a ring goes to its agent, the rest of the row 
   landed(await landing(), 'gamma');
 });
 
+await check('a ⌘- or ⌃-click on a rail row whose agent needs you is left to the browser, to open in a new tab', async () => {
+  await go(`#/t/${epsT.id}`);
+  // A last listener records whether each click was taken, then keeps the browser from opening the tab.
+  const taken = await page.evaluate(`(() => {
+    const seen = [];
+    const last = (e) => { seen.push(e.defaultPrevented); e.preventDefault(); };
+    addEventListener('click', last);
+    for (const k of ['metaKey', 'ctrlKey']) ${railRow(alphaT)}.querySelector('.name').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, [k]: true }));
+    removeEventListener('click', last);
+    return seen;
+  })()`);
+  assert.deepEqual(taken, [false, false], 'a click was taken to the ask');
+  assert.equal(await page.evaluate('location.hash'), `#/t/${epsT.id}`, 'the page stayed where it was');
+});
+
 await check('an agent’s row in the Agents section goes to its ask while it needs you', async () => {
   await go(`#/t/${room.id}`);
   await page.evaluate('scrollTo(0, document.documentElement.scrollHeight)');
@@ -266,6 +281,15 @@ await check('an agent’s ring in the top bar goes to its ask', async () => {
   await go(`#/t/${room.id}`);
   await click(ringIn('header.topbar', 'gamma'));
   landed(await landing(), 'gamma');
+});
+
+await check('where the top bar’s rings fold into a stack, a waiting agent’s ring in it opens the stack’s menu', async () => {
+  await go(`#/t/${room.id}`);
+  // Folded as fitTopbar (shell.mjs) folds it where the rings don’t fit: this case is about where the click goes.
+  await page.evaluate(`document.querySelector('header.topbar').dataset.drop = 'crumb demo rings'`);
+  await click(`document.querySelector('#top-ring-stack pb-ring[data-session="${S.gamma.id}"]')`);
+  await page.waitFor(`!!document.querySelector('.menu')`, { label: 'the stack’s menu', timeout: 3000 });
+  assert.equal(await page.evaluate('location.hash'), `#/t/${room.id}`, 'the page stayed where it was');
 });
 
 const errors = page.logs.filter((l) => l.startsWith('exception'));

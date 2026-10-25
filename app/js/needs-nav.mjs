@@ -72,10 +72,13 @@ export function nextNeedsYou() {
 const needingIn = (threadId) => needsOrder(S(), liveSessions()).filter((se) => conversationOf(S(), whereNeeds(S(), se)) === threadId);
 
 // One listener for every ring and row, ahead of their own: a ring in a link or a button goes to the ask instead.
+// A click with a modifier key is left to the browser, so ⌘- or ⌃-click still opens a row in a new tab. The top bar’s
+// stack of rings is left to its own menu, the way to each agent’s panel where the rings don’t fit.
 document.addEventListener(
   'click',
   (e) => {
     const el = /** @type {Element} */ (e.target);
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || el.closest?.('#top-ring-stack')) return;
     const ring = el.closest?.('pb-ring[data-session]');
     const button = el.closest?.('.agent-btn[id^="agent-row-"], .ring-btn[id^="top-ring-"]');
     const row = el.closest?.('.rail a.row[data-thread], .ringstrip a[href^="#/t/"]');
