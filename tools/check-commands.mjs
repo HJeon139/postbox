@@ -127,7 +127,9 @@ await check('#67 typing / opens the menu: Postbox’s commands, then each agent�
   await type('/');
   await page.waitFor(`!!document.getElementById('slash-list')`, { label: 'the menu' });
   const all = await text(q('#slash-list'));
-  assert.match(all, /POSTBOX.*\/permissions.*\/mode.*\/model.*\/effort.*\/add-dir.*\/mcp.*\/compact.*\/stop.*\/rename.*\/archive/i);
+  assert.match(all, /POSTBOX.*\/permissions.*\/mode.*\/model.*\/effort.*\/add-dir.*\/mcp.*\/compact.*\/stop.*\/rename/i);
+  // A session is archived only with its conversation (#320).
+  assert.doesNotMatch(all, /\/archive/);
   assert.match(all, /@alpha’s skills and commands \/review <file> Review a file/i);
   assert.match(all, /@beta’s skills and commands \/release-notes \[version\] Draft release notes/i);
   // compact is Postbox’s here (it runs /compact as the agent’s turn), so it isn’t listed twice.

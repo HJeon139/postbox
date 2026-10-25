@@ -816,52 +816,6 @@ test('archiving a conversation archives its sessions, its side threads’ forks 
   assert.equal(store.state.threads[side.id].archived, false);
 });
 
-test('a conversation with nothing happening for the days Settings says archives itself, and one waiting on you doesn’t (#101)', (ctx) => {
-  const { rt, store, t, a } = setup();
-  const make = (title, patch) => {
-    const x = rt.createThread({ projectId: 'p1', title, personaIds: [a.id] });
-    if (patch) rt.updateSession(rt.sessionsIn(x.id)[0].id, patch);
-    return x;
-  };
-  make('Busy', { state: 'tool' });
-  make('Waiting', { needs: { kind: 'block', text: 'Which one?' } });
-  make('Unread', { unread: 1 });
-  make('Job', { jobs: [{ id: 'j1', state: 'running', kept: true }] });
-  const queued = make('Queued');
-  rt.putThread({ ...store.state.threads[queued.id], queue: [{ id: 'q1', text: 'next' }] });
-  const woken = make('Wake');
-  rt.schedule(rt.sessionsIn(woken.id)[0].id, { inMs: 30 * 864e5, note: 'check back' });
-  ctx.mock.timers.enable({ apis: ['Date'], now: Date.now() });
-  const day = 864e5;
-  // Seven days by default.
-  ctx.mock.timers.tick(6 * day);
-  assert.deepEqual(rt.archiveIdle(), []);
-  ctx.mock.timers.tick(2 * day);
-  assert.deepEqual(rt.archiveIdle(), [t.id]);
-  assert.equal(store.state.sessions[rt.sessionsIn(t.id)[0].id].archived, true);
-  // Restoring counts as something happening: six days after it, the sweep still leaves it.
-  rt.restoreThread(t.id);
-  ctx.mock.timers.tick(6 * day);
-  assert.deepEqual(rt.archiveIdle(), []);
-  ctx.mock.timers.tick(2 * day);
-  assert.deepEqual(rt.archiveIdle(), [t.id]);
-  // A message does too.
-  rt.restoreThread(t.id);
-  store.emit('settings', { archiveAfterDays: 1 });
-  ctx.mock.timers.tick(2 * day);
-  rt.addItem(t.id, { kind: 'user', text: 'still here' });
-  ctx.mock.timers.tick(0.5 * day);
-  assert.deepEqual(rt.archiveIdle(), []);
-  ctx.mock.timers.tick(day);
-  assert.deepEqual(rt.archiveIdle(), [t.id]);
-  // Never.
-  rt.restoreThread(t.id);
-  store.emit('settings', { archiveAfterDays: 0 });
-  ctx.mock.timers.tick(365 * day);
-  assert.deepEqual(rt.archiveIdle(), []);
-  for (const k of rt.timers.keys()) clearTimeout(rt.timers.get(k));
-});
-
 test('a wake an archived agent scheduled doesn’t wake it, or stop the server (#101)', async () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];

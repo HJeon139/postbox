@@ -14,7 +14,7 @@ Three situations shaped the design:
 
 None of these interfaces are built into Postbox. Agents generate them, and Postbox runs them safely.
 
-At its core, Postbox’s conversations are a way to manage what each agent remembers. A conversation holds one session per agent, and everything in it, topic and side threads included, is that one session’s work: an agent never has a second copy of itself in a conversation (decided 23 October 2026, #228). To keep a side question out of an agent’s memory, start a new conversation; Compact and Archive are the other controls.
+At its core, Postbox’s conversations are a way to manage what each agent remembers. A conversation holds one session per agent, and everything in it, topic and side threads included, is that one session’s work: an agent never has a second copy of itself in a conversation (decided 23 October 2026, #228). To keep a side question out of an agent’s memory, start a new conversation; Compact and Delete are the other controls.
 
 ## Who it’s for
 
@@ -35,7 +35,7 @@ People who run Postbox may also volunteer telemetry reports to help improve it (
 4. **Make good UI the easy path.** Agents do what is easiest, so the kit’s defaults (chart marks, tokens, controls) matter more than any written guidance.
 5. **Never rely on color, hover or motion alone.** Every value is also available as text, a label or a table view, and reduced motion is respected everywhere. Every action is visible without hovering; hover only opens previews, such as glossary and citation cards.
 6. **You stay in charge of your agents.** New personas need your approval, wake chains are capped, and tools are granted explicitly.
-7. **You decide what an agent remembers.** Each agent has one session per conversation, and you choose its memory by where you talk to it: a new conversation starts clean, Compact shortens it, and Archive ends it. Agents never fork themselves, and nothing from a thread is put in another agent’s context unless that agent chooses to read it or you send it (decided 23 October 2026, #228).
+7. **You decide what an agent remembers.** Each agent has one session per conversation, and you choose its memory by where you talk to it: a new conversation starts clean, Compact shortens it, and deleting the conversation ends it. Agents never fork themselves, and nothing from a thread is put in another agent’s context unless that agent chooses to read it or you send it (decided 23 October 2026, #228).
 
 ## How the app is organized
 
@@ -115,7 +115,7 @@ sequenceDiagram
 | A persona runs on Claude Code, the Agent SDK or the mock, and real agents default to Claude Opus 5.5 (`claude-opus-5-5`) | Decided in Stage 3. Both real backends use Claude Code’s own sign-in, so Postbox never holds a key. The model is a per-persona setting. |
 | Each persona has a permission mode: auto (the default), ask, accept edits, or run everything. In auto mode, Claude Code’s safety classifier approves routine actions; anything it can’t decide, and everything in ask mode, becomes a card in the thread that shows the exact command, with Allow, Always allow, Edit and Don’t allow (with a reason), and the agent needs you until you answer. A permissions panel shows its rules with where each comes from, and changes them without a terminal. Stop answers no. A change to the mode reaches running conversations from their next turn | Decided in Stage 3 with ask as the default; changed to auto after Stage 3, because asking every time got in the way. Edit, Always allow and the panel came with #66, so an agent blocked by a rule never sends you to a terminal. |
 | You can attach a Claude Code session you started in a terminal | It joins as an agent in that session’s folder, with its recent history; Postbox resumes the same session when you write to it. |
-| Archive puts a session to sleep; Delete erases it after a confirm, with 10 seconds of Undo | Archive is the safe default. Delete says exactly what goes and what stays. The persona always stays. |
+| A conversation owns its agents’ sessions: they’re archived only with it, restored with it, and deleted with it. Nothing archives a conversation by itself. Delete erases a session or a conversation after a confirm, with 10 seconds of Undo | Delete says exactly what goes and what stays. The persona always stays. Changed on 24 October 2026 (#320): conversations archived themselves after a week idle (#101), and one agent could be archived alone, but nothing showed them once the Archived page went, so idle archiving is off, one agent can’t be archived on its own, and what either had hidden came back. |
 | Deleting an agent’s session in a room removes the agent from the room, but its past messages stay, marked “(deleted)” | The conversation still makes sense. To erase everything, delete the room. |
 
 ### Attention and wakes

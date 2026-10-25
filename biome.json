@@ -132,8 +132,8 @@
       "includes": ["app/js/sheets.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1394 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 277 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1341 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 240 } } }
         }
       }
     },
@@ -150,8 +150,8 @@
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1993 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 777 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1983 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 768 } } }
         }
       }
     },
@@ -268,8 +268,8 @@
       "includes": ["server/index.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 687 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 445 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 676 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 435 } } }
         }
       }
     },
@@ -286,7 +286,7 @@
       "includes": ["server/runtime.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3152 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 3118 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 193 } } }
         }
       }
@@ -356,7 +356,7 @@
       "includes": ["tests/runtime.test.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 2418 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 2372 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 56 } } }
         }
       }

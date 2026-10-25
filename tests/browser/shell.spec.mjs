@@ -65,7 +65,27 @@ test('Delete session moved from the overview’s card menu to the agent’s quic
   await page.locator('.rail .agent-row .agent-btn').first().click();
   await page.locator('.backdrop .dialog.quick').getByRole('button', { name: 'Delete session…' }).click();
   await expect(page.getByText('Delete @shelly’s session?')).toBeVisible();
+  // An agent’s session is archived only with its conversation (#320).
+  await expect(page.getByRole('button', { name: 'Archive instead' })).toHaveCount(0);
   await page.keyboard.press('Escape');
+});
+
+test('nothing archives a conversation by itself: Settings has no idle archiving (#320)', async ({ page }) => {
+  await open(page, `#/t/${threads[0].id}`);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.locator('.dialog').getByRole('tab', { name: 'Projects' }).click();
+  await expect(page.locator('.dialog').getByText('The folder bounds the file picker')).toBeVisible();
+  await expect(page.locator('.dialog').getByText(/Archive idle/)).toHaveCount(0);
+});
+
+test('an archived conversation comes back whole, with all its agents, from one Restore (#320)', async ({ page }) => {
+  const room = app.rt.createThread({ projectId: 'pr_shell', title: 'Archived room', personaIds: Object.values(app.store.state.personas).map((p) => p.id) });
+  app.rt.archiveThread(room.id);
+  await open(page, `#/t/${room.id}`);
+  await expect(page.getByRole('button', { name: /^Restore @/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Restore conversation' }).click();
+  await expect.poll(() => app.rt.sessionsIn(room.id).map((se) => se.archived)).toEqual(app.rt.sessionsIn(room.id).map(() => false));
+  await expect(page.locator('#composer-input')).toBeEnabled();
 });
 
 test('an agent’s state changing doesn’t rebuild the conversation: a draft and its focus stay (#320)', async ({ page }) => {

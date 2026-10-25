@@ -10,7 +10,7 @@ Confirms what just happened and offers the way back (Undo, Restore, Go) without 
 
 ## Expected functionality
 
-- Appears after archive, delete (with a countdown and Undo), permission requests and other blocking events from other conversations.
+- Appears after a delete (with a countdown and Undo), permission requests and other blocking events from other conversations.
 - Has an action button when one applies; disappears on its own; is announced to screen readers.
 
 ## Steps to reproduce

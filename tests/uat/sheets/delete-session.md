@@ -11,6 +11,7 @@ Removing one agent from a room keeps the room readable.
 ## Expected functionality
 
 - In a room, the agent leaves and its messages stay marked “(deleted)”; alone, the conversation goes; 10 seconds of Undo.
+- It offers Cancel and Delete session, not Archive instead: an agent’s session is archived only with its conversation (#320).
 
 ## Steps to reproduce
 

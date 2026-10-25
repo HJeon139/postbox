@@ -14,7 +14,7 @@ The composer should reach what the CLI’s input reaches, without remembering sy
   - `/mode`, `/model` and `/effort` offer segmented choices; in a room, for any of its agents. The mode is the agent’s, in every conversation; the model and the effort are this conversation’s. Each says when it applies: now, on a running Agent SDK turn that could change, otherwise from the agent’s next turn.
   - `/add-dir` opens the folder picker; the folder is the agent’s from its next turn.
   - `/compact` runs Claude Code’s `/compact` as the agent’s turn (a recorded turn showed it compacts in print mode), and the conversation shows the compaction.
-  - `/stop` stops the agents that are working; `/rename` opens the rename sheet; `/archive` archives the agent’s session, with Restore.
+  - `/stop` stops the agents that are working, and `/rename` opens the rename sheet. There’s no `/archive`: an agent’s session is archived only with its conversation (#320).
 - **The agents’ skills and commands:** each agent’s, under its name, from its session’s latest turn (or, before its first, another session of the same persona, marked “from an earlier session”). Commands bound to a terminal, and the ones Postbox runs itself, aren’t listed. Each shows its description and argument hint where Claude Code gives them (the Agent SDK does; the CLI’s list has names only).
 - Picking one fills `/name ` and the hint line says what Enter does: “Enter runs /review <file> as @alpha’s turn”. Sending runs it as that agent’s turn, as the whole prompt, and the line shows in the conversation as yours. What it missed reaches it on its next turn.
 - A line that names no command is sent as a message.
