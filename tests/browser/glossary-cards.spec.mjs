@@ -4,7 +4,7 @@
 // from tools/check-transcript-render.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -160,13 +160,16 @@ test.describe('at 375 px', () => {
     await page.keyboard.press('Tab');
     await page.keyboard.press('Space');
     await expect(card(page, 'U:13')).toHaveClass(/\bpinned\b/);
-    const inside = await page.locator('.hovercard').evaluateAll((cs) =>
-      cs.map((c) => {
-        const r = c.getBoundingClientRect();
-        return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight;
-      }),
+    const width = windowWidth(page);
+    const inside = await page.locator('.hovercard').evaluateAll(
+      (cs, w) =>
+        cs.map((c) => {
+          const r = c.getBoundingClientRect();
+          return r.left >= 0 && r.right <= w && r.top >= 0 && r.bottom <= innerHeight;
+        }),
+      width,
     );
     expect(inside, 'each card inside the window').toEqual([true, true]);
-    expect(await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth), 'no sideways scroll').toBe(true);
+    expect(await page.evaluate(() => document.scrollingElement.scrollWidth), 'no sideways scroll').toBeLessThanOrEqual(width);
   });
 });

@@ -22,6 +22,6 @@ Shows where a long job is without new messages.
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Watch “Index the shelf” in “Corpus planning”.
 
-3. For counts, live times and a stalled step, run `node tools/check-feedback.mjs` (with `SHOTS=<folder>` for screenshots).
+3. For counts, live times and a stalled step, run `npx playwright test feedback` (`tests/browser/feedback.spec.mjs`) (with `SHOTS=<folder>` for screenshots).
 
 **Pass if:** Steps update in place, no copies are added, counts and times show, and a step left running looks stalled.

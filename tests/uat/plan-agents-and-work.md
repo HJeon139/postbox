@@ -29,7 +29,7 @@ These changes move the controls you use most. Agent settings leave the top bar f
 ## What already worked: the regression set
 
 - **The gate:** `npm run check`.
-- **Every headless check:** `npx playwright test`, which runs the specs in `tests/browser/`, among them transcript (#88, #91, #93), shell-focus (#4, #26, #29, #69), agents (#105, #73, #229), permissions (#66, #10, #74), app-send (#38) and commands (#67); and `npm run check:browser`, which runs the checks not yet moved there (`tools/check-*.mjs` and `tools/checks/*.mjs`) in parallel, each on its own ports, among them app-fullscreen (#45).
+- **Every headless check:** `npx playwright test`, which runs the specs in `tests/browser/`, among them transcript (#88, #91, #93), shell-focus (#4, #26, #29, #69), agents (#105, #73, #229), permissions (#66, #10, #74), app-send (#38), app-fullscreen (#45) and commands (#67); and `npm run check:browser`, which runs the checks not yet moved there (`tools/check-*.mjs` and `tools/checks/*.mjs`) in parallel, each on its own ports.
 - **The demo screenshots with axe:** `tools/shoot-app.mjs` must report no violations in any scene.
 - **The UAT doc screenshots:** `tools/shoot-uat.mjs`, with every scene captured, including the new ones above.
 - **The real-agent scenarios:**
