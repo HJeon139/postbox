@@ -82,6 +82,8 @@ export function brokerState({
     codexPollMs,
     /** @type {Map<string, Tool>} every call seen, by (turn, id); a replied one keeps no args */
     tools: new Map(),
+    /** @type {Map<string, Promise<void>>} each turn’s call being admitted (broker-tools.mjs’s admit) */
+    admitting: new Map(),
     /** @type {Map<string, Prompt>} */
     prompts: new Map(),
     /** @type {Map<string, Expiry>} prompt-expired not yet sent to Postbox */

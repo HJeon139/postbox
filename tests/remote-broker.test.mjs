@@ -176,6 +176,23 @@ test('calls waiting for Postbox stop at the host’s limits: so many, so many by
   }
 });
 
+test('two shims of a turn sending at once can’t pass the limit on calls waiting together', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h, { queueLimits: { calls: 1, bytes: 1_000_000, recordBytes: 1_000_000 } });
+    k.state.attached = false;
+    const s1 = connectShim(k.b, 't1');
+    const s2 = connectShim(k.b, 't1');
+    await Promise.all([s1.next('welcome'), s2.next('welcome')]);
+    const got = await Promise.all([s1.call('c1', 'schedule_wake', { in_minutes: 5 }), s2.call('c2', 'schedule_wake', { in_minutes: 6 })]);
+    assert.deepEqual(got.map((r) => r.ok).sort(), [false, true], 'exactly one queued');
+    assert.equal(lines(h.p.turn('t1', TURN_FILES.tools)).filter((x) => x.op === 'call').length, 1, 'and only it recorded');
+  } finally {
+    h.done();
+  }
+});
+
 test('update_block is checked with the catalog first; an invalid show_block still goes, since the laptop shows its fallback', async () => {
   const h = makeHome();
   try {

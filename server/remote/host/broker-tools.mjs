@@ -88,6 +88,37 @@ async function queueFull(b, turn, name, bytes) {
   return '';
 }
 
+/**
+ * Runs fn after the turn’s calls already being admitted, so their checks and takes don’t interleave.
+ * @template T @param {Broker} b @param {string} turn @param {() => Promise<T>} fn @returns {Promise<T>}
+ */
+function admit(b, turn, fn) {
+  const next = (b.admitting.get(turn) ?? Promise.resolve()).then(fn);
+  const settled = next.then(
+    () => {},
+    () => {},
+  );
+  b.admitting.set(turn, settled);
+  settled.then(() => {
+    if (b.admitting.get(turn) === settled) b.admitting.delete(turn);
+  });
+  return next;
+}
+
+/**
+ * Takes a call into the turn’s queue, or says why not: checked and taken in one step per turn, since the turn’s shims
+ * send at once and each would otherwise count the calls waiting before any of the others was taken. 'again' when
+ * another shim of the turn sent the same call meanwhile.
+ * @param {Broker} b @param {string} k @param {Tool} t @returns {Promise<string>}
+ */
+const take = (b, k, t) =>
+  admit(b, t.turn, async () => {
+    if (b.tools.has(k)) return 'again';
+    const full = await queueFull(b, t.turn, t.name, t.bytes ?? 0);
+    if (!full) b.tools.set(k, t);
+    return full;
+  });
+
 /** A shim’s tool call. @param {Broker} b @param {ShimConn} c @param {string} turn @param {any} m */
 export async function call(b, c, turn, m) {
   const result = (ok, text) => c.send('result', { id: m.id, ok, text: text.slice(0, REMOTE_LIMITS.replyChars) });
@@ -123,14 +154,15 @@ export async function call(b, c, turn, m) {
     return result(false, r.text);
   }
   const bytes = toolBytes(turn, m.name, r.args);
-  const full = await queueFull(b, turn, m.name, bytes);
-  if (full) {
-    b.log(`Turn ${turn}’s ${m.name} (${m.id}) was refused: ${full}`);
-    return result(false, full);
-  }
   /** @type {Tool} */
   const t = { turn, id: m.id, name: m.name, route: /** @type {'queue' | 'ask'} */ (route), args: r.args, replied: false, bytes };
-  b.tools.set(k, t);
+  const admitted = await take(b, k, t);
+  // Another of the turn’s shims sent the same call meanwhile: answered as a call sent again.
+  if (admitted === 'again') return call(b, c, turn, m);
+  if (admitted) {
+    b.log(`Turn ${turn}’s ${m.name} (${m.id}) was refused: ${admitted}`);
+    return result(false, admitted);
+  }
   // Written down before the shim hears or Postbox sees it, so a queued call outlives a crash right after. One that
   // can’t be written isn’t kept: the shim hears why, and the same call can go once the file can be written.
   t.saved = record(b, turn, 'tools', { op: 'call', id: t.id, name: t.name, route: t.route, args: t.args }).then(
