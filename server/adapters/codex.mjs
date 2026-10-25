@@ -5,6 +5,7 @@ import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { draftOf } from '../write-guard.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
+import { codexModelOf } from './codex-model.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
@@ -94,7 +95,6 @@ export function codexPermissions(persona, cwd) {
   return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request' };
 }
 
-const codexModelOf = (persona) => (persona?.model && persona.model !== 'mock' ? String(persona.model) : null);
 const codexEffortOf = (persona) => (effortOf(persona) === 'max' ? 'xhigh' : effortOf(persona));
 
 export function codexConfigArgs(mcpUrl) {
