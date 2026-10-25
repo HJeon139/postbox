@@ -51,7 +51,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
               type: 'button',
               id: `top-ring-${se.id}`,
               'aria-haspopup': needsYouNow(se) ? null : 'dialog',
-              'aria-expanded': 'false',
+              'aria-expanded': needsYouNow(se) ? null : 'false',
               title: joinedWhy(se),
               onclick: () => openAgentPanel(se.id, b),
             },

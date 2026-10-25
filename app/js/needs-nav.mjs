@@ -119,8 +119,14 @@ export function panelWhileNeeds(se, row, open) {
 function paint(el, sessionId) {
   const needs = needsYouNow(S().sessions[sessionId]);
   if (el.dataset.needsMore) el.hidden = !needs;
-  else if (needs) el.removeAttribute('aria-haspopup');
-  else el.setAttribute('aria-haspopup', 'dialog');
+  else if (needs) {
+    el.removeAttribute('aria-haspopup');
+    el.removeAttribute('aria-expanded');
+  } else {
+    el.setAttribute('aria-haspopup', 'dialog');
+    // Left as it is while its panel is open, which sets it true.
+    if (!el.hasAttribute('aria-expanded')) el.setAttribute('aria-expanded', 'false');
+  }
 }
 client.on((ch) => {
   if (ch.type !== 'session' && ch.type !== 'load') return;

@@ -243,6 +243,10 @@ test('the ring beside an agent’s name on a message goes to its ask', async ({ 
 test('an agent’s ring in the top bar goes to its ask', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
   // Its own button: a folded stack of rings in the top bar holds a second ring for each agent.
+  // It opens no dialog while its agent needs you, so it says neither that it does nor whether one is open.
+  await expect(page.locator(`#top-ring-${S.gamma.id}`)).not.toHaveAttribute('aria-haspopup');
+  await expect(page.locator(`#top-ring-${S.gamma.id}`)).not.toHaveAttribute('aria-expanded');
+  await expect(page.locator(`#top-ring-${S.zeta.id}`), 'an idle agent’s ring still opens its panel').toHaveAttribute('aria-expanded', 'false');
   await page.locator(`#top-ring-${S.gamma.id}`).click();
   await landsOn(page, 'gamma');
 });
