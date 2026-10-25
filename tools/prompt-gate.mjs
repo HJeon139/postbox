@@ -2,8 +2,10 @@
 //
 //   node tools/prompt-gate.mjs touched <paths file>          the changed files (one per line, on stdin) that are prompt
 //                                                            surface; exit 0 either way
-//   node tools/prompt-gate.mjs findings <base.json> <head.json>  SkillSpector’s findings the head adds, as Markdown;
-//                                                            exit 1 if any is high or critical
+//   node tools/prompt-gate.mjs findings <base.json> <head.json> [accepted.json]  SkillSpector’s findings the head
+//                                                            adds, as Markdown; exit 1 if one is high or critical
+//                                                            and not accepted, or an accepted one no longer matches
+//   node tools/prompt-gate.mjs annotations <base.json> <head.json> [accepted.json]  the same, as run-page annotations
 //   node tools/prompt-gate.mjs spoofs <check> <gate> <root> <file>...  the head’s workflow files (under root) that
 //                                                            could post a check named <check>; exit 1 if any
 //   node tools/prompt-gate.mjs notices <touched file>        the run page’s notices: what to read before approving
@@ -15,9 +17,9 @@
 // verdict.
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { blocks, findingsReport, newFindings } from './prompt-findings.mjs';
+import { acceptedProblems, annotations, findingsReport, judge } from './prompt-findings.mjs';
 
 /** The globs in a paths file. @param {string} text */
 export const globsOf = (text) =>
@@ -164,13 +166,26 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const files = readFileSync(a, 'utf8').split('\n').filter(Boolean);
     const where = { repo: process.env.REPO ?? '', pr: process.env.PR ?? '', runUrl: process.env.RUN_URL ?? '', tooMany: process.env.TOO_MANY === 'true' };
     console.log(cmd === 'notices' ? notices(files, where).join('\n') : reviewComment(files, where));
-  } else if (cmd === 'findings' && a && b) {
+  } else if ((cmd === 'findings' || cmd === 'annotations') && a && b) {
     const [base, head] = [a, b].map((f) => JSON.parse(readFileSync(f, 'utf8')));
-    console.log(findingsReport(base, head));
-    process.exitCode = newFindings(base, head).some(blocks) ? 1 : 0;
+    const list = process.argv[5] && existsSync(process.argv[5]) ? JSON.parse(readFileSync(process.argv[5], 'utf8')) : [];
+    const problems = acceptedProblems(list);
+    if (problems.length) {
+      console.log(
+        cmd === 'annotations'
+          ? problems.map((p) => `::error title=Accepted findings::${p}`).join('\n')
+          : ['The accepted findings list has problems:', ...problems.map((p) => `- ${p}`)].join('\n'),
+      );
+      process.exitCode = 1;
+    } else if (cmd === 'annotations') console.log(annotations(base, head, list).join('\n'));
+    else {
+      console.log(findingsReport(base, head, list));
+      const { blocking, stale } = judge(base, head, list);
+      process.exitCode = blocking.length || stale.length ? 1 : 0;
+    }
   } else {
     console.error(
-      'Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings <base.json> <head.json> | spoofs <check> <gate> <root> <file>... | notices|comment <touched file>',
+      'Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings|annotations <base.json> <head.json> [accepted.json] | spoofs <check> <gate> <root> <file>... | notices|comment <touched file>',
     );
     process.exitCode = 2;
   }
