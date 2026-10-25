@@ -1,18 +1,15 @@
 // Summarize back from a side thread (#225), with a topic thread’s contract (#93): the person starts it, an agent of
-// the thread writes it, it’s posted in the conversation marked as from that thread, and it wakes no one.
+// the thread writes it, it’s posted in the conversation marked as from that thread, and it wakes no one. Side threads
+// are history since #372, read-only to the person, and Summarize back still works on one.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { held, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
+import { held, oldSide, settle, setup, sleep } from './side-threads-fixture.mjs';
 
-/** A side thread between alpha, who started it, and beta, who answered. */
+/** A side thread from before #372 between alpha, who started it, and beta, who answered. */
 async function sideThread() {
   const f = setup();
-  f.adapter.next.push(async (c) => c.text('The 1908 edition drops two chapters.'));
-  f.adapter.next.push(async (c) => c.text('Noted.'));
-  f.rt.agentWake(f.alpha.id, 'beta', 'Which editions differ?');
-  await settle(f.rt);
-  return { ...f, side: sideOf(f.store, f.t) };
+  return { ...f, side: oldSide(f, ['Which editions differ?', 'The 1908 edition drops two chapters.']) };
 }
 
 test('#225: Summarize back in a side thread: the agent that started it writes it, and it’s posted in the conversation', async () => {
@@ -48,6 +45,8 @@ test('#225: the person can name the side thread’s other agent to write it, and
   assert.equal(store.items(t.id).at(-1).handle, 'beta');
   assert.throws(() => rt.summarizeBack(side.id, { handle: 'gamma' }), { status: 400, message: /@gamma isn’t in this side thread. Name @alpha or @beta/ });
   assert.throws(() => rt.summarizeBack(side.id, { handle: 3 }), { status: 400 });
+  rt.sendMessage(t.id, { text: '@alpha hello' });
+  await settle(rt);
   const { threadId: topic } = rt.startTopic(t.id, store.items(t.id).find((x) => x.kind === 'agent').id);
   assert.throws(() => rt.summarizeBack(topic, { handle: 'beta' }), { status: 400 });
   assert.throws(() => rt.summarizeBack(t.id), { status: 409, message: /Only a topic or side thread/ });
@@ -89,13 +88,14 @@ test('#225: nor does a summary’s review_block, which would wake the block’s 
 });
 
 /**
- * Asks for the summary while the agent that writes it is busy in the thread, so it waits behind that turn, and returns
- * whether it was still pending once its own turn had started. The person’s message there keeps the agent busy.
+ * Asks for the summary while the agent that writes it is busy, so it waits behind that turn, and returns whether it
+ * was still pending once its own turn had started. The person’s message in busyIn, the thread itself unless it’s a
+ * side thread, which takes none (#372), keeps the agent busy.
  */
-async function askWhileBusy({ store, rt, adapter }, threadId, text) {
+async function askWhileBusy({ store, rt, adapter }, threadId, text, busyIn = threadId) {
   const [busy, summary] = [held(), held()];
   adapter.next.push(busy.step, summary.step);
-  rt.sendMessage(threadId, { text });
+  rt.sendMessage(busyIn, { text });
   assert.equal(rt.turns.size, 1, 'its agent is busy');
   rt.summarizeBack(threadId);
   busy.release();
@@ -108,9 +108,9 @@ async function askWhileBusy({ store, rt, adapter }, threadId, text) {
   return pending;
 }
 
-test('#225: asked while its agent is busy in the side thread, Summarize back stays pending until the summary is written', async () => {
+test('#225, #372: asked while its agent is busy in the conversation, Summarize back on a side thread stays pending until the summary is written', async () => {
   const f = await sideThread();
-  assert.equal(await askWhileBusy(f, f.side.id, '@alpha one more thing'), true, 'pending while the summary is written');
+  assert.equal(await askWhileBusy(f, f.side.id, '@alpha one more thing', f.t.id), true, 'pending while the summary is written');
   assert.equal(f.store.items(f.t.id).at(-1).summary, true);
 });
 

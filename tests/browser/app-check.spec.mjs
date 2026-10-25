@@ -1,23 +1,15 @@
-// Checks the pre-display check in headless Chrome, on apps made to fail it and apps that must pass it:
-// - #194: text that spills out of its box (text-overflow) and text drawn over text (text-overlap), on the gallery
-//   whose descriptions ran into its demo heading, and its fix. Labels a transition moves into place, and labels
-//   hidden with opacity 0, and text under an opaque sticky footer, aren’t reported.
+// The pre-display check, on apps made to fail it and apps that must pass it:
+// - #194: text that spills out of its box (text-overflow) and text drawn over text (text-overlap), on the gallery whose
+//   descriptions ran into its demo heading, and its fix. Labels a transition moves into place, labels hidden with
+//   opacity 0, and text under an opaque sticky footer aren’t reported.
 // - #89: controls you can’t see or click (control-hidden): a row of buttons clipped by Postbox’s own .bar class, and a
 //   button under an overlay. Controls in a scroll box, and a checkbox hidden for screen readers, aren’t reported.
-//
-//   node tools/checks/app-check.mjs
-//
-// PB_PORT and PB_CHROME_PORT move it (4910 and 10210 by default), so sessions working in parallel don’t collide.
-// It reports through tools/harness.mjs: one line per assertion, and exit code 1 on any failure.
+// Every app goes up in one conversation, which a page opened before the tests checks; each test reads what the check
+// found for its apps. Moved from tools/checks/app-check.mjs (#303).
 
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { start } from '../../server/index.mjs';
-import { js, launch, sleep } from '../cdp.mjs';
-import { record as check, finish, ports } from '../harness.mjs';
-
-const { PORT, CHROME_PORT } = await ports(4910, 10210);
+import { readFile } from 'node:fs/promises';
+import { expect, test } from '@playwright/test';
+import { startPostbox, synced } from './postbox.mjs';
 
 // The “Eight visual forms” gallery (#194), cut down: v1 sets its buttons nowrap in a fixed 230 px column, so their
 // text runs into the demo heading beside it; v2 lets them wrap, in a column that can shrink.
@@ -108,104 +100,134 @@ const APPS = {
 <table><tr><th>Book</th><th>Passages</th></tr><tr><td>Middlemarch</td><td>812</td></tr></table></main>`,
 };
 
-const dataDir = await mkdtemp(join(tmpdir(), 'pb-check-app-check-'));
-const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
-// The agent hears a failed check and doesn’t answer, so each app keeps what its first check found.
-app.rt.adapters.register({ name: 'mock', async deliver() {} });
-let page = null;
-
-try {
-  const { rt, store } = app;
-  const projectId = Object.values(rt.s.projects)[0].id;
-  const persona = rt.createPersona({ handle: 'drawer' });
-  const t = rt.createThread({ projectId, title: 'App check', personaIds: [persona.id] });
+/** @type {Awaited<ReturnType<typeof startPostbox>>} */
+let app;
+/** What the page logged as errors while it checked the apps. */
+const errors = [];
+test.beforeAll(async ({ browser }) => {
+  // Mermaid, KaTeX and the kit load on first use, and seventeen apps are checked at two widths.
+  test.setTimeout(120_000);
+  app = await startPostbox('app-check');
+  const { rt } = app;
+  // The agent hears a failed check and doesn’t answer, so each app keeps what its first check found.
+  rt.adapters.register({ name: 'mock', async deliver() {} });
+  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'App check', personaIds: [rt.createPersona({ handle: 'drawer' }).id] });
   const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
   for (const [id, code] of Object.entries(APPS)) tools.show_app({ id, title: id, code });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
+  page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
+  page.on('console', (m) => m.type() === 'error' && errors.push(`console.error: ${m.text()}`));
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect
+    .poll(() => Object.keys(APPS).filter((id) => rt.s.apps[id].check.status === 'pending'), { message: 'every app checked', timeout: 90_000 })
+    .toEqual([]);
+  await page.close();
+});
+test.afterAll(async () => {
+  await app?.stop();
+});
 
-  page = await launch({ port: CHROME_PORT });
-  await page.size(1280, 900, { theme: 'dark' });
-  await page.goto(app.origin);
-  await page.synced(store.state.seq);
-  await page.evaluate(`location.hash = '#/t/${t.id}'`);
-  const end = Date.now() + 40000;
-  while (Date.now() < end && Object.keys(APPS).some((id) => rt.s.apps[id].check.status === 'pending')) await sleep(200);
-  const found = (id) => rt.s.apps[id].check.problems ?? [];
-  const codes = (id) => found(id).map((p) => p.code);
-  const says = (id) =>
-    found(id)
-      .map((p) => `${p.code}: ${p.message}`)
-      .join('\n') || 'no problems';
-  // A negative assertion counts only for a check that finished: a frame that never answered reports nothing either.
-  const finished = (id) => rt.s.apps[id].check.status !== 'pending' && !codes(id).some((c) => c === 'no-answer' || c === 'check-error');
-  const clean = (id) => finished(id) && rt.s.apps[id].check.status === 'passed';
+const found = (id) => app.rt.s.apps[id].check.problems ?? [];
+const codes = (id) => found(id).map((p) => p.code);
+const says = (id) =>
+  found(id)
+    .map((p) => `${p.code}: ${p.message}`)
+    .join('\n') || 'no problems';
+/** A negative assertion counts only for a check that finished: a frame that never answered reports nothing either. */
+const finished = (id) => app.rt.s.apps[id].check.status !== 'pending' && !codes(id).some((c) => c === 'no-answer' || c === 'check-error');
+const clean = (id) => finished(id) && app.rt.s.apps[id].check.status === 'passed';
 
-  check(
-    codes('grid').includes('text-overflow') && codes('grid').includes('text-overlap'),
-    '#194: nowrap text in a 120 px column overflows and overlaps',
-    says('grid'),
-  );
+test('the page threw no exceptions and logged no errors while it checked the apps', () => {
+  expect(errors).toEqual([]);
+});
+
+// ── #194: text out of its box, and text over text ───────────────────────────────────────
+// Where a test holds what were separate checks, its expects are soft: each reports, whichever fails first.
+
+test('#194 nowrap text in a 120 px column overflows and overlaps, and the messages name the texts, the widths and the usual fix', () => {
+  expect.soft(codes('grid'), says('grid')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
   const over = found('grid').find((p) => p.code === 'text-overflow')?.message ?? '';
-  check(/“a long description that won’t fit” is \d+ px wide in a 120 px box/.test(over), 'the message names the text and both widths', over);
-  check(/white-space: nowrap/.test(over) && /minmax\(0, …\)/.test(over), 'and the usual fix', over);
-  check(/drawn over “Heading”/.test(found('grid').find((p) => p.code === 'text-overlap')?.message ?? ''), 'text-overlap names both texts', says('grid'));
-  check(codes('gallery1').includes('text-overflow') && codes('gallery1').includes('text-overlap'), 'the gallery’s v1 fails', says('gallery1'));
-  check(clean('gallery2'), 'its v2 passes', says('gallery2'));
-  check(finished('moving') && !codes('moving').includes('text-overlap'), 'labels a transition moves apart aren’t reported', says('moving'));
-  check(finished('faded') && !codes('faded').includes('text-overlap'), 'text hidden with opacity 0 isn’t reported', says('faded'));
-  check(clean('plain'), 'ordinary text set tight passes', says('plain'));
-  check(clean('sticky'), 'a list scrolled under an opaque sticky footer passes', says('sticky'));
+  expect.soft(over).toMatch(/“a long description that won’t fit” is \d+ px wide in a 120 px box/);
+  expect.soft(over).toMatch(/white-space: nowrap/);
+  expect.soft(over).toMatch(/minmax\(0, …\)/);
+  expect.soft(found('grid').find((p) => p.code === 'text-overlap')?.message, 'text-overlap names both texts').toMatch(/drawn over “Heading”/);
+});
 
-  const bar = found('bar').filter((p) => p.code === 'control-hidden');
-  check(bar.length === 2, '#89: the .bar row is control-hidden, once at each width', says('bar'));
-  check(
-    bar.every(
-      (p) =>
-        /6 controls, such as the button “All”, are clipped to \d+ × 4 px by div\.bar/.test(p.message) &&
-        /\.bar is a class of Postbox’s own stylesheet/.test(p.message),
-    ),
-    'the message counts the buttons, names div.bar and says .bar is Postbox’s',
-    says('bar'),
-  );
-  check(/the button “Run it” is under div, which takes its clicks/.test(says('covered')), '#89: a button under an overlay is control-hidden', says('covered'));
-  check(
-    finished('clipped') && !codes('clipped').includes('text-overlap'),
-    'text cut by its own box, a halo and rotated labels aren’t text over text',
-    says('clipped'),
-  );
-  check(/the button “Deep” is under div/.test(says('smooth')), 'a covered control far down a smooth-scrolling page is found', says('smooth'));
-  check(/the button “A wide button label” is clipped/.test(says('smooth')), 'and one a box clips sideways while it scrolls up and down', says('smooth'));
-  check(clean('katex'), 'KaTeX math, inline and on its own line, passes', says('katex'));
-  check(clean('tight'), 'a figure set tight over its caption, a <pre> that scrolls sideways and a badge past a corner pass', says('tight'));
-  check(finished('cards') && !codes('cards').includes('text-overlap'), 'sixty opaque cards stacked in one place finish, with nothing over them', says('cards'));
-  check(clean('purpose'), 'controls under an open modal, on other slides, in a closed accordion or menu, and hidden radios pass', says('purpose'));
-  check(
-    /the button “Export” is under div\.wm, which is nearly transparent but takes its clicks\. Give div\.wm pointer-events: none\./.test(says('watermark')),
-    'a faint watermark over a button says to give it pointer-events: none',
-    says('watermark'),
-  );
-  check(clean('heatmap'), 'the kit’s own heatmap with 8 columns passes at both widths', says('heatmap'));
-  check(clean('scrolled'), 'controls in a scroll box, and a checkbox hidden for screen readers, pass', says('scrolled'));
+test('#194 the gallery’s v1 fails, and its v2 passes', () => {
+  expect.soft(codes('gallery1'), says('gallery1')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
+  expect.soft(clean('gallery2'), says('gallery2')).toBe(true);
+});
 
-  // How text-overlap measures, on its own in a blank page: an overlap counts only when it’s there both times.
-  await page.goto('about:blank');
+for (const [id, what] of [
+  ['moving', 'labels a transition moves apart'],
+  ['faded', 'text hidden with opacity 0'],
+  ['clipped', 'text cut by its own box, a halo and rotated labels'],
+  ['cards', 'sixty opaque cards stacked in one place, with nothing over them,'],
+])
+  test(`#194 ${what} aren’t reported as text over text`, () => {
+    expect(finished(id) && !codes(id).includes('text-overlap'), says(id)).toBe(true);
+  });
+
+for (const [id, what] of [
+  ['plain', 'ordinary text set tight'],
+  ['sticky', 'a list scrolled under an opaque sticky footer'],
+  ['katex', 'KaTeX math, inline and on its own line,'],
+  ['tight', 'a figure set tight over its caption, a <pre> that scrolls sideways and a badge past a corner'],
+  ['heatmap', 'the kit’s own heatmap with 8 columns, at both widths,'],
+])
+  test(`#194 ${what} passes`, () => {
+    expect(clean(id), says(id)).toBe(true);
+  });
+
+test('#194 an overlap there both times the check looks is reported, and one that moved away isn’t', async ({ page }) => {
   const layout = await readFile(new URL('../../app/kit/check-layout.js', import.meta.url), 'utf8');
-  await page.evaluate(`window.__pbCheck = {}; (0, eval)(${js(layout)});`);
-  await page.evaluate(
-    `document.body.innerHTML = '<p style="position:absolute;left:0;top:0;margin:0">Still label</p><p style="position:absolute;left:4px;top:2px;margin:0">Stays here</p><p id="m" style="position:absolute;left:0;top:60px;margin:0">Moving label</p><p style="position:absolute;left:4px;top:62px;margin:0">Moved from</p>'`,
+  await page.setContent(
+    '<p style="position:absolute;left:0;top:0;margin:0">Still label</p><p style="position:absolute;left:4px;top:2px;margin:0">Stays here</p><p id="m" style="position:absolute;left:0;top:60px;margin:0">Moving label</p><p style="position:absolute;left:4px;top:62px;margin:0">Moved from</p>',
   );
-  const twice = await page.evaluate(
-    `(() => { const p = window.__pbCheck.textOverlap(1280); setTimeout(() => { document.getElementById('m').style.left = '300px'; }, 400); return p; })()`,
+  await page.evaluate(() => {
+    /** @type {any} */ (window).__pbCheck = {};
+  });
+  await page.addScriptTag({ content: layout });
+  const twice = await page.evaluate(() => {
+    // The moving label goes 400 ms in, between the check’s two looks.
+    const t0 = performance.now();
+    const move = () =>
+      performance.now() - t0 >= 400 ? /** @type {HTMLElement} */ ((document.getElementById('m').style.left = '300px')) : requestAnimationFrame(move);
+    requestAnimationFrame(move);
+    return /** @type {any} */ (window).__pbCheck.textOverlap(1280);
+  });
+  expect(twice.length, JSON.stringify(twice)).toBe(1);
+  expect(twice[0].message).toMatch(/“Still label” is drawn over “Stays here”/);
+});
+
+// ── #89: controls you can’t see or click ────────────────────────────────────────────────
+
+test('#89 the .bar row is control-hidden once at each width, and says why: div.bar, a class of Postbox’s own stylesheet', () => {
+  const bar = found('bar').filter((p) => p.code === 'control-hidden');
+  expect(bar.length, says('bar')).toBe(2);
+  for (const p of bar) {
+    expect(p.message).toMatch(/6 controls, such as the button “All”, are clipped to \d+ × 4 px by div\.bar/);
+    expect(p.message).toMatch(/\.bar is a class of Postbox’s own stylesheet/);
+  }
+});
+
+test('#89 a button under an overlay is control-hidden, far down a smooth-scrolling page too, and one a box clips sideways', () => {
+  expect.soft(says('covered')).toMatch(/the button “Run it” is under div, which takes its clicks/);
+  expect.soft(says('smooth')).toMatch(/the button “Deep” is under div/);
+  expect.soft(says('smooth')).toMatch(/the button “A wide button label” is clipped/);
+});
+
+test('#89 a faint watermark over a button says to give it pointer-events: none', () => {
+  expect(says('watermark')).toMatch(
+    /the button “Export” is under div\.wm, which is nearly transparent but takes its clicks\. Give div\.wm pointer-events: none\./,
   );
-  check(
-    twice.length === 1 && /“Still label” is drawn over “Stays here”/.test(twice[0].message),
-    'an overlap there both times is reported, and one that moved away isn’t',
-    JSON.stringify(twice),
-  );
-} catch (e) {
-  check(false, 'the check ran to the end', e.stack ?? e.message);
-} finally {
-  await page?.close();
-  await app.close();
-  await rm(dataDir, { recursive: true, force: true });
-}
-finish();
+});
+
+for (const [id, what] of [
+  ['purpose', 'controls under an open modal, on other slides, in a closed accordion or menu, and hidden radios'],
+  ['scrolled', 'controls in a scroll box, and a checkbox hidden for screen readers,'],
+])
+  test(`#89 ${what} pass`, () => {
+    expect(clean(id), says(id)).toBe(true);
+  });

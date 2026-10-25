@@ -1,45 +1,49 @@
-// Side threads (#110, #121, #128, #228): one session per persona per conversation. A wake runs in the agent’s session in
-// the conversation and shows in the side thread; while that session is busy, the wake waits for its turn.
+// Agents waking agents (#110, #121, #128, #228, #372): one session per persona per conversation. A wake runs in the
+// agent’s session in the conversation, where the person reads, and its reply shows there; while that session is busy,
+// the wake waits for its turn. Side threads from before #372 are history: agents read them, and no one writes in them.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { held, sessionsOfPersona, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
+import { held, oldSide, sessionsOfPersona, settle, setup, sleep } from './side-threads-fixture.mjs';
 
-test('#110: a wake runs in the agent’s own session in the conversation, and shows in the side thread', async () => {
+const sides = (store) => Object.values(store.state.threads).filter((x) => x.kind === 'side');
+
+test('#110, #372: a wake runs in the agent’s own session, in the conversation; its reply shows there, and the waker gets no new turn', async () => {
   const { store, rt, adapter, t, b, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
   rt.agentWake(alpha.id, 'beta', 'Which editions did you use?');
   await sleep(5);
-  const side = sideOf(store, t);
-  // No second @beta: its conversation session took the wake, in the side thread.
+  // No second @beta, and no side thread: its conversation session took the wake, in the conversation.
   assert.deepEqual(
     sessionsOfPersona(store, b.id).map((x) => x.id),
     [beta.id],
   );
-  assert.deepEqual(side.members, []);
-  assert.equal(adapter.calls.at(-1).sessionId, beta.id);
-  assert.equal(adapter.calls.at(-1).thread, side.id);
-  // While it works, the session says where (#121).
-  assert.deepEqual(store.state.sessions[beta.id].sideTurn, { threadId: side.id, by: 'alpha' });
+  assert.deepEqual(sides(store), []);
+  assert.equal(
+    store.items(t.id).some((i) => i.kind === 'sidelink'),
+    false,
+  );
+  assert.deepEqual([adapter.calls.at(-1).sessionId, adapter.calls.at(-1).thread], [beta.id, t.id]);
+  // The wake is @alpha’s message in the conversation, with its number in the chain (#114).
+  const wake = store.items(t.id).find((i) => i.kind === 'agent' && i.handle === 'alpha');
+  assert.deepEqual([wake.sessionId, wake.text, wake.hop], [alpha.id, 'Which editions did you use?', 1]);
+  assert.equal(adapter.calls.at(-1).message.itemId, wake.id);
+  // It works in its own thread, so the session says nowhere else (#121).
+  assert.equal(store.state.sessions[beta.id].sideTurn, null);
   h.release();
   await settle(rt);
-  const reply = store.items(side.id).find((i) => i.kind === 'agent' && i.handle === 'beta');
-  assert.equal(reply.sessionId, beta.id);
-  assert.equal(reply.text, 'working on it');
-  assert.equal(
-    store.items(t.id).some((i) => i.kind === 'agent' && i.handle === 'beta'),
-    false,
-    'the reply is in the side thread, not the conversation',
+  const reply = store.items(t.id).find((i) => i.kind === 'agent' && i.handle === 'beta');
+  assert.deepEqual([reply.sessionId, reply.text], [beta.id, 'working on it']);
+  // Its reply doesn’t go back to the session that woke it: @alpha reads it at its next turn.
+  assert.deepEqual(
+    adapter.calls.map((c) => c.sessionId),
+    [beta.id],
   );
-  assert.equal(store.state.sessions[beta.id].sideTurn, null);
-  // Its reply went back to the session that woke it, as before.
-  assert.ok(adapter.calls.some((c) => c.sessionId === alpha.id && c.message.kind === 'agent' && c.message.from === '@beta'));
   // The next thing you ask @beta in the conversation goes to the same session: the one that remembers the exchange.
   rt.sendMessage(t.id, { text: '@beta what did you tell alpha?' });
   await settle(rt);
-  assert.equal(adapter.calls.at(-1).sessionId, beta.id);
-  assert.equal(adapter.calls.at(-1).thread, t.id);
+  assert.deepEqual([adapter.calls.at(-1).sessionId, adapter.calls.at(-1).thread], [beta.id, t.id]);
 });
 
 test('#228: a wake while the session is busy waits for its turn, as a message to a busy agent does: no fork', async () => {
@@ -55,83 +59,136 @@ test('#228: a wake while the session is busy waits for its turn, as a message to
     sessionsOfPersona(store, b.id).map((x) => x.id),
     [beta.id],
   );
-  // It waits in the side thread’s queue, where the person sees it and can remove it (#228).
-  const [q] = sideOf(store, t).queue;
+  // It waits in the conversation’s queue, where the person sees it and can remove it (#228, #372).
+  const [q] = store.state.threads[t.id].queue;
   assert.deepEqual([q.kind, q.from, q.text, q.sessionIds], ['wake', 'alpha', 'Which editions?', [beta.id]]);
   busy.release();
   await settle(rt);
   const answer = adapter.calls.find((x) => x.message.text === 'Which editions?');
-  assert.deepEqual([answer.sessionId, answer.thread], [beta.id, sideOf(store, t).id]);
+  assert.deepEqual([answer.sessionId, answer.thread], [beta.id, t.id]);
   assert.equal(
     Object.values(store.state.sessions).some((x) => x.forkOf),
     false,
   );
+  assert.deepEqual(sides(store), []);
 });
 
-test('#110: a second wake while the session is busy in that same side thread waits for its turn, and starts no fork', async () => {
+test('#110, #372: a second wake while the session is busy with the first waits in the conversation’s queue, and starts no fork', async () => {
   const { store, rt, adapter, t, b, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
   rt.agentWake(alpha.id, 'beta', 'Which editions?');
   await sleep(5);
-  const side = sideOf(store, t);
   adapter.next.push(async (c) => c.text('Dates: 1999 and 2004.'));
   rt.agentWake(alpha.id, 'beta', 'And the dates?');
   assert.deepEqual(
     sessionsOfPersona(store, b.id).map((x) => x.id),
     [beta.id],
   );
-  assert.equal(store.state.threads[side.id].queue.length, 1);
+  assert.deepEqual(
+    store.state.threads[t.id].queue.map((q) => q.text),
+    ['And the dates?'],
+  );
   h.release();
   await settle(rt);
   const second = adapter.calls.find((c) => c.message.text === 'And the dates?');
-  assert.deepEqual([second.sessionId, second.thread], [beta.id, side.id]);
+  assert.deepEqual([second.sessionId, second.thread], [beta.id, t.id]);
 });
 
-test('#128: @-mentioning an agent in a side thread reaches its session in the conversation, not a new copy', async () => {
-  const { store, rt, adapter, t, a, b, alpha, beta } = setup();
-  rt.agentWake(alpha.id, 'beta', 'Look at this.');
+test('#128, #372: a side thread from before is read-only: a message there is refused with where to write, and wakes no one', async () => {
+  const f = setup();
+  const { store, rt, adapter, a, b } = f;
+  const side = oldSide(f);
+  const items = store.items(side.id).length;
+  for (const text of ['@alpha post the details in the main chat', 'and you?'])
+    assert.throws(() => rt.sendMessage(side.id, { text }), {
+      status: 409,
+      message: 'Side threads are read-only now. Write in the conversation, where the agents talk.',
+    });
   await settle(rt);
-  const side = sideOf(store, t);
-  rt.sendMessage(side.id, { text: '@alpha post the details in the main chat' });
-  await settle(rt);
-  assert.equal(sessionsOfPersona(store, a.id).length, 1);
-  assert.equal(adapter.calls.at(-1).sessionId, alpha.id);
-  assert.equal(adapter.calls.at(-1).thread, side.id);
-  // No mention: the last speaker there answers, from its own session.
-  rt.sendMessage(side.id, { text: 'and you?' });
-  await settle(rt);
-  assert.equal(adapter.calls.at(-1).sessionId, alpha.id);
-  assert.equal(sessionsOfPersona(store, b.id).length, 1);
-  assert.equal(store.state.sessions[beta.id].threadId, t.id);
+  assert.equal(adapter.calls.length, 0);
+  assert.equal(store.items(side.id).length, items, 'nothing was added to it');
+  assert.deepEqual([sessionsOfPersona(store, a.id).length, sessionsOfPersona(store, b.id).length], [1, 1]);
 });
 
-test('#110: an agent asking permission in a side thread needs you there: the card and its needs name that thread', async () => {
-  const { store, rt, adapter, t, alpha, beta } = setup();
+test('#372: a turn still running in a side thread from before hands off in the conversation, and its agent is told once', async () => {
+  const f = setup();
+  const { store, rt, adapter, t, alpha, beta } = f;
+  const side = oldSide(f);
+  const results = [];
+  adapter.next.push(async (c) => {
+    results.push(c.tools.wake_agent({ handle: 'alpha', message: 'The 1908 one, page 12.' }));
+    results.push(c.tools.wake_agent({ handle: 'alpha', message: 'And page 40.' }));
+    c.text('Told alpha.');
+  });
+  rt.deliver(beta.id, { kind: 'agent', from: '@alpha', text: 'Which page?' }, { threadId: side.id });
+  await settle(rt);
+  assert.deepEqual(
+    results.map((r) => r.ok),
+    [true, true],
+  );
+  // Its reply stays in the side thread; the wakes and @alpha’s answers are in the conversation.
+  assert.ok(store.items(side.id).some((i) => i.sessionId === beta.id && i.text === 'Told alpha.'));
+  assert.deepEqual(
+    store
+      .items(t.id)
+      .filter((i) => i.kind === 'agent' && i.handle === 'beta')
+      .map((i) => [i.text, i.hop]),
+    [
+      ['The 1908 one, page 12.', 1],
+      ['And page 40.', 2],
+    ],
+  );
+  assert.deepEqual(
+    adapter.calls.filter((c) => c.sessionId === alpha.id).map((c) => [c.thread, c.message.text]),
+    [
+      [t.id, 'The 1908 one, page 12.'],
+      [t.id, 'And page 40.'],
+    ],
+  );
+  const told = (store.state.sessions[beta.id].context ?? []).filter((x) => /Side threads are gone/.test(x));
+  assert.equal(told.length, 1);
+  assert.equal(store.state.sessions[beta.id].toldSideThreadsGone, true);
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'sidelink').length, 1, 'no new side thread or line');
+});
+
+test('#110, #372: an agent woken from a topic thread that asks for permission needs you there: the card and its needs name that thread', async () => {
+  const { store, rt, adapter, t, beta } = setup();
+  adapter.next.push(async (c) => c.text('Here is the plan.'));
+  rt.sendMessage(t.id, { text: '@alpha a plan' });
+  await settle(rt);
+  const reply = store.items(t.id).find((i) => i.kind === 'agent');
+  const topic = store.state.threads[rt.startTopic(t.id, reply.id).threadId];
   /** @type {any} */
   let asked = null;
+  adapter.next.push(async (c) => {
+    c.tools.wake_agent({ handle: 'beta', message: 'Run the tests.' });
+    c.text('Asked beta.');
+  });
   adapter.next.push(async (c) => {
     asked = c.askPermission({ tool: 'Bash', summary: 'run tests' });
     await asked;
   });
-  rt.agentWake(alpha.id, 'beta', 'Run the tests.');
-  await sleep(10);
-  const side = sideOf(store, t);
+  rt.sendMessage(topic.id, { text: '@alpha get the tests run' });
+  for (let i = 0; i < 200 && !asked; i++) await sleep(5);
+  await sleep(5);
+  // @beta answers where @alpha spoke, in the topic thread, from its session in the conversation.
+  assert.deepEqual([adapter.calls.at(-1).sessionId, adapter.calls.at(-1).thread], [beta.id, topic.id]);
   const se = store.state.sessions[beta.id];
   assert.equal(se.state, 'needs');
   assert.equal(se.needs.kind, 'permission');
-  assert.equal(se.needs.threadId, side.id);
-  assert.ok(store.item(side.id, se.needs.itemId), 'the card is in the side thread');
-  rt.act(side.id, se.needs.itemId, 'allow');
+  assert.equal(se.needs.threadId, topic.id);
+  assert.ok(store.item(topic.id, se.needs.itemId), 'the card is in the topic thread');
+  assert.deepEqual(sides(store), []);
+  rt.act(topic.id, se.needs.itemId, 'allow');
   await settle(rt);
   assert.equal((await asked).allow, true);
 });
 
 test('#110: read_conversation reads another thread of the same conversation by id, and refuses any other', async () => {
-  const { store, rt, t, alpha, a } = setup();
-  rt.agentWake(alpha.id, 'beta', 'The plan is X.');
-  await settle(rt);
-  const side = sideOf(store, t);
+  const f = setup();
+  const { rt, alpha, a } = f;
+  const side = oldSide(f, ['The plan is X.', 'ok']);
   const tools = rt.toolsFor(alpha.id);
   assert.match(tools.read_conversation({ thread: side.id }).message, /\] You \(@alpha\): The plan is X\.\n\n\[it_\w+\] @beta: ok/);
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id] });
@@ -140,7 +197,7 @@ test('#110: read_conversation reads another thread of the same conversation by i
   assert.match(r.message, /no thread .* in this conversation/);
 });
 
-test('#110: a message you queued for an agent busy in a side thread goes once that turn ends', async () => {
+test('#110: a message you queued for an agent busy with a wake goes once that turn ends', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
@@ -154,13 +211,11 @@ test('#110: a message you queued for an agent busy in a side thread goes once th
 });
 
 test('#110: an item read_conversation cut in a side thread can be read in full with read_message, and not from another conversation', async () => {
-  const { store, rt, adapter, t, a, b, alpha, beta } = setup();
+  const f = setup();
+  const { store, rt, a, b, alpha, beta } = f;
   // The side thread isn’t in @alpha’s lineage, just as a fork’s side thread isn’t in its session’s.
   const long = `The fork’s findings. ${'Each edition checked against the catalog. '.repeat(120)}The last paragraph: ship it.`;
-  adapter.next.push(async (c) => c.text(long));
-  rt.agentWake(alpha.id, 'beta', 'Report back in full.');
-  await settle(rt);
-  const side = sideOf(store, t);
+  const side = oldSide(f, ['Report back in full.', long]);
   const reply = store.items(side.id).find((i) => i.kind === 'agent' && i.sessionId === beta.id);
   const tools = rt.toolsFor(alpha.id);
   const read = tools.read_conversation({ thread: side.id });
@@ -174,22 +229,20 @@ test('#110: an item read_conversation cut in a side thread can be read in full w
   assert.equal(tools.read_message({ id: theirs.id }).ok, false);
 });
 
-test('#121: the catch-up line for a side thread gives its id, so an agent can read it', async () => {
-  const { store, rt, adapter, t, alpha } = setup();
-  rt.agentWake(alpha.id, 'beta', 'Check this.');
-  await settle(rt);
-  const side = sideOf(store, t);
+test('#121: the catch-up line for a side thread from before gives its id, so an agent can read it', async () => {
+  const f = setup();
+  const { rt, adapter, t } = f;
+  const side = oldSide(f, ['Check this.', 'ok']);
   rt.sendMessage(t.id, { text: '@gamma what happened?' });
   await settle(rt);
   const ctx = adapter.calls.at(-1).message.context.join('\n');
-  assert.match(ctx, new RegExp(`@alpha and @beta talked in a side thread \\(\\d+ messages?; read_conversation with thread: "${side.id}" reads it\\)`));
+  assert.match(ctx, new RegExp(`@alpha and @beta talked in a side thread \\(2 messages; read_conversation with thread: "${side.id}" reads it\\)`));
 });
 
 test('#121: a link to a thread of the conversation in your message reaches the agent with the thread’s id and title', async () => {
-  const { store, rt, adapter, t, a, alpha } = setup();
-  rt.agentWake(alpha.id, 'beta', 'Check this.');
-  await settle(rt);
-  const side = sideOf(store, t);
+  const f = setup();
+  const { rt, adapter, t, a, alpha } = f;
+  const side = oldSide(f, ['Check this.', 'ok']);
   const other = rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [a.id] });
   rt.sendMessage(t.id, { text: `@alpha look at [it](http://127.0.0.1:4400/#/t/${t.id}/side/${side.id}) and #/t/${other.id}` });
   await settle(rt);

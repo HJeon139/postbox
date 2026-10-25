@@ -1,17 +1,18 @@
-// Side threads as the person sees them (#121, #110):
-// - an agent woken into a side thread shows in its conversation (its agent tree, the side-thread line and the
+// Side threads as the person sees them (#121, #110). Since #372 a wake never makes one (wakes-in-conversation.spec.mjs):
+// the side threads here are from before it, built directly, with a turn still running in one where a test needs it.
+// - an agent at work in a side thread shows in its conversation (its agent tree, the side-thread line and the
 //   conversation’s row) with where it is and who woke it;
-// - a wake while it’s busy waits in the side thread’s queue, with no fork (#228);
+// - a wake while it’s busy waits in the conversation’s queue, with no fork (#228, #372);
 // - one waiting on a permission prompt counts in the tab title, and ⌃J opens its card;
 // - /stop in the conversation reaches the side thread, not a topic thread;
 // - a wake for one outside the conversation brings a card, and Add joins it (#228);
 // - Copy link and the composer’s # link a thread, whose id the agent then gets; the Threads page lists side threads
-//   (#124); Send to conversation and bring_to_conversation (#128); a failed turn’s line, with Retry (#151);
+//   (#124); Send to conversation (#128, and bring-to-conversation.spec.mjs); a failed turn’s line, with Retry (#151);
 // - and at 375 px the side-thread line fits.
 // Each test has a room of its own (tests/browser/side-threads.mjs). Moved from tools/check-side-threads.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { heldBackend, sideRoom } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -38,13 +39,13 @@ function room(title) {
   rooms.push(r);
   return r;
 }
-/** @researcher answers a wake from @indexer in a new side thread, and both finish. Returns the side thread. */
+/** A side thread from before #372, where @researcher answered @indexer’s wake. Returns the side thread. */
 async function withSide(r) {
+  const side = r.oldSide();
   held.scripts.set(r.researcher.id, (ctx) => ctx.text('The 1908 edition drops two chapters.'));
-  held.scripts.set(r.indexer.id, (ctx) => ctx.text('Noted.'));
-  r.wake(r.indexer.id, 'researcher', 'Which editions differ?');
+  r.runIn(side, r.researcher.id, 'Which editions differ?');
   await r.idle();
-  return r.sideOf();
+  return app.store.state.threads[side.id];
 }
 
 async function open(page, hash) {
@@ -57,15 +58,15 @@ const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: pag
 const words = async (locator) => (await locator.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
 const sideLine = (page) => page.locator('#main .pill', { hasText: 'asked' });
 
-test('an agent woken into a side thread works in its own session, and the conversation shows it and where; another wake waits its turn', async ({ page }) => {
+test('a turn still running in a side thread from before #372 shows in its conversation: its agent tree, the side-thread line and the row', async ({ page }) => {
   const { store } = app;
   const r = room('Woken');
+  const side = r.oldSide();
   await open(page, `#/t/${r.room.id}`);
-  r.wake(r.indexer.id, 'researcher', 'Check the editions on the shelf.');
+  r.runIn(side, r.researcher.id, 'Check the editions on the shelf.');
   await expect.poll(() => r.busy(r.researcher.id), { message: '@researcher’s turn' }).toBe(true);
-  const side = r.sideOf();
   expect(Object.values(store.state.sessions).filter((x) => x.handle === 'researcher' && x.threadId === r.room.id).length).toBe(1);
-  expect(held.turns.at(-1), 'the wake went to its own session, in the side thread').toMatchObject({ sessionId: r.researcher.id, thread: side.id });
+  expect(held.turns.at(-1), 'the turn is its own session’s, in the side thread').toMatchObject({ sessionId: r.researcher.id, thread: side.id });
   // The agent tree: under @researcher, one line with its state and who it’s with, and a Stop; the thread and who woke it
   // are on hover and in the link’s name.
   await expect.poll(() => words(row(page, 'researcher').locator('.agent-sub'))).toEqual(['Calling tools with @indexer Stop']);
@@ -81,20 +82,13 @@ test('an agent woken into a side thread works in its own session, and the conver
   await expect(sideLine(page)).toContainText(/@indexer asked @researcher · @researcher is calling tools · 1 message · Open/);
   await expect(sideLine(page).locator('pb-ring')).toHaveCount(1);
   await expect(page.locator(`.rail a.row[data-thread="${r.room.id}"]`)).toContainText('calling tools in a side thread');
-  // Another wake there while it works waits for its turn: no fork, no second @researcher at the same work.
-  held.scripts.set(r.researcher.id, (ctx) => ctx.text('Dates: 1999 and 2004.'));
-  r.wake(r.indexer.id, 'researcher', 'And the dates?');
-  const here = (x) => x.threadId === r.room.id || store.state.threads[x.threadId]?.parentId === r.room.id;
-  expect(Object.values(store.state.sessions).filter((x) => x.handle === 'researcher' && here(x)).length).toBe(1);
-  expect(r.sideOf().queue.length).toBe(1);
-  held.release(r.researcher.id);
-  await expect.poll(() => held.turns.some((t) => t.sessionId === r.researcher.id && t.text === 'And the dates?'), { message: 'the queued wake' }).toBe(true);
 });
 
-test('a wake while that session is busy in the conversation waits for its turn: no fork, and no second entry (#228)', async ({ page }) => {
+test('a wake while that session is busy waits in the conversation’s queue: no fork, no second entry, and it runs there when the turn ends (#228, #372)', async ({
+  page,
+}) => {
   const { rt, store } = app;
   const r = room('Busy');
-  const side = await withSide(r);
   rt.sendMessage(r.room.id, { text: '@researcher start the long job' });
   await expect
     .poll(() => r.busy(r.researcher.id) && !store.state.sessions[r.researcher.id].sideTurn, { message: '@researcher at work in the conversation' })
@@ -102,14 +96,23 @@ test('a wake while that session is busy in the conversation waits for its turn: 
   const said = r.wake(r.indexer.id, 'researcher', 'One question meanwhile.');
   expect(said.message).toMatch(/it’s busy, so it answers when its current turn ends/);
   expect(Object.values(store.state.sessions).filter((x) => x.forkOf?.sessionId === r.researcher.id).length, 'no fork answered').toBe(0);
-  // It waits in the side thread’s queue, as the agent’s message.
-  await open(page, `#/t/${r.room.id}/side/${side.id}`);
-  const queued = page.locator('.sidepanel .queued');
+  expect(r.sideOf(), 'no side thread').toBeUndefined();
+  // It waits in the conversation’s queue, as the agent’s message, and the message itself is in the transcript.
+  await open(page, `#/t/${r.room.id}`);
+  const queued = page.locator('.queued', { hasText: '@indexer’s message' });
   await expect(queued).toContainText('@indexer’s message · waits for @researcher to finish');
   await expect(queued.getByRole('button', { name: 'Edit', exact: true }), 'a wake can’t be edited').toHaveCount(0);
   await settled(page);
   await expect(row(page, 'researcher').locator('.agent-sub'), 'its row has no entry of its own').toHaveCount(0);
   await expect(row(page, 'researcher').locator('.agent-btn')).toContainText('calling tools');
+  held.scripts.set(r.researcher.id, (ctx) => ctx.text('Dates: 1999 and 2004.'));
+  held.release(r.researcher.id);
+  await expect
+    .poll(() => held.turns.some((t) => t.sessionId === r.researcher.id && t.text === 'One question meanwhile.' && t.thread === r.room.id), {
+      message: 'the queued wake, run in the conversation',
+    })
+    .toBe(true);
+  await expect(queued).toHaveCount(0);
 });
 
 test('a side-thread agent waiting on a permission prompt counts in the tab title, and ⌃J opens the side thread at its card', async ({ page }) => {
@@ -117,7 +120,7 @@ test('a side-thread agent waiting on a permission prompt counts in the tab title
   const r = room('Asks');
   const side = await withSide(r);
   held.scripts.set(r.researcher.id, (ctx) => ctx.askPermission({ tool: 'Bash', summary: 'run the indexer' }));
-  r.wake(r.indexer.id, 'researcher', 'Index it.');
+  r.runIn(side, r.researcher.id, 'Index it.');
   await expect.poll(() => store.state.sessions[r.researcher.id].needs?.kind, { message: 'the permission prompt' }).toBe('permission');
   const card = store.state.sessions[r.researcher.id].needs.itemId;
   expect(store.item(side.id, card), 'the card is in the side thread').toBeTruthy();
@@ -134,7 +137,7 @@ test('a side-thread agent waiting on a permission prompt counts in the tab title
 test('/stop in the conversation stops its agents in side threads, and not a topic thread’s', async ({ page }) => {
   const { rt, store } = app;
   const r = room('Stop');
-  r.wake(r.indexer.id, 'researcher', 'One more pass.');
+  r.runIn(r.oldSide(), r.researcher.id, 'One more pass.');
   await expect
     .poll(() => r.busy(r.researcher.id) && !!store.state.sessions[r.researcher.id].sideTurn, { message: '@researcher at work in the side thread' })
     .toBe(true);
@@ -234,19 +237,11 @@ test('the Threads page lists side threads beside topic threads, with their pair,
   await expect(page.locator('.thread-list li[data-kind="topic"]', { hasText: /Topic thread · in / }).first()).toBeVisible();
 });
 
-test('a side-thread message goes to the conversation by Send to conversation, or by an agent the person asked (#128)', async ({ page }) => {
-  const { rt, store } = app;
+test('a message in a side thread from before #372 still goes to the conversation by Send to conversation (#128)', async ({ page }) => {
+  const { store } = app;
   const r = room('Shared');
   const side = await withSide(r);
-  // The person asks an agent in the side thread, and it posts it with bring_to_conversation.
-  held.scripts.set(r.researcher.id, (ctx) => {
-    ctx.tools.bring_to_conversation({ text: 'The editions, for the main chat.' });
-    ctx.text('Posted it in the conversation.');
-  });
-  rt.sendMessage(side.id, { text: '@researcher post the editions in the main chat' });
-  await expect.poll(() => store.items(r.room.id).some((x) => x.kind === 'shared' && x.agent), { message: 'the agent’s post' }).toBe(true);
-  await r.idle();
-  const reply = store.items(side.id).findLast((x) => x.kind === 'agent' && x.handle === 'researcher' && x.text && !x.sharedAt);
+  const reply = store.items(side.id).findLast((x) => x.kind === 'agent' && x.handle === 'researcher' && x.text);
   await open(page, `#/t/${r.room.id}/side/${side.id}`);
   await page.locator(`.sidepanel [data-key="${reply.id}"]`).getByRole('button', { name: 'Send to conversation' }).click();
   await expect
@@ -254,9 +249,7 @@ test('a side-thread message goes to the conversation by Send to conversation, or
     .toBe(true);
   await synced(page, app);
   await expect(page.locator(`.sidepanel [data-key="${reply.id}"]`)).toContainText('Sent to the conversation');
-  const cards = await words(page.locator('#main .shared-head'));
-  expect(cards).toContain(`From the thread “${side.title}” · shared by @researcher in a turn you started Open thread`);
-  expect(cards).toContain(`From the thread “${side.title}” · @researcher Open thread`);
+  expect(await words(page.locator('#main .shared-head'))).toContain(`From the thread “${side.title}” · @researcher Open thread`);
 });
 
 test('a failed side-thread turn shows on its line with Retry, and the line’s Open goes to its card (#151)', async ({ page }) => {
@@ -266,7 +259,7 @@ test('a failed side-thread turn shows on its line with Retry, and the line’s O
   held.scripts.set(r.researcher.id, async () => {
     throw new Error('API 500');
   });
-  r.wake(r.indexer.id, 'researcher', 'Review the plan.');
+  r.runIn(side, r.researcher.id, 'Review the plan.');
   await expect.poll(() => store.state.sessions[r.researcher.id].state, { message: 'the failed turn' }).toBe('failed');
   const card = store.state.sessions[r.researcher.id].needs;
   expect(card.threadId).toBe(side.id);
@@ -293,11 +286,11 @@ test.describe('at 375 px', () => {
 
   test('at 375 px, the side-thread line with its agent’s state fits without scrolling sideways', async ({ page }) => {
     const r = room('Narrow');
-    r.wake(r.indexer.id, 'researcher', 'Last look.');
+    r.runIn(r.oldSide(), r.researcher.id, 'Last look.');
     await expect.poll(() => r.busy(r.researcher.id), { message: '@researcher’s turn' }).toBe(true);
     await open(page, `#/t/${r.room.id}`);
     await expect(page.locator('#main .pill', { hasText: 'is calling tools' }), 'the state on the line').toBeVisible();
     await settled(page);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'the page doesn’t scroll sideways').toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), 'no sideways scroll').toBeLessThanOrEqual(windowWidth(page));
   });
 });
