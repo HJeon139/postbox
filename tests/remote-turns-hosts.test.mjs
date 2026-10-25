@@ -8,7 +8,7 @@ import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { createFakeDaemon } from './fake-daemon.mjs';
+import { createFakeDaemon, FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { corpus, fakeHosts, forbidden, HOST, MIN, rig, running, settled, starts, until, VERSION } from './remote-turns-helpers.mjs';
 
 /** The rig with a second agent on the host, in a conversation of its own. @param {any} [o] */
@@ -184,4 +184,27 @@ test('#120: a host whose welcome lacks a backend’s harness is refused for it, 
     { hostId: host.id },
     'it has Claude Code',
   );
+});
+
+/** A block a tool call shows, to see whether it was. */
+const BLOCK = { id: 'from-elsewhere', type: 'card', version: 1, title: 'From elsewhere', fallback: 'From elsewhere', body: 'x' };
+
+test('#120: a message about a turn from a host it doesn’t run on is ignored: no card, no tool call', async () => {
+  const r = rig();
+  const turn = await running(r);
+  r.rt.remote.onHostMessage('ho_elsewhere', { type: 'prompt', turn, id: 'p-other', request: FIXTURE_PROMPT });
+  r.rt.remote.onHostMessage('ho_elsewhere', { type: 'tool', turn, id: 't-other', name: 'show_block', args: { block: BLOCK } });
+  await new Promise((ok) => setTimeout(ok, 50));
+  const all = () => Object.values(r.store.state.items).flat();
+  assert.ok(!all().some((i) => i.kind === 'permission'), 'no card');
+  assert.ok(!all().some((i) => i.block?.id === BLOCK.id), 'no block');
+  assert.equal(r.rt.permissionWaits.size, 0);
+  // The host it runs on is heard as before.
+  r.d.prompt(turn);
+  await until(() => all().some((i) => i.kind === 'permission'), 'its own host’s card');
+  const card = all().find((i) => i.kind === 'permission');
+  r.rt.resolvePermission(r.t.id, card.id, 'allow');
+  await until(() => r.d.answers.length === 1, 'the answer');
+  r.d.end(turn);
+  await settled(r);
 });

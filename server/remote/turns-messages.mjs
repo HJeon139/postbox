@@ -3,7 +3,7 @@
 // module that handles it.
 
 import { onError, onPrompt, onPromptExpired } from './turns-prompts.mjs';
-import { EARLY_MESSAGES } from './turns-shared.mjs';
+import { EARLY_MESSAGES, sessionOfTurn } from './turns-shared.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
 import { offsetAt } from './turns-start.mjs';
 import { saveStop, sendStop, stopConfirmed } from './turns-stops.mjs';
@@ -35,6 +35,9 @@ export function onConnected(rts, hostId, welcome) {
 /** @param {RemoteTurns} rts @param {string} hostId @param {any} m */
 export function onHostMessage(rts, hostId, m) {
   if (typeof m?.turn !== 'string') return;
+  // Only the host a turn runs on speaks for it. Turn IDs are random, so this is defense in depth.
+  const owner = hostOfTurn(rts, m.turn);
+  if (owner && owner !== hostId) return;
   // A turn being attached hears these once its attach has started, in the order they came.
   if (!rts.byTurn.has(m.turn) && rts.restoring.has(m.turn) && ['tool', 'prompt', 'prompt-expired', 'error'].includes(m.type)) {
     const list = rts.early.get(m.turn) ?? [];
@@ -64,6 +67,20 @@ export function onHostMessage(rts, hostId, m) {
       if (m.re === 'stop' && m.code === 'no-turn') stopConfirmed(rts, m.turn);
       return onError(rts, m);
   }
+}
+
+/**
+ * The host a turn is (or was last) on, or null for one Postbox doesn’t know: running, being attached again, being
+ * stopped, or the session’s last.
+ * @param {RemoteTurns} rts @param {string} turn
+ */
+function hostOfTurn(rts, turn) {
+  const live = rts.byTurn.get(turn);
+  if (live) return live.hostId;
+  const stopping = rts.stopping.get(turn);
+  if (stopping) return stopping.hostId;
+  const se = sessionOfTurn(rts, turn);
+  return se?.remoteTurn?.turn === turn ? (se.remoteTurn.hostId ?? null) : null;
 }
 
 /** The daemon has the turn: its start is confirmed, for the live turn and for a stop waiting on it. @param {RemoteTurns} rts @param {string} turn */
