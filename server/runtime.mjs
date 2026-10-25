@@ -2207,7 +2207,9 @@ export class Runtime {
    * Sets a persona’s permission mode (intent.md: it reaches running conversations from their next turn). Where the
    * backend can change a running turn (the Agent SDK’s setPermissionMode), its running turns change now too.
    * @param {string} personaId @param {string} mode
-   * @returns {Promise<{ ok: true, now: string[] }>}  now: the handles whose running turn changed at once
+   * @returns {Promise<{ ok: true, now: string[], later: string[] }>}  now: the sessions whose running turn changed at once;
+   *   later: those with a turn running that keeps the mode it started with until it ends (#371), which Stop applies now.
+   *   Sessions, not handles: a persona has one in each conversation it’s in.
    */
   async setPermissionMode(personaId, mode) {
     const p = this.persona(personaId);
@@ -2215,11 +2217,13 @@ export class Runtime {
     if (!PERMISSION_MODES.includes(mode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     if ((p.permissionMode ?? 'auto') !== mode) this.updatePersona(personaId, { permissionMode: mode });
     const now = [];
+    const later = [];
     for (const se of Object.values(this.s.sessions)) {
       const turn = se.personaId === personaId ? this.turns.get(se.id) : null;
-      if (turn?.control?.setPermissionMode && (await turn.control.setPermissionMode(mode))) now.push(se.handle);
+      if (turn?.control?.setPermissionMode && (await turn.control.setPermissionMode(mode))) now.push(se.id);
+      else if (turn) later.push(se.id);
     }
-    return { ok: true, now };
+    return { ok: true, now, later };
   }
 
   // ── Commands in the composer (#67) ─────────────────────────────────────────────────
