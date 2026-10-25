@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.32.2 (2026-10-25)
+
+### Fixes
+
+- **shell:** a waiting agent's ring and row don't say they open a dialog, or whether one is open
+- **shell:** a menu closed before it listened no longer closes every later menu
+
 ## 0.32.1 (2026-10-25)
 
 ### Fixes
