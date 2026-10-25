@@ -59,6 +59,17 @@ test('a commit Claude Code reports (gitOperation) is recorded once, and a branch
   );
 });
 
+test('a reported commit whose sha isn’t hex never reaches git, where --output= would write a file (#351)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  repo.commit('Start');
+  const { run, end, of } = await ledgerIn(repo);
+  for (const sha of ['--output=/tmp/pb-written', '-p', 'HEAD~1', ''])
+    await run('git commit -am "Second"', () => {}, { output: '', result: { gitOperation: { commit: { sha, branch: 'main' } } } });
+  await end();
+  assert.deepEqual(of('commit'), []);
+  assert.ok(!repo.git.calls.some((c) => / (show|branch -r --contains) (-|HEAD~)|--output=/.test(c)), repo.git.calls.join('\n'));
+});
+
 test('a command outside git records nothing from git', async () => {
   const repo = fakeRepo('/elsewhere', {});
   const { run, end, of } = await ledgerIn(repo, ROOT);

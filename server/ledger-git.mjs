@@ -37,8 +37,13 @@ export function runGit(cwd, args, { timeoutMs = 10000 } = {}) {
   });
 }
 
+/** A commit’s sha as git abbreviates or prints it. Anything else is refused before it becomes git’s argument (#351). */
+const SHA = /^[0-9a-f]{7,40}$/;
+
 /** A commit, with its files and lines from git, so they match `git show --numstat`. */
 export async function recordCommit(ledger, turn, cmdId, { sha, branch }, cwd, message) {
+  // A tool result’s gitOperation is the backend’s word, not git’s: a sha of --output=<file> would have git write a file.
+  if (!SHA.test(sha)) return;
   const w = turn.work;
   const entry = ledger.add(
     w.convId,
@@ -84,6 +89,7 @@ export async function tracked(ledger, path) {
   return r.code === 0;
 }
 export async function pushed(ledger, root, sha) {
+  if (!SHA.test(sha)) return false;
   const key = `${root}:${sha}`;
   if (ledger.pushedCache.has(key)) return true;
   const r = await ledger.git(root, ['branch', '-r', '--contains', sha]);
