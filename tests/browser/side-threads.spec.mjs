@@ -12,6 +12,7 @@
 // Each test has a room of its own (tests/browser/side-threads.mjs). Moved from tools/check-side-threads.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import { escapeRegExp } from '../../shared/regex.mjs';
 import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { heldBackend, sideRoom } from './side-threads.mjs';
 
@@ -232,7 +233,7 @@ test('the Threads page lists side threads beside topic threads, with their pair,
   const link = store.items(r.room.id).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
   await open(page, `#/p/${r.room.projectId}/threads`);
   const card = page.locator(`.thread-list li[data-kind="side"]`).filter({ has: page.locator(`a[href="#/t/${r.room.id}/side/${side.id}"]`) });
-  expect((await words(card))[0]).toMatch(new RegExp(`^${side.title} Side thread · in Listed · ${link.count} messages · (idle|@\\w+ [a-z ]+) · `));
+  expect((await words(card))[0]).toMatch(new RegExp(`^${escapeRegExp(side.title)} Side thread · in Listed · ${link.count} messages · (idle|@\\w+ [a-z ]+) · `));
   // A topic thread says which kind it is too.
   await expect(page.locator('.thread-list li[data-kind="topic"]', { hasText: /Topic thread · in / }).first()).toBeVisible();
 });

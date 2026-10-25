@@ -8,6 +8,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { escapeRegExp } from '../../shared/regex.mjs';
 import { failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -71,7 +72,7 @@ const servers = (page) =>
     })),
   );
 /** A server’s checkbox, by its name, which leads its accessible name. */
-const server = (page, name) => page.locator('.dialog').getByRole('checkbox', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `) });
+const server = (page, name) => page.locator('.dialog').getByRole('checkbox', { name: new RegExp(`^${escapeRegExp(name)} `) });
 /** The effort field: its label, value, options, help, and the label of the field before it. */
 const effortField = (page, idp) =>
   page.locator(`#${idp}-e`).evaluate((el, id) => {

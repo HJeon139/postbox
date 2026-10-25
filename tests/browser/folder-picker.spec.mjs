@@ -6,6 +6,7 @@
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { escapeRegExp } from '../../shared/regex.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -41,7 +42,7 @@ const list = (page) => page.locator('.d-body');
 const row = (page, name) =>
   list(page)
     .locator('li')
-    .filter({ has: page.locator('.grow', { hasText: new RegExp(`^${name.replace('.', '\\.')}$`) }) });
+    .filter({ has: page.locator('.grow', { hasText: new RegExp(`^${escapeRegExp(name)}$`) }) });
 const button = (page, label) => list(page).locator('li').getByRole('button', { name: label, exact: true });
 const where = (page) => list(page).locator('p.mono');
 const error = (page) => list(page).locator('.err[role=alert]');
