@@ -96,8 +96,9 @@ const no = (error) => ({ ok: false, error });
 export function checkDestination(name) {
   const allowed = 'Use an alias from ~/.ssh/config, a host name, or user@host: letters, digits and . _ - @ : % [ ].';
   if (typeof name !== 'string') return no(`A host is its SSH destination, as text. ${allowed}`);
-  const s = name.trim();
-  if (!s) return no(`Name the host. ${allowed}`);
+  // Refused rather than trimmed (SECURITY.md, “Every input is untrusted”): the spaces check below says why.
+  const s = name;
+  if (!s.trim()) return no(`Name the host. ${allowed}`);
   if (s.length > DESTINATION_MAX) return no(`That destination is ${s.length} characters; the most is ${DESTINATION_MAX}. ${allowed}`);
   if (s.startsWith('-')) return no(`A destination can’t start with “-”, since ssh would read it as an option. ${allowed}`);
   if (/\s/.test(s) || CONTROL.test(s)) return no(`A destination can’t contain spaces or control characters. ${allowed}`);

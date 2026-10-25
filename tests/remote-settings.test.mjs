@@ -133,7 +133,8 @@ test('a destination that ssh could read as an option or a shell could split is r
     const r = checkDestination(name);
     assert.ok(r.ok, `${name}: ${!r.ok && r.error}`);
   }
-  assert.deepEqual(checkDestination('  devbox  '), { ok: true, value: 'devbox' });
+  // Refused, not trimmed: what’s saved is what was typed.
+  assert.match(String(checkDestination('  devbox  ').error), /can’t contain spaces/);
   const bad = [
     ['-oProxyCommand=x', /can’t start with “-”/],
     ['a b', /spaces or control characters/],
