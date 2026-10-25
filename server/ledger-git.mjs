@@ -72,8 +72,11 @@ export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile } =
   return gitOnce(exec, cwd, argv, withConfig([...NO_COMMANDS, ...off]), timeoutMs);
 }
 
-/** A commit’s sha as git abbreviates or prints it. Anything else is refused before it becomes git’s argument (#351). */
-const SHA = /^[0-9a-f]{7,40}$/;
+/**
+ * A commit’s sha as git abbreviates or prints it, SHA-1 (40) or SHA-256 (64). Anything else is refused before it becomes
+ * git’s argument (#351).
+ */
+const SHA = /^[0-9a-f]{7,64}$/;
 
 /** A commit, with its files and lines from git, so they match `git show --numstat`. */
 export async function recordCommit(ledger, turn, cmdId, { sha, branch }, cwd, message) {
@@ -99,7 +102,7 @@ export async function recordCommit(ledger, turn, cmdId, { sha, branch }, cwd, me
       binary: m?.[1] === '-',
     }));
   ledger.patch(w.convId, entry.id, {
-    sha: /^[0-9a-f]{40}$/.test(full) ? full : sha,
+    sha: /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(full) ? full : sha,
     message: clip(subject || message, 300),
     files: files.slice(0, 500),
     added: files.reduce((n, f) => n + f.added, 0),

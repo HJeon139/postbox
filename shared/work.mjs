@@ -66,12 +66,12 @@ export function commandFacts(command, output = '') {
     branches.add(unquote(m[1]));
   for (const m of cmd.matchAll(new RegExp(String.raw`\bgit\s+(?:-C\s+\S+\s+)?worktree\s+add\s+(?:\S+\s+)*?-[bB]\s+${ARG}`, 'g'))) branches.add(unquote(m[1]));
   for (const m of cmd.matchAll(new RegExp(String.raw`\bgit\s+(?:-C\s+\S+\s+)?branch\s+(?!-)${ARG}`, 'g'))) branches.add(unquote(m[1]));
-  const c = /^\[([^\s\]]+)(?: \([^)]*\))? ([0-9a-f]{7,40})\] (.*)$/m.exec(out);
+  const c = /^\[([^\s\]]+)(?: \([^)]*\))? ([0-9a-f]{7,64})\] (.*)$/m.exec(out);
   const commit = /\bgit\b[^;&|]*\bcommit\b/.test(cmd) && c ? { branch: c[1], sha: c[2], message: c[3] } : null;
   const push = /\bgit\s+(?:-C\s+\S+\s+)?push\b/.test(cmd)
     ? {
         remote: /^To (\S+)/m.exec(out)?.[1] ?? null,
-        refs: [...out.matchAll(/^\s*[*+\-!= ]?\s*(\[new [a-z]+\]|[0-9a-f]{7,40}\.\.\.?[0-9a-f]{7,40})\s+(\S+)\s+->\s+(\S+)/gm)].map((m) => `${m[2]} → ${m[3]}`),
+        refs: [...out.matchAll(/^\s*[*+\-!= ]?\s*(\[new [a-z]+\]|[0-9a-f]{7,64}\.\.\.?[0-9a-f]{7,64})\s+(\S+)\s+->\s+(\S+)/gm)].map((m) => `${m[2]} → ${m[3]}`),
       }
     : null;
   const external = [];

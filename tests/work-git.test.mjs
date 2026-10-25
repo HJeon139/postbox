@@ -103,6 +103,19 @@ test('every git read sets off the commands a repository’s config can name, its
   assert.equal(config(calls[0].env)['core.fsmonitor'], 'false');
 });
 
+test('a SHA-256 repository’s 64-hex commit is recorded, as a SHA-1 one is (#351)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  repo.commit('Start');
+  const { run, end, of } = await ledgerIn(repo);
+  const sha = 'ab'.repeat(32);
+  await run('git commit -am "Second"', () => {}, { output: `[main ${sha.slice(0, 7)}] Second`, result: { gitOperation: { commit: { sha, branch: 'main' } } } });
+  await end();
+  assert.deepEqual(
+    of('commit').map((c) => c.sha),
+    [sha],
+  );
+});
+
 test('a command outside git records nothing from git', async () => {
   const repo = fakeRepo('/elsewhere', {});
   const { run, end, of } = await ledgerIn(repo, ROOT);
