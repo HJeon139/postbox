@@ -1,4 +1,4 @@
-// Codex chooses its own default when the runtime supplies Claude’s fallback and Codex does not offer it.
+// Codex chooses its own default when the persona carries a Claude model it does not offer.
 import { codexUsesDefault } from '../../shared/codex-model.mjs';
 import { DEFAULT_MODEL } from './setup.mjs';
 

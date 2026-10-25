@@ -33,8 +33,13 @@ function recordedServer(seen) {
   return child;
 }
 
-for (const models of [undefined, [], ['gpt-example']]) {
-  test(`GPT’s first Codex turn uses ${models?.length ? 'the reported model' : `the backend default with ${models ? 'an empty' : 'no'} catalog`}`, async () => {
+for (const [models, inherited] of [
+  [undefined, null],
+  [[], null],
+  [['gpt-example'], null],
+  [[], 'claude-sonnet-5-5'],
+]) {
+  test(`${inherited ?? 'GPT'} uses ${models?.length ? 'the reported Codex model' : `the Codex default with ${models ? 'an empty' : 'no'} catalog`}`, async () => {
     const seen = [];
     const reported = [];
     const adapter = new CodexAdapter({ workRoot: '/tmp/pb-gpt-regression', models, spawnImpl: () => recordedServer(seen) });
@@ -50,7 +55,7 @@ for (const models of [undefined, [], ['gpt-example']]) {
       BOILERPLATES.find((b) => b.id === 'bp-gpt'),
       { adapters: ['codex'], backends: { codex: { models } } },
     );
-    const persona = rt.createPersona({ ...draft, tools: [...draft.tools] });
+    const persona = rt.createPersona({ ...draft, model: inherited ?? draft.model, tools: [...draft.tools] });
     rt.store.emit('project', { id: 'project', name: 'Project', folder: '/tmp/pb-gpt-regression' });
     const thread = rt.createThread({ projectId: 'project', title: 'GPT', personaIds: [persona.id] });
     const session = rt.ensureSession(thread.id, persona.id);

@@ -38,3 +38,12 @@ test('a Claude model explicitly offered by Codex remains its named setting in st
   assert.equal(facts.setModel, DEFAULT_MODEL);
   assert.match(agentGuide({ persona, handles: [], models }), /claude-opus-5-5/);
 });
+
+test('an unoffered Sonnet model inherited by Codex uses the same default status as its requests', () => {
+  const persona = { backend: 'codex', model: 'claude-sonnet-5-5' };
+  assert.equal(chipModel(runsWith({}, persona, config)), 'Codex’s default');
+  assert.ok(!agentGuide({ persona, handles: [] }).includes(persona.model));
+  assert.equal(runsWith({ lastModel: 'gpt-example' }, persona, config).modelDiffers, false);
+  const offered = { ...config, backends: { codex: { models: [persona.model] } } };
+  assert.equal(runsWith({ lastModel: 'gpt-example' }, persona, offered).modelDiffers, true);
+});

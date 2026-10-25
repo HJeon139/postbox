@@ -54,3 +54,22 @@ for (const models of [['gpt-example'], []]) {
     }
   });
 }
+
+test('Codex labels an inherited Sonnet setting as its default when no catalog offers it', async ({ page }) => {
+  app.rt.adapters.register({ name: 'codex', capabilities: { models: [] }, deliver: async () => {} });
+  const persona = app.rt.createPersona({ handle: 'inherited-sonnet', backend: 'codex', model: 'claude-sonnet-5-5' });
+  const thread = app.rt.createThread({ projectId: Object.keys(app.store.state.projects)[0], title: 'Inherited model', personaIds: [persona.id] });
+  const session = app.rt.sessionsIn(thread.id)[0];
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  const row = page.locator(`#agent-row-${session.id}`);
+  await expect(row).toContainText('Codex’s default');
+  await expect(row).not.toContainText('Sonnet');
+  await row.click();
+  await expect(page.getByRole('radio', { name: 'Codex’s default', exact: true })).toBeChecked();
+  await page.keyboard.press('Escape');
+  app.rt.updateSession(session.id, { lastModel: 'gpt-answered' });
+  await synced(page, app);
+  await expect(row).toContainText('gpt-answered');
+  await expect(row).not.toContainText('not ');
+});
