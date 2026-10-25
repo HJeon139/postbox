@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
+import { escapeRegExp } from '../../shared/regex.mjs';
 import { BOX_MIN, COL_MIN, fresh, go, measure, paneRoom, THREAD, WORK } from './pane.mjs';
 import { failOnPageErrors, settled } from './postbox.mjs';
 
@@ -129,7 +130,7 @@ test('#122 a thread left open in a conversation opens again when you come back, 
   await expect(page.locator('.rpane[hidden]'), 'the other conversation, alone').toHaveCount(1);
   await go(page, room, room.conv(''));
   await expect(page.locator(THREAD), 'the thread, open again').toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`${thread.replace(/[/]/g, '\\/')}$`));
+  await expect(page).toHaveURL(new RegExp(`${escapeRegExp(thread)}$`));
   // Closed, it stays closed.
   await page.locator(THREAD).getByRole('button', { name: 'Close thread' }).click();
   await expect(page.locator('.rpane[hidden]'), 'the thread closes').toHaveCount(1);
