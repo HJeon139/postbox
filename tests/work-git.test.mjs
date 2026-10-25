@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { runGit } from '../server/ledger-git.mjs';
 import { fakeRepo, ledgerIn } from './fake-repo.mjs';
 
 const ROOT = '/work/proj';
@@ -68,6 +69,38 @@ test('a reported commit whose sha isn’t hex never reaches git, where --output=
   await end();
   assert.deepEqual(of('commit'), []);
   assert.ok(!repo.git.calls.some((c) => / (show|branch -r --contains) (-|HEAD~)|--output=/.test(c)), repo.git.calls.join('\n'));
+});
+
+test('every git read sets off the commands a repository’s config can name, its content filters among them (#351)', async () => {
+  const calls = [];
+  const exec = (file, args, opts, cb) => {
+    calls.push({ file, args, env: opts.env });
+    cb(null, args[0] === 'config' ? 'filter.lfs.clean\0filter.lfs.smudge\0filter.a.b.process\0' : '', '');
+  };
+  await runGit(ROOT, ['status', '--porcelain=v1', '-z'], { exec });
+  await runGit(ROOT, ['show', '--numstat', 'abc1234'], { exec });
+  const config = (env) =>
+    Object.fromEntries(Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i) => [env[`GIT_CONFIG_KEY_${i}`], env[`GIT_CONFIG_VALUE_${i}`]]));
+  const [, status, , show] = calls;
+  for (const c of [status, show])
+    assert.deepEqual(config(c.env), {
+      'core.fsmonitor': 'false',
+      'core.hooksPath': '/dev/null',
+      'diff.external': '',
+      'log.showSignature': 'false',
+      'filter.lfs.clean': '',
+      'filter.lfs.smudge': '',
+      'filter.lfs.process': '',
+      'filter.lfs.required': 'false',
+      'filter.a.b.clean': '',
+      'filter.a.b.smudge': '',
+      'filter.a.b.process': '',
+      'filter.a.b.required': 'false',
+    });
+  assert.deepEqual(status.args, ['status', '--porcelain=v1', '-z']);
+  assert.deepEqual(show.args, ['show', '--no-ext-diff', '--no-textconv', '--numstat', 'abc1234']);
+  // The filters are asked for with the commands already off.
+  assert.equal(config(calls[0].env)['core.fsmonitor'], 'false');
 });
 
 test('a command outside git records nothing from git', async () => {
