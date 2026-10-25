@@ -3,12 +3,19 @@ import { test } from 'node:test';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { createCodexMapper } from '../server/adapters/codex.mjs';
 import { agyContextPercent, agyWindowFor, codexContextPercent } from '../server/adapters/context-usage.mjs';
+import { setup } from './side-threads-fixture.mjs';
+
+test('new sessions initialize with ctx: null instead of 2%', () => {
+  const { alpha, beta } = setup();
+  assert.equal(alpha.ctx, null);
+  assert.equal(beta.ctx, null);
+});
 
 test('Antigravity resolves cited context windows and calculates active context percentage with cache', () => {
   assert.equal(agyWindowFor('gemini-4-argon'), 1_000_000);
   assert.equal(agyWindowFor('gemini-4-argon-medium'), 1_000_000);
-  assert.equal(agyWindowFor('gemini-3.8-flash'), 1_000_000);
-  assert.equal(agyWindowFor('gemini-3.8-flash-high'), 1_000_000);
+  assert.equal(agyWindowFor('gemini-3.8-flash'), null);
+  assert.equal(agyWindowFor('gemini-3.8-flash-high'), null);
   assert.equal(agyWindowFor('gemini-1.5-pro'), null);
   assert.equal(agyWindowFor('gemini-2.0-flash'), null);
   assert.equal(agyWindowFor('unknown-model'), null);

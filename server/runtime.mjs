@@ -425,7 +425,7 @@ export class Runtime {
       personaSnapshot: snapshotOf(p),
       backend: p.backend,
       state: 'idle',
-      ctx: 2,
+      ctx: null,
       subagents: [],
       compactions: 0,
       toolCount: 0,
