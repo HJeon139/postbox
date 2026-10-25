@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.34.0 (2026-10-25)
+
+### Features
+
+- **threads:** agents talk in the conversation; side threads are read-only
+
+### Fixes
+
+- **threads:** count each pair's wakes, and every wake a message makes
+- **demo:** play the wake scene in the conversation
+
 ## 0.33.6 (2026-10-25)
 
 ### Fixes
