@@ -47,6 +47,7 @@ These are the boundaries, from designs/developing.md, “Security”, and design
 **Automated:**
 - **CodeQL** (GitHub’s default setup) analyzes every pull request. The `protect-main` ruleset blocks a merge that adds a CodeQL alert of high severity or above.
 - **Dependency review** (`.github/workflows/dependency-review.yml`) refuses a pull request that adds or changes a dependency with a known vulnerability of moderate severity or worse.
+- **The prompt-surface gate** holds a pull request that changes what agents read until the maintainer approves it, with the rendered diff and a SkillSpector scan beside it (“Prompt changes”, below).
 - **Dependabot alerts** watch `package-lock.json`. Secret scanning and push protection are on.
 - **`npm run check`** runs Biome, the types, the project lints and the unit tests. Its `tools/lint-security.mjs` holds the code to the rules below that a pattern can find. It flags a regular expression built from anything but constants or `escapeRegExp()`; a one-pass tag strip; a `JSON.stringify` splice in a browser check's page code; a `===` or `!==` comparison of a name ending in “token”; and git run outside `runGit()`. A deliberate exception carries `lint-allow <rule>: <reason>`. `tests/guard.mjs` blocks the network and process spawning in tests.
 
@@ -61,3 +62,14 @@ These are the boundaries, from designs/developing.md, “Security”, and design
 - **Optional dependencies stay patched,** with an npm `overrides` entry when a parent pins an old version. Each override says why it exists and when it goes (#348).
 
 **Alerts:** an open alert is fixed, not left to pile up, because a pile hides the next real one. One is dismissed only with GitHub’s reason (“false positive”, “used in tests” or “won’t fix”), a comment saying why, and an issue when there’s work left. A class that keeps coming back gets a lint or a test, as above.
+
+## Prompt changes
+
+What Postbox tells its agents is code too: a persona that loosens “show a review block before a write” changes what an agent will do as much as a change to `server/` does. So a pull request that changes what agents read is reviewed as a security change.
+
+- **The prompt surface** is listed in [`.github/prompt-surface-paths.txt`](.github/prompt-surface-paths.txt): the guide and each backend’s hand-off (`server/adapters/`), the MCP tool descriptions (`server/mcp.mjs`), the personas and boilerplates, the AGENTS.md files and session prompts, and the gate itself.
+- **The gate** ([`prompt-surface-gate.yml`](.github/workflows/prompt-surface-gate.yml)) holds a pull request that touches one until the maintainer approves it in the `prompt-security-review` environment. It runs on `pull_request_target`, so the workflow and the list come from `main` and a pull request can’t change its own verdict. It never checks out the pull request.
+- **The diff** ([`prompt-surface-scan.yml`](.github/workflows/prompt-surface-scan.yml)) renders what agents read for the base and the pull request (`tools/prompt-surface.mjs`), and puts the difference in the job summary. Review that, not the code that builds it: the guide fills in limits and settings that its source doesn’t show. It warns when the text changed but no listed file did, so the list can’t fall behind.
+- **SkillSpector** ([NVIDIA/SkillSpector](https://github.com/NVIDIA/SkillSpector), static rules only) scans the rendered text, and the job fails on a high or critical finding the pull request adds. In a test of 14 seeded threats, it caught 9: overrides, hidden directives, exfiltration, credential paths, pipe-to-shell and anti-refusal. It missed all 5 that reword one of Postbox’s own rules: skipping the review or confirm block, treating data as instructions, approving its own refused call, and persistence through a shell profile. Those are why the maintainer reads the diff.
+
+**Out of CI’s reach:** injection that arrives while an agent works, from a web page, a file or another agent’s message. The boundaries above handle that.
