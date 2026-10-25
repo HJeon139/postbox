@@ -1251,7 +1251,7 @@ export function mountComposer(threadId, { side = false } = {}) {
         { label: 'Add to the corpus', desc: 'Index a text file for search', icon: 'books', run: () => corpusFile.click() },
         'hr',
         { heading: 'New agent' },
-        { label: 'From a boilerplate', desc: 'Researcher, Critic, Developer, Gemini, or one you saved', icon: 'agent', run: () => openNewAgent({ threadId }) },
+        { label: 'From a boilerplate', desc: 'Built-in personas or one you saved', icon: 'agent', run: () => openNewAgent({ threadId }) },
         ...((client.config.adapters ?? []).includes('claude-code')
           ? [{ label: 'Attach a Claude Code session', desc: 'One you started in a terminal', icon: 'link', run: () => openAttachSession(t?.projectId) }]
           : []),

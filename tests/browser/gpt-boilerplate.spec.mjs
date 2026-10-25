@@ -17,7 +17,9 @@ for (const models of [['gpt-example'], []]) {
     await page.goto(`${app.origin}/#/t/${Object.keys(app.store.state.threads)[0]}`);
     await synced(page, app);
     await page.getByRole('button', { name: 'Add a file or a new agent' }).click();
-    await page.getByRole('menuitem', { name: /From a boilerplate/ }).click();
+    const boilerplates = page.getByRole('menuitem', { name: /From a boilerplate/ });
+    await expect(boilerplates).toContainText('Built-in personas or one you saved');
+    await boilerplates.click();
     await page.getByRole('radio', { name: 'GPT', exact: true }).click();
     await expect(page.getByRole('radio', { name: 'GPT', exact: true })).toBeChecked();
     await expect(page.getByLabel('Runs on', { exact: true })).toHaveValue('codex');
