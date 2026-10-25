@@ -17,6 +17,26 @@ export function remoteCommand(version) {
 }
 
 /**
+ * The options every connection gets, whatever ~/.ssh/config says for the host (sshArgs), since “the first specified
+ * value will be used” and the command line comes first (ssh_config(5)). Postbox calls the daemon one way only, and
+ * nothing listens on TCP (architecture.md, “Remote hosts”), so a config’s RemoteForward back to Postbox’s port, a
+ * LocalForward or DynamicForward listener here, X11 with this computer’s display, a LocalCommand or a tunnel device
+ * would each break that: ClearAllForwardings drops the forwards “from the configuration files and command line”.
+ * StrictHostKeyChecking=yes refuses a host key that isn’t already known, or has changed, even where a config says
+ * `no`, which “allows changed keys to proceed” whatever BatchMode says, and the hello would hand the daemon’s token to
+ * whoever answered. Over a shared connection (dedicatedConnection off) the session still sends its own agent and X11
+ * choices, but the leader’s port forwards stay as they are (the hosts settings say so).
+ */
+export const HARDENING = Object.freeze([
+  'ClearAllForwardings=yes',
+  'ForwardX11=no',
+  'ForwardX11Trusted=no',
+  'PermitLocalCommand=no',
+  'Tunnel=no',
+  'StrictHostKeyChecking=yes',
+]);
+
+/**
  * ssh’s arguments for one host, without the program. The destination is checked here as well as where it entered, so
  * one starting with “-” never reaches ssh, which would read it as an option.
  * @param {{ destination: string, settings: import('../../shared/remote-settings.mjs').HostSettings, version: string }} o
@@ -47,6 +67,8 @@ export function sshArgs({ destination, settings, version }) {
     `ServerAliveInterval=${Math.round(keepAlive.interval / 1000)}`,
     '-o',
     `ServerAliveCountMax=${keepAlive.count}`,
+    // Nothing from ~/.ssh/config that opens a way back, or a listener, or trusts a host it shouldn’t (HARDENING).
+    ...HARDENING.flatMap((o) => ['-o', o]),
     // “Disable pseudo-terminal allocation” (ssh(1), -T): the channel carries JSON lines, which a tty would mangle.
     '-T',
     // ssh(1) doesn’t document “--”, but ssh parses its options with getopt(3), which ends them at “--”, and

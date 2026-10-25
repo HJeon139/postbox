@@ -83,7 +83,7 @@ export const GROUPS = [
         key: 'dedicatedConnection',
         label: 'Use a connection of its own',
         kind: 'check',
-        help: 'On, Postbox’s ssh options apply. Off, it shares your multiplexed connection, such as to a jump host you can’t reopen, with that connection’s options.',
+        help: 'On, Postbox’s ssh options apply. Off, it shares your multiplexed connection, such as to a jump host you can’t reopen: any port forwards that connection opened stay open, and its host key was checked as you opened it.',
       },
       {
         key: 'forwardAgent',
