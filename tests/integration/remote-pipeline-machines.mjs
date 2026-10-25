@@ -63,7 +63,6 @@ export function machine({ timings = {} } = {}) {
   const mark = `${RUN}-${randomUUID().slice(0, 8)}`;
   const env = {
     HOME: home,
-    POSTBOX_REMOTE_HOME: home,
     PATH: `${NODE_DIR}:/usr/bin:/bin:/usr/sbin:/sbin`,
     POSTBOX_STANDIN_TRACE: trace,
     POSTBOX_SHIM_TIMINGS: JSON.stringify({ progress: 300, ...timings }),

@@ -1,5 +1,5 @@
 // Shared setup for the integration tests of the host programs (tests/integration/*.test.mjs): a host home in a temp
-// folder (POSTBOX_REMOTE_HOME, so nothing touches the real ~/.postbox-remote), turn folders written as the daemon writes
+// folder (a HOME of its own, so nothing touches the real ~/.postbox-remote), turn folders written as the daemon writes
 // them, the real runner.mjs started as the daemon starts it, and the in-process daemon with its own runner functions.
 // These tests start real processes and bind local Unix sockets, never the network; tests/guard.mjs isn’t loaded.
 
@@ -29,7 +29,7 @@ export function makeHost({ token = true } = {}) {
   if (token) writeFileSync(p.token, `${TOKEN}\n`, { mode: 0o600 });
   const work = join(home, 'work');
   mkdirSync(work);
-  return { home, p, work, env: { ...process.env, POSTBOX_REMOTE_HOME: home } };
+  return { home, p, work, env: { ...process.env, HOME: home } };
 }
 
 /** Writes the turn folder and start.json. @param {ReturnType<typeof makeHost>} h @param {object} start */
@@ -101,9 +101,9 @@ export function gone(pid) {
  * @param {ReturnType<typeof makeHost>} h @param {object} [over]  createDaemon options
  */
 export function realDaemon(h, over = {}) {
-  const before = process.env.POSTBOX_REMOTE_HOME;
+  const before = process.env.HOME;
   // The runner finds its home through paths(), from the environment launchRunner’s spawn passes on.
-  process.env.POSTBOX_REMOTE_HOME = h.home;
+  process.env.HOME = h.home;
   const daemon = createDaemon({
     home: h.home,
     findPrograms: async () => ({
@@ -130,8 +130,8 @@ export function realDaemon(h, over = {}) {
   const close = () => {
     clearInterval(keep);
     daemon.close();
-    if (before === undefined) delete process.env.POSTBOX_REMOTE_HOME;
-    else process.env.POSTBOX_REMOTE_HOME = before;
+    if (before === undefined) delete process.env.HOME;
+    else process.env.HOME = before;
   };
   return { daemon, connect, close };
 }

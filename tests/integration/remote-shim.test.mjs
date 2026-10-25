@@ -1,6 +1,6 @@
 // The host’s stdio MCP shim (server/remote/host/shim.mjs, #120), driven as the harness drives it: `node shim.mjs <turn>`
 // as a child process, JSON-RPC lines on its stdin and stdout, with a fake daemon on a real Unix socket in a temporary
-// POSTBOX_REMOTE_HOME (0700 folders, a 0600 socket and token), so nothing touches the real ~/.postbox-remote.
+// temp HOME (0700 folders, a 0600 socket and token), so nothing touches the real ~/.postbox-remote.
 // POSTBOX_SHIM_TIMINGS shortens the shim’s waits (its header says how), so no test waits a minute. The fixtures are in
 // tests/integration/remote-shim-fixtures.mjs.
 

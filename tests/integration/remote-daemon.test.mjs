@@ -1,6 +1,6 @@
 // The host daemon (server/remote/host/daemon.mjs, #120), for real: in-process with its own runner functions driving
 // the real runner.mjs on a stand-in harness (tests/fixtures/remote/harness.mjs), and `host serve` as a process, in a
-// temp POSTBOX_REMOTE_HOME (tests/integration/host.mjs). The daemon’s protocol, with fake runners, is unit-tested in
+// temp HOME (tests/integration/host.mjs). The daemon’s protocol, with fake runners, is unit-tested in
 // tests/remote-daemon.test.mjs.
 
 import assert from 'node:assert/strict';

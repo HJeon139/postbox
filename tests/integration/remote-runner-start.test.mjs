@@ -1,5 +1,5 @@
 // The turn runner on a remote host (#120, H1), for real, as it starts: server/remote/host/runner.mjs runs a stand-in
-// harness (tests/fixtures/remote/harness.mjs) in a temp POSTBOX_REMOTE_HOME (tests/integration/host.mjs), and refuses
+// harness (tests/fixtures/remote/harness.mjs) in a temp HOME (tests/integration/host.mjs), and refuses
 // a turn it can’t start, replaces a stale socket, ends a turn whose harness isn’t there, and outlives the parent that
 // launched it; the host’s own facts are read for real. Each test removes its home folder after. The turns themselves
 // are tests/integration/remote-runner.test.mjs.

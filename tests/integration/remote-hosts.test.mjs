@@ -1,6 +1,6 @@
 // The sign-in check (#120, G5) and removing a host, for real: the host manager (server/remote/hosts.mjs) over its link,
 // with ssh replaced by a spawn that connects each session straight to an in-process daemon
-// (server/remote/host/daemon.mjs) in a temp POSTBOX_REMOTE_HOME (tests/integration/host.mjs). The daemon runs the
+// (server/remote/host/daemon.mjs) in a temp HOME (tests/integration/host.mjs). The daemon runs the
 // host’s signInCheck with the real spawn: `true` and `false` from PATH, and node checking that its arguments arrived as
 // given, which a shell would have split. Removing goes through the runtime’s removeHost, as the page’s Remove does.
 

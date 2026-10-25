@@ -1,6 +1,6 @@
 // Cleanup on a remote host (server/remote/host/cleanup.mjs, #120), for real: the in-process daemon with its own runner
 // functions drives the real runner.mjs on the stand-in harness (tests/fixtures/remote/harness.mjs), and proc.mjs’s
-// sameProcess checks real processes, in a temp POSTBOX_REMOTE_HOME (tests/integration/host.mjs). The rules themselves,
+// sameProcess checks real processes, in a temp HOME (tests/integration/host.mjs). The rules themselves,
 // with fakes, are in tests/remote-cleanup.test.mjs.
 
 import assert from 'node:assert/strict';

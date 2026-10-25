@@ -1,5 +1,5 @@
 // Fixtures for the host shim’s integration tests (tests/integration/remote-shim.test.mjs, #120): a temporary
-// POSTBOX_REMOTE_HOME (0700 folders, a 0600 socket and token), a fake daemon on a real Unix socket in it, and the shim
+// temp HOME (0700 folders, a 0600 socket and token), a fake daemon on a real Unix socket in it, and the shim
 // as a child process, `node shim.mjs <turn>`, with JSON-RPC lines on its stdin and stdout.
 
 import assert from 'node:assert/strict';
@@ -138,7 +138,7 @@ function until(check, waiters, what) {
 
 /** The shim, as the harness runs it: `node shim.mjs <turn>`, its stdio ours. @param {string} home @param {object} [timings] */
 function startShim(home, timings, extra = []) {
-  const env = { ...process.env, POSTBOX_REMOTE_HOME: home };
+  const env = { ...process.env, HOME: home };
   if (timings) env.POSTBOX_SHIM_TIMINGS = JSON.stringify(timings);
   const w = spawn(process.execPath, [PROGRAMS.shim, TURN, ...extra], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   w.stdin.on('error', () => {}); // a write after the shim exited

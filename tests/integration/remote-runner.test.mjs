@@ -1,5 +1,5 @@
 // The turn runner on a remote host (#120, H1), for real: server/remote/host/runner.mjs runs a stand-in harness
-// (tests/fixtures/remote/harness.mjs), with real files and a real Unix socket in a temp POSTBOX_REMOTE_HOME
+// (tests/fixtures/remote/harness.mjs), with real files and a real Unix socket in a temp HOME
 // (tests/integration/host.mjs). Each test removes its home folder after. launchRunner’s choice of a systemd scope and
 // proc.mjs’s parsing are unit tests, with injected facts, in tests/remote-runner.test.mjs.
 //
@@ -26,7 +26,7 @@ async function fileTurn() {
   try {
     const dir = writeTurn(
       h,
-      { stdin: 'file', env: { PB_SEEN: 'yes' }, argv: [HARNESS, 'out:hello', 'err:oops', 'env:PB_SEEN', 'env:POSTBOX_REMOTE_HOME', 'cwd', 'stdin', 'exit:3'] },
+      { stdin: 'file', env: { PB_SEEN: 'yes' }, argv: [HARNESS, 'out:hello', 'err:oops', 'env:PB_SEEN', 'env:HOME', 'cwd', 'stdin', 'exit:3'] },
       { message: '{"m":1}\n' },
     );
     const r = startRunner(h);
@@ -119,7 +119,7 @@ test('runner: a file stdin turn writes out.jsonl, err.log, runner.json and exit.
   const out = r.files['out.jsonl'].text.split('\n');
   assert.equal(out[0], 'hello');
   assert.equal(out[1], 'PB_SEEN=yes', 'start.json’s env reaches the harness');
-  assert.equal(out[2], `POSTBOX_REMOTE_HOME=${r.home}`, 'merged over the runner’s own');
+  assert.equal(out[2], `HOME=${r.home}`, 'merged over the runner’s own');
   assert.match(out[3], new RegExp(`${r.work.replace(/^\/tmp/, '')}$`), 'the harness runs in start.json’s folder');
   assert.equal(out[4], 'got:{"m":1}', 'stdin is message.jsonl');
   assert.equal(r.files['err.log'].text, 'oops\n');

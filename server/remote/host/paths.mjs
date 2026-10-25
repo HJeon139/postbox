@@ -3,7 +3,8 @@
 // tests, a developer), the version is package.json’s. Every host program (the daemon, a runner, the shim) finds its
 // files here, so they all agree on one layout (shared/remote-protocol.mjs, hostPaths).
 //
-// POSTBOX_REMOTE_HOME replaces the home folder, for tests: they never touch the real ~/.postbox-remote.
+// Tests give the daemon, runner and shim a HOME of their own, which homedir() reads, so they never touch the real
+// ~/.postbox-remote.
 
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -26,6 +27,6 @@ export function hostVersion() {
 }
 
 /** The host’s paths for this version. @param {{ home?: string }} [opts] */
-export function paths({ home = process.env.POSTBOX_REMOTE_HOME || homedir() } = {}) {
+export function paths({ home = homedir() } = {}) {
   return hostPaths(home, hostVersion());
 }

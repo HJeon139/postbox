@@ -227,7 +227,7 @@ async function serve({ p, home, say, connect, proc }) {
     exit = resolve;
   });
   const daemon = createDaemon({
-    home: home ?? process.env.POSTBOX_REMOTE_HOME ?? (await import('node:os')).homedir(),
+    home: home ?? (await import('node:os')).homedir(),
     log: (line) => say(line),
     onIdle: () => shutdown(EXIT.ok),
     onRemoved: () => shutdown(EXIT.ok),
