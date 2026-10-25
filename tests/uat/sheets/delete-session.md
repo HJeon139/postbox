@@ -2,7 +2,7 @@
 
 ![Delete session](../screenshots/delete-session-sheet.png)
 
-**Where:** Session menu › Delete session….
+**Where:** An agent’s quick panel (its name in the sidebar’s Agents section) › Delete session… (#320).
 
 ## Why it exists
 
