@@ -40,7 +40,7 @@ One agent’s settings were in four places: `/model`, `/effort` and `/mode` in t
 6. Narrow the window to 375 px and check a topic thread’s panel.
 7. In a room, ask @indexer to wake @researcher with a long task, and while @researcher works in the side thread, have @indexer wake it again: the second wake waits for its turn, with no fork. Check the tree under @researcher, the side-thread line, and `/stop` in the conversation.
 8. With a real agent, ask it to use a subagent that starts its own subagent, and watch the tree under its row while they work. Tab to one’s End and press Enter: it reads “ending”, and the agent stops it.
-9. Run `node tools/check-agents.mjs` and `node tools/check-side-threads.mjs`.
+9. Run `npx playwright test agents side-threads` (`tests/browser/agents.spec.mjs` and `side-threads.spec.mjs`).
 
 **Pass if:** Each change takes two clicks from the sidebar, with no command, ; every control says whether it’s for this conversation or for the persona everywhere; the panel works by keyboard and fits at 375 and 1280 px; an agent at work in a side or topic thread shows under its row with a Stop, and nothing else lists agents; each subagent at work shows under it with what it was asked and what it’s doing now, nested by who started it, with an End the agent obeys; and the checks pass.
 

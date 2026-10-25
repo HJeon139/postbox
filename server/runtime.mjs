@@ -3,12 +3,12 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { realpath, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, isAbsolute, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { LIMITS, limitText, READING } from '../shared/limits.mjs';
+import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
 import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
@@ -35,9 +35,10 @@ import {
 } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
+import { bringToConversation } from './bring.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
-import { parseDataset } from './corpus.mjs';
-import { clip, clipText, fenced, httpError } from './helpers.mjs';
+import { addDataset, reloadDatasets } from './datasets.mjs';
+import { clip, clipText, fenced, httpError, queuedIn } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import {
@@ -60,7 +61,6 @@ import { runShell } from './shell.mjs';
 import {
   agentWake,
   archiveForks,
-  bringToConversation,
   bumpSideLink,
   deliverWake,
   dropWakes,
@@ -111,7 +111,7 @@ const count = (n) => n.toLocaleString('en-US');
  * What a turn was asked, kept on its failed reply so Retry sends it again as it was, with its own kind (#151): a wake
  * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s.
  */
-const askedOf = ({ asked: { message, replyTo, summarizeTo } }) => ({ message, replyTo: replyTo ?? null, summarizeTo: summarizeTo ?? null });
+const askedOf = ({ asked: { message, summarizeTo } }) => ({ message, summarizeTo: summarizeTo ?? null });
 /**
  * What woke a turn, on each item it shows, for its sender line (#135): another agent, with a message, or with its
  * answer to one (endTurn sends that with saidIn, where it answered); or a wake it scheduled.
@@ -463,14 +463,16 @@ export class Runtime {
     const targets = [];
     // A side or topic thread is answered by the conversation’s own sessions (#110, #128, #228): an agent you
     // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
-    const away = t.kind === 'side' || t.kind === 'topic';
+    // Side threads from before #372 are history: agents talk in the conversation now.
+    if (t.kind === 'side') throw httpError(409, 'Side threads are read-only now. Write in the conversation, where the agents talk.');
+    const away = t.kind === 'topic';
     if (away) {
       for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you') });
       if (!targets.length) {
         // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
         const p = threadPersona(this, t);
         const se = p && this.sideSession(t, p.id, 'you');
-        if (!se) throw httpError(409, `No agent is in this ${t.kind === 'side' ? 'side thread' : 'thread'}. @-mention one to bring it in.`);
+        if (!se) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
         targets.push({ se });
       }
     }
@@ -503,7 +505,7 @@ export class Runtime {
     const item = this.addItem(threadId, { kind: 'user', text, attachments });
     // You’re here: the wake limit starts again, on the conversation, where agents’ wakes count (#108, #228).
     const conv = this.lineage(threadId).at(-1);
-    this.putThread({ ...this.s.threads[conv], hops: 0 });
+    this.putThread({ ...this.s.threads[conv], hops: 0, pairRuns: null });
     const refs = this.threadRefs(threadId, text);
     // An agent you @-mentioned gets no “You woke” line: your message’s mention says so (#114).
     for (const { se } of targets) {
@@ -533,14 +535,14 @@ export class Runtime {
 
   editQueued(threadId, queueId, text) {
     const t = this.thread(threadId);
-    if ((t.queue ?? []).find((q) => q.id === queueId)?.kind === 'wake') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
+    if (queuedIn(t, queueId).kind === 'wake') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
     const queue = (t.queue ?? []).map((q) => (q.id === queueId ? { ...q, text: String(text) } : q));
     this.putThread({ ...t, queue });
   }
 
   cancelQueued(threadId, queueId) {
     const t = this.thread(threadId);
-    const q = (t.queue ?? []).find((x) => x.id === queueId);
+    const q = queuedIn(t, queueId);
     this.putThread({ ...t, queue: (t.queue ?? []).filter((x) => x.id !== queueId) });
     // A wake you removed: its agent was told it would be answered, so it hears it won’t be (#228).
     if (q?.kind === 'wake' && this.s.sessions[q.fromSessionId] && !this.s.sessions[q.fromSessionId].archived)
@@ -550,8 +552,7 @@ export class Runtime {
   /** Send now: stops the agent’s current turn and delivers the queued message at once. */
   sendQueuedNow(threadId, queueId) {
     const t = this.thread(threadId);
-    const q = (t.queue ?? []).find((x) => x.id === queueId);
-    if (!q) throw httpError(404, 'That queued message was already sent or removed.');
+    const q = queuedIn(t, queueId);
     this.putThread({ ...t, queue: t.queue.filter((x) => x.id !== queueId) });
     for (const id of q.sessionIds) this.stop(id, { silent: true, jobs: 'keep', sendNow: true });
     if (q.kind === 'wake') return deliverWake(this, threadId, q);
@@ -604,24 +605,24 @@ export class Runtime {
    * threadId: where the turn speaks, when that isn’t the session’s own thread: a conversation session answers in a side
    * thread (#110), so one persona has one memory per conversation.
    * @param {string} sessionId @param {any} message
-   * @param {{ replyTo?: string|null, summarizeTo?: string|null, threadId?: string|null }} [opts]
+   * @param {{ summarizeTo?: string|null, threadId?: string|null }} [opts]
    */
-  deliver(sessionId, message, { replyTo = null, summarizeTo = null, threadId = null } = {}) {
+  deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
     // As it was asked, for Retry (askedOf).
-    const asked = { message, replyTo, summarizeTo, threadId };
+    const asked = { message, summarizeTo, threadId };
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
-      t.pending.push({ message, replyTo, summarizeTo, threadId });
+      t.pending.push({ message, summarizeTo, threadId });
       return;
     }
     // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
     // held here isn’t read yet: it’s read when the turn it starts begins.
     const exiting = this.exiting.get(sessionId);
     if (exiting) {
-      exiting.held.push({ message, replyTo, summarizeTo, threadId });
+      exiting.held.push({ message, summarizeTo, threadId });
       return;
     }
     // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
@@ -668,9 +669,6 @@ export class Runtime {
       steps: [],
       abort,
       closed: false,
-      replyTo,
-      // Where the agent that woke this one speaks: the reply goes back to it there (#228).
-      replyIn: message.replyIn ?? null,
       summarizeTo,
       checkpoint: null,
       pending: [],
@@ -702,7 +700,7 @@ export class Runtime {
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
       state: 'think',
-      needs: turn.movesOn ? null : se.needs,
+      needs: turn.movesOn && se.needs?.kind !== 'appsend' ? null : se.needs,
       currentStep: 'Thinking',
       finishedAt: null,
     });
@@ -1068,7 +1066,7 @@ export class Runtime {
           }
         : askedTool
           ? { kind: 'toolask', itemId: askedTool.id, text: `@${se.handle} asks you to turn on “${askedTool.label}”`, ...this.awayFrom(se, turn.threadId) }
-          : se.needs?.kind === 'hop'
+          : se.needs?.kind === 'hop' || se.needs?.kind === 'appsend'
             ? se.needs
             : null;
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
@@ -1099,23 +1097,17 @@ export class Runtime {
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
-    // An agent that @-mentions another agent wakes it, except in a summary sent back, which wakes no one (#225).
-    // Mentioning the agent you’re replying to isn’t a new wake: the reply already goes back to it.
-    // Mentioning the agent that just wrote to you wakes it only if you ask it to check again.
-    const replyTo = turn.replyTo ? this.s.sessions[turn.replyTo]?.handle?.toLowerCase() : null;
+    // An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
+    // A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
+    // agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The wake limit stops a loop.
+    // Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
+    let said = turn.first;
     for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
-      const hl = h.toLowerCase();
-      if (hl === se.handle.toLowerCase() || hl === replyTo) continue;
-      if (hl === turn.from && !/again|once more|loop/i.test(turn.said)) continue;
-      // Its turn has ended, so where it spoke comes from the turn: an answer goes back to a topic thread it spoke in.
-      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id });
+      if (h.toLowerCase() === se.handle.toLowerCase()) continue;
+      // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
+      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
+      if (r.itemId) said = r.itemId;
       if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
-    }
-    // A reply to an agent that woke this one goes back to it.
-    if (turn.replyTo && this.s.sessions[turn.replyTo] && !this.s.sessions[turn.replyTo].archived) {
-      this.deliver(turn.replyTo, { kind: 'agent', from: `@${se.handle}`, text: turn.said || '(no reply)', saidIn: turn.threadId }, { threadId: turn.replyIn });
-      this.recordAgentMessage(se.id, 'to', this.s.sessions[turn.replyTo].handle, turn.said);
-      this.recordAgentMessage(turn.replyTo, 'from', se.handle, turn.said);
     }
     this.takePending(se, turn, true);
   }
@@ -1127,7 +1119,7 @@ export class Runtime {
   takePending(se, turn, drain) {
     const next = turn.pending.shift();
     if (next) {
-      this.deliver(se.id, next.message, { replyTo: next.replyTo, summarizeTo: next.summarizeTo, threadId: next.threadId });
+      this.deliver(se.id, next.message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
       const t = this.turns.get(se.id);
       if (t) t.pending.push(...turn.pending);
     } else if (drain) this.drainQueues(se.id, turn.threadId, drain === 'wakes');
@@ -1205,12 +1197,12 @@ export class Runtime {
       this.turnExited(turn);
     }, STOP_WATCHDOG_MS).unref?.();
     // A stopped summary (or one queued behind the turn, which goes with it) isn’t coming (#93), in a topic thread too.
-    // A reply from an agent it woke, waiting behind the turn, goes with it: it hears at its next turn what it said.
+    // A message from another agent, waiting behind the turn, goes with it: it hears at its next turn what it said.
     this.clearSummaryPending(turn.threadId);
     for (const p of turn.pending) {
       if (p.summarizeTo && p.threadId) this.clearSummaryPending(p.threadId);
-      if (p.message.kind === 'agent' && !p.replyTo && se)
-        this.tellAgent(sessionId, `${p.message.from}’s reply came while your turn was stopped: “${clip(p.message.text ?? '', 300)}”`);
+      if (p.message.kind === 'agent' && se)
+        this.tellAgent(sessionId, `${p.message.from}’s message came while your turn was stopped: “${clip(p.message.text ?? '', 300)}”`);
     }
     // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
     if (!silent && se) dropWakes(this, se);
@@ -1243,7 +1235,7 @@ export class Runtime {
       }
       return;
     }
-    for (const h of held) this.deliver(se.id, h.message, { replyTo: h.replyTo, summarizeTo: h.summarizeTo, threadId: h.threadId });
+    for (const h of held) this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
     if (!held.length && !ex.silent) this.drainQueues(se.id, turn.threadId);
   }
 
@@ -1467,7 +1459,7 @@ export class Runtime {
     const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
     this.patchItem(threadId, itemId, { status: 'retried' });
     this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-    if (it.asked) this.deliver(it.sessionId, { ...it.asked.message, retry: true }, { replyTo: it.asked.replyTo, summarizeTo: it.asked.summarizeTo, threadId });
+    if (it.asked) this.deliver(it.sessionId, { ...it.asked.message, retry: true }, { summarizeTo: it.asked.summarizeTo, threadId });
     // A failed reply stored before #151 kept nothing of what it was asked: the person’s last message is the best guess.
     else this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
   }
@@ -2275,7 +2267,7 @@ export class Runtime {
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
     const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
-    this.putThread({ ...this.s.threads[threadId], hops: 0 });
+    this.putThread({ ...this.s.threads[threadId], hops: 0, pairRuns: null });
     if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
     this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
     return { item };
@@ -3031,86 +3023,11 @@ export class Runtime {
 
   // ── Datasets (#47) ─────────────────────────────────────────────────────────────────
 
-  /**
-   * add_dataset: loads a JSON Lines file from the project’s own Postbox folder, .postbox/datasets/, into the corpus,
-   * without a restart, which would end every agent’s session. Its records are searched only when a search names the
-   * dataset, so they don’t mix into other agents’ results. An event keeps it, so it’s loaded again after a restart,
-   * and a line in the conversation says it was loaded. Loading the same id again replaces it.
-   * @param {string} sessionId @param {{ id?: unknown, path?: unknown, title?: unknown }} args
-   */
-  async addDataset(sessionId, { id, path, title } = {}) {
-    const se = this.session(sessionId);
-    const project = this.s.projects[this.s.threads[se.threadId]?.projectId];
-    const name = String(id ?? '');
-    if (!DATASET_ID.test(name)) return { ok: false, message: 'A dataset id is letters, digits, - and _ (up to 64), such as “scifact-abstracts”.' };
-    const taken = this.corpus.stats().books.find((b) => b.id === name);
-    if (taken && !taken.dataset) return { ok: false, message: `“${name}” is a book in the corpus. Pick another id.` };
-    if (!project?.folder)
-      return {
-        ok: false,
-        message: 'This conversation’s project has no folder, so there’s no .postbox/datasets/ to load from. Ask the person to give the project a folder.',
-      };
-    const dir = datasetDir(project.folder);
-    let raw;
-    try {
-      raw = await this.datasetFile(dir, path);
-    } catch (e) {
-      return { ok: false, message: e.message };
-    }
-    let records;
-    try {
-      records = parseDataset(raw.text);
-    } catch (e) {
-      return { ok: false, message: e.message };
-    }
-    const meta = { title: clip(String(title ?? '') || name, 200), author: `@${se.handle}` };
-    this.corpus.addRecords(name, records, meta);
-    this.corpus.reindex();
-    this.store.emit('dataset', { id: name, projectId: project.id, path: raw.path, ...meta, records: records.length, by: se.handle, at: Date.now() });
-    this.addItem(se.threadId, { kind: 'system', variant: 'dataset', handle: se.handle, dataset: name, records: records.length });
-    return {
-      ok: true,
-      message: `Loaded ${records.length.toLocaleString('en-US')} records as the dataset “${name}”. It’s searched only when a search names it: corpus.search with books: ["${name}"]. corpus.read with id "${name}:<record id>" reads one record.`,
-    };
+  addDataset(sessionId, args) {
+    return addDataset(this, sessionId, args);
   }
-
-  /**
-   * Reads a dataset file: a path in the project’s .postbox/datasets/ (relative to it), followed through links, so a
-   * link can’t lead outside it, and up to datasetBytes.
-   * @param {string} dir @param {unknown} path
-   */
-  async datasetFile(dir, path) {
-    if (typeof path !== 'string' || !path.trim()) throw new Error(`add_dataset needs the path of a .jsonl file in ${dir}.`);
-    const root = await realpath(dir).catch(() => null);
-    if (!root) throw new Error(`There’s no folder ${dir} yet. Write the dataset there, then load it.`);
-    const real = await realpath(resolve(root, path)).catch(() => null);
-    if (!real) throw new Error(`There’s no file at ${path} in ${dir}.`);
-    if (!real.startsWith(root + sep)) throw new Error(`${path} is outside ${dir}. Datasets load only from there.`);
-    const st = await stat(real);
-    if (!st.isFile()) throw new Error(`${path} isn’t a file.`);
-    const over = () => new Error(`${path} is over ${limitText('datasetBytes')}, the limit for a dataset.`);
-    if (st.size > LIMITS.datasetBytes) throw over();
-    const buf = await readCapped(real, LIMITS.datasetBytes);
-    if (!buf) throw over();
-    return { path: relative(root, real), text: buf.toString('utf8') };
-  }
-
-  /** At startup: loads the datasets agents added before the restart, from where they were. Returns how many loaded. */
-  async reloadDatasets() {
-    let n = 0;
-    for (const ds of Object.values(this.s.datasets ?? {})) {
-      const folder = this.s.projects[ds.projectId]?.folder;
-      try {
-        if (!folder) throw new Error('its project has no folder now');
-        const { text } = await this.datasetFile(datasetDir(folder), ds.path);
-        this.corpus.addRecords(ds.id, parseDataset(text), { title: ds.title, author: ds.author });
-        n++;
-      } catch (e) {
-        console.warn(`Couldn’t load the dataset “${ds.id}” again: ${e.message}`);
-      }
-    }
-    if (n) this.corpus.reindex();
-    return n;
+  reloadDatasets() {
+    return reloadDatasets(this);
   }
 
   // ── Presence ───────────────────────────────────────────────────────────────────────
@@ -3307,10 +3224,6 @@ export class Runtime {
     };
   }
 }
-
-const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-/** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */
-const datasetDir = (folder) => join(folder, '.postbox', 'datasets');
 
 /** What Postbox asks when you stop an agent whose background jobs are running (#129). */
 export function stopAskText(handle, n) {

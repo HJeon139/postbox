@@ -8,6 +8,16 @@ import { isSafeUrl, LOCAL_HTTP, onPageOrigin } from './urls.mjs';
 const LABEL_MAX = 1000;
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
+/** HTML as text, its tags removed. One pass of this pattern leaves none; the loop says so where CodeQL can see it (#345). */
+export function stripTags(html) {
+  let text = String(html);
+  for (let was = ''; was !== text; ) {
+    was = text;
+    // lint-allow tags: this is stripTags, repeated until no tag is left.
+    text = text.replace(/<[^>]+>/g, '');
+  }
+  return text;
+}
 
 // ── Inline ──────────────────────────────────────────────────────────────────────────────
 
@@ -197,11 +207,13 @@ export function glossaryRegex(glossary) {
   if (!entries.length) return null;
   const keys = new Map(entries.map((g) => [escapeHtml(g.term).toLowerCase(), g.key]));
   const alts = [...keys.keys()].sort((a, b) => b.length - a.length).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  // lint-allow regex: glossary terms, each escaped just above.
   return { re: new RegExp(`(?<![\\w-])(?:${alts.join('|')})(?![\\w-])`, 'gi'), keys };
 }
 
 export function mentionRegex(handles) {
   const hs = (handles ?? []).filter((h) => /^[A-Za-z0-9_-]+$/.test(h));
   if (!hs.length) return null;
+  // lint-allow regex: only handles of letters, digits, _ and - are kept, just above.
   return new RegExp(`(^|[^\\w@])@(${hs.join('|')})(?![\\w-])`, 'g');
 }

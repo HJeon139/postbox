@@ -27,7 +27,7 @@ An agent can start a command in the background (Bash with `run_in_background`, a
 
 ## Steps to reproduce
 
-Automated: `node tools/check-stop.mjs` and `node tools/check-stop-steps.mjs` (headless Chrome, a scripted agent, no real processes). `PB_SHOT=tests/uat/screenshots/kept-job-unsure.png node tools/check-stop.mjs` retakes the screenshot.
+Automated: `npx playwright test stop` (`tests/browser/stop.spec.mjs`) and `node tools/check-stop-steps.mjs` (headless Chrome, a scripted agent, no real processes). `PB_SHOT=tests/uat/screenshots/kept-job-unsure.png npx playwright test stop -g "#164"` retakes the screenshot.
 
 With a real agent:
 1. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>.

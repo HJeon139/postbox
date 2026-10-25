@@ -18,7 +18,7 @@ Starting a topic thread must be discoverable without hovering.
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Choose Reply in thread under an agent reply; send a message in the panel; close the panel.
-3. Run `node tools/check-transcript.mjs`: it double-clicks Send to conversation and checks one post.
+3. Run `npx playwright test transcript` (`tests/browser/transcript.spec.mjs`): it double-clicks Send to conversation and checks one post.
 
 **Pass if:** The link shows the reply count and reopens the thread, and nothing from the thread is posted twice.
 

@@ -10,7 +10,7 @@ import { TOOL_DEFS } from '../server/mcp.mjs';
 import { sandboxPage } from '../server/sandbox.mjs';
 import { validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { LIMITS, limitText, PALETTES, READING } from '../shared/limits.mjs';
+import { LIMITS, limitText, PALETTES, READING, SENDING } from '../shared/limits.mjs';
 
 const names = /** @type {(keyof typeof LIMITS)[]} */ (Object.keys(LIMITS));
 
@@ -39,6 +39,8 @@ test('the MCP tool descriptions name the limits each tool needs', () => {
   const count = (k) => `${k.toLocaleString('en-US')} characters`;
   for (const tool of ['read_conversation', 'read_message']) assert.ok(said(tool).includes(count(READING.item)), `${tool} doesn’t name READING.item`);
   assert.ok(said('read_message').includes(count(READING.part)), 'read_message doesn’t name READING.part');
+  for (const tool of ['wake_agent', 'bring_to_conversation'])
+    assert.ok(said(tool).includes(`up to ${count(SENDING.message)}`), `${tool} doesn’t name SENDING.message`);
 });
 
 test('the catalog enforces the limits from the module', () => {

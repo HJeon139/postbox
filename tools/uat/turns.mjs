@@ -1,6 +1,6 @@
 // How the runner waits on the agents’ turns between steps, and stops one when the tester asks it to.
 
-import { sleep } from '../cdp.mjs';
+import { js, sleep } from '../cdp.mjs';
 import { waitingOnYou } from './checks.mjs';
 
 /** The longest the tester’s wait action waits: five minutes. */
@@ -126,7 +126,7 @@ export async function sendThenStop(d, a, { step, probes, log = () => {}, onWait 
  */
 export const stopThroughPage = (page) => (/** @type {string} */ id) =>
   page.evaluate(
-    `fetch(${JSON.stringify(`/api/sessions/${encodeURIComponent(id)}/stop`)}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jobs: 'stop' }) }).then((r) => r.ok)`,
+    `fetch(${js(`/api/sessions/${encodeURIComponent(id)}/stop`)}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jobs: 'stop' }) }).then((r) => r.ok)`,
   );
 
 /**

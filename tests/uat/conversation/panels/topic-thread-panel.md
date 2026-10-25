@@ -25,7 +25,7 @@ Follow a side question without filling the conversation: the thread’s replies 
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Reply in thread under an agent reply, ask a question, Summarize back. Open another conversation from the sidebar, then come back.
-3. Run `node tools/check-transcript.mjs`: it double-clicks Summarize back, asks again from a second “tab”, and checks one summary and the reply marked sent.
+3. Run `npx playwright test transcript` (`tests/browser/transcript.spec.mjs`): it double-clicks Summarize back, asks again from a second “tab”, and checks one summary and the reply marked sent.
 4. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. Open a thread on an earlier message and ask about something said after it; the agent knows it, since it’s the same session. Then open a thread on a table and @-mention an agent that isn’t in the conversation, asking it to check one row.
 
 **Pass if:** The thread is open again when you come back. The summary appears in the conversation once, the reply shows it was sent, no session is made in the thread, and the agent brought in can quote the row without you pasting it.

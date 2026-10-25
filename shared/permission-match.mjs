@@ -72,6 +72,7 @@ function bashMatches(spec, cmd) {
   // `ls *` also matches `ls` on its own; `ls*` matches lsof too.
   let src = escapeRe(spec).replace(/\*/g, '.*');
   if (src.endsWith(' .*')) src = `${src.slice(0, -3)}(?: .*)?`;
+  // lint-allow regex: src is the rule through escapeRe(), with * as its one wildcard.
   return new RegExp(`^${src}$`, 's').test(cmd);
 }
 
@@ -90,6 +91,7 @@ function globRegex(pattern) {
     else if (c === '?') src += '[^/]';
     else src += escapeRe(c);
   }
+  // lint-allow regex: src is the pattern's characters, each through escapeRe() or a fixed class.
   return new RegExp(`^${src}$`);
 }
 

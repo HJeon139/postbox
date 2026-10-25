@@ -2,6 +2,67 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.34.0 (2026-10-25)
+
+### Features
+
+- **threads:** agents talk in the conversation; side threads are read-only
+
+### Fixes
+
+- **threads:** count each pair's wakes, and every wake a message makes
+- **demo:** play the wake scene in the conversation
+
+## 0.33.6 (2026-10-25)
+
+### Fixes
+
+- **settings:** its tabs wrap on a phone, so the dialog no longer scrolls sideways
+
+## 0.33.5 (2026-10-25)
+
+### Fixes
+
+- **state:** the second id in a route is checked too, and the test reaches every route
+- **state:** an id is a record the state has or nothing, never Object's prototype
+
+## 0.33.4 (2026-10-25)
+
+### Fixes
+
+- **runtime:** an app's waiting card keeps its agent needing you through its turns
+
+## 0.33.3 (2026-10-25)
+
+### Fixes
+
+- **server:** missing or bare static folders answer 404, and page files go through servedFile
+- **ledger:** record a SHA-256 repository’s commits, whose shas are 64 hex
+- **ledger:** git reads ignore commands a repository’s config names
+- **server:** serve static files only from inside their folders, through links too
+- **side-threads:** refuse a wake_agent message or post past 50,000 characters
+- **datasets:** refuse a datasets folder that links out of the project
+- **corpus:** hold corpus_search to 1–50 results and its first 50 book ids
+- **mcp:** compare a tool call’s turn token in constant time
+- **ledger:** refuse a commit sha that isn’t hex before it becomes git’s argument
+
+## 0.33.2 (2026-10-25)
+
+### Fixes
+
+- **thread:** note a clamp only when it left the view at the page's end
+- **thread:** keep the view on what you read when the page changes under it
+
+## 0.33.1 (2026-10-25)
+
+### Fixes
+
+- **deps:** move sharp to 0.35.5 and body-parser to 2.4.0
+- **uat:** pick canary words with randomInt, not a byte modulo the list
+- **uat:** escape backslashes in report table cells
+- **markdown:** strip tags in one place, until none is left
+- **markdown:** close a fence by comparing its run, not a regular expression built from text
+
 ## 0.33.0 (2026-10-25)
 
 ### Features

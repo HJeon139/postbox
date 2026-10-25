@@ -201,14 +201,13 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await setSpeed(speed);
   await settled(room, () => true, 'the indexing run');
 
-  // 7 · Wakes: agents waking each other, the limit, a side thread and a scheduled wake-up
-  log('@indexer and @researcher wake each other until the limit asks you; @indexer schedules a wake-up.');
+  // 7 · Wakes: agents waking each other in the conversation (#372), the limit, and a scheduled wake-up
+  log('@indexer and @researcher wake each other in the room until the limit asks you; @indexer schedules a wake-up.');
   await send(room, '@indexer remind me later about the embedding run');
   await settled(room);
   await send(room, '@indexer check the editions with the researcher, in a loop');
   s = await until((st) => find(st, room, (i) => i.kind === 'hop' && i.status === 'open') && st, { label: 'the wake limit', timeout: 60000 });
-  const side = Object.values(s.threads).find((t) => t.parentId === room.id);
-  await view(`#/t/${room.id}/side/${side.id}`);
+  await view(`#/t/${room.id}`);
   await shot('08-wakes');
 
   // 8 · Errors: a failed reply, a stopped reply, blocks that can’t be shown, a crashed app, reconnecting

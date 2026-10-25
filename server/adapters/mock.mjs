@@ -29,7 +29,7 @@ export class MockAdapter {
     const topic = ctx.thread?.kind === 'topic';
     if (topic && message.kind === 'notice' && /Summarize this topic thread/.test(message.text)) await topicSummary(a);
     else if (topic && message.kind === 'user') await topicReply(a);
-    else await (HANDLERS[session.handle] ?? HANDLERS.default)(message, a, mem, session);
+    else await (Object.hasOwn(HANDLERS, session.handle) ? HANDLERS[session.handle] : HANDLERS.default)(message, a, mem, session);
     a.grow(message);
   }
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { runGit } from '../server/ledger-git.mjs';
 import { fakeRepo, ledgerIn } from './fake-repo.mjs';
 
 const ROOT = '/work/proj';
@@ -56,6 +57,62 @@ test('a commit Claude Code reports (gitOperation) is recorded once, and a branch
   assert.ok(
     repo.git.calls.every((c) => /^git (rev-parse|ls-files|show|status|log|branch -r|check-ignore|symbolic-ref|for-each-ref|rev-list|diff)\b/.test(c)),
     'nothing but reads',
+  );
+});
+
+test('a reported commit whose sha isn’t hex never reaches git, where --output= would write a file (#351)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  repo.commit('Start');
+  const { run, end, of } = await ledgerIn(repo);
+  for (const sha of ['--output=/tmp/pb-written', '-p', 'HEAD~1', ''])
+    await run('git commit -am "Second"', () => {}, { output: '', result: { gitOperation: { commit: { sha, branch: 'main' } } } });
+  await end();
+  assert.deepEqual(of('commit'), []);
+  assert.ok(!repo.git.calls.some((c) => / (show|branch -r --contains) (-|HEAD~)|--output=/.test(c)), repo.git.calls.join('\n'));
+});
+
+test('every git read sets off the commands a repository’s config can name, its content filters among them (#351)', async () => {
+  const calls = [];
+  const exec = (file, args, opts, cb) => {
+    calls.push({ file, args, env: opts.env });
+    cb(null, args[0] === 'config' ? 'filter.lfs.clean\0filter.lfs.smudge\0filter.a.b.process\0' : '', '');
+  };
+  await runGit(ROOT, ['status', '--porcelain=v1', '-z'], { exec });
+  await runGit(ROOT, ['show', '--numstat', 'abc1234'], { exec });
+  const config = (env) =>
+    Object.fromEntries(Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i) => [env[`GIT_CONFIG_KEY_${i}`], env[`GIT_CONFIG_VALUE_${i}`]]));
+  const [, status, , show] = calls;
+  for (const c of [status, show])
+    assert.deepEqual(config(c.env), {
+      'core.fsmonitor': 'false',
+      'core.hooksPath': '/dev/null',
+      'diff.external': '',
+      'log.showSignature': 'false',
+      'filter.lfs.clean': '',
+      'filter.lfs.smudge': '',
+      'filter.lfs.process': '',
+      'filter.lfs.required': 'false',
+      'filter.a.b.clean': '',
+      'filter.a.b.smudge': '',
+      'filter.a.b.process': '',
+      'filter.a.b.required': 'false',
+    });
+  assert.deepEqual(status.args, ['status', '--porcelain=v1', '-z']);
+  assert.deepEqual(show.args, ['show', '--no-ext-diff', '--no-textconv', '--numstat', 'abc1234']);
+  // The filters are asked for with the commands already off.
+  assert.equal(config(calls[0].env)['core.fsmonitor'], 'false');
+});
+
+test('a SHA-256 repository’s 64-hex commit is recorded, as a SHA-1 one is (#351)', async () => {
+  const repo = fakeRepo(ROOT, { 'a.txt': 'one\n' });
+  repo.commit('Start');
+  const { run, end, of } = await ledgerIn(repo);
+  const sha = 'ab'.repeat(32);
+  await run('git commit -am "Second"', () => {}, { output: `[main ${sha.slice(0, 7)}] Second`, result: { gitOperation: { commit: { sha, branch: 'main' } } } });
+  await end();
+  assert.deepEqual(
+    of('commit').map((c) => c.sha),
+    [sha],
   );
 });
 

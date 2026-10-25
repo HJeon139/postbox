@@ -106,7 +106,10 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
   return { ok: true, voice: r.voice };
 }
 
-/** An open app card makes its agent need you and tells you, like a permission card, unless it already needs you. */
+/**
+ * An open app card makes its agent need you and tells you, like a permission card, unless it already needs you. It
+ * waits until you answer it: the agent’s turns, and you moving on (#69), leave it (runtime.mjs keeps it, as a hop).
+ */
 export function needAppSend(rt, app, itemId, waiting) {
   const se = rt.s.sessions[app.sessionId];
   if (!se || (se.needs && se.needs.itemId !== itemId)) return;
@@ -240,7 +243,9 @@ export function hostTool(rt, tool, args = {}) {
     case 'corpus.search': {
       const q = String(args.query ?? '').slice(0, 200);
       const mode = ['both', 'lexical', 'semantic'].includes(args.mode) ? args.mode : 'both';
-      return rt.corpus.search(q, { mode, k: Math.min(50, +args.k || 12), books: Array.isArray(args.books) ? args.books : undefined });
+      // k and books come from an agent or an app: 1 to 50 results, and the first 50 book ids (#351).
+      const k = Math.max(1, Math.min(50, Math.floor(+args.k || 12)));
+      return rt.corpus.search(q, { mode, k, books: Array.isArray(args.books) ? args.books.slice(0, 50) : undefined });
     }
     case 'corpus.read':
       return rt.corpus.read(String(args.id ?? ''));
