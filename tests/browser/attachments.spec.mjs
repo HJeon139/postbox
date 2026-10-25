@@ -64,7 +64,7 @@ test('#48 a PNG sent gets a thumbnail from /api/files that opens the full image 
   await drop(page, '.main .transcript', 'svg', 'diagram.svg');
   await expect(chips(page, '.main'), 'both files attach to the conversation’s composer').toHaveCount(2);
   await expect(chips(page, '.main').filter({ hasText: 'uploading' }), 'both uploaded').toHaveCount(0);
-  await page.locator('.main .composer button.send').click();
+  await page.locator('.main .composer').getByRole('button', { name: 'Send', exact: true }).click();
   const sent = page.locator('.transcript .me-card .attachments', { hasText: 'diagram.svg' });
   const img = sent.locator('img');
   await expect
@@ -122,7 +122,7 @@ test('#48 a file dropped on a topic thread’s panel attaches to its composer, a
   await expect(chips(page, '.main').filter({ hasText: 'main.png' }), 'a drop on the conversation attaches to its composer').toHaveCount(1);
   await expect(chips(page, 'aside.sidepanel'), '…and not to the panel’s').toHaveCount(1);
   await page.locator('aside.sidepanel').getByRole('button', { name: 'Add a file or a new agent' }).click();
-  await expect(page.locator('.menu .mi', { hasText: 'Upload from computer' }), 'the panel’s plus menu says where to drop files').toContainText(
+  await expect(page.getByRole('menuitem', { name: /^Upload from computer/ }), 'the panel’s plus menu says where to drop files').toContainText(
     'Or drop files on this thread',
   );
 });

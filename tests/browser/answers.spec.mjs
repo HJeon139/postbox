@@ -94,8 +94,8 @@ test('#123 a review that changed while you commented: refused with the diff and 
     await expect(block.locator('.stale-note')).toHaveText(/^This draft changed while you were answering\./);
     expect(itemOf().answered, 'refused, so the block is still open').toBeFalsy();
     expect(events().length, 'nothing reached the agent').toBe(0);
-    await expect(block.locator('.block-head [aria-label="Changes"] button').first(), 'the diff from the text you saw').toHaveText('Changes since you looked');
-    await expect(block.locator('.block-head [aria-label="Changes"] button').first()).toHaveAttribute('aria-checked', 'true');
+    const since = block.getByRole('radiogroup', { name: 'Changes' }).getByRole('radio', { name: 'Changes since you looked', exact: true });
+    await expect(since, 'the diff from the text you saw').toHaveAttribute('aria-checked', 'true');
     await expect(block.locator('.rv-line.add', { hasText: 'Seen on 22 October.' }), 'the added line is marked').toHaveCount(1);
     const draft = block.locator('.rv-thread', { has: page.locator('.status-tag.draft') });
     await expect(draft, 'your draft comment is kept').toContainText('Say which build.');
