@@ -132,15 +132,22 @@ jobs:
     # This name is the required check in protect-main, and the spoof check above (CHECK) looks for it.
     name: Prompt surface reviewed
     needs: [paths, approve]
+    # Always, even in a run a newer one cancelled: skipped, this job would report success to the required check, and
+    # stand as the commit's latest result until the newer run's gate reports. A cancelled run fails, and says why.
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - env:
+          CANCELLED: ${{ cancelled() }}
           PATHS: ${{ needs.paths.result }}
           TOUCHED: ${{ needs.paths.outputs.touched }}
           APPROVE: ${{ needs.approve.result }}
         run: |
+          if [ "$CANCELLED" = true ] || [ "$PATHS" = cancelled ] || [ "$APPROVE" = cancelled ]; then
+            echo "::error::A newer run of the gate replaced this one, after an edit or a push. That run's result is the one that counts."
+            exit 1
+          fi
           if [ "$PATHS" != success ]; then echo "::error::Couldn't list the changed files ($PATHS). Re-run the gate."; exit 1; fi
           if [ "$TOUCHED" != true ]; then echo "No prompt-surface file changed."; exit 0; fi
           if [ "$APPROVE" = success ]; then echo "The prompt change was approved."; exit 0; fi
