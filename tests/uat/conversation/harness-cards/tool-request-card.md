@@ -20,7 +20,7 @@ An unticked tool in a persona’s Tools is removed from the agent’s tool list,
 
 ## Steps to reproduce
 
-1. Run `node tools/check-permissions.mjs`. It answers a scripted agent’s request with a real click. Every line should say ok.
+1. Run `npx playwright test permissions` (`tests/browser/permissions.spec.mjs`). It answers a scripted agent’s request with a real click. Every test should pass.
 2. Run `node tools/checks/permission-cards.mjs`. It turns Shell on from the agent’s quick panel while a card asks for it. Every line should say ok.
 3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. Give a persona every tool but “Run commands in the project folder”, then ask it: “Run `gh --version` and tell me what it prints.”
 
