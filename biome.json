@@ -148,8 +148,8 @@
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 2003 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 762 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1991 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 760 } } }
         }
       }
     },
@@ -450,7 +450,7 @@
     },
     {
       "includes": ["server/room-checks.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1207 } } } } }
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1204 } } } } }
     },
     {
       "includes": ["tools/uat/driver.mjs"],

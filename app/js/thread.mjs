@@ -22,7 +22,7 @@ import { jobRows, stoppedTag } from './reply-stop.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
-import { argvStep, failedOnHost, hostTurnsList, kiroNotice, ranHere, remoteSig, remoteStale } from './thread-host.mjs';
+import { failedOnHost, hostChanged, hostEnd, hostTurnsList, kiroStep, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { workList } from './work-list.mjs';
@@ -322,12 +322,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       paintWorking();
       for (const it of itemsOf(threadId))
         if (it.kind === 'sidelink' && nodes.get(it.id)?.dataset.sideSig !== sideSig(sideActive(it.sideThreadId))) rerender(it.id);
-      // A reply whose turn ran on a host shows how it stands there (#120): Resume goes once it’s resumed.
-      for (const id of remoteStale(threadId, nodes, d.id)) rerender(id);
-      hostTurns.paint();
-    } else if (ch.type === 'host' || ch.type === 'host.status') {
-      for (const id of remoteStale(threadId, nodes)) rerender(id);
-      hostTurns.paint();
     } else if (ch.type === 'app') {
       for (const it of itemsOf(threadId))
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
@@ -348,6 +342,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
           }
         }
     }
+    hostChanged(ch, threadId, nodes, rerender, hostTurns);
   });
 
   const updateText = (id, force = false) => {
@@ -496,14 +491,13 @@ function renderItem(it, prev, ctx) {
     case 'agent': {
       // Replayed whole from the host after a restart (#120): the replay is the reply, so this part of it shows nothing.
       if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
-      // Kiro CLI on a host takes its message as an argument others there can read (#120): a notice, not a folded step.
-      const [argv, steps] = argvStep(it);
+      const [notice, steps] = kiroStep(it);
       const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
       const running = steps.some((s) => s.state === 'running');
       const node = h(
         'div.col.turn',
         showWho ? who(it) : null,
-        kiroNotice(argv),
+        notice,
         steps.length
           ? h(
               'details.activity',
@@ -521,11 +515,8 @@ function renderItem(it, prev, ctx) {
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
-        // A turn on a host Postbox stopped because it hung says why, with the last output’s time (#120).
-        it.note ? h('span.stopped-tag.hung-note', it.note) : null,
+        hostEnd(it),
         it.status === 'stopped' && !it.note ? stoppedTag(it) : null,
-        // Sign-in needed, Interrupted or Lost on a host has a callout of its own (#120).
-        it.status === 'failed' ? failedOnHost(it) : null,
         it.status === 'failed' && !failedOnHost(it)
           ? h(
               'div.callout',
@@ -927,8 +918,7 @@ function commandBlock(it, ctx) {
           ? [icon('warn', 'i-sm'), `Couldn’t run: ${it.error}`]
           : [icon('warn', 'i-sm'), `Exit ${it.exitCode ?? it.signal ?? '?'} · ${secs}`];
   const titleId = `cmd-${it.id}`;
-  // Run here while the agent works on a host (#120): said on its own line, so the output starts with the command’s.
-  const { where, text } = ranHere(it);
+  const { where, text } = ranHere(it, running);
   const out = text ? h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${it.command}` }, h('code', text)) : null;
   // While it runs, the newest output is in view: the item is drawn again as output arrives.
   if (out && running) requestAnimationFrame(() => out.scrollTo({ top: out.scrollHeight }));
@@ -938,7 +928,7 @@ function commandBlock(it, ctx) {
     h('div.block-head', h('code.title.grow.cmd-line', { id: titleId }, `! ${it.command}`), h('span.kind', `Command · ${it.cwd}`)),
     h(
       'div.block-body',
-      where ? h('p.small.cmd-where', `${running ? 'Running' : 'Ran'} on this computer, not on ${it.notOn}.`) : null,
+      where,
       it.cut ? h('p.small.dim', 'Earlier output was cut: this is the last 64 KB.') : null,
       it.paused && running ? h('p.small.dim', 'It’s still printing. The end of its output shows here when it finishes.') : null,
       out ?? h('p.small.dim', running ? 'No output yet.' : 'No output.'),
@@ -1793,7 +1783,6 @@ export function mountComposer(threadId, { side = false } = {}) {
             .catch((e) => toast({ title: 'Couldn’t stop', text: e.message }))
       : () => submit();
     action.setAttribute('aria-label', b ? `Stop @${b.handle}’s reply` : 'Send');
-    // On a host, Stop takes the turn’s background jobs with it (#120): said here, before you press it.
     const note = describeStop(action, b, threadId);
     const last = S().sessions[t.lastSpeaker];
     const members = sessionsOf(threadId).filter((x) => !x.archived);
@@ -1882,7 +1871,6 @@ export function mountComposer(threadId, { side = false } = {}) {
     else delete hint.dataset.mode;
     hint.dataset.to = addressSig(threadId, ta.value);
     const folder = mode === 'shell' ? commandFolder() : null;
-    // ! stays on this computer when the agent works on a host (#67, #120), and says so.
     const here = mode === 'shell' ? notOnHost(target()) : null;
     // A repaint while you’re on “Did you mean” keeps you there (#134).
     const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);

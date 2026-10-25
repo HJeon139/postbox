@@ -47,10 +47,26 @@ export function hostTurnsList(threadId) {
  * The replies whose look on a host changed since they were drawn (remoteSig), of one session or of all.
  * @param {string} threadId @param {Map<string, HTMLElement>} nodes  the transcript’s, by item @param {string | null} [sessionId]
  */
-export const remoteStale = (threadId, nodes, sessionId = null) =>
+const remoteStale = (threadId, nodes, sessionId = null) =>
   itemsOf(threadId)
     .filter((it) => it.kind === 'agent' && (!sessionId || it.sessionId === sessionId) && (nodes.get(it.id)?.dataset.remoteSig ?? '') !== remoteSig(it))
     .map((it) => it.id);
+
+/**
+ * What a change to a session or a host redraws in the transcript: a reply whose turn ran on a host shows how it stands
+ * there (Resume goes once it’s resumed), and so do the rows of stops the host hasn’t confirmed.
+ * @param {any} ch  the client’s change @param {string} threadId @param {Map<string, HTMLElement>} nodes  the transcript’s, by item
+ * @param {(id: string) => void} rerender @param {{ paint: () => void }} hostTurns  from hostTurnsList
+ */
+export function hostChanged(ch, threadId, nodes, rerender, hostTurns) {
+  if (ch.type === 'session') {
+    for (const id of remoteStale(threadId, nodes, ch.data.id)) rerender(id);
+    hostTurns.paint();
+  } else if (ch.type === 'host' || ch.type === 'host.status') {
+    for (const id of remoteStale(threadId, nodes)) rerender(id);
+    hostTurns.paint();
+  }
+}
 
 /** The step a Kiro CLI turn on a host shows (server/adapters/kiro-cli.mjs, REMOTE_ARGV_NOTE), drawn as a notice. */
 const KIRO_ARGV_STEP = 'kiro-remote-argv';
@@ -120,15 +136,24 @@ export function failedOnHost(it) {
   return f ? remoteCallout(it, f) : null;
 }
 
-/** A reply’s steps without the Kiro CLI notice, and the notice’s step. @param {any} it @returns {[any, any[]]} */
-export function argvStep(it) {
+/**
+ * How a reply’s turn on a host ended, under the reply: a turn Postbox stopped because it hung says why, with the last
+ * output’s time, and Sign-in needed, Interrupted or Lost has a callout of its own. @param {any} it
+ */
+export const hostEnd = (it) => [it.note ? h('span.stopped-tag.hung-note', it.note) : null, it.status === 'failed' ? failedOnHost(it) : null];
+
+/**
+ * A reply’s Kiro CLI notice, and its steps without the notice’s step: Kiro CLI on a host takes its message as an
+ * argument others there can read, so it’s a notice, not a folded step. @param {any} it @returns {[any, any[]]}
+ */
+export function kiroStep(it) {
   const all = it.activity?.steps ?? [];
   const argv = all.find((s) => s.id === KIRO_ARGV_STEP);
-  return [argv, argv ? all.filter((s) => s !== argv) : all];
+  return [kiroNotice(argv), argv ? all.filter((s) => s !== argv) : all];
 }
 
 /** Kiro CLI on a host takes its message as an argument others there can read: a notice, not a folded step. @param {any} argv */
-export const kiroNotice = (argv) =>
+const kiroNotice = (argv) =>
   argv
     ? h('div.callout.host-notice', { role: 'note', 'aria-label': argv.label }, icon('warn', 'i-sm'), h('div.grow', h('b', argv.label), ' ', argv.detail ?? ''))
     : null;
@@ -141,10 +166,14 @@ export function jobHostNote(it) {
 }
 
 /**
- * A `!` command run here while the agent works on a host: the line that says so, and its output without the line the
- * runtime put first for the agents. @param {any} it @returns {{ where: string, text: string }}
+ * A `!` command run here while the agent works on a host: the line that says so, on a line of its own so the output
+ * starts with the command’s, and its output without the line the runtime put first for the agents.
+ * @param {any} it @param {boolean} running @returns {{ where: any, text: string }}
  */
-export function ranHere(it) {
-  const where = it.notOn ? `! commands run on this computer, not on ${it.notOn}.` : '';
-  return { where, text: where && String(it.text ?? '').startsWith(`${where}\n`) ? it.text.slice(where.length + 1) : it.text };
+export function ranHere(it, running) {
+  const first = it.notOn ? `! commands run on this computer, not on ${it.notOn}.` : '';
+  return {
+    where: first ? h('p.small.cmd-where', `${running ? 'Running' : 'Ran'} on this computer, not on ${it.notOn}.`) : null,
+    text: first && String(it.text ?? '').startsWith(`${first}\n`) ? it.text.slice(first.length + 1) : it.text,
+  };
 }
