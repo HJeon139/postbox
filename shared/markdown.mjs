@@ -26,8 +26,8 @@ export const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
 export const QUOTE = /^ {0,3}>\s?(.*)$/;
 export const RULE = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
 export const TABLE_SEP = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
-/** Whether a line closes a fence opened with `marker` (such as ``` or ~~~~). */
-export const closesFence = (marker, line) => new RegExp(`^ {0,3}${marker[0]}{${marker.length},}\\s*$`).test(line);
+/** Whether a line closes a fence opened with `marker` (``` or ~~~~): a run of its character, as long or longer (#344). */
+export const closesFence = (marker, line) => (/^ {0,3}(`+|~+)\s*$/.exec(line)?.[1] ?? '').startsWith(marker);
 
 /**
  * @param {string} src

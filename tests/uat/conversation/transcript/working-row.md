@@ -21,7 +21,7 @@ A moving ring alone doesn’t say what the agent is doing. This row says it in a
 1. Run the demo (`node tools/demo.mjs --port 4180 --speed 3`) and open <http://127.0.0.1:4180/> while it plays.
 2. Scene 10b (“Tidy the workspace”): watch the end of the conversation, and the agent’s row in the sidebar’s Agents section.
 3. Run Postbox with real agents and ask for something that takes thought, such as “Plan how you’d split the corpus into chapters, then do it.”
-4. Run `node tools/check-transcript.mjs`: it measures the row’s left edge against the messages’ and checks that a long step truncates, with and without the panel.
+4. Run `npx playwright test transcript` (`tests/browser/transcript.spec.mjs`): it measures the row’s left edge against the messages’ and checks that a long step truncates, with and without the panel.
 
 **Pass if:**
 - The row appears within a second of sending, and shows readable thinking.

@@ -4,6 +4,7 @@
 import {
   applyBoilerplate,
   BACKENDS,
+  boilerplateUnavailable,
   EFFORT_NAMES,
   effortNamedBy,
   GEMINI_MODEL,
@@ -12,6 +13,7 @@ import {
   MODELS,
   modeHelp,
   PERMISSIONS,
+  selectBackend,
 } from '/shared/agent-facts.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
@@ -188,15 +190,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
                 id: `${idp}-b`,
                 'aria-describedby': `${idp}-b-help`,
                 onchange: (e) => {
-                  const id = e.target.value;
-                  st.bpFromBackend = false;
-                  st.backend = id;
-                  // A backend that lists its models gets its first one in place of a model it doesn’t offer: the
-                  // Antigravity CLI doesn’t run Claude’s default (#143).
-                  const offered = capsOf(id).models ?? (id === 'antigravity-cli' ? [GEMINI_MODEL] : null);
-                  if (id !== 'mock' && (!st.model || st.model === 'mock' || (offered && !offered.includes(st.model))))
-                    st.model = offered?.[0] ?? client.config.defaultModel ?? MODELS[0];
-                  st.effort = effortNamedBy(id, st.model) ?? st.effort;
+                  selectBackend(st, e.target.value, client.config);
                   paint();
                 },
               },
@@ -353,6 +347,41 @@ const toolsHelp = (backend) =>
 
 // ── New agent ───────────────────────────────────────────────────────────────────────────
 
+export const boilerplateDesc = () =>
+  `${Object.values(S().boilerplates)
+    .filter((b) => b.id.startsWith('bp-') && b.id !== 'bp-blank')
+    .map((b) => b.name)
+    .join(', ')}, or one you saved`;
+
+function boilerplateChips(bps, st, paint) {
+  return h(
+    'div.field',
+    h('span.label', 'Start from'),
+    h(
+      'div.chips',
+      { role: 'radiogroup', 'aria-label': 'Boilerplate' },
+      bps.map((b) => {
+        const why = boilerplateUnavailable(b, client.config);
+        return h(
+          'button.chip',
+          {
+            type: 'button',
+            role: 'radio',
+            'aria-checked': String(st.bp === b.id),
+            disabled: Boolean(why),
+            title: why,
+            class: st.bp === b.id ? 'on' : '',
+            onclick: () => {
+              if (applyBoilerplate(st, b, client.config)) paint();
+            },
+          },
+          why ? `${b.name} (${why})` : b.name,
+        );
+      }),
+    ),
+  );
+}
+
 export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
   const t = threadId ? S().threads[threadId] : null;
   const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
@@ -385,32 +414,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   const repaint = () => {
     fill(
       body,
-      preset
-        ? null
-        : h(
-            'div.field',
-            h('span.label', 'Start from'),
-            h(
-              'div.chips',
-              { role: 'radiogroup', 'aria-label': 'Boilerplate' },
-              bps.map((b) =>
-                h(
-                  'button.chip',
-                  {
-                    type: 'button',
-                    role: 'radio',
-                    'aria-checked': String(st.bp === b.id),
-                    class: st.bp === b.id ? 'on' : '',
-                    onclick: () => {
-                      applyBoilerplate(st, b, client.config);
-                      paint();
-                    },
-                  },
-                  b.name,
-                ),
-              ),
-            ),
-          ),
+      preset ? null : boilerplateChips(bps, st, paint),
       h(
         'div.form-grid',
         h(

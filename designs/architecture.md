@@ -93,7 +93,7 @@ flowchart LR
 
 ## 4. Code quality: linters and checks
 
-**Decision.** These run locally (`npm run check`) and in continuous integration on every pull request. Every tool is a development dependency, pinned in a lockfile and never shipped.
+**Decision.** These run locally (`npm run check`) and in continuous integration on every pull request, except the two marked CI only, which are GitHub services. Every other tool is a development dependency, pinned in a lockfile and never shipped.
 
 | Check | Tool | What it enforces |
 |---|---|---|
@@ -104,7 +104,12 @@ flowchart LR
 | Contrast | `tools/contrast.mjs` | Every token pair meets WCAG 2.1 AA in both modes, on the app stage too |
 | Design tokens | `tools/lint-tokens.mjs` | No raw colors outside the token blocks, in CSS or in JavaScript |
 | Safe DOM | `tools/lint-dom.mjs` | `innerHTML` only where a `lint-allow dom:` comment names the source (the Markdown renderer or Postbox’s own templates); no attribute or style names chosen at run time; `target="_blank"` always with `noopener` |
+| Security rules | `tools/lint-security.mjs` | Flags a regular expression built from anything but constants or `escapeRegExp()`; a one-pass tag strip outside `stripTags()`; a `JSON.stringify` splice in a browser check's page code, where `js()` belongs; a `===` or `!==` comparison of a name ending in “token”, where `sameToken()` belongs; and git run outside `runGit()` (SECURITY.md) |
 | Copy | `tools/lint-copy.mjs` | American spelling and curly quotes in user-facing strings |
+| Code scanning | **CodeQL**, GitHub’s default setup (CI only) | No pull request adds a high or critical security alert, or a CodeQL error: the `protect-main` ruleset requires its results |
+| Dependencies | `actions/dependency-review-action` (CI only, `.github/workflows/dependency-review.yml`) | No pull request adds or changes a dependency, shipped or development, with a known vulnerability of moderate severity or worse |
+| Prompt surface | `prompt-surface-gate.yml` (CI only), with the `prompt-security-review` environment | No pull request that changes what agents read, as `.github/prompt-surface-paths.txt` lists it, merges without the maintainer’s approval (“Prompt changes are reviewed as rendered text”, below) |
+| Prompt scan | `tools/prompt-surface.mjs` and **SkillSpector**, static rules (CI only, `prompt-surface-scan.yml`) | The rendered prompt diff is in the job summary, and a pull request that adds a high or critical SkillSpector finding fails it. Advice for the reviewer, not a required check |
 
 **Conventions**
 - An `.editorconfig` sets 2-space indentation, LF line endings and UTF-8.
@@ -487,3 +492,15 @@ flowchart LR
 - **Shown failing first.** A ported check is run against code without the fix it guards, as `needs-nav` was against the code before #285 (10 of 11 failed).
 
 **Revisit when** the last check has moved: then `tools/harness.mjs` and `tools/check-all.mjs` go, and the remaining users of `tools/cdp.mjs` are reconsidered.
+
+## 17. Prompt changes are reviewed as rendered text
+
+**Decision** (25 October 2026). What Postbox tells an agent is reviewed as a security change. A pull request that touches a file in `.github/prompt-surface-paths.txt` waits for the maintainer’s approval in the `prompt-security-review` environment. Beside it, CI renders what agents read on both sides and scans it with SkillSpector. SECURITY.md, “Prompt changes”, says how to use it.
+
+**What it rests on**
+- **The text an agent gets isn’t in any one file.** The guide (`server/adapters/guide.mjs`) fills in limits, tool rules and session facts, and each backend hands it over in its own way: Claude Code appends it to the system prompt, Codex sets it as developer instructions, Antigravity wraps it in a rules file. `tools/prompt-surface.mjs` renders each persona’s whole guide, the MCP tool descriptions and the repo’s agent instructions, so a reviewer reads the result, not the code that builds it.
+- **A pull request can’t judge itself.** The gate runs on `pull_request_target`: its workflow, path list and matcher come from `main`, and it never checks out the pull request. The scan runs on `pull_request`, untrusted and without secrets, so it’s advice.
+- **SkillSpector catches the generic attacks and misses Postbox’s own.** NVIDIA’s scanner (Apache-2.0, a CI tool, never a Postbox dependency) runs regular expressions, YARA rules and Python analysis; it doesn’t read JavaScript, which is why it scans the rendered text. Run with `--no-llm` on 14 threats seeded one at a time into a persona and the tool descriptions, it reported 9 as high: an override, a directive in an HTML comment, exfiltration to a URL, a hidden `.env`, pipe-to-shell, credential paths, anti-refusal, bidirectional-text hiding and a poisoned tool description. It missed all 5 that reword a rule of Postbox’s: skipping the review block, skipping the confirm block, treating web pages and files as instructions, approving its own refused tool call, and persistence through `~/.zshrc`. Its own exit code stayed 0 for 8 of the 9 it caught, so the job fails on new high or critical findings against the base instead.
+- **On `main` it reports 7 medium findings** and nothing higher: `npx @slidev/cli` without a version in the guide and in Antigravity’s copy of it, `npx playwright` three times in the repo’s own instructions, and “without asking” in two old session prompts. They’re the baseline a pull request is compared with.
+
+**Revisit when** SkillSpector’s model analysis can run on a key the repository holds. Its semantic pass is the part meant to catch a reworded rule, and only the maintainer’s pull requests could use it, never a fork’s.

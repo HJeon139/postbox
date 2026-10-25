@@ -148,6 +148,15 @@ export const BOILERPLATES = [
   { id: 'bp-blank', name: 'Blank', description: 'Write it yourself', instructions: '', tools: [] },
 ];
 
+export const toBoilerplate = (p) => ({
+  id: newId('bp'),
+  name: `@${p.handle}`,
+  description: p.description,
+  instructions: p.instructions,
+  tools: p.tools,
+  ...(p.backend && p.backend !== 'mock' ? { backend: p.backend, model: p.model } : {}),
+});
+
 export const KNOWN_TOOLS = [
   ['corpus.search', 'Search the corpus'],
   ['corpus.read', 'Read whole passages'],
@@ -164,8 +173,13 @@ export const KNOWN_TOOLS = [
  */
 export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = false }) {
   const s = rt.store.state;
-  for (const b of BOILERPLATES) if (!Object.hasOwn(s.boilerplates, b.id)) rt.store.emit('boilerplate', b);
-  if (Object.keys(s.personas).length) return false;
+  if (Object.keys(s.personas).length) {
+    if (!BOILERPLATES.every((b) => s.boilerplates[b.id])) {
+      const custom = Object.values(s.boilerplates).filter((b) => !BOILERPLATES.some((x) => x.id === b.id));
+      for (const b of [...BOILERPLATES, ...custom]) rt.store.emit('boilerplate', b);
+    }
+    return false;
+  }
   const fresh = freshInstall();
   let personas = demo ? DEMO_PERSONAS : fresh.personas;
   try {

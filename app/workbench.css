@@ -419,7 +419,7 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .btn.stop::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
 .btn.danger:hover { border-color: var(--alert); }
 .btn.danger .i { color: var(--alert-ink); }
-.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.btn[disabled], .chip[disabled] { opacity: .5; cursor: not-allowed; }
 .btn.is-hover { border-color: var(--accent); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -947,7 +947,7 @@ html.pb-sandbox body { margin: 0; }
 .palette .p-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
 .palette .p-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 .palette .p-list li[aria-selected="true"] { border-color: var(--accent); background: var(--sunk); }
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); padding: 0 16px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); padding: 0 16px; }
 .tabs button { all: unset; cursor: pointer; padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--dim); }
 .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
 .tabs button:focus-visible { outline: 2px solid var(--accent); }

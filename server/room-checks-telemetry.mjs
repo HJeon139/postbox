@@ -43,6 +43,7 @@ const LOOKALIKE = {
 function plain(text) {
   let s = String(text).replace(/[​-‏⁠﻿]/g, '');
   s = s.replace(/[^ -~\n\t]/g, (ch) => LOOKALIKE[ch] ?? ch);
+  // lint-allow regex: DIGITS is the constant list of number words.
   s = s.replace(new RegExp(`\\b(${DIGITS.join('|')})\\b`, 'gi'), (w) => String(DIGITS.indexOf(w.toLowerCase())));
   return s;
 }

@@ -74,6 +74,7 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm;
 const QUOTED = /^\s*(?:[|>]|(?:\*\*)?(?:question|q\d*)(?:\*\*)?\s*:)/i;
 const GOES_OUT = '(?:send|post|publish|file|submit|share|merge)';
 const APPROVE_IT = new RegExp(
+  // lint-allow regex: joined from the constant phrases around it.
   [
     String.raw`\b(?:if|once|when) you approve\b(?! the (?:block|review))`,
     String.raw`\byour (?:approval|sign[- ]?off)\b`,

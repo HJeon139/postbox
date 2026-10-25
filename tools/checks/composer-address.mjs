@@ -2,7 +2,7 @@
 //   • a draft that opens with an agent’s name and “:” or “,”, in a room where another agent spoke last, shows “Did you
 //     mean @critic?”, whose one click adds the @; a name later in the draft, or the last speaker’s own, shows nothing
 //     (#134, the rule the end-to-end tester uses);
-//   • topic and side threads say who an unaddressed message goes to, “Replying to @x”, as the conversation does (#134);
+//   • a topic thread says who an unaddressed message goes to, “Replying to @x”, as the conversation does (#134);
 //   • a draft that @-mentions an agent says it wakes that one, and not the agent it would otherwise go to (#107).
 //
 //   node tools/checks/composer-address.mjs
@@ -14,7 +14,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch, sleep } from '../cdp.mjs';
+import { js, launch } from '../cdp.mjs';
 import { finish, ports, record } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(5310, 10610);
@@ -57,7 +57,7 @@ const expect = (ok, what) => {
 };
 async function open(hash) {
   await page.synced(store.state.seq);
-  await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+  await page.evaluate(`location.hash = ${js(hash)}`);
   await settle();
 }
 
@@ -146,15 +146,7 @@ await check('#134 a topic thread says who an unaddressed message goes to', async
   await typeIn('side-input', '');
 });
 
-await check('#134 a side thread says who an unaddressed message goes to', async () => {
-  rt.agentWake(researcher.id, 'critic', 'Check revision 3.');
-  for (let i = 0; i < 100 && (rt.turns.size || rt.exiting.size); i++) await sleep(100);
-  const side = Object.values(store.state.threads).find((x) => x.kind === 'side' && x.parentId === room.id);
-  await open(`#/t/${room.id}/side/${side.id}`);
-  await page.waitFor(`document.querySelector('#side-input')`, { label: 'the side thread composer' });
-  const hint = await text(HINT('side-input'));
-  expect(hint.includes('Replying to @critic'), `The side thread hint reads “${hint}”`);
-});
+// #134’s side-thread hint went with the side thread’s composer: side threads are read-only since #372.
 
 await check('no errors in the page', async () => expect(!page.logs.length, page.logs.join('; ')));
 

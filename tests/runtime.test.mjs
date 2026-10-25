@@ -220,7 +220,7 @@ test(`after ${HOP_LIMIT} agent wakes in a row, the next one waits for your confi
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check').ok, true);
+  for (let i = 0; i < HOP_LIMIT; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
   await settle(rt);
   const r = rt.agentWake(alpha.id, 'beta', 'check again');
   assert.equal(r.waiting, true);
@@ -240,7 +240,7 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check');
+  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   await settle(rt);
   const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
   assert.equal(rt.agentWake(alpha.id, 'beta', long).waiting, true);
@@ -257,7 +257,7 @@ test('a wake request stored before #108, with only a preview, still delivers tha
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check');
+  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   await settle(rt);
   rt.agentWake(alpha.id, 'beta', 'the whole message');
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
@@ -279,20 +279,19 @@ test('a message from you resets the wake count', async () => {
   assert.equal(store.state.threads[t.id].hops, 0);
 });
 
-test('agents wake each other in a side thread, and your thread shows one link to it', async () => {
+test('#372: agents wake each other in the conversation, with no side thread or link, and a reply doesn’t go back by itself', async () => {
   const { rt, store, t, b, adapter } = setup();
   const alpha = rt.sessionsIn(t.id)[0];
-  rt.ensureSession(t.id, b.id);
+  const beta = rt.ensureSession(t.id, b.id);
   adapter.next.push(async (c) => c.text('Editions are fine.'));
   rt.agentWake(alpha.id, 'beta', 'Which editions?');
   await settle(rt);
-  const side = Object.values(store.state.threads).find((x) => x.kind === 'side');
-  assert.ok(side);
-  assert.equal(side.parentId, t.id);
-  const link = store.items(t.id).find((i) => i.kind === 'sidelink');
-  assert.ok(link.count >= 1);
-  // Beta’s reply goes back to alpha as a message from @beta.
-  assert.ok(adapter.calls.some((c) => c.handle === 'alpha' && c.message.kind === 'agent' && c.message.from === '@beta'));
+  const kinds = new Set([...Object.values(store.state.threads).map((x) => x.kind), ...store.items(t.id).map((i) => i.kind)]);
+  assert.ok(!kinds.has('side') && !kinds.has('sidelink'), 'no side thread, and no line for one');
+  const said = store.items(t.id).filter((i) => i.kind === 'agent');
+  assert.equal(said.map((i) => `@${i.handle}: ${i.text}`).join(' | '), '@alpha: Which editions? | @beta: Editions are fine.');
+  // Beta’s reply doesn’t go back to alpha as a message: it’s in the conversation, and it didn’t mention @alpha.
+  assert.equal(adapter.calls.map((c) => c.sessionId).join(), beta.id);
   assert.equal(store.state.sessions[alpha.id].agentMessages[0].other, 'beta');
 });
 

@@ -8,6 +8,8 @@
 // It’s an estimate, deliberately simple and conservative. The browser measures the real text size after a
 // diagram renders (app/kit/diagram.js) and reports what this misses. Pure, so the tests and both sides can use it.
 
+import { stripTags } from './markdown-inline.mjs';
+
 /** The size Postbox draws diagram text at, and the smallest size people can read. */
 export const DIAGRAM_TEXT_PX = 13;
 export const MIN_TEXT_PX = 10;
@@ -32,10 +34,12 @@ export function mermaidBlocks(markdown) {
 }
 
 const clean = (s) =>
-  String(s ?? '')
-    .replace(/^["'`]|["'`]$/g, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>|[*_`]/g, '')
+  stripTags(
+    String(s ?? '')
+      .replace(/^["'`]|["'`]$/g, '')
+      .replace(/<br\s*\/?>/gi, '\n'),
+  )
+    .replace(/[*_`]/g, '')
     .trim();
 const longestLine = (s) =>
   Math.max(

@@ -30,7 +30,7 @@ test('check-all finds every headless check by name, and not itself or other tool
 
 test('the real tools folder has the checks, so CI runs them', async () => {
   const names = await discover();
-  assert.ok(names.includes('check-shell') && names.includes('checks/app-send'), names.join(', '));
+  assert.ok(names.includes('check-telemetry') && names.includes('checks/menus'), names.join(', '));
   assert.ok(!names.includes('check-all'));
 });
 

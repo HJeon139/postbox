@@ -11,7 +11,7 @@
 import { randomBytes } from 'node:crypto';
 import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, truncate, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { apply, emptyState } from '../shared/state.mjs';
+import { apply, emptyState, ownState } from '../shared/state.mjs';
 
 export { emptyState };
 
@@ -39,13 +39,13 @@ export class Store {
     await mkdir(this.dir, { recursive: true });
     const snapPath = join(this.dir, 'snapshot.json');
     try {
-      this.state = { ...emptyState(), ...JSON.parse(await readFile(snapPath, 'utf8')) };
+      this.state = ownState({ ...emptyState(), ...JSON.parse(await readFile(snapPath, 'utf8')) });
     } catch (e) {
       if (e.code !== 'ENOENT') throw new Error(`Couldn’t read the snapshot at ${snapPath}: ${e.message}`);
       // Stage 2 kept everything in one store.json; read it once as the first snapshot.
       const legacy = join(this.dir, 'store.json');
       try {
-        this.state = { ...emptyState(), ...JSON.parse(await readFile(legacy, 'utf8')) };
+        this.state = ownState({ ...emptyState(), ...JSON.parse(await readFile(legacy, 'utf8')) });
         await this.writeSnapshot();
         await rename(legacy, `${legacy}.migrated`);
       } catch (le) {

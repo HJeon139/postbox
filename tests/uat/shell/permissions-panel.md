@@ -29,7 +29,7 @@ An agent blocked by a rule shouldn’t send you to a terminal to run `/permissio
 
 ## Steps to reproduce
 
-1. Run `node tools/check-permissions.mjs`. Every line should say ok.
+1. Run `npx playwright test permissions` (`tests/browser/permissions.spec.mjs`). Every test should pass.
 2. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>, in a project whose folder you can lose. Open a conversation with a Claude Code agent, then ⋯ › Permissions….
 3. In “Which rule decides?”, type `Bash(rm -rf build)`. Add a deny rule for Bash with the pattern `rm:*`, and type the call again.
 4. In a terminal in that folder, run `claude`, then `/permissions`. Add an allow rule there, and reopen the panel.

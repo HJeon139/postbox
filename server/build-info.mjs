@@ -18,6 +18,7 @@ const commitFile = (root) => join(root, 'server', 'build-commit.txt');
 
 /** @typedef {(args: string[]) => string} Git */
 /** @param {string} root @returns {Git} */
+// lint-allow git: rev-parse in Postbox's own checkout, which the person installed, not a repository an agent works in.
 const realGit = (root) => (args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 
 /**

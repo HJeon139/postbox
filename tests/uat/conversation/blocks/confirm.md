@@ -20,7 +20,7 @@ You must see exactly what will happen before agreeing.
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. In “Catalog tour”, confirm or cancel.
-3. Run `node tools/check-contract.mjs`: it confirms a block, has the agent report the result, and checks the line under the answer, the locked block and that nobody is asked again.
-4. Run `node tools/checks/follow.mjs`: an answered confirm that’s asked again shows at the bottom, in view, with a line where it was; ⌃J goes to it, and answering records one answer for the new revision.
+3. Run `npx playwright test contract` (`tests/browser/contract.spec.mjs`): it confirms a block, has the agent report the result, and checks the line under the answer, the locked block and that nobody is asked again.
+4. Run `npx playwright test follow` (`tests/browser/follow.spec.mjs`): an answered confirm that’s asked again shows at the bottom, in view, with a line where it was; ⌃J goes to it, and answering records one answer for the new revision.
 
 **Pass if:** Your answer reaches the agent and the block locks, a reported result shows under your answer without reopening it, and a block asked again shows at the bottom.

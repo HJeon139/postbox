@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from '../server/index.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { play } from './demo.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -22,10 +22,10 @@ const PORT = Number(process.env.PB_PORT ?? 4291);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 
 // Finders: JS expressions run in the page.
-const item = (text) => `[...document.querySelectorAll('.transcript > .item')].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+const item = (text) => `[...document.querySelectorAll('.transcript > .item')].find((n) => n.textContent.includes(${js(text)}))`;
 const block = (title) =>
-  `[...document.querySelectorAll('.transcript > .item')].find((n) => n.querySelector('.block-head, .app-head, .appframe') && n.textContent.includes(${JSON.stringify(title)}))`;
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+  `[...document.querySelectorAll('.transcript > .item')].find((n) => n.querySelector('.block-head, .app-head, .appframe') && n.textContent.includes(${js(title)}))`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
 /** Captures taken during the demo, at the moment a scene is on screen: [scene, name, finder, prepare?]. */
 const DURING = [
   ['15-permission', 'permission-card', item('Let @indexer run a command')],

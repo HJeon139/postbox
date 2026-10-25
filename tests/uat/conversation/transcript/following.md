@@ -17,7 +17,7 @@ In Dispatch mode you glance at a conversation to see what changed. That only wor
 
 ## Steps to reproduce
 
-1. Run `node tools/check-transcript.mjs`. It drives a long room with real wheel and mouse input: streaming, patches, an app growing from 200 to 700 px, the panel and a resize at the bottom; the same changes scrolled up; and the pill.
+1. Run `npx playwright test transcript` (`tests/browser/transcript.spec.mjs`). It drives a long room with real wheel and mouse input: streaming, patches, an app growing from 200 to 700 px, the panel and a resize at the bottom; the same changes scrolled up; and the pill.
 2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays. In “Corpus explorer”, stay at the bottom while @librarian streams and its app loads.
 3. Scroll up a little while an agent works, wait for two messages, then scroll back down with the wheel.
 4. Open a thread from an older message while scrolled up, then close it.

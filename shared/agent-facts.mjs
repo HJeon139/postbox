@@ -23,8 +23,9 @@ export const BACKENDS = [
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
 export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
-/** The default Gemini model when the Antigravity CLI didn’t report its list (#143). */
-export const GEMINI_MODEL = 'gemini-3.8-flash-high';
+/** The model an Antigravity CLI persona runs when it names none, and when the CLI didn’t report its list (#143). */
+export const AGY_DEFAULT_MODEL = 'gemini-3.8-flash-high';
+export const GEMINI_MODEL = AGY_DEFAULT_MODEL;
 export const EFFORT_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 export const PERMISSIONS = [
   ['auto', 'Auto', 'A safety check approves routine actions; it asks you only when it can’t decide.'],
@@ -169,14 +170,54 @@ export function installNote({ realBackends, versions, adapters = [] }) {
     : 'Claude Code isn’t installed here, so agents run on the mock until it is: scripted replies, not a model.';
 }
 
+/** Why a boilerplate can’t be picked on this computer, or null when its backend is available. */
+export function boilerplateUnavailable(b, config = {}) {
+  if (!b?.backend || (config?.adapters ?? []).includes(b.backend)) return null;
+  return `${BACKEND_NAMES[b.backend] ?? b.backend} not on this computer`;
+}
+
+/** The models a backend is known to offer, or null when the backend didn’t report a catalog. */
+const offeredBy = (id, config) =>
+  config?.backends?.[id]?.models ?? (id === 'claude-code' || id === 'agent-sdk' ? MODELS : id === 'antigravity-cli' ? [GEMINI_MODEL] : null);
+
+/** The default model for a backend when switching to it from an incompatible model. */
+const defaultFor = (id, config) => {
+  const offered = offeredBy(id, config);
+  if (id === 'claude-code' || id === 'agent-sdk') return config?.defaultModel ?? MODELS[0];
+  if (Array.isArray(offered) && offered.length) return offered[0];
+  return id === 'antigravity-cli' ? GEMINI_MODEL : (config?.defaultModel ?? MODELS[0]);
+};
+
+/**
+ * Switches a sheet’s backend, resetting st.model and st.effort when the new backend doesn’t offer the current model.
+ * @param {any} st @param {string} id @param {any} [config]
+ */
+export function selectBackend(st, id, config = {}) {
+  const prev = st.backend;
+  st.bpFromBackend = false;
+  st.backend = id;
+  const offered = offeredBy(id, config);
+  const prevOffered = prev === 'antigravity-cli' ? offeredBy(prev, config) : null;
+  const incompatible = Array.isArray(offered)
+    ? !offered.includes(st.model)
+    : Boolean(prev && prev !== id && Array.isArray(prevOffered) && prevOffered.includes(st.model));
+  if (id !== 'mock' && (!st.model || st.model === 'mock' || incompatible)) {
+    st.model = defaultFor(id, config);
+    st.effort = effortNamedBy(id, st.model) ?? config?.defaultEffort ?? 'medium';
+  } else {
+    st.effort = effortNamedBy(id, st.model) ?? st.effort;
+  }
+}
+
 /**
  * Applies a boilerplate to the new-agent sheet’s state. A boilerplate that names a backend (such as Gemini on
- * the Antigravity CLI) selects that backend when it’s available on this computer, and picks the first model the
- * backend reported, falling back to the boilerplate’s model. Picking a generic boilerplate after a backend-bound
- * one restores the default backend, model and effort.
+ * the Antigravity CLI) selects that backend when it’s available on this computer, and prefers the boilerplate’s
+ * model when offered, then the first gemini-* model for Antigravity or first reported model for Codex, then the boilerplate’s model. Picking a
+ * generic boilerplate after a backend-bound one restores the default backend, model and effort.
  * @param {any} st @param {any} b @param {any} [config]
  */
 export function applyBoilerplate(st, b, config = {}) {
+  if (boilerplateUnavailable(b, config)) return false;
   const prevFromBp = st.bpFromBackend === true;
   st.bp = b.id;
   st.instructions = b.instructions ?? '';
@@ -187,14 +228,13 @@ export function applyBoilerplate(st, b, config = {}) {
     st.bpFromBackend = true;
     st.backend = b.backend;
     const offered = config?.backends?.[b.backend]?.models;
-    st.model = (Array.isArray(offered) && offered.length ? offered[0] : null) ?? b.model ?? config?.defaultModel ?? MODELS[0];
+    const list = Array.isArray(offered) ? offered : [];
+    const preferred = b.backend === 'codex' ? list[0] : list.find((m) => /^gemini-/.test(m));
+    st.model = (b.model && list.includes(b.model) ? b.model : preferred) ?? b.model ?? config?.defaultModel ?? MODELS[0];
     st.effort = effortNamedBy(st.backend, st.model) ?? config?.defaultEffort ?? 'medium';
   } else if (prevFromBp) {
-    st.bpFromBackend = false;
     const def = BACKENDS.map(([id]) => id).find((id) => adapters.includes(id)) ?? 'mock';
-    st.backend = def;
-    const offered = config?.backends?.[def]?.models ?? (def === 'antigravity-cli' ? [GEMINI_MODEL] : null);
-    st.model = (Array.isArray(offered) && offered.length ? offered[0] : null) ?? config?.defaultModel ?? MODELS[0];
-    st.effort = effortNamedBy(def, st.model) ?? config?.defaultEffort ?? 'medium';
+    selectBackend(st, def, config);
   }
+  return true;
 }
