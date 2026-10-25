@@ -7,7 +7,10 @@
 // On the demo’s conversations. Moved from tools/check-shell.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focused, focusIs, startPostbox, synced } from './postbox.mjs';
+
+// Light, as the old check ran it.
+test.use({ colorScheme: 'light' });
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -27,17 +30,6 @@ async function open(page, hash, origin = app.origin) {
   await synced(page, app);
   await expect(page.locator('header.topbar')).toBeVisible();
 }
-
-/** A short description of the focused element: its role or tag, and its name or text. */
-const focused = (page) =>
-  page.evaluate(() => {
-    const a = document.activeElement;
-    if (!a || a === document.body) return 'body';
-    return `${a.getAttribute('role') ?? a.tagName.toLowerCase()}: ${(a.getAttribute('aria-label') ?? a.textContent?.trim().replace(/\s+/g, ' ') ?? '').slice(0, 60)}`;
-  });
-/** Waits for focus to be on what that describes. */
-const focusIs = (page, want) => expect.poll(() => focused(page), { message: 'where focus is' }).toEqual(want);
-const focusMatches = (page, want) => expect.poll(() => focused(page), { message: 'where focus is' }).toMatch(want);
 
 const dialog = (page) => page.locator('.backdrop .dialog');
 const actions = (page) => page.locator('header.topbar button[aria-label^="Actions for"]');
@@ -59,7 +51,7 @@ test('#69 an older open block shows “1 open confirmation”, not needs-you, an
   await expect(label).toHaveText('1 open confirmation');
   expect(store.state.sessions[se.id].needs).toBe(null);
   await label.click();
-  await focusMatches(page, /Rename/);
+  await focusIs(page, /Rename/);
   // Answering it clears the line.
   const block = store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'old-ask');
   rt.act(t.id, block.id, 'confirm', {});
@@ -72,7 +64,7 @@ test('#26 new agent: Space on a Tools checkbox keeps focus on it', async ({ page
   // From the conversation’s ⋯: the overview’s New agent went with it (#320).
   await open(page, `#/t/${threadNamed('Corpus planning').id}`);
   await actions(page).click();
-  await page.locator('.menu .mi', { hasText: 'Add an agent' }).click();
+  await page.getByRole('menuitem', { name: /^Add an agent/ }).click();
   await expect(dialog(page)).toBeVisible();
   const box = page.locator('.d-body [role=checkbox]').nth(1);
   const before = await box.getAttribute('aria-checked');
@@ -120,7 +112,7 @@ test('#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯
   await page.keyboard.press('Enter');
   await focusIs(page, 'menuitem: Rename…');
   await page.keyboard.press('ArrowDown');
-  await focusMatches(page, /^menuitem: Add an agent…/);
+  await focusIs(page, /^menuitem: Add an agent…/);
   await page.keyboard.press('Enter');
   await expect(dialog(page)).toBeVisible();
   // #4: the sheet says “conversation”, never “thread”.
@@ -137,7 +129,7 @@ test('#26 the folder picker opens with focus on its first entry, and Escape retu
   await page.keyboard.press('Enter');
   await expect(page.locator('.menu')).toBeVisible();
   for (let i = 0; i < 5 && !/From the project folder/.test(await focused(page)); i++) await page.keyboard.press('ArrowDown');
-  await focusMatches(page, /^menuitem: From the project folder/);
+  await focusIs(page, /^menuitem: From the project folder/);
   await page.keyboard.press('Enter');
   await expect(page.locator('.d-body li button').first(), 'focus on the first entry').toBeFocused();
   await page.keyboard.press('Escape');
@@ -201,6 +193,24 @@ test('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the top bar r
   } finally {
     app.rt.renameThread(t.id, 'Index the shelf');
   }
+});
+
+// ── Going from one conversation to another ─────────────────────────────────────────────
+
+test('a conversation opened from the sidebar replaces the last one’s transcript, and Back brings that one back, up to date', async ({ page }) => {
+  const [a, b] = [threadNamed('Corpus planning'), threadNamed('Index the shelf')];
+  await open(page, `#/t/${a.id}`);
+  await expect(page.locator(`#main[data-thread="${a.id}"]`)).toBeVisible();
+  await page.locator(`.rail a.row[data-thread="${b.id}"] .name`).click();
+  await expect(page).toHaveURL(new RegExp(`#/t/${b.id}$`));
+  await expect(page.locator(`#main[data-thread="${b.id}"]`)).toBeVisible();
+  await expect(page.locator(`.transcript[data-thread="${a.id}"]`), 'the last transcript went').toHaveCount(0);
+  // The first conversation’s transcript stopped listening when it went: what comes to it doesn’t land here.
+  app.rt.addItem(a.id, { kind: 'user', text: 'While you were away' });
+  await synced(page, app);
+  await expect(page.locator('#main')).not.toContainText('While you were away');
+  await page.goBack();
+  await expect(page.locator(`#main[data-thread="${a.id}"]`)).toContainText('While you were away');
 });
 
 // ── A fresh install leads to a first project ────────────────────────────────────────────

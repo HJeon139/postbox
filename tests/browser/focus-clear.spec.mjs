@@ -10,7 +10,7 @@
 // At 1280 and 375 px. Each test has a conversation of its own. Moved from tools/checks/focus-clear.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -51,8 +51,7 @@ function conversation() {
   return { t, reply, tools };
 }
 
-/** Until the browser has drawn two more frames: focus-clear.mjs scrolls in the frame after focus moves. */
-const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+// frames(): focus-clear.mjs scrolls in the frame after focus moves.
 const scrollY = (page) => page.evaluate(() => window.scrollY);
 const composerTop = (page) => page.locator('.composer').evaluate((c) => c.getBoundingClientRect().top);
 /** Whether the transcript’s messages kept their heights for two frames. */

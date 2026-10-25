@@ -334,7 +334,7 @@
     },
     {
       "includes": ["tests/browser/agents.spec.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 472 } } } } }
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 463 } } } } }
     },
     {
       "includes": ["tests/browser/transcript.spec.mjs"],
@@ -458,7 +458,7 @@
       "includes": ["tools/uat/driver.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 472 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 463 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 391 } } }
         }
       }

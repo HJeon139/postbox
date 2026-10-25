@@ -12,7 +12,10 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focused, focusIs, startPostbox, synced } from './postbox.mjs';
+
+// Light, as the old check ran it; the narrow tests below run in both.
+test.use({ colorScheme: 'light' });
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -114,15 +117,6 @@ async function open(page, hash) {
   await expect(page.locator('header.topbar')).toBeVisible();
 }
 
-/** The focused element’s role or tag, and its accessible name (its label, else its text). */
-const focused = (page) =>
-  page.evaluate(() => {
-    const a = document.activeElement;
-    if (!a || a === document.body) return 'body';
-    return `${a.getAttribute('role') ?? a.tagName.toLowerCase()}: ${(a.getAttribute('aria-label') ?? a.textContent?.trim().replace(/\s+/g, ' ') ?? '').slice(0, 80)}`;
-  });
-const focusIs = (page, want) => expect.poll(() => focused(page), { message: 'where focus is' }).toEqual(want);
-
 /** An agent’s row in the sidebar, and its button. */
 const agentRow = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^@${handle}$`) }) });
 const row = (page, handle) => agentRow(page, handle).locator('.agent-btn');
@@ -135,10 +129,7 @@ const button = (page, text) =>
     .locator('button')
     .filter({ hasText: new RegExp(`^\\s*${literal(text)}`) });
 const group = (page, name) => panel(page).locator(`[role=radiogroup][aria-label^="${name}"]`);
-const radio = (page, name, label) =>
-  group(page, name)
-    .locator('[role=radio]')
-    .filter({ hasText: new RegExp(`^\\s*${literal(label)}`) });
+const radio = (page, name, label) => group(page, name).getByRole('radio', { name: new RegExp(`^${literal(label)}`) });
 const shellSwitch = (page) => panel(page).locator('[role=switch][aria-label^="Shell"]');
 
 /** Opens an agent’s quick panel from its row, with a click. */
@@ -168,7 +159,7 @@ test('Enter on a row opens its quick panel, labeled with the agent, with focus o
   await open(page, `#/t/${planning.id}`);
   await row(page, 'indexer').focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog', { name: '@indexer' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '@indexer', exact: true })).toBeVisible();
   await expect(row(page, 'indexer')).toHaveAttribute('aria-expanded', 'true');
   await focusIs(page, 'radio: Opus 5.5');
   const fits = await panel(page).evaluate((p) => {

@@ -148,3 +148,28 @@ export function watchWrites(page) {
   for (const ev of /** @type {const} */ (['requestfinished', 'requestfailed'])) page.on(ev, (r) => flying.delete(r) && landed++);
   return { answered: () => expect.poll(() => flying.size === 0 && landed > 0, { message: 'every write the page made answered' }).toBe(true) };
 }
+
+/**
+ * Where focus is, as a short description: the focused element’s role or tag, and its accessible name (its label,
+ * else its text), or “body”.
+ * @param {import('@playwright/test').Page} page
+ */
+export const focused = (page) =>
+  page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || a === document.body) return 'body';
+    return `${a.getAttribute('role') ?? a.tagName.toLowerCase()}: ${(a.getAttribute('aria-label') ?? a.textContent?.trim().replace(/\s+/g, ' ') ?? '').slice(0, 80)}`;
+  });
+
+/**
+ * Waits for focus to be on what that describes, a string or a pattern, and checks it’s still there two frames on, so
+ * focus that lands and is lost on a repaint fails.
+ * @param {import('@playwright/test').Page} page  @param {string | RegExp} want
+ */
+export async function focusIs(page, want) {
+  const is = (f) => (typeof want === 'string' ? f === want : want.test(f));
+  await expect.poll(async () => is(await focused(page)), { message: `focus on ${want}` }).toBe(true);
+  await frames(page);
+  const now = await focused(page);
+  expect(is(now), `focus stayed on ${want}, and is on ${now}`).toBe(true);
+}

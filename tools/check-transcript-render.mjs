@@ -1,5 +1,5 @@
-// A headless Chrome check of how the transcript renders what agents write, beside tools/check-transcript.mjs (which
-// is at its length ceiling), driven with real mouse and keyboard input:
+// A headless Chrome check of how the transcript renders what agents write, beside tests/browser/transcript.spec.mjs
+// (how it follows them), driven with real mouse and keyboard input:
 //   • a reply shared back from a topic thread draws its math and diagrams and links the thread’s glossary, as an
 //     agent’s reply does (#99);
 //   • a glossary term inside a definition opens a card of its own over its parent’s, by mouse and by keyboard;
