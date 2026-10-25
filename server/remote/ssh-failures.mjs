@@ -47,6 +47,7 @@ const HOST_KEY_CHANGED = /REMOTE HOST IDENTIFICATION HAS CHANGED|POSSIBLE DNS SP
 const HOST_KEY = /^Host key verification failed\.$|^No \S+ host key is known for /m;
 const SIGN_IN = /: Permission denied \([^)]*\)\.$|^Received disconnect from .*: Too many authentication failures|^Permission denied, please try again\.$/m;
 const UNREACHABLE = new RegExp(
+  // lint-allow regex: joined from the constant OpenSSH strings below.
   [
     'Could not resolve hostname',
     '^ssh: connect to host .* port \\S+: ',

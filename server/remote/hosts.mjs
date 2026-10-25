@@ -40,6 +40,7 @@
 // hosts-requests.mjs (the sign-in check and Remove, through the daemon).
 
 import { EventEmitter } from 'node:events';
+import { sameToken } from '../helpers.mjs';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
@@ -214,7 +215,7 @@ async function install(m, hostId) {
   });
   m.tokens.set(hostId, r.token);
   const e = m.links.get(hostId);
-  if (e && e.token !== r.token) dropLink(m, hostId);
+  if (e && !sameToken(e.token, r.token)) dropLink(m, hostId);
   update(m, hostId);
   // The person installed it: it connects now, for its welcome, and for a turn or a prompt that waited for the install.
   connectNow(m, hostId).catch(() => {});
