@@ -65,15 +65,22 @@ export async function synced(page, app) {
     .toBeGreaterThanOrEqual(seq);
 }
 
-/** @type {WeakMap<import('@playwright/test').Page, RegExp[]>} */
+/** @type {WeakMap<import('@playwright/test').Page, { pattern: RegExp, left: number }[]>} */
 const allowed = new WeakMap();
 
 /**
- * Lets a test’s page log an error the test causes on purpose, such as a request it expects the server to refuse.
- * @param {import('@playwright/test').Page} page  @param {RegExp} pattern
+ * Lets a test’s page log an error the test causes on purpose, such as a request it expects the server to refuse: as
+ * many times as the test says, and no more.
+ * @param {import('@playwright/test').Page} page  @param {RegExp} pattern  @param {{ times?: number }} [options]
  */
-export function allowPageError(page, pattern) {
-  allowed.set(page, [...(allowed.get(page) ?? []), pattern]);
+export function allowPageError(page, pattern, { times = 1 } = {}) {
+  allowed.set(page, [...(allowed.get(page) ?? []), { pattern, left: times }]);
+}
+/** Whether a console error is one the test allowed, using one of its allowed times. */
+function expected(page, text) {
+  const a = allowed.get(page)?.find((x) => x.left > 0 && x.pattern.test(text));
+  if (a) a.left--;
+  return !!a;
 }
 
 /**
@@ -87,7 +94,7 @@ export function failOnPageErrors(test) {
     errors = [];
     page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
     page.on('console', (m) => {
-      if (m.type() === 'error' && !allowed.get(page)?.some((p) => p.test(m.text()))) errors.push(`console.error: ${m.text()}`);
+      if (m.type() === 'error' && !expected(page, m.text())) errors.push(`console.error: ${m.text()}`);
     });
   });
   test.afterEach(() => {
@@ -127,4 +134,17 @@ export async function settled(page) {
       { message: 'the page to hold still for two frames' },
     )
     .toBe(true);
+}
+
+/**
+ * Watches the page’s writes to the server (its POST requests) from now on. answered() waits until at least one has
+ * been made and every one has been answered, so a test can then check what a refused one would have shown.
+ * @param {import('@playwright/test').Page} page
+ */
+export function watchWrites(page) {
+  const flying = new Set();
+  let landed = 0;
+  page.on('request', (r) => r.method() === 'POST' && flying.add(r));
+  for (const ev of /** @type {const} */ (['requestfinished', 'requestfailed'])) page.on(ev, (r) => flying.delete(r) && landed++);
+  return { answered: () => expect.poll(() => flying.size === 0 && landed > 0, { message: 'every write the page made answered' }).toBe(true) };
 }

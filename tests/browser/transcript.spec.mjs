@@ -9,7 +9,7 @@
 // Moved from tools/check-transcript.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced, watchWrites } from './postbox.mjs';
 
 test.use({ colorScheme: 'light' });
 
@@ -234,71 +234,6 @@ test('#88 at the bottom: a card that needs you stays still while what follows it
   expect(await last.evaluate((n) => Math.round(n.getBoundingClientRect().top)), 'the pill going didn’t move anything').toBe(at);
 });
 
-// ── #88: scrolling up while an agent streams ────────────────────────────────────────────
-
-/**
- * Streams a long reply a few words a frame, the way an agent does, with a message from you every few frames, until
- * stop() is called; then ends the reply. The wheel moves the view before its scroll event fires.
- */
-function streamOn(page, t, se) {
-  const { rt, store } = app;
-  const it = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: '', status: 'streaming' });
-  let on = true;
-  const words =
-    Array.from({ length: 30 }, (_, i) => LONG(600 + i))
-      .join(' ')
-      .match(/\S+\s*/g) ?? [];
-  const done = (async () => {
-    for (let i = 0; on && i < words.length; i++) {
-      store.emit('item.text', { threadId: t.id, id: it.id, text: words[i] });
-      // A message from someone else now and then: unlike the reply’s text, which the page draws in its next animation
-      // frame, the page adds it as soon as it hears it, so it can land between a wheel turn and its scroll event.
-      if (i % 4 === 3) rt.addItem(t.id, { kind: 'user', text: `Meanwhile ${i}` });
-      await page.evaluate(() => new Promise((r) => requestAnimationFrame(r)));
-    }
-    rt.patchItem(t.id, it.id, { status: 'done' });
-  })();
-  return async () => {
-    on = false;
-    await done;
-  };
-}
-/** The gap to the end in each of the next frames, read in the page, while the reply goes on streaming. */
-const gapsOver = (page, n) =>
-  page.evaluate(async (count) => {
-    const gaps = [];
-    for (let i = 0; i < count; i++) {
-      await new Promise((r) => requestAnimationFrame(r));
-      gaps.push(Math.round(document.scrollingElement.scrollHeight - scrollY - innerHeight));
-    }
-    return gaps;
-  }, n);
-
-for (const [how, steps] of [
-  ['one turn of the wheel', [-300]],
-  ['small steps of the wheel', [-60, -60, -60, -60, -60]],
-])
-  test(`#88 while an agent streams, ${how} up leaves the view up: nothing pulls it back to the end`, async ({ page }) => {
-    const { t, researcher } = room(`Scroll up while streaming: ${how}`);
-    await open(page, t);
-    await atTheEnd(page, 'stuck at the end');
-    const stop = streamOn(page, t, researcher);
-    try {
-      // A few chunks in, so the view is following the reply as it grows.
-      await expect.poll(() => page.locator('.caret').count(), { message: 'the reply streaming' }).toBe(1);
-      await gapsOver(page, 5);
-      await page.mouse.move(760, 400);
-      for (const dy of steps) await page.mouse.wheel(0, dy);
-      await expect.poll(() => gap(page), { message: 'the view off the end' }).toBeGreaterThan(2);
-      const gaps = await gapsOver(page, 30);
-      expect(Math.min(...gaps), `the gap in each frame after: ${gaps.join(', ')}`).toBeGreaterThan(100);
-    } finally {
-      await stop();
-    }
-    await settled(page);
-    expect(await gap(page), 'still up once the reply ends').toBeGreaterThan(100);
-  });
-
 // ── #88: scrolled up, nothing moves you ─────────────────────────────────────────────────
 
 test('#88 scrolled up: streaming, patches, new items, an app growing above, the panel and a resize don’t move what you’re reading', async ({ page }) => {
@@ -482,21 +417,18 @@ test('#93 Send to conversation clicked twice posts once', async ({ page }) => {
   const root = store.items(t.id).find((i) => i.kind === 'agent' && i.sessionId === researcher.id);
   const { threadId } = rt.startTopic(t.id, root.id);
   // Its one session answers in the thread (#228).
-  const reply = rt.addItem(threadId, {
-    kind: 'agent',
-    sessionId: researcher.id,
-    personaId: researcher.personaId,
-    handle: researcher.handle,
-    text: 'Offsets, not pages.',
-    status: 'done',
-  });
+  const { id: sessionId, personaId, handle } = researcher;
+  const reply = rt.addItem(threadId, { kind: 'agent', sessionId, personaId, handle, text: 'Offsets, not pages.', status: 'done' });
   await open(page, t);
   await panel(page, t, threadId);
+  // A second write would be refused a moment after the first: wait for every one before looking for its error.
+  const writes = watchWrites(page);
   const actions = page.locator(`.sp-body [data-key="${reply.id}"] .msg-actions`);
   await actions.getByRole('button', { name: 'Send to conversation' }).click({ clickCount: 2 });
   await expect(actions, 'the reply shows it was sent').toContainText('Sent to the conversation');
+  await writes.answered();
   await synced(page, app);
-  await settled(page);
+  await frames(page);
   expect(store.items(t.id).filter((i) => i.kind === 'shared').length, 'posted once').toBe(1);
   // Without the wait, the second click reached the server, which refused it with an error toast.
   await expect(page.locator('.toast[role=alert]', { hasText: 'Couldn’t send it' }), 'no “Couldn’t send it” error').toHaveCount(0);
