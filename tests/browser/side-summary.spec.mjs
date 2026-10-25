@@ -77,9 +77,8 @@ test('#225 Summarize back asked while its agent is busy in the side thread waits
   held.release(indexer.id);
   await expect.poll(() => held.turns.length > before && /^Summarize/.test(held.turns.at(-1)?.text ?? ''), { message: 'the summary’s turn' }).toBe(true);
   await synced(page, app);
-  const waiting = page.locator('.sidepanel .sp-head [aria-haspopup=menu]');
+  const waiting = page.locator('.sidepanel .sp-head').getByRole('button', { name: 'Summary requested…', exact: true });
   await expect(waiting, 'it can’t be asked again while the summary is written').toBeDisabled();
-  await expect(waiting).toHaveText('Summary requested…');
   held.release(indexer.id);
   await idle();
   await synced(page, app);

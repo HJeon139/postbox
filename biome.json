@@ -338,7 +338,7 @@
     },
     {
       "includes": ["tests/browser/app-send.spec.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 304 } } } } }
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 268 } } } } }
     },
     {
       "includes": ["tests/browser/header.spec.mjs"],

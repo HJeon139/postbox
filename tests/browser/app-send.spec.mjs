@@ -11,7 +11,7 @@
 
 import { expect, test } from '@playwright/test';
 import { Runtime } from '../../server/runtime.mjs';
-import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced, watchWrites } from './postbox.mjs';
 
 const LIMIT = Runtime.APP_SEND_LIMIT;
 
@@ -99,28 +99,31 @@ async function conversation(page, name) {
 
 const frameOf = (page, title) => page.locator(`iframe.app-iframe[title="${title}"]`);
 /**
- * Points at an app’s big button near the top of its frame, where nothing of the page covers it (a message’s actions
- * can float over an app’s top), and waits for the page to see the pointer there: a frame takes no pointer events
- * until then (#38). Returns where.
+ * Points at an app’s big button near its frame’s top, where a message’s floating actions can’t cover it, until the page
+ * sees the pointer there: a frame takes no pointer events until then (#38). A frame laying out moves, and a pointer
+ * already there moves nowhere, so each try measures again and comes from off the frame.
  */
 async function pointAt(page, title) {
   const f = frameOf(page, title);
-  await f.evaluate((n) => n.scrollIntoView({ block: 'center' }));
-  await settled(page);
-  const box = await f.boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + 50);
-  const at = await f.evaluate((n) => {
-    const b = n.getBoundingClientRect();
-    const x = b.left + b.width / 2;
-    for (let y = b.top + 20; y < b.top + 100; y += 10) {
-      const el = document.elementFromPoint(x, y);
-      if (el === n || el === n.closest('.app-body')) return { x, y };
-    }
-    return { x, y: b.top + 50 };
-  });
-  await page.mouse.move(at.x, at.y);
-  await expect(f, `${title} live under the pointer`).toHaveClass(/\blive\b/);
-  return at;
+  await expect(async () => {
+    await f.evaluate((n) => n.scrollIntoView({ block: 'center' }));
+    await settled(page);
+    // From off the frame, onto it, so its message’s actions float in before the point is measured around them.
+    const box = await f.boundingBox();
+    await page.mouse.move(0, 0);
+    await page.mouse.move(box.x + box.width / 2, box.y + 50);
+    const at = await f.evaluate((n) => {
+      const b = n.getBoundingClientRect();
+      const x = b.left + b.width / 2;
+      for (let y = b.top + 20; y < b.top + 100; y += 10) {
+        const el = document.elementFromPoint(x, y);
+        if (el === n || el === n.closest('.app-body')) return { x, y };
+      }
+      return { x, y: b.top + 50 };
+    });
+    await page.mouse.move(at.x, at.y);
+    await expect(f).toHaveClass(/\blive\b/, { timeout: 1000 });
+  }, `${title} live under the pointer`).toPass({ timeout: 10_000 });
 }
 /** A real click on an app’s big button. */
 async function clickApp(page, title) {
@@ -155,8 +158,7 @@ test('#38 Spam: refused on load; a click, a key press and Tab then Enter each se
   await test.step('keyboard only: Tab from its full-screen button into the app, then Enter, sends', async () => {
     await page
       .locator('.appframe', { has: frameOf(page, 'Spam') })
-      .locator('.app-bar button.icon')
-      .first()
+      .getByRole('button', { name: 'Full screen', exact: true })
       .focus();
     await page.keyboard.press('Tab');
     await expect(frameOf(page, 'Spam'), 'focus in the frame').toBeFocused();
@@ -171,13 +173,17 @@ test('#38 Spam: refused on load; a click, a key press and Tab then Enter each se
     expect(voices('spam').length, `only ${LIMIT} went straight through`).toBe(LIMIT);
     // The app saves what its send returned (saving waits 400 ms, so it comes a moment later).
     await expect.poll(() => state('spam')[`c${LIMIT + 1}`], { message: 'the app told its send is waiting' }).toBe('held');
+    // This passes before a turn’s end could drop the need, so tests/apps-needs.test.mjs is what guards that (#38).
     await expect.poll(() => rt.s.sessions[se.id].needs?.kind, { message: 'a waiting card makes the agent need you, like a permission card' }).toBe('appsend');
   });
 
   await test.step('Allow, double-clicked, sends what was waiting once, with no error, and clears needs-you', async () => {
+    const writes = watchWrites(page);
     await page.locator('.appsend').getByRole('button', { name: 'Allow', exact: true }).dblclick();
     await expect.poll(() => voices('spam').some((x) => x.quote === `Clicked #${LIMIT + 1}` && x.approved), { message: 'the allowed send' }).toBe(true);
     await expect(page.locator('.appsend'), 'the card shows it was allowed').toContainText('Allowed. It was sent.');
+    // Every write the double-click made has its answer, before looking for an error one could show.
+    await writes.answered();
     await synced(page, app);
     await expect(page.locator('.toast', { hasText: 'didn’t go through' }), 'no error').toHaveCount(0);
     expect(rt.s.sessions[se.id].needs?.kind, 'answering the card clears needs-you').not.toBe('appsend');

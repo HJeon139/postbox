@@ -157,7 +157,16 @@ async function composersLineUp(page) {
 
 /** #182 at each width: every text button has a border or the inline-action underline, in a conversation and its thread panel */
 async function buttonsLookLikeControls(page) {
+  // With the agent needing you, as its reply’s buttons show then; put back after, so the other tests don’t see it.
   app.rt.updateSession(se.id, { state: 'needs', needs: { kind: 'block', text: 'Which mode should the search use?' } });
+  try {
+    await bareButtons(page);
+  } finally {
+    app.rt.updateSession(se.id, { state: 'idle', needs: null });
+  }
+}
+/** The #182 checks, on the conversation and its topic thread. */
+async function bareButtons(page) {
   await open(page, `#/t/${t.id}/side/${asked}`);
   await expect(page.locator('.tbl .btn').first()).toBeVisible();
   await expect(page.locator('.sidepanel .sp-head .btn').first()).toBeVisible();
