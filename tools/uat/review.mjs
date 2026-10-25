@@ -19,7 +19,8 @@ const fingerprint = (f) =>
 
 /**
  * Verifies the findings on closed issues against their fixes (tools/uat/regressions.mjs), then the rest.
- * @param {{ root: string, testerModel: string, dir: string, scenario: any, findings: any[], timeline: any[], log: (l: string) => void, verify: boolean, file: boolean }} o
+ * ask: askOnce, or a run budget’s, which caps and counts each call (tools/uat/budget.mjs).
+ * @param {{ root: string, testerModel: string, dir: string, scenario: any, findings: any[], timeline: any[], log: (l: string) => void, verify: boolean, file: boolean, ask?: typeof askOnce }} o
  */
 export async function reviewFindings(o) {
   if (o.verify) await verifyRegressions(o);
@@ -32,7 +33,7 @@ export async function reviewFindings(o) {
  * open issue covers (file). A verdict a person or a reviewer set is never re-verified (tools/uat/verdicts.mjs), and a
  * match to a closed issue is verifyRegressions’s.
  */
-async function verifyAndFile({ root, testerModel, dir, scenario, findings, timeline, log, verify, file }) {
+async function verifyAndFile({ root, testerModel, dir, scenario, findings, timeline, log, verify, file, ask = askOnce }) {
   const gh = (args) => spawnSync('gh', args, { cwd: root, encoding: 'utf8' });
   const open = gh(['issue', 'list', '--state', 'open', '--limit', '300', '--json', 'number,title,body']);
   // Without the open issues, the verifier can’t tell a duplicate, and would confirm it: wait for a recheck with gh.
@@ -47,7 +48,7 @@ async function verifyAndFile({ root, testerModel, dir, scenario, findings, timel
   if (verify && toVerify.length) {
     log(`Verifying ${toVerify.length} findings${file ? ' before filing' : ''}…`);
     try {
-      const { value } = await askOnce({
+      const { value } = await ask({
         cwd: dir,
         model: testerModel,
         prompt: verifyPrompt({ scenario, findings: toVerify, timeline, issues }),

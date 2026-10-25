@@ -302,7 +302,8 @@ export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2 }) {
     child.on('close', () => {
       try {
         const r = JSON.parse(out);
-        if (r.is_error || !r.structured_output) return reject(new Error(r.result || 'No answer.'));
+        // A failed call spent too: its cost goes with the error, for a run budget to count (tools/uat/budget.mjs).
+        if (r.is_error || !r.structured_output) return reject(Object.assign(new Error(r.result || 'No answer.'), { cost: r.total_cost_usd ?? 0 }));
         resolve({ value: r.structured_output, cost: r.total_cost_usd ?? 0 });
       } catch {
         reject(new Error(`No answer: ${out.slice(-300)}`));

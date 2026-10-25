@@ -6,7 +6,9 @@
 //   node tools/uat-run.mjs --scenario scifact
 //   node tools/uat-run.mjs --scenario hotpotqa --steps 30 --budget 6 --tester-model claude-opus-5-5
 //
-// Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. A scenario
+// Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. --budget caps
+// the tester; --max-cost caps the whole run (agents, tester, verifier and telemetry), stopping it, report and all, before
+// a step or an agent turn could pass the cap (tools/uat/budget.mjs). Without --max-cost the agents are uncapped. A scenario
 // can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
 // the scenario is a compatibility run, which needs --compat. The Antigravity CLI is on a free tier, so it runs only
 // for a version release: --release (releaseGate), which also counts as --compat:
@@ -28,7 +30,9 @@ import { agyVersion, findAgy } from '../server/adapters/antigravity-cli.mjs';
 import { codexModels, codexVersion, findCodex } from '../server/adapters/codex.mjs';
 import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
+import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
@@ -41,7 +45,7 @@ import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepC
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
-import { sendThenStop, settle as settleTurns, WAIT_MAX_S } from './uat/turns.mjs';
+import { sendThenStop, settle as settleTurns, stopThroughPage, WAIT_MAX_S, watchBudget } from './uat/turns.mjs';
 import { withoutPreset } from './uat/verdicts.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -56,6 +60,8 @@ const { values: opt } = parseArgs({
     phase: { type: 'string', default: '1' },
     'turn-timeout': { type: 'string', default: '900' },
     budget: { type: 'string', default: '8' },
+    // The most the whole run may spend, in dollars (tools/uat/budget.mjs). Unset, only --budget caps the tester.
+    'max-cost': { type: 'string' },
     'tester-model': { type: 'string', default: 'claude-sonnet-5-5' },
     // The agents’ model and effort. A pass checks that Postbox works, and a fast model shows that as well as the
     // default one does. Scenarios that measure what agents choose say `- models: persona`, and `persona` here keeps
@@ -106,6 +112,7 @@ async function main() {
   const unknown = unknownTriggers(scenario);
   if (unknown.length) throw new Error(`This scenario names triggers that don’t exist: ${unknown.join(', ')}. See tools/uat/triggers.mjs.`);
   const steps = stepCap(scenario, opt.steps);
+  const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
@@ -270,6 +277,7 @@ async function main() {
     ui: {},
     ...userSetup(paths.workspace),
   };
+  let unwatch = () => {};
   try {
     await page.size(1440, 1000, { theme: 'light' });
     await page.goto(`${origin}/`);
@@ -284,6 +292,7 @@ async function main() {
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
+    budget.track({ streams: streamResults(paths.streams), tester, log });
     const system = systemPrompt({ scenario, issues });
     const labels = new Map(); // item key → I1…
     const keys = new Map(); // I1… → item key
@@ -383,8 +392,11 @@ async function main() {
 
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
 
+    // With --max-cost, the budget watches the agents’ turns through the steps and the wait after them.
+    unwatch = watchBudget({ budget, api, threadsUnderTest, stop: stopThroughPage(page), log });
     for (let step = 1; step <= steps; step++) {
       const timedOut = await settle(true);
+      if (budget.stopped) break;
       await refreshFacts();
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
@@ -427,6 +439,9 @@ async function main() {
       ]
         .filter(Boolean)
         .join('\n\n');
+      // With --max-cost, the step goes ahead only if it, and an agent turn it may start, fit what’s left.
+      const busy = obs.states.filter((s) => /: (?:think|tool|gen)\b/.test(s)).length;
+      if (budget.beforeStep({ step, working: busy })) break;
       const answer = await tester.step(prompt, system);
       goals.took(phase);
       timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action });
@@ -444,9 +459,11 @@ async function main() {
       actionError = null;
       actionResult = null;
       log(`action: ${JSON.stringify(a)}`);
+      // The budget’s watch can stop the run while the tester thinks: its action would start a turn past the cap.
+      if (budget.stopped) break;
       // Moving on, or waiting while no agent works, past something that waits on the person: say so once, and ask
       // again. A second try with the same list goes ahead, so a run can’t loop on a block it can’t answer.
-      const idle = !obs.states.some((s) => /: (?:think|tool|gen)\b/.test(s));
+      const idle = !busy;
       if (waiting.length && (a.type === 'next_phase' || a.type === 'done' || (a.type === 'wait' && idle)) && pushedBack !== waiting.join('\n')) {
         pushedBack = waiting.join('\n');
         actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first.`;
@@ -585,6 +602,7 @@ async function main() {
       }
     }
     await settle();
+    unwatch();
     // After the last step, no agent takes another turn: the runner’s 🚩s and its report (U4).
     if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ td, flags: tel.flags, dir, data: paths.data, main: mainThread, shown: tel.shown, log });
     await refreshFacts();
@@ -600,17 +618,23 @@ async function main() {
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
+    if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
+    facts.budget = budget.summary();
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     if (opt.verify !== 'no' || opt.file !== 'no') {
-      await reviewFindings({ ...REVIEW, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
+      const review = { ...REVIEW, ask: budget.verifier() };
+      await reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
+      facts.budget = budget.summary();
       await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     }
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
     writeJsonAtomic(join(dir, 'run.json'), {
       ...runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
       ...(facts.telemetry ? { telemetry: tm.telemetryBlock(facts.telemetry, all) } : {}),
+      ...(facts.budget ? { budget: facts.budget } : {}),
     });
   } finally {
+    unwatch();
     history.close();
     await page.close().catch(() => {});
     server.kill();
@@ -681,6 +705,7 @@ async function recheck(dir) {
       apps: {},
       probes: { fullScreen: [], attachments: [], answers: [], ...(saved.probes ?? {}) },
       samples: saved.samples ?? [],
+      budget: saved.budget ?? null,
       ui: {},
       ...userSetup(join(dir, 'workspace')),
     };

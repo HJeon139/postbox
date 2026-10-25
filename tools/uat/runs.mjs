@@ -178,6 +178,8 @@ export function readRun(dir, { scenarios } = {}) {
     findings: Array.isArray(findings.findings) ? findings.findings : [],
     // Telemetry (designs/telemetry-persona.md, U5): the run’s block, and the classifier’s proposals, never filed.
     telemetry: saved.telemetry ?? null,
+    // The run’s budget (tools/uat/budget.mjs), when it had --max-cost.
+    budget: saved.budget ?? null,
     proposals: Array.isArray(findings.telemetry?.proposals) ? findings.telemetry.proposals : [],
   };
 }

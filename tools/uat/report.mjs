@@ -4,20 +4,30 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
 import { writeJsonAtomic } from './runs.mjs';
 import { coverageSection } from './triggers.mjs';
 import { mergePeopleVerdicts } from './verdicts.mjs';
 
-export async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, coverage = [], rechecked = false }) {
-  const title = (n) => issues.find((i) => i.number === n)?.title ?? '(closed, or not in the list)';
+/**
+ * What the run spent, by whom, and what the agents ran on: the report’s first paragraph ends with it. With a run budget
+ * (facts.budget, a summary from tools/uat/budget.mjs), it also says the cap, and whether the run stopped at it.
+ * @param {any} facts  @param {{ spent: number }} tester
+ */
+function usageLine(facts, tester) {
   const agentCost = agentsSpent(facts.streams);
   // Kiro reports credits, not dollars: they’re listed beside the agents’ cost when a run had Kiro turns.
   const credits = kiroCredits(facts.kiroStreams ?? []);
   // Antigravity reports tokens, and its free tier is what a release run spends (#143).
   const tokens = agyTokens(facts.agyStreams ?? []);
-  const usage = `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
+  return `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
+}
+
+export async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, coverage = [], rechecked = false }) {
+  const title = (n) => issues.find((i) => i.number === n)?.title ?? '(closed, or not in the list)';
+  const usage = usageLine(facts, tester);
   const caught = new Map();
   for (const f of findings) if (f.issue) caught.set(f.issue, [...(caught.get(f.issue) ?? []), f]);
   const { CHECKS } = await import('./checks.mjs');
@@ -102,6 +112,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     samples: facts.samples,
     coverage,
     ...(facts.telemetryOut ? { telemetry: facts.telemetryOut } : {}),
+    ...(facts.budget ? { budget: facts.budget } : {}),
   });
   if (rechecked) await writeFile(join(dir, 'run.log'), `${readFileSync(join(dir, 'run.log'), 'utf8')}${logLines.join('\n')}\n`);
   else await writeFile(join(dir, 'run.log'), `${logLines.join('\n')}\n`);

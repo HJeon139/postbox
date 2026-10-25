@@ -463,7 +463,7 @@
     },
     {
       "includes": ["tools/uat/report.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 95 } } } } }
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 91 } } } } }
     },
     {
       "includes": ["tools/uat/review.mjs"],

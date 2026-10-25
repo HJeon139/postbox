@@ -117,3 +117,50 @@ export async function sendThenStop(d, a, { step, probes, log = () => {}, onWait 
   log(`send_then_stop: ${said}`);
   return said;
 }
+
+/**
+ * Stops a session’s turn, and its background jobs, through the page’s own request, as its Stop does: the run budget
+ * names the turn to stop, which the composer’s Stop can’t (it stops the agent that spoke last), nor one in a thread
+ * that isn’t open.
+ * @param {any} page  from tools/cdp.mjs launch()
+ */
+export const stopThroughPage = (page) => (/** @type {string} */ id) =>
+  page.evaluate(
+    `fetch(${JSON.stringify(`/api/sessions/${encodeURIComponent(id)}/stop`)}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jobs: 'stop' }) }).then((r) => r.ok)`,
+  );
+
+/**
+ * With a run budget (tools/uat/budget.mjs), every 1.5 s until it’s ended, whatever the run is doing (the tester’s
+ * step, a wait, an interrupt): reads which agents are at a turn, and stops each turn the budget says to. Returns the
+ * function that ends it. Without a budget, it does nothing.
+ * @param {{ budget: any, api: (path: string) => Promise<any>, threadsUnderTest: (st: any) => string[], stop: (id: string) => Promise<unknown>, log?: (line: string) => void, every?: number }} o
+ */
+export function watchBudget({ budget, api, threadsUnderTest, stop, log = () => {}, every = 1500 }) {
+  if (!budget.on) return () => {};
+  let ended = false;
+  let failed = false;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  const poll = async () => {
+    try {
+      const st = (await api('/api/state')).state;
+      const working = threadsUnderTest(st)
+        .flatMap((t) => st.threads[t]?.members ?? [])
+        .map((id) => st.sessions[id])
+        .filter((se) => se && ['think', 'tool', 'gen'].includes(se.state));
+      for (const id of budget.duringTurns(working.map((se) => ({ id: se.id, handle: se.handle })))) {
+        log(`budget: stopping @${st.sessions[id]?.handle ?? id}’s turn`);
+        await stop(id);
+      }
+    } catch (e) {
+      if (!failed) log(`The run’s budget couldn’t check the agents’ turns, and will keep trying: ${e.message}`);
+      failed = true;
+    }
+    if (!ended) timer = setTimeout(poll, every);
+  };
+  timer = setTimeout(poll, every);
+  return () => {
+    ended = true;
+    clearTimeout(timer);
+  };
+}
