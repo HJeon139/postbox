@@ -13,7 +13,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, relative, sep } from 'node:path';
@@ -95,7 +95,15 @@ before(async () => {
   tmp = await mkdtemp(join(tmpdir(), 'pb-test-install-'));
   [home, prefix, cwd] = ['home', 'prefix', 'cwd'].map((d) => join(tmp, d));
   for (const d of [home, prefix, cwd]) await mkdir(d);
-  const env = { ...process.env, PATH, npm_config_cache: join(tmp, 'npm-cache'), npm_config_update_notifier: 'false' };
+  // npm’s config is an empty file of the test’s own, so nothing of the person’s npm config is read.
+  await writeFile(join(tmp, 'npmrc'), '');
+  const env = {
+    ...process.env,
+    PATH,
+    npm_config_userconfig: join(tmp, 'npmrc'),
+    npm_config_cache: join(tmp, 'npm-cache'),
+    npm_config_update_notifier: 'false',
+  };
   // A timeout of its own: a synchronous call blocks the event loop, so --test-timeout can’t end a hung npm.
   const npm = (args) => execFileSync('npm', args, { cwd: ROOT, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 });
   packed = JSON.parse(npm(['pack', '--json', '--pack-destination', tmp]))[0];
