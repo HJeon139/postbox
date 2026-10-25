@@ -345,6 +345,10 @@
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 358 } } } } }
     },
     {
+      "includes": ["tests/browser/look.spec.mjs"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 308 } } } } }
+    },
+    {
       "includes": ["tests/browser/permissions.spec.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 450 } } } } }
     },
