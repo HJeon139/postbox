@@ -182,6 +182,7 @@ export function termProblems(text, glossary, introduced, said = '') {
       .toLowerCase()
       .split(/\s+/)
       .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    // lint-allow regex: a glossary term's words, each escaped just above.
     return words[0] !== '' && new RegExp(`(^|[^\\p{L}\\p{N}])${words.join('\\s+')}(?![\\p{L}\\p{N}])`, 'u').test(said);
   };
   return lintTerms(text, glossary, introduced)
@@ -206,6 +207,7 @@ export function personSaid(items) {
 }
 
 const headings = (md) => [...String(md).matchAll(/^ {0,3}#{1,6}\s+(.+)$/gm)].map((m) => m[1]);
+// lint-allow regex: tags is the callers' constant list. lint-allow tags: the words of a tag's text for a check, never HTML.
 const tagText = (html, tags) => [...String(html).matchAll(new RegExp(`<(${tags})\\b[^>]*>([\\s\\S]*?)</\\1>`, 'gi'))].map((m) => m[2].replace(/<[^>]*>/g, ' '));
 
 /**

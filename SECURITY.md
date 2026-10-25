@@ -46,8 +46,9 @@ These are the boundaries, from designs/developing.md, “Security”, and design
 
 **Automated:**
 - **CodeQL** (GitHub’s default setup) analyzes every pull request. The `protect-main` ruleset blocks a merge that adds a CodeQL alert of high severity or above.
+- **Dependency review** (`.github/workflows/dependency-review.yml`) refuses a pull request that adds or changes a dependency with a known vulnerability of moderate severity or worse.
 - **Dependabot alerts** watch `package-lock.json`. Secret scanning and push protection are on.
-- **`npm run check`** runs Biome, the types, the project lints and the unit tests. `tests/guard.mjs` blocks the network and process spawning in tests.
+- **`npm run check`** runs Biome, the types, the project lints and the unit tests. Its `tools/lint-security.mjs` holds the code to the rules below that a pattern can find: regex, tags, page-code, token and git, each with `lint-allow <rule>: <reason>` for a deliberate exception. `tests/guard.mjs` blocks the network and process spawning in tests.
 
 **Rules for code, each from a class of alert this repository has had:**
 - **Values go into page code through `js()`.** A browser check that splices a value into `page.evaluate` or `page.waitFor` code uses `js()` from `tools/cdp.mjs`, not `JSON.stringify`: it also escapes `<`, `>`, U+2028 and U+2029 (#343). Playwright specs pass a function and its arguments instead.
@@ -55,6 +56,8 @@ These are the boundaries, from designs/developing.md, “Security”, and design
 - **Tags are stripped with `stripTags()`** (`shared/markdown-inline.mjs`), which repeats until none is left (#345). HTML is built with `escapeHtml()`, never by stripping.
 - **An escaper escapes its escape character first.** A Markdown table cell goes through `cell()` (`tools/uat/trigger-facts.mjs`), which escapes `\` along with `|` (#346).
 - **Randomness comes from `node:crypto`:** `randomBytes` for a token, `randomInt` for a pick, never a byte modulo a length (#347).
+- **Tokens are compared in constant time,** through `sameToken()` (`server/helpers.mjs`), never with `===` (#351).
+- **Git runs through `runGit()`** (`server/ledger-git.mjs`), which sets the read-only safeguards for every repository it reads (#351).
 - **Optional dependencies stay patched,** with an npm `overrides` entry when a parent pins an old version. Each override says why it exists and when it goes (#348).
 
 **Alerts:** an open alert is fixed, not left to pile up, because a pile hides the next real one. One is dismissed only with GitHub’s reason (“false positive”, “used in tests” or “won’t fix”), a comment saying why, and an issue when there’s work left. A class that keeps coming back gets a lint or a test, as above.

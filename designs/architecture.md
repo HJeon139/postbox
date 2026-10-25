@@ -104,6 +104,7 @@ flowchart LR
 | Contrast | `tools/contrast.mjs` | Every token pair meets WCAG 2.1 AA in both modes, on the app stage too |
 | Design tokens | `tools/lint-tokens.mjs` | No raw colors outside the token blocks, in CSS or in JavaScript |
 | Safe DOM | `tools/lint-dom.mjs` | `innerHTML` only where a `lint-allow dom:` comment names the source (the Markdown renderer or Postbox’s own templates); no attribute or style names chosen at run time; `target="_blank"` always with `noopener` |
+| Security rules | `tools/lint-security.mjs` | A regular expression built at run time takes only constants or text through `escapeRe()`; tags are stripped only by `stripTags()`; a value spliced into a browser check's page code goes through `js()`; tokens are compared through `sameToken()`; git runs through `runGit()` (SECURITY.md) |
 | Copy | `tools/lint-copy.mjs` | American spelling and curly quotes in user-facing strings |
 | Code scanning | **CodeQL**, GitHub’s default setup (CI only) | No pull request adds a high or critical security alert, or a CodeQL error: the `protect-main` ruleset requires its results |
 | Dependencies | `actions/dependency-review-action` (CI only, `.github/workflows/dependency-review.yml`) | No pull request adds or changes a dependency, shipped or development, with a known vulnerability of moderate severity or worse |

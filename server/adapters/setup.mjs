@@ -110,6 +110,7 @@ export const PUBLISHING_TOOLS = [
 ];
 
 // The rules as Claude Code reads a tool-name glob: `*` stands for any text, and the rule matches the whole name.
+// lint-allow regex: PUBLISHING_TOOLS is Postbox's own list, escaped here, with * as its one wildcard.
 const RULES = PUBLISHING_TOOLS.map((r) => new RegExp(`^${r.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`));
 /** Whether the deny list covers a tool name, such as one in an init event’s `tools` (the UAT checks this). */
 export const isPublishingTool = (name) => RULES.some((r) => r.test(String(name)));
