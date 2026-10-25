@@ -90,8 +90,9 @@ function nextEnd(rest, from) {
   const fence = /^(\s*)(`{3,}|~{3,})[^`\n]*\n/.exec(rest.slice(from));
   if (fence && (from === 0 || rest[from - 1] === '\n' || fence[1].includes('\n'))) {
     const body = from + fence[0].length;
-    const close = new RegExp(`^[ \\t]*${fence[2][0]}{${fence[2].length},}[ \\t]*$`, 'm').exec(rest.slice(body));
-    return close ? body + close.index + close[0].length : -1;
+    // A line of the fence’s character, at least as long as its opening, closes it (#344).
+    for (const close of rest.slice(body).matchAll(/^[ \t]*(`+|~+)[ \t]*$/gm)) if (close[1].startsWith(fence[2])) return body + close.index + close[0].length;
+    return -1;
   }
   END.lastIndex = from;
   for (let m = END.exec(rest); m; m = END.exec(rest)) {

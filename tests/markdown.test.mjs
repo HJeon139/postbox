@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { renderMarkdown as md, toPlainText } from '../shared/markdown.mjs';
+import { closesFence, renderMarkdown as md, toPlainText } from '../shared/markdown.mjs';
 
 test('escapes raw HTML instead of rendering it', () => {
   const out = md('Hello <script>alert(1)</script> <img src=x onerror=alert(1)>');
@@ -42,6 +42,17 @@ test('headings, lists, nested lists and quotes', () => {
 test('code fences keep their contents escaped and close while streaming', () => {
   assert.equal(md('```js\nif (a < b) {}\n```'), '<pre class="md-code"><code data-lang="js">if (a &lt; b) {}</code></pre>');
   assert.equal(md('```js\nconst x', { streaming: true }), '<pre class="md-code"><code data-lang="js">const x</code></pre>');
+});
+
+test('#344: a fence closes on a run of its own character at least as long, indented at most three spaces', () => {
+  assert.equal(closesFence('```', '```'), true);
+  assert.equal(closesFence('```', '   `````  '), true);
+  assert.equal(closesFence('````', '```'), false, 'shorter than its opening');
+  assert.equal(closesFence('```', '~~~'), false, 'the other character');
+  assert.equal(closesFence('~~~', '~~~~'), true);
+  assert.equal(closesFence('```', '    ```'), false, 'indented four spaces');
+  assert.equal(closesFence('```', '```js'), false, 'an info string opens, it doesn’t close');
+  assert.equal(closesFence('```', '`.`'), false, 'nothing in the line is read as a pattern');
 });
 
 test('mermaid fences become diagrams only once closed', () => {
