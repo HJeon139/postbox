@@ -8,3 +8,5 @@ data/
 .claude/
 uat-runs/
 server/build-commit.txt
+test-results/
+playwright-report/
