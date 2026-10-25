@@ -20,7 +20,7 @@ import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.m
 import { reactTool } from './reactions.mjs';
 import { REVIEW_BLOCK_DEF } from './review-comments.mjs';
 import { AgentFileError } from './runtime.mjs';
-import { offersBring } from './side-threads.mjs';
+import { HOP_LIMIT, offersBring } from './side-threads.mjs';
 import { withUrgent } from './subagent-end.mjs';
 
 const PROTOCOL = '2025-06-18';
@@ -136,8 +136,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'wake_agent',
-    description:
-      'Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its one session in this conversation, so it remembers it; if it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After 3 agent wakes in a row, the person must allow the next one.',
+    description: `Wake another agent with a message. The exchange happens in a side thread, and the agent answers from its one session in this conversation, so it remembers it; if it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, the person must allow the next one.`,
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {

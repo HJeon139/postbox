@@ -28,7 +28,7 @@ import { Corpus } from './corpus.mjs';
 import { dataFolder } from './home.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
-import { ARCHIVE_AFTER_CHOICES, DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
+import { ARCHIVE_AFTER_CHOICES, DEFAULT_MODEL, HOP_LIMIT, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
 import { sessionRoute } from './session-routes.mjs';
@@ -302,7 +302,7 @@ export async function start({
         state: store.state,
         config: {
           origin,
-          hopLimit: 3,
+          hopLimit: HOP_LIMIT,
           // Postbox’s tools, then those only real backends have (#5).
           knownTools: [...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS],
           adapters: adapters.names(),
