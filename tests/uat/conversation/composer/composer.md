@@ -41,7 +41,7 @@ Where you write to agents; it must say who will answer.
 
 **Pass if:** The hint asks “Did you mean @critic?”, and its click makes the draft “@critic: what’s your biggest concern?”. With the @, it says “Wakes @critic, not @researcher (last speaker)”. Each thread’s composer says “Replying to @x”.
 
-The headless check `node tools/checks/attachments.mjs` covers steps 3 and 4 with a drawn PNG and SVG, `npx playwright test commands` covers step 5, and `node tools/checks/composer-address.mjs` covers step 6.
+`npx playwright test attachments` covers steps 3 and 4 with a drawn PNG and SVG, `npx playwright test commands` covers step 5, and `node tools/checks/composer-address.mjs` covers step 6.
 
 ## Related
 
