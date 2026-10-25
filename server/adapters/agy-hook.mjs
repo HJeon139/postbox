@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -175,7 +176,33 @@ function resolveHookContext(event, cwd, env) {
   return { mode, folders, mcpUrl };
 }
 
-async function evaluateHook(stdinText, { cwd = process.cwd(), env = process.env, scriptPath = HOOK_SCRIPT, home = homedir(), fetchImpl = fetch }) {
+/**
+ * Posts JSON to Postbox’s local /mcp endpoint over node:http instead of global fetch, avoiding undici’s 300-second
+ * headersTimeout while waiting up to CARD_WAIT_MS (12 hours) for the person to answer a permission card.
+ * @param {string} url
+ * @param {{ method?: string, headers?: Record<string, string>, body?: string, timeoutMs?: number, requestImpl?: typeof httpRequest }} [opts]
+ */
+export function mcpPost(url, { method = 'POST', headers = {}, body = '', timeoutMs = HOOK_TIMEOUT_S * 1000, requestImpl = httpRequest } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = requestImpl(url, { method, headers: { ...headers, 'content-length': String(Buffer.byteLength(body)) }, timeout: timeoutMs }, (res) => {
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => {
+        raw += c;
+      });
+      res.on('end', () => {
+        const status = res.statusCode ?? 0;
+        resolve({ ok: status >= 200 && status < 300, status, json: async () => JSON.parse(raw) });
+      });
+      res.on('error', reject);
+    });
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('Permission request timed out.')));
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+async function evaluateHook(stdinText, { cwd = process.cwd(), env = process.env, scriptPath = HOOK_SCRIPT, home = homedir(), fetchImpl = mcpPost }) {
   let event;
   try {
     event = JSON.parse(String(stdinText ?? ''));
@@ -219,11 +246,11 @@ async function evaluateHook(stdinText, { cwd = process.cwd(), env = process.env,
  * Runs the PreToolUse hook on one stdin payload and writes (if writeOut is given) and returns the JSON decision.
  * Guaranteed by try/finally to emit only { decision: "allow", overwrite? } or { decision: "deny", reason }.
  * @param {string} stdinText
- * @param {{ cwd?: string, env?: NodeJS.ProcessEnv, scriptPath?: string, home?: string, fetchImpl?: typeof fetch, writeOut?: ((s: string) => void)|null }} [opts]
+ * @param {{ cwd?: string, env?: NodeJS.ProcessEnv, scriptPath?: string, home?: string, fetchImpl?: typeof mcpPost, writeOut?: ((s: string) => void)|null }} [opts]
  */
 export async function runAgyHook(
   stdinText,
-  { cwd = process.cwd(), env = process.env, scriptPath = HOOK_SCRIPT, home = homedir(), fetchImpl = fetch, writeOut = null } = {},
+  { cwd = process.cwd(), env = process.env, scriptPath = HOOK_SCRIPT, home = homedir(), fetchImpl = mcpPost, writeOut = null } = {},
 ) {
   /** @type {{ decision: string, reason?: string, overwrite?: Record<string, any> }} */
   let out = { decision: 'deny', reason: 'Postbox’s Antigravity hook failed before it could check this tool call.' };

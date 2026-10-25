@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { decideAgyTool, HOOK_SCRIPT, isProtectedPath, runAgyHook } from '../server/adapters/agy-hook.mjs';
+import { decideAgyTool, HOOK_SCRIPT, HOOK_TIMEOUT_S, isProtectedPath, mcpPost, runAgyHook } from '../server/adapters/agy-hook.mjs';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { expireWait } from '../server/permission-cards.mjs';
@@ -214,4 +214,44 @@ test('#370 condition 2: runAgyHook fails closed to deny on every error path and 
   assert.equal(act.at(-1).state, 'denied');
   assert.equal(act.at(-1).detail, 'The person didn’t allow this.');
   assert.equal(m.endedOnRefusal, null);
+});
+
+test('#370 condition 4: mcpPost uses node:http with a 12-hour timeout instead of undici’s 300s headersTimeout', async () => {
+  let capturedOpts = null;
+  let capturedTimeout = 0;
+  let sentBody = '';
+  const fakeReq = (_url, opts, cb) => {
+    capturedOpts = opts;
+    return {
+      setTimeout(ms) {
+        capturedTimeout = ms;
+      },
+      on() {},
+      end(body) {
+        sentBody = String(body ?? '');
+        const rpcId = JSON.parse(sentBody).id;
+        const handlers = /** @type {Record<string, (arg?: any) => void>} */ ({});
+        cb({
+          statusCode: 200,
+          setEncoding() {},
+          on(ev, fn) {
+            handlers[ev] = fn;
+          },
+        });
+        handlers.data?.(JSON.stringify({ jsonrpc: '2.0', id: rpcId, result: { content: [{ text: '{"behavior":"allow"}' }] } }));
+        handlers.end?.();
+      },
+    };
+  };
+  const root = mkdtempSync(join(tmpdir(), 'pb-agy-http-'));
+  const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
+  const out = await runAgyHook(JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls' } } }), {
+    cwd: root,
+    env,
+    fetchImpl: (url, init) => mcpPost(url, { ...init, requestImpl: /** @type {any} */ (fakeReq) }),
+  });
+  assert.deepEqual(out, { decision: 'allow' });
+  assert.equal(capturedOpts?.timeout, HOOK_TIMEOUT_S * 1000);
+  assert.equal(capturedTimeout, HOOK_TIMEOUT_S * 1000);
+  assert.equal(HOOK_TIMEOUT_S * 1000 > 300_000, true);
 });
