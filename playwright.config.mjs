@@ -22,8 +22,11 @@ export default defineConfig({
   workers: CI ? 4 : undefined,
   timeout: 30_000,
   expect: { timeout: 5_000 },
-  // Beside check-all’s logs, one file per pass.
-  reporter: CI ? [['list'], ['json', { outputFile: `check-logs/${process.env.POSTBOX_STREAM_LAG ? 'lag/' : ''}playwright.json` }]] : 'list',
+  // Beside check-all’s logs, one file per pass. PB_REPORT names another, for a pass that shares one of these
+  // settings, as CI’s ten-times pass shares the lag pass’s (#317).
+  reporter: CI
+    ? [['list'], ['json', { outputFile: process.env.PB_REPORT ?? `check-logs/${process.env.POSTBOX_STREAM_LAG ? 'lag/' : ''}playwright.json` }]]
+    : 'list',
   use: {
     ...devices['Desktop Chrome'],
     // Chromium’s own headless mode, the one Chrome ships, not the separate headless shell.
