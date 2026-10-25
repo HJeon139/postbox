@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { modeWhen } from '../shared/agent-facts.mjs';
+import { modeWhen } from '../shared/mode-when.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 test('#371 a running turn its backend can’t change is listed, by session, as keeping its mode; with none, nothing is', async () => {
