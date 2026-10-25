@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.33.5 (2026-10-25)
+
+### Fixes
+
+- **state:** the second id in a route is checked too, and the test reaches every route
+- **state:** an id is a record the state has or nothing, never Object's prototype
+
 ## 0.33.4 (2026-10-25)
 
 ### Fixes
