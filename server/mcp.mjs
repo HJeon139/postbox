@@ -16,12 +16,12 @@
 
 import { limitText as n, PALETTES, READING } from '../shared/limits.mjs';
 import { REACTIONS } from '../shared/reactions.mjs';
+import { offersBring } from './bring.mjs';
 import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
 import { reactTool } from './reactions.mjs';
 import { REVIEW_BLOCK_DEF } from './review-comments.mjs';
 import { AgentFileError } from './runtime.mjs';
-import { offersBring } from './side-threads.mjs';
 import { withUrgent } from './subagent-end.mjs';
 
 const PROTOCOL = '2025-06-18';

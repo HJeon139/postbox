@@ -34,6 +34,7 @@ import {
   updateApp,
 } from './apps.mjs';
 import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
+import { bringToConversation } from './bring.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
@@ -59,7 +60,6 @@ import { runShell } from './shell.mjs';
 import {
   agentWake,
   archiveForks,
-  bringToConversation,
   bumpSideLink,
   deliverWake,
   dropWakes,
