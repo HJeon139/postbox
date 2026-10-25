@@ -345,6 +345,10 @@
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 432 } } } } }
     },
     {
+      "includes": ["tests/browser/work-pane.spec.mjs"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 457 } } } } }
+    },
+    {
       "includes": ["tests/claude-code.test.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1010 } } } } }
     },
@@ -414,15 +418,6 @@
     {
       "includes": ["tools/check-side-threads.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 304 } } } } }
-    },
-    {
-      "includes": ["tools/check-work-pane.mjs"],
-      "linter": {
-        "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 431 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 78 } } }
-        }
-      }
     },
     {
       "includes": ["tools/checks/app-send.mjs"],
