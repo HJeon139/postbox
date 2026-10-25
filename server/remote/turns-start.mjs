@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { asksByPrompt } from '../permission-prompt.mjs';
 import { offersBring } from '../side-threads.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
@@ -90,6 +91,8 @@ export async function prepare(rts, turn, ctx, message) {
     nextTurn: async () => allocate(rts, live, folder),
     // As server/mcp.mjs lists bring_to_conversation only for such a turn, so does the shim (shimArgs).
     bring: offersBring(rt, turn),
+    // As server/mcp.mjs offers permission_prompt only to a backend that asks through it, so does the shim (shimArgs).
+    asksByPrompt: asksByPrompt(rt, turn.sessionId),
     attachments,
   };
   if (attach) attachTo(rts, live, se, turn, attach, remote);

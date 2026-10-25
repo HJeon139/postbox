@@ -7,8 +7,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { handleMcp } from '../../server/mcp.mjs';
-import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
+import { NOT_YOUR_PROMPT as LAPTOP_NOT_YOUR_PROMPT } from '../../server/permission-prompt.mjs';
+import { NOT_YOUR_PROMPT, TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { REQUEST, setup, sleep, TURN, textOf } from './remote-shim-fixtures.mjs';
+
+/**
+ * A laptop runtime with one session, s1, whose turn runs on a backend that asks through permission_prompt or not
+ * (server/permission-prompt.mjs’s asksByPrompt), for server/mcp.mjs’s tools/list to compare with the shim’s.
+ * @param {boolean} asks
+ */
+const laptop = (asks) =>
+  /** @type {any} */ ({
+    turns: new Map([['s1', { backend: 'b' }]]),
+    s: { sessions: { s1: { id: 's1' } } },
+    adapters: { names: () => ['b'], get: () => ({ capabilities: asks ? {} : { promptTool: false } }) },
+  });
+/** @param {boolean} asks */
+const laptopList = async (asks) => /** @type {any} */ (await handleMcp(laptop(asks), 's1', { jsonrpc: '2.0', id: 2, method: 'tools/list' })).result;
 
 test('initialize and tools/list match the laptop’s server/mcp.mjs, byte for byte', async (t) => {
   const { shim } = await setup(t);
@@ -17,9 +32,8 @@ test('initialize and tools/list match the laptop’s server/mcp.mjs, byte for by
   assert.equal(JSON.stringify(init.result), JSON.stringify(/** @type {any} */ (laptopInit).result));
   shim.write({ jsonrpc: '2.0', method: 'notifications/initialized' });
   const list = await shim.call('tools/list');
-  // A laptop with no turn running: a list for no turn of a side or topic thread.
-  const laptopList = await handleMcp(/** @type {any} */ ({ turns: new Map() }), null, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
-  assert.equal(JSON.stringify(list.result), JSON.stringify(/** @type {any} */ (laptopList).result));
+  // A turn outside a side or topic thread, on a backend that asks through permission_prompt (Claude Code’s).
+  assert.equal(JSON.stringify(list.result), JSON.stringify(await laptopList(true)));
   // Outside a side or topic thread, as on the laptop, every tool but bring_to_conversation.
   assert.deepEqual(
     list.result.tools.map((x) => x.name),
@@ -33,6 +47,27 @@ test('with --bring, a turn the person started in a side or topic thread, tools/l
   await shim.call('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
   const list = await shim.call('tools/list');
   assert.equal(JSON.stringify(list.result), JSON.stringify({ tools: TOOL_DEFS }));
+});
+
+test('with --no-prompt, a backend that asks another way, tools/list leaves out permission_prompt and its call gets the laptop’s refusal', async (t) => {
+  const { shim, daemon } = await setup(t, { args: ['--no-prompt'] });
+  await shim.call('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+  const list = await shim.call('tools/list');
+  assert.equal(JSON.stringify(list.result), JSON.stringify(await laptopList(false)));
+  assert.ok(!list.result.tools.some((x) => x.name === 'permission_prompt'));
+  // With --bring too, every tool but permission_prompt.
+  const both = await setup(t, { args: ['--bring', '--no-prompt'] });
+  assert.deepEqual(
+    (await both.shim.call('tools/list')).result.tools.map((x) => x.name),
+    TOOL_DEFS.map((x) => x.name).filter((n) => n !== 'permission_prompt'),
+  );
+  // A call anyway gets server/mcp.mjs’s answer at once, and nothing reaches the daemon.
+  await daemon.connected();
+  const res = await shim.response(shim.tool('permission_prompt', REQUEST));
+  assert.deepEqual(res.result, NOT_YOUR_PROMPT);
+  assert.deepEqual(res.result, LAPTOP_NOT_YOUR_PROMPT);
+  await sleep(50);
+  assert.equal(daemon.received.filter((m) => m.type === 'permission').length, 0);
 });
 
 test('server/discover and any other unknown method get method not found (-32601)', async (t) => {

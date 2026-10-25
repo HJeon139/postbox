@@ -16,13 +16,17 @@ const glossaryOf = (threadId) => {
 };
 
 export function agentMarkdown(it, threadId) {
-  return renderMarkdown(it.text ?? '', {
+  const answer = renderMarkdown(it.text ?? '', {
     streaming: it.status === 'streaming',
     citations: it.sources?.length ?? 0,
     citeId: `src-${it.id}`,
     glossary: Object.values(glossaryOf(threadId)).map((g) => ({ key: g.key, term: g.term })),
     mentions: handles(),
   });
+  // A shared reply’s question (#111) is the person’s own message, drawn as theirs is, and apart from the answer: its
+  // Markdown, a fence or a heading, can’t run into the answer’s.
+  if (it.kind !== 'shared' || !it.question) return answer;
+  return `<div class="shared-q"><span class="shared-q-label">You asked</span>${renderMarkdown(it.question, { mentions: handles() })}</div>${answer}`;
 }
 
 export function markTerms(root, threadId) {

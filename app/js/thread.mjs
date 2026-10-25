@@ -5,22 +5,25 @@ import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
-import { inThreadLine, subagentNow } from './agents.mjs';
+import { subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
+import { asWake, queuedRow } from './composer-queue.mjs';
+import { addressLine, addressSig } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
+import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
+import { jobRows, stoppedTag } from './reply-stop.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
-import { argvStep, failedOnHost, hostTurnsList, jobHostNote, kiroNotice, ranHere, remoteSig, remoteStale } from './thread-host.mjs';
+import { argvStep, failedOnHost, hostTurnsList, kiroNotice, ranHere, remoteSig, remoteStale } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
-import { toolAskBlock } from './tool-ask-card.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { workList } from './work-list.mjs';
 
@@ -31,6 +34,17 @@ const S = () => client.state;
 // after it names its speaker.
 const speaker = (it) =>
   it.kind === 'user' ? 'you' : (it.kind === 'agent' && it.status !== 'replaced') || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null;
+// One turn’s items share a sender line; a later turn of the same agent gets its own, and so does a wake it sent from
+// another turn (its fromTurnId) (#135). An item from before turns were kept, or no turn made, goes with the one before.
+const turnOf = (it) => it.turnId ?? it.fromTurnId;
+const sameTurn = (a, b) => !turnOf(a) || !turnOf(b) || turnOf(a) === turnOf(b);
+// What woke the turn (#135): “woken by @critic”, “after @researcher replied in a side thread”, or its scheduled wake.
+const wokeText = ({ by, reply, in: at, scheduled }) =>
+  scheduled
+    ? 'woken by a scheduled wake'
+    : reply
+      ? `after @${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}`
+      : `woken by @${by}`;
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
 
@@ -395,7 +409,8 @@ const who = (it, { you = false } = {}) => {
   const ring = se ? ringFor(se, 'xs') : h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' });
   if (se) ring.dataset.session = se.id;
   const state = se ? h('span.who-state', { dataset: { session: se.id, item: it.id }, 'aria-live': 'off' }) : null;
-  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, ts);
+  const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
+  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
@@ -465,7 +480,7 @@ function messageActions(node, it, ctx) {
 }
 
 function renderItem(it, prev, ctx) {
-  const showWho = !(prev && speaker(prev) && speaker(prev) === speaker(it) && prev.kind !== 'voice');
+  const showWho = !(prev && speaker(prev) && speaker(prev) === speaker(it) && prev.kind !== 'voice' && sameTurn(prev, it));
   switch (it.kind) {
     case 'user': {
       return h(
@@ -508,7 +523,7 @@ function renderItem(it, prev, ctx) {
         it.work ? workChip(it, ctx) : null,
         // A turn on a host Postbox stopped because it hung says why, with the last output’s time (#120).
         it.note ? h('span.stopped-tag.hung-note', it.note) : null,
-        it.status === 'stopped' && !it.note ? h('span.stopped-tag', `Stopped by you at ${timeOf(it.stoppedAt ?? it.at)}`) : null,
+        it.status === 'stopped' && !it.note ? stoppedTag(it) : null,
         // Sign-in needed, Interrupted or Lost on a host has a callout of its own (#120).
         it.status === 'failed' ? failedOnHost(it) : null,
         it.status === 'failed' && !failedOnHost(it)
@@ -729,48 +744,6 @@ function stepRow(s) {
     dur,
   );
 }
-
-/**
- * The background jobs a reply started that are still running (#129), outside the folded steps so you can see them, each
- * with its own Stop. The call returned at once, so without this the step would read done while the job runs on.
- */
-function jobRows(it, steps) {
-  const jobs = steps.filter((s) => s.job && s.state === 'running');
-  if (!jobs.length || !it.sessionId) return null;
-  return h(
-    'ul.bg-jobs',
-    { 'aria-label': 'Background jobs' },
-    jobs.map((s) =>
-      h(
-        'li',
-        h('span.g.g-running', { role: 'img', 'aria-label': 'running' }),
-        // What Postbox kept running for it, when it couldn’t tell which process was the job (#164).
-        h('span.grow', h('span.dim', 'Background job · '), h('span.mono', s.label), s.detail ? h('span.job-note', s.detail) : null),
-        // A job of a turn on a host has no Stop of its own (#120): the daemon stops the turn as a whole.
-        jobHostNote(it) ??
-          h(
-            'button.btn.sm',
-            {
-              type: 'button',
-              'aria-label': `Stop the background job “${s.label}”`,
-              onclick: (e) => {
-                const b = e.currentTarget;
-                b.disabled = true;
-                api(`/api/sessions/${it.sessionId}/jobs/${encodeURIComponent(s.job)}/stop`, {})
-                  .then(() => say(`Stopped the background job “${s.label}”.`))
-                  .catch((err) => {
-                    b.disabled = false;
-                    toast({ title: 'Couldn’t stop the job', text: err.message, level: 'blocking' });
-                  });
-              },
-            },
-            'Stop',
-          ),
-      ),
-    ),
-  );
-}
-
 const fileSize = (size) => (size > 1e6 ? `${(size / 1e6).toFixed(1)} MB` : `${Math.ceil(size / 1000)} KB`);
 
 /**
@@ -990,249 +963,6 @@ function commandBlock(it, ctx) {
   );
 }
 
-// An agent in “ask” mode waits here before a risky tool call. It isn’t a catalog block: Postbox draws it,
-// and your answer goes straight back to the waiting tool call rather than to the agent as a message.
-const PERMISSION_DONE = {
-  allowed: 'Allowed',
-  'allowed-always': 'Always allowed',
-  'allowed-edited': 'Allowed with your edit',
-  denied: 'Not allowed',
-  expired: 'Expired: the turn ended before you answered',
-  // A card for a turn on a host (#120, server/remote/turns.mjs): the host’s wait ran out (noAnswer), the agent gave up
-  // on the call, or the host ended the prompt and couldn’t write that down.
-  canceled: 'Canceled by the agent',
-  ended: 'Ended: Postbox couldn’t save the expiry',
-};
-/** What an answered card says. @param {any} it */
-const permissionDone = (it) => (it.status === 'expired' && it.noAnswer ? 'Expired: nobody answered in time' : (PERMISSION_DONE[it.status] ?? it.status));
-/**
- * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
- * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.
- */
-function permissionBlock(it, ctx) {
-  const open = it.status === 'open';
-  const act = (action, values = {}) =>
-    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action, values })
-      .then(focusComposer)
-      .catch((e) => {
-        toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' });
-        throw e;
-      });
-  const titleId = `pm-${it.id}`;
-  const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
-  const bash = it.tool === 'Bash';
-  // Edit and Don’t allow open a small form in the card; only one at a time.
-  const form = h('div.perm-form');
-  const foot = h('div.block-foot');
-  const buttons = () => [
-    h('button.btn', { type: 'button', onclick: () => act('allow') }, 'Allow'),
-    it.always ? h('button.btn', { type: 'button', 'aria-describedby': `${titleId}-always`, onclick: () => act('always') }, 'Always allow') : null,
-    // Edit needs the call’s whole input: one too large to keep here can only be allowed as it is.
-    it.input ? h('button.btn', { type: 'button', 'aria-expanded': 'false', onclick: (e) => showEdit(e.currentTarget) }, 'Edit…') : null,
-    h('button.btn', { type: 'button', 'aria-expanded': 'false', onclick: (e) => showDeny(e.currentTarget) }, 'Don’t allow…'),
-    h('span.small.dim', `${by} is waiting for you.`),
-  ];
-  const close = (back) => {
-    form.replaceChildren();
-    for (const b of foot.querySelectorAll('[aria-expanded]')) b.setAttribute('aria-expanded', 'false');
-    back?.focus();
-  };
-  function showEdit(button) {
-    close();
-    button.setAttribute('aria-expanded', 'true');
-    const start = bash ? String(it.input.command ?? '') : JSON.stringify(it.input, null, 2);
-    const id = `${titleId}-edit`;
-    const err = h('p.err', { id: `${id}-err`, hidden: true });
-    const box = h(
-      `textarea.textarea.mono`,
-      { id, rows: String(Math.min(12, start.split('\n').length + 1)), spellcheck: 'false', 'aria-describedby': `${id}-err` },
-      start,
-    );
-    const submit = () => {
-      let values;
-      if (bash) values = { command: box.value };
-      else {
-        // Checked here first, so a typo is caught before it reaches the agent; the server checks it again.
-        try {
-          const v = JSON.parse(box.value);
-          if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('It has to be a JSON object, like the one it started from.');
-        } catch (e) {
-          err.hidden = false;
-          err.textContent = `This doesn’t parse: ${e.message}`;
-          box.classList.add('invalid');
-          box.focus();
-          return;
-        }
-        values = { input: box.value };
-      }
-      act('edit', values).catch(() => box.focus());
-    };
-    box.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        close(button);
-      }
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        submit();
-      }
-    });
-    form.replaceChildren(
-      h('label.label', { for: id }, bash ? 'The command to run instead' : 'The input to use instead (JSON)'),
-      box,
-      err,
-      h(
-        'div.row-flex',
-        h('button.btn.send', { type: 'button', onclick: submit }, 'Allow with this edit'),
-        h('button.btn.ghost', { type: 'button', onclick: () => close(button) }, 'Cancel'),
-      ),
-    );
-    box.focus();
-  }
-  function showDeny(button) {
-    close();
-    button.setAttribute('aria-expanded', 'true');
-    const id = `${titleId}-why`;
-    const why = h('input.input', { id, placeholder: 'Optional: what to do instead', maxlength: '1000' });
-    const submit = () => act('deny', { reason: why.value }).catch(() => why.focus());
-    why.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        submit();
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        close(button);
-      }
-    });
-    form.replaceChildren(
-      h('label.label', { for: id }, `Why not? @${it.handle} reads this`),
-      why,
-      h(
-        'div.row-flex',
-        h('button.btn.send', { type: 'button', onclick: submit }, 'Don’t allow'),
-        h('button.btn.ghost', { type: 'button', onclick: () => close(button) }, 'Cancel'),
-      ),
-    );
-    why.focus();
-  }
-  if (open) foot.append(...buttons().filter(Boolean));
-  const done = it.status.startsWith('allowed');
-  return h(
-    'div.col.block',
-    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
-    h(
-      'div.block-head',
-      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h('span.title.grow', { id: titleId }, `Let ${by} ${it.summary}?`),
-      h('span.kind', 'Permission · ', h('span.tool-name', it.tool)),
-    ),
-    h(
-      'div.block-body',
-      // A write outside Postbox (#112): say so, and show its draft as it will read, before anything exists outside.
-      it.outside
-        ? h(
-            'p.small',
-            h('b', 'This writes outside Postbox'),
-            it.where ? [', to ', h('b', it.where.server), it.where.target ? ` (${it.where.target.what} “${it.where.target.name}”)` : ''] : '',
-            '.',
-            open ? ' Nothing is created, sent or changed until you allow it.' : '',
-          )
-        : null,
-      it.draft
-        ? h(
-            'div.col.perm-draft',
-            { role: 'group', 'aria-label': 'The draft', tabindex: '0' },
-            h('span.label', `The draft, from ${it.draft.field}`),
-            h('div.md', { html: trusted(renderMarkdown(it.draft.text)) }),
-          )
-        : null,
-      // The whole command, wrapped: you decide on what you can see.
-      it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
-      // What Always allow saves, in words, before you click it.
-      open && it.always
-        ? h(
-            'div.small.perm-always',
-            { id: `${titleId}-always` },
-            it.always.lines.map((l) => h('p', l.rule ? ['Always allow ', h('code', l.rule), l.text.slice(`Always allow ${l.rule}`.length)] : l.text)),
-            it.always.moved ? h('p.dim', it.always.moved) : null,
-            // What Always allow gives up on a write outside Postbox (#112): the draft step, for that tool.
-            it.outside ? h('p', `From now on ${by} can use `, h('code', it.tool), ' without showing you a draft.') : null,
-          )
-        : null,
-      open ? form : null,
-      !open
-        ? h(
-            'span.answered-note',
-            icon(done ? 'check' : 'x', 'i-sm'),
-            permissionDone(it),
-            it.status === 'allowed-always' && it.always ? ` (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')})` : '',
-          )
-        : null,
-      !open && it.edited ? h('pre.md-code.perm-detail', { 'aria-label': 'What ran instead' }, h('code', it.edited)) : null,
-      !open && it.reason ? h('p.small', h('b', 'Your reason: '), it.reason) : null,
-    ),
-    open ? foot : null,
-  );
-}
-
-// Claude Code refused a call without asking you (auto mode’s check, a rule, or the mode). Unlike a permission
-// card nothing is waiting: Allow once or Always allow tells the agent to try again.
-const DENIAL_DONE = {
-  'allowed-once': 'Allowed once. The agent is trying again.',
-  'allowed-always': 'Always allowed. The agent is trying again.',
-  left: 'Left refused.',
-};
-const DENIAL_WHY = {
-  classifier: 'auto mode’s safety check',
-  rule: 'a permission rule',
-  subcommandResults: 'a permission rule',
-  mode: 'the permission mode',
-  asyncAgent: 'a background subagent can’t ask you',
-};
-function denialBlock(it, ctx) {
-  const open = it.status === 'open';
-  const act = (action) =>
-    api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action })
-      .then(focusComposer)
-      .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
-  const titleId = `dn-${it.id}`;
-  const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
-  return h(
-    'div.col.block',
-    { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
-    h(
-      'div.block-head',
-      open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h('span.title.grow', { id: titleId }, `Refused: ${by} tried to ${it.summary.charAt(0).toLowerCase()}${it.summary.slice(1)}`),
-      h('span.kind', 'Refused · ', h('span.tool-name', it.tool)),
-    ),
-    h(
-      'div.block-body',
-      it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
-      it.reason || DENIAL_WHY[it.reasonType]
-        ? h('p.small', h('b', 'Why: '), it.reason || '', DENIAL_WHY[it.reasonType] ? ` (${DENIAL_WHY[it.reasonType]})` : '')
-        : null,
-      open
-        ? h(
-            'p.small.dim',
-            'Always allow adds ',
-            h('code', it.rules.always),
-            ' to .claude/settings.local.json in the agent’s folder, so your terminal sessions follow it too. A deny rule in your Claude Code settings still wins.',
-          )
-        : h('span.answered-note', icon(it.status === 'left' ? 'x' : 'check', 'i-sm'), DENIAL_DONE[it.status] ?? it.status),
-    ),
-    open
-      ? h(
-          'div.block-foot',
-          h('button.btn', { type: 'button', onclick: () => act('once') }, 'Allow once and retry'),
-          h('button.btn', { type: 'button', onclick: () => act('always') }, `Always allow ${it.rules.alwaysWords}`),
-          h('button.btn.ghost', { type: 'button', onclick: () => act('leave') }, 'Leave it'),
-        )
-      : null,
-  );
-}
-
 const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
   'agent-sdk': 'Agent SDK',
@@ -1384,18 +1114,6 @@ export function flushOutbox() {
   saveOutbox();
   for (const m of items) sendMessage(m.threadId, m.text, m.attachments);
   if (items.length) client.emit({ type: 'outbox' });
-}
-
-/**
- * A queued wake (#228) is another agent’s message, waiting for its agent to finish: it says whose, and has no Edit.
- * @param {HTMLElement} row @param {any} q
- */
-function asWake(row, q) {
-  if (q.kind !== 'wake') return row;
-  const what = row.querySelector('.q-text .small');
-  if (what) what.textContent = `@${q.from}’s message · waits for ${what.textContent.replace(/^Queued · sends when (.*) finishes$/, '$1')} to finish`;
-  [...row.querySelectorAll('button')].find((b) => b.textContent === 'Edit')?.remove();
-  return row;
 }
 
 export function mountComposer(threadId, { side = false } = {}) {
@@ -1911,6 +1629,15 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (c.thread) insertText(`[${c.thread.title.replace(/[[\]]/g, '')}](${threadLink(c.thread.id)})`);
     else insertText(`@${c.p.handle}`);
   }
+  // “Did you mean @critic?” (#134): the @ goes before the name the draft opens with, and the caret stays where it was.
+  function addAt() {
+    const at = ta.selectionStart + (ta.selectionStart >= /^\s*/.exec(ta.value)[0].length ? 1 : 0);
+    ta.value = ta.value.replace(/^(\s*)/, '$1@');
+    ta.focus();
+    ta.setSelectionRange(at, at);
+    save();
+    paint();
+  }
   function insertText(text) {
     const before = ta.value.slice(0, mention.start);
     const after = ta.value.slice(ta.selectionStart);
@@ -1928,9 +1655,12 @@ export function mountComposer(threadId, { side = false } = {}) {
     save();
     updateMention();
     updateSlash();
-    // The hint line follows what the line will do: a picked skill, a ! command, or a message.
+    // The hint line follows what the line will do: a picked skill, a ! command, or a message, and whom it reaches.
     if (slashTarget && !ta.value.startsWith(`/${slashTarget.name}`)) slashTarget = null;
-    if (ta.value.startsWith('!') || hint.dataset.mode || (commands && ta.value.startsWith('/'))) paint();
+    const to = hint.dataset.to !== addressSig(threadId, ta.value);
+    if (to || ta.value.startsWith('!') || hint.dataset.mode || (commands && ta.value.startsWith('/'))) paint();
+    // Said once, when it appears, since the hint isn’t read as you type.
+    if (to && hint.querySelector('.did-you-mean')) say(`${hint.querySelector('.did-you-mean').textContent} Its button follows the message box.`);
   });
   ta.addEventListener('click', () => {
     updateMention();
@@ -2080,10 +1810,10 @@ export function mountComposer(threadId, { side = false } = {}) {
       queue,
       t.queue ?? [],
       (q) => q.id,
-      (q) => asWake(queuedRow(q), q),
+      (q) => asWake(queuedRow(q, threadId, paint), q),
       (node, q) => {
         if (node.dataset.editing) return; // keep an inline edit open while the agent works
-        const fresh = asWake(queuedRow(q), q);
+        const fresh = asWake(queuedRow(q, threadId, paint), q);
         node.replaceChildren(...fresh.childNodes);
       },
     );
@@ -2150,9 +1880,12 @@ export function mountComposer(threadId, { side = false } = {}) {
             : '';
     if (mode) hint.dataset.mode = mode;
     else delete hint.dataset.mode;
+    hint.dataset.to = addressSig(threadId, ta.value);
     const folder = mode === 'shell' ? commandFolder() : null;
     // ! stays on this computer when the agent works on a host (#67, #120), and says so.
     const here = mode === 'shell' ? notOnHost(target()) : null;
+    // A repaint while you’re on “Did you mean” keeps you there (#134).
+    const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);
     fill(
       hint,
       mode === 'shell'
@@ -2183,16 +1916,20 @@ export function mountComposer(threadId, { side = false } = {}) {
               )
             : offline
               ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
-              : topic
-                ? h('span', 'Replies stay in this thread. @ brings in another agent from the conversation.')
-                : side
-                  ? h('span', 'Anything you send here adds you to this side thread.')
-                  : [
-                      members.length > 1 && last ? h('span', 'Replying to ', h('b', `@${last.handle}`), mockMarker(last), ' (last speaker)') : null,
-                      h('span', 'Enter to send · Shift+Enter for a new line'),
-                      h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
-                    ],
+              : [
+                  // Who it reaches, in a room and in a topic or side thread too, and the @ a name may lack (#134).
+                  addressLine(threadId, ta.value, { room: topic || side || members.length > 1, addAt }),
+                  topic
+                    ? h('span', 'Replies stay here · @ brings in another agent')
+                    : side
+                      ? h('span', 'Sending adds you to this side thread')
+                      : [
+                          h('span', 'Enter to send · Shift+Enter for a new line'),
+                          h('span.hide-sm', '@ to wake an agent · / for commands · ! to run a command · + to add a file or an agent'),
+                        ],
+                ],
     );
+    if (onFix) hint.querySelector('.did-you-mean')?.focus();
   }
   /**
    * Where `!` runs, as far as the page knows: the folder of the agent that replies here, else the project’s. A Claude
@@ -2260,63 +1997,6 @@ export function mountComposer(threadId, { side = false } = {}) {
       h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Don’t stop @${se.handle}`, onclick: dismiss }, icon('x', 'i-sm')),
     );
   }
-  function queuedRow(q) {
-    const names = q.sessionIds
-      .map((id) => S().sessions[id]?.handle)
-      .filter(Boolean)
-      .map((x) => `@${x}`)
-      .join(', ');
-    const text = h('span.q-text', h('span.small.dim', `Queued · sends when ${names} finishes`), h('br'), q.text);
-    const row = h(
-      'div.queued',
-      icon('clock', 'dim'),
-      text,
-      h(
-        'button.btn.sm',
-        {
-          type: 'button',
-          onclick: () => api(`/api/threads/${threadId}/queue/${q.id}/send`, {}).catch((e) => toast({ title: 'Couldn’t send now', text: e.message })),
-        },
-        'Send now',
-      ),
-      h(
-        'button.btn.sm.ghost',
-        {
-          type: 'button',
-          onclick: () => {
-            // The row may have been refreshed in place, so mark the node it’s in now, not the one built here.
-            const live = text.closest('.queued');
-            const done = () => {
-              delete live.dataset.editing;
-              paint();
-            };
-            const input = h('input.input', {
-              value: q.text,
-              'aria-label': 'Edit the queued message',
-              onkeydown: (e) => {
-                if (e.key === 'Enter') saveEdit();
-                if (e.key === 'Escape') done();
-              },
-            });
-            const saveEdit = () =>
-              api(`/api/threads/${threadId}/queue/${q.id}`, { text: input.value }, 'PATCH')
-                .then(done)
-                .catch((e) => toast({ title: 'Couldn’t edit', text: e.message }));
-            live.dataset.editing = '1';
-            text.replaceChildren(input, h('button.btn.sm', { type: 'button', onclick: saveEdit }, 'Save'));
-            input.focus();
-          },
-        },
-        'Edit',
-      ),
-      h(
-        'button.btn.sm.ghost',
-        { type: 'button', 'aria-label': 'Remove the queued message', onclick: () => api(`/api/threads/${threadId}/queue/${q.id}`, undefined, 'DELETE') },
-        icon('x', 'i-sm'),
-      ),
-    );
-    return row;
-  }
   paint();
   autosize();
   const off = client.on((ch) => {
@@ -2337,162 +2017,6 @@ export function mountComposer(threadId, { side = false } = {}) {
       unlisten();
     },
   };
-}
-
-/**
- * The panel beside a conversation. It holds a topic thread (yours, forked from a message, with Summarize back)
- * or a side thread between agents (which you can join by typing).
- */
-export function mountSidePanel(parentId, sideId) {
-  const side = S().threads[sideId];
-  if (!side) return null;
-  const topic = side.kind === 'topic';
-  const parent = S().threads[parentId];
-  const tr = mountTranscript(sideId, { inPanel: true });
-  const comp = mountComposer(sideId, { side: true });
-  const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
-  const body = h('div.sp-body', topic ? threadRoot(root) : null, tr.el);
-  // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
-  const who = topic ? inThreadLine(sideId) : null;
-  // One summary at a time (#93): from the request until it’s posted or the turn ends, the button waits. The
-  // server keeps the request on the thread, so a reload or a second tab waits too, and it refuses a second one.
-  // From the click until the server’s own state shows the request: its agent at work on it.
-  let asking = false;
-  const pendingSummary = () => {
-    const ask = S().threads[sideId]?.summaryPending;
-    const se = ask && S().sessions[ask.sessionId];
-    const working = !!(se && !se.archived && ['think', 'gen', 'tool', 'needs'].includes(se.state));
-    if (working) asking = false;
-    return asking || working;
-  };
-  const summarize = topic
-    ? h(
-        'button.btn.sm',
-        {
-          type: 'button',
-          title: 'Ask the thread’s agent for a short summary, and post it in the conversation',
-          onclick: () => {
-            asking = true;
-            paintSummarize();
-            api(`/api/threads/${sideId}/summarize`, {})
-              .then(() => toast({ title: 'Summary requested', text: `It will appear in ${parent?.title ?? 'the conversation'} when it’s written.` }))
-              .catch((e) => {
-                asking = false;
-                toast({ title: 'Couldn’t ask for a summary', text: e.message, level: 'blocking' });
-              })
-              .finally(paintSummarize);
-          },
-        },
-        'Summarize back',
-      )
-    : null;
-  const paintSummarize = () => {
-    if (!summarize) return;
-    const waiting = pendingSummary();
-    summarize.disabled = waiting || !(S().threads[sideId]?.lastSpeaker || S().threads[sideId]?.woke);
-    const label = waiting ? 'Summary requested…' : 'Summarize back';
-    if (summarize.textContent !== label) summarize.textContent = label;
-  };
-  paintSummarize();
-  const off = client.on((ch) => {
-    if (
-      (ch.type === 'thread' && ch.data.id === sideId) ||
-      (ch.type === 'session' && ch.data.id === S().threads[sideId]?.summaryPending?.sessionId) ||
-      ch.type === 'load'
-    )
-      paintSummarize();
-  });
-  const el = h(
-    'aside.sidepanel',
-    { 'aria-labelledby': 'sp-title' },
-    h(
-      'div.sp-head',
-      icon('thread', 'dim'),
-      h(
-        'div.grow',
-        h('b', { id: 'sp-title' }, topic ? 'Thread' : side.title),
-        h('div.small.dim', topic ? `in ${parent?.title ?? 'the conversation'}` : `Side thread from ${parent?.title ?? 'this conversation'}`),
-      ),
-      summarize,
-      copyLink(sideId, topic),
-      h(
-        'button.btn.icon.sm.ghost',
-        { type: 'button', 'aria-label': topic ? 'Close thread' : 'Close side thread', onclick: () => navigate(`#/t/${parentId}`) },
-        icon('x'),
-      ),
-    ),
-    who ? h('div.sp-agents', who.el) : null,
-    body,
-    h('div.sp-foot', comp.el),
-  );
-  // A file dropped anywhere on the panel attaches to the panel’s composer, not the conversation’s.
-  comp.dropZone(el);
-  requestAnimationFrame(() => tr.settle());
-  return {
-    el,
-    destroy() {
-      off();
-      who?.destroy();
-      tr.destroy();
-      comp.destroy();
-    },
-  };
-}
-
-/**
- * Copy link (#121): the thread’s address, to paste in a message. An agent that gets it can read the thread with
- * read_conversation, and the composer’s # inserts the same link.
- */
-function copyLink(threadId, topic) {
-  const b = h(
-    'button.btn.sm.ghost',
-    {
-      type: 'button',
-      onclick: async () => {
-        try {
-          await navigator.clipboard.writeText(threadLink(threadId));
-          say('Link copied. Paste it in a message, and the agent can read this thread.');
-          b.textContent = 'Copied';
-        } catch {
-          toast({ title: 'Couldn’t copy the link', text: threadLink(threadId) });
-        }
-        setTimeout(() => {
-          b.textContent = 'Copy link';
-        }, 2000);
-      },
-      'aria-label': topic ? 'Copy link to this topic thread' : 'Copy link to this side thread',
-    },
-    'Copy link',
-  );
-  return b;
-}
-
-/** The message a topic thread branched from, at its top. */
-function threadRoot(root) {
-  if (!root) return null;
-  const text = root.kind === 'block' ? `${root.block?.title ?? root.block?.type ?? 'A block'}${root.block?.type === 'app' ? ' (app)' : ''}` : (root.text ?? '');
-  // A long message is clamped to a few lines here; it’s all in the conversation beside it.
-  const md = h('div.md.clamped', { html: trusted(renderMarkdown(text, { mentions: handles() })) });
-  queueMicrotask(() => enhanceMarkdown(md));
-  const more = h(
-    'button.btn.sm.ghost',
-    {
-      type: 'button',
-      'aria-expanded': 'false',
-      onclick: (e) => {
-        const open = md.classList.toggle('clamped') === false;
-        e.currentTarget.setAttribute('aria-expanded', String(open));
-        e.currentTarget.textContent = open ? 'Show less' : 'Show all';
-      },
-    },
-    'Show all',
-  );
-  return h(
-    'div.thread-root',
-    h('span.label', root.kind === 'user' ? 'You' : `@${root.handle ?? ''}`),
-    md,
-    text.length > 280 || /\n\s*\n/.test(text) ? more : null,
-  );
 }
 
 export const _test = { renderItem, activityLabel };

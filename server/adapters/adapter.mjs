@@ -29,7 +29,7 @@
 //   ctx.mcpUrl                              where a real agent connects for the UI tools
 //   ctx.remote                              set when the turn runs on a remote host (#120), and then ctx.mcpUrl is
 //                                           never used: { link, welcome, settings, folder, version, turn, nextTurn,
-//                                           attach?, resumeInterrupted?, bring?, attachments? } (RemoteContext
+//                                           attach?, resumeInterrupted?, bring?, asksByPrompt?, attachments? } (RemoteContext
 //                                           below)
 //                                           link: server/remote/link.mjs’s createHostLink; welcome: the daemon’s
 //                                           latest (home, node.path, harnesses); settings: the host’s
@@ -59,6 +59,8 @@
 //   capabilities.models: [ids]        the models it offers, suggested in the model field instead of Claude’s
 //   capabilities.tools: 'none'        it can’t turn a tool off for one agent, so the Tools help says so (#143)
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
+//   capabilities.promptTool: false    it never asks through Postbox’s permission_prompt (the CLI’s --permission-prompt-tool),
+//                                     so MCP doesn’t list it and refuses a call to it at once (#220)
 //   capabilities.remote: { ... }      how it runs on a remote host, where the daemon starts its process (#120):
 //     stdin: 'file' | 'none' | 'held'   the turn’s message goes in a file, or nothing goes in, or stdin stays open
 //                                       until the turn ends (Codex’s JSON-RPC)
@@ -74,8 +76,9 @@
 //                                       the turn shows Sign-in needed rather than an error; null until one is recorded
 //   Left out, it can’t run on a remote host: the Agent SDK runs in Postbox’s own process, and the Antigravity CLI and
 //   the mock aren’t covered yet.
-// Left out, an adapter is taken to fork and read rules, with Claude’s models, as the Claude backends do. The page
-// gets every adapter’s capabilities in /api/state (config.backends).
+// Left out, an adapter is taken to fork and read rules, with Claude’s models, as the Claude backends do, and to ask
+// through permission_prompt, as the Claude Code CLI does. The page gets every adapter’s capabilities in /api/state
+// (config.backends).
 
 /**
  * @typedef {{ stdin: 'file' | 'none' | 'held', env: string[], server: 'mcp-config' | 'agent-file' | 'codex-config',
@@ -83,7 +86,7 @@
  */
 
 /**
- * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, models?: string[],
+ * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, models?: string[],
  *   remote?: RemoteCapabilities },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
  */
@@ -92,16 +95,18 @@
  * A turn’s remote context (#120), as the runtime passes it in ctx.remote.
  * @typedef {{ link: any, welcome: any, settings: Record<string, any>, folder: string, version: string,
  *   turn?: string, nextTurn: () => Promise<string>, attach?: { turn: string }, resumeInterrupted?: boolean, bring?: boolean,
- *   attachments?: import('../remote/attachments.mjs').RemoteAttachment[] }} RemoteContext
+ *   asksByPrompt?: boolean, attachments?: import('../remote/attachments.mjs').RemoteAttachment[] }} RemoteContext
+ *   asksByPrompt: false for a backend that doesn’t ask through permission_prompt (server/permission-prompt.mjs)
  */
 
 /**
- * The host’s shim’s arguments for host turn `turn`: its path, the turn, and --bring when the runtime says the turn may
+ * The host’s shim’s arguments for host turn `turn`: its path, the turn, --bring when the runtime says the turn may
  * post to the conversation (ctx.remote.bring: one the person started in a side or topic thread), so the shim lists
- * bring_to_conversation as the laptop’s server would (server/remote/host/shim.mjs).
+ * bring_to_conversation as the laptop’s server would, and --no-prompt for a backend that doesn’t ask through
+ * permission_prompt, which the shim then doesn’t list either (server/remote/host/shim.mjs).
  * @param {RemoteContext} remote @param {string} shim @param {string} turn
  */
-export const shimArgs = (remote, shim, turn) => [shim, turn, ...(remote.bring ? ['--bring'] : [])];
+export const shimArgs = (remote, shim, turn) => [shim, turn, ...(remote.bring ? ['--bring'] : []), ...(remote.asksByPrompt === false ? ['--no-prompt'] : [])];
 
 /**
  * Refuses a remote context the runtime didn’t fill in, before anything starts on the host: the turn ID it owns (an

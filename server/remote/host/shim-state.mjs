@@ -29,15 +29,17 @@ export const TIMINGS = timings({
  */
 
 /**
- * The shim’s state, for one turn.
- * @param {string} turn @param {ReturnType<typeof import('./paths.mjs').paths>} P
+ * The shim’s state, for one turn. asksByPrompt: whether its backend asks through permission_prompt (shim.mjs’s
+ * --no-prompt says it doesn’t).
+ * @param {string} turn @param {ReturnType<typeof import('./paths.mjs').paths>} P @param {{ asksByPrompt?: boolean }} [o]
  */
-export function shimState(turn, P) {
+export function shimState(turn, P, { asksByPrompt = true } = {}) {
   const prefix = `${process.pid.toString(36)}${Date.now().toString(36)}`;
   let counter = 0;
   return {
     turn,
     P,
+    asksByPrompt,
     /** @type {Map<string, Pending>} by the shim’s ID (an expiry or cancel notice by `notice:<id>`) */
     pending: new Map(),
     /** @type {Map<string, string>} The JSON-RPC request each pending ID answers, for a cancellation notification. */

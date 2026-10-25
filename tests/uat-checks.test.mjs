@@ -299,7 +299,7 @@ test('the scenarios parse into phases the tester works through', () => {
     .filter((n) => n.endsWith('.md'))
     .map((n) => n.slice(0, -3));
   const personas = JSON.parse(readFileSync(new URL('uat/e2e/personas.json', import.meta.url), 'utf8')).map((p) => p.handle);
-  for (const name of ['scifact', 'hotpotqa', 'codex', ...EXIT]) assert.ok(names.includes(name), name);
+  for (const name of ['scifact', 'hotpotqa', 'codex', 'diagnosis', ...EXIT]) assert.ok(names.includes(name), name);
   for (const name of names) {
     // uat-run.mjs --recheck reads a scenario’s name back from its run folder as word characters.
     assert.match(name, /^\w+$/, name);

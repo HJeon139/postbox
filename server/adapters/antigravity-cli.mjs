@@ -42,7 +42,6 @@
 // Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_AGY_RECORD=<folder> saves each turn’s raw stream.
 
 import { spawn } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -52,10 +51,10 @@ import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
+import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
-export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false });
+export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: false });
 
 /** The agy binary: POSTBOX_AGY_BIN, then the PATH. */
 export const findAgy = (env = process.env) => env.POSTBOX_AGY_BIN || 'agy';
@@ -698,8 +697,8 @@ export class AntigravityCliAdapter {
         `Postbox couldn’t read ${this.settingsFile}, so Antigravity will refuse Postbox’s tools. Add "${ALLOW_POSTBOX}" to permissions.allow there.`,
       );
     const prompt = formatMessage(message, ctx.pathOf);
-    // agy can’t turn tools off: agyRules says what the persona turned off instead.
-    const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null });
+    // agy can’t turn tools off (agyRules says what’s off), and its 12,000-character rules file has no room for #131’s sections.
+    const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null, setup: false });
     const rules = agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER) });
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
@@ -784,10 +783,10 @@ export class AntigravityCliAdapter {
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);
       });
-      const record = this.env.POSTBOX_AGY_RECORD ? join(this.env.POSTBOX_AGY_RECORD, `${Date.now()}-${persona.handle}.jsonl`) : null;
+      const record = recorderFor(ctx, this.env.POSTBOX_AGY_RECORD, 'antigravity-cli');
       createInterface({ input: child.stdout }).on('line', (line) => {
         if (!line.trim()) return;
-        if (record) appendFileSync(record, `${line}\n`);
+        record(line);
         let e;
         try {
           e = JSON.parse(line);

@@ -197,6 +197,9 @@ test('#120: a turn the person started in a side or topic thread (ctx.remote.brin
   assert.deepEqual(serverOf(start.argv).args, [SHIM, start.turn, '--bring']);
   // Kiro CLI and Codex build theirs with the same helper.
   assert.deepEqual(shimArgs(/** @type {any} */ ({ bring: false }), SHIM, 't1'), [SHIM, 't1']);
+  // A backend that doesn’t ask through permission_prompt gets a shim that doesn’t list it (#120, as main’s 97b5fb5).
+  assert.deepEqual(shimArgs(/** @type {any} */ ({ bring: true, asksByPrompt: false }), SHIM, 't1'), [SHIM, 't1', '--bring', '--no-prompt']);
+  assert.deepEqual(shimArgs(/** @type {any} */ ({ asksByPrompt: true }), SHIM, 't1'), [SHIM, 't1']);
 });
 
 test('Claude Code says how it runs on a remote host; the Agent SDK and the mock can’t', () => {

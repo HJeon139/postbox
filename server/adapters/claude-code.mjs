@@ -28,7 +28,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -38,7 +38,7 @@ import { createStreamMapper, forkPointMissing, resultError, windowFor } from './
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
-import { effortOf } from './setup.mjs';
+import { effortOf, recorderFor } from './setup.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
 export { CLAUDE_CODE_CAPABILITIES, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from './claude-code-remote.mjs';
@@ -78,15 +78,15 @@ export function forkPoint(state) {
 }
 
 /**
- * Reads the CLI’s stream-json from `child` into `mapper`, saving each line under POSTBOX_CLAUDE_RECORD when it’s set, and
- * the session ID when the init event names a new one.
+ * Reads the CLI’s stream-json from `child` into `mapper`, handing each line to recorderFor (POSTBOX_CLAUDE_RECORD, a
+ * recorded room’s telemetry), and saving the session ID when the init event names a new one.
  * @param {any} ctx @param {any} child @param {ReturnType<typeof createStreamMapper>} mapper
  */
 function readStream(ctx, child, mapper) {
-  const record = process.env.POSTBOX_CLAUDE_RECORD ? join(process.env.POSTBOX_CLAUDE_RECORD, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
+  const record = recorderFor(ctx, process.env.POSTBOX_CLAUDE_RECORD, 'claude-code');
   createInterface({ input: child.stdout }).on('line', (line) => {
     if (!line.trim()) return;
-    if (record) appendFileSync(record, `${line}\n`);
+    record(line);
     let e;
     try {
       e = JSON.parse(line);
@@ -134,7 +134,7 @@ export class ClaudeCodeAdapter {
     const cwd = remote ? remote.folder : await this.folderFor(persona, ctx.project);
     // On a host, each attachment is its copy in the folder of the host turn the message goes to.
     const promptOn = (/** @type {string | null} */ turn) => formatMessage(message, attachmentPaths(ctx, turn));
-    const local = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
+    const local = agentGuide({ persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
     const guide = remote ? remoteGuide(local, cwd, ctx.addDirs ?? []) : local;
     // The project’s folder, and the folders the person added for this conversation (#66). On a host, none: they’re
     // paths on this computer, and the project’s folder there is cwd.

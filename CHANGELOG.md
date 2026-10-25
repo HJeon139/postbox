@@ -2,6 +2,122 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.30.1 (2026-10-24)
+
+### Fixes
+
+- **agents:** shorter setup guidance, safe in bypass mode, and none in agy's full rules file
+- **agents:** ground setup diagnosis in evidence
+- **uat:** count filed findings in recurrence
+
+## 0.30.0 (2026-10-24)
+
+### Features
+
+- **reactions:** switch to the person's final icon set
+
+## 0.29.0 (2026-10-24)
+
+### Features
+
+- **threads:** Summarize back from a side thread, as from a topic thread
+- **composer:** ask “Did you mean @critic?” when a draft names an agent without its @
+
+### Fixes
+
+- **composer:** shorter thread hints, so a thread's composer sits as high as the conversation's
+- **threads:** a summary's review_block wakes no one either
+- **threads:** keep a queued summary pending while its turn starts
+- **threads:** say on the sender line when a scheduled wake started the turn
+- **threads:** give each wake an agent sends from another turn its own sender line
+- **telemetry:** count agents' wake chains from each wake's message, now that wakes have no line
+- **threads:** one line per side thread in the conversation, not one per wake
+- **composer:** say whom a message that mentions an agent wakes, not who it replies to
+- **thread:** give a later turn of the same agent its own sender line, with what woke it
+
+## 0.28.1 (2026-10-24)
+
+### Fixes
+
+- **permissions:** expire a permission card a minute before Claude Code gives up on the call
+- **permissions:** offer permission_prompt only to the CLI, and expire a card at 25 hours
+- **permissions:** a tool card answers itself when the tool is turned on elsewhere
+
+## 0.28.0 (2026-10-24)
+
+### Features
+
+- **overview:** give a card that needs you a look of its own
+
+### Fixes
+
+- **look:** light mode keeps its fills, and focus-clear places its message under the composer
+- **contrast:** check the app's stylesheet when none is named
+- **a11y:** keep what has focus clear of the sticky composer
+- **ui:** mark every text button as a control, with a border or an underline
+- **composer:** line up the thread panel's composer with the conversation's
+- **ui:** give boxes that wrap a card's corners, not pill ends
+- **ui:** show selected segments, chosen chips and on toggles as amber outlines
+
+## 0.27.1 (2026-10-24)
+
+### Fixes
+
+- **threads:** space a shared reply's question as a message is
+- **threads:** draw a shared reply's question apart from its answer
+- **threads:** keep the question with shared replies
+
+## 0.27.0 (2026-10-24)
+
+### Features
+
+- **reactions:** let agents react to any message, their own included
+
+### Fixes
+
+- **reactions:** flag-misplaced counts only the runner's own 🚩, and two window comments
+- **reactions:** say "you" in words on a shared chip, and the review's telemetry and UAT fixes
+
+## 0.26.0 (2026-10-24)
+
+### Features
+
+- **reactions:** draw each reaction with its icon
+
+### Fixes
+
+- **reactions:** the UAT's telemetry driver finds a reaction by its icon, and every icon is checked
+
+## 0.25.1 (2026-10-24)
+
+### Fixes
+
+- **stop:** four review fixes: a stopped kept job, Send now's sender, shared groups, a stray kill
+- **stop:** a stopped reply's tag grows to two lines where its words wrap, not out of its pill
+- **stop:** stopping one of two kept jobs that share processes ends the other as stopped
+- **stop:** say why a reply stopped, and tell the agent its kept jobs weren't stopped
+
+## 0.25.0 (2026-10-24)
+
+### Features
+
+- **telemetry:** record every UAT run, and put Telemetry in Work's place
+- **telemetry:** keep recordings per conversation, bound the classifier, and prove the gate
+- **telemetry:** open the report in a Telemetry view beside the room
+- **telemetry:** record a room, and gate its report, unlisted
+
+### Fixes
+
+- **telemetry:** a clone on its own data/ can't record, per the person's ruling on #239
+- **telemetry:** the fourth review's findings on #239
+- **telemetry:** the third review's findings on #239
+- **telemetry:** the second review's findings on #239
+- **telemetry:** the review's page findings on #239, and a browser check
+- **telemetry:** the review's server findings on #239
+- **telemetry:** react 🚩 once per item at the end of a UAT run
+- **telemetry:** fixes from the first UAT runs
+- **telemetry:** read only Postbox's own tool results in recording-visible
+
 ## 0.24.0 (2026-10-24)
 
 ### Features

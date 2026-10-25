@@ -11,12 +11,10 @@ test('Codex reports the capabilities its app-server implements', () => {
     permissions: 'none',
     tools: 'none',
     isolation: false,
+    promptTool: false,
     remote: { stdin: 'held', env: [], server: 'codex-config', work: 'model-checks', signInError: null },
   });
-  assert.deepEqual(codexPermissions({ permissionMode: 'ask' }, '/work'), {
-    sandboxPolicy: { type: 'readOnly' },
-    approvalPolicy: 'on-request',
-  });
+  assert.deepEqual(codexPermissions({ permissionMode: 'ask' }, '/work'), { sandboxPolicy: { type: 'readOnly' }, approvalPolicy: 'on-request' });
   assert.deepEqual(codexPermissions({ permissionMode: 'acceptEdits' }, '/work'), {
     sandboxPolicy: { type: 'workspaceWrite', writableRoots: ['/work'], networkAccess: false },
     approvalPolicy: 'on-request',

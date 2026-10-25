@@ -151,7 +151,7 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
     pb.send('reply', { turn: 't1', id: tool.id, ok: true, text: 'Shown block pick.' });
 
     // Reading tools are answered on the host, from the snapshot sent before start.
-    assert.deepEqual(await shim.response(shim.tool('read_conversation', {})), { text: 'You: fix the build', isError: false });
+    assert.deepEqual(await shim.response(shim.tool('read_conversation', {})), { text: '[i1] You: fix the build', isError: false });
     const missing = await shim.response(shim.tool('read_message', { id: 'nope' }));
     assert.equal(missing.isError, true);
 

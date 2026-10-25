@@ -26,7 +26,8 @@ export function readConversation(snap, args = {}) {
   const n = Math.max(1, Math.min(200, Number(limit) || 50));
   const end = Math.max(0, items.length - Math.max(0, Number(skip) || 0));
   const slice = items.slice(Math.max(0, end - n), end);
-  const lines = slice.map((i) => i.line).filter(Boolean);
+  // Each line starts with its item’s id, which read_message and react take, as the laptop’s does.
+  const lines = slice.flatMap((i) => (i.line ? [`[${i.id}] ${i.line}`] : []));
   const before = end - slice.length;
   return {
     ok: true,

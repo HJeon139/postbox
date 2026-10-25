@@ -79,7 +79,7 @@ test('@-mentioning an agent that isn’t in the thread brings it in and turns th
   rt.sendMessage(t.id, { text: '@beta take a look' });
   await settle(rt);
   assert.equal(store.state.threads[t.id].kind, 'room');
-  assert.ok(store.items(t.id).some((i) => i.kind === 'system' && i.variant === 'wake' && i.to === 'beta'));
+  assert.ok(!store.items(t.id).some((i) => i.kind === 'system'), 'your mention is the record of the wake, with no line of its own (#114)');
 });
 
 test('a message sent mid-reply is queued, then delivered when the agent finishes', async () => {
@@ -654,7 +654,7 @@ async function conversation() {
   return ctx;
 }
 
-test('sending a reply to the conversation reaches its agent on its next turn, without waking it', async () => {
+test('#111: sharing a topic reply keeps the question it answers', async () => {
   const { rt, store, t, adapter } = await conversation();
   const first = store.items(t.id).find((i) => i.kind === 'agent');
   const { threadId } = rt.startTopic(t.id, first.id);
@@ -665,8 +665,8 @@ test('sending a reply to the conversation reaches its agent on its next turn, wi
   const calls = adapter.calls.length;
   rt.shareToConversation(threadId, reply.id);
   const shared = store.items(t.id).at(-1);
-  assert.equal(shared.kind, 'shared');
-  assert.equal(shared.text, 'Use chapter offsets.');
+  assert.deepEqual({ question: shared.question, text: shared.text }, { question: 'Offsets or pages?', text: 'Use chapter offsets.' });
+  assert.match(rt.describeItem(shared), /You asked: “Offsets or pages\?” Use chapter offsets\./);
   assert.equal(adapter.calls.length, calls, 'sharing costs no turn');
   assert.throws(() => rt.shareToConversation(threadId, reply.id), /already in the conversation/);
   rt.sendMessage(t.id, { text: 'Carry on' });
@@ -1831,8 +1831,8 @@ test('#109 read_conversation cuts the same way, the agent’s own messages too, 
   const { rt, t, a, reply, se } = await longReplyReviewed();
   const total = LONG_REPLY.length.toLocaleString('en-US');
   const theirs = rt.toolsFor(se.id).read_conversation({}).message;
-  assert.match(theirs, /^You: Write up the findings\n\n@alpha: Finding 1/);
-  assert.ok(theirs.includes(`… (2,000 of ${total} characters; read_message { id: "${reply.id}" } has the rest)\n\nYou: @beta review what alpha wrote`));
+  assert.match(theirs, new RegExp(`^\\[it_\\w+\\] You: Write up the findings\\n\\n\\[${reply.id}\\] @alpha: Finding 1`));
+  assert.match(theirs, new RegExp(`2,000 of ${total} characters; read_message \\{ id: "${reply.id}" \\} has the rest\\)\\n\\n\\[it_\\w+\\] You: @beta review`));
   const alpha = rt.sessionsIn(t.id).find((x) => x.personaId === a.id);
   assert.ok(
     rt
@@ -1840,7 +1840,7 @@ test('#109 read_conversation cuts the same way, the agent’s own messages too, 
       .read_conversation({})
       .message.includes(`You (@alpha): ${LONG_REPLY.slice(0, 2000)}… (2,000 of ${total}`),
   );
-  // A short item is whole, with no id.
+  // A short item is whole: its id is in front, and nothing says it was cut.
   assert.doesNotMatch(theirs, /review what alpha wrote… \(/);
 });
 
@@ -1876,7 +1876,7 @@ test('#109 read_message is in the MCP tool list and answers over MCP', async () 
   assert.deepEqual(def?.inputSchema.required, ['id']);
   assert.match(def.description, /2,000 characters/);
   assert.match(def.description, /a block’s whole content with its comments and the person’s answer/);
-  assert.match(tools.find((x) => x.name === 'read_conversation').description, /cut at 2,000 characters, and a cut gives the id read_message takes/);
+  assert.match(tools.find((x) => x.name === 'read_conversation').description, /its id, .*read_message and react take, and is cut at 2,000/);
   // A tool call comes from the agent's running turn, with its token (#54).
   rt.turns.set(se.id, { id: 'tu_read', token: 'tok', sessionId: se.id, threadId: se.threadId, segment: null });
   const r = await handleMcp(rt, se.id, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'read_message', arguments: { id: reply.id } } }, 'tok');
@@ -2030,7 +2030,7 @@ test('#153 an app is still its title alone', async () => {
   rt.sendMessage(t.id, { text: '@beta look' });
   await settle(rt);
   const ctx = adapter.calls.at(-1).message.context.join('\n');
-  assert.match(ctx, /@alpha showed an app “Explorer”\n/);
+  assert.match(ctx, /@alpha showed an app “Explorer”(\n|$)/);
   assert.doesNotMatch(ctx, /Secret code/);
   assert.ok(store.items(t.id).some((i) => i.kind === 'block'));
 });

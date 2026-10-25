@@ -8,7 +8,8 @@
 import { h, icon } from './dom.mjs';
 import { mountDivider } from './pane-split.mjs';
 import { mountWidth } from './pane-width.mjs';
-import { mountSidePanel } from './thread.mjs';
+import { mountSidePanel } from './side-panel.mjs';
+import { mountTelemetryView } from './telemetry.mjs';
 import { navigate, paneHref, rememberWork, route, setPaneFull } from './ui.mjs';
 import { mountWorkPane } from './work.mjs';
 
@@ -46,12 +47,13 @@ export function mountPane(convId) {
   // it, and Escape or the icon (now “Exit full screen”) brings it back to the pane, with focus on what opened it, or,
   // where the window has no room for the pane, back to the conversation.
 
-  /** @type {'work' | 'thread' | null} */
+  /** @type {'work' | 'telemetry' | 'thread' | null} */
   let fullKind = null;
   /** What had focus when full screen began, found again by id if the pane repainted it. */
   let opener = null;
-  const viewOf = (kind) => (kind === 'work' ? work : kind === 'thread' ? thread?.view : null);
-  const titleOf = (kind) => (kind === 'work' ? 'wp-title' : 'sp-title');
+  // Work’s slot holds Work or Telemetry, whichever the address says (R18); work.kind says which.
+  const viewOf = (kind) => (kind === 'thread' ? thread?.view : kind && kind === work?.kind ? work : null);
+  const titleOf = (kind) => ({ work: 'wp-title', telemetry: 'tv-title' })[kind] ?? 'sp-title';
 
   const onKey = (e) => {
     const v = viewOf(fullKind);
@@ -76,7 +78,7 @@ export function mountPane(convId) {
     }
   };
 
-  /** @param {'work' | 'thread'} kind */
+  /** @param {'work' | 'telemetry' | 'thread'} kind */
   function enterFull(kind, r) {
     const v = viewOf(kind);
     if (!v) return;
@@ -85,9 +87,9 @@ export function mountPane(convId) {
     // Before Work swaps its body, which takes the item you chose with it.
     const from = document.activeElement;
     if (was !== kind) opener = from && from !== document.body ? { el: from, id: from.id } : null;
-    const to = kind === 'work' ? work.setFull({ turn: r.turn, at: r.at }) : v.fullBtn;
+    const to = kind !== 'thread' ? work.setFull({ turn: r.turn, at: r.at }) : v.fullBtn;
     if (was === kind) {
-      if (kind === 'work') to.focus();
+      if (kind !== 'thread') to.focus();
       return;
     }
     fullKind = kind;
@@ -108,7 +110,7 @@ export function mountPane(convId) {
     v.el.classList.remove('pane-full');
     for (const a of ['role', 'aria-modal']) v.el.removeAttribute(a);
     v.fullBtn.setAttribute('aria-label', 'Full screen');
-    if (kind === 'work') work.setFull(null);
+    if (kind !== 'thread') work?.setFull(null);
     // Focus goes back to what opened it: the icon, or the item you chose in the pane.
     const back = opener?.el.isConnected ? opener.el : opener?.id ? document.getElementById(opener.id) : null;
     opener = null;
@@ -121,16 +123,16 @@ export function mountPane(convId) {
 
   function set(r, { again = false } = {}) {
     const had = el.contains(document.activeElement);
-    const closing = { work: !!work && !r.work, thread: thread && thread.id !== (r.sideId ?? null) ? thread.id : null };
+    const closing = { work: !!work && work.kind !== r.slot, thread: thread && thread.id !== (r.sideId ?? null) ? thread.id : null };
     const sideId = r.sideId ?? null;
     if (sideId && sideId !== thread?.id) latest = 'thread';
-    else if (r.work && !work) latest = 'work';
+    else if (r.slot && r.slot !== work?.kind) latest = 'work';
     // What’s full screen: what the address says, else, where the pane has no room, the view opened last (#197).
-    const cover = sideId && (!r.work || latest === 'thread') ? 'thread' : r.work ? 'work' : null;
+    const cover = sideId && (!r.slot || latest === 'thread') ? 'thread' : r.slot;
     const full = r.full ?? (width.cramped() ? cover : null);
     // A view leaving full screen goes back first, so it’s in the pane when it closes or another view goes full.
     // Focus goes back to its icon only if it stays open.
-    const stays = fullKind === 'thread' ? thread?.id === sideId : !!r.work;
+    const stays = fullKind === 'thread' ? thread?.id === sideId : fullKind === r.slot;
     if (fullKind && (fullKind !== full || !stays)) leaveFull({ focus: stays && !full });
     // The thread.
     if ((thread?.id ?? null) !== sideId) {
@@ -153,15 +155,13 @@ export function mountPane(convId) {
       } else if (next) el.append(next.el);
       thread = next ? { id: sideId, view: next } : null;
     }
-    // Work.
-    if (r.work && !work) {
-      work = mountWorkPane(convId);
-      work.fullBtn.onclick = fullToggle('work');
-      width.handle.after(work.el);
-    } else if (!r.work && work) {
-      work.destroy();
-      work.el.remove();
-      work = null;
+    // Work, or Telemetry in its place.
+    if ((r.slot ?? null) !== (work?.kind ?? null)) {
+      work?.destroy();
+      work?.el.remove();
+      work = r.slot ? Object.assign(r.slot === 'telemetry' ? mountTelemetryView(convId) : mountWorkPane(convId), { kind: r.slot }) : null;
+      if (work) work.fullBtn.onclick = fullToggle(r.slot);
+      if (work) width.handle.after(work.el);
       lastTurn = null;
     }
     const both = !!(work && thread);
@@ -185,7 +185,7 @@ export function mountPane(convId) {
     // Full screen: Work on a turn or at an item, or the thread.
     if (full && viewOf(full)) enterFull(full, r);
     // From a turn’s line: the pane scrolls to that turn, and focus goes to it.
-    if (work && full !== 'work') {
+    if (work?.kind === 'work' && full !== 'work') {
       if (r.turn && (r.turn !== lastTurn || again)) work.showTurn(r.turn, { focus: true });
       else if (again && !r.turn) work.focus();
       lastTurn = r.turn;

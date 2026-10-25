@@ -3,8 +3,10 @@
 // which the daemon sends again after every hello until Postbox has answered it: its answer is kept on its card, so a
 // repeat gets the same answer. A prompt nobody can answer any more marks its card expired, canceled or ended.
 
+import { NOT_YOUR_PROMPT } from '../../shared/mcp-tools.mjs';
 import { message as protocolMessage, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
 import { describePermission } from '../adapters/claude-stream.mjs';
+import { asksByPrompt } from '../permission-prompt.mjs';
 import { linkOf } from './turns-need.mjs';
 import { ENDED_TEXT, key, ON_HOST, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
 
@@ -30,6 +32,10 @@ export function onPrompt(rts, hostId, m) {
     if (!card) send(link, 'answer', { turn: m.turn, prompt: m.id, result: { behavior: 'deny', message: 'The turn has ended.' } });
     return;
   }
+  // As on the laptop (server/mcp.mjs), a backend that asks another way gets no card. Its shim, started with
+  // --no-prompt, refuses the call itself; this is for one that wasn’t.
+  if (!card && !asksByPrompt(rts.rt, live.sessionId))
+    return void send(link, 'answer', { turn: m.turn, prompt: m.id, result: { behavior: 'deny', message: NOT_YOUR_PROMPT.content[0].text } });
   // Shown already: after a restart nothing waits on it here yet, so its answer is waited for again.
   if (card) {
     if (!rts.rt.permissionWaits.has(card.it.id)) waitOn(rts, live, card, m);

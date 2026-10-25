@@ -1,10 +1,12 @@
 // Postbox’s tools for a remote turn (#120, server/remote/turns.mjs, the header): the daemon’s `tool` is applied as the
-// laptop’s MCP server applies a call (server/mcp.mjs), through the same tools, from toolsFor, and answered with
-// `reply`. Each call is an identity, (turn, id), which the daemon sends again after every hello until Postbox has
-// answered it: a queued tool’s reply is kept on the session, so a repeat gets the same answer and is never applied twice.
+// laptop’s MCP server applies a call (server/mcp.mjs), through the same tools, from toolsFor and reactTool, and
+// answered with `reply`. Each call is an identity, (turn, id), which the daemon sends again after every hello until
+// Postbox has answered it: a queued tool’s reply is kept on the session, so a repeat gets the same answer and is never
+// applied twice.
 
 import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { reactTool } from '../reactions.mjs';
 import { linkOf } from './turns-need.mjs';
 import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn, TOOL_QUEUED, updateRemote } from './turns-shared.mjs';
 
@@ -51,7 +53,8 @@ export async function onTool(rts, hostId, m) {
 
 /** @param {RemoteTurns} rts @param {Live} live @param {{ name: string, args: Record<string, any> }} m @returns {Promise<{ ok: boolean, text: string }>} */
 async function applyTool(rts, live, m) {
-  const tools = rts.rt.toolsFor(live.sessionId, live.rt);
+  // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools, as server/mcp.mjs adds it.
+  const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), react: (/** @type {any} */ a) => reactTool(rts.rt, rts.rt.session(live.sessionId), a) };
   if (m.name === 'add_dataset')
     return {
       ok: false,

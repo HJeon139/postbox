@@ -1,7 +1,7 @@
 // OpenAI Codex app-server backend. Each Postbox session owns a persistent app-server thread; the local
 // `codex` installation supplies sign-in, configuration, sandboxing and the model catalog.
 import { spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { draftOf } from '../write-guard.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
@@ -10,14 +10,22 @@ import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickU
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { AUTO_MODEL, effortOf, POSTBOX_SERVER } from './setup.mjs';
+import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
 export { codexRemoteConfigArgs, createCodexRebuild, INTERRUPT_REACH_MS, interruptedError } from './codex-remote.mjs';
 
 // Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false). On a
 // remote host (#120), it runs as CODEX_REMOTE says (server/adapters/codex-remote.mjs).
-export const CODEX_CAPABILITIES = Object.freeze({ resume: true, fork: true, permissions: 'none', tools: 'none', isolation: false, remote: CODEX_REMOTE });
+export const CODEX_CAPABILITIES = Object.freeze({
+  resume: true,
+  fork: true,
+  permissions: 'none',
+  tools: 'none',
+  isolation: false,
+  promptTool: false,
+  remote: CODEX_REMOTE,
+});
 
 export function codexPermissions(persona, cwd) {
   const mode = persona?.permissionMode ?? 'auto';
@@ -225,7 +233,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   ctx.state.codexThreadId = id;
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
   // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
-  const guide = agentGuide({ persona: ctx.persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null });
+  const guide = agentGuide({ ...ctx, session, brief: session?.brief, toolRules: null });
   const inputText = formatMessage(message, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
     threadId: id,
@@ -278,12 +286,8 @@ export class CodexAdapter {
       child.once('close', r);
       child.once('error', r);
     });
-    /** @type {string|null} */
-    let recordFile = null;
-    if (process.env.POSTBOX_CODEX_RECORD) {
-      mkdirSync(process.env.POSTBOX_CODEX_RECORD, { recursive: true });
-      recordFile = `${process.env.POSTBOX_CODEX_RECORD}/${Date.now()}-${ctx.persona.handle}.jsonl`;
-    }
+    if (process.env.POSTBOX_CODEX_RECORD) mkdirSync(process.env.POSTBOX_CODEX_RECORD, { recursive: true });
+    const record = recorderFor(ctx, process.env.POSTBOX_CODEX_RECORD, 'codex');
     let stderr = '';
     child.stderr.on('data', (chunk) => {
       stderr = (stderr + chunk).slice(-4000);
@@ -327,7 +331,7 @@ export class CodexAdapter {
       } catch {
         return;
       }
-      if (recordFile) appendFileSync(recordFile, `${line}\n`);
+      record(line);
       if (host?.rebuilding) host.rebuild?.out(msg);
       if (msg.id != null && pending.has(msg.id)) {
         const item = pending.get(msg.id);

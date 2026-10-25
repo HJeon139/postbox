@@ -98,7 +98,7 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
     await until(() => got.find((m) => m.type === 'welcome'), 'the welcome');
     assert.equal(got[0].permissionWaitMax, 60_000, 'the setting from Postbox’s hello');
     shimSend('call', { id: 'c1', name: 'read_conversation', args: {} });
-    assert.equal((await until(() => got.find((m) => m.id === 'c1'), 'c1’s result')).text, 'You: hi', 'the snapshot sent before start');
+    assert.equal((await until(() => got.find((m) => m.id === 'c1'), 'c1’s result')).text, '[i1] You: hi', 'the snapshot sent before start');
     shimSend('call', { id: 'c2', name: 'show_block', args: { block: BLOCK } });
     assert.equal((await msgs.next('tool')).id, 'c2');
     send('stop', { turn: 't1' });

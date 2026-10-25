@@ -1,8 +1,9 @@
 // Postbox’s tools on a remote host (#120): a stdio MCP server, which the harness runs as `node shim.mjs <turn>`, plus
-// `--bring` for a turn the person started in a side or topic thread. It serves exactly the laptop’s tools
-// (shared/mcp-tools.mjs’s TOOL_DEFS; bring_to_conversation only with --bring, as server/mcp.mjs lists it only for such
-// a turn), reads JSON-RPC from stdin and writes it to stdout, one message per line (MCP 2025-06-18, “Transports”,
-// stdio), and logs only to stderr. Each tool call crosses to the daemon over its Unix socket in the shim-to-daemon
+// `--bring` for a turn the person started in a side or topic thread, and `--no-prompt` for a backend that doesn’t ask
+// through permission_prompt. It serves exactly the laptop’s tools (shared/mcp-tools.mjs’s TOOL_DEFS, as server/mcp.mjs
+// offers them: bring_to_conversation only with --bring, and permission_prompt only without --no-prompt, whose call
+// then gets NOT_YOUR_PROMPT at once), reads JSON-RPC from stdin and writes it to stdout, one message per line (MCP
+// 2025-06-18, “Transports”, stdio), and logs only to stderr. Each tool call crosses to the daemon over its Unix socket in the shim-to-daemon
 // messages of shared/remote-protocol.mjs; the design is architecture.md, “Remote hosts”, “Postbox’s tools on the host”
 // and “Permission prompts while nobody is connected”.
 //
@@ -44,8 +45,14 @@ import { settle, shimState } from './shim-state.mjs';
 const CANCEL = 'notifications/cancelled'; // lint-allow spelling: the MCP protocol’s method name.
 
 const turn = process.argv[2] ?? '';
-/** tools/list’s tools: bring_to_conversation only for a turn Postbox says may post to the conversation (offersBring). */
-const LISTED = process.argv[3] === '--bring' ? TOOL_DEFS : TOOL_DEFS.filter((t) => t.name !== 'bring_to_conversation');
+const flags = process.argv.slice(3);
+/** Whether the turn’s backend asks through permission_prompt (server/permission-prompt.mjs’s asksByPrompt). */
+const asksByPrompt = !flags.includes('--no-prompt');
+/**
+ * tools/list’s tools: bring_to_conversation only for a turn Postbox says may post to the conversation (offersBring),
+ * and permission_prompt only for a backend that asks through it.
+ */
+const LISTED = TOOL_DEFS.filter((t) => (t.name !== 'bring_to_conversation' || flags.includes('--bring')) && (t.name !== 'permission_prompt' || asksByPrompt));
 const P = paths();
 try {
   P.turn(turn);
@@ -53,7 +60,7 @@ try {
   log(`${e.message} Run it as node shim.mjs <turn>.`);
   process.exit(2);
 }
-const sh = shimState(turn, P);
+const sh = shimState(turn, P, { asksByPrompt });
 
 // ── JSON-RPC from the harness (stdin) ───────────────────────────────────────────────
 

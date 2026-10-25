@@ -7,7 +7,9 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseMentions } from '../../shared/text.mjs';
+import { TELEMETRY_ACTION } from './telemetry-action.mjs';
+
+export { unaddressed } from '../../shared/text.mjs';
 
 /**
  * How the person’s Claude Code signs in, taken from their user settings, so the tester keeps it while it leaves the
@@ -63,22 +65,6 @@ const signIn = () => {
   return signInFile ? ['--settings', signInFile] : [];
 };
 
-/**
- * The agent a message addresses by name without its @, as in “critic: what’s your concern?”: Postbox sends a message
- * that @-mentions no one to the agent that spoke last, so this one may not reach the critic. Only a name that opens
- * the message, followed by “:” or “,”, counts: “what did the researcher find?” is meant for whoever spoke last.
- * Nothing when the message @-mentions anyone (read as Postbox reads mentions, shared/text.mjs), or when the agent
- * it names spoke last, since the message reached it anyway.
- * @param {string} text  @param {string[]} handles  @param {{ lastSpeaker?: string|null }} [opts]  the last speaker’s handle
- * @returns {string[]}
- */
-export function unaddressed(text, handles, { lastSpeaker = null } = {}) {
-  if (parseMentions(text, handles).length) return [];
-  const name = /^\s*([A-Za-z0-9_-]+)\s*[:,]/.exec(String(text ?? ''))?.[1]?.toLowerCase();
-  const h = handles.find((x) => x.toLowerCase() === name);
-  return h && h !== lastSpeaker ? [h] : [];
-}
-
 export const SCHEMA = {
   type: 'object',
   properties: {
@@ -124,9 +110,11 @@ export const SCHEMA = {
             'restore',
             'fault',
             'next_phase',
+            'telemetry',
             'done',
           ],
         },
+        telemetry: TELEMETRY_ACTION,
         text: { type: 'string', description: 'send, send_then_stop, thread, thread_reply, attach_screenshot: the message to write.' },
         item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
@@ -216,6 +204,7 @@ Then choose one action:
 - jobs {answer}: answer Postbox’s question about an agent’s background jobs, when it’s on screen: stop (“Stop it too”) or keep (“Keep running”).
 - wait {seconds}: when an agent is still working.
 - stop: press Stop on a reply that is currently working, if one is visible.
+- telemetry {telemetry: {do, …}, item?}: record (Record this room in the ⋯ menu; you get the header), stop, react {emoji} to item, report {history} (Telemetry report… then Make report; you get every line of the report and its hash), leave_out {line}, save, file {finding} (File issue: you get the text it showed and what Postbox did with it).
 - next_phase: when this phase’s goal is met, or blocked after two honest tries.
 - done: after the last phase.
 

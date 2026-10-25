@@ -77,6 +77,8 @@ test('every Postbox tool has a route on the host, and nothing else does', () => 
   assert.equal(TOOL_ROUTES.permission_prompt, 'host');
   assert.equal(TOOL_ROUTES.corpus_search, 'ask');
   assert.equal(TOOL_ROUTES.review_block, 'ask');
+  // A second react takes it back, so only Postbox’s answer says which it was.
+  assert.equal(TOOL_ROUTES.react, 'ask');
 });
 
 test('a file Postbox sends may not take the name of any of the turn folder’s own files', () => {

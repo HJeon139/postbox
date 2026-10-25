@@ -1,5 +1,5 @@
 // The permission_prompt tool (mcp.mjs): what Claude Code calls (--permission-prompt-tool) before a risky tool call in
-// “ask” mode. It waits for your answer on a card in the conversation.
+// “ask” mode. It waits for your answer on a card in the conversation. Only that backend asks through it.
 
 import { describePermission } from './adapters/claude-stream.mjs';
 
@@ -24,3 +24,20 @@ export async function permission(rt, sessionId, args) {
     : { behavior: 'deny', message: answer.message ?? 'The person didn’t allow this.' };
   return { content: [{ type: 'text', text: JSON.stringify(decision) }] };
 }
+
+/**
+ * Whether the session’s agent asks through permission_prompt, by the backend its running turn started on (else its
+ * persona’s): the Claude Code CLI does (--permission-prompt-tool). A backend that declares capabilities.promptTool
+ * false asks another way (the SDK’s canUseTool) or can’t ask at all (Kiro), so a call from one is the agent’s own, and
+ * would hold a card and the call open for up to POSTBOX_TIMEOUT_MS (#220).
+ * @param {any} rt @param {string} sessionId
+ */
+export function asksByPrompt(rt, sessionId) {
+  const se = rt.s.sessions[sessionId];
+  const backend = rt.turns.get(sessionId)?.backend ?? (se ? rt.personaFor(se)?.backend : null);
+  const adapter = backend && rt.adapters.names().includes(backend) ? rt.adapters.get(backend) : null;
+  return Boolean(adapter) && adapter.capabilities?.promptTool !== false;
+}
+
+// What a call from an agent that doesn’t ask through permission_prompt gets, at once: one text with the host’s shim.
+export { NOT_YOUR_PROMPT } from '../shared/mcp-tools.mjs';

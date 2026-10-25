@@ -2,10 +2,11 @@
 // Shared by the Claude Code and Agent SDK adapters, so both backends behave the same way.
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
+import { factsText, runsWith } from '../../shared/agent-facts.mjs';
 import { LIMITS, limitText, PALETTES } from '../../shared/limits.mjs';
 import { commentAt } from '../../shared/review-comments.mjs';
 import { formatLint } from '../checks.mjs';
-import { TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /**
  * The system prompt Postbox appends for an agent: who it is, who else is here, and how to use the room.
@@ -13,9 +14,11 @@ import { TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
  * the Kiro CLI’s own), or null for a backend that can’t turn a tool off for one agent.
  * room: the other agents in this conversation, with their roles (Runtime.roomOf); handles: every agent in Postbox.
  * @param {{ persona: any, handles: string[], room?: { handle: string, role: string }[], project?: any, brief?: string|null,
- *           toolRules?: Record<string, string[]>|null }} who
+ *           session?: { backend?: string, personaSnapshot?: { model?: string, effort?: string }, lastModel?: string, lastEffort?: string }|null,
+ *           toolRules?: Record<string, string[]>|null, setup?: boolean }} who  setup: false leaves out what Postbox knows
+ *           of the session and how to check a setup (#131), for a backend whose rules file has no room for them (agy)
  */
-export function agentGuide({ persona, handles, room = [], project, brief, toolRules = TOOL_RULES }) {
+export function agentGuide({ persona, handles, room = [], project, brief, session, toolRules = TOOL_RULES, setup = true }) {
   const here = new Set(room.map((r) => r.handle));
   const others = handles.filter((h) => h !== persona.handle && !here.has(h));
   return [
@@ -28,6 +31,8 @@ export function agentGuide({ persona, handles, room = [], project, brief, toolRu
       : '',
     project?.name ? `This conversation belongs to the project “${project.name}”.` : '',
     brief ? `How you joined: ${brief}` : '',
+    setup ? sessionText(session, persona) : '',
+    setup ? SETUP_CHECK : '',
     offText(toolsOff(persona, toolRules)),
     guideText(),
   ]
@@ -63,6 +68,22 @@ export function offText(off) {
 
 The person turned these off for you in Postbox, so their tools aren’t in your list: ${list}. This computer has them; Postbox doesn’t give them to you. If a request needs one, don’t say the computer or the person lacks it: call ask_for_tool { tool: "${off[0]}", why: what you’d use it for }, then end your turn. The person sees a card that turns it on for you, and their answer reaches you as a message.`;
 }
+
+/** What Postbox knows about this session’s backend, model and effort (#131): this session’s, not another command’s. */
+function sessionText(session, persona) {
+  const facts = runsWith(session, persona, { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT });
+  const text = facts.mock
+    ? `Postbox runs you with ${factsText(facts)}.`
+    : facts.answered
+      ? `Your last turn ran on ${factsText(facts)}.`
+      : `Postbox has you set to ${factsText(facts)}, and hasn’t recorded an answered turn yet.`;
+  return `## Your session\n\n${text} That’s this session; a command you run may use other settings.`;
+}
+
+/** How to check a setup before blaming it (#131): the agent’s own calls work, and a cause is a guess until it’s tested. */
+const SETUP_CHECK = `## Before blaming the setup
+
+Your own model calls work, so don’t ask the person to change their setup or credentials on a hunch. Compare the failing command with a working one that changes one thing; rerun it yourself only if it just reads or checks something, and otherwise ask first. If you can’t confirm the cause, say it’s a guess and what you compared.`;
 
 /**
  * How to use Postbox, the same for every agent. Every limit in it comes from shared/limits.mjs (#50).

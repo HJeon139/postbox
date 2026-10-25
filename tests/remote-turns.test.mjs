@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STOPPED_TEXT } from '../server/remote/turns.mjs';
+import { NOT_YOUR_PROMPT } from '../shared/mcp-tools.mjs';
 import { FIXTURE_PROMPT } from './fake-daemon.mjs';
 import { rig, running, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
 
@@ -103,6 +104,31 @@ test('#120 L5: a queued tool from the host goes through the laptop’s tools onc
   await settled(r);
 });
 
+test('#120 L5: react from the host reaches the laptop’s reactTool, as server/mcp.mjs’s does, and its answer says which way it went', async () => {
+  const r = rig();
+  const turn = await running(r);
+  const mine = r.store.items(r.t.id).find((i) => i.kind === 'user');
+  r.d.tool(turn, 'react', { id: mine.id, emoji: '👍' });
+  await until(() => r.d.replies.length === 1, 'the reply');
+  assert.deepEqual((({ ok, text }) => ({ ok, text }))(r.d.replies[0]), { ok: true, text: 'You reacted 👍 to the person’s message.' });
+  assert.deepEqual(
+    r.store.item(r.t.id, mine.id).reactions.map((x) => [x.emoji, x.by]),
+    [['👍', r.se().id]],
+  );
+  // Again takes it back; an id that isn’t there is refused with what to do.
+  r.d.tool(turn, 'react', { id: mine.id, emoji: '👍' });
+  await until(() => r.d.replies.length === 2, 'the second reply');
+  assert.equal(r.d.replies[1].text, 'You took back your 👍 on the person’s message.');
+  r.d.tool(turn, 'react', { id: 'it_nope', emoji: '👍' });
+  await until(() => r.d.replies.length === 3, 'the refusal');
+  assert.deepEqual((({ ok, text }) => ({ ok, text }))(r.d.replies[2]), {
+    ok: false,
+    text: 'There’s no item “it_nope” in this conversation. read_conversation gives each item’s id.',
+  });
+  r.d.end(turn);
+  await settled(r);
+});
+
 test('#120 L5: a prompt from the host is the laptop’s permission card, and the person’s answer goes back as answer', async () => {
   const r = rig();
   const turn = await running(r);
@@ -116,6 +142,34 @@ test('#120 L5: a prompt from the host is the laptop’s permission card, and the
   await until(() => r.d.answers.length === 1, 'the answer');
   assert.deepEqual(r.d.answers[0], { turn, id, result: { behavior: 'allow', updatedInput: FIXTURE_PROMPT.input } });
   assert.equal(r.se().remoteTurn.state, 'running');
+  r.d.end(turn);
+  await settled(r);
+});
+
+test('#120 L5: a host prompt’s card has no CARD_WAIT_MS timer of the laptop’s: its host expires it (permissionWaitMax)', async () => {
+  const r = rig();
+  const turn = await running(r);
+  r.d.prompt(turn);
+  await until(() => r.store.items(r.t.id).some((i) => i.kind === 'permission'), 'the card');
+  const card = r.store.items(r.t.id).find((i) => i.kind === 'permission');
+  assert.ok(card.remote, 'a host prompt’s card');
+  assert.equal(r.rt.permissionWaits.get(card.id).timer, null, 'no laptop expiry: the host’s prompt-expired ends it');
+  r.rt.resolvePermission(r.t.id, card.id, 'allow');
+  await until(() => r.d.answers.length === 1, 'the answer');
+  r.d.end(turn);
+  await settled(r);
+});
+
+test('#120 L5: a prompt from a backend that doesn’t ask through permission_prompt gets the laptop’s refusal, and no card', async () => {
+  const r = rig();
+  const turn = await running(r);
+  // A stand-in for a backend that asks another way (capabilities.promptTool false), whose shim wasn’t told so.
+  const claude = /** @type {any} */ (r.rt.adapters.get('claude-code'));
+  claude.capabilities = { ...claude.capabilities, promptTool: false };
+  const id = r.d.prompt(turn);
+  await until(() => r.d.answers.length === 1, 'the answer');
+  assert.deepEqual(r.d.answers[0], { turn, id, result: { behavior: 'deny', message: NOT_YOUR_PROMPT.content[0].text } });
+  assert.equal(r.store.items(r.t.id).filter((i) => i.kind === 'permission').length, 0);
   r.d.end(turn);
   await settled(r);
 });

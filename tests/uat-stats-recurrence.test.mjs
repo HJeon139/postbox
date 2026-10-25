@@ -8,6 +8,10 @@ const runs = [
   {
     run: '2026-10-22T01-01-16-scifact',
     findings: [
+      // The run that filed an issue is part of its recurrence count.
+      { source: 'tester', title: 'Filed finding', verdict: 'confirmed', filed: 106 },
+      // #250: the run that filed #156, and one later run that caught it again, are two runs.
+      { source: 'tester', title: 'Filed it', verdict: 'confirmed', filed: 156 },
       check(63),
       check(63, { key: 'again' }),
       check(106),
@@ -39,14 +43,14 @@ const issues = new Map([
   [156, { state: 'OPEN', closedAt: null, priority: null }],
 ]);
 
-test('recurrence counts duplicate verdicts once per run, with the runs after each issue closed', () => {
+test('recurrence counts duplicate verdicts, and the finding that filed the issue, once per run, with the runs after each issue closed', () => {
   assert.deepEqual(
     recurrence(runs, issues).map((x) => [x.issue, x.state, x.priority, x.runs, x.findings, x.after]),
     [
-      [106, 'OPEN', 'P1', 3, 3, 0],
+      [106, 'OPEN', 'P1', 3, 4, 0],
+      [156, 'OPEN', null, 2, 2, 0],
       // #63 closed at 16:16 on 23 October: only the run after that counts.
       [63, 'CLOSED', 'P1', 1, 1, 1],
-      [156, 'OPEN', null, 1, 1, 0],
     ],
   );
   // Without gh, nothing is known about the issues, nor which runs came after they closed.
@@ -64,9 +68,9 @@ test('the table keeps its columns: issue, state, priority, runs, findings, runs 
   assert.deepEqual(RECURRENCE_COLUMNS, ['Issue', 'State', 'Priority', 'Runs', 'Findings', 'Runs after close']);
   const [, head, first, second, third] = recurrenceTable(recurrence(runs, issues));
   assert.equal(head, '  Issue  State   Priority  Runs  Findings  Runs after close');
-  assert.equal(first, '  #106   open    P1        3     3         0');
-  assert.equal(second, '  #63    closed  P1        1     1         1');
-  assert.equal(third, '  #156   open    —         1     1         0');
-  assert.equal(recurrenceTable(recurrence(runs))[2], '  #106   ?      —         3     3         ?');
-  assert.deepEqual(recurrenceTable([]), ['Recurrence by issue: no run caught a known issue again.']);
+  assert.equal(first, '  #106   open    P1        3     4         0');
+  assert.equal(second, '  #156   open    —         2     2         0');
+  assert.equal(third, '  #63    closed  P1        1     1         1');
+  assert.equal(recurrenceTable(recurrence(runs))[2], '  #106   ?      —         3     4         ?');
+  assert.deepEqual(recurrenceTable([]), ['Recurrence by issue: no run filed or caught a known issue.']);
 });

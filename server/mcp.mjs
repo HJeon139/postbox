@@ -1,7 +1,7 @@
 // The MCP server: Postbox’s UI tools over JSON-RPC 2.0 (MCP’s Streamable HTTP transport, JSON responses).
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
-// and gets show_block, update_block, review_block, show_app, update_app, retire_app, define_term, propose_agent, schedule_wake,
+// and gets show_block, update_block, review_block, show_app, update_app, retire_app, define_term, react, propose_agent, schedule_wake,
 // wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search and add_dataset.
 // Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
 // carrying { blockId, action, values }. The tools’ definitions are in shared/mcp-tools.mjs, which the shim on a
@@ -16,7 +16,8 @@
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
-import { permission } from './permission-prompt.mjs';
+import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
+import { reactTool } from './reactions.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { offersBring } from './side-threads.mjs';
 import { withUrgent } from './subagent-end.mjs';
@@ -58,7 +59,7 @@ async function one(rt, sessionId, msg, turnToken) {
     case 'ping':
       return reply({});
     case 'tools/list':
-      return reply({ tools: TOOL_DEFS.filter((t) => t.name !== 'bring_to_conversation' || inThread(rt, sessionId, turnToken)) });
+      return reply({ tools: TOOL_DEFS.filter((t) => offered(rt, sessionId, turnToken, t.name)) });
     case 'tools/call': {
       if (!rt.s.sessions[sessionId]) return fail(-32602, 'Unknown Postbox session. Connect with /mcp?session=<id>.');
       if (turnToken === null)
@@ -70,8 +71,9 @@ async function one(rt, sessionId, msg, turnToken) {
         return fail(-32001, 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.');
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
-      const tools = rt.toolsFor(sessionId, rt.turns.get(sessionId) ?? null);
-      if (name === 'permission_prompt') return reply(await permission(rt, sessionId, args));
+      // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools.
+      const tools = { ...rt.toolsFor(sessionId, rt.turns.get(sessionId) ?? null), react: (a) => reactTool(rt, rt.session(sessionId), a) };
+      if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args) : NOT_YOUR_PROMPT);
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {
         // An app’s code and data files may come from files in the agent’s folder, which Postbox reads itself (#54).
@@ -90,8 +92,12 @@ async function one(rt, sessionId, msg, turnToken) {
   }
 }
 
-/** Whether the session’s turn is one bring_to_conversation is offered to (#128): the person’s, in a side or topic thread. */
-function inThread(rt, sessionId, turnToken) {
+/**
+ * Whether tools/list offers a tool: bring_to_conversation only to the person’s turn in a side or topic thread (#128),
+ * permission_prompt only to a backend that asks through it (server/permission-prompt.mjs), and every other tool always.
+ */
+function offered(rt, sessionId, turnToken, name) {
   const turn = rt.turns.get(sessionId);
-  return turn?.token === turnToken && offersBring(rt, turn);
+  if (name === 'bring_to_conversation') return turn?.token === turnToken && offersBring(rt, turn);
+  return name !== 'permission_prompt' || asksByPrompt(rt, sessionId);
 }

@@ -29,8 +29,11 @@ import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { ARCHIVE_AFTER_CHOICES, DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed } from './seed.mjs';
+import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
+import { recordingOff, watchTelemetry } from './telemetry.mjs';
+import { telemetryRoute } from './telemetry-routes.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -125,6 +128,8 @@ export async function start({
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
+  // Recording conversations for telemetry, and its 30-day sweep (designs/telemetry-persona.md, R7, R11).
+  watchTelemetry(rt);
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
@@ -308,9 +313,9 @@ export async function start({
           defaultEffort: DEFAULT_EFFORT,
           permissionModes: PERMISSION_MODES,
           demo,
-          // Whether Postbox looked for real backends, and the Claude Code it found (null if none): without it, the
-          // overview says how to install it (#12).
+          // Whether Postbox looked for real backends, and the Claude Code it found: if none, the overview says how (#12).
           realBackends: real,
+          recordingOff: recordingOff(rt),
           versions: config.versions,
           build: config.build,
           corpus: corpus.stats(),
@@ -386,36 +391,22 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/topic$/)) && req.method === 'POST') return send(res, 201, rt.startTopic(m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/share$/)) && req.method === 'POST')
       return send(res, 201, rt.shareToConversation(m[1], m[2]));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/summarize$/)) && req.method === 'POST') return send(res, 200, rt.summarizeBack(m[1]));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/summarize$/)) && req.method === 'POST') return send(res, 200, rt.summarizeBack(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/diagram$/)) && req.method === 'POST')
       return send(res, 200, rt.diagramCheck(m[1], m[2], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/retry$/)) && req.method === 'POST') {
       rt.retry(m[1], m[2]);
       return send(res, 200, { ok: true });
     }
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/(stop|archive|restore|undo-delete)$/)) && req.method === 'POST') {
-      const action = {
-        stop: () => rt.requestStop(m[1], { jobs: body.jobs ?? null, turnId: body.turnId ?? null, subagent: body.subagent ?? null }),
-        archive: () => rt.archive(m[1]),
-        restore: () => rt.restore(m[1]),
-        'undo-delete': () => rt.undoDelete(m[1]),
-      }[m[2]];
-      rt.session(m[1]);
-      return send(res, 200, { ok: true, result: action() ?? null });
-    }
     // Resume, after a turn on a host stopped with Sign-in needed or Interrupted (#120): a 409 says why when there’s
     // nothing to resume.
     if ((m = path.match(/^\/api\/sessions\/([^/]+)\/resume$/)) && req.method === 'POST') return send(res, 200, rt.resumeRemote(m[1]));
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteSession(m[1]));
-    // Stop’s ask about background jobs, dismissed, and a background job’s own Stop (#129).
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/stop-ask$/)) && req.method === 'DELETE') {
-      rt.dismissStopAsk(m[1]);
-      return send(res, 200, { ok: true });
-    }
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/jobs\/([^/]+)\/stop$/)) && req.method === 'POST')
-      return send(res, 200, await rt.stopJob(m[1], decodeURIComponent(m[2])));
-    // The composer’s commands (#67): /model and /effort for this conversation, an agent’s skill as its turn, and !.
-    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/run$/)) && req.method === 'POST') return send(res, 200, await rt.setSessionRun(m[1], body));
+    // A session’s own actions: Stop, archive, restore, delete, its jobs and its run (server/session-routes.mjs).
+    const sessionDid = await sessionRoute(rt, path, req.method, body);
+    if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
+    // Telemetry: recording a conversation, and its reports (server/telemetry-routes.mjs).
+    const telemetryDid = await telemetryRoute(rt, path, req.method, body);
+    if (telemetryDid) return send(res, telemetryDid.status, telemetryDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/agent-command$/)) && req.method === 'POST') return send(res, 201, rt.runAgentCommand(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/shell$/)) && req.method === 'POST') {
       shellAllowed(req);

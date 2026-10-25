@@ -50,6 +50,31 @@ test('#120: a remote turn is told it may post to the conversation only where the
   rt.stop(rt.sessionsIn(t.id)[0].id);
 });
 
+test('#120: a remote turn is told whether its backend asks through permission_prompt, as server/mcp.mjs offers it (ctx.remote.asksByPrompt)', async () => {
+  const { rt, adapter } = setup();
+  /** @type {unknown[]} */
+  const asks = [];
+  const deliver = adapter.deliver.bind(adapter);
+  adapter.deliver = (session, message, ctx) => {
+    asks.push(ctx.remote?.asksByPrompt);
+    return deliver(session, message, ctx);
+  };
+  const h = rt.addHost({ name: 'host.example.com' });
+  const far = rt.createPersona({ handle: 'far', backend: 'claude-code', remote: { hostId: h.id } });
+  const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [far.id] });
+  rt.sendMessage(t.id, { text: 'go' });
+  await until(() => asks.length === 1, 'the first turn');
+  assert.equal(asks[0], true, 'the Claude Code CLI asks through it');
+  rt.stop(rt.sessionsIn(t.id)[0].id);
+  await until(() => adapter.log.includes('stopped:far') && rt.turns.size === 0 && rt.exiting.size === 0, 'stopped');
+  // A backend that asks another way, or not at all (capabilities.promptTool false: Kiro, Codex).
+  adapter.capabilities = { ...adapter.capabilities, promptTool: false };
+  rt.sendMessage(t.id, { text: 'again' });
+  await until(() => asks.length === 2, 'the second turn');
+  assert.equal(asks[1], false);
+  rt.stop(rt.sessionsIn(t.id)[0].id);
+});
+
 // ── Archive and delete stop a conversation’s turns ─────────────────────────────────
 
 test('#120: archiving a conversation stops its turns on a host, the ones in its topic threads too', async () => {

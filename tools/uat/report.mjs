@@ -103,9 +103,9 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     probes: facts.probes,
     samples: facts.samples,
     coverage,
+    ...(facts.telemetryOut ? { telemetry: facts.telemetryOut } : {}),
   });
-  if (rechecked) await writeFile(join(dir, 'run.log'), `${readFileSync(join(dir, 'run.log'), 'utf8')}${logLines.join('\n')}\n`);
-  else await writeFile(join(dir, 'run.log'), `${logLines.join('\n')}\n`);
+  await writeFile(join(dir, 'run.log'), `${rechecked ? readFileSync(join(dir, 'run.log'), 'utf8') : ''}${logLines.join('\n')}\n`);
   console.log(
     `\nReport: ${join(dir, 'report.md')} · ${caught.size} known issues caught again · ${findings.filter((f) => !f.issue && f.verdict !== 'harness').length} new findings`,
   );

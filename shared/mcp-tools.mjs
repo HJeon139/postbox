@@ -4,6 +4,7 @@
 // So this file imports only node: modules and shared/, as host code must (#120); tests/host-imports.test.mjs checks it.
 
 import { limitText as n, PALETTES, READING } from './limits.mjs';
+import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
 
 const count = (k) => k.toLocaleString('en-US');
@@ -102,6 +103,18 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'react',
+    description: `React to a message, block or app in this conversation or its topic and side threads, your own included, with one of ${REACTIONS.map(([e, w]) => `${e} (${w.toLowerCase()})`).join(', ')}, as the person can. 🚩 flags something that went wrong. The agent whose message it is hears it at its next turn, as feedback; it wakes no one. Calling it again with the same emoji takes yours back. id: the item’s id, from read_conversation, or a block’s id.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The item’s id, such as it_4kQ2xY9a, or a block’s id.' },
+        emoji: { type: 'string', enum: REACTIONS.map(([e]) => e) },
+      },
+      required: ['id', 'emoji'],
+    },
+  },
+  {
     name: 'propose_agent',
     description: 'Propose a new teammate. The person sees a card and decides; tools beyond yours are highlighted.',
     inputSchema: {
@@ -134,7 +147,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_conversation',
-    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item is cut at ${count(READING.item)} characters, and a cut gives the id read_message takes. Pass the id of one of its side threads or topic threads to read that one instead: a catch-up line, or a link the person sent, gives it.`,
+    description: `Read this conversation’s history: what the person and every agent in it said and showed (a block’s content, and the person’s answer), newest last. Each turn already starts with what happened since your last one; use this for anything older. Each item starts with its id, such as [it_4kQ2xY9a], which read_message and react take, and is cut at ${count(READING.item)} characters. Pass the id of one of its side threads or topic threads to read that one instead: a catch-up line, or a link the person sent, gives it.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -212,3 +225,17 @@ export const TOOL_DEFS = [
     },
   },
 ];
+
+/**
+ * What a permission_prompt call gets, at once, from an agent whose backend doesn’t ask through it (server/mcp.mjs on
+ * the laptop, by server/permission-prompt.mjs’s asksByPrompt; the host’s shim, started without it, #120).
+ */
+export const NOT_YOUR_PROMPT = Object.freeze({
+  content: [
+    {
+      type: 'text',
+      text: 'Postbox didn’t run permission_prompt: it’s how the Claude Code CLI asks the person before a risky call, and your backend asks another way, or not at all. Don’t call it yourself. Make the call you need: if it needs the person’s permission, Postbox asks them.',
+    },
+  ],
+  isError: true,
+});

@@ -39,7 +39,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -51,13 +51,13 @@ import { agentGuide, formatMessage } from './guide.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { effortOf, modelOf, POSTBOX_SERVER, setupOf } from './setup.mjs';
+import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
 export { checkRemoteMessage, kiroRemoteEnv, REMOTE_ARGV_NOTE } from './kiro-cli-remote.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117), on a remote host too (KIRO_REMOTE). The adapter adds the models it found. */
-export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', remote: KIRO_REMOTE });
+export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false, remote: KIRO_REMOTE });
 
 /**
  * MCP tools that publish outside Postbox, as Kiro’s `server/tool` match patterns, where `*` is any text: the verb
@@ -465,7 +465,7 @@ export class KiroCliAdapter {
     // On a host, its folder there, and the host turn’s copies of attachments; laptop folders don’t cross (the header).
     const cwd = ctx.remote ? ctx.remote.folder : await this.folderFor(persona, ctx.project);
     const promptOn = (turn = ctx.remote?.turn) => formatMessage(message, attachmentPaths(ctx, turn));
-    const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
+    const guide = agentGuide({ ...ctx, persona, session, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
     const folders = ctx.remote ? [cwd] : [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
     // Before anything starts on the host: the turn ID and version the runtime owns. After a Postbox restart,
     // ctx.remote.attach names a turn already there instead, which is replayed from the start and never started again.
@@ -547,10 +547,10 @@ export class KiroCliAdapter {
         child.stderr.on('data', (d) => {
           stderr = (stderr + d).slice(-4000);
         });
-        const record = this.env.POSTBOX_KIRO_RECORD ? join(this.env.POSTBOX_KIRO_RECORD, `${Date.now()}-${persona.handle}.jsonl`) : null;
+        const record = recorderFor(ctx, this.env.POSTBOX_KIRO_RECORD, 'kiro-cli');
         createInterface({ input: child.stdout }).on('line', (line) => {
           if (!line.trim()) return;
-          if (record) appendFileSync(record, `${line}\n`);
+          record(line);
           let e;
           try {
             e = JSON.parse(line);

@@ -1,7 +1,9 @@
-// Reactions (#251): under a message, block or app, the person’s reactions as buttons that take one back, and a React
-// button in the message’s actions with the reactions to choose from, each checked when it’s on. The agents answering
-// where it is hear them at their next turn. A reaction repaints only its own row: the item, an app’s frame among
-// them, isn’t drawn again.
+// Reactions (#251): under a message, block or app, its reactions as buttons, one for each emoji, naming the agents
+// who made it (principle 5: in words, not only on hover); clicking one takes yours back, or adds yours. A React button
+// in the message’s actions has the reactions to choose from, each checked when yours is on. The agents answering where
+// it is hear yours at their next turn, and an agent’s is heard by the agent whose message it is. A reaction repaints
+// only its own row: the item, an app’s frame among them, isn’t drawn again.
+// Each reaction is drawn with its icon (app/media/reactions), and its emoji is the icon’s text.
 
 import { REACTIONS } from '/shared/reactions.mjs';
 import { api, client } from './client.mjs';
@@ -9,6 +11,15 @@ import { h } from './dom.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 const said = new Map(REACTIONS);
+const DRAWN = new Map([
+  ['👍', 'approve'],
+  ['👎', 'disapprove'],
+  ['🚩', 'flag'],
+  ['❓', 'unclear'],
+  ['✅', 'done'],
+]);
+/** A reaction’s icon, which says its emoji to a screen reader. */
+const drawn = (emoji) => h('img.react-icon', { src: `/media/reactions/reaction-${DRAWN.get(emoji)}-64.png`, alt: emoji, width: 20, height: 20 });
 /** The act that reacts: server/reactions.mjs, REACT. */
 const REACT = '@react';
 
@@ -17,25 +28,35 @@ const react = (threadId, itemId, emoji) =>
     toast({ title: 'Couldn’t react', text: e.message, level: 'blocking' }),
   );
 
-/** The row of an item’s reactions, or nothing when it has none. */
+/** “you”, “@critic”, “you and @critic”, “you, @critic and @dev”. */
+const who = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
+
+/** The row of an item’s reactions, one button for each emoji, or nothing when it has none. */
 function row(it, threadId) {
-  const mine = it.reactions ?? [];
-  if (!mine.length) return null;
+  const all = it.reactions ?? [];
+  if (!all.length) return null;
+  const groups = REACTIONS.map(([emoji]) => [emoji, all.filter((r) => r.emoji === emoji)]).filter(([, rs]) => rs.length);
   return h(
     'div.reactions',
-    { role: 'group', 'aria-label': 'Your reactions', dataset: { thread: threadId } },
-    mine.map((r) =>
-      h(
+    { role: 'group', 'aria-label': 'Reactions', dataset: { thread: threadId } },
+    groups.map(([emoji, rs]) => {
+      const yours = rs.some((r) => !r.by);
+      const agents = rs.filter((r) => r.by).map((r) => `@${r.handle}`);
+      const names = [...(yours ? ['you'] : []), ...agents];
+      return h(
         'button.react-chip',
         {
           type: 'button',
-          'aria-label': `${r.emoji} ${said.get(r.emoji) ?? ''}: take it back`,
-          title: 'Take it back',
-          onclick: () => react(threadId, it.id, r.emoji),
+          class: yours ? 'yours' : 'theirs',
+          'aria-label': `${emoji} ${said.get(emoji) ?? ''}, from ${who(names)}: ${yours ? 'take yours back' : 'add yours'}`,
+          title: yours ? 'Take yours back' : 'Add yours',
+          onclick: () => react(threadId, it.id, emoji),
         },
-        r.emoji,
-      ),
-    ),
+        drawn(emoji),
+        // Who reacted, in words, you among them (principle 5): yours alone needs none.
+        agents.length ? h('span.react-who', who(names)) : null,
+      );
+    }),
   );
 }
 
@@ -53,10 +74,11 @@ export function reactTo(bar, node, it, ctx) {
       'aria-haspopup': 'menu',
       'aria-label': 'React to this message',
       onclick: () => {
-        const on = new Set((client.state.items[ctx.threadId]?.find((x) => x.id === it.id)?.reactions ?? []).map((r) => r.emoji));
+        // Checked when yours is on: an agent’s reaction is theirs.
+        const on = new Set((client.state.items[ctx.threadId]?.find((x) => x.id === it.id)?.reactions ?? []).filter((r) => !r.by).map((r) => r.emoji));
         const menu = openMenu(
           button,
-          REACTIONS.map(([emoji, label]) => ({ label: `${emoji} ${label}`, run: () => react(ctx.threadId, it.id, emoji) })),
+          REACTIONS.map(([emoji, label]) => ({ icon: drawn(emoji), label, run: () => react(ctx.threadId, it.id, emoji) })),
           { label: 'Reactions' },
         );
         // Each is a choice you turn on or off, and says which way it is.

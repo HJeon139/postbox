@@ -129,8 +129,8 @@ test('the snapshot: kept until start, written 0600 into the folder, updated by s
     const again = makeBroker(h);
     const s = connectShim(again.b, 't1');
     await s.next('welcome');
-    assert.deepEqual(await s.call('c1', 'read_conversation', {}), { type: 'result', id: 'c1', ok: true, text: 'You: hello\n\n@dev: yo' });
-    assert.equal((await s.call('c2', 'read_conversation', { thread: 'th_side' })).text, 'aside');
+    assert.deepEqual(await s.call('c1', 'read_conversation', {}), { type: 'result', id: 'c1', ok: true, text: '[i1] You: hello\n\n[i2] @dev: yo' });
+    assert.equal((await s.call('c2', 'read_conversation', { thread: 'th_side' })).text, '[s1] aside');
     assert.deepEqual(await s.call('c3', 'read_message', { id: 'nope' }), {
       type: 'result',
       id: 'c3',

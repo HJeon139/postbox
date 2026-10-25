@@ -98,6 +98,9 @@ export const TOOL_ROUTES = Object.freeze({
   update_app: 'queue',
   retire_app: 'queue',
   define_term: 'queue',
+  // A second call with the same emoji takes it back, so only Postbox’s answer says which it was, and its refusals (no
+  // such item, two blocks with that id) name what to fix, as review_block’s do: it waits.
+  react: 'ask',
   propose_agent: 'queue',
   schedule_wake: 'queue',
   wake_agent: 'queue',
