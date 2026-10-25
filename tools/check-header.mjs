@@ -79,16 +79,16 @@ async function check(name, fn) {
   await closeAll();
 }
 /**
- * Only an agent that needs you or is working has a card on the overview (#3), so these agents work while fn looks at
- * their cards, and are idle again, as the page sees them, before the next case.
+ * Runs fn with the room under a long title, so a narrow window is short of room: with no agent rings in the top bar
+ * (#320), a short title fits at 375 px with nothing dropped.
  */
-async function withCards(handles, fn) {
-  const ids = handles.map((x) => sessionOf(x).id);
-  for (const id of ids) rt.updateSession(id, { state: 'think' });
+async function longTitle(fn) {
+  const was = store.state.threads[room.id].title;
+  rt.putThread({ ...store.state.threads[room.id], title: 'A long room title that needs the room the project takes' });
   try {
     await fn();
   } finally {
-    for (const id of ids) rt.updateSession(id, { state: 'idle' });
+    rt.putThread({ ...store.state.threads[room.id], title: was });
     await page.synced(store.state.seq);
   }
 }
@@ -130,20 +130,7 @@ await check('#60 a new last model reaches the row without a reload', async () =>
   rt.updateSession(sessionOf('researcher').id, { lastModel: 'claude-opus-5-5' });
 });
 
-await check('#60 the card and the menus say it with full model ids', async () => {
-  await withCards(['indexer', 'researcher', 'critic'], async () => {
-    await open('#/');
-    const card = (handle) => `document.querySelector('.ov-col[data-key="${sessionOf(handle).id}"] .oc-runs')`;
-    await page.waitFor(`${card('indexer')} && ${card('researcher')} && ${card('critic')}`);
-    assert.equal(await seen(card('indexer')), 'Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort');
-    assert.equal(await seen(card('researcher')), 'Agent SDK · claude-opus-5-5 · high effort');
-    assert.equal(await seen(card('critic')), 'Mock agent · scripted replies, not a model');
-    // The card’s ⋯ menu.
-    await page.evaluate(`document.querySelector('.ov-col[data-key="${sessionOf('indexer').id}"] button[aria-haspopup=menu]').click()`);
-    await page.waitFor(`document.querySelector('.menu')`);
-    assert.match(await seen(`document.querySelector('.menu')`), /not the model you set: claude-opus-5-5/);
-    await closeAll();
-  });
+await check('#60 the conversation’s menu says it with full model ids', async () => {
   // The conversation’s ⋯ menu lists every agent with its backend, model, effort and state.
   await open(`#/t/${room.id}`);
   await page.evaluate(`document.querySelector('header.topbar #conversation-actions').click()`);
@@ -164,7 +151,7 @@ await check('#60 the card and the menus say it with full model ids', async () =>
 const visibleMarker = (expr) => page.evaluate(`(() => { const t = ${expr}; return !!t && t.offsetWidth > 0 && t.innerText.trim() === 'mock'; })()`);
 const railWho = `document.querySelector('.rail a.row[data-thread="${room.id}"] .sub')`;
 
-await check('#12 a mock agent is marked in its agent row, rail row, card and speaker line, and a real one isn’t', async () => {
+await check('#12 a mock agent is marked in its agent row, rail row and speaker line, and a real one isn’t', async () => {
   // A reply each from @critic (mock) and @indexer (Claude Code), so both have speaker lines.
   for (const handle of ['critic', 'indexer']) {
     const se = sessionOf(handle);
@@ -180,15 +167,6 @@ await check('#12 a mock agent is marked in its agent row, rail row, card and spe
   await page.waitFor(speaker('critic'));
   assert.equal(await visibleMarker(`${speaker('critic')}.querySelector('.mock-tag')`), true, 'The speaker line has no visible “mock”');
   assert.equal(await page.evaluate(`!!${speaker('indexer')}.querySelector('.mock-tag')`), false);
-  // Cards.
-  await withCards(['critic', 'indexer'], async () => {
-    await open('#/');
-    const card = (handle) => `document.querySelector('.ov-col[data-key="${sessionOf(handle).id}"]')`;
-    await page.waitFor(`${card('critic')} && ${card('indexer')}`);
-    assert.equal(await visibleMarker(`${card('critic')}.querySelector('.oc-name .mock-tag')`), true, 'The card has no visible “mock”');
-    assert.equal(await page.evaluate(`${card('critic')}.getAttribute('aria-label')`), '@critic, mock, thinking');
-    assert.equal(await page.evaluate(`!!${card('indexer')}.querySelector('.mock-tag')`), false);
-  });
 });
 
 await check('#12 the marker follows the persona: moved to Claude Code, the agent row and the rail row lose it without a reload', async () => {
@@ -212,20 +190,6 @@ await check('#12 the menus and the Personas list mark mock agents', async () => 
   );
   assert.deepEqual(marked, ['@librarian', '@critic']);
   await closeAll();
-  await withCards(['critic'], async () => {
-    await open('#/');
-    const more = `document.querySelector('.ov-col[data-key="${sessionOf('critic').id}"] button[aria-haspopup=menu]')`;
-    await page.waitFor(more);
-    await page.evaluate(`${more}.click()`);
-    await page.waitFor(`document.querySelector('.menu')`);
-    assert.equal(
-      await page.evaluate(
-        `!![...document.querySelectorAll('.menu button.mi')].find((b) => b.innerText.includes('Edit @critic persona'))?.querySelector('.mock-tag')`,
-      ),
-      true,
-    );
-    await closeAll();
-  });
   await page.evaluate(`document.querySelector('header.topbar button[aria-label="Settings"]').click()`);
   const tab = `[...document.querySelectorAll('[role=tab]')].find((t) => t.textContent === 'Personas')`;
   await page.waitFor(tab);
@@ -272,35 +236,38 @@ await check('#12 the composer marks a mock agent in “Replying to” and in the
 const DEMO = 'Demo mode: scripted agents';
 const demoNote = `document.querySelector('header.topbar .demo-note')`;
 await check('#12 under --demo, every view says so, and it isn’t a live region', async () => {
-  for (const hash of ['#/', `#/p/${corpus.id}/threads`, `#/t/${room.id}`, '#/archived']) {
+  for (const hash of [`#/p/${corpus.id}/threads`, `#/t/${room.id}`]) {
     await open(hash);
     assert.equal(await seen(demoNote), DEMO, `No demo banner on ${hash}`);
     assert.equal(await page.evaluate(`!${demoNote}.closest('[aria-live], [role=status], [role=alert], [role=log]')`), true, 'The banner is in a live region');
   }
   // The demo has no install line: Postbox didn’t look for Claude Code.
-  await open('#/');
+  await open(`#/t/${room.id}`);
   assert.equal(await page.evaluate(`!!document.querySelector('.install-note')`), false);
 });
 
 await check('#12 at 375 px the banner folds to “Demo”, and its whole sentence is still read', async () => {
   await page.size(375, 812);
   try {
-    await open('#/');
-    // “Demo” on screen; the sentence is visually hidden, so it’s still read.
-    const widths = await page.evaluate(
-      `[...${demoNote}.children].map((c) => [c.textContent, Math.round(c.getBoundingClientRect().width), c.getAttribute('aria-hidden')])`,
-    );
-    assert.equal(widths[0][0], DEMO);
-    assert.ok(widths[0][1] <= 1, `The sentence is ${widths[0][1]} px wide`);
-    assert.equal(widths[1][0], 'Demo');
-    assert.ok(widths[1][1] > 10, '“Demo” isn’t on screen');
-    assert.equal(await page.evaluate(`${demoNote}.querySelector('.demo-short').getAttribute('aria-hidden')`), 'true');
+    await longTitle(async () => {
+      await open(`#/t/${room.id}`);
+      await page.waitFor(`document.querySelector('header.topbar').dataset.drop?.includes('demo')`, { label: 'the banner to fold' });
+      // “Demo” on screen; the sentence is visually hidden, so it’s still read.
+      const widths = await page.evaluate(
+        `[...${demoNote}.children].map((c) => [c.textContent, Math.round(c.getBoundingClientRect().width), c.getAttribute('aria-hidden')])`,
+      );
+      assert.equal(widths[0][0], DEMO);
+      assert.ok(widths[0][1] <= 1, `The sentence is ${widths[0][1]} px wide`);
+      assert.equal(widths[1][0], 'Demo');
+      assert.ok(widths[1][1] > 10, '“Demo” isn’t on screen');
+      assert.equal(await page.evaluate(`${demoNote}.querySelector('.demo-short').getAttribute('aria-hidden')`), 'true');
+    });
   } finally {
     await page.size(WIDE, 900);
   }
 });
 
-await check('#12 without --demo there’s no banner, and with Claude Code missing the overview says how to install it', async () => {
+await check('#12 without --demo there’s no banner, and with Claude Code missing, a fresh install says how to install it', async () => {
   delete process.env.POSTBOX_BACKENDS;
   // Paths that don’t exist, so Postbox finds no Claude Code and no other CLI. The person’s own installs are never
   // run: asking agy, Kiro and Codex for their models took most of the case’s 30 s on a busy computer.
@@ -313,10 +280,11 @@ await check('#12 without --demo there’s no banner, and with Claude Code missin
     // A fresh install has no projects or conversations.
     Object.assign(fresh.store.state, { projects: {}, threads: {}, sessions: {}, items: {} });
     await page.send('Page.navigate', { url: `${fresh.origin}/#/` });
-    await page.waitFor(`document.querySelector('.ov-empty')`, { label: 'the empty overview' });
+    // No project yet: the page that says so carries the install line, as the sidebar does once there is one (#320).
+    await page.waitFor(`document.querySelector('.empty-home')`, { label: 'the page with no project' });
     assert.equal(await page.evaluate(`!!${demoNote}`), false, 'A demo banner without --demo');
     const line = await seen(`document.querySelector('.install-note')`);
-    assert.ok(line, 'No install line on the overview');
+    assert.ok(line, 'No install line on the page');
     // The Agent SDK loads without Claude Code when it’s installed (npm install), so say what agents run on.
     const sdk = fresh.rt.adapters.names().includes('agent-sdk');
     assert.match(line, sdk ? /so agents run on the Agent SDK or the mock until it is\./ : /so agents run on the mock until it is/);
@@ -351,7 +319,7 @@ const measure = () =>
       width: bar.clientWidth,
       overflow: bar.scrollWidth - bar.clientWidth,
       drop: bar.dataset.drop ?? '',
-      title: Math.round(box(bar.querySelector('.crumbs > :last-child')).width),
+      title: Math.round(box(bar.querySelector('.crumbs > .title')).width),
       titleFull: full(bar.querySelector('.crumbs > .title')),
       projectFull: full(bar.querySelector('.crumbs > .crumb.up')),
       // How far the crumbs run under the rings (0 or less: they don’t).
@@ -377,70 +345,48 @@ const report = (label, m) =>
 const corpusPlanning = Object.values(store.state.threads).find((t) => t.title === 'Corpus planning');
 
 for (const theme of ['light', 'dark'])
-  await check(`#105 a room with two agents at 1280 px (${theme}): the title and the project show in full, with a labeled ring for each agent`, async () => {
-    await page.size(1280, 900, { theme });
-    try {
-      await open(`#/t/${corpusPlanning.id}`);
-      const m = await fitted();
-      report(`1280 px, ${theme}`, m);
-      assert.equal(m.overflow, 0, 'The top bar overflows');
-      assert.equal(m.drop, '', `The top bar dropped “${m.drop}”`);
-      assert.ok(m.projectFull, 'The project isn’t shown in full');
-      assert.ok(m.titleFull, 'The conversation’s title isn’t shown in full');
-      assert.ok(m.overlap <= 0, `The crumbs run ${m.overlap} px under the rings`);
-      assert.equal(m.rings.length, 2);
-      // Each ring’s accessible label is the agent’s name and state, and it opens the agent’s quick panel.
-      for (const r of m.rings) {
-        assert.ok(r.shown, 'A ring isn’t on screen');
-        assert.match(r.name, /^@(indexer|researcher): Idle, \d+% of context used$/);
-        assert.equal(r.popup, 'dialog');
+  await check(
+    `#105 a room with two agents at 1280 px (${theme}): the title and the project show in full, and the agents are in the sidebar, not the top bar (#320)`,
+    async () => {
+      await page.size(1280, 900, { theme });
+      try {
+        await open(`#/t/${corpusPlanning.id}`);
+        const m = await fitted();
+        report(`1280 px, ${theme}`, m);
+        assert.equal(m.overflow, 0, 'The top bar overflows');
+        assert.equal(m.drop, '', `The top bar dropped “${m.drop}”`);
+        assert.ok(m.projectFull, 'The project isn’t shown in full');
+        assert.ok(m.titleFull, 'The conversation’s title isn’t shown in full');
+        assert.equal(m.rings.length, 0, 'The top bar has agent rings');
+        assert.equal(await page.evaluate(`document.querySelectorAll('.rail .agent-row').length`), 2, 'The Agents section lists both');
+      } finally {
+        await page.size(1280, 900);
       }
-    } finally {
-      await page.size(1280, 900);
-    }
-  });
+    },
+  );
 
 for (const theme of ['light', 'dark'])
   for (const width of [1280, 375])
-    await check(
-      `#72 a room with four agents at ${width} px (${theme}): no overflow, every agent is reachable from the top bar, and the facts stay in the card and the menu`,
-      async () => {
-        await page.size(width, width < 768 ? 812 : 900, { theme });
-        try {
-          await open(`#/t/${room.id}`);
-          const m = await fitted();
-          report(`${width} px, ${theme}`, m);
-          assert.equal(m.overflow, 0, 'The top bar overflows');
-          assert.ok(m.overlap <= 0, `The crumbs run ${m.overlap} px under the rings`);
-          assert.equal(m.rings.length, 4);
-          // Every ring shows, or they’re folded into one stack that shows them all.
-          if (m.stack?.shown) assert.equal(m.stack.rings, 4);
-          else for (const r of m.rings) assert.ok(r.shown, `${r.name}’s ring isn’t on screen`);
-          for (const r of m.rings) assert.match(r.name, /^@\w+: Idle, \d+% of context used$/);
-          if (width === 1280) assert.equal(m.drop, '', `The top bar dropped “${m.drop}” at 1280 px`);
-          // What it runs with is in the conversation’s menu and the card, as text on screen.
-          await page.evaluate(`document.querySelector('header.topbar #conversation-actions').click()`);
-          await page.waitFor(`document.querySelector('.menu')`);
-          const line = `[...document.querySelectorAll('.menu button.mi')].find((b) => b.innerText.includes('@indexer'))`;
-          assert.match((await seen(line)) ?? '', /^@indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle/);
-          assert.ok(await page.evaluate(`${line}.offsetWidth > 0 && ${line}.getBoundingClientRect().right <= innerWidth`), 'The menu line is off screen');
-          await closeAll();
-          await withCards(['indexer'], async () => {
-            await open('#/');
-            const card = `document.querySelector('.ov-col[data-key="${sessionOf('indexer').id}"]')`;
-            await page.waitFor(card);
-            assert.equal(
-              await seen(`${card}.querySelector('.oc-runs')`),
-              'Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort',
-            );
-            assert.match((await seen(`${card}.querySelector('.who-name')`)) ?? '', /Thinking/);
-            assert.equal((await measure()).overflow, 0, 'The overview’s top bar overflows');
-          });
-        } finally {
-          await page.size(1280, 900);
-        }
-      },
-    );
+    await check(`#72 a room with four agents at ${width} px (${theme}): no overflow, and the facts stay in the conversation’s menu`, async () => {
+      await page.size(width, width < 768 ? 812 : 900, { theme });
+      try {
+        await open(`#/t/${room.id}`);
+        const m = await fitted();
+        report(`${width} px, ${theme}`, m);
+        assert.equal(m.overflow, 0, 'The top bar overflows');
+        assert.equal(m.rings.length, 0, 'The top bar has agent rings');
+        if (width === 1280) assert.equal(m.drop, '', `The top bar dropped “${m.drop}” at 1280 px`);
+        // What it runs with is in the conversation’s menu, as text on screen.
+        await page.evaluate(`document.querySelector('header.topbar #conversation-actions').click()`);
+        await page.waitFor(`document.querySelector('.menu')`);
+        const line = `[...document.querySelectorAll('.menu button.mi')].find((b) => b.innerText.includes('@indexer'))`;
+        assert.match((await seen(line)) ?? '', /^@indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle/);
+        assert.ok(await page.evaluate(`${line}.offsetWidth > 0 && ${line}.getBoundingClientRect().right <= innerWidth`), 'The menu line is off screen');
+        await closeAll();
+      } finally {
+        await page.size(1280, 900);
+      }
+    });
 
 await check('#60 with one agent at 1280 px, its row shows its state, model and effort, and the top bar drops nothing', async () => {
   const dm = Object.values(store.state.threads).find((t) => t.title === 'Index the shelf');
@@ -466,19 +412,21 @@ await check('#72 the top bar refits when the window changes, and a state word ch
   assert.equal(busy.title, wide.title);
   for (const handle of all) rt.updateSession(sessionOf(handle).id, { state: 'idle', currentStep: '' });
   await page.waitFor(`${seenText(row('indexer'))}?.startsWith('@indexer · idle')`);
-  // Narrow, it drops in order, and wide again, it brings everything back.
-  await page.size(375, 812);
-  try {
-    const narrow = await fitted();
-    report('375 px', narrow);
-    assert.equal(narrow.overflow, 0);
-    assert.ok(narrow.drop.startsWith('crumb'), `It dropped “${narrow.drop}”, not the project crumb first`);
-  } finally {
-    await page.size(1280, 900);
-  }
-  const back = await fitted();
-  assert.equal(back.drop, '');
-  assert.equal(back.title, wide.title);
+  // Narrow, with a title that needs the room, it drops in order, and wide again, it brings everything back.
+  await longTitle(async () => {
+    await open(`#/t/${room.id}`);
+    await page.size(375, 812);
+    try {
+      const narrow = await fitted();
+      report('375 px', narrow);
+      assert.equal(narrow.overflow, 0);
+      assert.ok(narrow.drop.startsWith('crumb'), `It dropped “${narrow.drop}”, not the project crumb first`);
+    } finally {
+      await page.size(1280, 900);
+    }
+    const back = await fitted();
+    assert.equal(back.drop, '');
+  });
 });
 
 await page.close();

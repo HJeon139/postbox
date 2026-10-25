@@ -118,14 +118,10 @@ await check('#69 an older open block shows “1 open confirmation”, not needs-
   assert.equal(store.state.sessions[se.id].needs, null);
   await click(label);
   assert.match(await focused(), /Rename/);
-  await open('#/');
-  // An idle agent’s conversation is a row on the overview (#3), and the line is there.
-  const onCard = `document.querySelector('main.ov [data-open-asks="${se.id}"]')`;
-  await page.waitFor(`${onCard}?.textContent === '1 open confirmation'`, { label: 'the overview’s open-blocks line' });
   // Answering it clears the line.
   const block = store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'old-ask');
   rt.act(t.id, block.id, 'confirm', {});
-  await page.waitFor(`${onCard}?.hidden`, { label: 'the line to clear once answered' });
+  await page.waitFor(`${label}.hidden`, { label: 'the line to clear once answered' });
 });
 
 // ── #26: focus stays on the control you used, and goes back where it came from ──────────
@@ -133,8 +129,10 @@ await check('#69 an older open block shows “1 open confirmation”, not needs-
 const dialogOpen = `!!document.querySelector('.backdrop .dialog')`;
 
 await check('#26 new agent: Space on a Tools checkbox keeps focus on it', async () => {
-  await open('#/');
-  await click(byText('main.ov button', 'New agent'));
+  // From the conversation’s ⋯: the overview’s New agent went with it (#320).
+  await open(`#/t/${threadNamed('Corpus planning').id}`);
+  await click(q('header.topbar button[aria-label^="Actions for"]'));
+  await click(byText('.menu .mi', 'Add an agent'));
   await page.waitFor(dialogOpen);
   const box = `document.querySelectorAll('.d-body [role=checkbox]')[1]`;
   const before = await page.evaluate(`${box}.getAttribute('aria-checked')`);
@@ -217,15 +215,10 @@ const MENUS = [
   ['the Postbox mark', 'conversation', 'header.topbar button.brand'],
   ['the conversation’s ⋯', 'conversation', 'header.topbar button[aria-label^="Actions for"]'],
   ['the composer’s +', 'conversation', 'button[aria-label="Add a file or a new agent"]'],
-  ['a session card’s ⋯', 'overview', 'main.ov button[aria-label^="Session actions for"]'],
-  ['an idle conversation’s ⋯', 'overview', 'main.ov .ov-row button[aria-haspopup=menu]'],
 ];
-// Only an agent that needs you or is working has a card (#3), so @indexer works through these.
-const indexer = rt.sessionsIn(threadNamed('Corpus planning').id).find((x) => x.handle === 'indexer');
-rt.updateSession(indexer.id, { state: 'tool', currentStep: 'Reading the shelf' });
-for (const [name, view, sel] of MENUS)
+for (const [name, , sel] of MENUS)
   await check(`#29 a second click on ${name} closes its menu`, async () => {
-    await open(view === 'overview' ? '#/' : `#/t/${threadNamed('Corpus planning').id}`);
+    await open(`#/t/${threadNamed('Corpus planning').id}`);
     const state = () => page.evaluate(`[document.querySelectorAll('.menu').length, ${q(sel)}.getAttribute('aria-expanded')]`);
     await click(q(sel));
     assert.deepEqual(await state(), [1, 'true'], 'The first click opens it');
@@ -235,20 +228,22 @@ for (const [name, view, sel] of MENUS)
     assert.deepEqual(await state(), [1, 'true'], 'A third click opens it again');
   });
 
-await check('#29 a second click closes a card’s menu even after the card repainted under it', async () => {
-  await open('#/');
+await check('#29 a second click closes a menu even after its button repainted under it', async () => {
   const t = threadNamed('Corpus planning');
-  const se = rt.sessionsIn(t.id).find((x) => x.handle === 'indexer');
-  const sel = `document.querySelector('.ov-col[data-key="${se.id}"] button[aria-haspopup=menu]')`;
+  await open(`#/t/${t.id}`);
+  const sel = q('header.topbar button[aria-label^="Actions for"]');
   await click(sel);
   await page.evaluate(`window.__first = ${sel}`);
-  // A working agent’s card repaints as it goes, which rebuilds its ⋯ button.
-  rt.updateSession(se.id, { currentStep: 'Reading the index' });
-  await page.waitFor(`${sel} !== window.__first`, { label: 'the card to repaint' });
-  await click(sel);
-  assert.equal(await page.evaluate(`document.querySelectorAll('.menu').length`), 0);
+  // A rename repaints the top bar, which rebuilds its ⋯ button.
+  rt.renameThread(t.id, `${t.title} (renamed)`);
+  try {
+    await page.waitFor(`${sel} !== window.__first`, { label: 'the top bar to repaint' });
+    await click(sel);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.menu').length`), 0);
+  } finally {
+    rt.renameThread(t.id, t.title);
+  }
 });
-rt.updateSession(indexer.id, { state: 'idle', currentStep: '' });
 
 await check('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the top bar repaints with the new name', async () => {
   const t = threadNamed('Index the shelf');
@@ -269,7 +264,7 @@ await check('#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the to
 
 // ── A fresh install’s overview leads to a first project ─────────────────────────────────
 
-await check('a fresh install’s empty overview offers New project, which opens Settings › Projects', async () => {
+await check('a fresh install, with no project, offers New project, which opens Settings › Projects (#320)', async () => {
   const freshDir = await mkdtemp(join(tmpdir(), 'pb-check-shell-fresh-'));
   const fresh = await start({ port: PORT + 1, dataDir: freshDir, fresh: true, quiet: true });
   try {
@@ -277,9 +272,9 @@ await check('a fresh install’s empty overview offers New project, which opens 
     Object.assign(fresh.store.state, { projects: {}, threads: {}, sessions: {}, items: {} });
     // Not page.goto(): it waits for an animation frame, which headless Chrome can hold back by now.
     await page.send('Page.navigate', { url: `${fresh.origin}/#/` });
-    await page.waitFor(`document.querySelector('.ov-empty')`, { label: 'the empty overview' });
-    assert.match(await page.evaluate(`document.querySelector('.ov-empty').textContent`), /Create a project to start, or create an agent\./);
-    await focus(byText('.ov-empty button', 'New project'));
+    await page.waitFor(`document.querySelector('.empty-home')`, { label: 'the page with no project' });
+    assert.match(await page.evaluate(`document.querySelector('.empty-home').textContent`), /Create a project to start\./);
+    await focus(byText('.empty-home button', 'New project'));
     await press('Enter');
     await page.waitFor(dialogOpen);
     assert.equal(await page.evaluate(`document.querySelector('[role=tab][aria-selected=true]').textContent`), 'Projects');

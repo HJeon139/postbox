@@ -14,7 +14,10 @@ const DWELL = 650;
 const MAX_DEPTH = 3;
 /** The open cards: the first opened from the page, and each after it from a term in the one before. */
 const stack = [];
-const triggerOf = (t) => t?.closest?.('.cite, .term');
+// A reaction’s button (#320) opens a card of who made it, as a term does, but keeps its own keys and state: Enter and
+// Space react, and it says it’s pressed, not expanded.
+const triggerOf = (t) => t?.closest?.('.cite, .term, .react-btn');
+const ownButton = (t) => t.classList.contains('react-btn');
 const cardOf = (trigger) => stack.find((c) => c.trigger === trigger);
 /** The index of the top card a node is in, or -1. */
 const depthOf = (node) => stack.findLastIndex((c) => c.el.contains(node));
@@ -45,7 +48,7 @@ export function initHoverCards(resolve) {
   document.addEventListener('keydown', (e) => {
     const t = triggerOf(document.activeElement);
     // A term whose card can’t open (a cycle, or past the depth) leaves the key alone.
-    const c = (e.key === 'Enter' || e.key === ' ') && t ? show(t, resolve, true) : null;
+    const c = (e.key === 'Enter' || e.key === ' ') && t && !ownButton(t) ? show(t, resolve, true) : null;
     if (c) {
       e.preventDefault();
       pin(c);
@@ -96,7 +99,7 @@ function show(trigger, resolve, pinNow = false) {
   document.body.append(el);
   place(el, trigger);
   trigger.classList.add('open');
-  trigger.setAttribute('aria-expanded', 'true');
+  if (!ownButton(trigger)) trigger.setAttribute('aria-expanded', 'true');
   const card = { el, trigger, bar, key, pinned: false, timer: null, leaving: null };
   stack.push(card);
   bar.animate([{ width: '0%' }, { width: '100%' }], { duration: DWELL, fill: 'forwards', easing: 'linear' });
@@ -166,7 +169,7 @@ function hide(card) {
     clearTimeout(c.timer);
     clearTimeout(c.leaving);
     c.trigger.classList.remove('open');
-    c.trigger.setAttribute('aria-expanded', 'false');
+    if (!ownButton(c.trigger)) c.trigger.setAttribute('aria-expanded', 'false');
     c.el.remove();
   }
   if (held && card.trigger.isConnected) {

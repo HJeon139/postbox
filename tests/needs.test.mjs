@@ -92,11 +92,11 @@ test('needs-jump-missed: a ring that lands on its own agent’s ask, on screen a
 test('needs-jump-missed: another agent’s ask, nothing, off screen or no outline is a finding for #285', () => {
   const [wrong] = findings([jump('agents', 'beta', '#/t/room', landed('ask-c'))]);
   assert.equal(wrong.issue, 285);
-  assert.equal(wrong.title, 'Going to what @beta needs from its row in the Agents section didn’t land on its ask');
+  assert.equal(wrong.title, 'Going to what @beta needs from its ring in the Agents section didn’t land on its ask');
   assert.match(wrong.evidence, /focus landed on @gamma’s ask, not @beta’s ask/);
-  assert.match(findings([jump('overview', 'beta', '#/', null)])[0].evidence, /focus landed on nothing/);
+  assert.match(findings([jump('rail', 'beta', '#/t/room', null)])[0].evidence, /focus landed on nothing/);
   assert.match(findings([jump('message', 'beta', '#/t/room', landed('ask-b', { onScreen: false }))])[0].evidence, /\(off screen\)/);
-  assert.match(findings([jump('topbar', 'beta', '#/t/room', landed('ask-b', { outlined: false }))])[0].evidence, /\(not outlined\)/);
+  assert.match(findings([jump('rail', 'beta', '#/t/room', landed('ask-b', { outlined: false }))])[0].evidence, /\(not outlined\)/);
   // From a conversation whose agent needs you, ⌃J goes there first: not to the oldest elsewhere.
   assert.equal(findings([jump('next', '', '#/t/room', landed('ask-a'))]).length, 1);
 });
@@ -109,7 +109,7 @@ test('needs-jump-missed: ⌃J pressed again may land on any agent that needs you
 
 test('the #285 triggers fire on two agents waiting, a side-thread ask, and a ring click', () => {
   for (const id of ['two-need-you', 'side-thread-need', 'ring-jump']) assert.ok(TRIGGERS[id], `${id} is registered`);
-  const jumps = [jump('next', '', '#/', landed('ask-a')), jump('overview', 'beta', '#/', landed('ask-b'))];
+  const jumps = [jump('next', '', '#/', landed('ask-a')), jump('agents', 'beta', '#/', landed('ask-b'))];
   const f = { probes: { jumps } };
   assert.equal(NEEDS_TRIGGERS['two-need-you'].run(f).length, 2);
   assert.equal(NEEDS_TRIGGERS['side-thread-need'].run(f).length, 2);

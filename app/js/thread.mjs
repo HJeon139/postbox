@@ -1296,7 +1296,6 @@ export function mountComposer(threadId, { side = false } = {}) {
     ['compact', 'Summarize its context to make room', () => compact()],
     ['stop', 'Stop the agents that are working', () => stopAll()],
     ['rename', 'Rename this conversation', () => openRename(threadId)],
-    ['archive', 'Archive its session; restore it any time', () => archive()],
   ];
   const POSTBOX_NAMES = new Set(POSTBOX.map(([n]) => n));
   function addDir() {
@@ -1329,14 +1328,6 @@ export function mountComposer(threadId, { side = false } = {}) {
         (r) => (r?.ask ? askStop(se, r.ask) : say(`Stopped @${se.handle}.`)),
         (e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }),
       );
-  }
-  function archive() {
-    const se = target();
-    if (!se) return;
-    api(`/api/sessions/${se.id}/archive`, {}).then(
-      () => toast({ title: `Archived @${se.handle}’s session`, action: { label: 'Restore', run: () => api(`/api/sessions/${se.id}/restore`, {}) } }),
-      (e) => toast({ title: 'Couldn’t archive', text: e.message, level: 'blocking' }),
-    );
   }
   /** An agent’s skills and commands: its session’s, else the latest from another session of its persona. */
   function agentCommands(se) {
@@ -1832,15 +1823,14 @@ export function mountComposer(threadId, { side = false } = {}) {
               'span.pill',
               { role: 'status' },
               `Archived: read-only. `,
-              archived.map((se) =>
-                h(
-                  'button.btn.sm',
-                  {
-                    type: 'button',
-                    onclick: () => api(`/api/sessions/${se.id}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message })),
-                  },
-                  `Restore @${se.handle}`,
-                ),
+              // Its agents are archived with it, and come back with it (#320).
+              h(
+                'button.btn.sm',
+                {
+                  type: 'button',
+                  onclick: () => api(`/api/threads/${threadId}/restore`, {}).catch((e) => toast({ title: 'Couldn’t restore', text: e.message })),
+                },
+                'Restore conversation',
               ),
             ),
           )

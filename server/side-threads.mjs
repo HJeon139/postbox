@@ -5,7 +5,8 @@
 import { clip, httpError } from './helpers.mjs';
 import { newId } from './store.mjs';
 
-export const HOP_LIMIT = 3;
+/** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
+export const HOP_LIMIT = 10;
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 // Open blocks (#69): asking blocks you left open from an earlier turn, shown quietly beside their agent as
-// “1 open review”, on an agent’s row and its overview card.
+// “1 open review”, a button under an agent’s row and in its quick panel.
 
 import { ASKING } from '/shared/catalog.mjs';
 import { client, itemsOf } from './client.mjs';
@@ -31,20 +31,18 @@ export function openAsks(se) {
   return { text: plural(open.length, `open ${one}`, `open ${many}`), itemId: open[0].id };
 }
 /**
- * “1 open review” for an agent: quiet text on its overview card, or a button in its row that goes to the block.
- * @param {any} se @param {boolean} [button] @param {() => void} [before] what to do first, such as close the panel it’s in
+ * “1 open review” for an agent: a button that goes to the block.
+ * @param {any} se @param {() => void} [before] what to do first, such as close the panel it’s in
  */
-export function openAsksEl(se, button = false, before = undefined) {
-  const el = button
-    ? h('button.btn.sm.ghost', {
-        type: 'button',
-        dataset: { openAsks: se.id },
-        onclick: () => {
-          before?.();
-          focusItem(el.dataset.item ?? '');
-        },
-      })
-    : h('span.small.dim', { dataset: { openAsks: se.id } });
+export function openAsksEl(se, before = undefined) {
+  const el = h('button.btn.sm.ghost', {
+    type: 'button',
+    dataset: { openAsks: se.id },
+    onclick: () => {
+      before?.();
+      focusItem(el.dataset.item ?? '');
+    },
+  });
   paintOpenAsks(el);
   return el;
 }
@@ -54,7 +52,7 @@ function paintOpenAsks(el) {
   el.hidden = !ask;
   if (el.textContent !== (ask?.text ?? '')) el.textContent = ask?.text ?? '';
   if (ask) el.dataset.item = ask.itemId;
-  if (ask && el.tagName === 'BUTTON') el.setAttribute('aria-label', `${ask.text} from @${se.handle}: go to it`);
+  if (ask) el.setAttribute('aria-label', `${ask.text} from @${se.handle}: go to it`);
 }
 client.on((ch) => {
   if (['session', 'item.add', 'item.patch', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-open-asks]')) paintOpenAsks(el);

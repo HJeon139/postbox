@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { HOP_LIMIT } from '../server/side-threads.mjs';
 import { collect, tierA } from '../server/telemetry-record.mjs';
 import { held, settle, setup, sideOf, sleep } from './side-threads-fixture.mjs';
 
@@ -49,7 +50,7 @@ test('#114: a fix request that sends agents back and forth shows one line for th
   // asks the person, who allows one more. The steps run in the order the turns do.
   const say = (text) => adapter.next.push(async (c) => c.text(text));
   say('On it. @beta can you check the fix?');
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < HOP_LIMIT; i++) {
     say('One more gap in the totals.');
     say('Fixed. @beta check again, please.');
   }
@@ -58,10 +59,10 @@ test('#114: a fix request that sends agents back and forth shows one line for th
   rt.sendMessage(t.id, { text: '@alpha fix the arithmetic gap' });
   await settle(rt);
   const card = store.items(t.id).find((x) => x.kind === 'hop' && x.status === 'open');
-  assert.ok(card, 'the fourth wake waits for the person');
+  assert.ok(card, `wake ${HOP_LIMIT + 1} waits for the person`);
   rt.resolveHop(t.id, card.id, true);
   await settle(rt);
-  assert.equal(store.items(sideOf(store, t).id).filter((x) => x.kind === 'agent').length, 8, 'four wakes, each answered');
+  assert.equal(store.items(sideOf(store, t).id).filter((x) => x.kind === 'agent').length, 2 * (HOP_LIMIT + 1), `${HOP_LIMIT + 1} wakes, each answered`);
   // The wake you allowed is from the turn that asked for it (#135).
   const allowed = store.items(sideOf(store, t).id).findLast((x) => x.handle === 'alpha');
   assert.ok(store.items(t.id).some((x) => x.kind === 'agent' && x.handle === 'alpha' && x.turnId === card.fromTurnId));
@@ -73,7 +74,7 @@ test('#114: a fix request that sends agents back and forth shows one line for th
     lines.map((x) => (x.kind === 'system' ? `system ${x.variant}` : x.kind)),
     ['sidelink', 'hop', 'voice'],
   );
-  assert.equal(lines[0].count, 8);
+  assert.equal(lines[0].count, 2 * (HOP_LIMIT + 1));
   assert.match(lines[2].text, /^Allowed: @alpha wakes @beta$/);
 });
 

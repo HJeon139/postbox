@@ -399,16 +399,16 @@ await check('Stop is there only while it works, Compact only on a real backend, 
   assert.equal(await page.evaluate(`${panel}.querySelectorAll('[role=switch]').length`), 3);
 });
 
-await check('Archive puts the session to sleep, closes the panel and offers Restore', async () => {
+await check('Delete session… in the panel opens its confirmation, and there’s no Archive (#320)', async () => {
   await open(`#/t/${shelf.id}`);
-  const se = sessionIn(shelf, 'indexer');
   await click(row('indexer'));
-  await click(inPanel('button', 'Archive'));
-  await page.waitFor(`!${panel} && [...document.querySelectorAll('.toast')].some((t) => t.textContent.includes('Archived @indexer’s session'))`, {
-    label: 'the toast',
+  assert.equal(await page.evaluate(`!!${inPanel('button', 'Archive')}`), false, 'The panel still offers Archive');
+  await click(inPanel('button', 'Delete session'));
+  await page.waitFor(`[...document.querySelectorAll('.dialog')].some((d) => d.textContent.includes('Delete @indexer’s session?'))`, {
+    label: 'the confirmation',
   });
-  assert.equal(store.state.sessions[se.id].archived, true);
-  rt.restore(se.id);
+  await press('Escape');
+  assert.equal(store.state.sessions[sessionIn(shelf, 'indexer').id].deleting ?? false, false, 'Escape deleted it');
 });
 
 // ── A topic thread ──────────────────────────────────────────────────────────────────────
@@ -509,58 +509,26 @@ await check('End on a subagent’s row, by keyboard, tells its agent and reads �
   await until(() => store.state.sessions[indexer.id].state === 'idle', 'the turn to end');
 });
 
-await check('at 1280 px, a ring in the top bar opens the same panel, and Escape returns to the ring', async () => {
-  await open(`#/t/${planning.id}`);
-  await focus(`document.getElementById('top-ring-${indexer.id}')`);
-  await press('Enter');
-  await page.waitFor(panel);
-  assert.equal(await page.evaluate(`document.getElementById(${panel}.getAttribute('aria-labelledby')).textContent`), '@indexer');
-  assert.ok(await panelFits(), 'The panel isn’t on screen whole');
-  await press('Escape');
-  assert.equal(await page.evaluate(`document.activeElement?.id`), `top-ring-${indexer.id}`);
-});
-
 for (const theme of ['light', 'dark'])
-  await check(`at 375 px (${theme}), the rings open the panel as a sheet that fits, in a direct message and a room`, async () => {
+  await check(`at 375 px (${theme}), the top bar fits a long title with no agent rings, and its menu names each agent (#320)`, async () => {
     await page.size(375, 812, { theme });
     try {
-      // A direct message: its one ring opens the panel. A long title squeezes the top bar, and the ring still stays:
-      // there’s no stack to fold one ring into.
       rt.renameThread(shelf.id, 'Index every book on the shelf, then check the index against the catalog');
       await open(`#/t/${shelf.id}`);
       assert.equal(
         await page.evaluate(`document.querySelector('header.topbar').scrollWidth <= document.querySelector('header.topbar').clientWidth`),
         true,
-        `The top bar overflows: ${await page.evaluate(`(() => { const b = document.querySelector('header.topbar'); return JSON.stringify({ over: b.scrollWidth - b.clientWidth, drop: b.dataset.drop, kids: [...b.children].map((c) => (c.id || c.className) + ':' + Math.round(c.getBoundingClientRect().width)), actions: [...b.querySelector('.top-actions').children].map((c) => (c.id || c.className) + ':' + Math.round(c.getBoundingClientRect().width)) }); })()`)}`,
+        'The top bar overflows',
       );
-      assert.equal(await page.evaluate(`getComputedStyle(${q('.rail')}).display`), 'none');
-      const ring = `document.getElementById('top-ring-${sessionIn(shelf, 'indexer').id}')`;
-      assert.ok(await page.evaluate(`${ring}.offsetWidth > 0`), 'The ring isn’t on screen');
-      await focus(ring);
-      await press('Enter');
-      await page.waitFor(panel);
-      assert.ok(await panelFits(), 'The panel doesn’t fit');
-      assert.equal(await page.evaluate(`${q('.backdrop')}.classList.contains('anchored')`), false, 'A narrow window anchors the panel');
-      await click(radio('Effort', 'Low'));
-      await page.waitFor(`${q('.qp .perm-status')}?.textContent.includes('Effort: low')`);
-      assert.equal(store.state.sessions[sessionIn(shelf, 'indexer').id].personaSnapshot.effort, 'low');
+      assert.equal(await page.evaluate(`document.querySelectorAll('header.topbar pb-ring').length`), 0, 'The top bar has agent rings');
+      // Where the sidebar is hidden, the conversation’s menu names its agents, each leading to its persona.
+      await click(`document.querySelector('header.topbar #conversation-actions')`);
+      await page.waitFor(`document.querySelector('.menu')`);
+      assert.ok(
+        await page.evaluate(`[...document.querySelectorAll('.menu button.mi')].some((b) => b.innerText.includes('@indexer'))`),
+        'The menu doesn’t name @indexer',
+      );
       await press('Escape');
-      // A room: the rings fold into one stack where they don’t fit, whose menu leads to each agent’s panel.
-      await open(`#/t/${planning.id}`);
-      const shownRing = await page.evaluate(`document.getElementById('top-ring-${indexer.id}').offsetWidth > 0`);
-      if (shownRing) await focus(`document.getElementById('top-ring-${indexer.id}')`);
-      else {
-        await focus(`document.getElementById('top-ring-stack')`);
-        await press('Enter');
-        await page.waitFor(`document.querySelector('.menu')`);
-        assert.match(await focused(), /^menuitem: @indexer/);
-      }
-      await press('Enter');
-      await page.waitFor(panel);
-      assert.equal(await page.evaluate(`document.getElementById(${panel}.getAttribute('aria-labelledby')).textContent`), '@indexer');
-      assert.ok(await panelFits(), 'The panel doesn’t fit');
-      await press('Escape');
-      assert.match(await page.evaluate(`document.activeElement?.id ?? ''`), /^top-ring-/);
     } finally {
       rt.renameThread(shelf.id, 'Index the shelf');
       await page.size(1280, 900);

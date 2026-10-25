@@ -10,7 +10,7 @@ export { initHoverCards } from './hovercards.mjs';
 export { rememberWork, workRemembered } from './work-memory.mjs';
 
 // ── Navigation ──────────────────────────────────────────────────────────────────────────
-// Routes: #/ (overview), #/t/<threadId>, and #/t/<threadId>/side/<sideThreadId> with a thread in the right pane.
+// Routes: #/ (home: the conversation you were last in, #320), #/t/<threadId>, and #/t/<threadId>/side/<sideThreadId> with a thread in the right pane.
 // After either, what else the pane shows (#132): ?work opens the conversation’s Work, turn=<turnId> scrolls it to a
 // turn, full=work or full=thread shows that view full screen (Work on that turn alone, with turn), and at=<id> opens
 // one item in full-screen Work. The Work page #138 had, #/t/<threadId>/work or /work/<turnId>, is read as oldWork,
@@ -233,8 +233,8 @@ export function keepFocus(root, paint) {
 
 /**
  * Finds a control again after a repaint may have replaced it: the element itself while it’s on the page,
- * else the one with its id, else the one with its label in the same card. The top bar and the overview
- * cards rebuild their buttons while a menu or dialog they opened is still open.
+ * else the one with its id, else the one with its label in the same card. The top bar rebuilds its buttons while
+ * a menu or dialog it opened is still open.
  * @param {Element} el
  * @returns {() => HTMLElement | null}
  */

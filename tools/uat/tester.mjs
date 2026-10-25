@@ -130,7 +130,7 @@ export const SCHEMA = {
         mode: { type: 'string', description: 'agent_panel: the permission mode to pick.' },
         shell: { type: 'boolean', description: 'agent_panel: turn the Shell switch on or off.' },
         from: {
-          enum: ['next', 'rail', 'agents', 'overview', 'message', 'topbar'],
+          enum: ['next', 'rail', 'agents', 'message'],
           description: 'go_to_needs: the global “Next that needs you” button, or where to click the agent’s ring.',
         },
         open: { enum: ['work', 'thread'], description: 'pane: the view to open in the right pane.' },
@@ -195,7 +195,7 @@ Then choose one action:
 - review {item, verdict, comments}: answer a review block. Approve only what you’d sign off as it is. Otherwise request changes, with at least one comment on a line saying what to change; comment, with comments, when you only have questions.
 - settings {target, permissions?}: open Settings › Personas and edit that agent (target is its handle), to see what it runs on, its model, permissions and setup; with permissions, also open its permissions panel. You get what they say and their screenshots; they close after.
 - agent_panel {target, model?, effort?, mode?, shell?}: open that agent’s row in the sidebar’s Agents section, set what you give, and close it. You get what the panel says, including each setting’s scope.
-- go_to_needs {from, target?}: go to what an agent needs: from next, press the top bar’s “Next that needs you” button; from rail, agents, overview, message or topbar, click that agent’s pulsing needs-you ring in its rail row, its Agents-section row, its overview card, beside its newest message, or in the top bar. You get which item focus landed in, whether it’s on screen, and whether it was outlined.
+- go_to_needs {from, target?}: go to what an agent needs: from next, press the top bar’s “Next that needs you” button; from rail, agents or message, click that agent’s pulsing needs-you ring in its rail row, in its Agents-section row (its name there opens its quick panel instead), or beside its newest message. You get which item focus landed in, whether it’s on screen, and whether it was outlined.
 - pane {open: work|thread, item?}: open Work (its top-bar button) or a thread in the right pane. You get each view’s size.
 - fullscreen {pane: work|thread}: open that view full screen, read it, and close it with Escape.
 - fullscreen_draft {text}: open the thread full screen, type text into its reply box without sending, and leave full screen. You get whether the draft and the scroll survived.
