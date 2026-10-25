@@ -9,10 +9,10 @@ on:
 permissions:
   contents: read
 
-# A new push to a pull request replaces its run still in progress. A push to main gets a group of its own, so none is
-# cancelled (the example in GitHub’s workflow syntax docs, under concurrency).
+# A new push to a pull request replaces its run still in progress. Keyed on the pull request’s number, not its branch’s
+# name, so two forks' branches of the same name don't cancel each other. A push to main gets a group of its own.
 concurrency:
-  group: check-${{ github.head_ref || github.run_id }}
+  group: check-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
