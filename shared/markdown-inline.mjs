@@ -8,6 +8,15 @@ import { isSafeUrl, LOCAL_HTTP, onPageOrigin } from './urls.mjs';
 const LABEL_MAX = 1000;
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ESC[c]);
+/** HTML as text: its tags removed, and removed again until none is left, so a tag can’t hide inside another (#345). */
+export function stripTags(html) {
+  let text = String(html);
+  for (let was = ''; was !== text; ) {
+    was = text;
+    text = text.replace(/<[^>]+>/g, '');
+  }
+  return text;
+}
 
 // ── Inline ──────────────────────────────────────────────────────────────────────────────
 

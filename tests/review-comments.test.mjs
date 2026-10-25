@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { keepReviewThreads } from '../server/review-comments.mjs';
 import { renderMarkdown } from '../shared/markdown.mjs';
+import { stripTags } from '../shared/markdown-inline.mjs';
 import { anchorOf, commentAt, commentErrors, quoteOf, toSource, toText } from '../shared/review-comments.mjs';
 
 /** The runs a render with positions marks, in order: the text each shows, and the source line and offsets it names. */
@@ -21,10 +22,10 @@ function runsOf(html) {
         break;
       }
     }
-    const text = html
-      .slice(open.lastIndex, k)
-      .replace(/<[^>]+>/g, '')
-      .replace(/&(lt|gt|quot|#39|amp);/g, (_, e) => ({ lt: '<', gt: '>', quot: '"', '#39': "'", amp: '&' })[e]);
+    const text = stripTags(html.slice(open.lastIndex, k)).replace(
+      /&(lt|gt|quot|#39|amp);/g,
+      (_, e) => ({ lt: '<', gt: '>', quot: '"', '#39': "'", amp: '&' })[e],
+    );
     runs.push({ n: +m[1], sc: +m[2], se: +m[3], text });
     open.lastIndex = k;
   }

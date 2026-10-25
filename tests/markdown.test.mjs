@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { closesFence, renderMarkdown as md, toPlainText } from '../shared/markdown.mjs';
+import { stripTags } from '../shared/markdown-inline.mjs';
 
 test('escapes raw HTML instead of rendering it', () => {
   const out = md('Hello <script>alert(1)</script> <img src=x onerror=alert(1)>');
@@ -53,6 +54,12 @@ test('#344: a fence closes on a run of its own character at least as long, inden
   assert.equal(closesFence('```', '    ```'), false, 'indented four spaces');
   assert.equal(closesFence('```', '```js'), false, 'an info string opens, it doesn’t close');
   assert.equal(closesFence('```', '`.`'), false, 'nothing in the line is read as a pattern');
+});
+
+test('#345: stripTags leaves no tag behind, even one written inside another', () => {
+  assert.equal(stripTags('<b>bold</b> and <scr<b>ipt>alert(1)</script>'), 'bold and ipt>alert(1)');
+  assert.equal(stripTags('<<>script>'), 'script>');
+  assert.equal(stripTags('x <> y'), 'x <> y', 'an empty pair isn’t a tag');
 });
 
 test('mermaid fences become diagrams only once closed', () => {
