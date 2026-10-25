@@ -1,4 +1,4 @@
-# Gemini room: a Claude Code agent and an Antigravity CLI agent (release runs only)
+# Gemini room: a Claude Code agent and an Antigravity CLI agent
 
 - persona: A data engineer deduplicating a nightly import of about 40 million customer records from three source systems, where the same person can appear with different spellings, emails and addresses. Skeptical of fuzzy matching, and wants a second opinion from a reviewer that doesn’t think like the first. Writes short messages.
 - agents: researcher
@@ -6,7 +6,7 @@
 - project: Customer dedup
 - conversation: Deduplicating the nightly import
 
-@researcher runs on Claude Code. @critic runs on the Antigravity CLI with a Gemini model (#143). This run checks that @critic works in the room, not the plan itself, so keep it short: two phases, and move on as soon as each phase’s point has shown. It’s a compatibility run that also runs only for a version release (`node tools/uat-run.mjs --scenario geminiroom --release`, plus `--compat` once the runner has it): the Antigravity CLI is on a free tier. @critic should work as @researcher does: answer with whatever suits the reply, wake @researcher, and define the terms it uses. Antigravity can’t ask you to approve a tool call from Postbox: anything that would need asking is refused and shows as a refused step with a reason, not a card. agy ends the turn at a refusal, so Postbox resumes it once: @critic should then say which call was refused, not that you declined it. Antigravity also can’t turn off a tool you unticked for @critic; it only tells @critic not to use it. Notice anything about @critic that reads as Claude Code’s, or that it can’t do and doesn’t say so.
+@researcher runs on Claude Code. @critic runs on the Antigravity CLI with a Gemini model (#143). This run checks that @critic works in the room, not the plan itself, so keep it short: two phases, and move on as soon as each phase’s point has shown. It’s a compatibility run (`node tools/uat-run.mjs --scenario geminiroom --compat`), and its turns use the Antigravity quota. @critic should work as @researcher does: answer with whatever suits the reply, wake @researcher, and define the terms it uses. Antigravity can’t ask you to approve a tool call from Postbox: anything that would need asking is refused and shows as a refused step with a reason, not a card. agy ends the turn at a refusal, so Postbox resumes it once: @critic should then say which call was refused, not that you declined it. Antigravity also can’t turn off a tool you unticked for @critic; it only tells @critic not to use it. Notice anything about @critic that reads as Claude Code’s, or that it can’t do and doesn’t say so.
 
 ## Phase 1: A short plan, reviewed by Gemini
 

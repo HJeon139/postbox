@@ -10,8 +10,8 @@
 // the tester; --max-cost caps the whole run (agents, tester, verifier and telemetry), stopping it, report and all, before
 // a step or an agent turn could pass the cap (tools/uat/budget.mjs). Without --max-cost the agents are uncapped. A scenario
 // can put agents on another backend (`- backends: critic=kiro-cli:gpt-5.6-terra`); those use that CLI’s sign-in, and
-// the scenario is a compatibility run, which needs --compat. The Antigravity CLI is on a free tier, so it runs only
-// for a version release: --release (releaseGate), which also counts as --compat:
+// the scenario is a compatibility run, which needs --compat, the Antigravity CLI’s included. A backend kept to version
+// releases (none today) needs --release (releaseGate), which also counts as --compat:
 //
 //   node tools/uat-run.mjs --scenario mixedroom --compat
 // Everything a run makes goes in uat-runs/<time>-<scenario>/ in the main checkout, or POSTBOX_UAT_RUNS (tools/uat/runs.mjs),
@@ -108,7 +108,7 @@ async function main() {
     throw new Error(
       `This scenario puts agents on ${other.join(' and ')}, so it’s a compatibility run, which runs only when asked: it uses that harness’s credits, and a regular pass is Claude only. Pass --compat to run it.`,
     );
-  // A release-only backend (the Antigravity CLI, on a free tier) runs only in a release run; otherwise Postbox starts
+  // A release-only backend (none today: tools/uat/scenario.mjs) runs only in a release run; otherwise Postbox starts
   // without it, so the tester can’t put an agent on it from a sheet either.
   const gate = releaseGate(scenario, { release: opt.release });
   if (gate.error) throw new Error(gate.error);
@@ -190,12 +190,12 @@ async function main() {
     .map(onBackend);
   if (opt.release) log('A release run: the release-only backends are on.');
   // Postbox registers the Kiro CLI only when it can run it, and seeding an agent on a backend it doesn’t have fails.
-  // The same for the Antigravity CLI, which a release run alone may use (releaseGate). It always runs with the
+  // The same for the Antigravity CLI, which a compatibility run may use. It always runs with the
   // person’s own agy setup: it has no Isolated mode (server/adapters/antigravity-cli.mjs).
   if (Object.values(scenario.backends).some((b) => b.backend === 'antigravity-cli')) {
     const v = await agyVersion(findAgy());
     if (!v) throw new Error('This scenario puts agents on the Antigravity CLI, and agy isn’t installed here (or set POSTBOX_AGY_BIN).');
-    log(`Antigravity CLI ${v}, on a free tier: this run uses its quota.`);
+    log(`Antigravity CLI ${v}: this run uses its quota.`);
   }
   if (Object.values(scenario.backends).some((b) => b.backend === 'kiro-cli')) {
     const v = await kiroVersion(findKiro());
