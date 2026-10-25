@@ -6,7 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 /** The conversation column’s minimum, and its composer’s text box at that width (architecture.md §14). */
@@ -64,7 +64,7 @@ export async function end() {
 }
 
 export const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
-export const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+export const q = (sel) => `document.querySelector(${js(sel)})`;
 export const has = (sel) => page.evaluate(`!!${q(sel)}`);
 export const hash = () => page.evaluate('location.hash');
 export async function press(key, code, keyCode) {
@@ -92,7 +92,7 @@ export async function check(name, fn) {
 export async function open(to) {
   // What the check changed on the server must have reached the page first, or it shows what was there before.
   await page.synced(app.store.state.seq);
-  await page.evaluate(`location.hash = ${JSON.stringify(to)}`);
+  await page.evaluate(`location.hash = ${js(to)}`);
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();
 }

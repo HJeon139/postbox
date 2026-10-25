@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4870, 9870);
@@ -142,13 +142,12 @@ async function axName() {
   const { nodes } = await page.send('Accessibility.getPartialAXTree', { objectId: result.objectId, fetchRelatives: false });
   return nodes[0]?.name?.value ?? '';
 }
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
 /** An agent’s row: in the sidebar, or in the open topic thread’s panel. */
 const row = (handle, where = '.rail') =>
   `[...document.querySelectorAll('${where} .agent-row .agent-btn')].find((b) => b.querySelector('b')?.textContent === '@${handle}')`;
 const panel = `document.querySelector('.backdrop .dialog.quick')`;
-const inPanel = (sel, text) =>
-  `[...(${panel}?.querySelectorAll(${JSON.stringify(sel)}) ?? [])].find((n) => n.textContent.trim().startsWith(${JSON.stringify(text)}))`;
+const inPanel = (sel, text) => `[...(${panel}?.querySelectorAll(${js(sel)}) ?? [])].find((n) => n.textContent.trim().startsWith(${js(text)}))`;
 const radio = (group, name) => `${panel}?.querySelector('[role=radiogroup][aria-label^="${group}"]') && ${inPanel('[role=radio]', name)}`;
 const checked = (group) => page.evaluate(`${panel}?.querySelector('[role=radiogroup][aria-label^="${group}"] [aria-checked="true"]')?.textContent`);
 
@@ -176,7 +175,7 @@ async function open(hash) {
   if (loaded) {
     // What the check changed on the server must have reached the page first, or it shows what was there before.
     await page.synced(store.state.seq);
-    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+    await page.evaluate(`location.hash = ${js(hash)}`);
   } else await page.goto(`${app.origin}/${hash}`);
   loaded = true;
   await page.waitFor(`document.querySelector('header.topbar')`);

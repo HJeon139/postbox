@@ -3,8 +3,7 @@
 // tools/uat-run.mjs, to keep those files to their size; it uses the driver’s clickAt and press.
 
 import { needsAt } from '../../server/room-checks-needs.mjs';
-import { sleep } from '../cdp.mjs';
-import { J } from './selectors.mjs';
+import { js, sleep } from '../cdp.mjs';
 
 /**
  * Clicks the place named and returns where focus landed a moment later: the item it’s in, whether that’s on screen
@@ -13,7 +12,7 @@ import { J } from './selectors.mjs';
  */
 export async function goToNeeds(d, page, from, handle = '') {
   const ev = (expr) => page.evaluate(expr);
-  const ring = (scope) => `[...document.querySelectorAll(${J(`${scope} pb-ring[name="@${handle}"]`)})].filter((r) => r.offsetParent !== null).at(-1)`;
+  const ring = (scope) => `[...document.querySelectorAll(${js(`${scope} pb-ring[name="@${handle}"]`)})].filter((r) => r.offsetParent !== null).at(-1)`;
   if (from === 'overview' && !(await ev(`location.hash === '#/' || location.hash === ''`))) {
     await ev(`location.hash = '#/'`);
     await page.waitFor(`!!document.querySelector('.ov-col')`, { label: 'the overview' });
@@ -23,7 +22,7 @@ export async function goToNeeds(d, page, from, handle = '') {
     next: [`document.getElementById('next-needs')`, 'the “Next that needs you” button'],
     rail: [ring('.rail a.row'), `@${handle}’s ring in its conversation’s rail row`],
     agents: [
-      `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${J(`@${handle}`)}))`,
+      `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${js(`@${handle}`)}))`,
       `@${handle}’s row in the Agents section`,
     ],
     overview: [ring('.ov'), `@${handle}’s ring on the overview`],

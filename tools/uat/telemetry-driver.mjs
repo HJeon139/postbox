@@ -4,12 +4,11 @@
 // what File issue asked the browser to do: the text it copied and the page it opened. The runner keeps the page from
 // opening a real tab, so nothing is ever submitted.
 
-import { sleep } from '../cdp.mjs';
+import { js, sleep } from '../cdp.mjs';
 
-const J = JSON.stringify;
 /** A reaction in the open React menu, by its emoji: the item's icon says it (#263), or its text, as before icons. */
 export const reactItem = (emoji) =>
-  `[...document.querySelectorAll('[role=menuitemcheckbox],[role=menuitem]')].find((b) => b.querySelector('img')?.alt === ${J(emoji)} || b.textContent.trim().startsWith(${J(emoji)}))`;
+  `[...document.querySelectorAll('[role=menuitemcheckbox],[role=menuitem]')].find((b) => b.querySelector('img')?.alt === ${js(emoji)} || b.textContent.trim().startsWith(${js(emoji)}))`;
 
 /** The page’s helpers: evaluate, click what an expression finds, find by text, and wait for an expression. */
 function helpers(page) {
@@ -21,7 +20,7 @@ function helpers(page) {
     await sleep(300);
   };
   const byText = (scope, sel, text) =>
-    `[...document.querySelectorAll(${J(`${scope} ${sel}`)})].find((e) => e.offsetParent !== null && (e.textContent + ' ' + (e.getAttribute('aria-label') ?? '')).includes(${J(text)}))`;
+    `[...document.querySelectorAll(${js(`${scope} ${sel}`)})].find((e) => e.offsetParent !== null && (e.textContent + ' ' + (e.getAttribute('aria-label') ?? '')).includes(${js(text)}))`;
   const until = async (expr, what, seconds = 30) => {
     for (let i = 0; i < seconds * 4; i++) {
       if (await ev(expr)) return;
@@ -55,7 +54,7 @@ function roomActions({ ev, click, byText }) {
     header: () => ev(`document.querySelector('#recording-badge')?.textContent ?? ''`),
     /** Reacts to an item, by its id, from its React menu. */
     async react(key, emoji) {
-      await click(`document.querySelector(${J(`[data-key="${key}"] button[aria-label="React to this message"]`)})`, `the React button on ${key}`);
+      await click(`document.querySelector(${js(`[data-key="${key}"] button[aria-label="React to this message"]`)})`, `the React button on ${key}`);
       await click(reactItem(emoji), `${emoji} in the React menu`);
     },
   };
@@ -69,7 +68,7 @@ function viewActions({ ev, click, byText, until }) {
       if (!(await ev(`!!document.querySelector('.telemetry-view')`))) await this.menu('Telemetry report');
       await until(`!!document.querySelector('.telemetry-view .tv-body button')`, 'The Telemetry view');
       if (!(await ev(`!!document.querySelector('.tv-lines')`))) {
-        await ev(`(() => { const c = document.querySelector('#tv-history'); if (c) c.checked = ${J(history)}; })()`);
+        await ev(`(() => { const c = document.querySelector('#tv-history'); if (c) c.checked = ${js(history)}; })()`);
         await click(byText('.telemetry-view', 'button', 'Make report'), 'Make report');
         await until(`!!document.querySelector('.tv-lines')`, 'The report', 180);
       }
@@ -84,10 +83,10 @@ function viewActions({ ev, click, byText, until }) {
     async leaveOut(n) {
       const before = (await this.shown()).hash;
       await click(
-        `document.querySelector(${J(`.tv-lines button[aria-label="Leave out line ${n}"], .tv-lines button[aria-label="Put back line ${n}"]`)})`,
+        `document.querySelector(${js(`.tv-lines button[aria-label="Leave out line ${n}"], .tv-lines button[aria-label="Put back line ${n}"]`)})`,
         `Leave out on line ${n}`,
       );
-      await until(`(/sha256 ([0-9a-f]{64})/.exec(document.querySelector('.tv-hash')?.textContent ?? '') ?? [])[1] !== ${J(before)}`, 'The new hash', 15);
+      await until(`(/sha256 ([0-9a-f]{64})/.exec(document.querySelector('.tv-hash')?.textContent ?? '') ?? [])[1] !== ${js(before)}`, 'The new hash', 15);
       return this.shown();
     },
     async save() {

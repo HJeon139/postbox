@@ -12,7 +12,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../../server/index.mjs';
-import { launch, sleep } from '../cdp.mjs';
+import { js, launch, sleep } from '../cdp.mjs';
 import { record as check, finish, ports } from '../harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4400, 9600);
@@ -45,7 +45,7 @@ try {
   /** What the page shows for a setup checkbox: its state, name, help, and whether it’s visible and focusable. */
   const read = (id) =>
     page.evaluate(`(() => {
-      const el = document.getElementById(${JSON.stringify(id)});
+      const el = document.getElementById(${js(id)});
       if (!el) return null;
       const help = document.getElementById(el.getAttribute('aria-describedby'));
       const r = el.getBoundingClientRect();
@@ -54,7 +54,7 @@ try {
     })()`);
 
   // The persona editor.
-  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${JSON.stringify(persona.id)}))`);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', ${js(persona.id)}))`);
   await page.waitFor(`!!document.getElementById('pe-setup')`, { label: 'the persona editor' });
   const setup = await read('pe-setup');
   const publish = await read('pe-publish');
@@ -99,7 +99,7 @@ try {
   );
   await sleep(300);
   const projectId = Object.keys(app.store.state.projects)[0];
-  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openNewAgent({ projectId: ${JSON.stringify(projectId)} }))`);
+  await page.evaluate(`import('/app/js/sheets.mjs').then((m) => m.openNewAgent({ projectId: ${js(projectId)} }))`);
   await page.waitFor(`!!document.getElementById('na-setup')`, { label: 'the new-agent sheet' });
   const na = [await read('na-setup'), await read('na-publish')];
   check(

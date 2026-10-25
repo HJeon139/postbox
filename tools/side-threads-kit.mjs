@@ -6,7 +6,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { ports, record } from './harness.mjs';
 
 export const { PORT, CHROME_PORT } = await ports(4890, 10090);
@@ -94,7 +94,7 @@ export async function until(test, label) {
   }
   throw new Error(`Timed out waiting for ${label}`);
 }
-export const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+export const q = (sel) => `document.querySelector(${js(sel)})`;
 /** An agent’s row in the sidebar, the li around its button. */
 export const row = (handle) => `[...document.querySelectorAll('.rail .agent-row')].find((r) => r.querySelector('.agent-btn b')?.textContent === '@${handle}')`;
 export const subs = (handle) =>
@@ -123,7 +123,7 @@ export async function open(hash) {
   if (loaded) {
     // What the check changed on the server must have reached the page first, or it shows what was there before.
     await page.synced(store.state.seq);
-    await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);
+    await page.evaluate(`location.hash = ${js(hash)}`);
   } else await page.goto(`${app.origin}/${hash}`);
   loaded = true;
   await page.waitFor(`document.querySelector('header.topbar')`);

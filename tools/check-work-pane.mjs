@@ -15,7 +15,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
-import { launch } from './cdp.mjs';
+import { js, launch } from './cdp.mjs';
 import { finish, ports, record } from './harness.mjs';
 
 const { PORT, CHROME_PORT } = await ports(4870, 10070);
@@ -63,9 +63,9 @@ async function click(expr) {
   await settle();
 }
 const settle = () => page.evaluate('new Promise((r) => { requestAnimationFrame(() => setTimeout(r, 60)); setTimeout(r, 250); })');
-const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;
+const q = (sel) => `document.querySelector(${js(sel)})`;
 const has = (sel) => page.evaluate(`!!${q(sel)}`);
-const inside = (sel) => page.evaluate(`!!document.activeElement && !!document.activeElement.closest(${JSON.stringify(sel)})`);
+const inside = (sel) => page.evaluate(`!!document.activeElement && !!document.activeElement.closest(${js(sel)})`);
 const focusedId = () => page.evaluate('document.activeElement?.id ?? ""');
 const hash = () => page.evaluate('location.hash');
 
@@ -86,7 +86,7 @@ async function check(name, fn) {
 async function open(hashTo) {
   // What the check changed on the server must have reached the page first, or it shows what was there before.
   await page.synced(store.state.seq);
-  await page.evaluate(`location.hash = ${JSON.stringify(hashTo)}`);
+  await page.evaluate(`location.hash = ${js(hashTo)}`);
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();
 }
@@ -179,7 +179,7 @@ for (const [width, height] of [
     assert.equal(await page.evaluate(`${q('#work-button')}.getAttribute('aria-pressed')`), 'true');
     // Compact: the summary and stats, each a short list into its detail.
     for (const h of ['To review', 'Files', 'Commands', 'Outside Postbox', 'Spend', 'Turns'])
-      assert.ok(await page.evaluate(`[...document.querySelectorAll('.wp-body h2')].some((x) => x.textContent.startsWith(${JSON.stringify(h)}))`), `no “${h}”`);
+      assert.ok(await page.evaluate(`[...document.querySelectorAll('.wp-body h2')].some((x) => x.textContent.startsWith(${js(h)}))`), `no “${h}”`);
     // Both turns ran five commands, and two failed.
     assert.match(await page.evaluate(`document.querySelector('#wc-commands-h').parentElement.textContent`), /5 commands · 2 failed/);
     assert.ok((await tabTo(WORK)) > 0, 'Tab never reached the Work pane');
@@ -338,7 +338,7 @@ for (const [width, height] of [
       .items(topic)
       .find((i) => i.id === reply.id)
       .text.slice(-12);
-    await page.waitFor(`document.querySelector('.sidepanel.pane-full [data-key="${reply.id}"]')?.textContent.includes(${JSON.stringify(final)})`, {
+    await page.waitFor(`document.querySelector('.sidepanel.pane-full [data-key="${reply.id}"]')?.textContent.includes(${js(final)})`, {
       label: 'the reply to finish, full screen',
     });
     // Escape brings it back to the pane, with focus on the icon, the draft and the transcript as they were: the first
@@ -427,9 +427,9 @@ for (const [width, height] of [
 
   await check(`${at}: #138’s Work page links open the pane`, async () => {
     await open(pane('/work'));
-    await page.waitFor(`location.hash === ${JSON.stringify(pane('?work'))}`, { label: 'the redirect' });
+    await page.waitFor(`location.hash === ${js(pane('?work'))}`, { label: 'the redirect' });
     await open(pane(`/work/${turns[0].id}`));
-    await page.waitFor(`location.hash === ${JSON.stringify(pane(`?work&turn=${turns[0].id}`))} && document.querySelector('#wturn-${turns[0].id}[open]')`, {
+    await page.waitFor(`location.hash === ${js(pane(`?work&turn=${turns[0].id}`))} && document.querySelector('#wturn-${turns[0].id}[open]')`, {
       label: 'the turn’s redirect',
     });
     assert.equal(await has('nav.conv-tabs'), false, 'the tabs are back');
