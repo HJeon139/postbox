@@ -165,6 +165,10 @@
       }
     },
     {
+      "includes": ["app/js/run-choice.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 73 } } } } }
+    },
+    {
       "includes": ["app/js/work-sections.mjs"],
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 67 } } } } }
     },
