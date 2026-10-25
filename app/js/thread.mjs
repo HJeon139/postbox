@@ -234,10 +234,11 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const sizes = new ResizeObserver(follow);
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
-  // back, and read as you scrolling up (#297). Nothing you do scrolls between a change and this, so note where it is.
+  // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
+  // before its scroll event too, and only that one leaves it above the end.
   const changes = new MutationObserver(() => {
     const s = box();
-    if (stuck && s && !dead) lastTop = Math.min(lastTop, s.scrollTop);
+    if (stuck && s && !dead && atEnd(s)) lastTop = Math.min(lastTop, s.scrollTop);
   });
   changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   let bound = null;
