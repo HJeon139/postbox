@@ -49,13 +49,19 @@ function scriptAgents() {
   });
 }
 
-/** Three conversations: Alpha (@alpha, and @beta, who answers @alpha’s wake in a side thread), Room and Refused. */
+/** Three conversations: Alpha (@alpha, and @beta, who answers @alpha in a side thread from before #372), Room and Refused. */
 function conversations() {
   const { rt, store } = app;
   store.emit('project', { id: 'pr_needs', name: 'Needs', folder: app.root });
   const persona = (handle) => rt.createPersona({ handle, backend: 'claude-code', permissionMode: 'auto', tools: [] }).id;
   const [alpha, beta, gamma, delta, epsilon, zeta] = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'].map(persona);
   T.alpha = rt.createThread({ projectId: 'pr_needs', title: 'Alpha', personaIds: [alpha, beta] });
+  // Since #372 a wake makes no side thread, so Alpha’s is built as one was before it.
+  T.side = rt.putThread({
+    ...{ id: 'th_needsside', projectId: 'pr_needs', title: '@alpha ↔ @beta', kind: 'side', parentId: T.alpha.id, pair: 'alpha|beta', woke: 'beta' },
+    ...{ members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
+  });
+  rt.addItem(T.alpha.id, { kind: 'sidelink', sideThreadId: T.side.id, from: 'alpha', to: 'beta', count: 0 });
   T.room = rt.createThread({ projectId: 'pr_needs', title: 'Room', personaIds: [gamma, delta, zeta] });
   T.refused = rt.createThread({ projectId: 'pr_needs', title: 'Refused', personaIds: [epsilon] });
 }
@@ -79,7 +85,8 @@ async function ask() {
   await next();
   rt.sendMessage(T.room.id, { text: '@delta and you?' });
   await next();
-  rt.agentWake(sessionOf('alpha').id, 'beta', 'Which source should I read first?');
+  // @beta’s turn in the side thread, as a wake there started one before #372.
+  rt.deliver(sessionOf('beta').id, { kind: 'agent', from: '@alpha', text: 'Which source should I read first?' }, { threadId: T.side.id });
   await next();
   rt.sendMessage(T.refused.id, { text: '@epsilon clean the build.' });
   await next();

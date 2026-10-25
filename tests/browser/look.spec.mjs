@@ -1,6 +1,7 @@
 // How Postbox’s controls look, in the dark theme, at 375 and 1280 px:
 // - #199: nothing with a border that wraps to a second line has fully rounded (pill) ends;
-// - #116: the composer in a topic thread and in a side thread is as tall as the conversation’s, and sits as high;
+// - #116: the composer in a topic thread is as tall as the conversation’s, and sits as high; a side thread, read-only
+//   since #372, has none, and says so at its foot;
 // - #182: every text button has the --line-strong border or the one inline-action style, an underline in
 //   --line-strong; only an icon button may be bare.
 // look-amber.spec.mjs checks selected and on states (#181). Moved from tools/checks/look.mjs (#303).
@@ -74,7 +75,7 @@ function composerRoom() {
   });
   rt.putThread({ ...store.state.threads[room.id], lastSpeaker: researcher.id });
   topic = rt.startTopic(room.id, root.id).threadId;
-  // A side thread as agentWake makes one (server/side-threads.mjs), without starting a turn.
+  // A side thread as agentWake made one before #372, without starting a turn.
   side = rt.putThread({
     ...{ id: 'th_lookside', projectId: project.id, title: '@critic ↔ @researcher', kind: 'side', parentId: room.id, pair: 'critic|researcher' },
     ...{ woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
@@ -133,26 +134,26 @@ async function noWrappedPills(page, width) {
   expect(pills).toEqual([]);
 }
 
-/** #116 at each width: the composers of a topic thread and a side thread are as tall as the conversation’s and sit as high */
+/** #116 at each width: a topic thread’s composer is as tall as the conversation’s and sits as high; a side thread has none (#372) */
 async function composersLineUp(page) {
-  const seen = [];
-  for (const panel of [topic, side.id]) {
-    await open(page, `#/t/${room.id}/side/${panel}`);
-    await expect(page.locator('.composer-box')).toHaveCount(2);
-    await settled(page);
-    const [main, other] = await page.locator('.composer-box').evaluateAll((bs) =>
-      bs.map((b) => {
-        const r = b.getBoundingClientRect();
-        return { where: b.closest('.sidepanel') ? 'panel' : 'conversation', top: r.top, height: r.height };
-      }),
-    );
-    expect(other.where).toBe('panel');
-    seen.push(other);
-    const kind = app.store.state.threads[panel].kind;
-    expect(Math.abs(other.height - main.height), `the ${kind} thread’s box is ${other.height} px tall, the conversation’s ${main.height}`).toBeLessThan(1);
-    expect(Math.abs(other.top - main.top), `the ${kind} thread’s box starts at ${other.top} px, the conversation’s at ${main.top}`).toBeLessThan(1);
-  }
-  expect(Math.abs(seen[0].top - seen[1].top), `the topic thread’s box starts at ${seen[0].top} px, the side thread’s at ${seen[1].top}`).toBeLessThan(1);
+  await open(page, `#/t/${room.id}/side/${topic}`);
+  await expect(page.locator('.composer-box')).toHaveCount(2);
+  await settled(page);
+  const [main, other] = await page.locator('.composer-box').evaluateAll((bs) =>
+    bs.map((b) => {
+      const r = b.getBoundingClientRect();
+      return { where: b.closest('.sidepanel') ? 'panel' : 'conversation', top: r.top, height: r.height };
+    }),
+  );
+  expect(other.where).toBe('panel');
+  expect(Math.abs(other.height - main.height), `the topic thread’s box is ${other.height} px tall, the conversation’s ${main.height}`).toBeLessThan(1);
+  expect(Math.abs(other.top - main.top), `the topic thread’s box starts at ${other.top} px, the conversation’s at ${main.top}`).toBeLessThan(1);
+  // A side thread from before #372 reads only: no composer in the panel, and a note in its place.
+  await open(page, `#/t/${room.id}/side/${side.id}`);
+  const panel = page.locator('.sidepanel');
+  await expect(panel.getByRole('note')).toHaveText('This side thread is read-only. Agents talk in the conversation now, where you can reply.');
+  await expect(panel.getByRole('textbox')).toHaveCount(0);
+  await expect(page.locator('.composer-box'), 'only the conversation’s').toHaveCount(1);
 }
 
 /** #182 at each width: every text button has a border or the inline-action underline, in a conversation and its thread panel */
@@ -210,7 +211,7 @@ async function bareButtons(page) {
 /** Each test, its name at a width, and what it runs. */
 const CASES = [
   [(w) => `#199 at ${w} px: a line in your voice or a system line that wraps has a card’s corners, not pill ends`, noWrappedPills],
-  [(w) => `#116 at ${w} px: the composers of a topic thread and a side thread are as tall as the conversation’s and sit as high`, composersLineUp],
+  [(w) => `#116 at ${w} px: a topic thread’s composer is as tall as the conversation’s and sits as high; a side thread has none (#372)`, composersLineUp],
   [(w) => `#182 at ${w} px: every text button has a border or the inline-action underline, in a conversation and its thread panel`, buttonsLookLikeControls],
 ];
 

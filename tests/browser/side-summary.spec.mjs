@@ -2,7 +2,8 @@
 // agents, the one that started it first; the agent picked writes the summary in the side thread, and it’s posted in
 // the conversation as a summary from that thread. Its @-mention of the other agent wakes no one, and the wake limit
 // doesn’t move. Asked while that agent is busy in the side thread, it waits behind that turn, and the button waits until
-// the summary is posted. Each test has a room of its own (tests/browser/side-threads.mjs).
+// the summary is posted. Since #372 a wake makes no side thread, so each test builds one from before it, in a room of
+// its own (tests/browser/side-threads.mjs), and Summarize back still works on it.
 // Moved from tools/checks/side-summary.mjs (#303).
 
 import { expect, test } from '@playwright/test';
@@ -26,12 +27,11 @@ test.use({ colorScheme: 'light' });
 /** A room whose side thread @researcher answered @indexer in, open in the page at that thread. */
 async function sideThread(page, title) {
   const r = sideRoom(app, title);
-  // @indexer asks @researcher, which answers in the side thread; the answer comes back to @indexer.
+  // @indexer asked @researcher, which answered in the side thread, before #372.
+  const side = r.oldSide('Which editions differ?');
   held.scripts.set(r.researcher.id, async (ctx) => ctx.text('The 1908 edition drops two chapters.'));
-  held.scripts.set(r.indexer.id, async (ctx) => ctx.text('Noted.'));
-  r.wake(r.indexer.id, 'researcher', 'Which editions differ?');
+  r.runIn(side, r.researcher.id, 'Which editions differ?');
   await r.idle();
-  const side = r.sideOf();
   await page.goto(`${app.origin}/#/t/${r.room.id}/side/${side.id}`);
   await synced(page, app);
   return { ...r, side, button: page.locator('.sidepanel .sp-head').getByRole('button', { name: 'Summarize back' }) };
@@ -49,7 +49,6 @@ test('#225 Summarize back in a side thread: pick who writes it, and the summary 
   const before = held.turns.length;
   held.scripts.set(indexer.id, async (ctx) => ctx.text('@researcher found that the 1908 edition drops two chapters; nothing is open.'));
   await page.keyboard.press('Enter');
-  await expect(page.locator('#side-input'), 'focus goes to the composer once the button waits').toBeFocused();
   // The request is a fetch from the page: its turn starts once the server has it.
   await expect.poll(() => held.turns.length, { message: 'the summary’s turn' }).toBeGreaterThan(before);
   await idle();
@@ -61,10 +60,10 @@ test('#225 Summarize back in a side thread: pick who writes it, and the summary 
 });
 
 test('#225 Summarize back asked while its agent is busy in the side thread waits until the summary is posted', async ({ page }) => {
-  const { rt, store } = app;
-  const { room, side, indexer, busy, idle, button } = await sideThread(page, 'Waits');
-  // The person asks @indexer one more thing in the side thread, and that turn holds, so the summary waits behind it.
-  rt.sendMessage(side.id, { text: '@indexer one more thing' });
+  const { store } = app;
+  const { room, side, indexer, busy, idle, runIn, button } = await sideThread(page, 'Waits');
+  // @indexer has a turn still running in the side thread, which holds, so the summary waits behind it.
+  runIn(side, indexer.id, 'One more thing.', 'researcher');
   await expect.poll(() => busy(indexer.id), { message: '@indexer at work' }).toBe(true);
   await expect(button).toBeEnabled();
   await button.focus();
@@ -79,6 +78,9 @@ test('#225 Summarize back asked while its agent is busy in the side thread waits
   await synced(page, app);
   const waiting = page.locator('.sidepanel .sp-head').getByRole('button', { name: 'Summary requested…', exact: true });
   await expect(waiting, 'it can’t be asked again while the summary is written').toBeDisabled();
+  // Disabled, the button can’t keep focus. Before #372 the side thread’s composer took it; a side thread from before
+  // #372 has none, so the panel’s Close button does, rather than the page.
+  await expect(page.locator('.sidepanel .sp-head').getByRole('button', { name: 'Close side thread' })).toBeFocused();
   held.release(indexer.id);
   await idle();
   await synced(page, app);
