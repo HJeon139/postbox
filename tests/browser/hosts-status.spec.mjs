@@ -8,6 +8,7 @@
 
 import { expect, test } from '@playwright/test';
 import { classifyExit, failure } from '../../server/remote/ssh.mjs';
+import { escapeRegExp } from '../../shared/regex.mjs';
 import { audit, card, freshHost, MINUTE, openHosts, SIZES, startHosts } from './hosts.mjs';
 import { allowPageError, failOnPageErrors } from './postbox.mjs';
 
@@ -215,9 +216,7 @@ async function refusedUnreached(page, id, confirm) {
   await expect
     .soft(why, 'a 409 for a host that can’t be reached shows its message')
     .toContainText(
-      new RegExp(
-        `Postbox couldn’t reach ${NAME.replaceAll('.', '\\.')}\\..*Postbox keeps ${NAME.replaceAll('.', '\\.')} and its token here until it can remove itself there\\.`,
-      ),
+      new RegExp(`Postbox couldn’t reach ${escapeRegExp(NAME)}\\..*Postbox keeps ${escapeRegExp(NAME)} and its token here until it can remove itself there\\.`),
     );
   await expect.soft(why.locator('.ho-remove-next'), 'and its next step').toContainText('Then remove it again.');
   expect.soft(app.store.state.hosts[id], 'the host stays').toBeTruthy();
