@@ -4,7 +4,7 @@
 //
 //   npx playwright test                             every spec
 //   POSTBOX_STREAM_LAG=300 npx playwright test       every server holds its events back 300 ms, as a busy runner can
-//   npx playwright test --only-changed=origin/main --repeat-each=10   a new or changed spec, ten times
+//   npx playwright test needs-nav --repeat-each=10   a spec ten times, as CI runs one a pull request adds or edits
 
 import { defineConfig, devices } from '@playwright/test';
 

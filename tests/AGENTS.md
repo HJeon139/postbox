@@ -21,7 +21,7 @@ New browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (desi
 - Find elements by role or name where the page gives one, else by the attribute the code sets (`data-key`, `data-session`). A locator that matches two elements is a question to answer, not to work around with `.first()`.
 - Click and type as a person does, through Playwright. Never `element.click()` in the page: it skips the mouse, and a real bug hid behind one (#307).
 - Tests that don’t depend on each other stay independent; a story whose steps build on each other is one test with `test.step`s and `expect.soft`.
-- Show a new spec failing on the code without its fix. CI runs a spec a pull request adds or edits ten times, with the events late. A later push repeats only the specs it changed, unless the job failed on the push before (`tools/repeat-specs.mjs`).
+- Show a new spec failing on the code without its fix. CI runs a spec a pull request adds or edits ten times, with the events late. A later push repeats only the specs it changed or brought in, where the job passed on the push before; where it failed, was canceled or skipped, every one again (`tools/repeat-specs.mjs`).
 
 ## UAT docs
 

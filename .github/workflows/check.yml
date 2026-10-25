@@ -102,8 +102,8 @@ jobs:
 
   # A spec a pull request adds or edits runs ten times, with the events late, before it counts: one failure fails it.
   # tools/repeat-specs.mjs picks them. A spec reached only through a changed helper isn't repeated: the end-to-end job
-  # runs every spec twice already. On a later push, only the specs that push changed are: #387 changed the helper every
-  # spec imports, and --only-changed ran all 38 specs ten times, 49 minutes, on each push.
+  # runs every spec twice already. On a later push, only the specs that push changed or brought in are: #387 changed the
+  # helper every spec imports, and --only-changed ran all 38 specs ten times, 49 minutes, on each push.
   repeat:
     name: New and changed specs, ten times
     if: github.event_name == 'pull_request'
@@ -126,12 +126,13 @@ jobs:
       - name: Pick the specs to repeat
         id: pick
         run: |
-          # The push before counts only where this job passed on it: a spec it failed on, or never got to (a newer push
-          # cancels the run), runs ten times again. Where GitHub can't say, the same.
+          # The push before counts only where this job passed on it, as GitHub Actions (app 15368) reported it: a spec
+          # it failed on, or never got to (a newer push cancels the run), runs ten times again. Where GitHub can't say,
+          # the same.
           if [ -n "$BEFORE" ]; then
-            passed=$(gh api -X GET "repos/$REPO/commits/$BEFORE/check-runs" -f check_name="$JOB" \
-              --jq '[.check_runs[] | select(.conclusion == "success")] | length' || echo 0)
-            [ "${passed:-0}" -gt 0 ] || BEFORE=
+            passed=$(gh api -X GET "repos/$REPO/commits/$BEFORE/check-runs" -f check_name="$JOB" -f app_id=15368 \
+              --jq '[.check_runs[] | select(.conclusion == "success")] | length') || passed=0
+            case "$passed" in '' | *[!0-9]* | 0) BEFORE= ;; esac
           fi
           specs=$(node tools/repeat-specs.mjs "origin/$BASE_REF" "$HEAD_SHA" "$BEFORE" | tr '\n' ' ')
           echo "specs=$specs" >> "$GITHUB_OUTPUT"
