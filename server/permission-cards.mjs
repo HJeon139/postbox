@@ -232,6 +232,12 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'denial' || it.status !== 'open') throw httpError(409, 'That refusal was already answered.');
   if (!['once', 'always', 'leave'].includes(action)) throw httpError(400, 'A refusal takes “once”, “always” or “leave”.');
+  // A chained command has no rule that can allow it (permission-rules.mjs, chains), so neither is offered (#238).
+  if (action !== 'leave' && !it.rules[action])
+    throw httpError(
+      409,
+      'Claude Code checks each part of a chained command on its own, so no one rule can allow this call. Leave it, and ask the agent to run the parts as separate commands.',
+    );
   const se = rt.s.sessions[it.sessionId];
   const asked = it.who ? `${it.who} (your subagent)` : 'you';
   /** @type {string | null} */
@@ -245,7 +251,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
     note = `[Postbox] The person now always allows \`${it.rules.always}\` (saved in ${file}). The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
   } else if (action === 'once') {
     if (se) rt.updateSession(se.id, { allowOnce: [...(se.allowOnce ?? []), it.rules.once] });
-    note = `[Postbox] The person allowed \`${it.rules.once}\` for your next turn only. The step ${asked} tried, ${it.summary}, was refused before: try it again, then carry on.`;
+    note = `[Postbox] The person allowed \`${it.rules.once}\` for your next turn only. The step ${asked} tried, ${it.summary}, was refused before: try it again exactly as before, since the allow covers only that exact call, then carry on.`;
   }
   const status = { once: 'allowed-once', always: 'allowed-always', leave: 'left' }[action];
   rt.patchItem(threadId, itemId, { status, answeredAt: Date.now() });
@@ -296,8 +302,8 @@ function writeOf(tool, input, detail, given) {
 function postboxAlways(tool, input) {
   if (!tool || tool.length > 120) return null;
   const r = rulesFor(tool, input && typeof input === 'object' ? input : {});
-  // A rule too long to keep (a command with a heredoc, say, which only ever gets its exact text) isn’t offered.
-  if (cleanRule(r.always) !== r.always) return null;
+  // A rule too long to keep, or none (a chained command, which no one rule can allow, #238), isn’t offered.
+  if (!r.always || cleanRule(r.always) !== r.always) return null;
   return {
     updates: null,
     saves: r.always,
