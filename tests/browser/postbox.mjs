@@ -32,13 +32,17 @@ async function freePort() {
 }
 
 /**
- * Starts a fresh Postbox for one spec file. stop() closes it and removes its data.
+ * Starts a fresh Postbox for one spec file. stop() closes it and removes its data. Its temp folder is also the home
+ * it reads Claude Code’s config from, so no spec reads the person’s own.
  * @param {string} name  a short name for its temp folder
+ * @param {{ demo?: boolean, prepare?: (root: string) => Promise<void> }} [options]  demo: false starts it as a fresh
+ *   install, without the demo’s conversations; prepare writes what it should find in its home before it starts
  */
-export async function startPostbox(name) {
+export async function startPostbox(name, { demo = true, prepare } = {}) {
   process.env.POSTBOX_BACKENDS = 'mock';
   const root = await mkdtemp(join(tmpdir(), `pb-spec-${name}-`));
-  const app = await start({ port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo: true, quiet: true });
+  await prepare?.(root);
+  const app = await start({ port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root });
   return {
     ...app,
     root,
@@ -61,6 +65,17 @@ export async function synced(page, app) {
     .toBeGreaterThanOrEqual(seq);
 }
 
+/** @type {WeakMap<import('@playwright/test').Page, RegExp[]>} */
+const allowed = new WeakMap();
+
+/**
+ * Lets a test’s page log an error the test causes on purpose, such as a request it expects the server to refuse.
+ * @param {import('@playwright/test').Page} page  @param {RegExp} pattern
+ */
+export function allowPageError(page, pattern) {
+  allowed.set(page, [...(allowed.get(page) ?? []), pattern]);
+}
+
 /**
  * Fails each test whose page threw an exception, or logged an error to the console, after the test's own steps.
  * @param {import('@playwright/test').TestType<any, any>} test
@@ -72,10 +87,44 @@ export function failOnPageErrors(test) {
     errors = [];
     page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
     page.on('console', (m) => {
-      if (m.type() === 'error') errors.push(`console.error: ${m.text()}`);
+      if (m.type() === 'error' && !allowed.get(page)?.some((p) => p.test(m.text()))) errors.push(`console.error: ${m.text()}`);
     });
   });
   test.afterEach(() => {
     expect(errors, 'the page threw no exceptions and logged no errors').toEqual([]);
   });
+}
+
+/** Until the browser has drawn two more frames. @param {import('@playwright/test').Page} page */
+export const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+/**
+ * Waits until the page’s scroll positions and layout have held still for two frames. A spec that measures a position
+ * measures once, after this, rather than polling the value it asserts, so a view that drifts and comes back fails (#298).
+ * @param {import('@playwright/test').Page} page
+ */
+export async function settled(page) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          const snap = () =>
+            JSON.stringify([
+              scrollX,
+              scrollY,
+              innerWidth,
+              innerHeight,
+              document.scrollingElement?.scrollHeight,
+              ...[...document.querySelectorAll('.sp-body, #main > *, .working, .jump')].map((n) => {
+                const b = n.getBoundingClientRect();
+                return [n.scrollTop, Math.round(b.top), Math.round(b.height)];
+              }),
+            ]);
+          const before = snap();
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          return snap() === before;
+        }),
+      { message: 'the page to hold still for two frames' },
+    )
+    .toBe(true);
 }

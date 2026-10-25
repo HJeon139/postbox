@@ -333,6 +333,10 @@
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 598 } } } } }
     },
     {
+      "includes": ["tests/browser/transcript.spec.mjs"],
+      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 435 } } } } }
+    },
+    {
       "includes": ["tests/claude-code.test.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1010 } } } } }
     },
@@ -410,10 +414,6 @@
     {
       "includes": ["tools/check-side-threads.mjs"],
       "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 304 } } } } }
-    },
-    {
-      "includes": ["tools/check-transcript.mjs"],
-      "linter": { "rules": { "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 456 } } } } }
     },
     {
       "includes": ["tools/check-work-pane.mjs"],
