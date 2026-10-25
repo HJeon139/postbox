@@ -56,7 +56,7 @@ node tools/check-all.mjs <your checks> --lag 300   # the same, for the older che
 
 ## Servers, ports and data
 
-- Start Postbox only with a port and a `--data` folder of your own: `node server/index.mjs --port <yours> --data <a temp folder>`. Without `--data` it uses `~/.postbox`, which every clone and worktree shares.
+- Start Postbox only with a port and a `--data` folder of your own: `node server/index.mjs --port <yours> --data <a temp folder>`. Without `--data` it uses `~/.postbox` (or `$POSTBOX_HOME`), which every clone and worktree shares, or a clone’s own `data/` while that still holds conversations.
 - Never touch the preview on 4173, another tool’s server on 4320, a clone’s `data/`, or `~/.postbox` (designs/developing.md, “Running the gate”).
 - Never commit `data/`, `uat-runs/`, `.env`, `screenshots/latest/` or anything with a secret. Postbox never reads, stores or passes an API key or token.
 
