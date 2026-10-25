@@ -3,7 +3,7 @@
 // and apps of its own. Moved from tools/checks/app-fullscreen.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focusIs, frames, settled, startPostbox, synced } from './postbox.mjs';
 
 // Counts its loads in saved state, so a reload shows up as a second load, and saves which version loaded.
 const APP = (
@@ -98,9 +98,13 @@ async function twoVersions(page, title) {
 }
 
 test('#45 full screen fills the window, with the version menu above it, and Escape brings it back, focus on the button', async ({ page }) => {
-  const { box } = await twoVersions(page, 'Full screen');
+  const { box, loads } = await twoVersions(page, 'Full screen');
   const button = fullButton(box);
   const before = await frameBox(box);
+  const loaded = loads();
+  await (await contentOf(box)).evaluate(() => {
+    /** @type {any} */ (window).marked = true;
+  });
   await test.step('a real click on Full screen fills the window, focus in the overlay, one copy running', async () => {
     await expect(button).toHaveAttribute('aria-label', 'Full screen');
     await button.click();
@@ -116,7 +120,9 @@ test('#45 full screen fills the window, with the version menu above it, and Esca
     await expect(page.locator('iframe.app-iframe'), 'no second copy of the app runs').toHaveCount(1);
   });
   await test.step('the version menu shows above the overlay, and Escape closes the menu first', async () => {
-    await overlay(page).locator('.appframe [aria-haspopup="menu"]').click();
+    await overlay(page)
+      .getByRole('button', { name: /^v2 · / })
+      .click();
     const menu = page.locator('.menu');
     await expect(menu).toBeVisible();
     const onTop = await menu.evaluate((m) => {
@@ -137,9 +143,11 @@ test('#45 full screen fills the window, with the version menu above it, and Esca
     expect(Math.abs(after.h - before.h) < 2 && Math.abs(after.w - before.w) < 2, `the frame is back to its size in the column: ${after.w}×${after.h}`).toBe(
       true,
     );
-    await expect(button).toBeFocused();
-    await expect(button).toHaveAttribute('aria-label', 'Full screen');
+    await focusIs(page, 'button: Full screen');
   });
+  // The menu and Escape from the page didn’t reload it either.
+  expect(await (await contentOf(box)).evaluate(() => /** @type {any} */ (window).marked), 'the app never reloaded').toBe(true);
+  expect(loads(), 'its saved state counted one load').toBe(loaded);
 });
 
 test('#45 Escape inside the app, and Enter on the button, leave full screen too, and the app never reloads', async ({ page }) => {
@@ -154,10 +162,10 @@ test('#45 Escape inside the app, and Enter on the button, leave full screen too,
     await button.click();
     await expect(overlay(page)).toBeVisible();
     await clickInApp(box, '#b');
-    await expect(box.locator('iframe.app-iframe'), 'focus in the app').toBeFocused();
+    await focusIs(page, /^iframe: /);
     await page.keyboard.press('Escape');
     await expect(overlay(page)).toHaveCount(0);
-    await expect(button).toBeFocused();
+    await focusIs(page, 'button: Full screen');
   });
   await test.step('Enter on the button opens and closes full screen', async () => {
     await page.keyboard.press('Enter');
@@ -165,6 +173,7 @@ test('#45 Escape inside the app, and Enter on the button, leave full screen too,
     await page.keyboard.press('Enter');
     await expect(overlay(page)).toHaveCount(0);
   });
+  await settled(page);
   expect(await (await contentOf(box)).evaluate(() => /** @type {any} */ (window).marked), 'the app never reloaded').toBe(true);
   expect(loads(), 'its saved state counted one load').toBe(loaded);
 });
@@ -173,8 +182,10 @@ test('#45 switching versions while full screen re-renders the app in place, stil
   const { box } = await twoVersions(page, 'Versions');
   const button = fullButton(box);
   await button.click();
-  await overlay(page).locator('.appframe [aria-haspopup="menu"]').click();
-  await page.locator('.menu .mi', { hasText: /^v1/ }).click();
+  await overlay(page)
+    .getByRole('button', { name: /^v2 · / })
+    .click();
+  await page.getByRole('menuitem', { name: /^v1 · / }).click();
   await expect(overlay(page).locator('.app-note'), 'v1 shows').toBeVisible();
   await expect(overlay(page)).toContainText('Viewing v1');
   await settled(page);
@@ -202,11 +213,9 @@ test('#45 an app that grew while full screen comes back as tall as the column al
   await page.keyboard.press('Escape');
   await expect(overlay(page)).toHaveCount(0);
   // Not its old height: the app measures again once it’s back in the column.
-  await expect
-    .poll(() => box.locator('iframe.app-iframe').evaluate((f) => Math.abs(f.getBoundingClientRect().height - Math.min(innerHeight * 0.8, 760))), {
-      message: 'as tall as the column allows',
-    })
-    .toBeLessThan(2);
+  await settled(page);
+  const off = await box.locator('iframe.app-iframe').evaluate((f) => Math.abs(f.getBoundingClientRect().height - Math.min(innerHeight * 0.8, 760)));
+  expect(off, 'as tall as the column allows').toBeLessThan(2);
 });
 
 test('#45 Escape an app handles itself doesn’t leave full screen', async ({ page }) => {

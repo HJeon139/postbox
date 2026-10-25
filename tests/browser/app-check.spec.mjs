@@ -143,19 +143,20 @@ test('the page threw no exceptions and logged no errors while it checked the app
 });
 
 // ── #194: text out of its box, and text over text ───────────────────────────────────────
+// Where a test holds what were separate checks, its expects are soft: each reports, whichever fails first.
 
 test('#194 nowrap text in a 120 px column overflows and overlaps, and the messages name the texts, the widths and the usual fix', () => {
-  expect(codes('grid'), says('grid')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
+  expect.soft(codes('grid'), says('grid')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
   const over = found('grid').find((p) => p.code === 'text-overflow')?.message ?? '';
-  expect(over).toMatch(/“a long description that won’t fit” is \d+ px wide in a 120 px box/);
-  expect(over).toMatch(/white-space: nowrap/);
-  expect(over).toMatch(/minmax\(0, …\)/);
-  expect(found('grid').find((p) => p.code === 'text-overlap')?.message, 'text-overlap names both texts').toMatch(/drawn over “Heading”/);
+  expect.soft(over).toMatch(/“a long description that won’t fit” is \d+ px wide in a 120 px box/);
+  expect.soft(over).toMatch(/white-space: nowrap/);
+  expect.soft(over).toMatch(/minmax\(0, …\)/);
+  expect.soft(found('grid').find((p) => p.code === 'text-overlap')?.message, 'text-overlap names both texts').toMatch(/drawn over “Heading”/);
 });
 
 test('#194 the gallery’s v1 fails, and its v2 passes', () => {
-  expect(codes('gallery1'), says('gallery1')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
-  expect(clean('gallery2'), says('gallery2')).toBe(true);
+  expect.soft(codes('gallery1'), says('gallery1')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
+  expect.soft(clean('gallery2'), says('gallery2')).toBe(true);
 });
 
 for (const [id, what] of [
@@ -212,9 +213,9 @@ test('#89 the .bar row is control-hidden once at each width, and says why: div.b
 });
 
 test('#89 a button under an overlay is control-hidden, far down a smooth-scrolling page too, and one a box clips sideways', () => {
-  expect(says('covered')).toMatch(/the button “Run it” is under div, which takes its clicks/);
-  expect(says('smooth')).toMatch(/the button “Deep” is under div/);
-  expect(says('smooth')).toMatch(/the button “A wide button label” is clipped/);
+  expect.soft(says('covered')).toMatch(/the button “Run it” is under div, which takes its clicks/);
+  expect.soft(says('smooth')).toMatch(/the button “Deep” is under div/);
+  expect.soft(says('smooth')).toMatch(/the button “A wide button label” is clipped/);
 });
 
 test('#89 a faint watermark over a button says to give it pointer-events: none', () => {

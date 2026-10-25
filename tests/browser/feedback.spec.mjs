@@ -127,7 +127,7 @@ test('#53 apps too small to read, or showing only an error, are shown with notes
 }) => {
   test.setTimeout(60_000);
   const { rt } = app;
-  const { thread, lints } = await conversation(page, 'Apps', 'apps');
+  const { thread, lints, idle } = await conversation(page, 'Apps', 'apps');
   const id = (key) => `${key}-${thread.id}`;
   const st = (key) => rt.s.apps[id(key)]?.check ?? {};
   const codes = (key) => (st(key).problems ?? []).map((p) => p.code);
@@ -152,6 +152,9 @@ test('#53 apps too small to read, or showing only an error, are shown with notes
   await expect.poll(() => !!aboutApps(), { message: 'a lint turn about the apps', timeout: 20_000 }).toBe(true);
   const about = new Set(aboutApps().problems.map((p) => p.scope.id));
   expect([about.has(id('tiny')), about.has(id('missing')), about.has(id('readable'))], 'one lint turn tells the agent about both').toEqual([true, true, false]);
+  // Once the lint turn has ended, and the page has drawn what came after it, no second one comes.
+  await idle();
+  await synced(page, app);
   expect(lints().length, 'one lint turn for the turn that showed the apps').toBe(1);
   await expect(page.locator('.app-note', { hasText: /marks are under 4 px/ }), 'the person sees the app with notes, not as a failure').toContainText(
     /^Shown with notes for @drawer/,
