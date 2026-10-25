@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.32.1 (2026-10-25)
+
+### Fixes
+
+- **permissions:** read a backslash-newline and escaped quotes around a heredoc as the shell does
+- **permissions:** read a heredoc's word as the shell does, so a quoted or dashed one isn't chained
+- **permissions:** no Allow once or Always allow for a chained command, which no rule can match
+
 ## 0.32.0 (2026-10-25)
 
 ### Features
