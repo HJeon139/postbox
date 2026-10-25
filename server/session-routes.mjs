@@ -1,4 +1,4 @@
-// The routes for one session (an agent in a conversation): Stop, archive, restore, delete with undo, Stop’s question
+// The routes for one session (an agent in a conversation): Stop, delete with undo, Stop’s question
 // about background jobs and a job’s own Stop (#129), and the composer’s /model and /effort for it (#67). Moved out of
 // server/index.mjs, whose route() keeps one line that calls this.
 
@@ -12,11 +12,9 @@ const done = (status, body) => ({ status, body });
  */
 export async function sessionRoute(rt, path, method, body) {
   let m;
-  if ((m = path.match(/^\/api\/sessions\/([^/]+)\/(stop|archive|restore|undo-delete)$/)) && method === 'POST') {
+  if ((m = path.match(/^\/api\/sessions\/([^/]+)\/(stop|undo-delete)$/)) && method === 'POST') {
     const action = {
       stop: () => rt.requestStop(m[1], { jobs: body.jobs ?? null, turnId: body.turnId ?? null, subagent: body.subagent ?? null }),
-      archive: () => rt.archive(m[1]),
-      restore: () => rt.restore(m[1]),
       'undo-delete': () => rt.undoDelete(m[1]),
     }[m[2]];
     rt.session(m[1]);

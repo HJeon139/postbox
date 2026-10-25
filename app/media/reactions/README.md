@@ -1,7 +1,7 @@
 # Reaction icons
 
-The five reactions (#251), each at 64 and 128 px, transparent and square. The page draws the 64 px one at 20 px in a
-reaction and in the React menu (app/js/reactions.mjs). The emoji stays each icon’s accessible label. The 128 px files
+The five reactions (#251), each at 64 and 128 px, transparent and square. The page draws the 64 px one at 20 px in each
+reaction button (app/js/reactions.mjs). The emoji stays each icon’s accessible label. The 128 px files
 are kept as the source for larger sizes.
 
 | File | Emoji | Says | Drawing |

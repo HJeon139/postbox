@@ -7,6 +7,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { brokenMapApp, dashboardApp, explorerApp, layoutApp, practiceApp, walkthroughApp } from '../mock/apps.mjs';
+import { HOP_LIMIT } from '../side-threads.mjs';
 import { citationFix, fasterParser } from './mock-ledger.mjs';
 
 // POSTBOX_MOCK_SPEED scales every pause: 1 is a natural pace, 0.2 is fast. It’s read on each pause, so a demo can change it.
@@ -607,8 +608,7 @@ async function researcherReply(m, a, mem) {
   await a.think(700);
   if (/loop|again|ping/i.test(m.text)) {
     mem.pings = (mem.pings ?? 0) + 1;
-    await a.say(`Checked. ${mem.pings < 4 ? '@indexer can you confirm the edition list once more?' : 'That settles it.'}`);
-    return;
+    return a.say(`Checked. ${mem.pings <= HOP_LIMIT ? '@indexer can you confirm the edition list once more?' : 'That settles it.'}`);
   }
   await a.tool('read books/emma.txt', 400);
   await a.say(

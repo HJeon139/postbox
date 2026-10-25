@@ -2,15 +2,16 @@
 
 import './ring.mjs';
 import { onThemeChange } from './apps.mjs';
-import { client, connect, hrefOf, itemsOf, load, needsYou, threadsOf } from './client.mjs';
+import { client, connect, hrefOf, load, needsYou } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
 import './focus-clear.mjs';
 import { hoverContent } from './hover-content.mjs';
 import './keys.mjs';
+import { goHome, lastIn, latestIn, remember } from './last-place.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { paintStateWords, ringFor } from './ring.mjs';
-import { mountEmptyProject, mountOverview, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
+import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention, toast } from './ui.mjs';
 
@@ -39,7 +40,6 @@ function render({ rebuild = false } = {}) {
   for (const m of mounted) m.destroy?.();
   mounted = [];
   pane = null;
-  const archived = location.hash === '#/archived';
   if (r.view === 'thread' && !client.state.threads[r.threadId]) {
     navigate('#/');
     return;
@@ -75,13 +75,8 @@ function render({ rebuild = false } = {}) {
     setAttention(needsYou().length, `${r.view === 'threads' ? 'Threads · ' : ''}${project.name}`);
     return;
   }
-  if (r.view === 'overview') {
-    const ov = mountOverview({ archived });
-    mounted.push(ov);
-    root.replaceChildren(h('div.app.no-rail', topbar({ title: archived ? 'Archived' : '' }), ov.el));
-    setAttention(needsYou().length, 'Overview');
-    return;
-  }
+  // There’s no overview or Archived page (#320): Postbox opens the conversation you were last in, else a project’s.
+  if (r.view === 'overview') return goHome(root);
   const t = client.state.threads[r.threadId];
   // Side threads and topic threads open in the panel beside their conversation.
   if (t.kind === 'side' || t.kind === 'topic') {
@@ -116,27 +111,6 @@ function render({ rebuild = false } = {}) {
   requestAnimationFrame(() => tr.settle());
   view(t.id);
   setAttention(needsYou().length, t.title);
-}
-
-// The conversation you were last in, per project, so a project’s tab returns you there.
-function remember(t) {
-  try {
-    localStorage.setItem(`pb-last-${t.projectId}`, t.id);
-  } catch {}
-}
-function lastIn(projectId) {
-  let id = null;
-  try {
-    id = localStorage.getItem(`pb-last-${projectId}`);
-  } catch {}
-  const t = id && client.state.threads[id];
-  return t && t.projectId === projectId && !t.archived && !t.deleting && t.kind !== 'side' && t.kind !== 'topic' ? id : null;
-}
-function latestIn(projectId) {
-  const at = (t) => itemsOf(t.id).at(-1)?.at ?? t.createdAt ?? 0;
-  return threadsOf(projectId)
-    .filter((t) => !t.archived)
-    .sort((a, b) => at(b) - at(a))[0]?.id;
 }
 
 // Tell the server which thread is open, so finished replies there don’t count as unread.
@@ -189,9 +163,6 @@ const paintWords = () => {
 
 client.on((ch) => {
   if (['session', 'item.add', 'load'].includes(ch.type)) paintWords();
-  // The top bar keeps its rings between rebuilds, so they follow the session in place (issue #2).
-  if (ch.type === 'session')
-    for (const r of root.querySelectorAll(`header.topbar pb-ring[data-session="${CSS.escape(ch.data.id)}"]`)) ringFor(ch.data, r.getAttribute('size'), r);
   if (ch.type === 'settings' || ch.type === 'load') applyTheme();
   if (ch.type === 'notify') notify(ch.data);
   if (['thread', 'remove', 'project'].includes(ch.type) || (ch.type === 'session' && topbarChanged(ch.data))) refreshTop();
@@ -200,7 +171,7 @@ client.on((ch) => {
     if (client.connection === 'reconnecting' && client.attempts === 1) say('Connection lost. Reconnecting.');
     if (client.connection === 'open' && ch.was === 'reconnecting') say('Reconnected.');
   }
-  setAttention(needsYou().length, current?.view === 'thread' ? (client.state.threads[current.threadId]?.title ?? 'Postbox') : 'Overview');
+  setAttention(needsYou().length, current?.view === 'thread' ? (client.state.threads[current.threadId]?.title ?? 'Postbox') : 'Postbox');
 });
 
 const topSig = new Map();
@@ -218,14 +189,13 @@ function refreshTop() {
     const t = client.state.threads[current.threadId];
     if (!t) return;
     // Members changed (an agent joined or left): rebuild the whole view.
-    const members = old.querySelectorAll('.present .ring-btn').length;
-    if (members !== t.members.filter((id) => client.state.sessions[id] && !client.state.sessions[id].archived && !client.state.sessions[id].deleting).length) {
+    if (old.dataset.members !== liveMembers(t)) {
       render({ rebuild: true });
       return;
     }
     next = topbar({ title: t.title, threadId: t.id });
   } else if (current.projectId) next = topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId });
-  else next = topbar({ title: location.hash === '#/archived' ? 'Archived' : '' });
+  else next = topbar({});
   // The keyboard stays where it was: focus on a control of the old bar moves to the same control in the new one.
   // A rename’s dialog can close before its change arrives, and return focus to the bar this replaces (#26).
   const back = document.activeElement && old.contains(document.activeElement) ? refind(document.activeElement) : null;

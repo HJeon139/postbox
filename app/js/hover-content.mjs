@@ -1,11 +1,15 @@
-// What a hover card shows (initHoverCards in hovercards.mjs): a citation’s source, or a glossary term’s definition.
+// What a hover card shows (initHoverCards in hovercards.mjs): a citation’s source, a glossary term’s definition, or who
+// made a reaction (#320).
 
+import { REACTIONS } from '/shared/reactions.mjs';
 import { client } from './client.mjs';
 import { h, icon } from './dom.mjs';
+import { reactors, who } from './reactions.mjs';
 import { mdNode } from './ui.mjs';
 
 /** The card for a citation marker or a glossary term, or null when there’s nothing to show. */
 export function hoverContent(trigger) {
+  if (trigger.classList.contains('react-btn')) return reactionCard(trigger);
   const itemEl = trigger.closest('[data-key]');
   const threadId = trigger.closest('[data-thread]')?.dataset.thread;
   if (trigger.classList.contains('cite')) {
@@ -60,4 +64,16 @@ export function hoverContent(trigger) {
     head: [h('span.label', 'Glossary'), h('b', g.term)],
     body: [definition, h('span.small.dim', `Defined by @${g.by}${g.source ? ` · ${g.source}` : ''}`)],
   };
+}
+
+/** Who made a reaction, “You” first: none when nobody has. */
+function reactionCard(trigger) {
+  const row = trigger.closest('[data-reactions]');
+  const it = (client.state.items[row?.dataset.thread ?? ''] ?? []).find((x) => x.id === row?.dataset.reactions);
+  const emoji = trigger.dataset.emoji ?? '';
+  const names = reactors(it, emoji);
+  if (!names.length) return null;
+  const label = new Map(REACTIONS).get(emoji) ?? emoji;
+  const said = who(names);
+  return { label: `${label}: who reacted`, head: [h('span.label', label)], body: [h('p', said[0].toUpperCase() + said.slice(1))] };
 }

@@ -62,12 +62,7 @@ const WRITE_ROUTES = {
   'POST ^\\/api\\/threads\\/([^/]+)\\/summarize$': ['/api/threads/th_none/summarize'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/items\\/([^/]+)\\/diagram$': ['/api/threads/th_none/items/it_none/diagram'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/items\\/([^/]+)\\/retry$': ['/api/threads/th_none/items/it_none/retry'],
-  'POST ^\\/api\\/sessions\\/([^/]+)\\/(stop|archive|restore|undo-delete)$': [
-    '/api/sessions/se_none/stop',
-    '/api/sessions/se_none/archive',
-    '/api/sessions/se_none/restore',
-    '/api/sessions/se_none/undo-delete',
-  ],
+  'POST ^\\/api\\/sessions\\/([^/]+)\\/(stop|undo-delete)$': ['/api/sessions/se_none/stop', '/api/sessions/se_none/undo-delete'],
   'DELETE ^\\/api\\/sessions\\/([^/]+)$': ['/api/sessions/se_none'],
   'DELETE ^\\/api\\/sessions\\/([^/]+)\\/stop-ask$': ['/api/sessions/se_none/stop-ask'],
   'POST ^\\/api\\/sessions\\/([^/]+)\\/jobs\\/([^/]+)\\/stop$': ['/api/sessions/se_none/jobs/job_none/stop'],
