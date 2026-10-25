@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.33.4 (2026-10-25)
+
+### Fixes
+
+- **runtime:** an app's waiting card keeps its agent needing you through its turns
+
 ## 0.33.3 (2026-10-25)
 
 ### Fixes

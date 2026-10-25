@@ -28,4 +28,4 @@ Agent-to-agent exchanges stay out of your conversation but remain visible and jo
 **Pass if:** The exchange is readable and you can reply in it, the reply you sent shows in the conversation as yours to send, and the agent’s post shows there marked as shared by it.
 4. Choose Summarize back in the side thread’s head, and pick the agent that started it.
 
-**Pass if:** It writes a summary in the side thread, and the summary shows in the conversation, marked as from the side thread. No other agent starts a turn. `node tools/checks/side-summary.mjs` covers this step by keyboard.
+**Pass if:** It writes a summary in the side thread, and the summary shows in the conversation, marked as from the side thread. No other agent starts a turn. `npx playwright test side-summary` (`tests/browser/side-summary.spec.mjs`) covers this step by keyboard.

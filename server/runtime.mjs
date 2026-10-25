@@ -702,7 +702,7 @@ export class Runtime {
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
       state: 'think',
-      needs: turn.movesOn ? null : se.needs,
+      needs: turn.movesOn && se.needs?.kind !== 'appsend' ? null : se.needs,
       currentStep: 'Thinking',
       finishedAt: null,
     });
@@ -1068,7 +1068,7 @@ export class Runtime {
           }
         : askedTool
           ? { kind: 'toolask', itemId: askedTool.id, text: `@${se.handle} asks you to turn on “${askedTool.label}”`, ...this.awayFrom(se, turn.threadId) }
-          : se.needs?.kind === 'hop'
+          : se.needs?.kind === 'hop' || se.needs?.kind === 'appsend'
             ? se.needs
             : null;
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
