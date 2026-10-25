@@ -6,7 +6,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { chains } from './command-chains.mjs';
+import { chains } from '../shared/command-chains.mjs';
 
 export { chains };
 

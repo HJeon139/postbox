@@ -214,6 +214,25 @@ test('a write the persona may publish runs without a card; one with only its ser
   assert.equal(server.store.items(server.t.id).filter((i) => i.kind === 'permission' && i.outside).length, 1);
 });
 
+test('a gh write after a quoted heredoc gets its card, even beside a write the person already allowed', async () => {
+  const { rt, store, t, folder, next } = await setup();
+  await writeFile(join(folder, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { allow: ['Bash(gh issue comment:*)'] } }));
+  const notes = "cat > notes.md <<'EOF'\ndon't\nEOF\ngh pr create --title x";
+  const answers = [];
+  next.push(async (c) => {
+    for (const command of [`gh issue comment 1 --body x && ${notes}`, notes])
+      answers.push(await c.askPermission({ tool: 'Bash', summary: 'run a command', input: { command } }));
+  });
+  rt.sendMessage(t.id, { text: 'Note it, comment on the issue and open the pull request.' });
+  const card = () => store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
+  for (const n of [0, 1]) {
+    for (let i = 0; i < 50 && !card() && answers.length <= n; i++) await sleep(5);
+    // Only the comment is allowed: the pull request still waits for the person, on a card that says it writes outside.
+    assert.deepEqual([card()?.outside, card()?.where], [true, { server: 'gh', target: null }], `answers: ${JSON.stringify(answers)}`);
+    await rt.act(t.id, card().id, 'deny', {});
+  }
+});
+
 test('a Codex write shows its draft too, without an input to edit (Codex can’t run an edited call)', async () => {
   let req;
   await codexApproval(
