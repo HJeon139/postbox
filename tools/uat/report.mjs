@@ -8,6 +8,7 @@ import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
 import { writeJsonAtomic } from './runs.mjs';
+import { cell as esc } from './trigger-facts.mjs';
 import { coverageSection } from './triggers.mjs';
 import { mergePeopleVerdicts } from './verdicts.mjs';
 
@@ -32,10 +33,6 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
   for (const f of findings) if (f.issue) caught.set(f.issue, [...(caught.get(f.issue) ?? []), f]);
   const { CHECKS } = await import('./checks.mjs');
   const watched = [...new Set(CHECKS.map((c) => c.issue).filter(Boolean))].sort((a, b) => a - b);
-  const esc = (s) =>
-    String(s ?? '')
-      .replace(/\|/g, '\\|')
-      .replace(/\n/g, ' ');
   const md = [
     `# UAT: ${scenario.title}`,
     '',
@@ -60,7 +57,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
       .sort((a, b) => a[0] - b[0])
       .map(
         ([n, fs]) =>
-          `| #${n} | ${esc(title(n))} | ${[...new Set(fs.map((f) => (f.source === 'check' ? `check ${f.check}` : 'tester')))].join(', ')} | ${esc(fs[0].evidence).slice(0, 220)} |`,
+          `| #${n} | ${esc(title(n))} | ${[...new Set(fs.map((f) => (f.source === 'check' ? `check ${f.check}` : 'tester')))].join(', ')} | ${esc(String(fs[0].evidence ?? '').slice(0, 220))} |`,
       ),
     '',
     '### Watched by a check, not seen this run',
@@ -80,7 +77,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
       .filter((f) => !f.issue && f.verdict !== 'harness')
       .map(
         (f) =>
-          `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(f.evidence).slice(0, 260)} | ${f.source} (step ${f.step}) | ${f.filed ? `filed #${f.filed}` : f.duplicateOf ? `duplicate of #${f.duplicateOf}` : esc(f.verdict ?? 'not reviewed')}${f.verdictBy ? ` (${f.verdictBy})` : ''}${f.note ? `: ${esc(f.note)}` : ''} |`,
+          `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(String(f.evidence ?? '').slice(0, 260))} | ${f.source} (step ${f.step}) | ${f.filed ? `filed #${f.filed}` : f.duplicateOf ? `duplicate of #${f.duplicateOf}` : esc(f.verdict ?? 'not reviewed')}${f.verdictBy ? ` (${f.verdictBy})` : ''}${f.note ? `: ${esc(f.note)}` : ''} |`,
       ),
     '',
     ...(findings.some((f) => f.verdict === 'harness')
