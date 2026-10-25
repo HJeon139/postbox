@@ -11,6 +11,8 @@ let ctx;
 let app;
 let topic;
 test.beforeAll(async () => {
+  // Two of the mock’s turns of work, which take up to a minute each on a busy computer.
+  test.setTimeout(150_000);
   ctx = await citationFixes('work-pane-thread');
   ({ app, topic } = ctx);
 });
@@ -18,6 +20,8 @@ test.afterAll(async () => {
   await ctx?.stop();
 });
 failOnPageErrors(test);
+// Light, as the old check ran it.
+test.use({ colorScheme: 'light' });
 
 const open = (page, r) => ctx.open(page, r);
 
@@ -93,6 +97,8 @@ async function threadFull(page, { width, height }) {
 
 /** a reply streams into the thread full screen and stays when it comes back; the icon and a reload restore it */
 async function threadStreams(page) {
+  // The mock’s reply can take most of 30 s on a busy computer.
+  test.setTimeout(60_000);
   const { rt, store } = app;
   const { ta, icon } = await threadWithDraft(page);
   await icon.click();
@@ -115,6 +121,9 @@ async function threadStreams(page) {
   const last = await reading(page);
   await page.keyboard.press('Escape');
   await expect(page.locator('.pane-full')).toHaveCount(0);
+  await expect(icon).toBeFocused();
+  // The same composer, not a rebuilt one that brought the draft back from where drafts are kept.
+  await expect(ta).toHaveAttribute('data-same', 'yes');
   await expect(ta).toHaveValue('A draft reply');
   await stillAt(page, last, 'back in the pane, the message you were reading stayed put');
   await expect(page.locator(`.sidepanel [data-key="${id}"]`), 'the reply stayed').toBeAttached();

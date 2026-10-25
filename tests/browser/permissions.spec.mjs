@@ -57,6 +57,7 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
+test.use({ colorScheme: 'light' });
 
 /** Opens the conversation and waits for it to have heard everything the server did. */
 async function open(page) {
@@ -361,6 +362,7 @@ test('#66 a rule added in the panel is saved where you chose, and shows with its
   const se = rt.sessionsIn(thread.id)[0];
   expect(store.state.sessions[se.id].rules.allow).toEqual(['Bash(npx prettier:*)']);
   // The project’s shared file has no Remove; a local one does.
+  await expect(dialog.locator('.list-rows li', { hasText: 'Bash(rm:*)' }), 'the shared rule is listed').toHaveCount(1);
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(rm:*)' }).locator('button')).toHaveCount(0);
   await expect(dialog.locator('.list-rows li', { hasText: 'Bash(make:*)' }).locator('button[aria-label^="Remove"]')).toHaveCount(1);
 });
@@ -428,16 +430,12 @@ test('#74 a page whose token is gone (as after a restart) gets a new one by fetc
   await context.clearCookies();
   // The write without a token is refused once, before the page fetches a new one.
   allowPageError(page, /status of 403/);
-  const r = await page.evaluate(
-    (id) =>
-      import('/app/js/client.mjs')
-        .then((m) => m.api(`/api/threads/${id}/view`, {}))
-        .then(
-          () => 'ok',
-          (e) => e.message,
-        ),
-    thread.id,
-  );
+  const write = (id) =>
+    import('/app/js/client.mjs')
+      .then((m) => m.api(`/api/threads/${id}/view`, {}))
+      .then(() => 'ok')
+      .catch((e) => e.message);
+  const r = await page.evaluate(write, thread.id);
   expect(r, 'the browser’s same-origin fetch of / carries Sec-Fetch-Site: same-origin, so it gets the token').toBe('ok');
 });
 

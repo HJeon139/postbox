@@ -41,7 +41,7 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 // Wide, unless a test says otherwise: the tests of what fits measure at 1280 and 375 px.
-test.use({ viewport: { width: 2560, height: 900 } });
+test.use({ viewport: { width: 2560, height: 900 }, colorScheme: 'light' });
 
 /** Opens a place in Postbox and waits for it to have heard everything the server did. */
 async function open(page, hash) {
@@ -116,7 +116,7 @@ test('#60 the conversation’s menu says it with full model ids', async ({ page 
 // ── #12: mock agents and demo mode, marked everywhere ───────────────────────────────────
 
 /** That a “mock” marker is on screen and says “mock”. */
-const markedMock = (locator, message) => expect(locator.locator('.mock-tag'), message).toHaveText('mock');
+const markedMock = (locator, message) => expect(locator.locator('.mock-tag:visible'), message).toHaveText('mock');
 const railWho = (page) => page.locator(`.rail a.row[data-thread="${room.id}"] .sub`);
 
 test('#12 a mock agent is marked in its agent row, rail row and speaker line, and a real one isn’t', async ({ page }) => {

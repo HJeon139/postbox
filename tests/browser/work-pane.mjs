@@ -53,12 +53,20 @@ export async function citationFixes(name) {
       await synced(page, app);
       await expect(page.locator('header.topbar #work-button')).toBeVisible();
     },
-    /** Goes to another address in the same page, as the app’s links do. */
+    /**
+     * Goes to another address in the same page, as the app’s links do, and waits until the page has handled it: its
+     * hashchange, and two frames for the view it draws.
+     */
     async go(page, hash) {
       await synced(page, app);
-      await page.evaluate((h) => {
-        location.hash = h;
-      }, hash);
+      await page.evaluate(
+        (h) =>
+          new Promise((done) => {
+            addEventListener('hashchange', () => requestAnimationFrame(() => requestAnimationFrame(() => done(undefined))), { once: true });
+            location.hash = h;
+          }),
+        hash,
+      );
       await expect(page.locator('header.topbar')).toBeVisible();
     },
     async stop() {

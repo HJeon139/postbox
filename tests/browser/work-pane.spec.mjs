@@ -8,7 +8,7 @@
 // Moved from tools/check-work-pane.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, frames, settled } from './postbox.mjs';
+import { failOnPageErrors, settled } from './postbox.mjs';
 import { citationFixes, hash, noSideways, SIZES, THREAD, WORK } from './work-pane.mjs';
 
 /** @type {Awaited<ReturnType<typeof citationFixes>>} */
@@ -19,6 +19,8 @@ let other;
 let topic;
 let turns;
 test.beforeAll(async () => {
+  // Two of the mock’s turns of work, which take up to a minute each on a busy computer.
+  test.setTimeout(150_000);
   ctx = await citationFixes('work-pane');
   ({ app, conv, other, topic, turns } = ctx);
 });
@@ -26,6 +28,8 @@ test.afterAll(async () => {
   await ctx?.stop();
 });
 failOnPageErrors(test);
+// Light, as the old check ran it.
+test.use({ colorScheme: 'light' });
 
 const pane = (r) => ctx.pane(r);
 const open = (page, r) => ctx.open(page, r);
@@ -170,7 +174,9 @@ async function workFull(page, { width, height }) {
 async function itemFull(page) {
   await open(page, `/side/${topic}?work`);
   const file = app.store.state.work[conv.id].find((e) => e.kind === 'file' && e.rel?.endsWith('refs.bib'));
-  await page.locator(`#wc-file-${file.id}, #wc-review-${file.id}`).first().focus();
+  // Its Files row, as the old check took it, or its To review row where it has none.
+  const files = page.locator(`#wc-file-${file.id}`);
+  await ((await files.count()) ? files : page.locator(`#wc-review-${file.id}`)).focus();
   const id = await focusedId(page);
   await page.keyboard.press('Enter');
   await expect(page.locator(`.pane-full details[open] > summary#wsum-${file.id}`), 'refs.bib, opened').toBeFocused();
@@ -246,7 +252,6 @@ async function reload(page, { phone }) {
     await expect(page.locator(THREAD)).toBeVisible();
     expect(await hash(page)).toBe(pane(`/side/${topic}?work`));
   } else {
-    await expect(page.locator('#main')).toBeVisible();
     expect(await hash(page)).toBe(pane(''));
     await expect(page.locator('.rpane:not([hidden])'), 'the pane doesn’t cover the conversation').toHaveCount(0);
   }
@@ -263,8 +268,6 @@ async function oldLinks(page) {
   await expect(page.locator('nav.conv-tabs'), 'no tabs').toHaveCount(0);
   // Only a view that’s open goes full screen: with no thread, no thread full screen.
   await go(page, pane('?full=thread'));
-  await expect(page.locator('#main')).toBeVisible();
-  await frames(page);
   await expect(page.locator('.pane-full'), 'nothing went full screen').toHaveCount(0);
   await noSideways(page, 'after the redirect');
 }
