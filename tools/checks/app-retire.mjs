@@ -83,8 +83,11 @@ try {
   const hidden = await until(() => ev(offScreen), 'the map to be off screen', 5000).catch(() => false);
   check(hidden, 'the map starts off screen');
   await ev(`[...${item('lab')}.querySelectorAll('button')].find((b) => b.textContent === 'Go to Metro map').click()`);
-  await sleep(300);
-  const seen = await ev(`(() => { const r = ${item('metro')}.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; })()`);
+  const seen = await until(
+    () => ev(`(() => { const r = ${item('metro')}.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; })()`),
+    'the map to scroll into view',
+    5000,
+  ).catch(() => false);
   check(seen, 'Go to Metro map scrolls to the replacement');
   check(await ev(`${item('metro')}.contains(document.activeElement)`), 'and focus goes there');
 
