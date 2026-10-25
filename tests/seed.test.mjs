@@ -27,6 +27,7 @@ async function seeded({ demo = false, agents = null } = {}) {
     agents: Object.values(s.personas).map((p) => `@${p.handle} on ${p.backend}`),
     projects: Object.values(s.projects).map((p) => p.name),
     threads: Object.values(s.threads).length,
+    boilerplates: Object.keys(s.boilerplates),
   };
 }
 
@@ -42,6 +43,7 @@ test('a fresh install seeds three generic agents, and no projects or conversatio
     agents: ['@researcher on claude-code', '@developer on claude-code', '@critic on claude-code'],
     projects: [],
     threads: 0,
+    boilerplates: BOILERPLATES.map((b) => b.id),
   });
 });
 
@@ -117,13 +119,22 @@ test('--demo seeds the book-corpus agents, their projects and conversations', as
   );
   assert.deepEqual(demo.projects, ['Book corpus', 'Agent research']);
   assert.equal(demo.threads, 8);
+  assert.deepEqual(
+    demo.boilerplates,
+    BOILERPLATES.map((b) => b.id),
+  );
 });
 
 test('agents.json in the data folder replaces the agents in either mode', async () => {
   const agents = [{ handle: 'scout', description: 'Looks around.' }];
-  assert.deepEqual(await seeded({ agents }), { agents: ['@scout on claude-code'], projects: [], threads: 0 });
+  assert.deepEqual(await seeded({ agents }), { agents: ['@scout on claude-code'], projects: [], threads: 0, boilerplates: BOILERPLATES.map((b) => b.id) });
   // The demo's conversations need the demo's agents, so they go too.
-  assert.deepEqual(await seeded({ demo: true, agents }), { agents: ['@scout on claude-code'], projects: [], threads: 0 });
+  assert.deepEqual(await seeded({ demo: true, agents }), {
+    agents: ['@scout on claude-code'],
+    projects: [],
+    threads: 0,
+    boilerplates: BOILERPLATES.map((b) => b.id),
+  });
 });
 
 test('the GPT boilerplate uses Codex and supplies general assistant instructions', () => {

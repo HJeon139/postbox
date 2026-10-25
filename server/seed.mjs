@@ -190,6 +190,7 @@ export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = fal
   }
   // The seeded agents run on a real model when one is available here, and on the mock otherwise.
   for (const p of personas) rt.createPersona({ backend, ...p });
+  for (const b of BOILERPLATES) rt.store.emit('boilerplate', b);
   if (!demo) {
     for (const pr of fresh.projects) rt.store.emit('project', { id: newId('pr'), ...pr });
     return true;
