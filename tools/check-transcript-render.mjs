@@ -137,6 +137,7 @@ try {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   };
   const pinned = (term) => page.waitFor(`${HC(term)}?.classList.contains('pinned')`, { label: `the card for ${term}, pinned` });
+  const pinU = () => page.evaluate(`${TERM(REPLY, 'u')}.focus()`).then(() => press('Enter', 'Enter', 13).then(() => pinned('U')));
   /** Hovers a term inside the card for `from` (or the reply) and waits for its own card to pin. */
   const hover = async (from, term, k = term.toLowerCase()) => {
     await moveTo(TERM(from ? HC(from) : REPLY, k));
@@ -189,9 +190,7 @@ try {
       page.evaluate(
         `(() => { const a = document.activeElement; return (a.closest('.hovercard')?.getAttribute('aria-label') ?? 'page') + ' ' + (a.dataset.term ?? a.className); })()`,
       );
-    await page.evaluate(`${TERM(REPLY, 'u')}.focus()`);
-    await press('Enter', 'Enter', 13);
-    await pinned('U');
+    await pinU();
     assert.equal(await at(), 'Glossary: U hovercard pinned', 'Enter pins U’s card and moves into it');
     await press('Tab', 'Tab', 9);
     assert.equal(await at(), 'Glossary: U u-13', 'Tab reaches U:13');
@@ -207,9 +206,7 @@ try {
   });
 
   await scenario('#103 a card that closes while it has focus, as the pointer opens another, gives focus back to its term', async () => {
-    await page.evaluate(`${TERM(REPLY, 'u')}.focus()`);
-    await press('Enter', 'Enter', 13);
-    await pinned('U');
+    await pinU();
     await hover(null, 'alpha');
     assert.deepEqual(await open(), ['alpha'], 'the pointer’s card replaces U’s');
     assert.ok(await page.evaluate(`document.activeElement === ${TERM(REPLY, 'u')}`), 'focus is back on U in the reply');
@@ -217,8 +214,11 @@ try {
 
   await page.size(375, 812);
   await scenario('#103 at 375 px, both cards stay on screen, and nothing scrolls sideways', async () => {
-    await hover(null, 'U');
-    await hover('U', 'U:13', 'u-13');
+    // Opened by keyboard, which pins at once: pointing needs 650 ms of a still pointer, and under load timed out (#271).
+    await pinU();
+    await press('Tab', 'Tab', 9);
+    await press(' ', 'Space', 32);
+    await pinned('U:13');
     const box = await page.evaluate(
       `[...document.querySelectorAll('.hovercard')].map((c) => { const r = c.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight; })`,
     );
