@@ -541,11 +541,6 @@ export class Runtime {
     return queue.drainQueue(this, threadId, wakesOnly);
   }
 
-  /** One item from a queue: a wake to its agent, or your message, posted and delivered. */
-  sendQueued(threadId, q) {
-    return queue.sendQueued(this, threadId, q);
-  }
-
   // ── Turns ──────────────────────────────────────────────────────────────────────────
 
   /**
@@ -563,14 +558,14 @@ export class Runtime {
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
-      t.pending.push({ message, summarizeTo, threadId });
+      t.pending.push({ message: { ...message, at: message.at ?? Date.now() }, summarizeTo, threadId });
       return;
     }
     // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
     // held here isn’t read yet: it’s read when the turn it starts begins.
     const exiting = this.exiting.get(sessionId);
     if (exiting) {
-      exiting.held.push({ message, summarizeTo, threadId });
+      exiting.held.push({ message: { ...message, at: message.at ?? Date.now() }, summarizeTo, threadId });
       return;
     }
     // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
@@ -1141,8 +1136,7 @@ export class Runtime {
     this.clearSummaryPending(turn.threadId);
     for (const p of turn.pending) {
       if (p.summarizeTo && p.threadId) this.clearSummaryPending(p.threadId);
-      if (p.message.kind === 'agent' && se)
-        this.tellAgent(sessionId, `${p.message.from}’s message came while your turn was stopped: “${clip(p.message.text ?? '', 300)}”`);
+      if (se) queue.rememberStoppedMessages(this, sessionId, p.message);
     }
     // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
     if (!silent && se) dropWakes(this, se);
@@ -1175,7 +1169,8 @@ export class Runtime {
       }
       return;
     }
-    for (const h of held) this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
+    for (const h of ex.silent ? held : queue.batchPending(this, held, se.threadId))
+      this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
     if (!held.length && !ex.silent) this.drainQueues(se.id, turn.threadId);
   }
 
