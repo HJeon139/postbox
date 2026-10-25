@@ -114,6 +114,12 @@ const color = (page, v) =>
     p.remove();
     return c;
   }, v);
+/**
+ * The signals sent since then, but a SIGKILL to group 4242: every job here shares it, and a Stop sends it SIGKILL once
+ * its grace period is over (stopPgid), whenever that lands, an earlier test’s too (#244). Any other, a stray kill
+ * included, still shows.
+ */
+const sentSince = (before) => signals.slice(before).flatMap(([pid, sig]) => (pid === -4242 && sig === 'SIGKILL' ? [] : [`${pid} ${sig}`]));
 /** Stops the agent and keeps its jobs running, from the ask’s second choice, and waits for its process to exit. */
 async function keepRunning(page, idle) {
   await stopButton(page).click();
@@ -183,9 +189,10 @@ test('#126 #129 Keep running, by keyboard: the agent reads stopping until it exi
 test('#129 the kept job’s own Stop stops its process group, and its step reads stopped', async ({ page }) => {
   const { step, idle } = await withJob(page, 'Kept job');
   await keepRunning(page, idle);
-  await page.locator('.bg-jobs li button').click();
+  const before = signals.length;
+  await jobStop(page).click();
   await expect(page.locator('.bg-jobs li'), 'the row goes').toHaveCount(0);
-  expect(signals.at(-1)).toEqual([-4242, 'SIGINT']);
+  expect(sentSince(before)).toEqual(['-4242 SIGINT']);
   expect(step().state).toBe('stopped');
   await page.locator('details.activity > summary').click();
   await expect(page.locator('details.activity .steps li').first()).toContainText(/Run the mixed-room UAT scenario live\s*Stopped/);
@@ -214,12 +221,9 @@ test('#164 a kept job Postbox couldn’t tell apart says so under its row, and i
   // PB_SHOT=<file.png> saves the reply with its job row, light as the UAT docs’ screenshots are.
   if (process.env.PB_SHOT) await page.locator('.bg-jobs').locator('..').screenshot({ path: process.env.PB_SHOT });
   const before = signals.length;
-  await page.locator('.bg-jobs li button').click();
+  await jobStop(page).click();
   await expect(page.locator('.bg-jobs li'), 'the row goes').toHaveCount(0);
-  // All but an earlier test’s late SIGKILL to 4242: a Stop sends it once the grace period is over (stopPgid), and the
-  // fake records it whenever it lands, here too (#244). Any other signal, a stray kill included, still fails it.
-  const ints = signals.slice(before).filter(([pid, sig]) => !(pid === -4242 && sig === 'SIGKILL'));
-  expect(ints.map(([pid, sig]) => `${pid} ${sig}`)).toEqual(['-4242 SIGINT', '-4343 SIGINT']);
+  expect(sentSince(before)).toEqual(['-4242 SIGINT', '-4343 SIGINT']);
   expect(step().state).toBe('stopped');
 });
 
