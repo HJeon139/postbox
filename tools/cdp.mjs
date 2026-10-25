@@ -21,6 +21,34 @@ export const js = (value) => String(JSON.stringify(value)).replace(/[<>\u2028\u2
 // longer than the 12 s this used to allow (run 39977434749).
 const START_MS = 45000;
 
+/**
+ * Asks a child to end, and resolves once it has, so its ports are free (a UAT run’s stop checks them,
+ * tools/uat/stop.mjs). One still there after ms is killed. Its stderr is let go then too, since a helper it started
+ * (Chrome’s crash handler, say) can hold that pipe open after it, and keep this process from exiting.
+ * @param {import('node:child_process').ChildProcess} child @param {number} [ms]
+ */
+export async function untilGone(child, ms = 10_000) {
+  if (child.exitCode === null && child.signalCode === null) {
+    const gone = new Promise((ok) => child.once('exit', ok));
+    child.kill();
+    if (!(await within(gone, ms))) {
+      child.kill('SIGKILL');
+      await within(gone, ms);
+    }
+  }
+  child.stderr?.destroy();
+}
+
+/** Whether p settles within ms. Its timer is cleared either way, so it never holds the process open. @param {Promise<unknown>} p @param {number} ms */
+function within(p, ms) {
+  /** @type {NodeJS.Timeout | undefined} */
+  let timer;
+  const late = new Promise((ok) => {
+    timer = setTimeout(ok, ms, false);
+  });
+  return Promise.race([p.then(() => true), late]).finally(() => clearTimeout(timer));
+}
+
 /** The test Chrome’s command line: headless, on its own DevTools port and a fresh profile. */
 const flags = (port, profile) => [
   '--headless=new',
@@ -220,7 +248,7 @@ export async function launch({ port = 9333, detached = false } = {}) {
     },
     async close() {
       ws.close();
-      chrome.kill();
+      await untilGone(chrome);
       process.off('exit', orphan);
       await rm(profile, { recursive: true, force: true }).catch(() => {});
     },

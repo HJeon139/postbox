@@ -6,7 +6,7 @@
 
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { sleep } from '../cdp.mjs';
+import { sleep, untilGone } from '../cdp.mjs';
 
 /**
  * @typedef {{ root: string, port: number, data: string, env: Record<string, string>, log: (line: string) => void,
@@ -64,7 +64,10 @@ export async function startPostbox({ root, port, data, env, log }) {
   return {
     origin: pb.origin,
     api,
-    kill: () => pb.server?.kill(),
+    /** Stops it, and resolves once it has exited, so its port is free. */
+    kill: async () => {
+      if (pb.server) await untilGone(pb.server);
+    },
     /** Its process, whose children are its ssh to each host. */
     get pid() {
       return pb.server?.pid;
