@@ -22,7 +22,7 @@ The composer should reach what the CLI’s input reaches, without remembering sy
 
 ## Steps to reproduce
 
-1. Run `node tools/check-commands.mjs`. Every line should say ok.
+1. Run `npx playwright test commands` (`tests/browser/commands.spec.mjs`). Every test should pass.
 2. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>. Make a room with two Claude Code agents, and send each a message so their sessions start.
 3. Type /. Check both agents’ groups, then type `rev` and pick a skill that takes arguments, such as a review skill. Add its argument and send.
 4. Type /effort, choose High for the second agent, and send it a message.
