@@ -30,11 +30,11 @@ flowchart LR
 ```
 
 These are the boundaries, from designs/developing.md, “Security”, and designs/architecture.md. A report that crosses one is in scope:
-- **It answers this computer alone.** The server listens on 127.0.0.1. It refuses a `Host` other than `127.0.0.1:<port>` or `localhost:<port>`, and a cross-site `Origin`. Every write needs the page’s token, compared in constant time (architecture.md, “Writes need the page’s token”).
+- **It answers this computer alone.** The server listens on 127.0.0.1. It refuses a `Host` other than `127.0.0.1:<port>` or `localhost:<port>`, and a write with a cross-site `Origin`. Every write from the page needs the page’s token, compared in constant time. An agent’s calls to `/mcp` need its running turn’s token instead (architecture.md, “Writes need the page’s token”).
 - **Agent content is data.** It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()`. Agent apps and diagrams run in pages sandboxed by their `Content-Security-Policy` header that load nothing from a URL (architecture.md, “Sandboxed pages that load nothing”).
-- **Every input is untrusted,** including an agent’s own tool call. URLs with control characters are refused, and a path that resolves outside its folder is refused.
+- **Every input is untrusted,** including an agent’s own tool call. The rule is to refuse rather than clean up: a URL with control characters is refused, and so is a path that resolves outside its folder (designs/developing.md, “Security”). Whether every route and tool follows it is being audited in #351.
 - **Processes start with an argument array, never a shell string.** The one exception is a `!` command, which runs your own text, as you, only on loopback.
-- **Postbox never reads, stores or passes an API key or token.** Each backend signs in on its own.
+- **Postbox holds no key of its own.** A backend signs in on its own, or with a key in your environment, which Postbox passes on to it unread.
 
 **Out of scope:**
 - What an agent does with the permissions you gave it. That’s the backend’s permission model, which Postbox shows you as cards (architecture.md, “Permissions: a card in the thread, and an explicit mode”).
