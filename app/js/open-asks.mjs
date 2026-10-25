@@ -4,6 +4,7 @@
 import { ASKING } from '/shared/catalog.mjs';
 import { client, itemsOf } from './client.mjs';
 import { h, plural } from './dom.mjs';
+import { focusItem } from './needs-nav.mjs';
 
 const S = () => client.state;
 
@@ -40,7 +41,7 @@ export function openAsksEl(se, button = false, before = undefined) {
         dataset: { openAsks: se.id },
         onclick: () => {
           before?.();
-          goToItem(el.dataset.item);
+          focusItem(el.dataset.item ?? '');
         },
       })
     : h('span.small.dim', { dataset: { openAsks: se.id } });
@@ -58,11 +59,3 @@ function paintOpenAsks(el) {
 client.on((ch) => {
   if (['session', 'item.add', 'item.patch', 'load'].includes(ch.type)) for (const el of document.querySelectorAll('[data-open-asks]')) paintOpenAsks(el);
 });
-
-/** Scrolls to an item in the transcript or the thread panel, and focuses what can be answered in it. */
-function goToItem(itemId) {
-  const node = document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
-  if (!node) return;
-  node.scrollIntoView({ block: 'center' });
-  (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus();
-}

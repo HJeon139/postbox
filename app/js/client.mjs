@@ -3,6 +3,7 @@
 // browser reconnects with the last number it saw; events at or below it are ignored, so nothing is
 // applied twice. If the server no longer has the events, it says "resync" and the state is refetched.
 
+import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { apply } from '/shared/state.mjs';
 
 const EVENT_TYPES = [
@@ -178,14 +179,15 @@ export const sessionsAt = (threadId) => [
   ...Object.values(S().sessions).filter((se) => se.sideTurn?.threadId === threadId && !se.deleting && !sessionsOf(threadId).includes(se)),
 ];
 /** Where a session needs you, or is at work: the side thread its ask or turn is in, else its own thread. */
-export const whereOf = (se) => (se.needs?.threadId && S().threads[se.needs.threadId] ? se.needs.threadId : null) ?? se.sideTurn?.threadId ?? se.threadId;
+export const whereOf = (se) => whereNeeds(S(), se);
 // Side-thread sessions count with the rest (#121): one waiting on a permission prompt needs you as much as any.
 export const liveSessions = () =>
   Object.values(S().sessions).filter((se) => {
     const t = S().threads[se.threadId];
     return !se.archived && !se.deleting && t && !t.deleting && !(t.kind === 'side' && (!S().threads[t.parentId] || S().threads[t.parentId].deleting));
   });
-export const needsYou = () => liveSessions().filter((se) => se.needs && ['block', 'failed', 'hop', 'permission', 'appsend'].includes(se.needs.kind));
+// Every kind its ring pulses for: a refused step and a tool it asked for too (#285).
+export const needsYou = () => liveSessions().filter(needsYouNow);
 
 /** The thread’s main state for its rail row: the most urgent of its agents, its side threads’ included (#121). */
 export function threadState(t) {

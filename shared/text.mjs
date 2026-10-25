@@ -2,6 +2,14 @@
 
 import { renderMarkdown, TABLE_SEP } from './markdown.mjs';
 
+/** Text on one line, cut to n characters with an ellipsis. */
+export const clip = (s, n = 240) => {
+  const t = String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+};
+
 /**
  * The agents a message @-mentions, in order, without duplicates.
  * Mentions inside code are ignored, and "name@example.com" is not a mention.

@@ -96,8 +96,9 @@ await check('#237 Shell turned on from the quick panel answers the card that ask
   await until(() => rt.turns.size === 0 && store.state.sessions[se.id].needs?.kind === 'toolask', 'the agent to need you');
   await page.synced(store.state.seq);
   const turns = heard.length;
-  // The agent’s row in the sidebar opens its quick panel, where Shell is a switch for the persona.
-  await click(`[...document.querySelectorAll('.rail .agent-row .agent-btn')].find((b) => b.querySelector('b')?.textContent === '@tester')`);
+  // While it needs you, its row in the sidebar goes to the card, and its ⋯ opens the quick panel (#285), where Shell is
+  // a switch for the persona.
+  await click(`document.querySelector('.rail .agent-row [aria-label="More for @tester"]:not([hidden])')`);
   const panel = `document.querySelector('.backdrop .dialog.quick')`;
   await page.waitFor(`!!${panel}?.querySelector('[role=switch][aria-label^="Shell"]')`, { label: 'the quick panel' });
   await click(`${panel}.querySelector('[role=switch][aria-label^="Shell"]')`);
