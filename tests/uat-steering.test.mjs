@@ -1,12 +1,12 @@
-// A run's workspace lies inside the Postbox checkout, whose AGENTS.md are the rules for developing Postbox (#315).
-// Claude Code reads every AGENTS.md from an agent's folder up, so the workspace's own settings exclude them.
+// A run lies inside the Postbox checkout, whose AGENTS.md are the rules for developing Postbox (#315). Claude Code
+// reads every AGENTS.md from a session’s folder up, so the workspace’s settings, and the run folder’s, exclude them.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { hideSteeringAbove, steeringAbove } from '../tools/uat/workspace.mjs';
+import { hideSteeringAbove, steeringAbove } from '../tools/uat/steering.mjs';
 
 /** A checkout with its own AGENTS.md, and a run's workspace inside it that git has made a repository. */
 function checkout() {
@@ -46,6 +46,22 @@ test('a workspace that already has project settings keeps them, with the exclude
     assert.deepEqual(settings.permissions, { allow: ['Bash(npm test)'] });
     assert.deepEqual(settings.claudeMdExcludes, steeringAbove(workspace));
     assert.ok(settings.claudeMdExcludes.includes(join(root, 'AGENTS.md')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the run’s own folder, where the tester and verifier run, gets the excludes too, with no git there to tell', () => {
+  const { root, workspace } = checkout();
+  try {
+    const run = join(workspace, '..');
+    hideSteeringAbove(run);
+    const { claudeMdExcludes } = JSON.parse(readFileSync(join(run, '.claude', 'settings.json'), 'utf8'));
+    assert.ok(claudeMdExcludes.includes(join(root, 'AGENTS.md')));
+    // Again, as a recheck does: the excludes aren’t listed twice.
+    hideSteeringAbove(run);
+    const again = JSON.parse(readFileSync(join(run, '.claude', 'settings.json'), 'utf8')).claudeMdExcludes;
+    assert.deepEqual(again, claudeMdExcludes);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
