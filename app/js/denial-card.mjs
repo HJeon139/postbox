@@ -20,6 +20,9 @@ const DENIAL_WHY = {
   mode: 'the permission mode',
   asyncAgent: 'a background subagent can’t ask you',
 };
+/** Why a host turn’s refusal has no Always allow: Postbox can’t save a rule where its Claude Code reads it (server/permission-cards.mjs, hostAlways). @param {string} by */
+const onHostNote = (by) =>
+  `${by} runs on a host, and Postbox can’t save a rule there, so there’s no Always allow. Allow it once and retry, or add the rule to the agent folder’s .claude/settings.local.json on the host.`;
 export function denialBlock(it, ctx) {
   const open = it.status === 'open';
   const act = (action) =>
@@ -50,14 +53,16 @@ export function denialBlock(it, ctx) {
             'p.small',
             `Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &, or inside $( )) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run the parts as separate commands: a part that’s refused again gets a card of its own.`,
           )
-        : open
-          ? h(
-              'p.small.dim',
-              'Always allow adds ',
-              h('code', it.rules.always),
-              ' to .claude/settings.local.json in the agent’s folder, so your terminal sessions follow it too. A deny rule in your Claude Code settings still wins.',
-            )
-          : h('span.answered-note', icon(it.status === 'left' ? 'x' : 'check', 'i-sm'), DENIAL_DONE[it.status] ?? it.status),
+        : open && it.remote
+          ? h('p.small.dim', onHostNote(by))
+          : open
+            ? h(
+                'p.small.dim',
+                'Always allow adds ',
+                h('code', it.rules.always),
+                ' to .claude/settings.local.json in the agent’s folder, so your terminal sessions follow it too. A deny rule in your Claude Code settings still wins.',
+              )
+            : h('span.answered-note', icon(it.status === 'left' ? 'x' : 'check', 'i-sm'), DENIAL_DONE[it.status] ?? it.status),
     ),
     open
       ? h(

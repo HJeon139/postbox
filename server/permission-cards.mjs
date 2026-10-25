@@ -15,6 +15,9 @@ import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 // that would go nowhere. The card’s wait starts later, when the call arrives, so it ends a margin early, while Claude
 // Code still waits, and the no reaches the call. A minute is far more than a call takes to reach Postbox.
 const EXPIRY_MARGIN_MS = 60 * 1000;
+/** Why Always allow isn’t offered for a turn on a host (hostAlways). */
+const ON_HOST =
+  'This agent runs on a host, and Postbox would save the rule on this computer, where that host never reads it. Allow it once, or add the rule to the agent folder’s .claude/settings.local.json on the host.';
 export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
 
 /**
@@ -57,7 +60,7 @@ export function askPerson(
     toolUseId: toolUseId ? String(toolUseId) : null,
     // What Edit starts from; an input too large to edit here can still be allowed as it is.
     input: json && json.length <= MAX_EDIT_INPUT ? JSON.parse(json) : null,
-    always: rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }),
+    always: hostAlways(rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }), hostPrompt),
     // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
     who: whoAsked(turn, agentId, toolUseId),
     ...(hostPrompt ? { remote: { hostId: hostPrompt.hostId, turn: hostPrompt.turn, prompt: hostPrompt.id } } : {}),
@@ -182,11 +185,22 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
 }
 
 /**
+ * What Always allow offers on a host turn’s card (#120): nothing. A rule Postbox saves itself goes in a folder on this
+ * computer, which the host never reads, and which local agents in that project would then follow. And whether the
+ * host’s Claude Code saves updatedPermissions from a --permission-prompt-tool answer isn’t documented (the SDK’s
+ * canUseTool is), and the CLI sends no suggestions (tests/fixtures/claude-code/permission-prompts.json), so none is
+ * offered either: Allow once stays.
+ * @param {ReturnType<typeof alwaysFor>} always @param {unknown} hostPrompt
+ */
+const hostAlways = (always, hostPrompt) => (hostPrompt ? null : always);
+
+/**
  * Always allow on a permission card: Claude Code’s suggestions go back as updatedPermissions, and Claude Code saves
  * them; a rule Postbox made (the CLI suggests none) Postbox saves itself, in the agent folder’s local settings.
  * @param {string} threadId @param {any} it @param {string} asked
  */
 export async function allowAlways(rt, threadId, it, asked) {
+  if (it.remote) throw httpError(409, ON_HOST);
   if (it.always.saves) {
     const se = rt.s.sessions[it.sessionId];
     const persona = se && rt.personaFor(se);
@@ -212,7 +226,8 @@ export function recordDenial(rt, turn, d) {
   const key = String(d.toolUseId ?? '');
   // Once per call, and never for a call the person answered on a permission card.
   if (key && rt.store.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission') && it.toolUseId === key)) return;
-  const rules = rulesFor(String(d.tool ?? ''), d.input ?? {});
+  // On a host, Always would save its rule on this computer (hostAlways): Allow once and Leave stay.
+  const rules = { ...rulesFor(String(d.tool ?? ''), d.input ?? {}), ...(turn.remote ? { always: null } : {}) };
   const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);
   rt.addItem(turn.threadId, {
     kind: 'denial',
@@ -227,6 +242,7 @@ export function recordDenial(rt, turn, d) {
     reasonType: d.reasonType ? String(d.reasonType).slice(0, 40) : null,
     who: d.who ? String(d.who).slice(0, 40) : null,
     rules,
+    ...(turn.remote ? { remote: { hostId: turn.remote.hostId } } : {}),
     status: 'open',
   });
   // The text so far is finished; the reply continues below the card.
@@ -238,6 +254,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'denial' || it.status !== 'open') throw httpError(409, 'That refusal was already answered.');
   if (!['once', 'always', 'leave'].includes(action)) throw httpError(400, 'A refusal takes “once”, “always” or “leave”.');
+  if (action === 'always' && it.remote) throw httpError(409, ON_HOST);
   // A chained command has no rule that can allow it (permission-rules.mjs, chains), so neither is offered (#238).
   if (action !== 'leave' && !it.rules[action])
     throw httpError(
