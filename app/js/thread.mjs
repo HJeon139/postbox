@@ -16,7 +16,7 @@ import { focusComposer, hopBlock } from './hop-card.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
-import { jobRows, stoppedTag } from './reply-stop.mjs';
+import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -478,7 +478,6 @@ function renderItem(it, prev, ctx) {
     case 'agent': {
       const steps = it.activity?.steps ?? [];
       const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
-      const running = steps.some((s) => s.state === 'running');
       const node = h(
         'div.col.turn',
         showWho ? who(it) : null,
@@ -490,7 +489,7 @@ function renderItem(it, prev, ctx) {
                 icon('right', 'i-sm'),
                 activityLabel(steps),
                 total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
-                running ? ' · running' : '',
+                runningNote(it, steps),
               ),
               stepTree(steps),
             )
