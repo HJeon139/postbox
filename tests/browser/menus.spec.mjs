@@ -28,7 +28,7 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
-test.use({ viewport: { width: 1280, height: 1000 } });
+test.use({ viewport: { width: 1280, height: 1000 }, colorScheme: 'light' });
 
 const versions = (page) => page.locator('.appframe').getByRole('button', { name: /^v\d+ · / });
 /** What the app’s frame shows. */
@@ -71,6 +71,14 @@ const focusedItem = (page) =>
     return { text: a.textContent, inView: b.top >= mb.top - 1 && b.bottom <= mb.bottom + 1 };
   });
 
+/** Focus on that item, in the menu’s view, and still there two frames on. */
+async function focusOnItem(page, text) {
+  const want = { text: expect.stringMatching(text), inView: true };
+  await expect.poll(() => focusedItem(page), { message: `focus on ${text}` }).toEqual(want);
+  await frames(page);
+  expect(await focusedItem(page), 'and it stays there').toEqual(want);
+}
+
 test('#36 the version menu with 30 versions fits a 1,000 px window, starts inside it, and scrolls', async ({ page }) => {
   await open(page);
   const m = await opensInside(page, versions(page), 'the version menu');
@@ -104,13 +112,13 @@ test('#36 the version menu opens with the version shown focused and in view, cur
   await open(page);
   // The current version, newest, is first.
   await opensInside(page, versions(page), 'the version menu');
-  await expect.poll(() => focusedItem(page)).toEqual({ text: expect.stringMatching(/^v30 · Version 30/), inView: true });
+  await focusOnItem(page, /^v30 · Version 30/);
   // An older version near the bottom: choosing it shows it, and the menu then opens on it.
   await item(page, 'v3 · ').click();
   await expect(menu(page), 'the menu closes').toHaveCount(0);
   await expect(shown(page), 'v3 shown').toHaveText('Version 3');
   await opensInside(page, versions(page), 'the version menu');
-  await expect.poll(() => focusedItem(page)).toEqual({ text: expect.stringMatching(/^v3 · Version 3/), inView: true });
+  await focusOnItem(page, /^v3 · Version 3/);
   expect(await menu(page).evaluate((m) => m.scrollTop), 'the menu scrolled to v3').toBeGreaterThan(0);
   // Back to the current version.
   await item(page, 'v30 · ').click();

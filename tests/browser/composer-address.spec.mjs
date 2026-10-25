@@ -60,7 +60,7 @@ test('#134 “critic: …” shows “Did you mean @critic?”, and its click ad
   await expect(hint(page, 'composer-input'), 'it says who it goes to').toContainText('Replying to @researcher');
   await hint(page, 'composer-input').locator('.did-you-mean').click();
   await expect(page.locator('#composer-input')).toHaveValue('@critic: what’s your biggest concern?');
-  await expect(page.locator('#composer-input'), 'focus back in the composer').toBeFocused();
+  await focusIs(page, /^textarea: /);
   await expect(hint(page, 'composer-input'), 'it no longer asks').not.toContainText('Did you mean');
 });
 
@@ -81,7 +81,8 @@ test('#134 “Researcher, …” to the last speaker, and a name later in the dr
   await room(page, 'No hint');
   for (const draft of ['Researcher, did you fix it?', 'What did the critic find?', 'the critics agree']) {
     await typeIn(page, 'composer-input', draft);
-    // The composer redraws its hint as each key’s input comes, as the first test’s Did you mean shows.
+    // Every key typed: the composer redraws its hint on each key’s input, as the first test’s Did you mean shows.
+    await expect(page.locator('#composer-input')).toHaveValue(draft);
     await expect(hint(page, 'composer-input')).toContainText('Replying to @researcher');
     await expect(hint(page, 'composer-input'), `“${draft}” shows no hint`).not.toContainText('Did you mean');
   }

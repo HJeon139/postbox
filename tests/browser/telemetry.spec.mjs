@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
 import { fresh, go, paneRoom } from './pane.mjs';
-import { failOnPageErrors, settled, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, settled, synced } from './postbox.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
@@ -52,12 +52,14 @@ async function recorded(page) {
   await expect(page.locator('#recording-badge')).toHaveText(/^Recording since \d\d:\d\d$/);
 }
 /** Whether focus is on a control in the Telemetry view, not dropped to the page. */
-const focusInView = (page) =>
-  expect
-    .poll(() => page.evaluate((v) => !!document.activeElement?.closest(v) && /^(BUTTON|INPUT|SUMMARY)$/.test(document.activeElement?.tagName ?? ''), VIEW), {
-      message: 'focus in the view',
-    })
-    .toBe(true);
+const inView = (page) =>
+  page.evaluate((v) => !!document.activeElement?.closest(v) && /^(BUTTON|INPUT|SUMMARY)$/.test(document.activeElement?.tagName ?? ''), VIEW);
+/** Focus on a control in the view, and still there two frames on. */
+async function focusInView(page) {
+  await expect.poll(() => inView(page), { message: 'focus in the view' }).toBe(true);
+  await frames(page);
+  expect.soft(await inView(page), 'focus stays in the view').toBe(true);
+}
 const shownHash = (page) => page.evaluate(() => (/sha256 ([0-9a-f]{64})/.exec(document.querySelector('.tv-hash')?.textContent ?? '') ?? [])[1] ?? null);
 const button = (page, text) => view(page).getByRole('button', { name: text });
 /** What axe finds in what a selector finds, against WCAG 2.1 A and AA. */
@@ -76,8 +78,10 @@ async function axe(page, include) {
 test('R1, R5: Record this room from the ⋯ menu; the header says so, and nothing appears in the room', async ({ page }) => {
   await fresh(page, room, 1440);
   const items = await page.locator('#main .item').count();
-  await recorded(page);
-  await expect(page.locator('#main .item')).toHaveCount(items);
+  await expect(page.locator('#recording-badge'), 'not recorded yet').not.toHaveText(/^Recording since/);
+  await menu(page, 'Record this room');
+  await expect(page.locator('#recording-badge')).toHaveText(/^Recording since \d\d:\d\d$/);
+  await expect(page.locator('#main .item'), 'nothing appears in the room').toHaveCount(items);
 });
 
 test('R18: Telemetry swaps in for Work, the Work button brings Work back, and closing Telemetry does too', async ({ page }) => {
@@ -116,7 +120,7 @@ async function makeReport(page) {
   rt.sendMessage(room.ids.conv, { text: 'One more question while the view is open.' });
   await expect(page.locator('#main .item', { hasText: 'One more question while the view is open.' })).toBeVisible();
   await settled(page);
-  await expect(page.locator('#tv-history'), 'still ticked').toBeChecked();
+  await expect.soft(page.locator('#tv-history'), 'still ticked').toBeChecked();
   await button(page, 'Make report').click();
   await expect(page.locator('.tv-lines button[aria-label^="Leave out line"]').first()).toBeVisible();
   await focusInView(page);
@@ -133,9 +137,11 @@ async function leaveOut(page) {
   await expect.poll(() => shownHash(page), { message: 'the new hash' }).not.toBe(before);
   const same = page.locator(`[id="${id}"]`);
   await expect(same, 'focus stayed on the toggle').toBeFocused();
-  await expect(same).toHaveAttribute('aria-pressed', 'true');
-  await expect(same, 'one name').toHaveAttribute('aria-label', /^Leave out line \d+$/);
-  expect(await axe(page, VIEW)).toEqual([]);
+  await frames(page);
+  expect.soft(await same.evaluate((n) => n === document.activeElement), 'and it stays there').toBe(true);
+  await expect.soft(same).toHaveAttribute('aria-pressed', 'true');
+  await expect.soft(same, 'one name').toHaveAttribute('aria-label', /^Leave out line \d+$/);
+  expect.soft(await axe(page, VIEW), 'axe finds nothing in the view').toEqual([]);
 }
 
 /** Discard drops the draft; a new one saves, lists itself and reopens its bytes; axe finds nothing */
@@ -153,8 +159,8 @@ async function saveReport(page) {
   await expect(page.locator('.tv-saved')).toBeVisible();
   await focusInView(page);
   await page.locator('.tv-saved details summary').first().click();
-  await expect(page.locator('.tv-saved details pre').first(), 'the saved bytes').toContainText('postbox-telemetry-2');
-  expect(await axe(page, VIEW)).toEqual([]);
+  await expect.soft(page.locator('.tv-saved details pre').first(), 'the saved bytes').toContainText('postbox-telemetry-2');
+  expect.soft(await axe(page, VIEW), 'axe finds nothing in the view').toEqual([]);
 }
 
 /** File issue with no gh shows the text and its hash, copies it, and asks for the new-issue page; Delete removes the report */
@@ -177,13 +183,13 @@ async function fileIssue(page) {
   const issue = page.locator('.dialog pre.tv-issue');
   await expect(issue).toBeVisible();
   const shown = await issue.textContent();
-  await expect(page.locator('.dialog .d-body')).toContainText(/sha256 [0-9a-f]{64}/);
-  expect(await axe(page, '.dialog')).toEqual([]);
+  await expect.soft(page.locator('.dialog .d-body'), 'it shows its hash').toContainText(/sha256 [0-9a-f]{64}/);
+  expect.soft(await axe(page, '.dialog'), 'axe finds nothing in the dialog').toEqual([]);
   await page.locator('.dialog .d-foot').getByRole('button', { name: 'Send', exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => /** @type {any} */ (window).opened), { message: 'the new-issue page asked for' })
     .toEqual(['https://github.com/HJeon139/postbox/issues/new']);
-  expect(await page.evaluate(() => /** @type {any} */ (window).copied)).toEqual([shown]);
+  expect.soft(await page.evaluate(() => /** @type {any} */ (window).copied), 'it copies the text').toEqual([shown]);
   await view(page).locator('.tv-saved').getByRole('button', { name: 'Delete report' }).click();
   await expect(page.locator('.tv-saved'), 'the report deleted').toHaveCount(0);
 }

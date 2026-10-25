@@ -83,8 +83,8 @@ test('#54 an app shown from codePath reads its data file in the sandbox, and a f
   await expect(page.frameLocator('.transcript .appframe iframe').locator('#out')).toHaveText('1258 pairs, the first about claim 0');
   await saved('pairs', 'missing');
   const st = rt.s.apps.pairs.state;
-  expect([st.read, st.first]).toEqual([1258, 'claim 0']);
-  expect(st.missing).toMatch(/has no file “missing\.json”/);
+  expect.soft([st.read, st.first], 'the app read its data file').toEqual([1258, 'claim 0']);
+  expect.soft(st.missing, 'a file the version doesn’t carry rejects, and says so').toMatch(/has no file “missing\.json”/);
 });
 
 test('#54 a tool call to /mcp with only the session id is refused, and nothing of it reaches the conversation', async ({ page }) => {
@@ -103,12 +103,12 @@ test('#54 a tool call to /mcp with only the session id is refused, and nothing o
     }),
   });
   const r = await res.json();
-  expect(r.error?.code, JSON.stringify(r)).toBe(-32001);
-  expect(r.error.message).toMatch(/only from an agent turn it started/);
+  expect.soft(r.error?.code, JSON.stringify(r)).toBe(-32001);
+  expect.soft(r.error?.message, 'refused, and says why').toMatch(/only from an agent turn it started/);
   await synced(page, app);
-  expect(store.items(t.id).length).toBe(before);
-  expect(rt.s.apps.side).toBeUndefined();
-  await expect(page.locator('.transcript .appframe')).toHaveCount(0);
+  expect.soft(store.items(t.id).length, 'nothing of it reaches the conversation').toBe(before);
+  expect.soft(rt.s.apps.side, 'no app').toBeUndefined();
+  await expect.soft(page.locator('.transcript .appframe'), 'nothing shown').toHaveCount(0);
 });
 
 test('#47 a dataset the agent loads shows a line, and reaches an app with no restart, but not a search that doesn’t name it', async ({ page }) => {
@@ -128,9 +128,9 @@ test('#47 a dataset the agent loads shows a line, and reaches an app with no res
   rt.toolsFor(se.id).show_app({ id: 'reader', title: 'Reader', code: READER, permissions: ['corpus.read', 'corpus.search'] });
   await saved('reader', 'text');
   const rd = rt.s.apps.reader.state;
-  expect(rd.text).toBe('Claim 7 about vitamin D and fractures.');
-  expect(rd.named, 'a search that names it gets it').toBeGreaterThan(0);
-  expect(rd.plain, 'a search that doesn’t name it doesn’t get it').toBe(0);
+  expect.soft(rd.text, 'an app reads the dataset at once, with no restart').toBe('Claim 7 about vitamin D and fractures.');
+  expect.soft(rd.named, 'a search that names it gets it').toBeGreaterThan(0);
+  expect.soft(rd.plain, 'a search that doesn’t name it doesn’t get it').toBe(0);
 });
 
 test('#54 Settings says each turn has a token, and shows no session-id endpoint', async ({ page }) => {

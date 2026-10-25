@@ -84,15 +84,21 @@ test('#28 a folder that won’t open says why above the list, which stays, with 
   // Since it was listed, docs/later became a link out of the project, which the server refuses to open.
   await rm(join(root, 'docs', 'later'), { recursive: true });
   await symlink(away, join(root, 'docs', 'later'));
-  allowPageError(page, /status of 403/);
-  await button(page, 'Open later').click();
-  await expect(error(page)).toBeVisible();
-  await expect(error(page)).toHaveText('That’s outside the project’s folder.');
-  await expect(where(page)).toHaveText(/\/docs$/);
-  await expect(button(page, 'Up'), 'Up stays').toBeVisible();
-  await expect(button(page, 'Attach guide.md'), 'the list stays').toBeVisible();
-  // Up leads back out, and the error goes with it.
-  await button(page, 'Up').click();
-  await expect(button(page, 'Open docs'), 'the project’s folder again').toBeVisible();
-  await expect(error(page)).toBeHidden();
+  try {
+    allowPageError(page, /status of 403/);
+    await button(page, 'Open later').click();
+    await expect(error(page)).toBeVisible();
+    await expect(error(page)).toHaveText('That’s outside the project’s folder.');
+    await expect(where(page)).toHaveText(/\/docs$/);
+    await expect(button(page, 'Up'), 'Up stays').toBeVisible();
+    await expect(button(page, 'Attach guide.md'), 'the list stays').toBeVisible();
+    // Up leads back out, and the error goes with it.
+    await button(page, 'Up').click();
+    await expect(button(page, 'Open docs'), 'the project’s folder again').toBeVisible();
+    await expect(error(page)).toBeHidden();
+  } finally {
+    // Back as it was, a folder, for the tests that come after.
+    await rm(join(root, 'docs', 'later'));
+    await mkdir(join(root, 'docs', 'later'));
+  }
 });

@@ -74,7 +74,11 @@ const running = (server) =>
 /** The commit HEAD is at, as the build line shows it, or null outside a clone. */
 function headCommit() {
   try {
-    return execFileSync('git', ['-C', ROOT, 'rev-parse', '--short=7', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return execFileSync('git', ['-C', ROOT, 'rev-parse', '--short=7', 'HEAD'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10_000,
+    }).trim();
   } catch {
     return null;
   }
@@ -92,7 +96,8 @@ before(async () => {
   [home, prefix, cwd] = ['home', 'prefix', 'cwd'].map((d) => join(tmp, d));
   for (const d of [home, prefix, cwd]) await mkdir(d);
   const env = { ...process.env, PATH, npm_config_cache: join(tmp, 'npm-cache'), npm_config_update_notifier: 'false' };
-  const npm = (args) => execFileSync('npm', args, { cwd: ROOT, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  // A timeout of its own: a synchronous call blocks the event loop, so --test-timeout can’t end a hung npm.
+  const npm = (args) => execFileSync('npm', args, { cwd: ROOT, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 });
   packed = JSON.parse(npm(['pack', '--json', '--pack-destination', tmp]))[0];
   npm(['install', '--prefix', prefix, '--omit=optional', '--no-save', '--no-package-lock', '--offline', '--no-audit', '--no-fund', join(tmp, packed.filename)]);
   bin = join(prefix, 'node_modules', '.bin', 'postbox');
@@ -124,9 +129,9 @@ test('carries the commit it was packed from, and leaves no commit file behind in
 
 test('installs a postbox command whose --help says how to run it, and --version prints the version', () => {
   assert.ok(existsSync(bin), 'installing gives a postbox command');
-  const help = execFileSync(bin, ['--help'], { cwd, env: runEnv(), encoding: 'utf8' });
+  const help = execFileSync(bin, ['--help'], { cwd, env: runEnv(), encoding: 'utf8', timeout: 10_000 });
   assert.ok(/^Usage: postbox/.test(help) && help.includes('--port') && help.includes('--data'), help);
-  assert.equal(execFileSync(bin, ['--version'], { cwd, env: runEnv(), encoding: 'utf8' }).trim(), version);
+  assert.equal(execFileSync(bin, ['--version'], { cwd, env: runEnv(), encoding: 'utf8', timeout: 10_000 }).trim(), version);
 });
 
 test('serves the page, its media and the build line, and writes only under HOME/.postbox', async () => {

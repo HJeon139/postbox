@@ -4,7 +4,7 @@
 // a turn here: it only makes the real backend’s fields show. Moved from tools/checks/persona-setup.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -37,22 +37,22 @@ async function setupBox(page, id, name, help) {
 
 test('#57 the persona editor shows both setup controls, with help, works from the keyboard, and saves them', async ({ page }) => {
   const persona = app.rt.createPersona({ handle: 'checker', backend: 'claude-code' });
-  expect([persona.usesHostSetup, persona.canPublish], 'a new persona uses your setup and can’t publish').toEqual([true, false]);
+  expect.soft([persona.usesHostSetup, persona.canPublish], 'a new persona uses your setup and can’t publish').toEqual([true, false]);
   await personas(page);
   await page.getByRole('button', { name: 'Edit @checker', exact: true }).click();
   const setup = await setupBox(page, 'pe-setup', 'Uses your Claude Code setup', /skills, commands, plugins and permission rules/);
-  await expect(setup, 'Isolated keeps the folder’s local file').toHaveAccessibleDescription(/folder’s local file, where Always allow saves/);
-  await expect(setup, 'on by default').toHaveAttribute('aria-checked', 'true');
+  await expect.soft(setup, 'Isolated keeps the folder’s local file').toHaveAccessibleDescription(/folder’s local file, where Always allow saves/);
+  await expect.soft(setup, 'on by default').toHaveAttribute('aria-checked', 'true');
   const publish = await setupBox(page, 'pe-publish', 'Can publish outside Postbox', /artifacts, and connectors that post or send/);
-  await expect(publish, 'off by default').toHaveAttribute('aria-checked', 'false');
+  await expect.soft(publish, 'off by default').toHaveAttribute('aria-checked', 'false');
   // Keyboard: Space and Enter toggle, and Tab moves from one to the other.
   await setup.focus();
   await page.keyboard.press('Space');
-  await expect(setup, 'Space turns it off').toHaveAttribute('aria-checked', 'false');
+  await expect.soft(setup, 'Space turns it off').toHaveAttribute('aria-checked', 'false');
   await page.keyboard.press('Tab');
-  await expect(publish, 'Tab reaches “Can publish outside Postbox”').toBeFocused();
+  await focusIs(page, 'checkbox: Can publish outside Postbox');
   await page.keyboard.press('Enter');
-  await expect(publish, 'Enter turns it on').toHaveAttribute('aria-checked', 'true');
+  await expect.soft(publish, 'Enter turns it on').toHaveAttribute('aria-checked', 'true');
   await page.locator('.dialog').getByRole('button', { name: 'Save', exact: true }).click();
   await expect
     .poll(

@@ -99,6 +99,7 @@ test('#86 a drag resizes the pane, its width survives a reload, and a double-cli
   expect((await measure(page)).pane).toBe(440);
   // At 375 px the pane covers the conversation, so it has no handle to show.
   await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.locator(WORK), 'Work, over the conversation').toBeVisible();
   await expect(handle(page), 'no handle at 375 px').toBeHidden();
 });
 
