@@ -143,6 +143,14 @@ test('unavailable backend boilerplates are disabled with a reason, and switching
   assert.deepEqual([st.backend, st.model, st.effort], ['antigravity-cli', GEMINI_MODEL, 'high']);
   selectBackend(st, 'claude-code', cfg);
   assert.deepEqual([st.backend, st.model, st.effort], ['claude-code', DEFAULT_MODEL, DEFAULT_EFFORT]);
+  // Switching from Claude Code with Sonnet selected to Kiro (which has no reported catalog) keeps Sonnet; switching from Antigravity to Kiro resets.
+  st.model = 'claude-sonnet-5-5';
+  st.effort = 'high';
+  selectBackend(st, 'kiro-cli', cfg);
+  assert.deepEqual([st.backend, st.model, st.effort], ['kiro-cli', 'claude-sonnet-5-5', 'high']);
+  applyBoilerplate(st, gemini, cfg);
+  selectBackend(st, 'kiro-cli', cfg);
+  assert.deepEqual([st.backend, st.model, st.effort], ['kiro-cli', DEFAULT_MODEL, DEFAULT_EFFORT]);
   // A backend without a reported catalog (such as kiro-cli) keeps its own custom model when re-selected.
   st.backend = 'kiro-cli';
   st.model = 'gpt-5.6-terra';

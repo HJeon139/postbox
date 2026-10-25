@@ -193,7 +193,7 @@ export function selectBackend(st, id, config = {}) {
   st.bpFromBackend = false;
   st.backend = id;
   const offered = offeredBy(id, config);
-  const prevOffered = prev ? offeredBy(prev, config) : null;
+  const prevOffered = prev === 'antigravity-cli' ? offeredBy(prev, config) : null;
   const incompatible = Array.isArray(offered)
     ? !offered.includes(st.model)
     : Boolean(prev && prev !== id && Array.isArray(prevOffered) && prevOffered.includes(st.model));

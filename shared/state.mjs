@@ -23,6 +23,11 @@ export function emptyState() {
   };
 }
 
+const putBoilerplate = (s, d) => {
+  delete s.boilerplates[d.id];
+  s.boilerplates[d.id] = d;
+};
+
 // The reducer. Events carry whole objects for upserts, and small patches for items.
 export function apply(s, type, d) {
   switch (type) {
@@ -36,8 +41,7 @@ export function apply(s, type, d) {
       s.personas[d.id] = d;
       break;
     case 'boilerplate':
-      delete s.boilerplates[d.id];
-      s.boilerplates[d.id] = d;
+      putBoilerplate(s, d);
       break;
     case 'thread':
       s.threads[d.id] = d;
@@ -99,7 +103,8 @@ export function apply(s, type, d) {
         delete s.glossary[d.id];
         if (s.work) delete s.work[d.id];
       }
-      if (d.kind === 'session' || d.kind === 'app') delete s[`${d.kind}s`][d.id];
+      if (d.kind === 'session') delete s.sessions[d.id];
+      if (d.kind === 'app') delete s.apps[d.id];
       break;
     }
     case 'notify':
