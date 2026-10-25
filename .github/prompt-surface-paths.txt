@@ -2,7 +2,8 @@
 # what decides either. A pull request that touches one waits for the maintainer’s approval in the
 # prompt-security-review environment (.github/workflows/prompt-surface-gate.yml; SECURITY.md, “Prompt changes”).
 # prompt-surface-scan.yml warns when the rendered prompts change but no line here matched, so this list can’t fall
-# behind quietly. Globs: `*` within a folder, `**/` any folders.
+# behind quietly. tests/prompt-gate.test.mjs fails when a module the rendered text comes from is neither listed here
+# nor excused there with a reason. Globs: `*` within a folder, `**/` any folders.
 
 # What every Postbox agent is told, and how each backend hands it over
 server/adapters/guide.mjs
@@ -20,6 +21,13 @@ shared/limits.mjs
 server/mcp.mjs
 server/review-comments.mjs
 server/checks.mjs
+server/bring.mjs
+server/permission-prompt.mjs
+server/reactions.mjs
+server/side-threads.mjs
+server/subagent-end.mjs
+shared/reactions.mjs
+shared/review-comments.mjs
 
 # Personas and boilerplates
 server/personas/**
@@ -36,3 +44,4 @@ designs/prompts/**
 .github/**
 tools/prompt-surface.mjs
 tools/prompt-gate.mjs
+tests/prompt-*.test.mjs
