@@ -55,6 +55,13 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
 }
 
 /**
+ * The width of the window the test set. Measure what fits a narrow window against it, not innerWidth: on a phone
+ * (isMobile), a page that overflows widens innerWidth to fit, so nothing could stick out of that.
+ * @param {import('@playwright/test').Page} page
+ */
+export const windowWidth = (page) => /** @type {{ width: number }} */ (page.viewportSize()).width;
+
+/**
  * Waits until the page has applied the server’s events up to its store’s seq now. A change made on the server
  * reaches the page over its event stream, which nothing orders with the test’s next step (POSTBOX_STREAM_LAG shows it).
  * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } } }} app

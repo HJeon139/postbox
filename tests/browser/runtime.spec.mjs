@@ -8,7 +8,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -70,7 +70,8 @@ const servers = (page) =>
       visible: el.getBoundingClientRect().width > 0,
     })),
   );
-const server = (page, name) => page.locator(`.dialog [data-server="${name}"]`);
+/** A server’s checkbox, by its name, which leads its accessible name. */
+const server = (page, name) => page.locator('.dialog').getByRole('checkbox', { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `) });
 /** The effort field: its label, value, options, help, and the label of the field before it. */
 const effortField = (page, idp) =>
   page.locator(`#${idp}-e`).evaluate((el, id) => {
@@ -105,7 +106,8 @@ test('#59 the editor lists your user and project servers and the claude.ai conne
     docs: 'Not started yet · this project',
     'claude.ai Google Drive': 'Connected · claude.ai connector',
   });
-  expect(await page.evaluate(() => document.body.textContent), 'no server config reaches the page').not.toMatch(/secret-token|search-server/);
+  // Anywhere in the page, its markup and attributes too, not only its text.
+  expect(await page.evaluate(() => document.documentElement.outerHTML), 'no server config reaches the page').not.toMatch(/secret-token|search-server/);
 });
 
 test('#60 the editor shows Effort right after Model, at Medium by default, with every level Claude Code takes and help', async ({ page }) => {
@@ -121,7 +123,7 @@ test('#59 #60 Space turns a server off, and Save stores it and the effort on the
   const { store } = app;
   const { p } = await persona(page, 'saver');
   await editor(page, p.id);
-  await page.locator('#pe-e').selectOption('high');
+  await page.locator('.dialog').getByLabel('Effort', { exact: true }).selectOption('high');
   await server(page, 'claude.ai Google Drive').focus();
   await page.keyboard.press('Space');
   await expect(server(page, 'claude.ai Google Drive'), 'Space turns it off').toHaveAttribute('aria-checked', 'false');
@@ -170,15 +172,18 @@ test.describe('at 375 px', () => {
   test('#59 at 375 px the editor, with a long server name, doesn’t scroll sideways', async ({ page }) => {
     const { p } = await persona(page, 'narrow', [{ name: 'plugin:engineering:google calendar and a much longer name', status: 'failed', source: 'plugin' }]);
     await page.evaluate((pid) => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas', pid)), p.id);
-    await expect(page.locator('.dialog [data-server^="plugin:"]')).toBeVisible();
-    // Anything that sticks out past the dialog’s right edge (a field’s own text scrolling inside it is fine).
-    const wide = await page.locator('.dialog').evaluate((d) => {
-      const right = d.getBoundingClientRect().right;
-      return [...d.querySelectorAll('*')]
-        .filter((el) => el.getBoundingClientRect().right > right + 1)
-        .map((el) => `${el.className || el.tagName}: ${el.textContent?.slice(0, 40)}`);
-    });
-    expect(wide, 'nothing sticks out of the dialog').toEqual([]);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), 'the page doesn’t scroll sideways').toBe(false);
+    await expect(page.locator('.dialog').getByRole('checkbox', { name: /^plugin:/ })).toBeVisible();
+    const width = windowWidth(page);
+    // The dialog inside the window, and nothing sticking out past its right edge (a field’s own text scrolling
+    // inside it is fine).
+    const wide = await page.locator('.dialog').evaluate((d, w) => {
+      const box = d.getBoundingClientRect();
+      const out = box.left < -1 || box.right > w + 1 ? [`the dialog: ${Math.round(box.left)} to ${Math.round(box.right)} px`] : [];
+      for (const el of d.querySelectorAll('*'))
+        if (el.getBoundingClientRect().right > box.right + 1) out.push(`${el.className || el.tagName}: ${el.textContent?.slice(0, 40)}`);
+      return out;
+    }, width);
+    expect(wide, 'nothing sticks out of the dialog, or the dialog out of the window').toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), 'the page doesn’t scroll sideways').toBeLessThanOrEqual(width + 1);
   });
 });
