@@ -12,7 +12,9 @@ test('lint-security regex: a pattern built at run time needs escapeRe() or a rea
   assert.deepEqual(lines("const r = new RegExp('^a+$', 'g');"), []);
   assert.deepEqual(lines('const r = new RegExp(`^a+$`);'), []);
   assert.deepEqual(lines("const r = new RegExp(EDGE.source, 'g');"), []);
-  assert.deepEqual(lines('const r = new RegExp(`^${escapeRe(term)}$`);'), []);
+  assert.deepEqual(lines('const r = new RegExp(`^${escapeRegExp(term)}$`);'), []);
+  // The escaper has to be called in the code, not named in a comment.
+  assert.deepEqual(lines('const r = new RegExp(`^${term}$`); // not escapeRegExp(term)'), [1]);
   assert.deepEqual(lines('// lint-allow regex: DIGITS is a constant list.\nconst r = new RegExp(`(${DIGITS.join("|")})`);'), []);
   // A reason is required, and new RegExp in a string or a comment is no regex.
   assert.deepEqual(lines('// lint-allow regex:\nconst r = new RegExp(`${t}`);'), [2]);
@@ -22,6 +24,10 @@ test('lint-security regex: a pattern built at run time needs escapeRe() or a rea
 test('lint-security tags: tags are stripped only by stripTags() (#345)', () => {
   assert.deepEqual(lines("const t = html.replace(/<[^>]+>/g, '');"), [1]);
   assert.deepEqual(lines("const t = html\n  .replace(/<[^>]*>/g, ' ');"), [2]);
+  // The original #345 site, in an alternation; a closing tag too; and replaceAll.
+  assert.deepEqual(lines("const c = (s) => s.replace(/<[^>]+>|[*_`]/g, '');"), [1]);
+  assert.deepEqual(lines("const t = html.replace(/<\\/?[^>]+>/g, '');"), [1]);
+  assert.deepEqual(lines("const t = html.replaceAll(/<[^>]+>/g, '');"), [1]);
   assert.deepEqual(lines('const parts = html.split(/(<[^>]+>)/);'), []);
   assert.deepEqual(lines("const t = stripTags(html).replace(/[*_]/g, '');"), []);
 });
@@ -50,6 +56,10 @@ test('lint-security page-code: a value goes into page code through js(), not JSO
   assert.deepEqual(page('await page.waitFor(\n  `x === ${J(id)}`,\n);'), [2]);
   assert.deepEqual(page('await clickAt(`document.querySelector(${JSON.stringify(sel)})`, label);'), [1]);
   assert.deepEqual(page('await page.evaluate(`location.hash = ${js(hash)}`);'), []);
+  // Page code a helper builds and passes on later, the commonest #343 shape, and Runtime.evaluate's expression.
+  assert.deepEqual(page('const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;'), [1]);
+  assert.deepEqual(page("await page.send('Runtime.evaluate', { expression: `${J(x)}.length` });"), [1]);
+  assert.deepEqual(page("const go = (id) => `import('/app/js/client.mjs').then((c) => c.open(${JSON.stringify(id)}))`;"), [1]);
   // A failure message may show a value as JSON, and so may a template inside js().
   assert.deepEqual(page('throw new Error(`got ${JSON.stringify(v)}`);'), []);
   assert.deepEqual(page('await page.waitFor(`x === ${js(`#/t/${JSON.stringify(id)}`)}`);'), []);
