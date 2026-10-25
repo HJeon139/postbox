@@ -75,8 +75,7 @@ jobs:
             gh api "repos/$REPO/contents/$(jq -rn --arg f "$f" '$f | @uri | gsub("%2F"; "/")')?ref=refs/pull/$PR/head" -H 'Accept: application/vnd.github.raw' > "head/$f" \
               || { echo "::error::Couldn't read $f from the pull request, so it can't be checked for a check named like the gate's."; exit 1; }
           done < workflows.txt
-          mapfile -t files < workflows.txt
-          if ! node tools/prompt-gate.mjs spoofs "$CHECK" "$GATE" head "${files[@]}" > spoofs.txt; then
+          if ! tr '\n' '\0' < workflows.txt | xargs -0 node tools/prompt-gate.mjs spoofs "$CHECK" "$GATE" head > spoofs.txt; then
             echo "::error::These workflows could post a check named \"$CHECK\", which the ruleset would take for this gate's: $(paste -sd ' ' spoofs.txt). Rename their job."
             exit 1
           fi

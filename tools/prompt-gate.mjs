@@ -53,8 +53,16 @@ export function triggersOf(yaml) {
   const lines = yaml.split('\n');
   const at = lines.findIndex((l) => /^["']?on["']?\s*:/.test(l));
   if (at < 0) return [];
-  const inline = lines[at].replace(/^\S+\s*:/, '').replace(/#.*/, '').trim();
-  if (inline) return inline.replace(/[[\]]/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+  const inline = lines[at]
+    .replace(/^\S+\s*:/, '')
+    .replace(/#.*/, '')
+    .trim();
+  if (inline)
+    return inline
+      .replace(/[[\]]/g, '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   const events = [];
   let indent = -1;
   for (const l of lines.slice(at + 1)) {
@@ -75,9 +83,7 @@ export function triggersOf(yaml) {
  * @param {string} check @param {string} gate  the gate’s path @param {{ path: string, text: string }[]} files
  */
 export function spoofs(check, gate, files) {
-  return files
-    .filter(({ path, text }) => text.includes(check) && (path !== gate || triggersOf(text).join() !== 'pull_request_target'))
-    .map((f) => f.path);
+  return files.filter(({ path, text }) => text.includes(check) && (path !== gate || triggersOf(text).join() !== 'pull_request_target')).map((f) => f.path);
 }
 
 const RANK = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -127,7 +133,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     for (const f of touched(changed, globsOf(readFileSync(a, 'utf8')))) console.log(f);
   } else if (cmd === 'spoofs' && process.argv.length > 6) {
     const [check, gate, root, ...paths] = process.argv.slice(3);
-    const found = spoofs(check, gate, paths.map((path) => ({ path, text: readFileSync(`${root}/${path}`, 'utf8') })));
+    const found = spoofs(
+      check,
+      gate,
+      paths.map((path) => ({ path, text: readFileSync(`${root}/${path}`, 'utf8') })),
+    );
     for (const f of found) console.log(f);
     process.exitCode = found.length ? 1 : 0;
   } else if (cmd === 'findings' && a && b) {
@@ -135,7 +145,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log(findingsReport(base, head));
     process.exitCode = newFindings(base, head).some(blocks) ? 1 : 0;
   } else {
-    console.error('Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings <base.json> <head.json> | spoofs <check> <gate> <root> <file>...');
+    console.error(
+      'Usage: node tools/prompt-gate.mjs touched <paths file> < changed | findings <base.json> <head.json> | spoofs <check> <gate> <root> <file>...',
+    );
     process.exitCode = 2;
   }
 }
