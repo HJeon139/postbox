@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.33.1 (2026-10-25)
+
+### Fixes
+
+- **deps:** move sharp to 0.35.5 and body-parser to 2.4.0
+- **uat:** pick canary words with randomInt, not a byte modulo the list
+- **uat:** escape backslashes in report table cells
+- **markdown:** strip tags in one place, until none is left
+- **markdown:** close a fence by comparing its run, not a regular expression built from text
+
 ## 0.33.0 (2026-10-25)
 
 ### Features
