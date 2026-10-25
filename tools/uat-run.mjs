@@ -40,7 +40,7 @@ import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { goToNeedsStep } from './uat/driver-needs.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
-import { hostMode } from './uat/hosts-options.mjs';
+import { HOST_OPTIONS, hostMode } from './uat/hosts-options.mjs';
 import { createHostRun, readHosts, startHosts } from './uat/hosts-run.mjs';
 import { forHosts } from './uat/hosts-scenario.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
@@ -93,11 +93,8 @@ const { values: opt } = parseArgs({
     release: { type: 'boolean', default: false },
     // Run a compatibility scenario: one with agents on a backend other than Claude’s, such as the Kiro CLI.
     compat: { type: 'boolean', default: false },
-    // Host mode (#120): hosts as ssh destinations (host1, host2… in order), their settings as hostN.key=value, and
-    // where agents run, as handle=hostN or handle=local over the scenario’s `- place:` (tools/uat/hosts-options.mjs).
-    host: { type: 'string', multiple: true },
-    'host-setting': { type: 'string', multiple: true },
-    place: { type: 'string', multiple: true },
+    // Host mode’s options (#120, tools/uat/hosts-options.mjs).
+    ...HOST_OPTIONS,
     // Every run records itself and saves one telemetry report (designs/telemetry-persona.md, U4); no opts out.
     telemetry: { type: 'string', default: 'yes' },
   },

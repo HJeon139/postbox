@@ -37,6 +37,16 @@ export function settingValue(raw) {
   return v;
 }
 
+/**
+ * Host mode’s options, for the runner’s parseArgs: hosts as ssh destinations (host1, host2… in order), their settings
+ * as hostN.key=value, and where agents run, as handle=hostN or handle=local over the scenario’s `- place:`.
+ */
+export const HOST_OPTIONS = {
+  host: { type: 'string', multiple: true },
+  'host-setting': { type: 'string', multiple: true },
+  place: { type: 'string', multiple: true },
+};
+
 /** One `hostN.key=value`, checked against the hosts given. @param {string} spec @param {number} count */
 function settingOf(spec, count) {
   const m = /^host(\d+)\.([\w.]+)=(.*)$/s.exec(String(spec));
