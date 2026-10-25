@@ -47,13 +47,14 @@ import {
   askPerson,
   expireStalePermissions,
   readsRules,
+  recordDenial,
   requestPermission,
+  resolveDenial,
   resolvePermission,
   settlePermission,
 } from './permission-cards.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
 import { readCapped } from './read-capped.mjs';
-import { recordDenial, resolveDenial } from './refusal-cards.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';

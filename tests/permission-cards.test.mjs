@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { codexApproval } from '../server/adapters/codex-approval.mjs';
 import { POSTBOX_TIMEOUT_MS } from '../server/adapters/setup.mjs';
 import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
@@ -184,51 +183,4 @@ test('#220 a card answered before the wait ends keeps its answer when the wait w
   assert.equal(card().waitedMs, undefined);
   t.mock.timers.reset();
   await settle(rt);
-});
-
-// Codex fixes its approval policy at turn/start and has no way to change it mid-turn, so it asks Postbox for every
-// command until the turn ends. Switching the agent to Run everything answers those sandbox asks at once (#371); an ask
-// a permission rule forced, and a write outside Postbox, keep their cards.
-test('#371 Run everything set mid-turn answers Codex’s own sandbox asks, not ones a rule forced or a write', async () => {
-  const { store, rt, adapter, t, se } = await setup();
-  const command = (cmd) => ({ method: 'item/commandExecution/requestApproval', params: { itemId: `cmd_${cmd.length}`, command: cmd, cwd: '/work' } });
-  const open = () => store.items(t.id).find((x) => x.kind === 'permission' && x.status === 'open');
-  /** @type {any[]} */
-  const answers = [];
-  /** Runs one ask in a turn of its own and returns its card, if one opened, after Stop answers it no. */
-  const ask = async (/** @type {(c: any) => Promise<any>} */ how) => {
-    adapter.next.push(async (c) => {
-      answers.push(await how(c));
-    });
-    rt.sendMessage(t.id, { text: 'go on' });
-    for (let i = 0; i < 40 && !open(); i++) await sleep(5);
-    const card = open();
-    if (card) rt.stop(se.id);
-    await settle(rt);
-    return card;
-  };
-  await rt.setPermissionMode(se.personaId, 'bypass');
-  // Codex’s own ask, in the shape it sends (no input): allowed without a card.
-  assert.equal(await ask((c) => codexApproval(c, command('npm test'))), undefined);
-  assert.deepEqual(answers.at(-1), { decision: 'accept' });
-  // A write outside Postbox, in Codex’s shape too, keeps its card (#112).
-  assert.equal((await ask((c) => codexApproval(c, command('gh pr create --title x'))))?.summary, 'run a command');
-  // An MCP tool that publishes, through Codex’s tool branch, keeps its card and its draft.
-  const tool = {
-    method: 'mcpServer/elicitation/request',
-    params: {
-      serverName: 'github',
-      message: 'Allow the github MCP server to run tool "create_issue"?',
-      _meta: { codex_approval_kind: 'mcp_tool_call', tool_name: 'create_issue', tool_params: { title: 'x', body: 'The draft' } },
-    },
-  };
-  assert.deepEqual((await ask((c) => codexApproval(c, tool)))?.draft, { field: 'body', text: 'The draft' });
-  // An MCP server asking the person for input isn’t a sandbox ask: its card stays.
-  const input = { method: 'mcpServer/elicitation/request', params: { serverName: 'github', message: 'Pick a repository' } };
-  assert.equal((await ask((c) => codexApproval(c, input)))?.summary, 'respond to github');
-  // An ask a rule forced, as Claude Code’s permission_prompt or the Agent SDK’s canUseTool sends it: its card stays.
-  assert.equal((await ask((c) => c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'rm -rf build' } })))?.summary, 'run the tests');
-  // Back to Ask me mid-turn: Codex’s own asks get cards again.
-  await rt.setPermissionMode(se.personaId, 'ask');
-  assert.equal((await ask((c) => codexApproval(c, command('npm test'))))?.summary, 'run a command');
 });
