@@ -23,7 +23,7 @@ Auto mode’s safety check, a deny rule, or the permission mode can turn a call 
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
 2. Scene 10b (“Tidy the workspace”): the subagent’s `rm` is refused. Check the card, then answer Allow once and retry.
-3. Run `node tools/checks/permission-cards.mjs`. It checks the buttons and words on a refused chained command and a refused single one. Every line should say ok.
+3. Run `npx playwright test permission-cards` (`tests/browser/permission-cards.spec.mjs`). It checks the buttons and words on a refused chained command and a refused single one. Every test should pass.
 4. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`), with Claude Code installed and signed in, and open <http://127.0.0.1:4181/>. In the agent’s folder, add `"permissions": { "deny": ["Bash(rm:*)"] }` to `.claude/settings.local.json`. Ask the agent to delete a scratch file itself, then to have a subagent do it.
 5. In step 4, answer Always allow on one card. Check `.claude/settings.local.json`, and run `/permissions` in a terminal in the same folder.
 

@@ -1,23 +1,21 @@
-// A check of the work ledger against real git (#156): the commits and branches a command made, seen by comparing its
-// repository as it starts and as it ends. Each case runs real git commands in a fresh temp folder, between the ledger’s toolUse and
-// toolResult, as Claude Code’s Bash tool would, and reads what the ledger recorded. Unit tests can’t start processes
-// (tests/guard.mjs), and their repository in memory (tests/fake-repo.mjs) can’t show what git itself does with
-// `git init`, `--amend`, `reset`, `rebase` and `pull`. The files a command changes are #240’s.
-//
-//   node tools/check-ledger-git.mjs
-//
-// No server or browser; it only needs git.
+// The work ledger against real git (#156): the commits and branches a command made, seen by comparing its repository
+// as it starts and as it ends. Each case runs real git commands in a fresh temp folder, between the ledger’s toolUse
+// and toolResult, as Claude Code’s Bash tool would, and reads what the ledger recorded. The unit tests can’t start
+// processes (tests/guard.mjs), so it’s under tests/process/ (npm run test:process), and their repository in memory
+// (tests/fake-repo.mjs) can’t show what git itself does with `git init`, `--amend`, `reset`, `rebase` and `pull`. The
+// files a command changes are #240’s. It only needs git. Moved from tools/check-ledger-git.mjs (#303).
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Ledger } from '../server/ledger.mjs';
-import { Store } from '../server/store.mjs';
-import { finish, record } from './harness.mjs';
+import { after, test } from 'node:test';
+import { Ledger } from '../../server/ledger.mjs';
+import { Store } from '../../server/store.mjs';
 
-const home = await mkdtemp(join(tmpdir(), 'pb-check-ledger-git-'));
+const home = await mkdtemp(join(tmpdir(), 'pb-test-ledger-git-'));
+after(() => rm(home, { recursive: true, force: true }));
 // Git as a fresh install would be, whoever runs this: no hooks, signing or templates from the person’s own config.
 await writeFile(
   join(home, 'gitconfig'),
@@ -62,19 +60,15 @@ function ledgerAt(folder, names = ['dev']) {
   return { ledger, run, start, finishCmd, end, of };
 }
 
-async function scene(name, fn) {
-  const dir = await mkdtemp(join(home, 'repo-'));
-  try {
-    await fn(dir);
-    record(true, name);
-  } catch (e) {
-    record(false, name, e.message);
-  }
-}
+/** A test in a fresh folder of its own, under the temp home. */
+const scene = (name, fn) =>
+  test(name, async () => {
+    await fn(await mkdtemp(join(home, 'repo-')));
+  });
 const repo = (dir) => sh(dir, 'git init -q . && echo one > a.txt && git add a.txt && git commit -q -m Start');
 const commits = (of) => of('commit').map((c) => `${c.message}${c.left ? ' (left)' : ''}`);
 
-await scene('#156’s own case: `git init && add && commit`, then `add && commit`, in a folder that wasn’t a repository', async (dir) => {
+scene('#156’s own case: `git init && add && commit`, then `add && commit`, in a folder that wasn’t a repository', async (dir) => {
   await writeFile(join(dir, 'README.md'), '# Converter\n');
   const { run, end, of } = ledgerAt(dir);
   await run('git init -q . && git add README.md && git commit -q -m First');
@@ -83,7 +77,7 @@ await scene('#156’s own case: `git init && add && commit`, then `add && commit
   assert.deepEqual(commits(of), ['First', 'Second']);
 });
 
-await scene('a sed across three files and a quiet commit in one command: the commit, with its three files', async (dir) => {
+scene('a sed across three files and a quiet commit in one command: the commit, with its three files', async (dir) => {
   sh(dir, 'git init -q . && for f in a b c; do echo km_to_mi > $f.py; done && git add . && git commit -q -m Start');
   const { run, end, of } = ledgerAt(dir);
   await run('sed -i.bak s/km_to_mi/kilometres_to_miles/ a.py b.py c.py && rm *.bak && git commit -qam Rename');
@@ -96,7 +90,7 @@ await scene('a sed across three files and a quiet commit in one command: the com
   assert.deepEqual(of('file'), [], 'the files a command changes are #240’s');
 });
 
-await scene('--amend: the amended commit is marked as left, and only the new one is added', async (dir) => {
+scene('--amend: the amended commit is marked as left, and only the new one is added', async (dir) => {
   repo(dir);
   const { run, end, of } = ledgerAt(dir);
   await run('echo two > a.txt && git commit -qam Typo');
@@ -105,7 +99,7 @@ await scene('--amend: the amended commit is marked as left, and only the new one
   assert.deepEqual(commits(of), ['Typo (left)', 'Fixed']);
 });
 
-await scene('reset --soft HEAD~2 && commit: the two squashed commits left, one new', async (dir) => {
+scene('reset --soft HEAD~2 && commit: the two squashed commits left, one new', async (dir) => {
   repo(dir);
   const { run, end, of } = ledgerAt(dir);
   await run('echo 1 >> a.txt && git commit -qam A && echo 2 >> a.txt && git commit -qam B');
@@ -114,7 +108,7 @@ await scene('reset --soft HEAD~2 && commit: the two squashed commits left, one n
   assert.deepEqual(commits(of), ['A (left)', 'B (left)', 'AB']);
 });
 
-await scene('reset --hard HEAD~1: the undone commit is marked as left', async (dir) => {
+scene('reset --hard HEAD~1: the undone commit is marked as left', async (dir) => {
   repo(dir);
   const { run, end, of } = ledgerAt(dir);
   await run('echo 2 >> a.txt && git commit -qam Undone');
@@ -123,7 +117,7 @@ await scene('reset --hard HEAD~1: the undone commit is marked as left', async (d
   assert.deepEqual(commits(of), ['Undone (left)']);
 });
 
-await scene('rebase onto main: the rebased commit once, and nothing of main’s', async (dir) => {
+scene('rebase onto main: the rebased commit once, and nothing of main’s', async (dir) => {
   repo(dir);
   sh(dir, 'git switch -q -c feature && echo f > f.txt && git add f.txt && git commit -qm F1');
   sh(dir, 'git switch -q main && echo m > m.txt && git add m.txt && git commit -qm M1 && git switch -q feature');
@@ -133,7 +127,7 @@ await scene('rebase onto main: the rebased commit once, and nothing of main’s'
   assert.deepEqual(commits(of), ['F1']);
 });
 
-await scene('a pull’s commits aren’t the agent’s; a commit it pushes is', async (dir) => {
+scene('a pull’s commits aren’t the agent’s; a commit it pushes is', async (dir) => {
   const remote = join(dir, 'remote.git');
   const mine = join(dir, 'mine');
   const theirs = join(dir, 'theirs');
@@ -150,7 +144,7 @@ await scene('a pull’s commits aren’t the agent’s; a commit it pushes is', 
   assert.deepEqual(commits(of), ['Mine']);
 });
 
-await scene('commands overlapping from three conversations: the commit is in each one running when it was made, not in one started after', async (dir) => {
+scene('commands overlapping from three conversations: the commit is in each one running when it was made, not in one started after', async (dir) => {
   repo(dir);
   const { start, finishCmd, end, of } = ledgerAt(dir, ['alice', 'bob', 'carol']);
   const test = await start('bob', 'npm test');
@@ -178,7 +172,7 @@ await scene('commands overlapping from three conversations: the commit is in eac
   assert.equal(of('commit', 'bob')[0].handle, 'bob');
 });
 
-await scene('a folder Claude Code says it ran git in, left over from another repository, doesn’t move the comparison', async (dir) => {
+scene('a folder Claude Code says it ran git in, left over from another repository, doesn’t move the comparison', async (dir) => {
   const here = join(dir, 'here');
   const there = join(dir, 'there');
   sh(dir, 'mkdir here there && cd here && git init -q . && echo a > a.txt && git add a.txt && git commit -qm Start');
@@ -195,6 +189,3 @@ await scene('a folder Claude Code says it ran git in, left over from another rep
     [['Here', 'here']],
   );
 });
-
-await rm(home, { recursive: true, force: true });
-finish();
