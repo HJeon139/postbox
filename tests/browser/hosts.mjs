@@ -104,10 +104,10 @@ export async function startHosts(name) {
 
 /**
  * Starts a test with no hosts and nothing asked of the manager, then one host named that, as Add host leaves it.
- * @param {any} app @param {FakeHosts} fake @param {string} [name]  none: no host
+ * @param {any} app @param {FakeHosts | null} fake  null: the real manager @param {string} [name]  none: no host
  */
 export function freshHost(app, fake, name) {
-  fake.reset();
+  fake?.reset();
   for (const id of Object.keys(app.store.state.hosts ?? {})) app.store.emit('host', { id, removed: true });
   return name ? app.rt.addHost({ name }).id : '';
 }
