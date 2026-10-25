@@ -67,8 +67,8 @@ const replay = (name, opts) => {
   return { ctx, m };
 };
 
-test('the capabilities: resumes, can’t fork, reads no Claude Code rules, can’t deny tools or isolate', () => {
-  assert.deepEqual({ ...AGY_CAPABILITIES }, { resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: false });
+test('the capabilities: resumes, can’t fork, reads no Claude Code rules, can’t deny tools or isolate, asks through permission_prompt', () => {
+  assert.deepEqual({ ...AGY_CAPABILITIES }, { resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: true });
   const a = new AntigravityCliAdapter({ workRoot: '/tmp/x', models: ['gemini-3.8-flash-high'] });
   assert.deepEqual(a.capabilities.models, ['gemini-3.8-flash-high']);
   assert.equal(new AntigravityCliAdapter({ workRoot: '/tmp/x' }).capabilities.models, undefined);
