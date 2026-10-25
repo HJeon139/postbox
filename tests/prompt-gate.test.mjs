@@ -37,8 +37,10 @@ const NOT_SURFACE = {
   'server/runtime.mjs': 'mcp.mjs takes AgentFileError, an error class; what the runtime says to agents is out of the render (SECURITY.md, “Prompt changes”)',
   'server/store.mjs': 'seed.mjs takes newId()',
   'server/adapters/claude-stream.mjs': 'describeTool() and isQuietTool() label tool calls for the person’s transcript',
+  'server/adapters/context-usage.mjs': 'context window sizes and token percentage calculations',
   'server/adapters/folder.mjs': 'agentFolder(), a path',
   'server/adapters/process-group.mjs': 'process control',
+  'server/adapters/agy-settings.mjs': 'agySettingsFile() and allowPostbox(), settings files and permission rules',
 };
 
 test('every module the rendered text comes from is prompt surface, or excused with a reason', () => {
