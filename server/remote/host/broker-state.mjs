@@ -1,7 +1,7 @@
 // The broker’s state (#120): one daemon’s calls, prompts, expiries, shims, snapshots and Codex watches, with what the
 // daemon passed in. createBroker (broker.mjs) makes it, and the broker-*.mjs modules take it first, as `b`.
 
-import { HOST_DEFAULTS } from '../../../shared/remote-protocol.mjs';
+import { HOST_DEFAULTS, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 
 /** The protocol’s words for a call the harness gave up on: prompt-expired’s reason, and the shim’s message. */
 export const CANCELED = /** @type {const} */ ('canceled');
@@ -20,9 +20,9 @@ export const key = (turn, id) => `${turn} ${id}`;
 
 /**
  * @typedef {{ turn: string, id: string, name: string, route: 'queue' | 'ask', args: Record<string, any> | null, replied: boolean,
- *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string> }} Tool
+ *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, bytes?: number }} Tool
  *   saved: settles once the call is written down, with '' or why it couldn’t be (a prompt’s likewise); replying: a
- *   reply being written down, likewise (a prompt’s answering)
+ *   reply being written down, likewise (a prompt’s answering); bytes: its tool message’s encoded size, while it waits
  * @typedef {{ turn: string, id: string, request: Record<string, any>, answer: Record<string, any> | null, over: boolean,
  *   at: number, replayed?: boolean, saved?: Promise<string>, answering?: Promise<string> }} Prompt
  *   at: when it was asked; replayed: read back from prompts.jsonl at start, and no shim has sent it again since
@@ -41,7 +41,8 @@ export const key = (turn, id) => `${turn} ${id}`;
  * @typedef {{ paths: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>, now?: () => number, timers?: Timers,
  *   log?: (line: string) => void, tokenMatches: (token: string) => boolean, settings?: () => Record<string, any>,
  *   toPostbox: (type: string, body: Record<string, unknown>) => boolean, attached: () => boolean,
- *   interrupted?: (turn: string) => boolean, writeStdin?: (turn: string, line: string) => Promise<unknown>, codexPollMs?: number }} BrokerOptions
+ *   interrupted?: (turn: string) => boolean, writeStdin?: (turn: string, line: string) => Promise<unknown>, codexPollMs?: number,
+ *   queueLimits?: { calls: number, bytes: number, recordBytes: number } }} BrokerOptions
  *   toPostbox: sends to the attached Postbox, false if none is; interrupted: the daemon found the turn’s runner isn’t
  *   the one runner.json names; writeStdin: one line for a turn’s held stdin, through its runner
  * @typedef {ReturnType<typeof brokerState>} Broker
@@ -66,8 +67,10 @@ export function brokerState({
     throw new Error('this daemon can’t write to a held stdin');
   },
   codexPollMs = CODEX_POLL_MS,
+  queueLimits = { calls: REMOTE_LIMITS.waitingCalls, bytes: REMOTE_LIMITS.waitingCallBytes, recordBytes: REMOTE_LIMITS.callRecordBytes },
 }) {
   return {
+    queueLimits,
     p,
     now,
     timers,

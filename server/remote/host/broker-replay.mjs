@@ -6,6 +6,7 @@ import { REMOTE_LIMITS, TOOL_ROUTES, TURN_FILES, validateMessage } from '../../.
 import { watchCodex } from './broker-codex.mjs';
 import { armOrphan } from './broker-prompts.mjs';
 import { CANCELED, key } from './broker-state.mjs';
+import { toolBytes } from './broker-tools.mjs';
 
 /** @typedef {import('./broker-state.mjs').Broker} Broker */
 
@@ -47,7 +48,7 @@ async function loadTurn(b, turn) {
       const body = { turn, id: r.id, name: r.name, args: r.args ?? {} };
       // A record that wouldn’t make a valid tool message is left out, never sent.
       if (validateMessage('daemon-to-postbox', { type: 'tool', ...body }).ok)
-        b.tools.set(k, { turn, id: r.id, name: r.name, route: r.route, args: r.args, replied: false });
+        b.tools.set(k, { turn, id: r.id, name: r.name, route: r.route, args: r.args, replied: false, bytes: toolBytes(turn, r.name, r.args ?? {}) });
     } else if (r.op === 'reply') {
       const t = b.tools.get(k);
       if (t) {

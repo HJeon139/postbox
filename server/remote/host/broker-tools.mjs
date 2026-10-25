@@ -2,8 +2,9 @@
 // down and sent to Postbox once it’s checked and its files are read as the laptop would; and Postbox’s reply to it.
 // broker.mjs’s header says what’s written down when.
 
+import { promises as fsp } from 'node:fs';
 import { validateBlock } from '../../../shared/catalog.mjs';
-import { encodedBytes, REMOTE_LIMITS, TOOL_ROUTES } from '../../../shared/remote-protocol.mjs';
+import { encodedBytes, REMOTE_LIMITS, TOOL_ROUTES, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { inlineAppFiles } from './broker-files.mjs';
 import { readConversation, readMessage } from './broker-reading.mjs';
 import { record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
@@ -64,6 +65,29 @@ export async function prepare(b, turn, name, args) {
   return { ok: true, args: out };
 }
 
+/** A call’s tool message, encoded, in bytes. @param {string} turn @param {string} name @param {Record<string, any>} args */
+export const toolBytes = (turn, name, args) => encodedBytes({ type: 'tool', turn, id: 'x'.repeat(128), name, args });
+const mib = (/** @type {number} */ n) => `${(n / 1024 / 1024).toFixed(1)} MiB`;
+
+/**
+ * Why a turn can’t queue another call, or '': it has as many waiting for Postbox, or as many bytes of them, as the
+ * host keeps (queueLimits, REMOTE_LIMITS), or its record of calls, which a restart reads whole, is full.
+ * @param {Broker} b @param {string} turn @param {string} name @param {number} bytes
+ */
+async function queueFull(b, turn, name, bytes) {
+  const waiting = [...b.tools.values()].filter((t) => t.turn === turn && !t.replied);
+  const held = waiting.reduce((n, t) => n + (t.bytes ?? 0), 0);
+  if (waiting.length >= b.queueLimits.calls || held + bytes > b.queueLimits.bytes)
+    return `This turn already has ${waiting.length} calls (${mib(held)}) waiting for Postbox, as many as this host keeps, so ${name} wasn’t sent. Once Postbox is connected and has taken them, call it again.`;
+  const size = await fsp.stat(b.p.turn(turn, TURN_FILES.tools)).then(
+    (st) => st.size,
+    () => 0,
+  );
+  if (size + bytes > b.queueLimits.recordBytes)
+    return `This turn’s record of its calls on this host has reached ${mib(b.queueLimits.recordBytes)}, the most it keeps, so ${name} wasn’t sent. Finish this turn and carry on in the next.`;
+  return '';
+}
+
 /** A shim’s tool call. @param {Broker} b @param {ShimConn} c @param {string} turn @param {any} m */
 export async function call(b, c, turn, m) {
   const result = (ok, text) => c.send('result', { id: m.id, ok, text: text.slice(0, REMOTE_LIMITS.replyChars) });
@@ -98,8 +122,14 @@ export async function call(b, c, turn, m) {
     b.log(`Turn ${turn}’s ${m.name} (${m.id}) was refused: ${r.text}`);
     return result(false, r.text);
   }
+  const bytes = toolBytes(turn, m.name, r.args);
+  const full = await queueFull(b, turn, m.name, bytes);
+  if (full) {
+    b.log(`Turn ${turn}’s ${m.name} (${m.id}) was refused: ${full}`);
+    return result(false, full);
+  }
   /** @type {Tool} */
-  const t = { turn, id: m.id, name: m.name, route: /** @type {'queue' | 'ask'} */ (route), args: r.args, replied: false };
+  const t = { turn, id: m.id, name: m.name, route: /** @type {'queue' | 'ask'} */ (route), args: r.args, replied: false, bytes };
   b.tools.set(k, t);
   // Written down before the shim hears or Postbox sees it, so a queued call outlives a crash right after. One that
   // can’t be written isn’t kept: the shim hears why, and the same call can go once the file can be written.

@@ -17,6 +17,14 @@ const MiB = 1024 * KiB;
 export const REMOTE_LIMITS = Object.freeze({
   /** One encoded message, on any channel, without its \n. */
   lineBytes: 16 * MiB,
+  /**
+   * A turn’s tool calls waiting for Postbox on the host (sent, not yet answered), and their encoded bytes in all, at
+   * most: past either, the host refuses the next call rather than keep it, as it would while Postbox is away. And a
+   * turn’s record of its calls (tools.jsonl), which a daemon reads whole when it restarts.
+   */
+  waitingCalls: 256,
+  waitingCallBytes: 64 * MiB,
+  callRecordBytes: 256 * MiB,
   /** One out.jsonl or in.jsonl line as text; a longer one is sent cut (see the header). A `write` line too. */
   streamLineBytes: 8 * MiB,
   /** Linux’s limit on one argument (MAX_ARG_STRLEN, 128 KiB with its NUL). */

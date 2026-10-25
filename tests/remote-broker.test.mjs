@@ -138,6 +138,40 @@ test('a queued call while Postbox is away waits, and crosses at its hello; it ou
   }
 });
 
+test('calls waiting for Postbox stop at the host’s limits: so many, so many bytes, and the turn’s record of them', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h, { queueLimits: { calls: 2, bytes: 1_000_000, recordBytes: 1_000_000 } });
+    k.state.attached = false;
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    assert.equal((await s.call('c1', 'schedule_wake', { in_minutes: 5 })).ok, true);
+    assert.equal((await s.call('c2', 'schedule_wake', { in_minutes: 6 })).ok, true);
+    const third = await s.call('c3', 'schedule_wake', { in_minutes: 7 });
+    assert.equal(third.ok, false, 'a third waiting call is over the limit of 2');
+    assert.match(third.text, /already has 2 calls .* waiting for Postbox/);
+    // Once Postbox has taken them, there’s room again.
+    k.state.attached = true;
+    await k.hello();
+    for (const id of ['c1', 'c2']) await k.post('reply', { turn: 't1', id, ok: true, text: 'Done.' });
+    assert.equal((await s.call('c3', 'schedule_wake', { in_minutes: 7 })).ok, true);
+    // One too large for what’s left of the bytes, and then for the turn’s record.
+    const small = makeBroker(h, { queueLimits: { calls: 10, bytes: 600, recordBytes: 1_000_000 } });
+    small.state.attached = false;
+    const s2 = connectShim(small.b, 't1');
+    await s2.next('welcome');
+    const big = await s2.call('c4', 'wake_agent', { handle: 'reviewer', message: 'x'.repeat(500) });
+    assert.match(big.text, /waiting for Postbox, as many as this host keeps/);
+    const full = makeBroker(h, { queueLimits: { calls: 10, bytes: 1_000_000, recordBytes: 100 } });
+    const s3 = connectShim(full.b, 't1');
+    await s3.next('welcome');
+    assert.match((await s3.call('c5', 'schedule_wake', { in_minutes: 8 })).text, /record of its calls on this host has reached/);
+  } finally {
+    h.done();
+  }
+});
+
 test('update_block is checked with the catalog first; an invalid show_block still goes, since the laptop shows its fallback', async () => {
   const h = makeHome();
   try {
