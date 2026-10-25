@@ -7,7 +7,7 @@
 
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -260,9 +260,9 @@ test('#12 without --demo there’s no banner, and with Claude Code missing, a fr
 async function fitted(page, label) {
   await settled(page);
   await frames(page);
-  const m = await page.locator('header.topbar').evaluate((bar) => {
+  const m = await page.locator('header.topbar').evaluate((bar, w) => {
     const box = (el) => el.getBoundingClientRect();
-    const full = (el) => !!el && el.offsetWidth > 0 && box(el).left >= 0 && box(el).right <= innerWidth && el.scrollWidth <= el.clientWidth;
+    const full = (el) => !!el && el.offsetWidth > 0 && box(el).left >= 0 && box(el).right <= w && el.scrollWidth <= el.clientWidth;
     return {
       width: bar.clientWidth,
       overflow: bar.scrollWidth - bar.clientWidth,
@@ -272,7 +272,7 @@ async function fitted(page, label) {
       projectFull: full(bar.querySelector('.crumbs > .crumb.up')),
       rings: bar.querySelectorAll('pb-ring').length,
     };
-  });
+  }, windowWidth(page));
   test
     .info()
     .annotations.push({ type: 'measured', description: `${label}: ${m.width} px, overflow ${m.overflow} px, title ${m.title} px, dropped “${m.drop}”` });

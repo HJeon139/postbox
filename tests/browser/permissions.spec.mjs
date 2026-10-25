@@ -12,7 +12,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { codexApproval } from '../../server/adapters/codex.mjs';
-import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -445,7 +445,7 @@ test.describe('at 375 px', () => {
   test('#66 the panel fits a narrow window (375 px) without scrolling sideways', async ({ page }) => {
     await open(page);
     await openPanel(page);
-    const over = await page.locator('.dialog').evaluate((d) => [d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - innerWidth]);
+    const over = await page.locator('.dialog').evaluate((d, w) => [d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - w], windowWidth(page));
     expect(over, 'nothing overflows sideways').toEqual([0, 0]);
   });
 });

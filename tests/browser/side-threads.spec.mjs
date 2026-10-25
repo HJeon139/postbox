@@ -11,7 +11,7 @@
 // Each test has a room of its own (tests/browser/side-threads.mjs). Moved from tools/check-side-threads.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 import { heldBackend, sideRoom } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -298,6 +298,6 @@ test.describe('at 375 px', () => {
     await open(page, `#/t/${r.room.id}`);
     await expect(page.locator('#main .pill', { hasText: 'is calling tools' }), 'the state on the line').toBeVisible();
     await settled(page);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'the page doesn’t scroll sideways').toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), 'no sideways scroll').toBeLessThanOrEqual(windowWidth(page));
   });
 });

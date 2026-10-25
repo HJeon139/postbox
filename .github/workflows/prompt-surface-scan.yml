@@ -1,0 +1,135 @@
+# Shows what a pull request changes in what agents read, and scans it with SkillSpector (SECURITY.md, “Prompt
+# changes”). It renders the prompt surface (tools/prompt-surface.mjs) for the base and for the pull request, puts the
+# diff in the job summary, and fails on a new high or critical SkillSpector finding. It’s advice for the reviewer:
+# prompt-surface-gate.yml is the required check, since a pull request can edit this workflow.
+#
+# SkillSpector runs its static rules only (--no-llm): no key, so it runs on forks too. Those rules caught 9 of 14
+# seeded threats, and none of the 5 that loosen one of Postbox’s own rules in other words, which is what the diff and
+# the maintainer’s approval are for.
+name: prompt-surface-scan
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: prompt-surface-scan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # NVIDIA/SkillSpector has no release tags, so it’s pinned to a commit, installed from its own lockfile.
+  SKILLSPECTOR_REF: d7338f58200a9ae2a24810cee08911ab68b107a7
+  UV_VERSION: 0.13.0
+
+jobs:
+  scan:
+    name: Prompt surface diff and SkillSpector
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: head
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Render the prompt surface, base and pull request
+        run: |
+          # Both sides render with the base’s renderer, so a change to the renderer can’t hide a change it makes. The
+          # pull request’s own is used when the base has none yet, or when the base’s can’t render the pull request
+          # because a module it reads moved; then the warning asks for its diff to be read too.
+          renderer=base/tools/prompt-surface.mjs
+          [ -f "$renderer" ] || renderer=head/tools/prompt-surface.mjs
+          for side in base head; do
+            cp "$renderer" "$side/tools/.prompt-surface-ci.mjs"
+            if ! node "$side/tools/.prompt-surface-ci.mjs" "out/$side"; then
+              if [ "$side" != head ] || [ ! -f head/tools/prompt-surface.mjs ]; then echo "::error::Couldn't render the $side's prompt surface."; exit 1; fi
+              echo "::warning::The base's tools/prompt-surface.mjs couldn't render this pull request, so it rendered with its own. Read that file's diff with the prompt diff."
+              rm -rf out/head
+              node head/tools/prompt-surface.mjs out/head
+            fi
+          done
+      - name: Diff the prompt surface
+        id: diff
+        run: |
+          # SkillSpector runs when the text it reads changed, or when this workflow or its scripts did, so a change to
+          # how it's installed or run is proven on the runner before it merges.
+          if ! diff -rq out/base/scan out/head/scan > /dev/null \
+            || ! cmp -s {base,head}/.github/workflows/prompt-surface-scan.yml \
+            || ! cmp -s {base,head}/tools/prompt-gate.mjs; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+          fi
+          if diff -ruN out/base out/head > prompt-surface.diff; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "## Prompt surface: unchanged" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Prompt surface: what agents read changes"
+              echo
+              echo "The full diff is in the prompt-surface artifact. Its first 60,000 characters:"
+              echo
+              echo '```diff'
+              head -c 60000 prompt-surface.diff
+              echo
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: steps.diff.outputs.changed == 'true'
+        with:
+          name: prompt-surface
+          path: |
+            out/
+            prompt-surface.diff
+      - name: Warn when the path list missed the change
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > changed.txt
+          # The base’s list and matcher, as the gate uses; the pull request’s only when the base has none yet.
+          side=base; [ -f base/tools/prompt-gate.mjs ] || side=head
+          node "$side/tools/prompt-gate.mjs" touched "$side/.github/prompt-surface-paths.txt" < changed.txt > touched.txt
+          if [ ! -s touched.txt ]; then
+            echo "::warning::What agents read changed, but no file this pull request touches is in .github/prompt-surface-paths.txt, so the gate won't ask for approval. Add the file that changed it."
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.diff.outputs.scan == 'true'
+        with:
+          python-version: '3.12'
+      - name: Install SkillSpector
+        if: steps.diff.outputs.scan == 'true'
+        run: |
+          python -m pip install --quiet "uv==$UV_VERSION"
+          git init --quiet skillspector
+          git -C skillspector fetch --quiet --depth 1 https://github.com/NVIDIA/SkillSpector.git "$SKILLSPECTOR_REF"
+          git -C skillspector checkout --quiet FETCH_HEAD
+          (cd skillspector && uv sync --quiet --frozen --no-dev)
+      - name: Scan with SkillSpector, base and pull request
+        if: steps.diff.outputs.scan == 'true'
+        run: |
+          for side in base head; do
+            # 0 and 1 are both a finished scan (1: over SkillSpector’s own risk threshold, which this ignores); 2 is an error.
+            code=0
+            skillspector/.venv/bin/skillspector scan "out/$side/scan" --no-llm --format json --output "$side.json" > /dev/null || code=$?
+            if [ "$code" -gt 1 ]; then echo "::error::SkillSpector couldn't scan the $side ($code)."; exit 1; fi
+          done
+          side=base; [ -f base/tools/prompt-gate.mjs ] || side=head
+          echo "## SkillSpector" >> "$GITHUB_STEP_SUMMARY"
+          # Fails on a finding the pull request adds that is high or critical; one main already has doesn't count.
+          status=0
+          node "$side/tools/prompt-gate.mjs" findings base.json head.json >> "$GITHUB_STEP_SUMMARY" || status=$?
+          if [ "$status" -ne 0 ]; then echo "::error::This pull request adds a high or critical SkillSpector finding to what agents read. See the job summary."; fi
+          exit "$status"
