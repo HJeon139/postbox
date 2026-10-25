@@ -106,12 +106,12 @@ const frameOf = (page, title) => page.locator(`iframe.app-iframe[title="${title}
 async function pointAt(page, title) {
   const f = frameOf(page, title);
   await expect(async () => {
+    // First onto the sticky top bar, so no frame passes under the pointer as the page scrolls; then onto the frame
+    // (forced: it takes the pointer only once the page sees it there), so its message’s actions float in first.
+    await page.locator('header.topbar').hover();
     await f.evaluate((n) => n.scrollIntoView({ block: 'center' }));
     await settled(page);
-    // From off the frame, onto it, so its message’s actions float in before the point is measured around them.
-    const box = await f.boundingBox();
-    await page.mouse.move(0, 0);
-    await page.mouse.move(box.x + box.width / 2, box.y + 50);
+    await f.hover({ force: true });
     const at = await f.evaluate((n) => {
       const b = n.getBoundingClientRect();
       const x = b.left + b.width / 2;
