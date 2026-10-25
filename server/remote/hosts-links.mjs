@@ -2,7 +2,7 @@
 // while the host is needed and idled once it isn’t, and replaced after a rename once nothing needs the old one. Each
 // function takes the manager’s state first (hosts-status.mjs’s Manager).
 
-import { hostOf, tokenOf, update } from './hosts-status.mjs';
+import { hostOf, instanceOf, tokenOf, update } from './hosts-status.mjs';
 import { createHostLink } from './link.mjs';
 import { failure as sshFailure } from './ssh.mjs';
 
@@ -61,6 +61,7 @@ function makeLink(m, id, host, token) {
     },
     version: m.version,
     token,
+    ...(instanceOf(m) ? { instance: /** @type {string} */ (instanceOf(m)) } : {}),
     needed: () => !m.closed && m.links.get(id) === e && isNeeded(m, id),
     ...(m.spawn ? { spawn: m.spawn } : {}),
     setTimer: m.setTimer,

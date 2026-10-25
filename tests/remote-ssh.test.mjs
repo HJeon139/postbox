@@ -115,6 +115,17 @@ test('connect starts ssh with pipes, sends hello with the token and the host-enf
   c.close();
 });
 
+test('#120 hello names this Postbox when it has a name, so the host can tell it back from another Postbox', async () => {
+  const daemon = createFakeDaemon();
+  const ssh = fakeSsh({ daemon });
+  const c = connection({ spawn: ssh.spawn, instance: 'f'.repeat(32) });
+  await c.connect();
+  assert.equal(daemon.received[0].instance, 'f'.repeat(32));
+  assert.ok(!ssh.calls[0].args.some((a) => a.includes('f'.repeat(32))), 'on stdin only');
+  c.close();
+  assert.throws(() => connection({ spawn: ssh.spawn, instance: 'not a name' }), /hello\.instance/);
+});
+
 test('messages after the welcome are emitted, validated; send checks each message before it crosses', async () => {
   const daemon = createFakeDaemon();
   daemon.addTurn('turn-1', { lines: ['{"type":"system"}', '{"type":"result"}'], exit: { code: 0, signal: null } });

@@ -35,14 +35,14 @@ import { createReconnector, createSshConnection, failure as sshFailure } from '.
 /**
  * One host’s link.
  * @param {{ host: Pick<import('../../shared/remote-settings.mjs').Host, 'name' | 'settings'>, version: string, token: string,
- *           takeover?: boolean, needed?: () => boolean, spawn?: import('./ssh.mjs').SpawnLike, program?: string,
+ *           instance?: string, takeover?: boolean, needed?: () => boolean, spawn?: import('./ssh.mjs').SpawnLike, program?: string,
  *           setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (t: any) => void, delay?: (attempt: number) => number,
  *           welcomeTimeout?: number }} o
- *   host: its name is the ssh destination. version and token: as createSshConnection takes them. takeover: the first
+ *   host: its name is the ssh destination. version, token and instance: as createSshConnection takes them. takeover: the first
  *   session replaces another Postbox (retry({ takeover: true }) asks for it later). spawn, program, the timers, delay
  *   and welcomeTimeout are passed to ssh.mjs, for tests.
  */
-export function createHostLink({ host, version, token, takeover = false, needed, spawn, program, setTimer, clearTimer, delay, welcomeTimeout }) {
+export function createHostLink({ host, version, token, instance, takeover = false, needed, spawn, program, setTimer, clearTimer, delay, welcomeTimeout }) {
   const events = new EventEmitter();
   events.setMaxListeners(0);
   /** @type {Link} */
@@ -50,6 +50,7 @@ export function createHostLink({ host, version, token, takeover = false, needed,
     host,
     version,
     token,
+    instance: instance ?? null,
     destination: host.name,
     session: { spawn, program, setTimer, clearTimer, welcomeTimeout },
     events,
@@ -88,7 +89,7 @@ export function createHostLink({ host, version, token, takeover = false, needed,
 /**
  * A link’s state, which each step below takes.
  * @typedef {{ host: Pick<import('../../shared/remote-settings.mjs').Host, 'name' | 'settings'>, version: string, token: string,
- *   destination: string,
+ *   instance: string | null, destination: string,
  *   session: { spawn?: import('./ssh.mjs').SpawnLike, program?: string, setTimer?: (fn: () => void, ms: number) => any,
  *     clearTimer?: (t: any) => void, welcomeTimeout?: number },
  *   events: EventEmitter, welcome: any, closed: boolean, takeoverNext: boolean, current: SshConnection | null,
@@ -106,6 +107,7 @@ function open(k) {
     settings: k.host.settings,
     version: k.version,
     token: k.token,
+    ...(k.instance ? { instance: k.instance } : {}),
     takeover: k.takeoverNext,
     ...(spawn ? { spawn } : {}),
     ...(program ? { program } : {}),

@@ -2,8 +2,11 @@
 // this laptop, and its status, emitted as 'status' when it changes. Also the manager’s state, which every part of the
 // manager takes first, as `m`.
 
-import { lstatSync, readFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { chmodSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TOKEN_RE, tokenFile } from './install.mjs';
+import { INSTANCE_FILE } from './install-token.mjs';
 
 /** How often a change to lastHeard alone is emitted as 'status', at most. */
 export const HEARD_EVERY_MS = 10_000;
@@ -26,7 +29,8 @@ export const HEARD_EVERY_MS = 10_000;
  *   clearTimer: (t: any) => void, delay?: (attempt: number) => number, events: import('node:events').EventEmitter,
  *   links: Map<string, Entry>, reasons: Map<string, Map<unknown, number>>, tokens: Map<string, string | null>,
  *   heard: Map<string, number>, emitted: Map<string, { status: HostStatus, at: number }>, heardTimers: Map<string, any>,
- *   checks: Map<string, Promise<SignInCheck | null>>, removals: Map<string, Promise<void>>, closed: boolean }} Manager
+ *   checks: Map<string, Promise<SignInCheck | null>>, removals: Map<string, Promise<void>>, closed: boolean,
+ *   instance?: string | null }} Manager
  *   reasons: per host, each reason it’s needed and how many times. tokens: tokens read from dataDir. emitted: the last
  *   'status' emitted, per host. heardTimers: a 'status' held back for lastHeard alone. checks and removals: the sign-in
  *   check and the removal under way, per host.
@@ -59,6 +63,51 @@ export function tokenOf(m, id) {
   }
   if (token) m.tokens.set(id, token);
   return token;
+}
+
+/**
+ * This Postbox’s name for its hosts’ daemons, kept in its data folder (0600) so that it’s the same after a restart. A
+ * daemon still holding a connection of this Postbox’s, one whose ssh died without the host noticing yet (through a
+ * ProxyCommand, say), lets this Postbox’s next hello replace it instead of saying busy (daemon-hello.mjs). Made on
+ * first use; null without a data folder.
+ * @param {Manager} m @returns {string | null}
+ */
+export function instanceOf(m) {
+  if (m.instance !== undefined) return m.instance;
+  m.instance = null;
+  if (!m.dataDir) return null;
+  const file = join(m.dataDir, INSTANCE_FILE);
+  let id = readInstance(file);
+  if (!id) {
+    // None yet, or one that isn’t a name (a link, say): a new one, written beside it and renamed over it, so a link is
+    // replaced itself, never followed.
+    id = randomBytes(16).toString('hex');
+    mkdirSync(m.dataDir, { recursive: true });
+    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      writeFileSync(tmp, `${id}\n`, { mode: 0o600, flag: 'wx' });
+      renameSync(tmp, file);
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  }
+  m.instance = id;
+  return id;
+}
+
+/** The name in a regular file, made 0600 if it wasn’t, or null. @param {string} file */
+function readInstance(file) {
+  try {
+    const st = lstatSync(file);
+    if (!st.isFile()) return null;
+    const t = readFileSync(file, 'utf8').trim();
+    if (!TOKEN_RE.test(t)) return null;
+    if ((st.mode & 0o777) !== 0o600) chmodSync(file, 0o600);
+    return t;
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
 }
 
 /** @param {Manager} m @param {string} id @returns {HostStatus} */

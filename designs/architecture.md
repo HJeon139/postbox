@@ -518,7 +518,7 @@ flowchart TD
 
 | From Postbox | Does |
 |---|---|
-| `hello { version, token, settings, takeover? }` | Checks the daemon’s token (a `0600` file) and the protocol version, and passes the settings the host enforces. `takeover` replaces another Postbox, which is otherwise refused as `busy` |
+| `hello { version, token, settings, instance?, takeover? }` | Checks the daemon’s token (a `0600` file) and the protocol version, and passes the settings the host enforces. `takeover` replaces another Postbox, which is otherwise refused as `busy`. `instance` is the Postbox’s own name for itself, kept in its data folder (`remote-instance`, `0600`): a hello with the driver’s replaces that connection without `takeover`, since it’s the same Postbox back after its ssh died before the host noticed |
 | `snapshot`, `snapshot-items` | The conversation the reading tools answer from: the whole of it before `start`, then what changed |
 | `start { turn, harness, folder, argv, env, stdin, files, agentFile?, attachments? }` | Writes the turn folder and its files, then starts the runner. `attachments` are the files the person attached to the message, as base64, written to `attachments/<name>` in the turn folder, since the agent can’t read a path on the laptop; the message names those copies. At most 16, 3 MiB each and 3.5 MiB in all (decoded), so a start at every limit still fits in one 16 MiB line; Postbox refuses a message over one before the turn starts |
 | `read { turn, from }` | Sends `out.jsonl` lines from that byte offset, then follows new ones |

@@ -61,7 +61,9 @@
 // - A prompt’s or a tool call’s identity is (turn, id), never the ID alone: each turn’s shim picks its own `call` and
 //   `permission` IDs, so two turns may both use 1. The daemon keys its pending prompts and tools by both, and every
 //   message to or from Postbox that names one (`tool`, `prompt`, `prompt-expired`, `answer`, `reply`) carries `turn`.
-// - A second Postbox gets `busy` unless its hello says `takeover`; the one it replaces gets `taken-over`.
+// - A second Postbox gets `busy` unless its hello says `takeover`; the one it replaces gets `taken-over`. A hello whose
+//   `instance` (a Postbox’s own name for itself, the same across its restarts) is the driver’s replaces that
+//   connection without either: it’s the same Postbox back after its ssh died before the host noticed.
 // - A `stop` for a turn the daemon doesn’t have answers `no-turn`, and from then on a `start` for that turn is refused
 //   with `turn-stopped`, on any connection: a start written to a channel that dropped may still reach the daemon after
 //   the stop sent on the next one. A stop that comes while its turn’s start is under way waits for that start to

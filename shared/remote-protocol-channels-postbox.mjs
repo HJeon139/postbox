@@ -41,9 +41,10 @@ export const POSTBOX_CHANNELS = {
   'postbox-to-daemon': {
     /** { version, token, takeover?, settings? } */
     hello: (m) =>
-      fields(m, 'hello', ['version', 'token'], ['takeover', 'settings']) ||
+      fields(m, 'hello', ['version', 'token'], ['instance', 'takeover', 'settings']) ||
       int(m.version, 'hello.version', 1, 1_000_000) ||
       token(m.token, 'hello.token') ||
+      opt(m.instance, (v) => token(v, 'hello.instance')) ||
       opt(m.takeover, (v) => bool(v, 'hello.takeover')) ||
       opt(m.settings, (v) => checkSettings(v)),
     /** { turn, harness, folder, argv, env, stdin, files, agentFile?, attachments? } */

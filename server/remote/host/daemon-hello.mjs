@@ -37,12 +37,18 @@ export async function hello(d, c, m) {
   if (!tokenMatches(d, m.token))
     return fail(c, 'bad-token', `The token doesn’t match the host’s, in ~/.postbox-remote/token. Reinstall Postbox on the host.`, 'hello');
   if (d.driver && d.driver !== c && !d.driver.closed) {
-    if (!m.takeover) return fail(c, 'busy', 'Another Postbox is using this host. Take over to use it from here.', 'hello');
     const old = d.driver;
-    d.log(`Connection ${c.id} took over from ${old.id}.`);
-    fail(old, 'taken-over', 'Another Postbox took over this host.');
+    // The same Postbox back: its old connection is one whose ssh died before this host noticed.
+    const same = typeof m.instance === 'string' && old.instance === m.instance;
+    if (!same && !m.takeover) return fail(c, 'busy', 'Another Postbox is using this host. Take over to use it from here.', 'hello');
+    if (same) d.log(`Connection ${c.id} replaced ${old.id}, the same Postbox’s.`);
+    else {
+      d.log(`Connection ${c.id} took over from ${old.id}.`);
+      fail(old, 'taken-over', 'Another Postbox took over this host.');
+    }
     old.close();
   }
+  c.instance = typeof m.instance === 'string' ? m.instance : null;
   d.driver = c;
   c.ready = true;
   d.settings = { ...HOST_DEFAULTS, ...(m.settings ?? {}) };

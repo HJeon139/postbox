@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path';
 
 /** The laptop’s folder of tokens, under Postbox’s data folder. */
 export const TOKENS_DIR = 'remote-tokens';
+/** The file, in Postbox’s data folder, with this Postbox’s name for its hosts’ daemons (hosts-status.mjs, instanceOf). */
+export const INSTANCE_FILE = 'remote-instance';
 /** The daemon’s token’s shape (shared/remote-protocol.mjs checks hello.token against the same). */
 export const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
 /** A host ID, as store.mjs’s newId makes them; it names a file, so nothing else passes. */

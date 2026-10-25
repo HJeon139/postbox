@@ -50,16 +50,18 @@ const EXIT_GRACE = 1000;
  * A connection is used once; reconnecting makes a new one (createReconnector).
  *
  * @param {{ destination: string, settings: import('../../shared/remote-settings.mjs').HostSettings, version: string,
- *           token: string, takeover?: boolean, spawn?: SpawnLike, program?: string,
+ *           token: string, instance?: string, takeover?: boolean, spawn?: SpawnLike, program?: string,
  *           setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (t: any) => void, welcomeTimeout?: number }} o
  *   version: Postbox’s package version, which names the code folder on the host. token: the daemon’s (see the top of
- *   ssh.mjs). takeover: replace another Postbox that drives the daemon. spawn, program and the timers are for tests.
+ *   ssh.mjs). instance: this Postbox’s name for itself (hosts-status.mjs, instanceOf). takeover: replace another Postbox
+ *   that drives the daemon. spawn, program and the timers are for tests.
  */
 export function createSshConnection({
   destination,
   settings,
   version,
   token,
+  instance,
   takeover = false,
   spawn = nodeSpawn,
   program = 'ssh',
@@ -68,7 +70,14 @@ export function createSshConnection({
   welcomeTimeout = WELCOME_TIMEOUT,
 }) {
   const args = sshArgs({ destination, settings, version });
-  const hello = { type: 'hello', version: PROTOCOL_VERSION, token, ...(takeover ? { takeover: true } : {}), settings: helloSettings(settings) };
+  const hello = {
+    type: 'hello',
+    version: PROTOCOL_VERSION,
+    token,
+    ...(instance ? { instance } : {}),
+    ...(takeover ? { takeover: true } : {}),
+    settings: helloSettings(settings),
+  };
   const checked = validateMessage('postbox-to-daemon', hello);
   if (!checked.ok) throw new TypeError(checked.error);
   /** @type {Conn} */

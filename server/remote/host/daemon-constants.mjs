@@ -55,7 +55,8 @@ export const READ_CHUNK = 64 * 1024;
  * @typedef {{ setTimeout: (fn: () => void, ms: number) => any, clearTimeout: (t: any) => void }} Timers
  * @typedef {{ write: (s: string) => boolean, end: () => void, once?: (e: 'drain', fn: () => void) => any }} Output
  * @typedef {{ id: number, output: Output, ready: boolean, closed: boolean, follows: Map<string, Follower>,
- *   queue: Promise<void>, close: () => void }} Conn
+ *   queue: Promise<void>, close: () => void, instance?: string | null }} Conn
+ *   instance: the Postbox its hello named, once it’s the driver (daemon-hello.mjs)
  * @typedef {{ stop: () => void, poke: () => void }} Follower
  * @typedef {{ turn: string, harness: string, state: 'running' | 'ended' | 'interrupted', size: number,
  *   exit: import('../../../shared/remote-protocol.mjs').ExitRecord | null }} TurnFound

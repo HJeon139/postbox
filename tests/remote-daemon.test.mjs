@@ -177,6 +177,29 @@ test('one writer: a second Postbox is busy unless it takes over, and the one it 
   }
 });
 
+test('#120 the same Postbox back after its ssh died replaces its own connection without takeover; another is still busy', async () => {
+  const s = setup();
+  try {
+    const ME = 'a'.repeat(32);
+    // Its old connection is still open here: the host hasn’t noticed the ssh behind it died.
+    const old = await hello(s, { instance: ME });
+    for (const extra of [{ instance: 'b'.repeat(32) }, {}]) {
+      const other = s.connect();
+      other.send('hello', { version: PROTOCOL_VERSION, token: TOKEN, ...extra });
+      assert.equal((await other.msgs.next('error')).code, 'busy', `busy for ${JSON.stringify(extra)}`);
+    }
+    await hello(s, { instance: ME });
+    await old.msgs.ended;
+    assert.ok(!old.msgs.messages.some((m) => m.type === 'error'), 'the old connection isn’t told it was taken over');
+    // The new one drives now: another Postbox is still busy.
+    const third = s.connect();
+    third.send('hello', { version: PROTOCOL_VERSION, token: TOKEN, instance: 'c'.repeat(32) });
+    assert.equal((await third.msgs.next('error')).code, 'busy');
+  } finally {
+    s.done();
+  }
+});
+
 test('the first welcome warns that turns end at logout where logind kills them and lingering is off', async () => {
   const s = setup();
   try {
