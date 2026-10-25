@@ -65,7 +65,7 @@ sequenceDiagram
   participant U as You
   participant A as Postbox
   participant M as MCP server (in Postbox)
-  participant G as Agent (mock, Agent SDK or Claude Code)
+  participant G as Agent (any backend)
   U->>A: types a message, or @-mentions an agent
   A->>G: message (wakes the agent if it was idle)
   G-->>A: streamed text
@@ -112,7 +112,7 @@ sequenceDiagram
 | A Personas page in settings lets you edit, duplicate, retire and save boilerplates | Edits apply to new sessions only. Running sessions keep the version they started with, so behavior doesn’t change underneath you. |
 | Subagents an agent creates inside its own session need no approval | They aren’t personas, and they run with their parent’s tools. |
 | Each project has one root folder | It bounds the file picker and is where Claude Code sessions start. |
-| A persona runs on Claude Code, the Agent SDK or the mock, and real agents default to Claude Opus 5.5 (`claude-opus-5-5`) | Decided in Stage 3. Both real backends use Claude Code’s own sign-in, so Postbox never holds a key. The model is a per-persona setting. |
+| A persona runs on Claude Code, the Agent SDK, the Kiro CLI, the Antigravity CLI, Codex, or the mock, and real agents default to Claude Opus 5.5 (`claude-opus-5-5`) | Decided in Stage 3; Kiro CLI (#117), Antigravity CLI (#143) and Codex joined later. Real backends use each tool’s own sign-in, so Postbox never holds a key. The model is a per-persona setting. |
 | Each persona has a permission mode: auto (the default), ask, accept edits, or run everything. In auto mode, Claude Code’s safety classifier approves routine actions; anything it can’t decide, and everything in ask mode, becomes a card in the thread that shows the exact command, with Allow, Always allow, Edit and Don’t allow (with a reason), and the agent needs you until you answer. A permissions panel shows its rules with where each comes from, and changes them without a terminal. Stop answers no. A change to the mode reaches running conversations from their next turn | Decided in Stage 3 with ask as the default; changed to auto after Stage 3, because asking every time got in the way. Edit, Always allow and the panel came with #66, so an agent blocked by a rule never sends you to a terminal. |
 | You can attach a Claude Code session you started in a terminal | It joins as an agent in that session’s folder, with its recent history; Postbox resumes the same session when you write to it. |
 | A conversation owns its agents’ sessions: they’re archived only with it, restored with it, and deleted with it. Nothing archives a conversation by itself. Delete erases a session or a conversation after a confirm, with 10 seconds of Undo | Delete says exactly what goes and what stays. The persona always stays. Changed on 24 October 2026 (#320): conversations archived themselves after a week idle (#101), and one agent could be archived alone, but nothing showed them once the Archived page went, so idle archiving is off, one agent can’t be archived on its own, and what either had hidden came back. |

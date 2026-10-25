@@ -36,6 +36,7 @@ export function apply(s, type, d) {
       s.personas[d.id] = d;
       break;
     case 'boilerplate':
+      delete s.boilerplates[d.id];
       s.boilerplates[d.id] = d;
       break;
     case 'thread':
@@ -98,8 +99,7 @@ export function apply(s, type, d) {
         delete s.glossary[d.id];
         if (s.work) delete s.work[d.id];
       }
-      if (d.kind === 'session') delete s.sessions[d.id];
-      if (d.kind === 'app') delete s.apps[d.id];
+      if (d.kind === 'session' || d.kind === 'app') delete s[`${d.kind}s`][d.id];
       break;
     }
     case 'notify':

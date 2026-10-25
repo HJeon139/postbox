@@ -114,14 +114,14 @@ try {
     JSON.stringify(na),
   );
 
-  // Picking the Gemini boilerplate switches to the Antigravity CLI, its first model and its prompt; Critic restores Claude Code.
+  // Picking the Gemini boilerplate switches to the Antigravity CLI, its preferred Gemini model and its prompt; Critic restores Claude Code.
   await page.evaluate(`[...document.querySelectorAll('.dialog [role=radio]')].find((b) => b.textContent.trim() === 'Gemini').click()`);
   const gem = await page.evaluate(
     `({ b: document.getElementById('na-b')?.value, m: document.getElementById('na-m')?.value, i: document.getElementById('na-i')?.value })`,
   );
   check(
-    gem.b === 'antigravity-cli' && gem.m === 'gemini-2.5-pro' && /^# Gemini\n/.test(gem.i ?? ''),
-    'the Gemini boilerplate selects the Antigravity CLI, its first Gemini model and its prompt',
+    gem.b === 'antigravity-cli' && gem.m === 'gemini-3.8-flash-high' && /^# Gemini\n/.test(gem.i ?? ''),
+    'the Gemini boilerplate selects the Antigravity CLI, its preferred Gemini model and its prompt',
     JSON.stringify(gem),
   );
   await page.evaluate(`[...document.querySelectorAll('.dialog [role=radio]')].find((b) => b.textContent.trim() === 'Critic').click()`);
