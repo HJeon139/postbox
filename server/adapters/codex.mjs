@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { draftOf } from '../write-guard.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
-import { codexModelOf } from './codex-model.mjs';
+import { codexModelOverride } from './codex-model.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
@@ -377,7 +377,7 @@ export class CodexAdapter {
           ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true })
           : sourceThreadId
             ? await request('thread/resume', { threadId: sourceThreadId, cwd })
-            : await request('thread/start', { cwd, ...(codexModelOf(ctx.persona) ? { model: codexModelOf(ctx.persona) } : {}) });
+            : await request('thread/start', { cwd, ...codexModelOverride(ctx.persona, this.capabilities.models) });
       const threadId = sourceThreadId;
       const id = opened?.thread?.id ?? threadId;
       if (!id) throw new Error('Codex app-server did not return a thread id.');
@@ -390,14 +390,14 @@ export class CodexAdapter {
         threadId: id,
         input: [{ type: 'text', text: inputText }],
         settings: { developer_instructions: guide },
-        ...(codexModelOf(ctx.persona) ? { model: codexModelOf(ctx.persona) } : {}),
+        ...codexModelOverride(ctx.persona, this.capabilities.models),
         effort: codexEffortOf(ctx.persona),
         cwd,
         ...permissions,
       });
       activeTurnId = started?.turn?.id ?? activeTurnId;
       ctx.reported?.({
-        ...(started?.turn?.model || codexModelOf(ctx.persona) ? { model: started?.turn?.model ?? codexModelOf(ctx.persona) } : {}),
+        ...(started?.turn?.model ? { model: started.turn.model } : codexModelOverride(ctx.persona, this.capabilities.models)),
         effort: started?.turn?.effort ?? codexEffortOf(ctx.persona),
       });
       await ended;
