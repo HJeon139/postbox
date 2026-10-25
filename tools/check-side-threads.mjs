@@ -13,14 +13,11 @@
 // PB_PORT and PB_CHROME_PORT move it; ONLY=<text> runs only the cases whose names include it.
 
 import assert from 'node:assert/strict';
-import { rm } from 'node:fs/promises';
-import { finish, record } from './harness.mjs';
 import {
   app,
   busy,
   check,
-  claudeHome,
-  dataDir,
+  done,
   indexer,
   open,
   page,
@@ -296,9 +293,4 @@ await check('at 375 px, the side-thread line with its agent’s state fits witho
   }
 });
 
-await page.close();
-await app.close();
-await rm(dataDir, { recursive: true, force: true });
-await rm(claudeHome, { recursive: true, force: true });
-record(!page.logs.length, 'the page logged no errors', page.logs.join('\n'));
-finish();
+await done();

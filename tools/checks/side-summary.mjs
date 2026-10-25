@@ -9,14 +9,10 @@
 // It uses tools/side-threads-kit.mjs: its own server with the demo seed on a fresh data folder, and @indexer and
 // @researcher on a fake Claude Code backend whose turns the check scripts. PB_PORT and PB_CHROME_PORT move it.
 
-import { rm } from 'node:fs/promises';
-import { finish, record } from '../harness.mjs';
 import {
-  app,
   busy,
   check,
-  claudeHome,
-  dataDir,
+  done,
   indexer,
   open,
   page,
@@ -109,9 +105,4 @@ await check('#225 Summarize back asked while its agent is busy in the side threa
   expect(last.kind === 'shared' && last.summary && last.fromThreadId === side.id, 'The summary wasn’t posted in the conversation');
 });
 
-await page.close();
-await app.close();
-await rm(dataDir, { recursive: true, force: true });
-await rm(claudeHome, { recursive: true, force: true });
-record(!page.logs.length, 'the page logged no errors', page.logs.join('\n'));
-finish();
+await done();

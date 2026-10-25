@@ -2,12 +2,12 @@
 // @indexer and @researcher on a fake Claude Code backend that holds each turn open until the check lets it go or Stop
 // aborts it, a room with both, and the keyboard, waiting and opening the check uses.
 
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { start } from '../server/index.mjs';
 import { js, launch } from './cdp.mjs';
-import { ports, record } from './harness.mjs';
+import { finish, ports, record } from './harness.mjs';
 
 export const { PORT, CHROME_PORT } = await ports(4890, 10090);
 
@@ -128,4 +128,14 @@ export async function open(hash) {
   loaded = true;
   await page.waitFor(`document.querySelector('header.topbar')`);
   await settle();
+}
+
+/** The check’s last step: close the page and the server, remove their folders, and report. */
+export async function done() {
+  await page.close();
+  await app.close();
+  await rm(dataDir, { recursive: true, force: true });
+  await rm(claudeHome, { recursive: true, force: true });
+  record(!page.logs.length, 'the page logged no errors', page.logs.join('\n'));
+  finish();
 }
