@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.32.3 (2026-10-25)
+
+### Fixes
+
+- **permissions:** bound the command scan's work, and read a backslash-newline out of each part
+- **uat:** the allow-once triggers import the scanner from shared/
+- **permissions:** read a command's parts as the shell does for the write guard
+
 ## 0.32.2 (2026-10-25)
 
 ### Fixes
