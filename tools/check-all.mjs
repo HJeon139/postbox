@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 const TOOLS = fileURLToPath(new URL('.', import.meta.url));
 
-/** Every check under tools, by name (check-install, checks/persona-setup), whose name has one of the filters in it. */
+/** Every check under tools, by name (check-install, checks/menus), whose name has one of the filters in it. */
 export async function discover(tools = TOOLS, filters = []) {
   const top = (await readdir(tools)).filter((f) => /^check-.+\.mjs$/.test(f) && f !== 'check-all.mjs').map((f) => f.slice(0, -4));
   const nested = (await readdir(join(tools, 'checks')).catch(() => [])).filter((f) => f.endsWith('.mjs')).map((f) => `checks/${f.slice(0, -4)}`);
