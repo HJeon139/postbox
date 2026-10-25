@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.30.2 (2026-10-25)
+
+### Fixes
+
+- **uat:** honor send_then_stop's delay and hand the job question to the tester
+- **stop:** settle a stopped turn's running steps, and its reply's header
+
 ## 0.30.1 (2026-10-24)
 
 ### Fixes
