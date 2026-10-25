@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.33.2 (2026-10-25)
+
+### Fixes
+
+- **thread:** note a clamp only when it left the view at the page's end
+- **thread:** keep the view on what you read when the page changes under it
+
 ## 0.33.1 (2026-10-25)
 
 ### Fixes
