@@ -7,10 +7,8 @@ import { conversationOf, needsOrder, whereNeeds } from '../shared/needs.mjs';
 const PLACES = {
   next: 'the “Next that needs you” button',
   rail: 'its rail row',
-  agents: 'its row in the Agents section',
-  overview: 'its overview card',
+  agents: 'its ring in the Agents section',
   message: 'the ring beside its message',
-  topbar: 'its ring in the top bar',
 };
 
 /**

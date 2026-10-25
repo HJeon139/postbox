@@ -198,8 +198,6 @@ await check('an agent that wakes one from outside the conversation brings a card
   await until(() => critic(), '@critic to join');
   const why = 'Joined when @indexer woke it';
   await page.waitFor(`${row('critic')}?.querySelector('.agent-btn').innerText.includes('${why}')`, { label: 'the row’s note' });
-  await page.waitFor(`document.getElementById('top-ring-${critic().id}')`, { label: 'its ring in the top bar' });
-  assert.equal(await page.evaluate(`document.getElementById('top-ring-${critic().id}').title`), why);
   // The agents the person added say nothing of the kind.
   assert.doesNotMatch(await page.evaluate(`${row('indexer')}.innerText`), /Joined when/);
   // The mock @critic’s reply can ask something, which would take the side-thread line in the cases after this one.

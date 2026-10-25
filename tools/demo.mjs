@@ -320,30 +320,25 @@ export async function play({ origin, view = async () => {}, shot = async () => {
     },
   });
 
-  // 12 · The overview, with one agent that needs you
+  // 12 · An agent that needs you, its quick panel and deleting its session (#320: there’s no overview)
   const papers = T('Agent memory papers');
-  log('@researcher asks which papers to read, so it needs you; the overview shows it first.');
+  log('@researcher asks which papers to read, so it needs you; its ring pulses in the sidebar.');
+  await view(`#/t/${papers.id}`);
   await send(papers, 'Which agent memory papers should I read?');
   await settled(papers, (st) => Object.values(st.sessions).some((x) => x.threadId === papers.id && x.needs), 'the choice');
-  const archived = (await c.state()).threads[quotes.id].members[0];
-  await call(`/api/sessions/${archived}/archive`, {});
-  await view('#/');
-  await shot('01-overview');
-  await shot('12-card-menu', {
+  await shot('01-needs-you');
+  const panel = `[...document.querySelectorAll('.rail .agent-btn')].find((b) => b.textContent.includes('@researcher')).click()`;
+  await shot('12-agent-panel', {
     prepare: async (page) => {
-      await page.evaluate(
-        `[...document.querySelectorAll('.ov-col')].find((n) => n.textContent.includes('@critic')).querySelector('[aria-haspopup="menu"]').click()`,
-      );
+      await page.evaluate(panel);
       await sleep(250);
     },
   });
   await shot('13-delete-confirm', {
     prepare: async (page) => {
-      await page.evaluate(
-        `[...document.querySelectorAll('.ov-col')].find((n) => n.textContent.includes('@critic')).querySelector('[aria-haspopup="menu"]').click()`,
-      );
+      await page.evaluate(panel);
       await sleep(200);
-      await page.evaluate(`[...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('Delete session')).click()`);
+      await page.evaluate(`[...document.querySelectorAll('.dialog.quick button')].find((b) => b.textContent.includes('Delete session')).click()`);
       await sleep(250);
     },
   });

@@ -139,25 +139,35 @@ const landsOn = (page, handle) =>
     .poll(() => landing(page), { message: `focus on @${handle}'s ask, on screen and outlined`, intervals: [50] })
     .toEqual({ handle, onScreen: true, outlined: true });
 
+/**
+ * That the page drew what it opened without going to an agent’s ask: once that ask is on the page and two frames on,
+ * which is when a jump would have focused it (needs-nav.mjs, focusItem).
+ */
+async function stayedOffTheAsk(page, h) {
+  await expect(page.locator(`[data-key="${S[h].needs.itemId}"]`), `@${h}’s ask drawn`).toBeAttached();
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r)))));
+  expect(await landing(page), 'focus stayed off every ask').toEqual({ handle: null });
+  await expect(page.locator('.arrived'), 'nothing outlined').toHaveCount(0);
+}
+
 /** ⌃J, from nowhere in particular, so a press that goes nowhere can't pass for the last one’s landing. */
 async function ctrlJ(page) {
   await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
   await page.keyboard.press('Control+j');
 }
 
-const ring = (page, scope, h) => page.locator(`${scope} pb-ring[data-session="${S[h].id}"]`);
 const agentRow = (page, h) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn', { hasText: `@${h}` }) });
 const railRow = (page, t) => page.locator(`.rail a.row[data-thread="${t.id}"]`);
 const quickPanel = (page) => page.locator('.backdrop .dialog.quick');
 
 test('the global button counts every agent that needs you, a refused step’s too', async ({ page }) => {
-  await open(page, '#/');
+  await open(page, `#/t/${T.room.id}`);
   await expect(page.locator('#next-needs')).toContainText(/\b5 need you/);
 });
 
-test('⌃J visits every agent that needs you, oldest first, each ask on screen, focused and outlined', async ({ page }) => {
-  await open(page, '#/');
-  for (const h of ['alpha', 'gamma', 'delta', 'beta', 'epsilon']) {
+test('⌃J visits every agent that needs you, this conversation’s first, then oldest first, each ask on screen, focused and outlined', async ({ page }) => {
+  await open(page, `#/t/${T.refused.id}`);
+  for (const h of ['epsilon', 'alpha', 'gamma', 'delta', 'beta']) {
     await ctrlJ(page);
     await landsOn(page, h);
   }
@@ -169,19 +179,24 @@ test('⌃J from a conversation whose agent needs you goes to that agent first', 
   await landsOn(page, 'gamma');
 });
 
-test('a rail row whose agent needs you goes to its ask', async ({ page }) => {
+test('a rail row opens its conversation, even while its agent needs you; its ring goes to the ask (#320)', async ({ page }) => {
   await open(page, `#/t/${T.refused.id}`);
   await railRow(page, T.alpha).locator('.name').click();
+  await expect(page).toHaveURL(new RegExp(`#/t/${T.alpha.id}$`));
+  await stayedOffTheAsk(page, 'alpha');
+  await open(page, `#/t/${T.refused.id}`);
+  await railRow(page, T.alpha).locator(`pb-ring[data-session="${S.alpha.id}"]`).click();
   await landsOn(page, 'alpha');
 });
 
-test('a room’s rail row: a ring goes to its agent, the rest of the row to the agent that has waited longest', async ({ page }) => {
+test('a room’s rail row: a ring goes to its agent’s ask, and the rest of the row opens the room', async ({ page }) => {
   await open(page, `#/t/${T.refused.id}`);
   await railRow(page, T.room).locator(`pb-ring[data-session="${S.delta.id}"]`).click();
   await landsOn(page, 'delta');
   await open(page, `#/t/${T.refused.id}`);
   await railRow(page, T.room).locator('.name').click();
-  await landsOn(page, 'gamma');
+  await expect(page).toHaveURL(new RegExp(`#/t/${T.room.id}$`));
+  await stayedOffTheAsk(page, 'gamma');
 });
 
 test('a click that opens a new tab or window, on a rail row whose agent needs you, is left to the browser', async ({ page }) => {
@@ -204,31 +219,37 @@ test('a click that opens a new tab or window, on a rail row whose agent needs yo
   await expect(page, 'the page stayed where it was').toHaveURL(new RegExp(`#/t/${T.refused.id}$`));
 });
 
-test('an agent’s row in the Agents section goes to its ask while it needs you', async ({ page }) => {
+test('an agent’s name in the Agents section opens its quick panel, even while it needs you, and there’s no ⋯ (#320)', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
+  await expect(agentRow(page, 'delta').getByRole('button', { name: /^More for/ })).toHaveCount(0);
   await agentRow(page, 'delta').locator('.agent-btn').click();
-  await landsOn(page, 'delta');
-  await expect(quickPanel(page), 'no quick panel opened').toHaveCount(0);
-});
-
-test('while it needs you, an agent’s ⋯ in the Agents section opens its quick panel', async ({ page }) => {
-  await open(page, `#/t/${T.room.id}`);
-  await agentRow(page, 'delta').getByRole('button', { name: 'More for @delta' }).click();
   await expect(quickPanel(page)).toBeVisible();
+  await expect(agentRow(page, 'delta').locator('.agent-btn')).toHaveAttribute('aria-expanded', 'true');
   await page.keyboard.press('Escape');
   await expect(quickPanel(page)).toHaveCount(0);
 });
 
+test('an agent’s ring in the Agents section goes to its ask, by mouse or by keyboard', async ({ page }) => {
+  await open(page, `#/t/${T.room.id}`);
+  await agentRow(page, 'delta').locator('pb-ring').click();
+  await landsOn(page, 'delta');
+  await open(page, `#/t/${T.room.id}`);
+  await agentRow(page, 'gamma')
+    .getByRole('button', { name: /Go to what @gamma needs/ })
+    .focus();
+  await page.keyboard.press('Enter');
+  await landsOn(page, 'gamma');
+});
+
 test('an idle agent’s row in the Agents section still opens its quick panel', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
-  await expect(agentRow(page, 'zeta').getByRole('button', { name: /^More for/ }), 'no ⋯ while idle').toBeHidden();
   await agentRow(page, 'zeta').locator('.agent-btn').click();
   await expect(quickPanel(page)).toBeVisible();
 });
 
-test('an overview card’s ring goes to its ask, in the side panel for a side thread’s agent', async ({ page }) => {
-  await open(page, '#/');
-  await ring(page, '.ov', 'beta').click();
+test('a side thread’s agent: its ring in the Agents section opens the side panel at its ask', async ({ page }) => {
+  await open(page, `#/t/${T.alpha.id}`);
+  await agentRow(page, 'beta').locator('pb-ring').click();
   await landsOn(page, 'beta');
   await expect(page.locator(`.sp-body [data-key="${S.beta.needs.itemId}"]`), '@beta’s ask is in the side panel').toBeVisible();
 });
@@ -238,26 +259,4 @@ test('the ring beside an agent’s name on a message goes to its ask', async ({ 
   // @delta’s notes share one sender line, above its ask.
   await page.locator(`#main .who pb-ring[data-session="${S.delta.id}"]`).last().click();
   await landsOn(page, 'delta');
-});
-
-test('an agent’s ring in the top bar goes to its ask', async ({ page }) => {
-  await open(page, `#/t/${T.room.id}`);
-  // Its own button: a folded stack of rings in the top bar holds a second ring for each agent.
-  // It opens no dialog while its agent needs you, so it says neither that it does nor whether one is open.
-  await expect(page.locator(`#top-ring-${S.gamma.id}`)).not.toHaveAttribute('aria-haspopup');
-  await expect(page.locator(`#top-ring-${S.gamma.id}`)).not.toHaveAttribute('aria-expanded');
-  await expect(page.locator(`#top-ring-${S.zeta.id}`), 'an idle agent’s ring still opens its panel').toHaveAttribute('aria-expanded', 'false');
-  await page.locator(`#top-ring-${S.gamma.id}`).click();
-  await landsOn(page, 'gamma');
-});
-
-test('where the top bar’s rings fold into a stack, a waiting agent’s ring in it opens the stack’s menu', async ({ page }) => {
-  await open(page, `#/t/${T.room.id}`);
-  // Folded as fitTopbar (shell.mjs) folds it where the rings don’t fit: this case is about where the click goes.
-  await page.locator('header.topbar').evaluate((n) => {
-    n.dataset.drop = 'crumb demo rings';
-  });
-  await page.locator(`#top-ring-stack pb-ring[data-session="${S.gamma.id}"]`).click();
-  await expect(page.locator('.menu'), 'the stack’s menu').toBeVisible();
-  await expect(page, 'the page stayed where it was').toHaveURL(new RegExp(`#/t/${T.room.id}$`));
 });

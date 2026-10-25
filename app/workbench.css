@@ -143,7 +143,7 @@ kbd { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; backgro
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .grow { flex: 1; min-width: 0; }
 /* Flex and grid children must be allowed to shrink, or wide code and tables push the page past the phone's width. */
-.turn, .md, .block, .block-body, .appframe, .ov-col, .col, section, figure { min-width: 0; }
+.turn, .md, .block, .block-body, .appframe, .col, section, figure { min-width: 0; }
 pre { max-width: 100%; }
 .row-flex { display: flex; align-items: center; gap: 8px; }
 .wrap { flex-wrap: wrap; }
@@ -257,20 +257,6 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .brand .mark::after { content: ""; position: absolute; left: 3px; right: 3px; top: 5px; height: 2px; background: var(--accent); }
 .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--dim); }
 .crumbs .title { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.present { display: flex; align-items: center; gap: 2px; margin-left: 4px; }
-/* Each agent’s ring in the top bar opens its quick panel (#105). */
-.ring-btn, .ring-stack { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer; }
-.ring-btn:hover, .ring-btn[aria-expanded="true"], .ring-stack:hover, .ring-stack[aria-expanded="true"] { border-color: var(--line); background: var(--sunk); }
-.ring-btn:focus-visible, .ring-stack:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.ring-stack { display: none; width: 34px; }
-/* Overview cards open their conversation: the name is the link, and the rest of the card is a larger target. */
-.ov-col { cursor: pointer; }
-.ov-col .oc-sec { border-radius: 6px; }
-.ov-col .oc-sec:hover { background: var(--sunk); }
-.ov-col a.oc-link { color: inherit; text-decoration: none; display: flex; flex-direction: column; }
-.ov-col a.oc-link:hover b, .ov-col a.oc-link:focus-visible b { text-decoration: underline; text-underline-offset: 2px; }
-.ov-col a.oc-msg { color: inherit; text-decoration: none; }
-.ov-col a.oc-msg:hover { text-decoration: underline; }
 .top-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .brand { color: var(--text); background: none; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; margin-left: -6px; cursor: pointer; font: inherit; font-weight: 700; }
 .brand:hover, .brand[aria-expanded="true"] { border-color: var(--line); background: var(--sunk); }
@@ -810,50 +796,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 /* @-mention autocomplete */
 .mention-menu { bottom: calc(100% + 6px); left: 0; width: 320px; }
 
-/* Overview */
-.ov { padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 22px; max-width: 1400px; margin: 0 auto; width: 100%; }
 .ov-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.ov-proj { display: flex; flex-direction: column; gap: 10px; }
-.ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
-.ov-col { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; position: relative; }
-/* Needs you is a state: a heavier amber top edge and a tinted head band, not the 1 px amber outline a button has (#8). */
-.ov-col.needs { border-top: 3px solid var(--accent); }
-.ov-col.needs .oc-head { background: var(--needs-band); border-radius: 7px 7px 0 0 / 5px 5px 0 0; }
-.ov-col .oc-head { display: flex; align-items: center; gap: 12px; padding: 14px 12px 12px 14px; border-bottom: 1px solid var(--line); }
-.ov-col .oc-head .who-name { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.ov-col .oc-head .who-name b { font-size: 16px; }
-.ov-col .oc-sec { padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.ov-col .oc-sec:last-child { border-bottom: 0; }
-.ov-col .oc-sec .label { display: flex; align-items: center; justify-content: space-between; }
-.ov-col .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-/* Cards in a row are as tall as the tallest, with their stats along the bottom, so the rows line up (#3). */
-.ov-col .stats { margin-top: auto; border-top: 1px solid var(--line); }
-.ov-col .oc-sec:has(+ .stats), .ov-col .oc-head:has(+ .stats) { border-bottom: 0; }
-.ov-col .oc-where { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Idle conversations: one row each, under the cards (#3). */
-.ov-idle { display: flex; flex-direction: column; gap: 8px; }
-.ov-idle h2.label { margin: 0; }
-.ov-rows { list-style: none; margin: 0; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-.ov-row { display: grid; grid-template-columns: 30px minmax(0, 18rem) minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px;
-  min-height: 44px; padding: 6px 10px 6px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
-.ov-row:last-child { border-bottom: 0; }
-.ov-row:hover { background: var(--sunk); }
-.ov-row a.ov-row-link { color: inherit; text-decoration: none; display: flex; flex-direction: column; min-width: 0; }
-.ov-row a.ov-row-link:hover b, .ov-row a.ov-row-link:focus-visible b { text-decoration: underline; text-underline-offset: 2px; }
-.ov-row .ov-row-who, .ov-row .ov-row-where, .ov-row .ov-row-last { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ov-row .ov-row-when { display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
-.ov-col .stats div { display: flex; flex-direction: column; }
-.ov-col .stats b { font-size: 16px; font-weight: 600; }
-.mini-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.mini-list li { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.mini-list li .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mini-list li .mono { font-size: 12px; }
-.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-
-/* ───────── Agent header and card: what each agent runs with (#60) ───────── */
-
-.ov-col .oc-head { flex-wrap: wrap; row-gap: 8px; }
-.ov-col .oc-head .oc-runs { flex: 1 0 100%; overflow-wrap: anywhere; }
 
 /* Mock agents and demo mode, marked in words wherever an agent is named (#12). */
 /* The space before it is text (mockMarker), so it needs no margin. */
@@ -869,19 +812,16 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .install-note p + p { margin-top: 4px; }
 
 /* ───────── Top bar at any width (#72, #105) ───────── */
-/* The rings keep their size, and the conversation’s title gives way first. When the top bar still doesn’t fit,
-   its data-drop (fitTopbar in shell.mjs, measured) drops the project crumb, folds the demo banner, then folds the
-   rings into one stack. */
+/* The conversation’s title gives way first. When the top bar still doesn’t fit, its data-drop (fitTopbar in
+   shell.mjs, measured) drops the project crumb, then folds the demo banner. */
 
 /* Only the crumbs give way; every control keeps its size. */
 .topbar > * { flex: none; }
 .topbar > .crumbs { flex: 0 1 auto; }
-/* The crumbs shorten with an ellipsis rather than run under the rings. */
+/* The crumbs shorten with an ellipsis rather than run under the controls. */
 .crumbs > * { flex: none; }
 .crumbs > .crumb, .crumbs > .title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topbar[data-drop~="crumb"] .crumbs .up { display: none; }
-.topbar[data-drop~="rings"] .present .ring-btn { display: none; }
-.topbar[data-drop~="rings"] .present .ring-stack { display: inline-grid; }
 /* Folded to “Demo”, the whole sentence is still read. */
 .topbar[data-drop~="demo"] .demo-note .demo-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .topbar[data-drop~="demo"] .demo-note .demo-short { display: inline; }
@@ -912,10 +852,6 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   /* Under the top bar, so its Work button and ⋯ stay in reach while the pane covers the conversation. */
   .rpane { width: 100%; border-left: 0; }
   .has-panel .main { margin-right: 0; }
-  .ov { padding: 14px 12px 32px; }
-  .ov-grid { grid-template-columns: 1fr; }
-  .ov-row { grid-template-columns: 30px minmax(0, 1fr) auto auto; }
-  .ov-row .ov-row-last { grid-column: 2 / -1; grid-row: 2; }
   .toasts { left: 12px; right: 12px; width: auto; top: 108px; }
   .toasts.bottom { left: 12px; right: 12px; transform: none; }
   .hovercard { width: calc(100vw - 24px); left: 12px !important; }
@@ -1018,7 +954,6 @@ html.pb-sandbox body { margin: 0; }
 .offline-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
 .outbox { display: flex; flex-direction: column; gap: 4px; }
 .drop-hint { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: var(--overlay); border: 2px dashed var(--accent); border-radius: 8px; font-weight: 600; }
-.ov-empty { padding: 32px; text-align: center; color: var(--dim); border: 1px dashed var(--line); border-radius: 8px; }
 .menu button.mi { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; width: 100%; color: var(--text); }
 .menu button.mi:hover, .menu button.mi.active, .menu button.mi:focus-visible { border-color: var(--accent); background: var(--sunk); outline: none; }
 .menu .mi .i, .menu .mi pb-ring { flex: none; }
@@ -1032,7 +967,6 @@ html.pb-sandbox body { margin: 0; }
 .rail button.row { border: 1px solid transparent; color: var(--text); }
 .rail button.row:hover { border-color: var(--line); background: var(--panel); }
 .block-head > .i { flex: none; }
-.ov-col .oc-sec p { margin: 0; }
 button.toggle { all: unset; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; border-radius: 6px; }
 button.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button.toggle[disabled] { cursor: default; opacity: .8; }
@@ -1212,7 +1146,10 @@ code.wc-name { font-size: 12px; }
 
 .agents-sec h2.label { margin: 0; }
 .agent-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.agent-btn { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
+/* The ring beside the name, a button of its own while its agent needs you (#320); the name opens the panel. */
+.agent-line { display: flex; align-items: center; gap: 2px; }
+.agent-line > .ring-slot { padding-left: 8px; }
+.agent-btn { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; min-height: 40px; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
   background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .agent-btn:hover, .agent-btn[aria-expanded="true"] { border-color: var(--line); background: var(--panel); }
 .agent-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

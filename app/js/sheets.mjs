@@ -1216,7 +1216,6 @@ export function openPalette() {
         icon: 'thread',
         run: () => navigate(`#/t/${t.id}`),
       })),
-    { label: 'Overview', sub: 'All live sessions', icon: 'agent', run: () => navigate('#/') },
     { label: 'New agent', sub: 'From a boilerplate', icon: 'plus', run: () => openNewAgent({}) },
     { label: 'Settings', sub: 'Mode, personas, projects', icon: 'gear', run: () => openSettings() },
     ...['system', 'light', 'dark'].map((m) => ({
