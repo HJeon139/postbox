@@ -23,7 +23,7 @@ Each message an app sends shows in your voice (“Sent from Spam: …”) and st
 
 ## Steps to reproduce
 
-1. Run `node tools/checks/app-send.mjs`. It clicks an app’s button 6 times with real input, checks the card, and presses Allow. Every line should say PASS.
+1. Run `npx playwright test app-send` (`tests/browser/app-send.spec.mjs`). It clicks an app’s button 6 times with real input, checks the card, and presses Allow. Every test should pass.
 2. By hand: run the demo (`node tools/demo.mjs --port 4180`), open <http://127.0.0.1:4180/>, and let “Corpus explorer” show its app.
 3. Send 6 events the way a script would: `for i in 1 2 3 4 5 6; do curl -s -X POST http://127.0.0.1:4180/api/apps/corpus-explorer/event -H 'content-type: application/json' -d "{\"action\":\"ping\",\"values\":{\"summary\":\"Ping $i\"}}"; echo; done`.
 4. Answer the card with the keyboard (Tab to Allow, then Enter). Repeat step 3, reload the page, restart the server, and answer Don’t allow.

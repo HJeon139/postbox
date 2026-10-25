@@ -148,7 +148,7 @@ addEventListener('message', async (e) => {
 //
 // 2. The frame got your keyboard rightfully. A frame can focus itself without a gesture (on load, while you type
 //    in the composer, right after you click another app), and then your key presses really happen in it, which
-//    passes 1. Measured in headless Chrome (tools/checks/app-send.mjs), the page sees no pointer events, and no
+//    passes 1. Measured in headless Chrome (tests/browser/app-send.spec.mjs), the page sees no pointer events, and no
 //    :hover, when the pointer moves over a frame, so it can’t tell a click into a frame from a steal. So frames
 //    take no pointer events until the pointer is over them (CSS: iframe.app-iframe:not(.live)): over a frame,
 //    the pointer is over this page, which sees it and makes that frame live. A frame may hold focus only if
