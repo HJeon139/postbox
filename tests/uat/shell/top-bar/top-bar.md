@@ -34,7 +34,7 @@ It answers “where am I, who is here, and what needs me?” from anywhere: the 
 6. Press ⌃J while two agents in different conversations need you, from a conversation whose agent needs you, then again. Click a waiting agent’s ring.
 7. Add two more agents to “Corpus planning” (⋯ › Add an agent…), so it has four. Narrow the window from full width to its narrowest, then widen it again.
 
-**Pass if:** Every item above behaves as described, and the rings change within a second of the agent’s state. The demo banner shows on every view. In step 7, the top bar never overflows, every agent is reachable from a ring or the stack, the parts drop and come back in the order above, and ⋯ lists each agent’s backend, model, effort and state at every width. `node tools/check-header.mjs`, `node tools/check-work-pane.mjs` and `node tools/checks/needs-nav.mjs` pass.
+**Pass if:** Every item above behaves as described, and the rings change within a second of the agent’s state. The demo banner shows on every view. In step 7, the top bar never overflows, every agent is reachable from a ring or the stack, the parts drop and come back in the order above, and ⋯ lists each agent’s backend, model, effort and state at every width. `node tools/check-header.mjs`, and `node tools/check-work-pane.mjs` pass, and so does `npx playwright test needs-nav`.
 
 ## Related
 

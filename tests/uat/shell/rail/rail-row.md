@@ -23,7 +23,7 @@ One glance tells you who is in a conversation and what they are doing.
 3. Leave the conversation and let an agent finish; check the unread badge.
 4. Get two agents in a room to ask you something, then open another conversation. Click one agent’s ring in the room’s row, then come back and click the row’s name.
 
-**Pass if:** The ring and status word follow the agent’s state, and the badge clears when you open the conversation. In step 4, the ring lands on that agent’s ask and the name on the one that asked first, each focused and outlined. `node tools/checks/needs-nav.mjs` passes.
+**Pass if:** The ring and status word follow the agent’s state, and the badge clears when you open the conversation. In step 4, the ring lands on that agent’s ask and the name on the one that asked first, each focused and outlined. `npx playwright test needs-nav` passes.
 
 ## Related
 

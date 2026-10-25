@@ -9,10 +9,10 @@ on:
 permissions:
   contents: read
 
-# A new push to a pull request replaces its run still in progress. A push to main gets a group of its own, so none is
-# cancelled (the example in GitHub’s workflow syntax docs, under concurrency).
+# A new push to a pull request replaces its run still in progress. Keyed on the pull request’s number, not its branch’s
+# name, so two forks' branches of the same name don't cancel each other. A push to main gets a group of its own.
 concurrency:
-  group: check-${{ github.head_ref || github.run_id }}
+  group: check-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -50,6 +50,9 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The base branch too, for the specs a pull request adds or changes (--only-changed, below).
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -75,9 +78,34 @@ jobs:
       - name: Headless Chrome checks, with the server’s events late
         if: success() || failure()
         run: CHROME="$(command -v google-chrome)" npm run check:browser -- --jobs 4 --lag 300 --logs check-logs/lag
+      # The browser specs on Playwright Test (#303), on the Chromium build its version pins.
+      - name: Install Playwright’s Chromium
+        if: success() || failure()
+        run: npx playwright install --with-deps chromium
+      - name: Browser specs
+        if: success() || failure()
+        run: npx playwright test
+      - name: Browser specs, with the server’s events late
+        if: success() || failure()
+        run: npx playwright test
+        env:
+          POSTBOX_STREAM_LAG: 300
+      # A spec a pull request adds or changes runs ten times, with the events late, before it counts: one failure fails it.
+      - name: New and changed specs, ten times
+        if: github.event_name == 'pull_request' && (success() || failure())
+        run: npx playwright test --only-changed="origin/$BASE_REF" --repeat-each=10 --pass-with-no-tests
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          POSTBOX_STREAM_LAG: 300
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: check-logs
           path: check-logs/
+          retention-days: 14
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
           retention-days: 14

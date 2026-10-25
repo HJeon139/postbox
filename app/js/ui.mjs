@@ -426,7 +426,7 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
     if (!menu.contains(e.target) && !b?.contains(e.target)) closeMenu();
   };
   menu.addEventListener('keydown', onKey);
-  setTimeout(() => document.addEventListener('mousedown', onDown), 0);
+  setTimeout(() => menu.isConnected && document.addEventListener('mousedown', onDown), 0); // not once closed: it’d close later menus
   openAnchor = button;
   openMenuEl = () => {
     menu.remove();
