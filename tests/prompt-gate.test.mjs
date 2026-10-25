@@ -39,6 +39,8 @@ const NOT_SURFACE = {
   'server/adapters/claude-stream.mjs': 'describeTool() and isQuietTool() label tool calls for the person’s transcript',
   'server/adapters/folder.mjs': 'agentFolder(), a path',
   'server/adapters/process-group.mjs': 'process control',
+  'server/adapters/adapter.mjs': 'kiro-cli.mjs takes checkRemoteContext(), which checks a host turn’s context (#120)',
+  'server/adapters/kiro-cli-models.mjs': 'kiro-cli.mjs takes the CLI’s path and its model ids (#120 moved them there)',
 };
 
 test('every module the rendered text comes from is prompt surface, or excused with a reason', () => {
