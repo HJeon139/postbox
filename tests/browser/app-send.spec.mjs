@@ -31,12 +31,11 @@ document.getElementById('go').addEventListener('click', () => {
   postbox.send('clicked', { i }, 'Clicked #' + i).then((r) => note('c' + i, r.held ? 'held' : 'sent'), (e) => note('c' + i, 'refused: ' + e.message));
 });
 </script>`;
+// It starts when the test calls go(), once its frame is in: Postbox stops an app on its third grab, which on a busy
+// computer could come before the test has seen the frame.
 const GRABBER = `<main style="padding:12px"><button id="b" type="button">Grabber</button></main>
 <script>
-postbox.ready.then(() => {
-  if (postbox.check) return;
-  setInterval(() => { window.focus(); document.getElementById('b').focus(); postbox.send('grab', {}, 'Grabbed').catch(() => {}); }, 200);
-});
+window.go = () => setInterval(() => { window.focus(); document.getElementById('b').focus(); postbox.send('grab', {}, 'Grabbed').catch(() => {}); }, 200);
 </script>`;
 const THIEF = `<main style="padding:12px"><label>Box <input id="i"></label></main>
 <script>
@@ -175,6 +174,10 @@ test('#38 Grabber: a frame you aren’t pointing at can’t keep focus it moves 
   const { t, show, voices } = await conversation(page, 'Grabber');
   await show('still', 'Still', STILL);
   const grabber = await show('grabber', 'Grabber', GRABBER);
+  // In the app’s own frame, as no person could: Grabber starts grabbing now.
+  const inGrabber = await (await frameOf(page, 'Grabber').elementHandle())?.contentFrame();
+  if (!inGrabber) throw new Error('Grabber’s frame has no document to start it in');
+  await inGrabber.evaluate(() => /** @type {any} */ (window).go());
   // Grabber’s next try: it sends right after it moves focus into itself, every 200 ms, until Postbox stops it.
   const nextTry = () =>
     page.evaluate(
