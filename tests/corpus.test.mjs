@@ -121,7 +121,7 @@ test('#47: add_dataset reads only from .postbox/datasets/, by path or link, and 
   assert.match((await tools.add_dataset({ id: 'moby', path: 'x.jsonl' })).message, /is a book in the corpus/);
   await writeFile(join(dsDir, 'broken.jsonl'), '{"text":"ok"}\n{oops');
   assert.match((await tools.add_dataset({ id: 'x', path: 'broken.jsonl' })).message, /line 2 isn’t JSON/);
-  assert.deepEqual(store.state.datasets, {});
+  assert.deepEqual(Object.keys(store.state.datasets), []);
   assert.equal(rt.corpus.stats().books.length, 1);
 });
 
@@ -137,7 +137,7 @@ test('#351: add_dataset refuses a .postbox or datasets folder that links out of 
     await symlink(outside, join(root, linked));
     const { rt, store, tools } = await setup(root);
     assert.match((await tools.add_dataset({ id: 'x', path: 'x.jsonl' })).message, /outside the project’s folder/, linked);
-    assert.deepEqual(store.state.datasets, {});
+    assert.deepEqual(Object.keys(store.state.datasets), []);
     assert.equal(rt.corpus.stats().books.length, 1);
   }
 });
