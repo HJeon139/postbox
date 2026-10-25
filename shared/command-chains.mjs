@@ -12,12 +12,16 @@
 // $( ) does, and a heredoc’s body is commands when a shell is on its line (bash <<EOF, cat <<EOF | bash), which also
 // chains the command. Where the scan can’t be sure, it reads the text as commands too, so whatever might run there is
 // still checked: after a quote that never ends, which the shell refuses; a body with no delimiter line, since its <<
-// may have been a shift; and, nested past MAX_DEPTH, every piece between operators.
+// may have been a shift; and, nested past MAX_DEPTH or past its work budget, every piece between operators.
 
 // Commands that run what they read: a heredoc’s body on their line is commands, not data.
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'source', '.']);
 // How deep substitutions and shell bodies may nest before read() gives up on the shell's reading for a coarse split.
 const MAX_DEPTH = 64;
+// How many characters a scan may read, per character of the command, before it gives up the same way. A quote that
+// never ends is read again from its start, and so is each one nested in it, so "$( repeated doubles the work at each
+// level: 100 characters of it ran out of memory. A command the shell reads is read a few times over at most.
+const WORK_PER_CHAR = 50;
 const TOO_DEEP = new RangeError('The command nests too deep to read.');
 
 /** Where the text at k goes on, past any backslash-newlines. */
@@ -35,13 +39,13 @@ function before(cmd, k) {
 }
 
 /**
- * @typedef {{ parts: string[], chained: boolean, depth: number }} Found  the commands a scan found, whether it chains,
- *   and how deep in substitutions and shell bodies the scan is
+ * @typedef {{ parts: string[], chained: boolean, depth: number, work: { left: number } }} Found  the commands a scan
+ *   found, whether it chains, how deep in substitutions and shell bodies the scan is, and how much more it may read
  */
 
 /** @param {string} cmd @returns {Found} */
 function read(cmd) {
-  const found = { parts: [], chained: false, depth: 0 };
+  const found = { parts: [], chained: false, depth: 0, work: { left: WORK_PER_CHAR * (cmd.length + 100) } };
   try {
     scan(cmd, 0, found, false);
     return found;
@@ -55,6 +59,7 @@ function read(cmd) {
         .filter(Boolean),
       chained: true,
       depth: 0,
+      work: { left: 0 },
     };
   }
 }
@@ -89,6 +94,7 @@ function scan(cmd, from, found, sub, line = from) {
   const s = { cmd, found, sub, quote: '', open: 0, arith: 0, braces: 0, parens: 0, start: from, line, last: -1, heredocs: [], done: false };
   let i = from;
   for (; i < cmd.length; i++) {
+    if (--found.work.left < 0) throw TOO_DEEP;
     i = quoting(s, i) ?? operator(s, i);
     if (s.done) break;
   }
@@ -172,10 +178,9 @@ function operator(s, i) {
   return i;
 }
 
-/** Adds a command’s text to found, without the blanks and backslash-newlines around it. */
+/** Adds a command’s text to found, without its backslash-newlines (which the shell takes out) or the blanks around it. */
 function add(found, text) {
-  let part = text.trim();
-  while (part.startsWith('\\\n')) part = part.slice(2).trim();
+  const part = unjoin(text).trim();
   if (part) found.parts.push(part);
 }
 

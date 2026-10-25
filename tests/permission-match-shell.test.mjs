@@ -48,6 +48,7 @@ const ROWS = [
   [`echo a\\>|${W}`, true], // an escaped > is no redirect, so | pipes
   [`echo "$( (true); ${W} )"`, true],
   [`(( x = 1 << 2 ))\n${W}`, true],
+  [`echo hi && ${W.replace(' create', ' \\\ncreate')}`, true], // the shell takes a backslash-newline out of a word
 ];
 
 test('a write is found wherever the shell runs it, and not in a heredoc’s body, which is data', () => {
@@ -74,6 +75,11 @@ test('the parts are the commands the shell runs, each command substitution’s t
   // And nested deeper than the scan goes, each piece between operators is a part.
   assert.ok(isWriteCall('Bash', { command: `echo ${'$('.repeat(100)}${W}` }));
   assert.ok(isWriteCall('Bash', { command: `${'bash <<E\n'.repeat(100)}${W}` }));
+  // A quote that never ends is read again from its start, so each "$( nested in one doubled the work: 26 of them ran
+  // out of memory. Past its work budget, the scan splits between operators too.
+  const t = Date.now();
+  assert.ok(isWriteCall('Bash', { command: `${'"$('.repeat(40)}${W}${')'.repeat(40)}` }));
+  assert.ok(Date.now() - t < 1000, `took ${Date.now() - t} ms`);
 });
 
 // As above, run under bash: true where it printed RAN, so the shell ran a second command.
