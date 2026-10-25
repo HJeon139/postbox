@@ -13,7 +13,7 @@ The root `AGENTS.md` applies here too.
 - Share setup, but keep each action and its assertions inline in the test.
 - Check that the suite’s test count went up by the tests you added.
 
-A test that must run a real process (npm, git, an installed postbox) goes in `tests/process/*.test.mjs` instead, which `npm run test:process` runs without the guard, and `npm run check` runs too. It works only in temp folders it makes and removes, on a port of its own, and stays a few seconds long.
+A test that must run a real process (npm, git, an installed postbox) goes in `tests/process/*.test.mjs` instead, which `npm run test:process` runs without the guard, and `npm run check` runs too. It writes only to temp folders it makes and removes, and to nothing else it doesn’t put back (`npm pack` writes and removes `server/build-commit.txt` in the clone, and npm reads your own `~/.npmrc`). It runs on a port of its own, with a timeout on every process it starts, and stays a few seconds long.
 
 ## Browser specs
 
@@ -22,6 +22,7 @@ Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/
 - Wait with web-first assertions (`expect(locator)…`), `expect.poll` or `expect(…).toPass`, never for a fixed time. The `no-fixed-waits` Biome rule fails `page.waitForTimeout` and `setTimeout` in a spec.
 - Find elements by role or name where the page gives one, else by the attribute the code sets (`data-key`, `data-session`). A locator that matches two elements is a question to answer, not to work around with `.first()`.
 - Click and type as a person does, through Playwright. Never `element.click()` in the page: it skips the mouse, and a real bug hid behind one (#307).
+- Read a position or a size only once it has stopped changing: `settled(page)` waits for the layout to hold still for two frames, then measure once (#298).
 - Measure what fits a narrow window against `windowWidth(page)`, never `innerWidth`. On a phone (`isMobile`), a page that overflows widens `innerWidth` to fit, so a check against it can’t fail. Settings’ tabs ran past a 375 px window behind one.
 - A test that holds what were separate checks makes its expects soft (`expect.soft`), so each reports whichever fails first.
 - Tests that don’t depend on each other stay independent; a story whose steps build on each other is one test with `test.step`s and `expect.soft`.
