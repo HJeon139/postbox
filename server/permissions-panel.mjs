@@ -70,6 +70,8 @@ export async function permissionsView(rt, who) {
       permissionMode: persona.permissionMode ?? 'auto',
       usesHostSetup,
       canPublish,
+      // On a host (#120), its Claude Code reads the settings files there, not the ones this panel reads here.
+      host: persona.remote?.hostId ? (rt.s.hosts?.[persona.remote.hostId]?.name ?? 'a host') : null,
     },
     sessionId: se?.id ?? null,
     projectId: project?.id ?? null,

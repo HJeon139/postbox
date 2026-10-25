@@ -46,6 +46,19 @@ const TOOLS = [
 const EXAMPLES = ['Bash(npm test)', 'WebFetch(https://example.com/x)', 'Read(src/a.js)', 'mcp__github__create_issue'];
 
 /**
+ * For an agent on a host (#120): the rules listed are this computer’s files, and its Claude Code reads the host’s.
+ * @param {any} view  permissionsView’s
+ */
+function hostNote({ persona: p, readsRules }) {
+  if (!readsRules || !p.host) return null;
+  const user = p.usesHostSetup ? ', and your ~/.claude/settings.json there' : '';
+  return h(
+    'p.help',
+    `@${p.handle} runs on ${p.host}, where Claude Code reads the agent folder’s settings files there${user}, not the ones listed here from this computer. Its mode, its Tools and this conversation’s rules still apply.`,
+  );
+}
+
+/**
  * Opens the panel. In a room, it starts on the agent the composer replies to, and offers the others.
  * @param {{ threadId?: string|null, sessionId?: string|null, personaId?: string|null, projectId?: string|null, focus?: 'mcp'|'folders'|null }} who
  */
@@ -132,7 +145,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           )
         : null,
       status ? h('p.small.perm-status', { role: 'status' }, status) : null,
-      view.real ? null : h('p.help', `@${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
+      view.real ? hostNote(view) : h('p.help', `@${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
       // A backend that doesn’t read Claude Code’s rules or MCP config (the Kiro CLI, #117) shows only what it honors.
       view.real && !view.readsRules
         ? h(
