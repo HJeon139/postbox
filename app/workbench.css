@@ -419,7 +419,7 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .btn.stop::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
 .btn.danger:hover { border-color: var(--alert); }
 .btn.danger .i { color: var(--alert-ink); }
-.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.btn[disabled], .chip[disabled] { opacity: .5; cursor: not-allowed; }
 .btn.is-hover { border-color: var(--accent); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }

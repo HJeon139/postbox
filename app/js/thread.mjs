@@ -21,7 +21,7 @@ import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
+import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, kiroStep, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
@@ -1212,7 +1212,7 @@ export function mountComposer(threadId, { side = false } = {}) {
         { label: 'Add to the corpus', desc: 'Index a text file for search', icon: 'books', run: () => corpusFile.click() },
         'hr',
         { heading: 'New agent' },
-        { label: 'From a boilerplate', desc: 'Researcher, Critic, Developer, Indexer, or one you saved', icon: 'agent', run: () => openNewAgent({ threadId }) },
+        { label: 'From a boilerplate', desc: boilerplateDesc(), icon: 'agent', run: () => openNewAgent({ threadId }) },
         ...((client.config.adapters ?? []).includes('claude-code')
           ? [{ label: 'Attach a Claude Code session', desc: 'One you started in a terminal', icon: 'link', run: () => openAttachSession(t?.projectId) }]
           : []),

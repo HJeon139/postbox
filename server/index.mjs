@@ -28,7 +28,7 @@ import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { DEFAULT_MODEL, HOP_LIMIT, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
-import { KNOWN_TOOLS, seed } from './seed.mjs';
+import { KNOWN_TOOLS, seed, toBoilerplate } from './seed.mjs';
 import { decodePath, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
@@ -415,8 +415,7 @@ export async function start({
       const p = rt.createPersona(body);
       if (body.join?.threadId) rt.ensureSession(rt.lineage(body.join.threadId).at(-1), p.id, { brief: 'You were just created and added to this thread.' });
       else if (body.join?.projectId) rt.createThread({ projectId: body.join.projectId, title: body.join.title || `With @${p.handle}`, personaIds: [p.id] });
-      if (body.saveAsBoilerplate)
-        store.emit('boilerplate', { id: newId('bp'), name: `@${p.handle}`, description: p.description, instructions: p.instructions, tools: p.tools });
+      if (body.saveAsBoilerplate) store.emit('boilerplate', toBoilerplate(p));
       return send(res, 201, p);
     }
     if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updatePersona(m[1], body));

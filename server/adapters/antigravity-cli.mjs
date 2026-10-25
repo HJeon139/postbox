@@ -46,6 +46,7 @@ import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
@@ -125,8 +126,7 @@ export function modelIds(text) {
   return [...new Set(ids)].slice(0, 60);
 }
 
-/** The model an agy persona runs when it names none, as #143 asks. */
-export const AGY_DEFAULT_MODEL = 'gemini-3.8-flash-high';
+export { AGY_DEFAULT_MODEL };
 
 /**
  * The model to pass. A persona that names none gets Postbox’s default, Claude’s, which agy doesn’t offer: that
