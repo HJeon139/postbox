@@ -138,8 +138,8 @@ async function scheduledWake(page, room, an, idle) {
 test('#135 a later turn of the same agent has its own sender line with its time and what woke it, and wakes from two turns each have one', async ({ page }) => {
   const { rt } = app;
   // The mixed-room UAT run (22 October 2026), step 6: @critic replied, then spoke again in a new turn after @researcher
-  // answered it in their side thread, and the second message showed with no sender line. Here @analyst wakes
-  // @reviewer, which answers in the side thread, and a second answer comes back as endTurn sends one (saidIn).
+  // answered it, and the second message showed with no sender line. Here @analyst wakes @reviewer, which answers in the
+  // conversation (#372), and @reviewer’s @-mention wakes @analyst again.
   const room = rt.createThread({
     projectId: Object.values(rt.s.projects)[0].id,
     title: 'Turn checks',
@@ -149,8 +149,7 @@ test('#135 a later turn of the same agent has its own sender line with its time 
   const idle = () => expect.poll(() => rt.turns.size + rt.exiting.size, { message: 'the agents to finish', timeout: 20_000 }).toBe(0);
   rt.agentWake(an.id, 'reviewer', 'Check revision 3.');
   await idle();
-  const side = Object.values(rt.s.threads).find((x) => x.kind === 'side' && x.parentId === room.id);
-  rt.deliver(an.id, { kind: 'agent', from: '@reviewer', text: 'Revision 3 has one arithmetic gap.', saidIn: side.id });
+  rt.deliver(an.id, { kind: 'agent', from: '@reviewer', text: '@analyst revision 3 has one arithmetic gap.' });
   await idle();
   // One turn of two items, as a reply split by a block is: they keep one sender line.
   for (const text of ['Part one.', 'Part two.'])
@@ -159,14 +158,14 @@ test('#135 a later turn of the same agent has its own sender line with its time 
   await test.step('the next turn has its own sender line, its time and what woke it; one turn’s two items share one', async () => {
     await expect.poll(async () => (await senders(page, room.id)).length).toBeGreaterThanOrEqual(4);
     const [, second, one, two] = (await senders(page, room.id)).slice(-4);
-    expect(second).toMatch(/^@analyst.*after @reviewer replied in a side thread.*\[time\]$/);
+    expect(second).toMatch(/^@analyst.*woken by @reviewer.*\[time\]$/);
     expect([one, two]).toEqual([expect.stringMatching(/^@analyst.*\[time\]$/), '']);
   });
   await test.step('a turn a scheduled wake started says so on its sender line', () => scheduledWake(page, room, an, idle));
-  await test.step('two wakes from two turns each have a sender line in the side thread, and one turn’s two share it', async () => {
-    // As agentWake records them while @reviewer was busy: each says the turn it came from.
+  await test.step('two wakes from two turns each have a sender line in the conversation, and one turn’s two share it', async () => {
+    // As agentWake records them while @reviewer was busy, in the conversation since #372: each says the turn it came from.
     for (const [n, text] of ['Check the totals.', 'And the dates, please.', 'And the names.'].entries())
-      rt.addItem(side.id, {
+      rt.addItem(room.id, {
         kind: 'agent',
         sessionId: an.id,
         personaId: an.personaId,
@@ -176,9 +175,8 @@ test('#135 a later turn of the same agent has its own sender line with its time 
         hop: n + 1,
         fromTurnId: `turn_135_${Math.min(n, 1)}`,
       });
-    await open(page, `#/t/${room.id}/side/${side.id}`);
-    await expect(page.locator(`.transcript[data-thread="${side.id}"] .md p`, { hasText: 'And the names.' })).toBeVisible();
-    const wakes = (await senders(page, side.id)).slice(-3);
+    await expect(page.locator(`.transcript[data-thread="${room.id}"] .md p`, { hasText: 'And the names.' })).toBeVisible();
+    const wakes = (await senders(page, room.id)).slice(-3);
     expect(wakes).toEqual([expect.stringMatching(/^@analyst/), expect.stringMatching(/^@analyst/), '']);
   });
 });

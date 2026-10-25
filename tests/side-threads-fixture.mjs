@@ -1,9 +1,9 @@
-// What the side-thread tests share: a runtime with three personas and a conversation, and an adapter the test
-// scripts per call.
+// What the side-thread tests share: a runtime with three personas and a conversation, an adapter the test scripts per
+// call, and a side thread as Postbox made them before #372, which tests build to read one.
 
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
-import { Store } from '../server/store.mjs';
+import { newId, Store } from '../server/store.mjs';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -62,5 +62,40 @@ export function held() {
     },
   };
 }
-export const sideOf = (store, t) => Object.values(store.state.threads).find((x) => x.kind === 'side' && x.parentId === t.id);
 export const sessionsOfPersona = (store, personaId) => Object.values(store.state.sessions).filter((x) => x.personaId === personaId);
+
+/**
+ * A side thread as a wake from @alpha to @beta opened one before #372: its line in the conversation, then the wake and
+ * @beta’s answer in it, as many as texts has, taking turns. Side threads are history now, read but not written in.
+ */
+export function oldSide({ rt, t, alpha, beta }, texts = ['Which editions?', 'The 1908 one differs.']) {
+  const side = rt.putThread({
+    id: newId('th'),
+    projectId: t.projectId,
+    title: '@alpha ↔ @beta',
+    kind: 'side',
+    parentId: t.id,
+    pair: 'alpha|beta',
+    woke: 'beta',
+    members: [],
+    lastSpeaker: null,
+    hops: 0,
+    queue: [],
+    createdAt: Date.now(),
+    archived: false,
+  });
+  rt.addItem(t.id, { kind: 'sidelink', sideThreadId: side.id, from: 'alpha', to: 'beta', count: 0 });
+  texts.forEach((text, i) => {
+    const se = i % 2 ? beta : alpha;
+    rt.addItem(side.id, {
+      kind: 'agent',
+      sessionId: se.id,
+      personaId: se.personaId,
+      handle: se.handle,
+      text,
+      status: 'done',
+      ...(i % 2 ? {} : { hop: i / 2 + 1 }),
+    });
+  });
+  return rt.s.threads[side.id];
+}

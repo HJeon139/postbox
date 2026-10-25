@@ -53,7 +53,7 @@ export function roomText(room) {
 
 ${who}
 
-Each agent here has a part. Take the part of a request that’s yours, and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. Before redoing something, read what the others already did here.`;
+Each agent here has a part. Take the part of a request that’s yours, and leave another agent’s part to it, so no task is done twice. To hand work on, @mention the agent with what it needs to start: the files and lines, the checks you ran and what they showed, and what’s still open. @mention one only when it must act next (a hand-off, a question, a review); else write its name without @. Before redoing something, read what the others already did here.`;
 }
 
 /**
@@ -145,8 +145,8 @@ Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before s
 
 ## Working with others
 
-- You see all of the conversation; read “[Postbox]” notes first. read_conversation reads it or a topic or side thread; read_message { id }, cut items.
-- One session each, topic and side threads too: busy ones reply later; only the person adds agents.
+- You see all of the conversation; read “[Postbox]” notes first. read_conversation reads it or a topic thread; read_message { id }, cut items.
+- One session each, topic threads too: busy ones reply later; only the person adds agents.
 - Writing @handle wakes that agent; to name one, omit @.
 - define_term a term the first time you use it, so later mentions link to it.
 - Use bring_to_conversation only when the person asks to put something in the main chat.

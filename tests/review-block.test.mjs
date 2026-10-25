@@ -242,18 +242,18 @@ test('#133: a revision that would push a reviewer’s kept thread past 200 threa
   );
 });
 
-test('#133: a comment from a side thread lands on the block in the room', async () => {
-  const { rt, store, adapter, t, item } = await shown();
+test('#133, #372: a comment from a topic thread, by an agent woken there, lands on the block in the room', async () => {
+  const { rt, store, adapter, t, theirs, item } = await shown();
   let said;
   adapter.next.push(async (c) => c.tools.wake_agent({ handle: 'critic', message: 'Review my plan, please.' }));
   adapter.next.push(async (c) => {
     said = c.tools.review_block({ blockId: 'plan', comments: [{ line: 1, text: 'A clearer title.' }] });
     c.text('Commented.');
   });
-  rt.sendMessage(t.id, { text: '@researcher ask critic' });
+  const { threadId: topic } = rt.startTopic(t.id, store.items(t.id).find((i) => i.kind === 'user').id);
+  rt.sendMessage(topic, { text: '@researcher ask critic' });
   await settle(rt);
-  const side = Object.values(store.state.threads).find((x) => x.kind === 'side');
-  assert.ok(side, 'the wake opened a side thread');
+  assert.ok(store.items(topic).some((i) => i.sessionId === theirs.id && i.text === 'Commented.'));
   assert.equal(said?.ok, true, said?.message);
   assert.deepEqual(item().block.threads?.[0]?.comments, [{ author: '@critic', text: 'A clearer title.' }]);
 });
