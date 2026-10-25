@@ -34,7 +34,13 @@ export async function closeAll(kit) {
 
 /** Types into a field as a person does, replacing what it held. @param {any} kit */
 async function typeOver(kit, sel, value) {
-  await kit.clickAt(`document.querySelector(${J(sel)})`, sel);
+  // A host’s status arriving late can still move the panel as the click lands, so the click misses the field and
+  // the text would go nowhere: click again until the field has focus.
+  for (let i = 0; ; i++) {
+    await kit.clickAt(`document.querySelector(${J(sel)})`, sel);
+    if (await kit.ev(`document.activeElement === document.querySelector(${J(sel)})`)) break;
+    if (i === 4) throw new Error(`Clicking ${sel} didn’t give it focus.`);
+  }
   await kit.ev(`(() => { const el = document.querySelector(${J(sel)}); el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   if (value !== '') await kit.page.send('Input.insertText', { text: String(value) });
   // Leaving it checks it, as a person tabbing on does: its error shows now, not as the next click lands, when it
