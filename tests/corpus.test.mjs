@@ -150,3 +150,20 @@ test('#47: datasets are loaded again after a restart, from where they were', asy
   assert.equal(corpus.read('claims:c1').text, 'Vitamin D reduces fractures.');
   assert.equal(corpus.search('vitamin', { books: ['claims'] }).length, 1);
 });
+
+test('#351: corpus_search returns 1 to 50 results whatever k says, and reads at most 50 book ids', async () => {
+  const { rt, corpus, tools } = await setup();
+  corpus.addRecords('many', parseDataset(jsonl(Array.from({ length: 120 }, (_, i) => ({ id: `r${i}`, text: `Whale sighting number ${i}.` })))), {
+    title: 'Many',
+    author: '@researcher',
+  });
+  corpus.reindex();
+  const found = (args) => tools.corpus_search({ query: 'whale sighting', books: ['many'], ...args }).results.length;
+  assert.deepEqual(
+    [-1, -200, 0.5, 2.9, 1000, 'x'].map((k) => found({ k })),
+    [1, 1, 1, 2, 50, 12],
+  );
+  // A list of ids past 50 is read only to its 50th, as an app’s query through the bridge is.
+  assert.equal(found({ books: [...Array.from({ length: 50 }, (_, i) => `b${i}`), 'many'] }), 0);
+  assert.equal(hostTool(rt, 'corpus.search', { query: 'whale sighting', books: ['many'], k: -1 }).length, 1);
+});

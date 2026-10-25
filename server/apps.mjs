@@ -240,7 +240,9 @@ export function hostTool(rt, tool, args = {}) {
     case 'corpus.search': {
       const q = String(args.query ?? '').slice(0, 200);
       const mode = ['both', 'lexical', 'semantic'].includes(args.mode) ? args.mode : 'both';
-      return rt.corpus.search(q, { mode, k: Math.min(50, +args.k || 12), books: Array.isArray(args.books) ? args.books : undefined });
+      // k and books come from an agent or an app: 1 to 50 results, and the first 50 book ids (#351).
+      const k = Math.max(1, Math.min(50, Math.floor(+args.k || 12)));
+      return rt.corpus.search(q, { mode, k, books: Array.isArray(args.books) ? args.books.slice(0, 50) : undefined });
     }
     case 'corpus.read':
       return rt.corpus.read(String(args.id ?? ''));
