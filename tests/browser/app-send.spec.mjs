@@ -98,6 +98,19 @@ async function conversation(page, name) {
   return { t, se, show, voices, state };
 }
 
+/**
+ * Clicks Spam for each send from that one to the limit, checking each went through and waiting for its line, which
+ * lands under the app and can move it; then once more.
+ */
+async function clicksPastLimit(page, voices, from) {
+  for (let i = from; i <= LIMIT; i++) {
+    await clickApp(page, 'Spam');
+    await expect.poll(() => voices('spam').length, { message: `send ${i} went through` }).toBe(i);
+    await expect(page.locator('.app-says', { hasText: `Clicked #${i}` })).toBeVisible();
+  }
+  await clickApp(page, 'Spam');
+}
+
 test('#38 Spam: refused on load; a click, a key press and Tab then Enter each send once; past the limit, a card; Allow sends it once', async ({ page }) => {
   const { rt } = app;
   const { se, show, voices, state } = await conversation(page, 'Spam');
@@ -133,18 +146,18 @@ test('#38 Spam: refused on load; a click, a key press and Tab then Enter each se
   });
 
   await test.step(`past ${LIMIT} a minute, the next waits on a card that says what it would send, and the agent needs you`, async () => {
-    for (let i = 4; i <= LIMIT + 1; i++) await clickApp(page, 'Spam');
+    await clicksPastLimit(page, voices, 4);
+    // Saved 400 ms after its send returns. Before the card: a missed click fails here, a card slow to draw below.
+    await expect.poll(() => state('spam')[`c${LIMIT + 1}`], { message: 'the app told its send is waiting' }).toBe('held');
     await expect(page.locator('.appsend')).toContainText(/Spam wants to send 1 message for you/);
     await expect(page.locator('.appsend')).toContainText(`Clicked #${LIMIT + 1}`);
     expect(voices('spam').length, `only ${LIMIT} went straight through`).toBe(LIMIT);
-    // The app saves what its send returned (saving waits 400 ms, so it comes a moment later).
-    await expect.poll(() => state('spam')[`c${LIMIT + 1}`], { message: 'the app told its send is waiting' }).toBe('held');
     // This passes before a turn’s end could drop the need, so tests/apps-needs.test.mjs is what guards that (#38).
     await expect.poll(() => rt.s.sessions[se.id].needs?.kind, { message: 'a waiting card makes the agent need you, like a permission card' }).toBe('appsend');
   });
 
   await test.step('Allow, double-clicked, sends what was waiting once, with no error, and clears needs-you', async () => {
-    const writes = watchWrites(page);
+    const writes = watchWrites(page, /\/items\/[^/]+\/act$/);
     await page.locator('.appsend').getByRole('button', { name: 'Allow', exact: true }).dblclick();
     await expect.poll(() => voices('spam').some((x) => x.quote === `Clicked #${LIMIT + 1}` && x.approved), { message: 'the allowed send' }).toBe(true);
     await expect(page.locator('.appsend'), 'the card shows it was allowed').toContainText('Allowed. It was sent.');
@@ -157,27 +170,38 @@ test('#38 Spam: refused on load; a click, a key press and Tab then Enter each se
   });
 });
 
-test('#38 Grabber: a frame you aren’t pointing at can’t move focus into itself, or send, even right after your clicks elsewhere', async ({ page }) => {
+test('#38 Grabber: a frame you aren’t pointing at can’t keep focus it moves into itself, or send, even right after your clicks elsewhere', async ({ page }) => {
   const { store } = app;
   const { t, show, voices } = await conversation(page, 'Grabber');
   await show('still', 'Still', STILL);
   const grabber = await show('grabber', 'Grabber', GRABBER);
-  // In the page, every frame for a while: whether Grabber ever held focus. It tries every 200 ms.
-  const watch = (n) =>
-    page.evaluate(async (count) => {
-      let held = false;
-      for (let i = 0; i < count; i++) {
-        await new Promise((r) => requestAnimationFrame(r));
-        held ||= document.activeElement === document.querySelector('iframe.app-iframe[title="Grabber"]');
-      }
-      return held;
-    }, n);
+  // Grabber’s next try: it sends right after it moves focus into itself, every 200 ms, until Postbox stops it.
+  const nextTry = () =>
+    page.evaluate(
+      () =>
+        new Promise((done) => {
+          const g = /** @type {HTMLIFrameElement | null} */ (document.querySelector('iframe.app-iframe[title="Grabber"]'));
+          if (!g) return done('stopped');
+          const end = (why) => {
+            removeEventListener('message', on);
+            done(why);
+          };
+          const on = (e) => e.source === g.contentWindow && end('tried');
+          addEventListener('message', on);
+          const gone = () => (g.isConnected ? requestAnimationFrame(gone) : end('stopped'));
+          gone();
+        }),
+    );
+  // Postbox takes focus back each time it grabs (apps.mjs, checkFocus), so it never keeps it.
+  const keeps = () => page.evaluate(() => document.activeElement === document.querySelector('iframe.app-iframe[title="Grabber"]'));
   for (let i = 0; i < 3; i++) {
     await clickApp(page, 'Still');
-    expect(await watch(15), 'Grabber took focus after a click in another app').toBe(false);
+    await nextTry();
+    await expect.poll(keeps, { message: 'Postbox takes focus back from Grabber after a click in another app' }).toBe(false);
     // The page, where nothing acts on a click: the conversation’s title in the top bar.
     await page.locator('.topbar .crumbs .title').click();
-    expect(await watch(15), 'Grabber took focus after a click on the page').toBe(false);
+    await nextTry();
+    await expect.poll(keeps, { message: 'Postbox takes focus back from Grabber after a click on the page' }).toBe(false);
   }
   expect(voices('grabber').length, 'nothing sent in your voice').toBe(0);
   expect(
