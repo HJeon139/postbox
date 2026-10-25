@@ -1,0 +1,27 @@
+# Refuses a pull request that adds or changes a dependency with a known vulnerability, moderate or worse, whether it
+# ships or is only used to develop Postbox. See designs/architecture.md, “Code quality”. It compares GitHub’s
+# dependency graph of the base and the head, so it checks out and runs nothing from the pull request.
+name: dependency-review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to a pull request replaces its run still in progress, as in check.yml.
+concurrency:
+  group: dependency-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: No new dependency with a known vulnerability
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/dependency-review-action@v5.0.0
+        with:
+          fail-on-severity: moderate
+          # Development dependencies too: they run on contributors’ machines and in CI.
+          fail-on-scopes: runtime, development
