@@ -42,23 +42,34 @@ export async function codexApproval(ctx, msg) {
     const answer = await ctx.askPermission({
       tool: `mcp__${server}__elicitation`,
       summary: `respond to ${server}`,
-      // It asks the person for input, not for leave to act, so Run everything doesn’t answer it (#371).
-      kind: 'input',
       detail: String(p.message ?? 'The MCP server requests input.'),
       toolUseId: msg.id,
       suppressAlways: true,
     });
     return answer?.allow ? { action: 'accept', content: {} } : { action: 'decline' };
   }
-  const isCommand = msg.method === 'item/commandExecution/requestApproval';
-  const isFile = msg.method === 'item/fileChange/requestApproval';
-  if (isCommand || isFile) {
-    const summary = isFile ? 'change files' : 'run a command';
-    const detail =
-      [p.command ?? p.reason ?? p.networkApprovalContext?.host ?? p.grantRoot, p.cwd ? `Working directory: ${p.cwd}` : null].filter(Boolean).join('\n\n') ||
-      summary;
-    const answer = await ctx.askPermission({ tool: isFile ? 'Edit' : 'Bash', summary, detail, toolUseId: p.itemId, suppressAlways: true });
-    return { decision: answer?.allow ? 'accept' : 'decline' };
-  }
+  if (msg.method === 'item/commandExecution/requestApproval' || msg.method === 'item/fileChange/requestApproval') return sandboxApproval(ctx, msg);
   throw new Error(`Unsupported Codex app-server request: ${msg.method ?? 'unknown'}`);
+}
+
+/** A command or a file change Codex asks about for its own sandbox: a card, unless Run everything answers it (#371). */
+async function sandboxApproval(ctx, msg) {
+  const p = msg.params ?? {};
+  const isFile = msg.method === 'item/fileChange/requestApproval';
+  const summary = isFile ? 'change files' : 'run a command';
+  const detail =
+    [p.command ?? p.reason ?? p.networkApprovalContext?.host ?? p.grantRoot, p.cwd ? `Working directory: ${p.cwd}` : null].filter(Boolean).join('\n\n') ||
+    summary;
+  // Its own sandbox asks, which no Postbox rule forced: Run everything set mid-turn answers them (#371). The command
+  // goes along so a write outside Postbox still gets its card; it isn’t input, which Codex couldn’t run edited.
+  const command = Array.isArray(p.command) ? p.command.join(' ') : String(p.command ?? '');
+  const answer = await ctx.askPermission({
+    tool: isFile ? 'Edit' : 'Bash',
+    summary,
+    detail,
+    toolUseId: p.itemId,
+    suppressAlways: true,
+    sandbox: { command },
+  });
+  return { decision: answer?.allow ? 'accept' : 'decline' };
 }

@@ -4,18 +4,29 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { codexApproval } from '../server/adapters/codex-approval.mjs';
 
-test('#371 an MCP server asking the person for input is marked as such, so Run everything doesn’t answer it', async () => {
-  /** @type {any} */
-  let asked = null;
-  const answer = await codexApproval(
+test('Codex command approvals become Postbox permission cards without unsupported Always allow rules', async () => {
+  let requested;
+  const allowed = await codexApproval(
     {
-      askPermission: async (/** @type {any} */ req) => {
-        asked = req;
-        return { allow: false };
+      askPermission: async (req) => {
+        requested = req;
+        return { allow: true };
       },
     },
-    { id: 48, method: 'mcpServer/elicitation/request', params: { serverName: 'github', message: 'Pick a repository' } },
+    { method: 'item/commandExecution/requestApproval', params: { itemId: 'cmd_1', command: 'touch ../outside.txt', cwd: '/work' } },
   );
-  assert.deepEqual([asked.tool, asked.kind, asked.detail], ['mcp__github__elicitation', 'input', 'Pick a repository']);
-  assert.deepEqual(answer, { action: 'decline' });
+  assert.deepEqual(allowed, { decision: 'accept' });
+  assert.deepEqual(requested, {
+    tool: 'Bash',
+    summary: 'run a command',
+    detail: 'touch ../outside.txt\n\nWorking directory: /work',
+    toolUseId: 'cmd_1',
+    suppressAlways: true,
+    sandbox: { command: 'touch ../outside.txt' },
+  });
+  const denied = await codexApproval(
+    { askPermission: async () => ({ allow: false }) },
+    { method: 'item/fileChange/requestApproval', params: { itemId: 'file_1', grantRoot: '/workspace' } },
+  );
+  assert.deepEqual(denied, { decision: 'decline' });
 });

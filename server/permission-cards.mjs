@@ -23,18 +23,22 @@ export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
  * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
  * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
  * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
- *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null, kind?: 'input' }} req
+ *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null,
+ *           sandbox?: { command?: string } }} req
  * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
  */
 export async function requestPermission(rt, sessionId, req) {
   const se = rt.s.sessions[sessionId];
   // A write outside Postbox the person already settled runs without a card (#112).
   if (isWriteCall(req.tool, req.input) && se && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
-  // Run everything never asks, from the moment it’s set (#371). A backend that fixes its approvals when a turn starts
-  // (Codex) still asks for the rest of that turn, so the persona’s current mode answers. A write outside Postbox
-  // keeps its card: Run everything isn’t a review of what it publishes (#112). So does an MCP server asking the person for
-  // input (kind 'input'), which isn’t leave to act.
-  if (se && req.kind !== 'input' && !isWriteCall(req.tool, req.input) && rt.persona(se.personaId)?.permissionMode === 'bypass') return { allow: true };
+  // Run everything never asks, from the moment it’s set (#371): it answers what a backend asks for its own sandbox
+  // (sandbox), which no Postbox rule forced. Codex fixes its approval policy when a turn starts, so after a switch to Run
+  // everything it still asks for its commands and file changes. An ask that a rule forced (Claude Code’s
+  // permission_prompt, the Agent SDK’s canUseTool) keeps its card, as the permissions panel shows ask rules winning
+  // over the mode. So does a write outside Postbox (#112): stricter than a turn started in Run everything, which Codex
+  // never asks about, but a switch mid-turn isn’t a review of what the turn publishes.
+  const command = req.sandbox?.command;
+  if (se && req.sandbox && !isWriteCall('Bash', { command }) && rt.persona(se.personaId)?.permissionMode === 'bypass') return { allow: true };
   return rt.askPerson(sessionId, req);
 }
 

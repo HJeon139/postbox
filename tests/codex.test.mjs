@@ -32,32 +32,6 @@ test('Codex config attaches Postbox MCP through the local HTTP endpoint', () => 
   ]);
 });
 
-test('Codex command approvals become Postbox permission cards without unsupported Always allow rules', async () => {
-  let requested;
-  const allowed = await codexApproval(
-    {
-      askPermission: async (req) => {
-        requested = req;
-        return { allow: true };
-      },
-    },
-    { method: 'item/commandExecution/requestApproval', params: { itemId: 'cmd_1', command: 'touch ../outside.txt', cwd: '/work' } },
-  );
-  assert.deepEqual(allowed, { decision: 'accept' });
-  assert.deepEqual(requested, {
-    tool: 'Bash',
-    summary: 'run a command',
-    detail: 'touch ../outside.txt\n\nWorking directory: /work',
-    toolUseId: 'cmd_1',
-    suppressAlways: true,
-  });
-  const denied = await codexApproval(
-    { askPermission: async () => ({ allow: false }) },
-    { method: 'item/fileChange/requestApproval', params: { itemId: 'file_1', grantRoot: '/workspace' } },
-  );
-  assert.deepEqual(denied, { decision: 'decline' });
-});
-
 test('Codex Postbox MCP tool requests are approved in the MCP elicitation protocol without permission cards', async () => {
   let asked = false;
   const answer = await codexApproval(
