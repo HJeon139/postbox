@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { codexPermissions } from '../server/adapters/codex.mjs';
+import { modeHelp, PERMISSIONS } from '../shared/agent-facts.mjs';
 
 test('each permission mode’s sandbox and approvals, with Codex’s reviewer only in auto', () => {
   assert.deepEqual(codexPermissions({ permissionMode: 'auto' }, '/work'), {
@@ -29,4 +30,20 @@ test('each permission mode’s sandbox and approvals, with Codex’s reviewer on
   });
   // A persona with no mode is in auto, Postbox’s default.
   assert.equal(codexPermissions({}, '/work').approvalsReviewer, 'auto_review');
+});
+
+test('the persona sheet says Auto on Codex is Codex’s reviewer, writes outside Postbox included, and not Run everything', () => {
+  const auto = modeHelp(
+    'codex',
+    PERMISSIONS.find(([id]) => id === 'auto'),
+  );
+  assert.match(auto, /^Codex’s Auto: Codex’s own reviewer approves or denies what its sandbox stops, including writes through MCP tools and gh/);
+  assert.match(auto, /this isn’t Run everything/);
+  assert.notEqual(
+    auto,
+    modeHelp(
+      'codex',
+      PERMISSIONS.find(([id]) => id === 'acceptEdits'),
+    ),
+  );
 });
