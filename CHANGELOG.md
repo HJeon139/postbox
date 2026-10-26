@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.37.1 (2026-10-26)
+
+### Fixes
+
+- **adapters:** treat a token count that isn't a finite number as unknown context
+
 ## 0.37.0 (2026-10-26)
 
 ### Features
