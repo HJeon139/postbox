@@ -28,11 +28,14 @@ export function callClass(name, input) {
 }
 
 /**
- * @param {any[]} events  one turn’s stream @param {number} [startedAt]
+ * A result’s total_cost_usd runs for the Claude Code session, across --resume (server/adapters/claude-usage.mjs), so
+ * a turn’s cost is each result’s total less the last total its session reported: spent keeps those, by session id,
+ * over a conversation’s turns in order (#295).
+ * @param {any[]} events  one turn’s stream @param {number} [startedAt] @param {Map<string, number>} [spent]
  * @returns {{ firstOutputMs: number|null, tokensIn: number, tokensOut: number, costUsd: number, tools: Record<string, number>,
  *   toolErrors: number, refusals: number, loops: number, tokensAfterLoop: number, subagents: number, jobs: number }}
  */
-export function turnStats(events, startedAt) {
+export function turnStats(events, startedAt, spent = new Map()) {
   /** @type {Record<string, number>} */
   const tools = {};
   /** @type {{ firstOutputMs: number|null, tokensIn: number, tokensOut: number, costUsd: number, toolErrors: number, refusals: number, loops: number, tokensAfterLoop: number, subagents: number, jobs: number }} */
@@ -63,7 +66,10 @@ export function turnStats(events, startedAt) {
       const u = e.usage ?? {};
       s.tokensIn += (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
       s.tokensOut += u.output_tokens ?? 0;
-      s.costUsd = Math.round((s.costUsd + (e.total_cost_usd ?? 0)) * 1e6) / 1e6;
+      const total = e.total_cost_usd ?? 0;
+      const before = spent.get(e.session_id);
+      s.costUsd = Math.round((s.costUsd + (typeof before === 'number' && total >= before ? total - before : total)) * 1e6) / 1e6;
+      if (e.session_id) spent.set(e.session_id, total);
       s.refusals += Array.isArray(e.permission_denials) ? e.permission_denials.length : 0;
     }
   }

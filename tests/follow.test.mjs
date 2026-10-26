@@ -71,7 +71,7 @@ test('#49: an app that’s already the newest item stays put, with no stub', () 
   const { store, t, tools } = setup();
   tools.show_app({ id: 'ap', title: 'A', code: '<p>1</p>' });
   const r = tools.update_app({ id: 'ap', code: '<p>2</p>' });
-  assert.equal(r.message, 'App ap is now v2.');
+  assert.match(r.message, /^App ap is now v2\./);
   assert.deepEqual(kinds(store, t), ['block:ap']);
 });
 

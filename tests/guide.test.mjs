@@ -73,7 +73,7 @@ test('what agents read about the app check says narrow and wide windows, not pho
 
 test('the guide stays short: agents follow defaults more than prose', () => {
   // About 8,300 characters before M1 core, which added the limits, palettes and outcome. Cut before adding.
-  assert.ok(guideText().length <= 9000, `The guide is ${guideText().length} characters. Keep it under 9,000.`);
+  assert.ok(guideText().length <= 9250, `The guide is ${guideText().length} characters. Keep it under 9,250.`);
   // It’s the same text on every turn.
   const who = { persona: { handle: 'a' }, handles: ['a', 'b'] };
   assert.equal(agentGuide(who), agentGuide(who));

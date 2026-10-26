@@ -48,7 +48,7 @@ export const TOOL_DEFS = [
   REVIEW_BLOCK_DEF,
   {
     name: 'show_app',
-    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). Images load from data: URLs, or from <origin>/media/<name> for a file you copy into the folder $POSTBOX_MEDIA names (never into Postbox’s own folder). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}.`,
+    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). Images load from data: URLs, or from <origin>/media/<name> for a file you copy into the folder $POSTBOX_MEDIA names (never into Postbox’s own folder). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}. Returns the saved appId, version and pending browser check; read_message { id: appId } reads the recorded check later.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -65,7 +65,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'update_app',
-    description: `Replace an app you showed with a new version, up to ${n('appCode')} characters inline or from codePath, rather than showing a second app. files replaces its data files; without it, the new version keeps the last one’s. The app moves to the newest point in the conversation, with its saved state, and its old place becomes a one-line link to it. Older versions stay in its version menu; summary (up to 300 characters) names what changed.`,
+    description: `Replace an app you showed with a new version, up to ${n('appCode')} characters inline or from codePath, rather than showing a second app. files replaces its data files; without it, the new version keeps the last one’s. The app moves to the newest point in the conversation, with its saved state, and its old place becomes a one-line link to it. Older versions stay in its version menu; summary (up to 300 characters) names what changed. Returns the saved version and pending browser check, not a passed check; read_message { id } reads the current result.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -157,7 +157,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_message',
-    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
+    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. For an app, also returns its current version and recorded browser check, which may stay pending indefinitely without an open browser. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
     inputSchema: {
       type: 'object',
       properties: {
