@@ -59,6 +59,14 @@ const scripts = {
     ctx.tools.show_block({ block: { id: 'reading', type: 'progress', version: 1, title: 'Reading the papers', fallback: 'Reading four papers', steps } });
     await new Promise((r) => holds.push(r));
   },
+  // A finished block beside a running one, so the clock ticks while the finished one is on the page.
+  'finished and running': async (ctx) => {
+    const done = (id) => ({ id, label: `Step ${id}`, state: 'done', duration: '4 s' });
+    ctx.tools.show_block({ block: { id: 'done', type: 'progress', version: 1, title: 'Indexed', fallback: 'Indexed', steps: [done('a'), done('b')] } });
+    const live = [done('c'), { id: 'd', label: 'Embed the chunks', state: 'running' }];
+    ctx.tools.show_block({ block: { id: 'live', type: 'progress', version: 1, title: 'Embedding', fallback: 'Embedding', steps: live } });
+    await new Promise((r) => holds.push(r));
+  },
   diagram: (ctx) => ctx.text(`Here’s the flow:\n\n\`\`\`mermaid\n${BROKEN}\n\`\`\``),
   apps: (ctx, session) => {
     for (const [id, a] of Object.entries(APPS)) ctx.tools.show_app({ id: `${id}-${session.threadId}`, title: a.title, code: a.code });
@@ -103,9 +111,36 @@ async function conversation(page, title, text) {
   return { thread, lints, idle };
 }
 
+test('a finished progress block says when it last moved, and the clock leaves it alone while a running one ticks', async ({ page }) => {
+  await conversation(page, 'Finished', 'finished and running');
+  const finished = page.locator('[data-progress]').filter({ hasText: 'Indexed' });
+  const live = page.locator('[data-progress] li[data-s="running"]');
+  await expect(live).toBeVisible();
+  // A finished block says the time it last moved, which needs no tick, with the day on hover.
+  const updated = finished.locator('.block-head [data-since]');
+  await expect(updated).toHaveText(/^Updated \d\d:\d\d$/);
+  await expect(updated).toHaveAttribute('title', /\w+day, \w+ \d+ \d\d:\d\d$/);
+  // Count every change to the finished block while the running one’s time goes up at least once.
+  await finished.evaluate((node) => {
+    const w = /** @type {any} */ (window);
+    w.finishedChanges = 0;
+    new MutationObserver((records) => {
+      w.finishedChanges += records.length;
+    }).observe(node, { subtree: true, childList: true, characterData: true });
+  });
+  const time = () => live.evaluate((li) => li.lastElementChild?.textContent);
+  const before = await time();
+  await expect.poll(time, { message: 'the running step’s time goes up' }).not.toBe(before);
+  await expect.poll(time, { message: 'and again' }).not.toBe(await time());
+  expect(await page.evaluate(() => /** @type {any} */ (window).finishedChanges), 'the finished block wasn’t rewritten').toBe(0);
+  for (const r of holds.splice(0)) r();
+});
+
 test('#46 a diagram Mermaid can’t draw comes back to the agent once as a lint turn, and the person still has its frame and Show source', async ({ page }) => {
   const { lints, idle } = await conversation(page, 'Diagram', 'diagram');
-  await expect.poll(() => lints().length, { message: 'a lint turn' }).toBeGreaterThan(0);
+  // The frame loads Mermaid before it can report the error, then Postbox waits LINT_SETTLE_MS before the lint turn
+  // goes: on a busy runner the two together passed the default 5 s.
+  await expect.poll(() => lints().length, { message: 'a lint turn', timeout: 15_000 }).toBeGreaterThan(0);
   const problem = lints()[0].problems.find((p) => p.code === 'diagram-error');
   expect(problem, 'for the diagram that couldn’t be drawn').toBeTruthy();
   expect(problem.message, 'with Mermaid’s message and line').toMatch(/line 2[\s\S]*Parse error|Parse error[\s\S]*line 2/);

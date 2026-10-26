@@ -220,6 +220,12 @@ pb-ring[state="gen"] .arc { animation: pb-turn 2.8s infinite; }
 pb-ring .seg { animation: pb-swell 3.2s infinite; animation-delay: var(--d); }
 pb-ring .dot { transform-box: view-box; transform-origin: center; animation: pb-cross 3.6s infinite; }
 pb-ring .dot.still { animation: none; }
+/* A ring beside a past message keeps its agent’s live state and color but holds still. A long conversation has
+   hundreds of them, and Safari repaints an SVG animation every frame, which kept the GPU near full while an agent
+   waited or worked. The live rings move: the sidebar, the top bar and the working row. Waiting on you shows as the
+   steady outer ring reduced motion uses. */
+.who pb-ring :is(.pulse, .arc, .seg, .dot) { animation: none; }
+.who pb-ring[state="needs"] .pulse { opacity: .8; transform: scale(1.18); }
 @keyframes pb-pulse { 0% { opacity: .9; transform: scale(1); } 45%, 100% { opacity: 0; transform: scale(1.35); } }
 @keyframes pb-turn { 0% { transform: rotate(0deg); animation-timing-function: cubic-bezier(.65, 0, .35, 1); } 55%, 100% { transform: rotate(360deg); } }
 /* Each segment swells for about a quarter second, so only two or three segments are thick at once. */

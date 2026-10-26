@@ -7,7 +7,8 @@
 // It writes, into an empty folder, what a scanner reads under scan/, each text once:
 //   scan/guide.md            the guide every agent gets, for an agent with no persona text (Claude Code’s rules)
 //   scan/personas/<source>-<handle>.md  each demo and boilerplate persona’s own part: role, instructions, tools off
-//   scan/agy-rules.md        the rules file Antigravity reads, which wraps the guide
+//   scan/agy-rules.md        the rules file Antigravity reads, which wraps the guide, with the hook running (#370)
+//   scan/agy-rules-no-hook.md  the same, for agy before 1.4.7, which runs without the hook
 //   scan/mcp-tools.md        every Postbox MCP tool, with its description and its arguments’ descriptions
 //   scan/repo/               the instructions for agents working on Postbox itself: AGENTS.md files and session prompts
 // and, for a reviewer’s diff, each persona’s whole guide with its backend’s session facts, without the roster of other
@@ -92,7 +93,10 @@ export function render(out) {
       ],
     }),
   );
-  write('scan/agy-rules.md', agyRules({ persona: agent, guide: agentGuide({ persona: agent, handles: ['agent'], toolRules: null, setup: false }) }));
+  // As agy runs from 1.4.7, with the PreToolUse hook (#370), and as it runs without it.
+  const agyGuide = agentGuide({ persona: agent, handles: ['agent'], toolRules: null, setup: false });
+  write('scan/agy-rules.md', agyRules({ persona: agent, guide: agyGuide, hooked: true }));
+  write('scan/agy-rules-no-hook.md', agyRules({ persona: agent, guide: agyGuide }));
   write('scan/mcp-tools.md', toolsText());
   const personas = [...DEMO_PERSONAS.map((p) => ['demo', p]), ...BOILERPLATES.map((b) => ['boilerplate', asPersona(b)])];
   for (const [source, p] of personas) {
