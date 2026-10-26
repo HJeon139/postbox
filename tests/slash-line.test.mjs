@@ -36,7 +36,7 @@ test('Postbox’s own command runs for the agent named, else the one the compose
   assert.deepEqual(resolveCommand('@ALPHA /compact', at()).se, alpha, 'a handle in any case');
   assert.deepEqual(resolveCommand('/compact', at()), { own: true, name: 'compact', line: '/compact', se: beta, named: null });
   // With arguments it’s not Postbox’s, as before (#67): an agent that offers it runs it, else it’s a message.
-  assert.equal(resolveCommand('@alpha /compact keep the plan', at()).missing, true);
+  assert.equal(resolveCommand('@alpha /compact keep the plan', at()).missing, 'command');
 });
 
 test('an agent’s skill or command runs as the named agent’s turn, only if it offers it', () => {
@@ -47,10 +47,10 @@ test('an agent’s skill or command runs as the named agent’s turn, only if it
     se: beta,
     named: beta,
   });
-  assert.deepEqual(resolveCommand('@alpha /release-notes', at()), { missing: true, name: 'release-notes', named: alpha });
-  // An archived agent, or one not in the conversation, isn’t named: the line is a message.
-  assert.equal(resolveCommand('@gone /review', at()), null);
-  assert.equal(resolveCommand('@nobody /review', at()), null);
+  assert.deepEqual(resolveCommand('@alpha /release-notes', at()), { missing: 'command', name: 'release-notes', named: alpha, handle: 'alpha' });
+  // An archived agent, or one not in the conversation, isn’t named: the line is a message, and the hint says so.
+  assert.deepEqual(resolveCommand('@gone /review', at()), { missing: 'agent', name: 'review', named: null, handle: 'gone' });
+  assert.deepEqual(resolveCommand('@ghost /compact', at()), { missing: 'agent', name: 'compact', named: null, handle: 'ghost' });
 });
 
 test('without an @handle: the / menu’s pick, then the reply target, then any agent that offers it', () => {

@@ -3,7 +3,9 @@
 // - `@alpha /compact` runs /compact as @alpha’s turn, and nothing goes out as a message;
 // - `@beta /release-notes 2.1` runs @beta’s own command as its turn, with `/release-notes 2.1` as the whole prompt;
 // - `@alpha /mode` opens the mode choice for @alpha, not for the last speaker;
-// - `@alpha /release-notes`, which @alpha doesn’t offer, says so before it’s sent, and goes to @alpha as a message.
+// - `@alpha /release-notes`, which @alpha doesn’t offer, says so before it’s sent, and goes to @alpha as a message;
+// - `@ghost /compact`, a handle no agent here has, says so too, and goes to the last speaker as a message;
+// - `@alpha /stop` with @alpha idle says “@alpha isn’t working.”
 // With scripted Claude Code agents (no real turns), as in commands.spec.mjs.
 
 import { mkdir } from 'node:fs/promises';
@@ -122,4 +124,25 @@ test('#405 @alpha /release-notes, which @alpha doesn’t offer, says so and goes
     turns.some((x) => x.sessionId === seB.id || (x.sessionId === seA.id && x.message.slash)),
     'no command ran',
   ).toBe(false);
+});
+
+test('#405 @ghost /compact, a handle no agent here has, says so and goes to the last speaker as a message', async ({ page }) => {
+  const { t, seA, seB } = await room(page, 'Ghost', 'beta');
+  await page.keyboard.type('@ghost /compact');
+  await expect(hint(page)).toContainText('No agent @ghost here, so Enter sends this to @beta as a message');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => sent(t, '@ghost /compact').length, { message: 'the message' }).toBe(1);
+  await expect.poll(() => turns.some((x) => x.sessionId === seB.id && !x.message.slash), { message: 'a message turn for @beta' }).toBe(true);
+  expect(
+    turns.some((x) => [seA.id, seB.id].includes(x.sessionId) && x.message.slash),
+    'no command ran in this room',
+  ).toBe(false);
+});
+
+test('#405 @alpha /stop with @alpha idle says @alpha isn’t working, not that nothing is', async ({ page }) => {
+  await room(page, 'Stop', 'beta');
+  await page.keyboard.type('@alpha /stop');
+  await expect(hint(page)).toContainText('Enter runs /stop for @alpha');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#live')).toHaveText('@alpha isn’t working.');
 });

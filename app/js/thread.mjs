@@ -1283,7 +1283,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const t = thread();
     const go = (se) => (!only || se.id === only.id) && busy(se) && !(t?.kind !== 'topic' && S().threads[se.sideTurn?.threadId]?.kind === 'topic');
     const working = (t?.kind === 'side' || t?.kind === 'topic' ? sessionsAt(threadId) : [...sessionsOf(threadId), ...sideSessionsOf(threadId)]).filter(go);
-    if (!working.length) return say('Nothing is running here.');
+    if (!working.length) return say(only ? `@${only.handle} isn’t working.` : 'Nothing is running here.');
     for (const se of working)
       stopSession(se).then(
         (r) => (r?.ask ? askStop(se, r.ask) : say(`Stopped @${se.handle}.`)),
@@ -1798,7 +1798,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           ? 'shell'
           : slashTarget && line.startsWith(`/${slashTarget.name}`)
             ? 'skill'
-            : resolved(line)?.named
+            : resolved(line)?.named || resolved(line)?.missing
               ? 'command'
               : '';
     if (mode) hint.dataset.mode = mode;
@@ -1827,7 +1827,7 @@ export function mountComposer(threadId, { side = false } = {}) {
               ` Here, this goes to ${topic ? 'the agent' : 'the agents'} as a message. To run it, send it from the conversation.`,
             )
           : mode === 'command' || mode === 'skill'
-            ? commandHint(mode === 'skill' ? { name: slashTarget.name, hint: slashTarget.argumentHint, named: slashTarget } : resolved(line))
+            ? commandHint(mode === 'skill' ? { name: slashTarget.name, hint: slashTarget.argumentHint, named: slashTarget } : resolved(line), threadId)
             : offline
               ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
               : [
