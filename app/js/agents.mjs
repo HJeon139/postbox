@@ -3,20 +3,26 @@
 // top bar. The panel changes the model, effort, permission mode and tools in two clicks, without a command, and
 // says the scope of each: model and effort are this conversation’s, mode and tools the persona’s, everywhere.
 //
+// An agent whose turns run on a host (#120) says so in its row and its panel: the host, the connection in words, when
+// Postbox last heard from it, and a turn there that’s stopping, lost or waiting to be resumed (app/js/remote.mjs).
+//
 // Under each row, the room’s agent tree (#121), in agent-tree.mjs: where the agent’s turn is when it’s in a side or
 // topic thread, then the subagents at work in its turn (#73), its only children (#228), each under the one that
 // started it, with what it was asked and what it’s doing now, a line each, without hover.
 
-import { BACKEND_NAMES, chipEffort, chipModel, shortModel } from '/shared/agent-facts.mjs';
+import { BACKEND_NAMES, chipEffort, chipModel } from '/shared/agent-facts.mjs';
 import { modeWhen } from '/shared/mode-when.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
+import { everyMinute, hostSection, modelOptions } from './agent-host.mjs';
+import { toolSwitch } from './agent-tools.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
+import { hostLine, stopNote, turnLine } from './remote.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { capsOf, confirmDelete, EFFORT_NAMES, modeHelp, modelsFor, openSettings } from './sheets.mjs';
+import { capsOf, confirmDelete, EFFORT_NAMES, modeHelp, openSettings } from './sheets.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
 export { subagentNow } from './agent-tree.mjs';
@@ -48,9 +54,9 @@ export function agentsSection(threadId) {
   paint();
   const off = client.on((ch) => {
     if (ch.type === 'session' && ch.data.threadId !== threadId && S().threads[ch.data.threadId]?.parentId !== threadId) return;
-    if (['session', 'thread', 'persona', 'load', 'remove'].includes(ch.type)) paint();
+    if (['session', 'thread', 'persona', 'load', 'remove', 'host', 'host.status'].includes(ch.type)) paint();
   });
-  return { el, destroy: off };
+  return { el, destroy: everyMinute(el, paint, off) };
 }
 
 /**
@@ -104,7 +110,10 @@ function paintRow(n, se, fresh = false) {
   const f = factsOf(se);
   const runs = f.mock ? '' : `${chipModel(f)} · ${chipEffort(f)}`;
   const joined = joinedWhy(se);
-  const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined]);
+  // Where it runs, for an agent on a host, and how its turn there stands when that needs saying.
+  const where = hostLine(se);
+  const there = turnLine(se);
+  const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined, where, there]);
   ringFor(se, 'sm', n.querySelector('.agent-line pb-ring'));
   const tree = treeOf(se);
   const subagents = subagentsOf(se);
@@ -121,6 +130,8 @@ function paintRow(n, se, fresh = false) {
     n.querySelector('.agent-btn .name'),
     h('span', h('b', `@${se.handle}`), mockMarker(se), h('span.agent-state', ` · ${stateWord(se.state).toLowerCase()}`)),
     runs ? h('span.sub', runs) : null,
+    where ? h('span.sub.host-line', where) : null,
+    there ? h('span.sub.host-turn', there) : null,
     joined ? h('span.sub', joined) : null,
   );
 }
@@ -175,6 +186,7 @@ export function openAgentPanel(sessionId, from = null) {
     fill(title, `@${se.handle}`, mockMarker(se));
     const ctxText = se.ctx != null ? `${se.ctx}% of context used` : 'context unknown';
     fill(sub, `${stateWord(se.state)} · ${ctxText} · ${mock ? BACKEND_NAMES.mock : (BACKEND_NAMES[f.backend] ?? f.backend)}`);
+    const note = stopNote(se);
     keepFocus(body, () =>
       fill(
         body,
@@ -182,22 +194,18 @@ export function openAgentPanel(sessionId, from = null) {
           'div.qp-asks',
           openAsksEl(se, () => dlg?.close()),
         ),
+        hostSection(se),
         // This conversation’s: the session’s snapshot, as /model and /effort set it.
         mock
           ? h('p.help', 'A mock agent runs scripted replies, so it has no model, effort or permission mode to change.')
           : section(
               `In ${where}`,
               `From its next turn, as /model and /effort set them.`,
-              choice(
-                'Model',
-                where,
-                [...new Set([...modelsFor(f.backend), f.setModel])].map((m) => [m, m === f.setModel ? f.setModelName : shortModel(m)]),
-                f.setModel,
-                (id, name) =>
-                  api(`/api/sessions/${se.id}/run`, { model: id }).then(
-                    (r) => done(`Model: ${name} for @${se.handle} in ${where}, ${r.now ? 'from now: its running turn changed too' : 'from its next turn'}.`),
-                    failed,
-                  ),
+              choice('Model', where, ...modelOptions(f), (id, name) =>
+                api(`/api/sessions/${se.id}/run`, { model: id }).then(
+                  (r) => done(`Model: ${name} for @${se.handle} in ${where}, ${r.now ? 'from now: its running turn changed too' : 'from its next turn'}.`),
+                  failed,
+                ),
               ),
               choice(
                 'Effort',
@@ -251,6 +259,7 @@ export function openAgentPanel(sessionId, from = null) {
               type: 'button',
               // Not while it’s already stopping (#126): it says so in the row and the panel’s line, and Stop is pressed once.
               disabled: !busy(se),
+              'aria-describedby': note ? `qp-stop-note-${se.id}` : null,
               onclick: () =>
                 stopSession(se).then(
                   // With background jobs running, Stop asks in the conversation whether to stop them too (#129): go there.
@@ -260,6 +269,8 @@ export function openAgentPanel(sessionId, from = null) {
             },
             'Stop',
           ),
+          // On a host, Stop takes its background jobs with it (#120): said before you press it.
+          note ? h('p.small.qp-stop-note', { id: `qp-stop-note-${se.id}` }, note) : null,
           mock
             ? null
             : h(
@@ -360,37 +371,4 @@ function modeChoice(se, p, done, failed) {
     // In the backend’s own words where it reads the modes differently (Kiro, Codex), as the persona sheet says it.
     h('span.help', modeHelp(p.backend, MODES.find(([id]) => id === value) ?? MODES[0])),
   ];
-}
-
-/** A tool as a switch, on the persona: on means not denied; the permission mode still decides (TOOL_RULES). */
-function toolSwitch(se, p, id, name, off, done, failed) {
-  const on = (p.tools ?? []).includes(id);
-  const helpId = `qp-tool-${id.replace(/\W/g, '-')}`;
-  return h(
-    'div.qp-tool',
-    h(
-      'button.qp-switch',
-      {
-        type: 'button',
-        role: 'switch',
-        'aria-checked': String(on),
-        'aria-label': `${name}, for @${se.handle} everywhere`,
-        'aria-describedby': helpId,
-        onclick: () => {
-          // From the persona as it is now, not as it was when the panel painted: another switch may have changed it.
-          const now = S().personas[se.personaId]?.tools ?? [];
-          const was = now.includes(id);
-          const tools = was ? now.filter((x) => x !== id) : [...now, id];
-          api(`/api/personas/${se.personaId}`, { tools }, 'PATCH').then(
-            () => done(`${name}: ${was ? 'off' : 'on'} for @${se.handle} in every conversation, from their next turns.`),
-            failed,
-          );
-        },
-      },
-      h('span.track', { 'aria-hidden': 'true' }),
-      h('span', name),
-      h('span.dim.small', { 'aria-hidden': 'true' }, on ? 'On' : 'Off'),
-    ),
-    h('span.help', { id: helpId }, off),
-  );
 }

@@ -16,7 +16,7 @@ Creating agents happens in the app, with clear control over where they run and w
 - Under them, “MCP servers” lists your servers: the ones in your Claude Code config (user, project and local scopes) and the claude.ai connectors and plugin servers your agents’ latest turn reported, by name only. Each has a checkbox, on by default, and its status from that turn (“Connected”, “Couldn’t connect”, “Needs sign-in”, or “Not started yet”). Unticked, the server doesn’t load for this agent. With “Uses your Claude Code setup” off, a line says only Postbox’s own server loads (#59).
 - Tools: on Claude Code and the Agent SDK, an unticked tool is turned off for the agent (`shell` stops commands, `web.fetch` stops fetching and searching the web), and a line under the list says so. A ticked one still follows its permissions. `agents.outside` (“Message, schedule or start agents outside Postbox”) is off unless ticked (#5).
 - Where it works: “Join this conversation” (a direct message becomes a room; a room gains an agent; from a topic thread’s +, “Join this topic thread”) or “New conversation in <project>”. The sheet says “conversation”, never “thread” (#4). Errors show inline.
-- Space or Enter on a Tools checkbox, a setup checkbox, a boilerplate or the Runs on dropdown keeps focus on that control as the sheet updates (#26).
+- Space or Enter on a Tools checkbox, a setup checkbox, a boilerplate, the Backend dropdown or the Runs on dropdown keeps focus on that control as the sheet updates (#26).
 
 ## Steps to reproduce
 

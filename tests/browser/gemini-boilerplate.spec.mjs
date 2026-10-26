@@ -35,12 +35,12 @@ test('the Gemini boilerplate presets the Antigravity CLI, its first Gemini model
   await expect(dialog).toBeVisible();
   const bps = dialog.getByRole('radiogroup', { name: 'Boilerplate' });
   await expect.soft(bps.getByRole('radio', { name: 'Gemini' }), 'Gemini is offered in the boilerplate chips').toBeVisible();
-  await expect.soft(dialog.getByLabel('Runs on'), 'starts on the default backend').toHaveValue('claude-code');
+  await expect.soft(dialog.getByLabel('Backend'), 'starts on the default backend').toHaveValue('claude-code');
   await expect.soft(dialog.getByLabel('Model'), 'starts on Claude’s default model').toHaveValue('claude-opus-5-5');
   await test.step('picking Gemini switches Runs on, Model, What it does and Instructions', async () => {
     await bps.getByRole('radio', { name: 'Gemini' }).click();
     await expect.soft(bps.getByRole('radio', { name: 'Gemini' })).toHaveAttribute('aria-checked', 'true');
-    await expect.soft(dialog.getByLabel('Runs on')).toHaveValue('antigravity-cli');
+    await expect.soft(dialog.getByLabel('Backend')).toHaveValue('antigravity-cli');
     await expect.soft(dialog.getByLabel('Model')).toHaveValue('gemini-2.5-pro');
     await expect.soft(dialog.getByLabel('What it does')).toHaveValue(/second opinion on Gemini/);
     await expect.soft(dialog.getByLabel('Instructions')).toHaveValue(/^# Gemini\n/);
@@ -50,12 +50,12 @@ test('the Gemini boilerplate presets the Antigravity CLI, its first Gemini model
     await dialog.getByLabel('Model').fill('gemini-3.8-flash-high');
     await dialog.getByLabel('Model').dispatchEvent('change');
     await expect.soft(dialog.getByLabel('Effort')).toHaveValue('high');
-    await dialog.getByLabel('Runs on').selectOption('claude-code');
+    await dialog.getByLabel('Backend').selectOption('claude-code');
     await expect.soft(dialog.getByLabel('Model')).toHaveValue('claude-opus-5-5');
     await expect.soft(dialog.getByLabel('Effort')).toHaveValue('medium');
     await bps.getByRole('radio', { name: 'Gemini' }).click();
     await bps.getByRole('radio', { name: 'Critic' }).click();
-    await expect.soft(dialog.getByLabel('Runs on')).toHaveValue('claude-code');
+    await expect.soft(dialog.getByLabel('Backend')).toHaveValue('claude-code');
     await expect.soft(dialog.getByLabel('Model')).toHaveValue('claude-opus-5-5');
     await expect.soft(dialog.getByLabel('Instructions')).toHaveValue(/^# Critic\n/);
   });

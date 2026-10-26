@@ -12,6 +12,7 @@ import { TELEMETRY_ACTION } from './telemetry-action.mjs';
 import { STOP_AFTER_MAX_S, WAIT_MAX_S } from './turns.mjs';
 
 export { unaddressed } from '../../shared/text.mjs';
+export { VERIFY_SCHEMA, verifyPrompt } from './verify-prompt.mjs';
 
 /**
  * How the person’s Claude Code signs in, taken from their user settings, so the tester keeps it while it leaves the
@@ -55,11 +56,12 @@ const signIn = () => {
       writeFileSync(signInFile, JSON.stringify(s), { mode: 0o600 });
       const remove = () => rmSync(dir, { recursive: true, force: true });
       process.once('exit', remove);
-      // Ctrl+C or a kill skips 'exit': remove it, then let the signal end the run as it would have.
+      // Ctrl+C or a kill skips 'exit': remove it, then let the signal end the run as it would have, unless the
+      // run handles the signal itself (tools/uat/stop.mjs) and exits once it has cleaned up, which runs 'exit'.
       for (const sig of ['SIGINT', 'SIGTERM'])
         process.once(sig, () => {
           remove();
-          process.kill(process.pid, sig);
+          if (!process.listenerCount(sig)) process.kill(process.pid, sig);
         });
     }
   }
@@ -110,6 +112,7 @@ export const SCHEMA = {
             'fullscreen',
             'fullscreen_draft',
             'restore',
+            'fault',
             'next_phase',
             'telemetry',
             'done',
@@ -123,7 +126,8 @@ export const SCHEMA = {
         button: { type: 'string' },
         target: {
           type: 'string',
-          description: 'app_click: the visible text to click inside the app. settings, agent_panel, go_to_needs: the agent’s handle. restore: the file’s name.',
+          description:
+            'app_click: the visible text to click inside the app. settings, agent_panel, go_to_needs: the agent’s handle. restore: the file’s name. fault: the host.',
         },
         model: { type: 'string', description: 'agent_panel: the model to pick, as the panel names it.' },
         effort: { type: 'string', description: 'agent_panel: the effort to pick.' },
@@ -136,6 +140,7 @@ export const SCHEMA = {
         open: { enum: ['work', 'thread'], description: 'pane: the view to open in the right pane.' },
         pane: { enum: ['work', 'thread'], description: 'fullscreen: the view to open full screen.' },
         permissions: { type: 'boolean', description: 'settings: also open its permissions panel.' },
+        fault: { enum: ['kill-ssh', 'kill-daemon', 'restart-postbox'], description: 'fault, in a run with hosts: what to break; target is the host.' },
         seconds: { type: 'integer' },
         verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'review: your verdict.' },
         comments: {
@@ -149,9 +154,11 @@ export const SCHEMA = {
           description: 'send, thread, act, review: act while the turn this starts is running.',
           properties: {
             after: { type: 'integer', description: 'Seconds to let the agent work first.' },
-            do: { enum: ['stop', 'send_now', 'answer'] },
+            do: { enum: ['stop', 'send_now', 'answer', 'fault'] },
             jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
             text: { type: 'string', description: 'send_now: the message to send.' },
+            fault: { enum: ['kill-ssh', 'kill-daemon', 'restart-postbox'], description: 'fault: what to break while the agent works.' },
+            target: { type: 'string', description: 'fault: the host, such as host1.' },
             item: { type: 'string', description: 'answer: the block to answer while the agent works, such as I7.' },
             verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'answer, on a review: your verdict.' },
             comments: {
@@ -216,70 +223,6 @@ The run waits for the agents to finish before each step, or until something need
 
 Scenario: ${scenario.title}
 ${scenario.summary}`;
-}
-
-// After a run, every new finding is verified before it’s filed: is it a defect in Postbox, a problem in the
-// harness, not reproducible, a duplicate of an open issue, or a flaw in the agent’s own work? Only confirmed
-// Postbox defects are filed, written up with the bug template.
-export const VERIFY_SCHEMA = {
-  type: 'object',
-  properties: {
-    results: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          index: { type: 'integer' },
-          verdict: { enum: ['confirmed', 'duplicate', 'harness', 'agent', 'by-design', 'not-reproduced'] },
-          duplicateOf: { type: ['integer', 'null'] },
-          note: { type: 'string', description: 'Why, in one or two sentences.' },
-          title: { type: 'string', description: 'confirmed: the issue title, a plain statement of the defect.' },
-          component: { type: 'string' },
-          urgency: { type: 'string', description: 'confirmed: “High”, “Medium” or “Low”, then a sentence on the impact.' },
-          steps: { type: 'array', items: { type: 'string' } },
-          expected: { type: 'string' },
-          actual: { type: 'string' },
-          cause: { type: 'string', description: 'The suspected cause, if the evidence shows it; otherwise empty.' },
-        },
-        required: ['index', 'verdict', 'duplicateOf', 'note', 'title', 'component', 'urgency', 'steps', 'expected', 'actual', 'cause'],
-      },
-    },
-  },
-  required: ['results'],
-};
-
-export function verifyPrompt({ scenario, findings, timeline, issues }) {
-  return `You are reviewing findings from an automated end-to-end test of Postbox, before they are filed as GitHub issues. Be skeptical: a false issue costs more than a missed one.
-
-The scenario was “${scenario.title}”. A tester model played the person, driving the UI through a runner. The runner itself can be wrong: its screenshots, its reading of the page, or its own actions (it presses Stop on a turn that runs too long, and Stop or Send now when the tester’s action asks it to). Open screenshots with the Read tool when a finding names one.
-
-For each finding, give a verdict:
-- confirmed: a real defect or UX problem in Postbox, supported by the evidence.
-- duplicate: an open issue already covers it (give its number in duplicateOf). Related isn’t duplicate: say so in the note instead. When the tester matched a finding to an issue, check that the issue really covers it.
-- harness: caused by the test runner, not by Postbox.
-- agent: a flaw in the agent’s own reasoning or content (a wrong number, a weak plan) that Postbox didn’t cause.
-- by-design: Postbox does this on purpose, as its docs or the agent guide say.
-- not-reproduced: the evidence doesn’t support it.
-
-For confirmed findings, write the issue:
-- a plain title stating the defect
-- the component
-- the urgency, with its impact
-- steps a person can follow in Postbox, not in the runner
-- what was expected
-- what happened instead, with the evidence
-- the suspected cause, if the evidence shows it
-
-Write in plain American English, with curly quotes, in sentence case.
-
-Findings:
-${findings.map((f, i) => `[${i}] ${f.title} (${f.category ?? 'check'}, ${f.severity ?? '—'}, ${f.component ?? f.check}; step ${f.step}, ${f.phase ?? ''})${f.issue ? `\nThe tester matched it to #${f.issue}.` : ''}\nEvidence: ${f.evidence}${f.expected ? `\nExpected: ${f.expected}` : ''}`).join('\n\n')}
-
-What the tester did, step by step:
-${timeline.map((t) => `${t.step}. ${t.phase}: ${t.assessment} Then: ${JSON.stringify(t.action)}`).join('\n')}
-
-Open issues:
-${issues.map((i) => `#${i.number} ${i.title}`).join('\n')}`;
 }
 
 /** One-off structured call, in a fresh session (used to verify findings). */

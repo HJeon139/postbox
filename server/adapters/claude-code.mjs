@@ -22,6 +22,9 @@
 // The turn’s message goes in on stdin. The CLI runs in its own process group: Stop sends it SIGINT, then SIGKILL if it
 // doesn’t exit, and to every tool shell it started (server/adapters/process-group.mjs, #126).
 // POSTBOX_CLAUDE_RECORD=<folder> saves each turn’s raw stream there, for test fixtures.
+//
+// On a remote host (#120, ctx.remote), the same arguments run there through the host’s daemon: see
+// server/adapters/claude-code-remote.mjs for how a remote turn differs.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -29,21 +32,16 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { withAskRules } from '../permission-rules.mjs';
+import { claudeArgs } from './claude-code-args.mjs';
+import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
-import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, recorderFor, settingsFor, setupOf, writeRules } from './setup.mjs';
+import { effortOf, recorderFor } from './setup.mjs';
 
-// Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
-// settings, or auto, and an agent you set to ask could end up not asking. (manual is the CLI’s name for default.)
-const MODES = {
-  auto: ['--permission-mode', 'auto'],
-  ask: ['--permission-mode', 'manual'],
-  acceptEdits: ['--permission-mode', 'acceptEdits'],
-  bypass: ['--permission-mode', 'bypassPermissions'],
-};
+export { claudeArgs } from './claude-code-args.mjs';
+export { CLAUDE_CODE_CAPABILITIES, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from './claude-code-remote.mjs';
 
 /** The claude binary: POSTBOX_CLAUDE_BIN, then the native installer’s location, then the PATH. */
 export function findClaude(env = process.env) {
@@ -69,64 +67,6 @@ export function claudeVersion(bin = findClaude()) {
   });
 }
 
-/** The CLI arguments for one turn. Pure, so the tests can check them. */
-/**
- * @param {{ persona: any, sessionId: string, resume: boolean, mcpUrl: string, guide: string, addDirs?: string[],
- *           fork?: { claudeSessionId: string, uuid?: string }|null, allowOnce?: string[], rules?: { allow?: string[], ask?: string[], deny?: string[] } }} turn
- *   rules: the ones the person made for this conversation only (#66), passed every turn
- */
-export function claudeArgs({ persona, sessionId, resume, mcpUrl, guide, addDirs = [], fork = null, allowOnce = [], rules = {} }) {
-  const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
-  const setup = setupOf(persona);
-  const denied = [...deniedTools(persona), ...(rules.deny ?? [])];
-  return [
-    '-p',
-    '--output-format',
-    'stream-json',
-    '--include-partial-messages',
-    '--verbose',
-    // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
-    '--thinking-display',
-    'summarized',
-    '--forward-subagent-text',
-    // Both always passed, as the permission mode is: left out, your own settings would decide (#60).
-    '--model',
-    modelOf(persona),
-    '--effort',
-    effortOf(persona),
-    // A topic thread’s first turn forks the conversation’s session at the message it branched from.
-    ...(fork
-      ? ['--resume', fork.claudeSessionId, '--fork-session', ...(fork.uuid ? ['--resume-session-at', fork.uuid] : [])]
-      : resume
-        ? ['--resume', sessionId]
-        : ['--session-id', sessionId]),
-    // Postbox’s server, next to your own; an Isolated persona loads Postbox’s only.
-    '--mcp-config',
-    JSON.stringify({ mcpServers: postboxServer(mcpUrl) }),
-    ...(setup.usesHostSetup ? [] : ['--strict-mcp-config']),
-    '--append-system-prompt',
-    guide,
-    // Postbox’s own tools never need asking: they only show things in the thread.
-    '--allowedTools',
-    'mcp__postbox',
-    // Rules the person allowed once, after a refusal, for this turn only, and those for this conversation (#66).
-    ...allowOnce,
-    ...(rules.allow ?? []),
-    // The person’s Claude Code setup (or the project’s only, when Isolated), with the default output style,
-    // without the MCP servers the persona turned off, and without the tools it may not use: those that publish
-    // or act outside Postbox, and its unticked Tools (server/adapters/setup.mjs).
-    '--setting-sources',
-    (setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES).join(','),
-    '--settings',
-    // With ask rules for writes outside Postbox (#112), so each comes to a card first, and the conversation’s own.
-    JSON.stringify(withAskRules(settingsFor(persona), [...writeRules(persona), ...(rules.ask ?? [])])),
-    ...(denied.length ? ['--disallowedTools', ...denied] : []),
-    ...MODES[mode],
-    ...addDirs.flatMap((d) => ['--add-dir', d]),
-    ...(mode === 'bypass' ? [] : ['--permission-prompt-tool', 'mcp__postbox__permission_prompt']),
-  ];
-}
-
 /**
  * Where a forked session starts: the checkpoint of the message it branched from, or, for a reply from
  * before checkpoints were kept, the latest point of the session it forks.
@@ -137,8 +77,36 @@ export function forkPoint(state) {
   return from ? { claudeSessionId: from } : null;
 }
 
+/**
+ * Reads the CLI’s stream-json from `child` into `mapper`, handing each line to recorderFor (POSTBOX_CLAUDE_RECORD, a
+ * recorded room’s telemetry), and saving the session ID when the init event names a new one.
+ * @param {any} ctx @param {any} child @param {ReturnType<typeof createStreamMapper>} mapper
+ */
+function readStream(ctx, child, mapper) {
+  const record = recorderFor(ctx, process.env.POSTBOX_CLAUDE_RECORD, 'claude-code');
+  createInterface({ input: child.stdout }).on('line', (line) => {
+    if (!line.trim()) return;
+    record(line);
+    let e;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      return; // not every line has to be JSON (a warning, say)
+    }
+    try {
+      mapper.push(e);
+    } catch (err) {
+      console.error(`Postbox couldn’t read a Claude Code event: ${err.message}`);
+    }
+    if (e.type === 'system' && e.subtype === 'init' && e.session_id && e.session_id !== ctx.state.claudeSessionId) {
+      ctx.saveState({ claudeSessionId: e.session_id });
+    }
+  });
+}
+
 export class ClaudeCodeAdapter {
   name = 'claude-code';
+  capabilities = CLAUDE_CODE_CAPABILITIES;
 
   /**
    * @param {{ bin?: string, workRoot: string, spawnImpl?: typeof spawn, kill?: import('./process-group.mjs').KillFn,
@@ -160,32 +128,63 @@ export class ClaudeCodeAdapter {
 
   async deliver(session, message, ctx) {
     const persona = ctx.persona;
-    const cwd = await this.folderFor(persona, ctx.project);
-    const prompt = formatMessage(message, ctx.pathOf);
-    const guide = agentGuide({ persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
-    // The project’s folder, and the folders the person added for this conversation (#66).
-    const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
+    const remote = ctx.remote ?? null;
+    const attach = remote?.attach?.turn ?? null;
+    if (remote) checkRemoteClaude(remote, Boolean(attach));
+    const cwd = remote ? remote.folder : await this.folderFor(persona, ctx.project);
+    // On a host, each attachment is its copy in the folder of the host turn the message goes to.
+    const promptOn = (/** @type {string | null} */ turn) => formatMessage(message, attachmentPaths(ctx, turn));
+    const local = agentGuide({ persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
+    const guide = remote ? remoteGuide(local, cwd, ctx.addDirs ?? []) : local;
+    // The project’s folder, and the folders the person added for this conversation (#66). On a host, none: they’re
+    // paths on this computer, and the project’s folder there is cwd.
+    const addDirs = remote ? [] : [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
+    // A turn already on the host, after a restart: replayed, never started again.
+    if (attach) {
+      await this.run({ ctx, cwd, prompt: promptOn(attach), guide, resume: true, sessionId: ctx.state.claudeSessionId ?? null, turn: attach, attach: true });
+      return;
+    }
     const fork = !ctx.state.claudeSessionId ? forkPoint(ctx.state) : null;
-    let first = await this.run({ ctx, cwd, addDirs, prompt, guide, resume: Boolean(ctx.state.claudeSessionId), sessionId: ctx.state.claudeSessionId, fork });
+    const hostTurn = hostTurns(remote);
+    let turn = await hostTurn();
+    let first = await this.run({
+      ctx,
+      cwd,
+      addDirs,
+      prompt: promptOn(turn),
+      guide,
+      resume: Boolean(ctx.state.claudeSessionId),
+      sessionId: ctx.state.claudeSessionId,
+      fork,
+      turn,
+    });
     // A branch point Claude Code can no longer find (#61): fork from the conversation’s latest point instead,
     // once. The fork is saved without its uuid first, so a later turn never goes back to the bad one.
     if (first.missingForkPoint && fork) {
       const latest = { claudeSessionId: fork.claudeSessionId };
       ctx.saveState({ claudeSessionId: null, fork: latest });
       const note = '[Postbox] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message.\n\n';
-      first = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, guide, resume: false, sessionId: null, fork: latest });
+      turn = await hostTurn();
+      first = await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, fork: latest, turn });
     }
     // A session Claude Code no longer has (its history was cleared) starts over, once.
     if (first.missingSession) {
       ctx.saveState({ claudeSessionId: null });
       const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
-      await this.run({ ctx, cwd, addDirs, prompt: note + prompt, guide, resume: false, sessionId: null });
+      turn = await hostTurn();
+      await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, turn });
     }
   }
 
-  /** @param {{ ctx: any, cwd: string, addDirs?: string[], prompt: string, guide: string, resume: boolean, sessionId: string|null, fork?: any }} turn */
-  run({ ctx, cwd, addDirs = [], prompt, guide, resume, sessionId, fork = null }) {
+  /**
+   * @param {{ ctx: any, cwd: string, addDirs?: string[], prompt: string, guide: string, resume: boolean, sessionId: string|null, fork?: any,
+   *   turn: string | null, attach?: boolean }} o  turn: the host turn this run is, on a host (null here); attach: it’s
+   *   already there, after a restart
+   */
+  run({ ctx, cwd, addDirs = [], prompt, guide, resume, sessionId, fork = null, turn, attach = false }) {
     const id = sessionId ?? randomUUID();
+    // A resume (not a fork, not a fresh start) of a turn the host lost goes on with it (D2).
+    const remote = ctx.remote && turn ? remoteTurn(ctx.remote, cwd, turn, Boolean(resume && !fork && ctx.remote.resumeInterrupted), attach) : null;
     const args = claudeArgs({
       persona: ctx.persona,
       sessionId: id,
@@ -196,6 +195,7 @@ export class ClaudeCodeAdapter {
       fork,
       allowOnce: ctx.allowOnce ?? [],
       rules: ctx.rules ?? {},
+      ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
     });
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
     // A subagent’s permission prompt arrives at Postbox’s MCP tool with its id; the stream knows its name.
@@ -206,9 +206,10 @@ export class ClaudeCodeAdapter {
       let child;
       try {
         // Its own process group, so Stop reaches everything under a launcher too (#126).
-        child = this.spawn(this.bin, args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+        // On a host, cwd and env are the remote spawn’s own (remoteTurn): these are ignored there.
+        child = (remote ? remote.spawnImpl : this.spawn)(this.bin, args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
       } catch (e) {
-        reject(new Error(`Couldn’t start Claude Code (${this.bin}): ${e.message}`));
+        reject(new Error(remote ? `Couldn’t start Claude Code on the host: ${e.message}` : `Couldn’t start Claude Code (${this.bin}): ${e.message}`));
         return;
       }
       let stderr = '';
@@ -222,49 +223,36 @@ export class ClaudeCodeAdapter {
       /** @type {Promise<{ gone: Promise<void> }>|null} */
       let stopping = null;
       // Stop: the background jobs the runtime asked to keep running (ctx.signal.reason.keepJobs) are kept, and
-      // reported with their process group so the person can stop them later.
+      // reported with their process group so the person can stop them later. On a host none is kept (the daemon stops
+      // the whole turn): one the runtime asked to keep anyway is reported stopped, not kept.
       const onAbort = () => {
         const keep = Array.isArray(ctx.signal.reason?.keepJobs) ? ctx.signal.reason.keepJobs : [];
         stopping = stopTurn(child, { keep, exited, ...procs }).then((r) => {
           for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid, groups: k.groups });
+          if (remote) for (const k of keep) if (typeof k?.id === 'string') ctx.job?.({ id: k.id, state: 'stopped' });
           return r;
         });
       };
       if (ctx.signal.aborted) onAbort();
       else ctx.signal.addEventListener('abort', onAbort, { once: true });
-      // A background job’s own Stop, while the CLI waits for it.
-      ctx.control?.({ stopJob: (job) => stopJobUnder(child, job, procs) });
+      // A background job’s own Stop, while the CLI waits for it. Not offered on a host (stopJobUnder would refuse it
+      // there too): the runtime then says the job can’t be reached, and to stop the agent.
+      if (!remote) ctx.control?.({ stopJob: (job) => stopJobUnder(child, job, procs) });
       child.on('error', (e) =>
         reject(
           new Error(
-            e.code === 'ENOENT'
-              ? 'Claude Code isn’t installed, or isn’t on the PATH. Install it, or set POSTBOX_CLAUDE_BIN.'
-              : `Claude Code couldn’t start: ${e.message}`,
+            remote
+              ? `Claude Code couldn’t run on the host: ${e.message}`
+              : e.code === 'ENOENT'
+                ? 'Claude Code isn’t installed, or isn’t on the PATH. Install it, or set POSTBOX_CLAUDE_BIN.'
+                : `Claude Code couldn’t start: ${e.message}`,
           ),
         ),
       );
       child.stderr.on('data', (d) => {
         stderr = (stderr + d).slice(-4000);
       });
-      const record = recorderFor(ctx, process.env.POSTBOX_CLAUDE_RECORD, 'claude-code');
-      createInterface({ input: child.stdout }).on('line', (line) => {
-        if (!line.trim()) return;
-        record(line);
-        let e;
-        try {
-          e = JSON.parse(line);
-        } catch {
-          return; // not every line has to be JSON (a warning, say)
-        }
-        try {
-          mapper.push(e);
-        } catch (err) {
-          console.error(`Postbox couldn’t read a Claude Code event: ${err.message}`);
-        }
-        if (e.type === 'system' && e.subtype === 'init' && e.session_id && e.session_id !== ctx.state.claudeSessionId) {
-          ctx.saveState({ claudeSessionId: e.session_id });
-        }
-      });
+      readStream(ctx, child, mapper);
       const done = (code) => {
         if (finished) return;
         finished = true;
@@ -275,8 +263,9 @@ export class ClaudeCodeAdapter {
         const current = mapper.sessionId ?? ctx.state.claudeSessionId;
         if (mapper.lastUuid && current) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });
         if (ctx.signal.aborted) return resolve({});
-        // A session to resume or fork that Claude Code no longer has.
-        if ((resume || fork) && /No conversation found|session .* not found/i.test(stderr)) return resolve({ missingSession: true });
+        // A session to resume or fork that Claude Code no longer has. On a host, the result says it too (remoteSaid).
+        const said = remote ? remoteSaid(stderr, mapper.result) : stderr;
+        if ((resume || fork) && /No conversation found|session .* not found/i.test(said)) return resolve({ missingSession: true });
         const failure = resultError(mapper.result);
         if (failure) {
           const why = stderr.trim().split('\n').slice(-3).join(' ').slice(0, 400);

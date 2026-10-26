@@ -1,0 +1,100 @@
+{
+  "about": "Recorded 2026-10-23 from claude -p (Claude Code 2.1.308, claude-haiku-5-5, --output-format stream-json, --permission-mode default, --permission-prompt-tool mcp__postbox__permission_prompt, --strict-mcp-config) asked to run one touch command with Bash. --mcp-config named one HTTP server, postbox, with no timeout: a stand-in that offered only permission_prompt and never answered a tools/call. “stream” is the two tool results and the result line (the result trimmed to these fields, the path in its text shortened, the tool-use ids’ provider prefix removed); “server” is the stand-in’s log of each call arriving and of Claude Code closing it (seconds since the stand-in started). Each wait was cut at 60.0 s and came back to the agent as “The operation timed out”, and the agent retried once, then gave up. With timeout set on the server, the same turn was still waiting at 8 m 44 s.",
+  "stream": [
+    {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "content": "<tool_use_error>Error calling tool (Bash): The operation timed out.</tool_use_error>",
+            "is_error": true,
+            "tool_use_id": "toolu_01FTWE15kXW4T57MBDLrDnDQ"
+          }
+        ]
+      },
+      "parent_tool_use_id": null,
+      "session_id": "c8925a9b-c750-4879-9bd8-e5b3cef7358e",
+      "uuid": "1d5eb7a0-598f-4994-834c-2286ff82d5a0",
+      "timestamp": "2026-10-23T18:56:17.261Z",
+      "tool_use_result": "Error calling tool (Bash): The operation timed out."
+    },
+    {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "content": "<tool_use_error>Error calling tool (Bash): The operation timed out.</tool_use_error>",
+            "is_error": true,
+            "tool_use_id": "toolu_01XdDP78mHGoewDFG2zpWirf"
+          }
+        ]
+      },
+      "parent_tool_use_id": null,
+      "session_id": "c8925a9b-c750-4879-9bd8-e5b3cef7358e",
+      "uuid": "729f88e0-23af-4aca-a93a-b24e01c46bdd",
+      "timestamp": "2026-10-23T18:57:19.665Z",
+      "tool_use_result": "Error calling tool (Bash): The operation timed out."
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 3,
+      "duration_ms": 127258,
+      "stop_reason": "end_turn",
+      "terminal_reason": "completed",
+      "session_id": "c8925a9b-c750-4879-9bd8-e5b3cef7358e",
+      "result": "The marker file was not created. `touch /tmp/marker` timed out twice in the Bash tool, before any output came back, so I can't confirm whether it ran.\n\nI stopped there and did nothing else, per your instructions. The Bash tool itself may be hung, so it's worth checking the tool or environment before retrying."
+    }
+  ],
+  "server": [
+    {
+      "at": "2026-10-23T18:55:17.260Z",
+      "since": 5.3,
+      "event": "CALL ARRIVED permission_prompt"
+    },
+    {
+      "at": "2026-10-23T18:56:17.260Z",
+      "since": 65.3,
+      "event": "CALL CONNECTION CLOSED after 60.0s (writableEnded=false)"
+    },
+    {
+      "at": "2026-10-23T18:56:19.665Z",
+      "since": 67.7,
+      "event": "CALL ARRIVED permission_prompt"
+    },
+    {
+      "at": "2026-10-23T18:57:19.665Z",
+      "since": 127.7,
+      "event": "CALL CONNECTION CLOSED after 60.0s (writableEnded=false)"
+    }
+  ],
+  "live": {
+    "about": "A live check of the fix, 2026-10-23: Postbox from this branch, a persona with backend claude-code, claude-haiku-5-5 and permission mode ask, asked to run one touch command. “mcpConfig” is the --mcp-config value read from ps for the spawned claude process (the URL’s port, session and turn replaced). “timeline” is seconds since the message was sent. The card stayed open for two minutes, Allow ran the command, and no call timed out.",
+    "date": "2026-10-23",
+    "cli": "2.1.308",
+    "backend": "claude-code",
+    "permissionMode": "ask",
+    "mcpConfig": {
+      "mcpServers": {
+        "postbox": {
+          "type": "http",
+          "url": "http://127.0.0.1:<port>/mcp?session=<session>&turn=<turn>",
+          "alwaysLoad": true,
+          "timeout": 90000000
+        }
+      }
+    },
+    "timeline": {
+      "cardOpen": 5.1,
+      "allowed": 125.7,
+      "turnEnded": 129.7
+    },
+    "markerCreated": true,
+    "operationTimedOut": false
+  }
+}

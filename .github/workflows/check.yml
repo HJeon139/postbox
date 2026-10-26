@@ -55,7 +55,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Play the demo, screenshot every scene and run axe-core
+      # The browser specs on Playwright Test (#303), on the Chromium build its version pins. They include the demo’s
+      # accessibility gate: axe-core on every scene, at 1280 and 375 px in both themes (tests/browser/demo-a11y.spec.mjs).
+      - name: Install Playwright’s Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser specs
+        run: npx playwright test
+      - name: Browser specs, with the server’s events late
+        if: success() || failure()
+        run: npx playwright test
+        env:
+          POSTBOX_STREAM_LAG: 300
+      # Pictures of every scene for the reviewer, not a check: the spec above is the gate, so a screenshot tool that
+      # breaks warns here and doesn’t fail the job.
+      - name: Play the demo and screenshot every scene
+        if: success() || failure()
+        continue-on-error: true
         run: CHROME="$(command -v google-chrome)" node tools/shoot-app.mjs
       - if: always()
         uses: actions/upload-artifact@v4
@@ -63,18 +78,6 @@ jobs:
           name: screenshots
           path: screenshots/latest/app/
           retention-days: 14
-      # The browser specs on Playwright Test (#303), on the Chromium build its version pins.
-      - name: Install Playwright’s Chromium
-        if: success() || failure()
-        run: npx playwright install --with-deps chromium
-      - name: Browser specs
-        if: success() || failure()
-        run: npx playwright test
-      - name: Browser specs, with the server’s events late
-        if: success() || failure()
-        run: npx playwright test
-        env:
-          POSTBOX_STREAM_LAG: 300
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -88,31 +91,62 @@ jobs:
           path: test-results/
           retention-days: 14
 
-  # A spec a pull request adds or changes runs ten times, with the events late, before it counts: one failure fails it.
-  # A job of its own, beside the end-to-end one: a change to a helper every spec imports (tests/browser/postbox.mjs)
-  # makes --only-changed run every spec ten times, about 25 minutes on this runner (#365).
+  # A spec a pull request adds or edits runs ten times, with the events late, before it counts: one failure fails it.
+  # tools/repeat-specs.mjs picks them. A spec reached only through a changed helper isn't repeated: the end-to-end job
+  # runs every spec twice already. On a later push, only the specs that push changed or brought in are: #387 changed the
+  # helper every spec imports, and --only-changed ran all 38 specs ten times, 49 minutes, on each push.
   repeat:
     name: New and changed specs, ten times
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: check
     timeout-minutes: 60
+    # To read whether this job passed on the push before.
+    permissions:
+      contents: read
+      checks: read
     steps:
       - uses: actions/checkout@v4
         with:
-          # The base branch too, for the specs a pull request adds or changes (--only-changed, below).
+          # The base branch and the push before too, to tell what the pull request and this push changed.
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Install Playwright’s Chromium
-        run: npx playwright install --with-deps chromium
-      - name: New and changed specs, ten times
-        run: npx playwright test --only-changed="origin/$BASE_REF" --repeat-each=10 --pass-with-no-tests
+      - name: Pick the specs to repeat
+        id: pick
+        run: |
+          # The push before counts only where this job passed on it, as GitHub Actions (app 15368) reported it: a spec
+          # it failed on, or never got to (a newer push cancels the run), runs ten times again. Where GitHub can't say,
+          # the same.
+          if [ -n "$BEFORE" ]; then
+            passed=$(gh api -X GET "repos/$REPO/commits/$BEFORE/check-runs" -f check_name="$JOB" -f app_id=15368 \
+              --jq '[.check_runs[] | select(.conclusion == "success")] | length') || passed=0
+            case "$passed" in '' | *[!0-9]* | 0) BEFORE= ;; esac
+          fi
+          specs=$(node tools/repeat-specs.mjs "origin/$BASE_REF" "$HEAD_SHA" "$BEFORE" | tr '\n' ' ')
+          echo "specs=$specs" >> "$GITHUB_OUTPUT"
+          if [ -n "$specs" ]; then echo "Ten times each: $specs"; else echo "No spec to repeat: this push adds or edits none."; fi
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Empty on the first push and on a reopen: then every spec the pull request adds or edits.
+          BEFORE: ${{ github.event.before }}
+          JOB: New and changed specs, ten times
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+      - if: steps.pick.outputs.specs != ''
+        run: npm ci --ignore-scripts
+      - name: Install Playwright’s Chromium
+        if: steps.pick.outputs.specs != ''
+        run: npx playwright install --with-deps chromium
+      - name: New and changed specs, ten times
+        if: steps.pick.outputs.specs != ''
+        # Unquoted on purpose, one argument a spec: isSpec takes only plain names.
+        run: npx playwright test $SPECS --repeat-each=10
+        env:
+          SPECS: ${{ steps.pick.outputs.specs }}
           POSTBOX_STREAM_LAG: 300
           # Its own report, beside the lag pass’s in the end-to-end job (#317).
           PB_REPORT: check-logs/lag/playwright-repeat.json

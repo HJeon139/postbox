@@ -1,11 +1,19 @@
 // SkillSpector’s findings on the prompt surface, as prompt-surface-scan.yml judges them: what a pull request adds,
-// which of it stops a merge, and the report for the job summary. Moved out of tools/prompt-gate.mjs, which runs it.
+// which of it fails the scan, and the report for the job summary.
 //
-// A high or critical finding the pull request adds stops it, unless .github/prompt-surface-accepted.json accepts it:
+//   node tools/prompt-findings.mjs findings <base.json> <head.json> [accepted.json]  the findings the head adds, as
+//                                                    Markdown; exit 1 if one is high or critical and not accepted, or
+//                                                    an accepted one no longer matches
+//   node tools/prompt-findings.mjs annotations <base.json> <head.json> [accepted.json]  the same, as run-page annotations
+//
+// A high or critical finding the pull request adds fails the scan, unless .github/prompt-surface-accepted.json accepts it:
 // an entry names one match by SkillSpector’s fingerprint, which stays the same when the line moves and changes when
-// the matched text does, and says why it isn’t a threat. The list is under .github/, so adding to it needs the
-// maintainer’s approval at the prompt gate. Whole rules are never turned off: the rule that flags a mention of
-// ~/.npmrc in a test note is the one that catches an instruction to read it.
+// the matched text does, and says why it isn’t a threat. Adding to the list is a change a reviewer reads like any
+// other. Whole rules are never turned off: the rule that flags a mention of ~/.npmrc in a test note is the one that
+// catches an instruction to read it.
+
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const RANK = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 /** Where the accepted findings are listed, in the repository. */
@@ -20,7 +28,7 @@ export function newFindings(base, head) {
   const known = new Set((base.issues ?? []).map((i) => i.match_fingerprint));
   return (head.issues ?? []).filter((i) => !known.has(i.match_fingerprint));
 }
-/** Whether a finding should stop a merge: high or critical. */
+/** Whether a finding fails the scan: high or critical. */
 export const blocks = (i) => RANK.indexOf(String(i.severity).toUpperCase()) >= RANK.indexOf('HIGH');
 
 /**
@@ -45,7 +53,7 @@ export function acceptedProblems(list) {
 }
 
 /**
- * The verdict on a pull request’s findings: what it adds, what of that stops it, what the list accepts, and which
+ * The verdict on a pull request’s findings: what it adds, what of that fails the scan, what the list accepts, and which
  * entries no longer match anything, so the list doesn’t keep excuses for text that’s gone.
  * @param {{ issues?: any[] }} base @param {{ issues?: any[] }} head @param {any[]} [accepted]
  */
@@ -99,7 +107,7 @@ export function findingsReport(base, head, accepted = []) {
       '',
       '### If a finding isn’t a threat',
       '',
-      `Reword the text if it can change: a fact about a file doesn’t need the file’s path, for one. If it has to stay, add its line below to \`${ACCEPTED_FILE}\` with a reason a reviewer can check. That file is prompt surface, so the change waits for approval at the prompt gate. If the matched text changes later, the finding gets a new fingerprint and is flagged again.`,
+      `Reword the text if it can change: a fact about a file doesn’t need the file’s path, for one. If it has to stay, add its line below to \`${ACCEPTED_FILE}\` with a reason a reviewer can check. A reviewer reads the entry in the diff, like any change. If the matched text changes later, the finding gets a new fingerprint and is flagged again.`,
       '',
       '```json',
       ...blocking.map(entryFor),
@@ -126,7 +134,7 @@ const esc = (s, property = false) => {
 };
 
 /**
- * The run page’s annotations: one error for each finding that stops the pull request, on the repository file when the
+ * The run page’s annotations: one error for each finding that fails the scan, on the repository file when the
  * scan read one (repo/), and a warning for each stale entry. A viewer who isn’t signed in sees these, not the summary.
  * @param {any} base @param {any} head @param {any[]} [accepted]
  */
@@ -141,4 +149,30 @@ export function annotations(base, head, accepted = []) {
     }),
     ...stale.map((e) => `::warning title=Stale accepted finding::${esc(`${e.rule} in ${e.file} no longer matches. Remove it from ${ACCEPTED_FILE}.`)}`),
   ];
+}
+
+// The real path: run through a symlink, a plain comparison would skip the command line and pass with no output.
+if (process.argv[1] && existsSync(process.argv[1]) && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
+  const [cmd, a, b, accepted] = process.argv.slice(2);
+  if ((cmd === 'findings' || cmd === 'annotations') && a && b) {
+    const [base, head] = [a, b].map((f) => JSON.parse(readFileSync(f, 'utf8')));
+    const list = accepted && existsSync(accepted) ? JSON.parse(readFileSync(accepted, 'utf8')) : [];
+    const problems = acceptedProblems(list);
+    if (problems.length) {
+      console.log(
+        cmd === 'annotations'
+          ? problems.map((p) => `::error title=Accepted findings::${p}`).join('\n')
+          : ['The accepted findings list has problems:', ...problems.map((p) => `- ${p}`)].join('\n'),
+      );
+      process.exitCode = 1;
+    } else if (cmd === 'annotations') console.log(annotations(base, head, list).join('\n'));
+    else {
+      console.log(findingsReport(base, head, list));
+      const { blocking, stale } = judge(base, head, list);
+      process.exitCode = blocking.length || stale.length ? 1 : 0;
+    }
+  } else {
+    console.error('Usage: node tools/prompt-findings.mjs findings|annotations <base.json> <head.json> [accepted.json]');
+    process.exitCode = 2;
+  }
 }

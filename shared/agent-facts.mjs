@@ -4,8 +4,6 @@
 // (fixed when it started, or changed by a command), falling back to its persona’s; the server does the same
 // (server/runtime.mjs, personaFor; server/adapters/setup.mjs, modelOf and effortOf).
 
-import { CODEX_DEFAULT_LABEL, codexUsesDefault } from './codex-model.mjs';
-
 export const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
   'agent-sdk': 'Agent SDK',
@@ -80,6 +78,18 @@ export function shortModel(id) {
 }
 
 /**
+ * Whether a Codex agent is set to Codex’s own default: `auto` (server/adapters/setup.mjs, AUTO_MODEL), or a Claude
+ * model kept from before Codex offered `auto`, which Codex ignores the same way (server/adapters/codex.mjs, modelArg).
+ * @param {string} backend @param {unknown} id
+ */
+export const codexDefault = (backend, id) => backend === 'codex' && (!id || id === 'auto' || String(id).startsWith('claude-'));
+
+/** A model’s name for a backend: Codex’s default reads as that, not as `auto` or a Claude model it doesn’t run. */
+export function modelName(backend, id) {
+  return codexDefault(backend, id) ? 'Codex’s default' : shortModel(id);
+}
+
+/**
  * Whether the model that answered is the one set. The setting can be what the CLI takes: an id with a context
  * suffix (“claude-opus-5-5[1m]”) or a family alias (“opus”), while the stream reports the bare id, so only a
  * different model counts as different.
@@ -98,7 +108,7 @@ export function sameModel(answered, set) {
 }
 
 /**
- * @typedef {{ backend: string, mock: true } | { backend: string, mock: false, model: string, setModel: string, setModelName: string, answered: boolean,
+ * @typedef {{ backend: string, mock: true } | { backend: string, mock: false, model: string, setModel: string, answered: boolean,
  *   modelDiffers: boolean, effort: string, setEffort: string, effortDiffers: boolean }} Facts
  */
 
@@ -108,7 +118,7 @@ export function sameModel(answered, set) {
  * turn started with (se.lastEffort), else the one it’s set to. Each says when it differs from the setting.
  * @param {any} se a session
  * @param {any} persona its persona, if it still exists
- * @param {{ defaultModel?: string, defaultEffort?: string, backends?: Record<string, { models?: string[] }> }} config
+ * @param {{ defaultModel?: string, defaultEffort?: string }} config
  * @returns {Facts}
  */
 export function runsWith(se, persona, config) {
@@ -116,7 +126,6 @@ export function runsWith(se, persona, config) {
   if (backend === 'mock') return { backend, mock: true };
   const snap = se?.personaSnapshot ?? {};
   const named = snap.model ?? persona?.model;
-  const useDefault = backend === 'codex' && codexUsesDefault(named, config.backends?.[backend]?.models ?? [], config.defaultModel ?? MODELS[0]);
   const setModel = String(named && named !== 'mock' ? named : (config.defaultModel ?? ''));
   const setEffort = String(snap.effort ?? persona?.effort ?? config.defaultEffort ?? '');
   const last = typeof se?.lastModel === 'string' && se.lastModel ? se.lastModel : null;
@@ -124,11 +133,11 @@ export function runsWith(se, persona, config) {
   return {
     backend,
     mock: false,
-    model: last ?? (useDefault ? CODEX_DEFAULT_LABEL : setModel),
+    model: last ?? setModel,
     setModel,
-    setModelName: useDefault ? CODEX_DEFAULT_LABEL : shortModel(setModel),
     answered: !!last,
-    modelDiffers: !!last && !useDefault && !sameModel(last, setModel),
+    // Codex’s default is whichever model Codex picks, so the one that answered never differs from it.
+    modelDiffers: !!last && !codexDefault(backend, setModel) && !sameModel(last, setModel),
     effort: lastEffort ?? setEffort,
     setEffort,
     effortDiffers: !!lastEffort && lastEffort !== setEffort,
@@ -138,7 +147,7 @@ export function runsWith(se, persona, config) {
 /** For an agent’s row in the sidebar, where room is short: “Opus 5.5”, or “Sonnet 5.5, not Opus 5.5” when it differs. */
 export function chipModel(f) {
   if (f.mock) return '';
-  return f.modelDiffers ? `${shortModel(f.model)}, not ${shortModel(f.setModel)}` : shortModel(f.model);
+  return f.modelDiffers ? `${modelName(f.backend, f.model)}, not ${modelName(f.backend, f.setModel)}` : modelName(f.backend, f.model);
 }
 /** For the row: “medium effort”, or “high effort, set to medium” when the setting changed since. */
 export function chipEffort(f) {
@@ -153,7 +162,7 @@ export function chipEffort(f) {
 export function factsText(f) {
   const backend = Object.hasOwn(BACKEND_NAMES, f.backend) ? BACKEND_NAMES[f.backend] : f.backend;
   if (f.mock) return `${backend} · scripted replies, not a model`;
-  const model = f.modelDiffers ? `${f.model} · not the model you set: ${f.setModel}` : f.model;
+  const model = f.modelDiffers ? `${f.model} · not the model you set: ${f.setModel}` : codexDefault(f.backend, f.model) ? 'Codex’s default' : f.model;
   const effort = f.effortDiffers ? `${effortWord(f.effort)} effort on the last turn, set to ${effortWord(f.setEffort)}` : `${effortWord(f.effort)} effort`;
   return `${backend} · ${model} · ${effort}`;
 }

@@ -6,6 +6,7 @@ import { factsText, runsWith } from '../../shared/agent-facts.mjs';
 import { LIMITS, limitText, PALETTES } from '../../shared/limits.mjs';
 import { commentAt } from '../../shared/review-comments.mjs';
 import { formatLint } from '../checks.mjs';
+import { formatQueuedMessages } from './queued-messages.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /**
@@ -15,10 +16,10 @@ import { DEFAULT_EFFORT, DEFAULT_MODEL, TOOL_RULES, TOOL_WORDS, toolsOff } from 
  * room: the other agents in this conversation, with their roles (Runtime.roomOf); handles: every agent in Postbox.
  * @param {{ persona: any, handles: string[], room?: { handle: string, role: string }[], project?: any, brief?: string|null,
  *           session?: { backend?: string, personaSnapshot?: { model?: string, effort?: string }, lastModel?: string, lastEffort?: string }|null,
- *           toolRules?: Record<string, string[]>|null, setup?: boolean, models?: string[] }} who  setup: false leaves out what Postbox knows
+ *           toolRules?: Record<string, string[]>|null, setup?: boolean }} who  setup: false leaves out what Postbox knows
  *           of the session and how to check a setup (#131), for a backend whose rules file has no room for them (agy)
  */
-export function agentGuide({ persona, handles, room = [], project, brief, session, toolRules = TOOL_RULES, setup = true, models = [] }) {
+export function agentGuide({ persona, handles, room = [], project, brief, session, toolRules = TOOL_RULES, setup = true }) {
   const here = new Set(room.map((r) => r.handle));
   const others = handles.filter((h) => h !== persona.handle && !here.has(h));
   return [
@@ -31,7 +32,7 @@ export function agentGuide({ persona, handles, room = [], project, brief, sessio
       : '',
     project?.name ? `This conversation belongs to the project “${project.name}”.` : '',
     brief ? `How you joined: ${brief}` : '',
-    setup ? sessionText(session, persona, models) : '',
+    setup ? sessionText(session, persona) : '',
     setup ? SETUP_CHECK : '',
     offText(toolsOff(persona, toolRules)),
     guideText(),
@@ -70,8 +71,8 @@ The person turned these off for you in Postbox, so their tools aren’t in your 
 }
 
 /** What Postbox knows about this session’s backend, model and effort (#131): this session’s, not another command’s. */
-function sessionText(session, persona, models) {
-  const facts = runsWith(session, persona, { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT, backends: { [persona.backend]: { models } } });
+function sessionText(session, persona) {
+  const facts = runsWith(session, persona, { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT });
   const text = facts.mock
     ? `Postbox runs you with ${factsText(facts)}.`
     : facts.answered
@@ -179,7 +180,7 @@ const isReview = (event) =>
  */
 export function formatMessage(message, pathOf = () => null) {
   // Context that waited for this turn (a topic thread’s brief, something shared back) comes first.
-  const body = formatBody(message, pathOf);
+  const body = message.messages?.length ? formatQueuedMessages(message.messages, pathOf, formatMessage) : formatBody(message, pathOf);
   return message.context?.length ? `${message.context.join('\n\n')}\n\n${body}` : body;
 }
 

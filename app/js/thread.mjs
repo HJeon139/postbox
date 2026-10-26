@@ -10,6 +10,7 @@ import { subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
+import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { asWake, queuedRow } from './composer-queue.mjs';
 import { addressLine, addressSig } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
@@ -17,17 +18,23 @@ import { focusComposer, hopBlock } from './hop-card.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
+import { hostOf } from './remote.mjs';
 import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
+import { failedOnHost, hostChanged, hostEnd, hostTurnsList, kiroStep, ranHere, remoteSig } from './thread-host.mjs';
+import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { workList } from './work-list.mjs';
 
 export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
-const speaker = (it) => (it.kind === 'user' ? 'you' : it.kind === 'agent' || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null);
+// A reply replaced by its replay (#120: a turn on a host attached again after a restart) shows nothing, so the replay
+// after it names its speaker.
+const speaker = (it) =>
+  it.kind === 'user' ? 'you' : (it.kind === 'agent' && it.status !== 'replaced') || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null;
 // One turn’s items share a sender line; a later turn of the same agent gets its own, and so does a wake it sent from
 // another turn (its fromTurnId) (#135). An item from before turns were kept, or no turn made, goes with the one before.
 const turnOf = (it) => it.turnId ?? it.fromTurnId;
@@ -81,8 +88,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       },
       (row, se) => fillWorkRow(row, se),
     );
-    el.append(working); // keep it last
+    el.append(hostTurns.el, working); // keep them last
   };
+  // Above them, a turn on a host Postbox asked to stop and the host hasn’t confirmed it stopped (#120).
+  const hostTurns = hostTurnsList(threadId);
 
   const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0, app.retired?.at ?? null]);
   const render = (it, prev) => {
@@ -91,6 +100,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     messageActions(node, it, ctx);
     node.dataset.key = it.id;
     if (it.kind === 'block' && it.valid && it.block.type === 'app' && S().apps[it.block.id]) node.dataset.appSig = appSig(S().apps[it.block.id]);
+    if (it.kind === 'agent') node.dataset.remoteSig = remoteSig(it);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
     return node;
@@ -120,6 +130,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       nodes.set(it.id, n);
       el.append(n);
     });
+    hostTurns.paint();
     paintWorking();
   };
   all();
@@ -348,6 +359,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
           }
         }
     }
+    hostChanged(ch, threadId, nodes, rerender, hostTurns);
   });
 
   const updateText = (id, force = false) => {
@@ -418,6 +430,7 @@ const who = (it, { you = false } = {}) => {
 // topic or side thread (#128): “Send to conversation”. React, under every one (#251). They appear on hover and focus, and always on touch.
 function messageActions(node, it, ctx) {
   if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent || (it.kind === 'block' && !it.valid)) return;
+  if (it.status === 'replaced') return;
   const bar = h('div.msg-actions');
   if (ctx.kind === 'thread' || ctx.kind === 'room') {
     const topic = it.topicId && S().threads[it.topicId];
@@ -494,11 +507,14 @@ function renderItem(it, prev, ctx) {
       );
     }
     case 'agent': {
-      const steps = it.activity?.steps ?? [];
+      // Replayed whole from the host after a restart (#120): the replay is the reply, so this part of it shows nothing.
+      if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
+      const [notice, steps] = kiroStep(it);
       const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
       const node = h(
         'div.col.turn',
         showWho ? who(it) : null,
+        notice,
         steps.length
           ? h(
               'details.activity',
@@ -516,8 +532,9 @@ function renderItem(it, prev, ctx) {
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
-        it.status === 'stopped' ? stoppedTag(it) : null,
-        it.status === 'failed'
+        hostEnd(it),
+        it.status === 'stopped' && !it.note ? stoppedTag(it) : null,
+        it.status === 'failed' && !failedOnHost(it)
           ? h(
               'div.callout',
               { role: 'alert' },
@@ -842,7 +859,8 @@ function commandBlock(it, ctx) {
           ? [icon('warn', 'i-sm'), `Couldn’t run: ${it.error}`]
           : [icon('warn', 'i-sm'), `Exit ${it.exitCode ?? it.signal ?? '?'} · ${secs}`];
   const titleId = `cmd-${it.id}`;
-  const out = it.text ? h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${it.command}` }, h('code', it.text)) : null;
+  const { where, text } = ranHere(it, running);
+  const out = text ? h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${it.command}` }, h('code', text)) : null;
   // While it runs, the newest output is in view: the item is drawn again as output arrives.
   if (out && running) requestAnimationFrame(() => out.scrollTo({ top: out.scrollHeight }));
   return h(
@@ -851,6 +869,7 @@ function commandBlock(it, ctx) {
     h('div.block-head', h('code.title.grow.cmd-line', { id: titleId }, `! ${it.command}`), h('span.kind', `Command · ${it.cwd}`)),
     h(
       'div.block-body',
+      where,
       it.cut ? h('p.small.dim', 'Earlier output was cut: this is the last 64 KB.') : null,
       it.paused && running ? h('p.small.dim', 'It’s still printing. The end of its output shows here when it finishes.') : null,
       out ?? h('p.small.dim', running ? 'No output yet.' : 'No output.'),
@@ -1490,7 +1509,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     mention.index = Math.min(mention.index, list.length - 1);
     const box =
       mention.kind === '#'
-        ? threadMenu(list)
+        ? threadMenu(list, mention, pick)
         : h(
             'div.menu.mention-menu',
             { role: 'listbox', id: 'mention-list', 'aria-label': 'Agents' },
@@ -1527,32 +1546,6 @@ export function mountComposer(threadId, { side = false } = {}) {
     // A textarea can’t be a combobox; the active option is announced through aria-activedescendant.
     ta.setAttribute('aria-controls', 'mention-list');
     ta.setAttribute('aria-activedescendant', `mention-${mention.index}`);
-  }
-  /** Threads to link, as the menu for #. The link is what Copy link gives, so an agent reads it the same way. */
-  function threadMenu(list) {
-    return h(
-      'div.menu.mention-menu',
-      { role: 'listbox', id: 'mention-list', 'aria-label': 'Threads' },
-      h('div.label', 'Link a thread'),
-      list.map(({ thread: x }, i) =>
-        h(
-          'div.mi',
-          {
-            role: 'option',
-            id: `mention-${i}`,
-            'aria-selected': String(i === mention.index),
-            class: i === mention.index ? 'active' : '',
-            onmousedown: (e) => {
-              e.preventDefault();
-              pick({ thread: x });
-            },
-          },
-          icon('thread', 'i-sm'),
-          h('span.grow', x.title, h('span.d', x.kind === 'side' ? 'Side thread' : 'Topic thread')),
-          i === mention.index ? h('span.k', 'Enter') : null,
-        ),
-      ),
-    );
   }
   function pick(c) {
     if (c.thread) insertText(`[${c.thread.title.replace(/[[\]]/g, '')}](${threadLink(c.thread.id)})`);
@@ -1722,6 +1715,7 @@ export function mountComposer(threadId, { side = false } = {}) {
             .catch((e) => toast({ title: 'Couldn’t stop', text: e.message }))
       : () => submit();
     action.setAttribute('aria-label', b ? `Stop @${b.handle}’s reply` : 'Send');
+    const note = describeStop(action, b, threadId);
     const last = S().sessions[t.lastSpeaker];
     const members = sessionsOf(threadId).filter((x) => !x.archived);
     // Every agent here is archived: the conversation is read-only until you restore one.
@@ -1788,7 +1782,7 @@ export function mountComposer(threadId, { side = false } = {}) {
                 ` attempt ${client.attempts} · nothing is lost; replies pick up where they stopped`,
               ),
             )
-          : '',
+          : stopNoteEl(note, threadId),
     );
     // What Enter will do with a / or ! line (#67).
     const line = ta.value.trimStart();
@@ -1808,6 +1802,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     else delete hint.dataset.mode;
     hint.dataset.to = addressSig(threadId, ta.value);
     const folder = mode === 'shell' ? commandFolder() : null;
+    const here = mode === 'shell' ? notOnHost(target()) : null;
     // A repaint while you’re on “Did you mean” keeps you there (#134).
     const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);
     fill(
@@ -1816,9 +1811,9 @@ export function mountComposer(threadId, { side = false } = {}) {
         ? h(
             'span',
             folder
-              ? ['Runs in ', h('span.mono', folder), ' as you, with Enter. ']
+              ? ['Runs in ', h('span.mono', folder), here, ' as you, with Enter. ']
               : target() && !isMock(target())
-                ? ['Runs in ', h('b', `@${target().handle}`), '’s own workspace, as you, with Enter. ']
+                ? ['Runs in ', h('b', `@${target().handle}`), '’s own workspace', here ?? ',', ' as you, with Enter. ']
                 : 'This conversation has no folder to run commands in. ',
             'The agents read it and its output on their next turn.',
           )
@@ -1862,6 +1857,8 @@ export function mountComposer(threadId, { side = false } = {}) {
   function commandFolder() {
     const se = target();
     const p = se ? S().personas[se.personaId] : null;
+    // An agent on a host works in a folder there, so ! runs in the project’s folder here (runtime.mjs, commandFolder).
+    if (hostOf(se)) return S().projects[thread()?.projectId]?.folder || null;
     return se?.personaSnapshot?.folder || p?.folder || S().projects[thread()?.projectId]?.folder || null;
   }
   /** Stop found background jobs running: the ask shows above the composer, and its first choice takes focus. */
@@ -1922,7 +1919,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   paint();
   autosize();
   const off = client.on((ch) => {
-    if (['thread', 'session', 'connection', 'outbox', 'load'].includes(ch.type)) paint();
+    if (['thread', 'session', 'connection', 'outbox', 'load', 'persona', 'host'].includes(ch.type)) paint();
   });
   return {
     el,
