@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.0 (2026-10-26)
+
+### Features
+
+- **adapters:** approve writes outside Postbox through MCP and gh in Antigravity's Auto
+- **adapters:** let Postbox's hook approve routine Antigravity calls in Auto
+
+### Fixes
+
+- **adapters:** leave web searches to the reviewer in agy's Auto, and match the persona spec
+- **adapters:** leave gh writes, MCP tools and fetches with a query to the card in agy's Auto
+- **adapters:** match .git and the hook's own files without case, and keep jq out of Auto
+- **adapters:** stop options and the folder's own code passing as routine in Antigravity's Auto
+
 ## 0.40.4 (2026-10-26)
 
 ### Fixes
