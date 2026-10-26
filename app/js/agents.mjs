@@ -155,9 +155,7 @@ export function openAgentPanel(sessionId, from = null) {
   let status = '';
   /** @type {{ close: () => void, dialog: HTMLElement } | null} */
   let dlg = null;
-  const body = h('div.qp');
-  const title = h('span');
-  const sub = h('span');
+  const [body, title, sub] = [h('div.qp'), h('span'), h('span')];
   const done = (text) => {
     status = text;
     say(text);
@@ -175,7 +173,8 @@ export function openAgentPanel(sessionId, from = null) {
     const f = factsOf(se);
     const mock = isMock(se);
     fill(title, `@${se.handle}`, mockMarker(se));
-    fill(sub, `${stateWord(se.state)} · ${se.ctx ?? 0}% of context used · ${mock ? BACKEND_NAMES.mock : (BACKEND_NAMES[f.backend] ?? f.backend)}`);
+    const ctxText = se.ctx != null ? `${se.ctx}% of context used` : 'context unknown';
+    fill(sub, `${stateWord(se.state)} · ${ctxText} · ${mock ? BACKEND_NAMES.mock : (BACKEND_NAMES[f.backend] ?? f.backend)}`);
     keepFocus(body, () =>
       fill(
         body,

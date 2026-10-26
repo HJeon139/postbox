@@ -32,7 +32,7 @@ export function paintStateWords(root, sessions, latestItemOf) {
 function ringSvg(c, r, sw, state, ctx) {
   const color = `var(${STATE_VAR[state] ?? '--st-idle'})`;
   const C = 2 * Math.PI * r;
-  const L = (C * ctx) / 100;
+  const L = ctx != null ? (C * ctx) / 100 : 0;
   let out = `<circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${sw}"/>`;
   if (state === 'think' && L > 0) {
     const n = Math.max(6, Math.round(L / (sw * 1.1)));
@@ -48,9 +48,10 @@ function ringSvg(c, r, sw, state, ctx) {
   }
   if (state === 'tool') {
     const margin = ((sw * 1.6) / r) * (180 / Math.PI);
-    const a1 = 3.6 * ctx + margin,
+    const ctxNum = ctx ?? 0;
+    const a1 = 3.6 * ctxNum + margin,
       a2 = 360 - margin;
-    const rest = a1 < a2 ? a1 : 3.6 * ctx + (360 - 3.6 * ctx) / 2;
+    const rest = a1 < a2 ? a1 : 3.6 * ctxNum + (360 - 3.6 * ctxNum) / 2;
     out += `<circle class="dot${a1 >= a2 ? ' still' : ''}" cx="${c}" cy="${c - r}" r="${Math.max(1.3, sw * 0.8)}" fill="${color}" style="--a1:${a1}deg;--a2:${a2}deg;transform:rotate(${rest}deg)"/>`;
   }
   return out;
@@ -78,7 +79,9 @@ class PbRing extends HTMLElement {
   }
   render() {
     const state = this.getAttribute('state') || 'idle';
-    const ctx = Math.max(0, Math.min(100, +this.getAttribute('ctx') || 0));
+    const rawCtx = this.getAttribute('ctx');
+    const hasCtx = rawCtx !== null && rawCtx !== '' && rawCtx !== 'unknown' && !Number.isNaN(+rawCtx);
+    const ctx = hasCtx ? Math.max(0, Math.min(100, +rawCtx)) : null;
     const subs = parseSubs(this.getAttribute('subs'));
     const size = this.getAttribute('size') || 'sm';
     const name = this.getAttribute('name') || 'Agent';
@@ -101,7 +104,8 @@ class PbRing extends HTMLElement {
     const subText = subs.length
       ? `; ${subs.length} subagent${subs.length === 1 ? '' : 's'}: ` + subs.map((x) => `${x.name} ${stateWord(x.state).toLowerCase()}, ${x.ctx}%`).join('; ')
       : '';
-    const label = `${name}: ${stateWord(state)}, ${ctx}% of context used${subText}`;
+    const ctxText = ctx != null ? `${ctx}% of context used` : 'context unknown';
+    const label = `${name}: ${stateWord(state)}, ${ctxText}${subText}`;
     svg.setAttribute('aria-label', label);
     const title = document.createElementNS(NS, 'title');
     title.textContent = label;
@@ -136,7 +140,7 @@ export function ringFor(se, size = 'sm', el = null) {
   };
   set('name', `@${se.handle}`);
   set('state', se.deleting ? 'idle' : (se.state ?? 'idle'));
-  set('ctx', String(se.ctx ?? 0));
+  set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));
   set('size', size);
   return el;
