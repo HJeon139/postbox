@@ -8,6 +8,7 @@
 // started it, with what it was asked and what it’s doing now, a line each, without hover.
 
 import { BACKEND_NAMES, chipEffort, chipModel, shortModel } from '/shared/agent-facts.mjs';
+import { modeWhen } from '/shared/mode-when.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
@@ -154,9 +155,7 @@ export function openAgentPanel(sessionId, from = null) {
   let status = '';
   /** @type {{ close: () => void, dialog: HTMLElement } | null} */
   let dlg = null;
-  const body = h('div.qp');
-  const title = h('span');
-  const sub = h('span');
+  const [body, title, sub] = [h('div.qp'), h('span'), h('span')];
   const done = (text) => {
     status = text;
     say(text);
@@ -174,7 +173,8 @@ export function openAgentPanel(sessionId, from = null) {
     const f = factsOf(se);
     const mock = isMock(se);
     fill(title, `@${se.handle}`, mockMarker(se));
-    fill(sub, `${stateWord(se.state)} · ${se.ctx ?? 0}% of context used · ${mock ? BACKEND_NAMES.mock : (BACKEND_NAMES[f.backend] ?? f.backend)}`);
+    const ctxText = se.ctx != null ? `${se.ctx}% of context used` : 'context unknown';
+    fill(sub, `${stateWord(se.state)} · ${ctxText} · ${mock ? BACKEND_NAMES.mock : (BACKEND_NAMES[f.backend] ?? f.backend)}`);
     keepFocus(body, () =>
       fill(
         body,
@@ -352,10 +352,8 @@ function modeChoice(se, p, done, failed) {
       value,
       (id, name) =>
         api('/api/permissions/mode', { personaId: se.personaId, mode: id }).then(
-          (r) =>
-            done(
-              `Permission mode: ${name} for @${se.handle} in every conversation, ${r.now.includes(se.handle) ? 'from now: its running turn changed too' : 'from their next turns'}.`,
-            ),
+          // A running turn its backend can’t change keeps the old mode until it ends (#371, #381): say so, and that Stop does.
+          (r) => done(`Permission mode: ${name} for @${se.handle} in every conversation, ${modeWhen(r, se.id)}`),
           failed,
         ),
     ),
