@@ -11,15 +11,27 @@ import { chains } from '../shared/command-chains.mjs';
 export { chains };
 
 // Commands whose second word is the real command (git status, npm test): “always” allows that pair.
-const TWO_WORD = new Set(['git', 'npm', 'npx', 'pnpm', 'yarn', 'bun', 'node', 'python', 'python3', 'pip', 'cargo', 'go', 'make', 'docker', 'kubectl', 'gh']);
+const TWO_WORD = new Set(['git', 'npm', 'pnpm', 'yarn', 'bun', 'node', 'python', 'python3', 'pip', 'cargo', 'go', 'make', 'docker', 'kubectl', 'gh']);
+// Their subcommands that fetch and run a package (npm exec, pnpm dlx, bun x) only ever get their exact text (#281).
+const RUNS_A_PACKAGE = new Set(['npm exec', 'npm x', 'pnpm dlx', 'pnpm exec', 'yarn dlx', 'yarn exec', 'bun x', 'bun exec']);
+// Programs whose arguments run no other code, so “always” may allow the program with any arguments. Every other
+// program gets only its exact text: a list of the ones that do run code (npx, make, find -exec, rg --pre, tar
+// --to-command, a test runner’s config) is never complete.
+const ANY_ARGUMENTS = new Set(
+  'ls cat head tail wc grep pwd date echo printf uniq diff cmp stat file which tree du df ps whoami uname id hostname mkdir touch rm cp mv ln gzip gunzip'.split(
+    ' ',
+  ),
+);
 // Interpreters by any version (python3.12, pypy3, node22): like TWO_WORD, allowed only with the script they run.
 const INTERPRETER = /^(python|pypy|node|nodejs|bun)[\d.]*$/;
 // Any other command with shell syntax in it (a redirect, a quoted | or ;) only ever gets its exact text allowed.
+// `$(cat cmd.txt)` as the program runs a file the card doesn’t show, as `./run.sh` does: its exact text is all it
+// gets, and the person allows what that file holds when it runs (#281’s review).
 const COMPOUND = /[|;&`<>]|\$\(/;
 // Programs that run the command or code after them: a rule for their name (Bash(env:*), Bash(perl:*)) would allow any
 // command or any code, since Claude Code doesn’t strip them (#281), so they only ever get their exact text allowed.
 const WRAPPERS = new Set(
-  'bash sh zsh dash ksh fish env xargs sudo doas su nohup time nice timeout exec command builtin eval perl ruby php lua awk gawk deno ssh osascript pwsh'.split(
+  'bash sh zsh dash ksh fish env xargs sudo doas su nohup time nice timeout exec command builtin eval source . perl ruby php lua awk gawk deno ssh osascript pwsh'.split(
     ' ',
   ),
 );
@@ -33,11 +45,12 @@ const hostOf = (url) => {
 };
 
 /**
- * once and always are null, and why says which, for a chained command, which no one rule can allow (chains), and for
- * one with a *, which Claude Code reads in a Bash rule as a wildcard, so its rule would allow more than the command.
+ * once and always are null, and why says which, for a chained command, which no one rule can allow (chains), for one
+ * with a *, which Claude Code reads in a Bash rule as a wildcard, so its rule would allow more than the command, and
+ * for one whose ) would end its rule early (closesAtEnd).
  * @param {string} tool
  * @param {Record<string, any>} [input]
- * @returns {{ once: string|null, always: string|null, alwaysWords: string, why?: 'chained' | 'wildcard' }}
+ * @returns {{ once: string|null, always: string|null, alwaysWords: string, why?: 'chained' | 'wildcard' | 'paren' }}
  */
 export function rulesFor(tool, input = {}) {
   const i = input ?? {};
@@ -49,16 +62,22 @@ export function rulesFor(tool, input = {}) {
       if (chains(cmd)) return { once: null, always: null, alwaysWords: '', why: 'chained' };
       // `rm -rf build/*`’s rule would allow `rm -rf build/ ~` too (#281).
       if (cmd.includes('*')) return { once: null, always: null, alwaysWords: '', why: 'wildcard' };
+      // With an unmatched ), the rule ends there and the rest is read as rules of its own: a real Claude Code 2.1.310
+      // given `Bash(echo "x)" Bash "(")` ran an unrelated touch (#281).
+      if (!closesAtEnd(exact)) return { once: null, always: null, alwaysWords: '', why: 'paren' };
       const words = cmd.split(/\s+/);
       const program = words[0].slice(words[0].lastIndexOf('/') + 1); // /usr/bin/node is node
       const exactly = { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
       if (COMPOUND.test(cmd) || WRAPPERS.has(program)) return exactly;
+      // A leading NAME=value isn’t the program, and Bash(NODE_ENV=test:*) would allow any command after it; a quote or
+      // backslash in the first two words hides what they are ("/bin/bash", \env, "./my dir/run"). Only the exact text.
+      if (/^[A-Za-z_]\w*=/.test(words[0]) || /["'\\]/.test(`${words[0]} ${words[1] ?? ''}`)) return exactly;
       // A program whose second word says what it runs (git status, npm test, python3 tools/a.py) is allowed only with
       // that word. With a flag there (`node -e`, `python3 -c`, `git -c`), or none, the rule for the program alone would
       // allow any code, so only the exact text (#281). Versioned interpreters (python3.12, pypy3) count too.
       if (!TWO_WORD.has(program) && !INTERPRETER.test(program))
-        return { once: exact, always: `Bash(${words[0]}:*)`, alwaysWords: `commands that start with “${words[0]}”` };
-      if (!words[1] || words[1].startsWith('-') || !/^[\w:./-]+$/.test(words[1])) return exactly;
+        return ANY_ARGUMENTS.has(program) ? { once: exact, always: `Bash(${words[0]}:*)`, alwaysWords: `commands that start with “${words[0]}”` } : exactly;
+      if (!words[1] || words[1].startsWith('-') || !/^[\w:./-]+$/.test(words[1]) || RUNS_A_PACKAGE.has(`${program} ${words[1]}`)) return exactly;
       const prefix = `${words[0]} ${words[1]}`;
       return { once: exact, always: `Bash(${prefix}:*)`, alwaysWords: `commands that start with “${prefix}”` };
     }
@@ -84,11 +103,36 @@ export function rulesFor(tool, input = {}) {
   }
 }
 
-/** Adds an allow rule to <folder>/.claude/settings.local.json, keeping everything else in the file. */
-export async function addAllowRule(folder, rule) {
-  const { file, changed } = await changeRule(settingsFiles(folder, '').local, { behavior: 'allow', rule });
-  return { file, added: changed };
+/** Whether a rule’s parentheses close only at its end, so Claude Code reads it as one rule. @param {string} rule */
+export function closesAtEnd(rule) {
+  let depth = 0;
+  for (let i = 0; i < rule.length; i++) {
+    if (rule[i] === '(') depth++;
+    else if (rule[i] === ')' && --depth <= 0 && i < rule.length - 1) return false;
+  }
+  return depth === 0;
 }
+
+/**
+ * Adds an allow rule to <folder>/.claude/settings.local.json, keeping everything else in the file. claim counts the
+ * times the rule was asked for in that file, this one included, for takeBackRule.
+ */
+export async function addAllowRule(folder, rule) {
+  const { file, changed, claim } = await queueRule(settingsFiles(folder, '').local, { behavior: 'allow', rule });
+  return { file, added: changed, claim };
+}
+
+/**
+ * Takes out a rule addAllowRule added, unless it was asked for again since (another card, the panel), so an expired
+ * card leaves nothing behind and takes nothing from anyone else (#281).
+ * @param {string} file @param {string} rule @param {number} claim  addAllowRule’s
+ */
+export function takeBackRule(file, rule, claim) {
+  return queueRule(file, { behavior: 'allow', rule, remove: true, unlessClaimedSince: claim });
+}
+
+// How many times each allow rule was asked for: `${file}\n${rule}` → n. Changes to a file run in order (queueRule).
+const claims = new Map();
 
 // ── The permissions panel (#66) ──────────────────────────────────────────────────────────
 // The rules an agent runs with come from the settings files Claude Code reads, merged: the person’s user settings
@@ -123,7 +167,7 @@ export function settingsFiles(folder, home, configDir = null) {
 export function cleanRule(rule) {
   if (typeof rule !== 'string') return null;
   const r = rule.trim();
-  return r.length <= MAX_RULE && /^[A-Za-z*][\w.*-]*(?:\([^\n]+\))?$/.test(r) && (!r.includes('(') || r.endsWith(')')) ? r : null;
+  return r.length <= MAX_RULE && /^[A-Za-z*][\w.*-]*(?:\([^\n]+\))?$/.test(r) && (!r.includes('(') || (r.endsWith(')') && closesAtEnd(r))) ? r : null;
 }
 
 const strings = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string').slice(0, MAX_RULES) : []);
@@ -167,7 +211,17 @@ const writing = new Map();
  * @param {string} file @param {{ behavior: 'allow'|'ask'|'deny', rule: string, remove?: boolean }} change
  * @returns {Promise<{ file: string, changed: boolean }>}
  */
-export function changeRule(file, change) {
+export async function changeRule(file, change) {
+  const { changed } = await queueRule(file, change);
+  return { file, changed };
+}
+
+/**
+ * changeRule’s queue, with the rule’s claim count (addAllowRule, takeBackRule).
+ * @param {string} file @param {{ behavior: 'allow'|'ask'|'deny', rule: string, remove?: boolean, unlessClaimedSince?: number }} change
+ * @returns {Promise<{ file: string, changed: boolean, claim: number }>}
+ */
+function queueRule(file, change) {
   const key = resolve(file);
   const run = () => writeRule(file, change);
   const done = (writing.get(key) ?? Promise.resolve()).then(run, run);
@@ -182,8 +236,12 @@ export function changeRule(file, change) {
   return done;
 }
 
-/** @param {string} file @param {{ behavior: 'allow'|'ask'|'deny', rule: string, remove?: boolean }} change */
-async function writeRule(file, { behavior, rule, remove = false }) {
+/** @param {string} file @param {{ behavior: 'allow'|'ask'|'deny', rule: string, remove?: boolean, unlessClaimedSince?: number }} change */
+async function writeRule(file, { behavior, rule, remove = false, unlessClaimedSince }) {
+  const key = `${resolve(file)}\n${rule}`;
+  if (behavior === 'allow' && !remove) claims.set(key, (claims.get(key) ?? 0) + 1);
+  const claim = claims.get(key) ?? 0;
+  if (unlessClaimedSince !== undefined && claim !== unlessClaimedSince) return { file, changed: false, claim };
   // The file itself, through any links; a missing one is created where it’s named.
   const target = await realpath(file).catch((e) => {
     if (e.code === 'ENOENT') return file;
@@ -201,14 +259,14 @@ async function writeRule(file, { behavior, rule, remove = false }) {
     throw Object.assign(new Error(`${file} doesn’t hold settings, so Postbox didn’t change it.`), { status: 409 });
   const list = Array.isArray(settings.permissions?.[behavior]) ? settings.permissions[behavior] : [];
   const has = list.includes(rule);
-  if (has !== remove) return { file, changed: false };
+  if (has !== remove) return { file, changed: false, claim };
   const next = remove ? list.filter((r) => r !== rule) : [...list, rule];
   settings = { ...settings, permissions: { ...settings.permissions, [behavior]: next } };
   await mkdir(dirname(target), { recursive: true });
   const tmp = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   await writeFile(tmp, `${JSON.stringify(settings, null, 2)}\n`);
   await rename(tmp, target);
-  return { file, changed: true };
+  return { file, changed: true, claim };
 }
 
 /**

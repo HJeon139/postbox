@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { addAllowRule, chains, rulesFor } from '../server/permission-rules.mjs';
+import { addAllowRule, chains, cleanRule, rulesFor, takeBackRule } from '../server/permission-rules.mjs';
 import { splitCommand } from '../shared/command-chains.mjs';
 
 test('a refused command is allowed once exactly, and always by its command (or exactly, if it has shell syntax)', () => {
@@ -202,6 +202,77 @@ test(`#309 a substitution, \${ } or [[ ]] doesn’t chain, so it gets Allow once
     assert.equal(chains(command), true, command);
   // The write guard still reads the commands inside each, as deny and ask rules do.
   assert.deepEqual(splitCommand('touch "$(rm -rf x)"'), ['rm -rf x', 'touch "$(rm -rf x)"']);
+});
+
+const exactly = (command) => ({ once: `Bash(${command})`, always: `Bash(${command})`, alwaysWords: `exactly “${command}”` });
+
+// The PR #434 review: a rule for a program’s name must allow only that program, with arguments that run nothing else.
+test('#281 an assignment, a quoted or escaped program, a package runner or an unknown program gets only its exact text', () => {
+  for (const command of [
+    'NODE_ENV=test npm test', // Bash(NODE_ENV=test:*) would allow any command after it
+    'LD_PRELOAD=./x.so ls',
+    "'sh' -c ls",
+    '"/bin/bash" -c x', // the quotes hide bash from WRAPPERS
+    '\\env ls',
+    "'git' -c core.pager=sh log",
+    '"./my dir/run.sh" x', // a path with a space: its first word is "./my
+    'source ./setup.sh',
+    '. ./setup.sh',
+    'npx pkg', // runs whatever package it names
+    'npm exec pkg',
+    'pnpm dlx pkg',
+    'yarn dlx pkg',
+    'bun x pkg',
+    'find . -name x -delete', // find -exec, rg --pre, tar --to-command and the like run code, so no Bash(find:*)
+    'rg --pre ./x y',
+    'tar xf a.tar',
+    'jest --config x.js',
+    'caffeinate make',
+    'uv run x',
+    'tsx x.ts',
+    'stdbuf -oL make',
+    'setsid make',
+    'watch make',
+  ])
+    assert.deepEqual(rulesFor('Bash', { command }), exactly(command), command);
+  for (const [command, always] of [
+    ['ls -la', 'Bash(ls:*)'],
+    ['cat notes.txt', 'Bash(cat:*)'],
+    ['npm test', 'Bash(npm test:*)'],
+    ['npm run build', 'Bash(npm run:*)'],
+  ])
+    assert.equal(rulesFor('Bash', { command }).always, always, command);
+});
+
+// Real Claude Code 2.1.310, claude -p in a temp folder, the rule as one --allowedTools argument: with
+// `Bash(echo "x)" Bash "(")` an unrelated `touch zz` ran; with `Bash(ls)`, `Bash(echo "(x)" Bash)` or
+// `Bash(echo ")(" Bash)` it was refused. A ) that closes the rule early leaves a bare Bash, which allows any command.
+test('#281 a command whose ) would end its rule early gets no rule, and the panel refuses such a rule', () => {
+  for (const command of ['echo "x)" Bash "("', 'echo ")(" Bash', 'echo a) b'])
+    assert.deepEqual(rulesFor('Bash', { command }), { once: null, always: null, alwaysWords: '', why: 'paren' }, command);
+  assert.equal(rulesFor('Bash', { command: 'echo "(x)" Bash' }).once, 'Bash(echo "(x)" Bash)', 'balanced parentheses are one rule');
+  assert.equal(cleanRule('Bash(echo "x)" Bash "(")'), null);
+  assert.equal(cleanRule('Bash(echo ")(" Bash)'), null);
+  assert.equal(cleanRule('Bash(echo "(x)")'), 'Bash(echo "(x)")');
+});
+
+test('#309 [[ opens a test only where a command starts, and in one only && and || join', () => {
+  for (const command of ['[[ -d a && -d b ]]', '! [[ -d a || -d b ]]', 'if [[ -d a && -d b ]]', '( [[ -n x && -n y ]] )'])
+    assert.equal(chains(command), false, command);
+  for (const command of ['npm test [[\nrm -rf ~', 'echo [[ ; rm -rf x', 'echo [[ x | sh', '[[ -d a ; rm x ]]', '[[ -d a | sh ]]', '[[ -d a & rm x ]]'])
+    assert.equal(chains(command), true, command);
+});
+
+test('#281 taking back an expired card’s rule leaves it when someone asked for it since', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pb-rules-'));
+  const first = await addAllowRule(dir, 'Bash(ls:*)');
+  assert.equal(first.added, true);
+  await addAllowRule(dir, 'Bash(ls:*)'); // another card, or the panel, asks for it while the first card expires
+  await takeBackRule(first.file, 'Bash(ls:*)', first.claim);
+  assert.deepEqual(JSON.parse(await readFile(first.file, 'utf8')).permissions.allow, ['Bash(ls:*)']);
+  const alone = await addAllowRule(dir, 'Bash(cat:*)');
+  await takeBackRule(alone.file, 'Bash(cat:*)', alone.claim);
+  assert.deepEqual(JSON.parse(await readFile(alone.file, 'utf8')).permissions.allow, ['Bash(ls:*)'], 'with no one else, it goes');
 });
 
 test('fetches are allowed by domain, files by path, anything else by tool', () => {

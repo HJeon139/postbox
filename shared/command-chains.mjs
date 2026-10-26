@@ -159,7 +159,8 @@ function operator(s, i) {
   }
   if (s.arith && !separates(cmd, i, n)) return i; // in arithmetic, only a separator still counts, to be safe
   if ((c === '<' || c === '>') && cmd[n] === '(') return substitution(cmd, n + 1, found, s.line, true);
-  if (c === '[' && cmd[n] === '[' && (i === s.start || ' \t\n;&|('.includes(before(cmd, i)))) {
+  // [[ opens a test only where a command starts (`echo [[` is an argument), and in one only && and || join (#309, #281).
+  if (c === '[' && cmd[n] === '[' && /^[\s(]*(?:(?:if|elif|while|until|then|else|do|!)\s+)*$/.test(cmd.slice(s.start, i))) {
     s.tests++;
     return n;
   }
@@ -185,7 +186,8 @@ function operator(s, i) {
     // A newline with only blanks before the ) that ends a substitution ends nothing: the line after a heredoc's
     // delimiter in `-m "$(cat <<'EOF' … EOF\n)"`, Claude Code's own shape for a commit (#309).
     const closes = c === '\n' && s.sub && /^\s*\)/.test(cmd.slice(i + 1));
-    if ((c !== '\n' || i < s.last) && !closes && !s.braces && !s.tests) found.chained = true;
+    const joins = s.tests && (c === '&' || c === '|') && (cmd[n] === c || before(cmd, i) === c);
+    if ((c !== '\n' || i < s.last) && !closes && !s.braces && !joins) found.chained = true;
     if (c === '\n') s.line = i + 1;
     add(found, cmd.slice(s.start, i));
     s.start = i + 1;

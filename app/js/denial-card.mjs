@@ -25,7 +25,9 @@ const DENIAL_WHY = {
 const noRuleNote = (why, by) =>
   why === 'wildcard'
     ? `Claude Code reads * in a rule as a wildcard, so a rule for this command would also allow commands you haven’t seen, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to name the files instead of using *.`
-    : `Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run the parts as separate commands: a part that’s refused again gets a card of its own.`;
+    : why === 'paren'
+      ? `Claude Code would read a ) in this command as the end of its rule, so a rule for it could also allow commands you haven’t seen, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run it without the unmatched ).`
+      : `Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run the parts as separate commands: a part that’s refused again gets a card of its own.`;
 const onHostNote = (by) =>
   `${by} runs on a host, and Postbox can’t save a rule there, so there’s no Always allow. Allow it once and retry, or add the rule to the agent folder’s .claude/settings.local.json on the host.`;
 export function denialBlock(it, ctx) {

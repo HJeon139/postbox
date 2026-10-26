@@ -3,8 +3,8 @@
 //   says it’s on, and the agent carries on.
 // - #238: a refusal card for a chained command offers no Allow once or Always allow, and says why and what to do; one
 //   for a single command still offers both.
-// - #281: one for a command with a * offers neither, and says a * is a wildcard; one for env or bash -c offers only
-//   its exact text, never Bash(env:*).
+// - #281: one for a command with a * offers neither, and says a * is a wildcard; so does one with a ) that would end
+//   its rule early, saying so; one for env or bash -c offers only its exact text, never Bash(env:*).
 // - #220: a permission card nobody answered for CARD_WAIT_MS says it expired and how long it waited.
 // With a scripted Claude Code agent (no real turns), a persona and conversation of its own for each test. Moved from
 // tools/checks/permission-cards.mjs (#303).
@@ -129,6 +129,23 @@ test('#281 a refused command with a * offers no rule and says why; one with env 
   await expect(wild.locator('.block-body')).toContainText('Claude Code reads * in a rule as a wildcard');
   await expect(wild.locator('.block-body')).toContainText('ask @wild to name the files instead of using *');
   await expect(env.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “env CI=1 make test”', 'Leave it']);
+});
+
+test('#281 a refused command with a ) that would end its rule early offers no rule, and says why', async ({ page }) => {
+  const { rt } = app;
+  const { thread, script, idle } = await agent(page, 'paren');
+  const command = 'echo "x)" Bash "("';
+  script((ctx) =>
+    ctx.denied({ toolUseId: 'tu-paren', tool: 'Bash', input: { command }, label: 'Echo a paren', reason: '[Data Exfiltration]', reasonType: 'classifier' }),
+  );
+  rt.sendMessage(thread.id, { text: 'Echo it.' });
+  const paren = card(page, 'tried to echo a paren');
+  await expect(paren.locator('.block-foot')).toBeVisible();
+  await idle();
+  await synced(page, app);
+  await expect(paren.locator('.block-foot button')).toHaveText(['Leave it']);
+  await expect(paren.locator('.block-body')).toContainText('Claude Code would read a ) in this command as the end of its rule');
+  await expect(paren.locator('.block-body')).toContainText('ask @paren to run it without the unmatched )');
 });
 
 test('#220 a permission card nobody answered for 25 hours says it expired, and how long it waited', async ({ page }) => {
