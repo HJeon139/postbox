@@ -1348,8 +1348,8 @@ export class Runtime {
     if (!Array.isArray(steps)) return;
     const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
     if (turn) turn.steps = next;
-    if (job.itemId && next.find((st) => st.id === job.toolUseId))
-      this.store.emit('item.patch', { threadId: job.threadId, id: job.itemId, activityStep: next.find((st) => st.id === job.toolUseId) });
+    const step = job.itemId ? next.find((st) => st.id === job.toolUseId) : null;
+    if (step) this.store.emit('item.patch', { threadId: job.threadId, id: job.itemId, activityStep: step });
   }
 
   /** Jobs nothing reported the end of went with their CLI (SIGKILL, or a crash), unless Postbox kept them running. */

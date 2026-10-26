@@ -5,6 +5,7 @@ import { rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { readLines } from '../server/telemetry.mjs';
+import { apply, emptyState } from '../shared/state.mjs';
 import { labelEach, report, settle, setup } from './telemetry-fixture.mjs';
 
 const turnOf = (count) => async (ctx) => {
@@ -78,6 +79,38 @@ test('nine turns of four hundred steps keep a report buildable', async () => {
     assert.ok(statSync(file).size < 20 * 1024 * 1024, 'the recording stays below 20 MB');
     const built = await report(fixture, { history: true });
     assert.ok(built.id);
+  } finally {
+    fixture.stop();
+    rmSync(fixture.folder, { recursive: true, force: true });
+    rmSync(fixture.data, { recursive: true, force: true });
+  }
+});
+
+test('incremental activity events replay new, updated, and post-turn job steps exactly', async () => {
+  const fixture = setup();
+  try {
+    fixture.adapter.next.push(async (ctx) => {
+      ctx.text('Working.');
+      ctx.activity({ id: 'first', label: 'Read one', state: 'running', detail: 'started' });
+      ctx.activity({ id: 'second', label: 'Read two', state: 'running' });
+      ctx.activity({ id: 'first', label: 'Read one', state: 'done', ms: 9 });
+    });
+    fixture.rt.sendMessage(fixture.t.id, { text: '@alpha go' });
+    await settle(fixture.rt);
+    const reply = fixture.store.items(fixture.t.id).find((item) => item.kind === 'agent' && item.activity?.steps?.length);
+    fixture.rt.setJobStep(
+      { sessionId: fixture.alpha.id, turnId: reply.turnId, threadId: fixture.t.id, itemId: reply.id, toolUseId: 'second' },
+      { state: 'done', ms: 12, detail: 'finished after the turn' },
+    );
+    const expected = [
+      { id: 'first', label: 'Read one', state: 'done', ms: 9, detail: 'started' },
+      { id: 'second', label: 'Read two', state: 'done', ms: 12, detail: 'finished after the turn' },
+    ];
+    assert.deepEqual(fixture.store.item(fixture.t.id, reply.id).activity.steps, expected);
+
+    const replayed = emptyState();
+    for (const event of fixture.store.since(0)) apply(replayed, event.type, event.data);
+    assert.deepEqual(replayed.items[fixture.t.id].find((item) => item.id === reply.id).activity.steps, expected);
   } finally {
     fixture.stop();
     rmSync(fixture.folder, { recursive: true, force: true });
