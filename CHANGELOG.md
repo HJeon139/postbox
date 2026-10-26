@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.40.2 (2026-10-26)
+
+### Fixes
+
+- **composer:** say when @handle /command names no agent here
+- **composer:** run @agent /command for the agent it names
+
 ## 0.40.1 (2026-10-26)
 
 ### Fixes
