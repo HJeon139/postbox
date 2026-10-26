@@ -3,7 +3,8 @@
 // persona; the new-agent sheet shows both with their defaults. With a stand-in Claude Code backend, which never runs
 // a turn here: it only makes the real backend’s fields show. With an Antigravity CLI stand-in that reports its preferred
 // Gemini model after another, the Gemini boilerplate picks the preferred one (#358; gemini-boilerplate.spec.mjs checks
-// the rest of that boilerplate). Moved from tools/checks/persona-setup.mjs (#303).
+// the rest of that boilerplate), and its Auto says Postbox’s hook approves routine actions. Moved from
+// tools/checks/persona-setup.mjs (#303).
 
 import { expect, test } from '@playwright/test';
 import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
@@ -90,4 +91,20 @@ test('#358 the Gemini boilerplate picks the Antigravity CLI’s preferred Gemini
   await expect.soft(dialog.getByLabel('Backend'), 'the Antigravity CLI').toHaveValue('antigravity-cli');
   await expect.soft(dialog.getByLabel('Model'), 'gemini-3.8-flash-high, not the first one listed').toHaveValue('gemini-3.8-flash-high');
   await expect.soft(dialog.getByLabel('Instructions'), 'its prompt').toHaveValue(/^# Gemini\n/);
+});
+
+test('the Antigravity CLI’s Auto says Postbox approves routine actions itself, and what still asks with a card', async ({ page }) => {
+  await personas(page);
+  await page.locator('.dialog').getByRole('button', { name: 'New agent', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New agent' });
+  await dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini', exact: true }).click();
+  const field = dialog.locator('.field').filter({ has: page.getByRole('radiogroup', { name: 'Permissions' }) });
+  await field.getByRole('radio', { name: 'Auto', exact: true }).click();
+  await expect(field.locator('.help')).toHaveText(/^Antigravity’s Auto: Postbox approves routine actions itself/);
+  await expect(field.locator('.help')).toContainText('or a write outside Postbox, such as a new issue or a comment');
+  await expect(field.locator('.help')).toContainText(
+    'It asks with a card before anything else, such as rm, git commit, npm test, curl, a web search, a fetch with a query, an MCP tool,',
+  );
+  await field.getByRole('radio', { name: 'Accept edits', exact: true }).click();
+  await expect(field.locator('.help')).not.toContainText('Postbox approves routine actions itself');
 });

@@ -27,12 +27,17 @@
 // - Resume: --conversation, which streams only the new turn. agy doesn’t fail on a conversation it no longer has:
 //   it warns and starts a new one. Postbox sees the new id in `init`, stops that run, and starts over once, saying so.
 // - Fork: none. A topic thread’s agent starts fresh, with the message the thread is about (#81).
-// - Permissions: a headless run can’t ask, so there is no permission card: a refused call shows as a denied step.
+// - Permissions (#370): a headless run can’t ask. With agy 1.4.7 or newer, ask, auto and acceptEdits run with
+//   --dangerously-skip-permissions once Postbox’s PreToolUse hook is confirmed (agy-hook.mjs), and the hook decides
+//   each call, asking you through a permission card. In auto it approves routine calls itself (agy-auto.mjs), since
+//   agy’s own auto mode isn’t offered to every account (“--mode auto is not available for this account”, which
+//   this computer’s agy logged on every run from 1.4.5 to 1.4.7), and a hook’s allow only hands a call on to agy’s
+//   policy (antigravity.google/docs/hooks). Without the hook, a refused call shows as a denied step:
 //   - ask: agy’s default; edits and commands outside its allow rules are refused.
 //   - auto: --mode auto, agy’s own sandbox and safety check. What it would still ask about is refused. An account
 //     without auto mode runs as ask: agy warns and continues in its default mode.
 //   - acceptEdits: --mode accept-edits.
-//   - bypass: --dangerously-skip-permissions.
+//   - bypass: --dangerously-skip-permissions, always, with no hook.
 // - Tools: agy reads deny rules only from your own settings, which every agy session shares, so a persona’s
 //   unticked Tools can’t be turned off for one turn (tools: 'none'). The rules file tells the agent not to use them.
 // - Setup (#57): always yours (isolation: false). agy reads its config from ~/.gemini and has no setting to move it;
