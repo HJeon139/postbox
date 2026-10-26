@@ -6,7 +6,7 @@ A chat room for directing several AI agents at once. You message them, wake them
 
 ## Status
 
-- **Stage 1, mockups: done.** The approved design is in [`mockups/`](mockups/) and [`screenshots/`](screenshots/), and the reasoning is in [designs/intent.md](designs/intent.md).
+- **Stage 1, mockups: done.** The approved design is in [`mockups/`](mockups/), and the reasoning is in [designs/intent.md](designs/intent.md).
 - **Stage 2, the app: done.** It runs offline with a mock agent that can show every block type and every error state.
 - **Stage 3, real agents: done.** Agents run on Claude Code or the Claude Agent SDK, ask before risky tool calls, and can be attached from a terminal session. Agent apps can read aloud with a local voice. Linting, type checks and accessibility checks run in CI. The engineering decisions are in [designs/architecture.md](designs/architecture.md). The practices every change is held to, and the gate, are in [designs/engineering-practices.md](designs/engineering-practices.md).
 
@@ -391,7 +391,7 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 | `npm run lint:commits [range]` | Checks commit messages against Conventional Commits |
 | `npm run hooks` | Checks each commit message as you write it (`.githooks/commit-msg`) |
 
-Approved screenshots live in `screenshots/` and `screenshots/app/`. Working retakes go to `screenshots/latest/`, which git ignores.
+The demo’s screenshots go to `screenshots/latest/`, which git ignores, and aren’t committed. For the current ones, open the `screenshots` artifact of the latest `check` run on `main`, or run `node tools/shoot-app.mjs`.
 
 ## Versions
 
@@ -428,7 +428,7 @@ tests/        node:test suites, and fixtures recorded from real Claude Code turn
 tools/        demo, screenshot tools, contrast checker, project lint rules, static server
 designs/      product intent, architecture decisions, engineering practices, recipes and work prompts
 mockups/      the approved Stage 1 mockups
-screenshots/  approved screenshots of the mockups and the app
+screenshots/  generated pictures (git ignores them, but the README’s)
 ```
 
 Third-party code shipped with the app is limited to the vendored libraries in `app/kit/vendor/` (Mermaid, KaTeX and D3, each with its license). The optional packages (the Agent SDK and Kokoro) and the development tools (Biome, TypeScript and axe-core) install with `npm install` and are never needed to run the mock. The books in `server/corpus/books/` are Project Gutenberg texts, kept with their license headers.
