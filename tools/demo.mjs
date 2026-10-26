@@ -5,11 +5,12 @@
 //   node tools/demo.mjs --port 4280 --speed 0.4
 //
 // Agent apps are checked in the browser before they’re shown, so keep the page open while it plays.
-// tools/shoot-app.mjs imports these scenes and screenshots each one.
+// tools/shoot-app.mjs screenshots each of these scenes, and tests/browser/demo-a11y.spec.mjs runs axe on each.
 
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -61,8 +62,23 @@ export function client(origin) {
 }
 
 /**
+ * What a scene’s prepare step does on the page, through whichever browser shows it: the screenshot tool’s, or the
+ * accessibility spec’s. Each finds the first element a CSS selector matches (with that text, when text is given), waits
+ * for it, then acts. A step waits with shows() for what it opened, never for a fixed time.
+ * @typedef {object} UI
+ * @property {(sel: string, text?: string) => Promise<void>} click
+ * @property {(sel: string, text?: string) => Promise<void>} activate  clicks it in the page, even where the layout hides it
+ * @property {(sel: string, key: string) => Promise<void>} press  focuses it, then presses the key
+ * @property {(sel: string, value: string) => Promise<void>} fill
+ * @property {(sel: string, file: string) => Promise<void>} attach  gives a file input that file
+ * @property {(sel: string) => Promise<void>} scroll  scrolls it to the middle of the window
+ * @property {(sel: string, text?: string) => Promise<void>} shows  waits until it’s visible
+ */
+
+/**
  * The scenes, in order. Each calls view(hash) when the page should show a thread, and shot(name, opts)
- * when the screen is ready. opts.prepare(page) can open a menu or pin a hover card first.
+ * when the screen is ready. opts.prepare(ui) can open a menu or pin a hover card first (see UI).
+ * @param {{ origin: string, view?: (hash: string) => Promise<void>, shot?: (name: string, opts?: { prepare?: (ui: UI) => Promise<void> }) => Promise<void>, log?: (m: string) => void, speed?: number }} options
  */
 export async function play({ origin, view = async () => {}, shot = async () => {}, log = console.log, speed = 0.35 }) {
   const c = client(origin);
@@ -127,11 +143,9 @@ export async function play({ origin, view = async () => {}, shot = async () => {
     { label: 'the explainer', timeout: 60000 },
   );
   await shot('05-explainer', {
-    prepare: async (page) => {
-      await page.evaluate(
-        `(() => { const c = document.querySelector('.cite'); c.scrollIntoView({ block: 'center' }); c.focus(); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`,
-      );
-      await sleep(400);
+    prepare: async (ui) => {
+      await ui.press('.cite', 'Enter');
+      await ui.shows('.hovercard');
     },
   });
 
@@ -157,10 +171,7 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await call(`/api/threads/${topicId}/summarize`, {});
   await settled(topic, (st) => find(st, react, (i) => i.kind === 'shared'), 'the summary');
   await shot('18-topic-thread', {
-    prepare: async (page) => {
-      await page.evaluate(`document.querySelector('.shared-card')?.scrollIntoView({ block: 'center' })`);
-      await sleep(200);
-    },
+    prepare: (ui) => ui.scroll('.shared-card'),
   });
   await view(`#/p/${react.projectId}/threads`);
   await shot('19-threads');
@@ -218,7 +229,14 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await settled(index);
   await setSpeed(1);
   await send(index, 'Index the shelf');
-  await sleep(1800);
+  // Stopped partway: once its reply has started to stream.
+  await until(
+    (st) => {
+      const last = c.items(st, st.threads[index.id]).at(-1);
+      return last?.kind === 'agent' && last.status === 'streaming' && last.text;
+    },
+    { label: '@indexer to start replying' },
+  );
   const ix = (await c.state()).threads[index.id].members.map((id) => s.sessions[id] ?? null).filter(Boolean)[0];
   await call(`/api/sessions/${ix.id}/stop`, {});
   await setSpeed(speed);
@@ -227,10 +245,9 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await send(index, 'Show me the shelf map');
   await until((st) => st.apps['shelf-map']?.check.status === 'crashed', { label: 'the crashed app', timeout: 60000 });
   await call('/api/demo/offline', { ms: 60000 }).catch(() => {});
-  await sleep(2500);
-  await shot('09-errors');
+  await shot('09-errors', { prepare: (ui) => ui.shows('.pill', 'Reconnecting…') });
+  // The page reconnects on its own; the next view() loads it again anyway.
   await call('/api/demo/offline', { ms: 1 }).catch(() => {});
-  await sleep(3000);
 
   // 9 · A proposed teammate, the + menu and attachments
   const quotes = await call('/api/threads', { projectId: index.projectId, title: 'Check my quotes', personaIds: [ix.personaId] });
@@ -239,21 +256,20 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await send(quotes, 'Can you double-check that the quotes in my notes match the books?');
   await settled(quotes, (st) => find(st, quotes, (i) => i.kind === 'proposal'), 'the proposal');
   await shot('10-plus-menu', {
-    prepare: async (page) => {
-      await page.attach?.('README.md');
-      await page.evaluate(
-        `(() => { const t = document.getElementById('composer-input'); t.value = 'Here are my notes, check these three quotes'; t.dispatchEvent(new Event('input')); document.querySelector('[aria-label="Add a file or a new agent"]').click(); })()`,
-      );
-      await sleep(300);
+    prepare: async (ui) => {
+      await ui.attach('.composer input[type=file]', join(ROOT, 'README.md'));
+      // Its chip says “uploading…” until it’s uploaded, then the file’s size.
+      await ui.shows('.composer .att', ' KB');
+      await ui.fill('#composer-input', 'Here are my notes, check these three quotes');
+      await ui.click('[aria-label="Add a file or a new agent"]');
+      await ui.shows('.menu');
     },
   });
   await shot('11-new-agent', {
-    prepare: async (page) => {
-      await page.evaluate(`document.querySelector('[aria-label="Add a file or a new agent"]').click()`);
-      await sleep(200);
-      await page.evaluate(`[...document.querySelectorAll('.menu .mi')].find((b) => b.textContent.includes('From a boilerplate')).click()`);
-      await sleep(300);
-      await page.evaluate(`(() => { const i = document.getElementById('na-h'); i.value = 'citer'; i.dispatchEvent(new Event('input')); })()`);
+    prepare: async (ui) => {
+      await ui.click('[aria-label="Add a file or a new agent"]');
+      await ui.click('.menu .mi', 'From a boilerplate');
+      await ui.fill('#na-h', 'citer');
     },
   });
 
@@ -313,9 +329,9 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await shot('21-work');
   // A flagged file, chosen in the pane: the expanded view, opened at its diff.
   await shot('21b-work-file', {
-    prepare: async (page) => {
-      await page.evaluate(`document.querySelector('#wc-review-h')?.closest('section').querySelector('.wc-row')?.click()`);
-      await sleep(600);
+    prepare: async (ui) => {
+      await ui.click('section:has(#wc-review-h) .wc-row');
+      await ui.shows('.pane-full');
     },
   });
 
@@ -326,19 +342,18 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await send(papers, 'Which agent memory papers should I read?');
   await settled(papers, (st) => Object.values(st.sessions).some((x) => x.threadId === papers.id && x.needs), 'the choice');
   await shot('01-needs-you');
-  const panel = `[...document.querySelectorAll('.rail .agent-btn')].find((b) => b.textContent.includes('@researcher')).click()`;
-  await shot('12-agent-panel', {
-    prepare: async (page) => {
-      await page.evaluate(panel);
-      await sleep(250);
-    },
-  });
+  /** @param {UI} ui */
+  const panel = async (ui) => {
+    // At 375 px the sidebar is hidden and nothing else opens an agent’s panel, but the panel is shown there too.
+    await ui.activate('.rail .agent-btn', '@researcher');
+    await ui.shows('.dialog.quick');
+  };
+  await shot('12-agent-panel', { prepare: panel });
   await shot('13-delete-confirm', {
-    prepare: async (page) => {
-      await page.evaluate(panel);
-      await sleep(200);
-      await page.evaluate(`[...document.querySelectorAll('.dialog.quick button')].find((b) => b.textContent.includes('Delete session')).click()`);
-      await sleep(250);
+    prepare: async (ui) => {
+      await panel(ui);
+      await ui.click('.dialog.quick button', 'Delete session');
+      await ui.shows('.dialog .what-goes');
     },
   });
   log('Done. Every block type and every error state has been shown.');
@@ -351,8 +366,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   };
   const port = Number(arg('port', 4173));
   const { start } = await import('../server/index.mjs');
-  const root = fileURLToPath(new URL('..', import.meta.url));
-  const app = await start({ port, dataDir: join(root, 'data', 'demo'), fresh: true, demo: true });
+  const app = await start({ port, dataDir: join(ROOT, 'data', 'demo'), fresh: true, demo: true });
   const origin = `http://127.0.0.1:${port}`;
   console.log(`\nOpen ${origin}/ in a browser and keep it open: apps are checked there before they’re shown.\n`);
   await sleep(4000);

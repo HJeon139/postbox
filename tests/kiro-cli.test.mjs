@@ -18,7 +18,7 @@ import {
   modelIds,
   postboxModel,
 } from '../server/adapters/kiro-cli.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 // Streams recorded from real Kiro CLI turns (kiro-cli 2.33.1, engine v3, claude-opus-5.5), with local paths,
 // steering file names and the slash command list removed.

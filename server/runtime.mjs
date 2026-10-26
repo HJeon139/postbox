@@ -3,9 +3,8 @@
 // tools that agents call (over MCP, or in-process for the mock).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, resolve, sep } from 'node:path';
+import { basename, resolve, sep } from 'node:path';
 import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
@@ -14,7 +13,7 @@ import { formatDuration, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
-import { DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER, PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
+import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
@@ -54,8 +53,20 @@ import {
   resolvePermission,
   settlePermission,
 } from './permission-cards.mjs';
-import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
+import {
+  changePermissionFolder,
+  changePermissionRule,
+  latestProject,
+  PERMISSION_MODES,
+  panelTarget,
+  permissionsView,
+  setPermissionMode,
+} from './permissions-panel.mjs';
 import { readCapped } from './read-capped.mjs';
+import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
+import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
+import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
+import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
@@ -65,13 +76,14 @@ import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
 import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
+import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
 export { httpError } from './helpers.mjs';
 export { HOP_LIMIT } from './side-threads.mjs';
-export { readCapped };
+export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
@@ -80,12 +92,6 @@ const DELETE_UNDO_MS = 10000;
 const LINT_SETTLE_MS = 1500;
 /** …and at most, while an app of the agent’s is still being checked. */
 const LINT_WAIT_MAX_MS = 12000;
-/**
- * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
- * actions and asks you only when it can’t decide. ask: ask before anything risky. acceptEdits: edit files
- * freely, ask before commands. bypass: never ask.
- */
-export const PERMISSION_MODES = ['auto', 'ask', 'acceptEdits', 'bypass'];
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
 const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
@@ -97,22 +103,6 @@ const STOP_WATCHDOG_MS = 15000;
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CATCH_UP_ITEMS = 40;
 const count = (n) => n.toLocaleString('en-US');
-/**
- * What a turn was asked, kept on its failed reply so Retry sends it again as it was, with its own kind (#151): a wake
- * answers the agent that asked again, and an agent’s or Postbox’s turn never comes back as the person’s.
- */
-const askedOf = ({ asked: { message, summarizeTo } }) => ({ message, summarizeTo: summarizeTo ?? null });
-/**
- * What woke a turn, on each item it shows, for its sender line (#135): another agent, with a message, or with its
- * answer to one (endTurn sends that with saidIn, where it answered); or a wake it scheduled.
- */
-const wokeOf = (turn) => {
-  const m = turn?.asked?.message;
-  if (m?.kind === 'wake') return { woke: { scheduled: true } };
-  return m?.kind === 'agent' ? { woke: { by: String(m.from ?? '').replace(/^@/, ''), ...(m.saidIn ? { reply: true, in: m.saidIn } : {}) } } : {};
-};
-/** What each reply of a turn carries: what woke it, and that a reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check. */
-const replyMarks = (turn) => ({ ...(turn.kind === 'lint' ? { lintReply: true } : {}), ...wokeOf(turn) });
 /**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
  * read_message takes, so the agent can read the rest (#109).
@@ -197,15 +187,18 @@ function blockContent(it) {
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
    *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
-   *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger }} deps
+   *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger,
+   *           hosts?: import('./remote/hosts.mjs').HostManager | null }} deps
    *   spawnShell: how `!command` starts a process (#67); signalProcess and listProcesses: how a background job Postbox
    *   kept running is signaled, and found to check it’s still the same process (#129). Tests pass fakes.
    *   ledger: the work ledger (#132); tests pass one with fake files and git
+   *   hosts: the remote hosts’ manager (#120, server/remote/hosts.mjs), which reaches each host’s daemon; without it,
+   *   nothing runs on a host. Tests pass a fake.
    */
-  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger }) {
+  constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger, hosts }) {
     this.store = store;
     this.adapters = adapters;
     this.corpus = corpus;
@@ -235,6 +228,9 @@ export class Runtime {
     this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
     // What each conversation’s agents changed, ran and published (#132).
     this.ledger = ledger ?? new Ledger({ store, blobs: this.blobs, home: this.home });
+    // Turns of agents whose persona runs on a remote host (#120): server/remote/turns.mjs.
+    this.hosts = hosts ?? null;
+    this.remote = new RemoteTurns(this, { hosts: this.hosts });
     // Forks are gone (#228): any left from before are archived, once.
     archiveForks(this);
     // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
@@ -573,8 +569,9 @@ export class Runtime {
     const where = threadId && threadId !== se.threadId && this.s.threads[threadId] ? threadId : se.threadId;
     this.answerDelivered(where, message);
     // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
-    // the context below waits for the agent’s next turn instead.
-    const slash = message.slash === true;
+    // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
+    // (#120, message.attach): it sends the agent nothing, and replays what the host has.
+    const slash = message.slash === true || typeof message.attach === 'string';
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
@@ -626,12 +623,19 @@ export class Runtime {
       asked,
     };
     this.turns.set(sessionId, turn);
+    // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
+    const hostId = this.remote.hostOf(persona);
+    if (hostId) this.remote.begin(turn, hostId, adapter);
     // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
-    // flagged; the adapter knows the agent’s folder.
+    // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
     const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
     this.ledger.startTurn(turn, {
       se,
-      folder: adapter?.folderFor ? Promise.resolve().then(() => adapter.folderFor(persona, project)) : persona?.folder || project?.folder || null,
+      folder: hostId
+        ? null
+        : adapter?.folderFor
+          ? Promise.resolve().then(() => adapter.folderFor(persona, project))
+          : persona?.folder || project?.folder || null,
       projectFolder: project?.folder ?? null,
     });
     // Rules the person allowed once (from a refusal card) apply to this turn only.
@@ -648,7 +652,11 @@ export class Runtime {
       finishedAt: null,
     });
     const ctx = this.turnContext(se, turn);
-    const run = Promise.resolve().then(() => adapter.deliver(this.s.sessions[sessionId], message, ctx));
+    // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
+    const run = Promise.resolve().then(async () => {
+      if (!hostId) refuseHere(this, se, persona);
+      return adapter.deliver(this.s.sessions[sessionId], hostId ? await this.remote.prepare(turn, ctx, message) : message, ctx);
+    });
     turn.exited = run.then(
       () => {},
       () => {},
@@ -706,8 +714,12 @@ export class Runtime {
       },
       /** Where an attachment can be read on disk, or null. */
       pathOf: (a) => rt.attachmentPath(turn.threadId, a),
-      /** Asks the person in the thread; resolves to { allow, message?, updatedInput?, updatedPermissions? }. */
-      askPermission: (req) => rt.requestPermission(turn.sessionId, req),
+      /**
+       * Asks the person in the thread; resolves to { allow, message?, updatedInput?, updatedPermissions? }. On a remote
+       * turn, req.hostPrompt names the prompt as the host knows it (a Codex request’s codex:<id>), so the host’s
+       * expiry of it marks the card (#120).
+       */
+      askPermission: (req) => (turn.remote ? rt.remote.ask(turn, req) : rt.requestPermission(turn.sessionId, req)),
       /** Permission rules the person allowed for this turn only, after a refusal (Claude Code rule syntax). */
       allowOnce: [...turn.allowOnce],
       /** Rules the person made for this conversation only (#66): { allow, ask, deny }, passed every turn. */
@@ -921,6 +933,8 @@ export class Runtime {
     turn.closed = true;
     this.turns.delete(turn.sessionId);
     this.settleSubagentSteps(turn);
+    // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
+    if (turn.remote) err = this.remote.ended(turn, err);
     this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
@@ -959,7 +973,13 @@ export class Runtime {
           text: '',
           status: 'failed',
         }).id;
-      this.patchItem(turn.threadId, target, { status: 'failed', error: message, retry: turn.retry ?? null, asked: askedOf(turn) });
+      this.patchItem(turn.threadId, target, {
+        status: 'failed',
+        error: message,
+        retry: turn.retry ?? null,
+        asked: askedOf(turn),
+        ...(err.remote ? { remote: err.remote } : {}),
+      });
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
@@ -1085,14 +1105,17 @@ export class Runtime {
    * and the session shows as stopping until it has exited: its next turn waits for that (#126).
    * jobs: what happens to the background jobs the turn started (#129): 'stop' them with it, or 'keep' them running,
    * each with its own Stop.
-   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words. sendNow: your message
+   * by: 'shutdown' when Postbox stops it as it shuts down, which the agent hears in those words; 'hung' when a remote
+   * turn had no output for its host’s stallTimeout (#120), with why: what the person sees. sendNow: your message
    * with Send now stopped it, which its reply says, as it says when you kept its jobs running (#215, #249).
-   * @param {string} sessionId @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown', sendNow?: boolean }} [opts]
+   * A remote turn’s Stop is always a plain stop: the daemon stops the whole turn, so no job is kept (#120).
+   * @param {string} sessionId
+   * @param {{ silent?: boolean, jobs?: 'stop' | 'keep', by?: 'you' | 'shutdown' | 'hung', why?: string, sendNow?: boolean }} [opts]
    */
-  stop(sessionId, { silent = false, jobs = 'stop', by = 'you', sendNow = false } = {}) {
+  stop(sessionId, { silent = false, jobs = 'stop', by = 'you', why, sendNow = false } = {}) {
     const turn = this.turns.get(sessionId);
     if (!turn) return false;
-    const keep = jobs === 'keep' ? this.runningJobs(sessionId, turn.id) : [];
+    const keep = jobs === 'keep' && !turn.remote ? this.runningJobs(sessionId, turn.id) : [];
     turn.keepJobs = new Set(keep.map((j) => j.id));
     turn.stopReason = sendNow ? 'send-now' : by === 'shutdown' ? null : keep.length ? 'kept-jobs' : 'stop';
     const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: turn.stopReason };
@@ -1124,7 +1147,8 @@ export class Runtime {
     if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
     // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
     const se = this.s.sessions[sessionId];
-    if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : 'stopped');
+    if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : by === 'hung' ? 'hung' : 'stopped');
+    if (turn.remote) this.remote.stopped(turn, { by, why });
     // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
     setTimeout(() => {
       if (this.exiting.get(sessionId)?.turn !== turn) return;
@@ -1156,8 +1180,10 @@ export class Runtime {
     const se = this.s.sessions[turn.sessionId];
     if (!se) return;
     // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
+    // A remote turn Postbox stopped because it hung says so instead (#120).
+    const stoppedBy = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id ? se.remoteTurn.message : 'Stopped by you';
     if (se.state === 'stopping' || se.currentStep === 'Stopping')
-      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: 'Stopped by you', finishedAt: Date.now(), sideTurn: null });
+      this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
     else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
     const held = se.archived || se.deleting ? [] : ex.held;
     // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
@@ -1187,7 +1213,8 @@ export class Runtime {
     const turn = this.turns.get(sessionId);
     if (!turn) return { stopped: false };
     if (turnId && turnId !== turn.id) return { stopped: false, ended: true };
-    const running = this.runningJobs(sessionId, turn.id);
+    // A remote turn’s jobs stop with it (#120), so there’s nothing to ask.
+    const running = turn.remote ? [] : this.runningJobs(sessionId, turn.id);
     if (running.length && jobs !== 'stop' && jobs !== 'keep') {
       const ask = { jobs: running.length, text: stopAskText(se.handle, running.length), turnId: turn.id };
       this.updateSession(sessionId, { stopAsk: { ...ask, at: Date.now() } });
@@ -1358,7 +1385,12 @@ export class Runtime {
     return stopKeptJobs(this, sessionIds, why);
   }
 
-  stopJob(sessionId, jobId) {
+  /** A background job’s own Stop (#129): server/kept-jobs.mjs. On a host, the daemon stops a turn as a whole (#120). */
+  async stopJob(sessionId, jobId) {
+    const se = this.session(sessionId);
+    const job = (se.jobs ?? []).find((j) => j.id === jobId);
+    const turn = this.turns.get(sessionId);
+    if (job && !job.kept && turn?.id === job.turnId && turn.remote) throw httpError(409, `A job on a host stops with its turn. Stop @${se.handle} to stop it.`);
     return stopJob(this, sessionId, jobId);
   }
 
@@ -1369,7 +1401,9 @@ export class Runtime {
    */
   async stopTurns({ graceMs = 4000 } = {}) {
     this.closing = true;
-    for (const id of [...this.turns.keys()]) this.stop(id, { silent: true, by: 'shutdown' });
+    // A turn on a remote host doesn’t need Postbox: it goes on there, and is attached again after the restart (#120).
+    for (const [id, turn] of [...this.turns]) if (!turn.remote) this.stop(id, { silent: true, by: 'shutdown' });
+    this.remote.close();
     await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.');
     /** @type {NodeJS.Timeout|undefined} */
     let timer;
@@ -1380,6 +1414,25 @@ export class Runtime {
     clearTimeout(timer);
   }
 
+  /**
+   * At startup: turns that were running on a remote host are attached again, and replayed, once the host’s welcome
+   * lists them; one it doesn’t is Interrupted (server/remote/turns.mjs). Call after expireStalePermissions.
+   */
+  restoreRemoteTurns() {
+    this.remote.restore();
+  }
+
+  /**
+   * Resume, after a remote turn stopped with Sign-in needed or Interrupted: a turn that starts with why the last one
+   * stopped (#120, D2).
+   * @param {string} sessionId
+   */
+  resumeRemote(sessionId) {
+    const r = this.remote.resume(sessionId);
+    if (!r.ok) throw httpError(409, r.message);
+    return { ok: true };
+  }
+
   /** After a restart, no background job Postbox knew of is its to track any more. */
   expireStaleJobs() {
     for (const se of Object.values(this.s.sessions))
@@ -1387,16 +1440,16 @@ export class Runtime {
         this.endJob(se.id, j.id, 'stopped', 'Postbox restarted while it ran. If Postbox didn’t shut down cleanly, it may still be running.');
   }
 
-  /** Retry a failed reply: sends the same message again. */
+  /** Retry a failed reply: sends the same message again, or a promise of that when it’s read back from the store first. */
   retry(threadId, itemId) {
     const it = this.store.item(threadId, itemId);
     if (it?.status !== 'failed') throw httpError(409, 'Only a failed reply can be retried.');
-    const prior = [...this.store.items(threadId)].reverse().find((x) => x.kind === 'user' && x.at <= it.at);
-    this.patchItem(threadId, itemId, { status: 'retried' });
-    this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-    if (it.asked) this.deliver(it.sessionId, { ...it.asked.message, retry: true }, { summarizeTo: it.asked.summarizeTo, threadId });
-    // A failed reply stored before #151 kept nothing of what it was asked: the person’s last message is the best guess.
-    else this.deliver(it.sessionId, { kind: 'user', text: prior?.text ?? '', attachments: prior?.attachments ?? [], retry: true }, { threadId });
+    // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
+    return askedAgain(this, threadId, it, (asked) => {
+      this.patchItem(threadId, itemId, { status: 'retried' });
+      this.updateSession(it.sessionId, { needs: null, state: 'idle' });
+      this.deliver(it.sessionId, { ...asked.message, retry: true }, { summarizeTo: asked.summarizeTo, threadId });
+    });
   }
 
   // ── Agents waking agents ───────────────────────────────────────────────────────────
@@ -1766,7 +1819,7 @@ export class Runtime {
   /**
    * A turn that was stopped or failed starts no lint turn, but its progress steps still running show as stalled, as
    * at a normal end (#58), and the agent hears which at the start of its next turn (#98).
-   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown'} how
+   * @param {any} turn @param {any} se @param {'stopped' | 'failed' | 'shutdown' | 'hung'} how
    */
   stallLeftRunning(turn, se, how) {
     const problems = this.stallSteps(turn, se);
@@ -1774,7 +1827,7 @@ export class Runtime {
     const blocks = problems.map((p) => `- Block “${p.scope.title ?? p.scope.id}” (id ${p.scope.id}): ${p.message}`);
     this.tellAgent(
       se.id,
-      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
+      `${{ stopped: 'The person stopped your last turn', failed: 'Your last turn failed', shutdown: 'Postbox shut down during your last turn', hung: 'Postbox stopped your last turn, which had no output for too long,' }[how]} while progress steps were running:\n${blocks.join('\n')}`,
     );
   }
 
@@ -1957,6 +2010,8 @@ export class Runtime {
     return { ok: true, sent };
   }
 
+  // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
+
   requestPermission(sessionId, req) {
     return requestPermission(this, sessionId, req);
   }
@@ -1988,177 +2043,25 @@ export class Runtime {
     return expireStalePermissions(this);
   }
 
-  // ── The permissions panel (#66) ────────────────────────────────────────────────────
-  // For one agent in one conversation (or, from the persona editor, an agent on its own): its mode, its rules with
-  // where each comes from, the folders it may work in, and what Postbox may change. Rules live where Claude Code
-  // reads them, so a rule made here shows in the CLI’s /permissions, and the reverse; rules for this conversation
-  // only live on the session and are passed with every turn.
+  // ── The permissions panel (#66): server/permissions-panel.mjs ─────────────────────
 
-  /**
-   * Who the panel is about: { se, persona, project, folder }. A session’s persona is the one it runs with now.
-   * @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
-   */
-  async panelTarget({ sessionId = null, personaId = null, projectId = null }) {
-    const se = sessionId ? this.session(sessionId) : null;
-    const persona = se ? this.personaFor(se) : personaId ? this.persona(personaId) : null;
-    if (!persona) throw httpError(404, 'That agent doesn’t exist.');
-    const project = this.s.projects[se ? this.s.threads[se.threadId]?.projectId : (projectId ?? '')] ?? this.latestProject(persona.id) ?? null;
-    const adapter = this.adapters.get(persona.backend);
-    const folder = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona.folder || project?.folder || null;
-    return { se, persona, project, folder };
+  panelTarget(who) {
+    return panelTarget(this, who);
   }
-  /** The project of a persona’s latest conversation, for the panel opened from the persona editor. */
   latestProject(personaId) {
-    const recent = Object.values(this.s.sessions)
-      .filter((x) => x.personaId === personaId)
-      .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0];
-    return recent ? this.s.projects[this.s.threads[recent.threadId]?.projectId] : null;
+    return latestProject(this, personaId);
   }
-
-  /**
-   * Everything the panel shows. Rule lists carry their source: user, project, local (the settings files), conversation
-   * (this session’s), tools (the persona’s unticked Tools, as deny rules), publishing (when it may not publish outside
-   * Postbox), writes (ask rules for writes outside Postbox, #112) and postbox (its own tools, always allowed).
-   * @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
-   */
-  async permissionsView(who) {
-    const { se, persona, project, folder } = await this.panelTarget(who);
-    const real = persona.backend !== 'mock';
-    // The mock shows its rules too (the Tools ones); a real backend that doesn’t read Claude Code’s shows none.
-    const readsRules = !real || this.readsRules(persona.backend);
-    const { usesHostSetup, canPublish } = setupOf(persona);
-    const files = real && readsRules && folder ? await readRules({ folder, home: this.home, configDir: this.configDir, usesHostSetup }) : [];
-    const has = new Set(persona.tools ?? []);
-    const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));
-    const conversation = se ? { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] } : null;
-    const running = Object.values(this.s.sessions).filter((x) => x.personaId === persona.id && this.turns.has(x.id));
-    return {
-      persona: {
-        id: persona.id,
-        handle: persona.handle,
-        backend: persona.backend,
-        permissionMode: persona.permissionMode ?? 'auto',
-        usesHostSetup,
-        canPublish,
-      },
-      sessionId: se?.id ?? null,
-      projectId: project?.id ?? null,
-      real,
-      readsRules,
-      folder,
-      projectFolder: project?.folder ?? null,
-      home: this.home,
-      files,
-      conversation,
-      tools,
-      publishing: canPublish ? [] : [...PUBLISHING_TOOLS],
-      // Writes outside Postbox ask first (#112), except what the persona may publish, for a backend that reads rules.
-      writes: { rules: real && readsRules ? writeRules(persona) : [], unless: canPublish ? [...PUBLISHING_TOOLS] : [] },
-      folders: [
-        ...(folder ? [{ path: folder, source: 'folder' }] : []),
-        ...(project?.folder && project.folder !== folder ? [{ path: project.folder, source: 'project' }] : []),
-        ...(se?.addDirs ?? []).map((path) => ({ path, source: 'conversation' })),
-        ...files.flatMap((f) => f.dirs.map((path) => ({ path, source: f.source }))),
-      ],
-      // Agents of this persona with a turn running now: a mode change reaches them now only where the backend allows.
-      running: running.map((x) => x.handle),
-    };
+  permissionsView(who) {
+    return permissionsView(this, who);
   }
-
-  /**
-   * Adds or removes a rule. where: local (the default, as the CLI saves “don’t ask again”), user (the person’s own
-   * settings, only for a persona that loads them) or conversation (this session only). The project’s shared
-   * settings.json is never written.
-   * @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null, behavior: string, rule: string,
-   *           where?: string, remove?: boolean }} change
-   */
-  async changePermissionRule({ sessionId = null, personaId = null, projectId = null, behavior, rule, where = 'local', remove = false }) {
-    if (!BEHAVIORS.includes(/** @type {any} */ (behavior))) throw httpError(422, 'A rule allows, asks or denies.');
-    const clean = cleanRule(rule);
-    if (!clean)
-      throw httpError(
-        422,
-        'That isn’t a rule. Write a tool name, and what it covers in parentheses: Bash(npm test:*), WebFetch(domain:example.com), Read(./src/**).',
-      );
-    if (where === 'project')
-      throw httpError(
-        409,
-        'The project’s settings are shared with your team, so Postbox doesn’t change them. Save the rule in this folder’s local settings, or edit .claude/settings.json yourself.',
-      );
-    if (!['local', 'user', 'conversation'].includes(where))
-      throw httpError(422, 'A rule is saved in this folder’s local settings, your user settings or this conversation.');
-    const { se, persona, folder } = await this.panelTarget({ sessionId, personaId, projectId });
-    if (persona.backend === 'mock' || !this.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
-    const b = /** @type {'allow'|'ask'|'deny'} */ (behavior);
-    if (where === 'conversation') {
-      if (!se) throw httpError(409, 'Open the panel from a conversation to make a rule for it only.');
-      const rules = { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] };
-      if (remove) rules[b] = rules[b].filter((r) => r !== clean);
-      else if (!rules[b].includes(clean)) {
-        if (rules[b].length >= MAX_CONVERSATION_RULES) throw httpError(422, `A conversation keeps up to ${MAX_CONVERSATION_RULES} ${b} rules.`);
-        rules[b].push(clean);
-      }
-      this.updateSession(se.id, { rules });
-      return { ok: true, where, applies: 'next turn' };
-    }
-    if (where === 'user' && !setupOf(persona).usesHostSetup)
-      throw httpError(
-        409,
-        `@${persona.handle} is isolated, so it doesn’t read your user settings. Save the rule in this folder’s local settings, or this conversation.`,
-      );
-    if (!folder) throw httpError(409, `@${persona.handle} has no folder yet, so there’s no local settings file to save in.`);
-    const files = settingsFiles(folder, this.home, this.configDir);
-    const { file, changed } = await changeRule(files[/** @type {'local'|'user'} */ (where)], { behavior: b, rule: clean, remove });
-    return { ok: true, where, file, changed, applies: 'next turn' };
+  changePermissionRule(change) {
+    return changePermissionRule(this, change);
   }
-
-  /**
-   * Adds a folder this conversation’s agent may work in, passed as --add-dir / additionalDirectories from its next
-   * turn, or removes one. path is absolute, or relative to the project’s folder (from the folder picker).
-   * @param {{ sessionId: string, path: string, remove?: boolean }} change
-   */
-  async changePermissionFolder({ sessionId, path, remove = false }) {
-    const se = this.session(sessionId);
-    const project = this.s.projects[this.s.threads[se.threadId]?.projectId];
-    const raw = String(path ?? '').trim();
-    if (!raw || raw.length > 1000) throw httpError(422, 'Pick a folder, or write its full path.');
-    const dir = isAbsolute(raw) ? resolve(raw) : project?.folder ? resolve(project.folder, raw) : null;
-    if (!dir) throw httpError(422, 'Write the folder’s full path.');
-    const dirs = [...(se.addDirs ?? [])];
-    if (remove) {
-      this.updateSession(se.id, { addDirs: dirs.filter((d) => d !== dir) });
-      return { ok: true, path: dir };
-    }
-    const st = await stat(dir).catch(() => null);
-    if (!st?.isDirectory()) throw httpError(422, `${dir} isn’t a folder on this computer.`);
-    if (!dirs.includes(dir)) {
-      if (dirs.length >= MAX_ADD_DIRS) throw httpError(422, `A conversation can add up to ${MAX_ADD_DIRS} folders.`);
-      this.updateSession(se.id, { addDirs: [...dirs, dir] });
-    }
-    return { ok: true, path: dir, applies: 'next turn' };
+  changePermissionFolder(change) {
+    return changePermissionFolder(this, change);
   }
-
-  /**
-   * Sets a persona’s permission mode (intent.md: it reaches running conversations from their next turn). Where the
-   * backend can change a running turn (the Agent SDK’s setPermissionMode), its running turns change now too.
-   * @param {string} personaId @param {string} mode
-   * @returns {Promise<{ ok: true, now: string[], later: string[] }>}  now: the sessions whose running turn changed at once;
-   *   later: those with a turn running that keeps the mode it started with until it ends (#371), which Stop applies now.
-   *   Sessions, not handles: a persona has one in each conversation it’s in.
-   */
-  async setPermissionMode(personaId, mode) {
-    const p = this.persona(personaId);
-    if (!p) throw httpError(404, 'That agent doesn’t exist.');
-    if (!PERMISSION_MODES.includes(mode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
-    if ((p.permissionMode ?? 'auto') !== mode) this.updatePersona(personaId, { permissionMode: mode });
-    const now = [];
-    const later = [];
-    for (const se of Object.values(this.s.sessions)) {
-      const turn = se.personaId === personaId ? this.turns.get(se.id) : null;
-      if (turn?.control?.setPermissionMode && (await turn.control.setPermissionMode(mode))) now.push(se.id);
-      else if (turn) later.push(se.id);
-    }
-    return { ok: true, now, later };
+  setPermissionMode(personaId, mode) {
+    return setPermissionMode(this, personaId, mode);
   }
 
   // ── Commands in the composer (#67) ─────────────────────────────────────────────────
@@ -2250,6 +2153,9 @@ export class Runtime {
   /**
    * The folder a conversation’s `!` commands run in: where the agent that replies there works, as its adapter decides
    * (its own folder, the project’s, or a workspace of its own), else the project’s.
+   * `!` runs on this computer even when that agent runs on a host (#67, #120): then it’s the project’s folder here,
+   * else the workspace of its own the agent would have here, never a path on the host, and `host` names the host.
+   * @param {string} threadId @returns {Promise<{ folder: string|null, host: string|null }>}
    */
   async commandFolder(threadId) {
     const t = this.thread(threadId);
@@ -2258,8 +2164,9 @@ export class Runtime {
     const persona = se ? this.personaFor(se) : null;
     const project = this.s.projects[t.projectId] ?? null;
     const adapter = persona ? this.adapters.get(persona.backend) : null;
-    if (adapter?.folderFor) return adapter.folderFor(persona, project);
-    return persona?.folder || project?.folder || null;
+    if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
+    if (adapter?.folderFor) return { folder: await adapter.folderFor(persona, project), host: null };
+    return { folder: persona?.folder || project?.folder || null, host: null };
   }
 
   /**
@@ -2276,22 +2183,25 @@ export class Runtime {
     const line = String(command ?? '').trim();
     if (!line) throw httpError(422, 'Write a command after the !.');
     if (line.length > 10000) throw httpError(422, 'A command is limited to 10,000 characters.');
-    const cwd = await this.commandFolder(threadId);
+    const { folder: cwd, host } = await this.commandFolder(threadId);
     if (!cwd) throw httpError(409, 'This conversation has no folder to run commands in. Give the project or the agent a folder first.');
+    // Said once, as the output’s first line, when the agent here runs on a host: you, and the agents, see where it ran.
+    const note = host ? `! commands run on this computer, not on ${host}.\n` : '';
     const startedAt = Date.now();
     const it = this.addItem(threadId, {
       kind: 'command',
       command: line,
       cwd,
+      ...(host ? { notOn: host } : {}),
       status: 'running',
-      text: '',
+      text: note,
       cut: false,
       exitCode: null,
       signal: null,
       startedAt,
     });
-    let out = ''; // the end of the output so far, at most twice the bound between flushes
-    let sent = 0; // characters already sent as item.text, before the output was cut
+    let out = note; // the end of the output so far, at most twice the bound between flushes
+    let sent = note.length; // characters already sent as item.text, before the output was cut
     let cut = false;
     let refreshed = 0; // refreshes of the item’s text since it was cut
     let refreshedAt = 0;
@@ -2469,8 +2379,7 @@ export class Runtime {
   }
 
   async attachClaudeSession({ claudeSessionId, projectId, handle }) {
-    if (!this.adapters.names().includes('claude-code'))
-      throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
+    if (!runsHere(this, 'claude-code')) throw httpError(422, 'Claude Code isn’t available on this computer, so its sessions can’t be attached.');
     const cs = (await listClaudeSessions({ root: this.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
     if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
     if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
@@ -2614,12 +2523,25 @@ export class Runtime {
 
   // ── Personas ───────────────────────────────────────────────────────────────────────
 
+  /**
+   * The model a persona of this backend gets when it names none: the mock’s, else Claude’s default, unless the backend
+   * offers AUTO_MODEL and not Claude’s default. That’s Codex, which runs none of Claude’s models and always offers
+   * AUTO_MODEL, alone when its CLI gave no list (Codex only on a host, #120): Claude’s default would fail its turn. Kiro
+   * runs Claude’s models, listed or not, and the Antigravity CLI puts its own default in place of Claude’s.
+   * @param {string} backend
+   */
+  defaultModelFor(backend) {
+    if (backend === 'mock') return 'mock';
+    const offered = this.adapters.names().includes(backend) ? this.adapters.get(backend).capabilities?.models : null;
+    return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
+  }
+
   createPersona({
     handle,
     description = '',
     instructions = '',
     backend = 'mock',
-    model = backend === 'mock' ? 'mock' : DEFAULT_MODEL,
+    model = this.defaultModelFor(backend),
     effort = DEFAULT_EFFORT,
     permissionMode = 'auto',
     usesHostSetup = true,
@@ -2629,23 +2551,25 @@ export class Runtime {
     tools = [],
     examples = [],
     createdBy = null,
+    remote = null,
   }) {
     handle = String(handle ?? '')
       .replace(/^@/, '')
       .trim();
     if (!/^[a-z][a-z0-9_-]{1,23}$/i.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
-    if (!this.adapters.names().includes(backend))
-      throw httpError(422, `“${backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}. See README, “Run real agents”.`);
+    if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
     checkSetup({ usesHostSetup, canPublish, mcpOff });
+    const placed = placement(this, remote, backend);
+    if (!placed && !runsHere(this, backend)) throw httpError(422, notHere(this, backend));
     const p = {
       id: newId('pe'),
       handle,
       description,
       instructions,
-      model: String(model || DEFAULT_MODEL),
+      model: String(model || this.defaultModelFor(backend)),
       effort,
       backend,
       permissionMode,
@@ -2656,6 +2580,7 @@ export class Runtime {
       tools: [...new Set(tools)],
       examples,
       createdBy,
+      remote: placed,
       createdAt: Date.now(),
       version: 1,
       retired: false,
@@ -2672,10 +2597,11 @@ export class Runtime {
     if (patch.effort !== undefined) checkEffort(patch.effort);
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
-    if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend))
-      throw httpError(422, `“${patch.backend}” isn’t available on this computer. Available: ${this.adapters.names().join(', ')}.`);
-    // A persona moved from the mock to a real model gets the default model.
-    if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: DEFAULT_MODEL };
+    if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, notHere(this, patch.backend));
+    // Where it runs (#120), and whether its backend runs here when that’s here.
+    patch = placedPatch(this, id, p, patch);
+    // A persona moved from the mock to a real model gets that backend’s default model.
+    if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: this.defaultModelFor(patch.backend) };
     const next = {
       ...p,
       ...pick(patch, [
@@ -2692,6 +2618,7 @@ export class Runtime {
         'tools',
         'examples',
         'retired',
+        'remote',
       ]),
       version: (p.version ?? 1) + 1,
     };
@@ -2699,6 +2626,52 @@ export class Runtime {
     // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
     if (patch.tools !== undefined) settleToolAsks(this, next);
     return next;
+  }
+
+  // ── Remote hosts (#120): server/remote/placement.mjs, host-admin.mjs and host-status.mjs ──────────
+
+  localBackends() {
+    return localBackends(this);
+  }
+
+  host(id) {
+    return host(this, id);
+  }
+
+  addHost(opts) {
+    return addHost(this, opts);
+  }
+
+  updateHost(id, patch) {
+    return updateHost(this, id, patch);
+  }
+
+  removeHost(id, opts) {
+    return removeHost(this, id, opts);
+  }
+
+  hostStatus(id) {
+    return hostStatus(this, id);
+  }
+
+  watchHosts() {
+    return watchHosts(this);
+  }
+
+  describeHostInstall(id) {
+    return describeHostInstall(this, id);
+  }
+
+  installHost(id) {
+    return installHost(this, id);
+  }
+
+  retryHost(id, opts) {
+    return retryHost(this, id, opts);
+  }
+
+  setProjectHostFolder(projectId, hostId, folder) {
+    return setProjectHostFolder(this, projectId, hostId, folder);
   }
 
   /**
@@ -2732,6 +2705,8 @@ export class Runtime {
 
   archive(sessionId) {
     this.stop(sessionId, { silent: true });
+    // A turn on a host waiting to be attached again after a restart, or to resume, isn’t attached or resumed (#120).
+    this.remote.cancel(sessionId);
     const se = this.session(sessionId);
     this.updateSession(sessionId, { archived: true, state: 'idle', needs: null, archivedAt: Date.now() });
     dropWakes(this, se, 'archived');
@@ -2806,7 +2781,12 @@ export class Runtime {
     const t = this.thread(threadId);
     if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Delete the conversation it belongs to instead.');
     const until = Date.now() + DELETE_UNDO_MS;
-    for (const x of this.archiveScope(threadId)) for (const se of this.sessionsIn(x.id)) this.stop(se.id, { silent: true });
+    // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).
+    for (const x of this.archiveScope(threadId))
+      for (const se of this.sessionsIn(x.id)) {
+        this.stop(se.id, { silent: true });
+        this.remote.cancel(se.id);
+      }
     this.putThread({ ...t, deleting: until });
     clearTimeout(this.timers.get(`delt:${threadId}`));
     this.timers.set(`delt:${threadId}`, setTimeout(() => this.purgeThread(threadId), DELETE_UNDO_MS).unref());
@@ -3205,9 +3185,6 @@ const COMMAND_FLUSH_MS = 100;
 const COMMAND_REFRESH_MS = 5000;
 const MAX_COMMAND_REFRESHES = 60;
 const COMMAND_CONTEXT = 4000;
-// What a conversation keeps for the permissions panel (#66), bounded.
-const MAX_CONVERSATION_RULES = 200;
-const MAX_ADD_DIRS = 20;
 /** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
 const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));

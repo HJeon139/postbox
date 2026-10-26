@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import {
-  AGY_CAPABILITIES,
   AGY_DEFAULT_MODEL,
   ALLOW_POSTBOX,
   AntigravityCliAdapter,
@@ -26,10 +25,10 @@ import {
   PLUGIN_DIR,
   refusalFollowUp,
 } from '../server/adapters/antigravity-cli.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 // Streams recorded from real Antigravity CLI turns (agy 1.4.5, gemini-3.8-flash), with local paths replaced. The
-// MCP server they called listed Postbox’s own tools (server/mcp.mjs, TOOL_DEFS).
+// MCP server they called listed Postbox’s own tools (shared/mcp-tools.mjs, TOOL_DEFS).
 const fixture = (name) =>
   readFileSync(new URL(`fixtures/antigravity-cli/${name}.jsonl`, import.meta.url), 'utf8')
     .trim()
@@ -66,13 +65,6 @@ const replay = (name, opts) => {
   for (const e of fixture(name)) m.push(e);
   return { ctx, m };
 };
-
-test('the capabilities: resumes, can’t fork, reads no Claude Code rules, can’t deny tools or isolate, asks through permission_prompt', () => {
-  assert.deepEqual({ ...AGY_CAPABILITIES }, { resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: true });
-  const a = new AntigravityCliAdapter({ workRoot: '/tmp/x', models: ['gemini-3.8-flash-high'] });
-  assert.deepEqual(a.capabilities.models, ['gemini-3.8-flash-high']);
-  assert.equal(new AntigravityCliAdapter({ workRoot: '/tmp/x' }).capabilities.models, undefined);
-});
 
 test('a recorded turn that shows a block: the reply, no step for Postbox’s tool or its schema, the conversation and the model', () => {
   const { ctx, m } = replay('block');

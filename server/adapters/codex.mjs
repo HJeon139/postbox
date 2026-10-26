@@ -5,86 +5,29 @@ import { mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { codexApproval } from './codex-approval.mjs';
+import { findCodex } from './codex-models.mjs';
+import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { codexContextPercent } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
+import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 
+export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
+export { codexRemoteConfigArgs, createCodexRebuild, INTERRUPT_REACH_MS, interruptedError } from './codex-remote.mjs';
 export { codexApproval };
 
-// Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false).
-export const CODEX_CAPABILITIES = Object.freeze({ resume: true, fork: true, permissions: 'none', tools: 'none', isolation: false, promptTool: false });
-export const findCodex = (env = process.env) => env.POSTBOX_CODEX_BIN || 'codex';
-
-function probe(bin, args, timeout = 8000) {
-  return new Promise((resolve) => {
-    let out = '';
-    let child;
-    try {
-      child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'ignore'] });
-    } catch {
-      resolve(null);
-      return;
-    }
-    const timer = setTimeout(() => child.kill(), timeout);
-    child.stdout.on('data', (chunk) => {
-      out = (out + chunk).slice(-300_000);
-    });
-    child.on('error', () => resolve(null));
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve(code === 0 ? out.trim() : null);
-    });
-  });
-}
-export async function codexVersion(bin = findCodex()) {
-  const out = await probe(bin, ['--version']);
-  return out?.match(/(?:codex\s+)?([\w.-]+)$/i)?.[1] ?? null;
-}
-export async function codexModels(bin = findCodex()) {
-  // The documented app-server model/list method returns the local account's picker-visible catalog.
-  return new Promise((resolve) => {
-    let child;
-    try {
-      child = spawn(bin, ['app-server', '--listen', 'stdio://'], { stdio: ['pipe', 'pipe', 'ignore'] });
-    } catch {
-      resolve([]);
-      return;
-    }
-    const rl = createInterface({ input: child.stdout });
-    let id = 1;
-    let timer;
-    const finish = (models) => {
-      clearTimeout(timer);
-      child.kill('SIGTERM');
-      rl.close();
-      resolve(models);
-    };
-    timer = setTimeout(() => finish([]), 15000);
-    rl.on('line', (line) => {
-      let msg;
-      try {
-        msg = JSON.parse(line);
-      } catch {
-        return;
-      }
-      if (msg.id === 1 && msg.result) {
-        child.stdin.write(`${JSON.stringify({ id: ++id, method: 'model/list', params: { limit: 100, includeHidden: false } })}\n`);
-      } else if (msg.id === 2) {
-        clearTimeout(timer);
-        const models = (msg.result?.data ?? []).map((m) => m?.id ?? m?.model).filter((m) => typeof m === 'string' && /^[\w.-]{1,80}$/.test(m));
-        finish([...new Set(models)].slice(0, 60));
-      }
-    });
-    child.on('error', () => {
-      clearTimeout(timer);
-      finish([]);
-    });
-    child.stdin.write(`${JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } } })}\n`);
-    child.stdin.write(`${JSON.stringify({ method: 'initialized', params: {} })}\n`);
-  });
-}
+// Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false). On a
+// remote host (#120), it runs as CODEX_REMOTE says (server/adapters/codex-remote.mjs).
+export const CODEX_CAPABILITIES = Object.freeze({
+  resume: true,
+  fork: true,
+  permissions: 'none',
+  tools: 'none',
+  isolation: false,
+  promptTool: false,
+  remote: CODEX_REMOTE,
+});
 
 export function codexPermissions(persona, cwd) {
   const mode = persona?.permissionMode ?? 'auto';
@@ -97,7 +40,15 @@ export function codexPermissions(persona, cwd) {
   return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request' };
 }
 
-const codexModelOf = (persona) => (persona?.model && persona.model !== 'mock' ? String(persona.model) : null);
+/**
+ * The model to name in thread/start and turn/start, or null to name none, so Codex uses its own default: null for no
+ * model, the mock, AUTO_MODEL and any Claude model. Codex runs none of Claude’s, and named, one fails the turn: Claude’s
+ * default, say, on a persona made while Postbox had no Codex list, or one moved here from Claude Code.
+ */
+export const codexModelOf = (persona) => {
+  const model = persona?.model ? String(persona.model) : '';
+  return !model || model === 'mock' || model === AUTO_MODEL || model.startsWith('claude-') ? null : model;
+};
 const codexEffortOf = (persona) => (effortOf(persona) === 'max' ? 'xhigh' : effortOf(persona));
 
 export function codexConfigArgs(mcpUrl) {
@@ -194,11 +145,68 @@ export function createCodexMapper(ctx) {
   return { push };
 }
 
+/**
+ * Answers an app-server approval or elicitation request, unless the host already has (remote turns: `host` is
+ * codex-remote.mjs’s createCodexHost, null here).
+ * @param {any} ctx @param {any} host @param {(payload: any) => void} send @param {any} msg
+ */
+async function answerRequest(ctx, host, send, msg) {
+  let reply;
+  const asking = host ? host.asking(ctx, msg.id) : ctx;
+  try {
+    reply = { id: msg.id, result: await codexApproval(asking, msg) };
+  } catch (error) {
+    reply = { id: msg.id, error: { code: -32601, message: error.message } };
+  }
+  if (!host?.answered(msg.id)) send(reply);
+}
+
+/**
+ * Opens the turn’s Codex thread (a fork at the saved point, a resume, or a new one), saves it, and starts the turn.
+ * Returns turn/start’s answer, and the model it named.
+ * @param {any} ctx @param {(method: string, params?: any) => Promise<any>} request @param {(payload: any) => void} send
+ * @param {string} cwd @param {any} session @param {any} message
+ */
+async function startTurn(ctx, request, send, cwd, session, message) {
+  await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
+  send({ method: 'initialized', params: {} });
+  const permissions = codexPermissions(ctx.persona, cwd);
+  const model = codexModelOf(ctx.persona);
+  const fork = ctx.state.fork ?? ctx.state.forkFrom;
+  const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
+  const opened =
+    fork?.turnId && sourceThreadId
+      ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true })
+      : sourceThreadId
+        ? await request('thread/resume', { threadId: sourceThreadId, cwd })
+        : await request('thread/start', { cwd, ...(model ? { model } : {}) });
+  const threadId = sourceThreadId;
+  const id = opened?.thread?.id ?? threadId;
+  if (!id) throw new Error('Codex app-server did not return a thread id.');
+  ctx.state.codexThreadId = id;
+  ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
+  // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
+  const guide = agentGuide({ ...ctx, session, brief: session?.brief, toolRules: null });
+  const inputText = formatMessage(message, attachmentPaths(ctx, ctx.remote?.turn));
+  const started = await request('turn/start', {
+    threadId: id,
+    input: [{ type: 'text', text: inputText }],
+    settings: { developer_instructions: guide },
+    ...(model ? { model } : {}),
+    effort: codexEffortOf(ctx.persona),
+    cwd,
+    ...permissions,
+  });
+  return { started, model };
+}
+
 export class CodexAdapter {
   name = 'codex';
   /**
    * @param {{ bin?: string, workRoot?: string, models?: string[], spawnImpl?: typeof spawn, kill?: typeof process.kill,
-   *           listProcesses?: typeof listProcesses }} opts
+   *           listProcesses?: typeof listProcesses }} opts  models: what codexModels found here; AUTO_MODEL is offered
+   *   after them, and alone when there are none (Codex only on a host, #120), so the model field never falls back to
+   *   Claude’s models, which Codex doesn’t run
    */
   constructor({ bin = findCodex(), workRoot = process.cwd(), models = [], spawnImpl = spawn, kill = process.kill, listProcesses: list = listProcesses } = {}) {
     this.bin = bin;
@@ -206,17 +214,26 @@ export class CodexAdapter {
     this.list = list;
     this.workRoot = workRoot;
     this.spawn = spawnImpl;
-    this.capabilities = { ...CODEX_CAPABILITIES, ...(models.length ? { models } : {}) };
+    this.capabilities = { ...CODEX_CAPABILITIES, models: [...new Set([...models, AUTO_MODEL])] };
   }
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
   folderFor(persona, project) {
     return agentFolder(persona, project, this.workRoot);
   }
+  /**
+   * Runs one turn, on a host with ctx.remote (#120: server/adapters/codex-remote.mjs).
+   * @param {any} session @param {any} message @param {any} ctx
+   */
   async deliver(session, message, ctx) {
-    const cwd = await this.folderFor(ctx.persona, ctx.project);
+    const remote = ctx.remote ?? null;
+    const attach = remote?.attach ?? null;
+    const cwd = remote ? remote.folder : await this.folderFor(ctx.persona, ctx.project);
     const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl)];
-    // Its own process group, so stopping the turn reaches everything the app-server started (#126).
-    const child = this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
+    // Its own process group, so stopping the turn reaches everything the app-server started (#126); on a host, the daemon’s.
+    /** @type {any} */
+    const child = remote
+      ? spawnRemoteCodex(remote, attach, cwd, this.bin)
+      : this.spawn(this.bin, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: process.env, detached: true });
     const exitedP = new Promise((r) => {
       child.once('exit', r);
       child.once('close', r);
@@ -244,6 +261,9 @@ export class CodexAdapter {
     });
     ended.catch(() => {});
     const why = (text) => `${text}${reported ? `: ${reported}` : '.'}`;
+    /** @type {(Error & { code?: string }) | null} how a remote turn ended, when that’s why it can’t finish */
+    let endError = null;
+    const host = remote ? createCodexHost(child, remote, attach) : null;
     const send = (payload) => child.stdin.write(`${JSON.stringify(payload)}\n`);
     const request = (method, params) =>
       new Promise((resolve, reject) => {
@@ -256,6 +276,7 @@ export class CodexAdapter {
       for (const x of pending.values()) x.reject(err);
       pending.clear();
     };
+    const answer = (msg) => answerRequest(ctx, host, send, msg);
     const onLine = async (line) => {
       let msg;
       try {
@@ -264,6 +285,7 @@ export class CodexAdapter {
         return;
       }
       record(line);
+      if (host?.rebuilding) host.rebuild?.out(msg);
       if (msg.id != null && pending.has(msg.id)) {
         const item = pending.get(msg.id);
         pending.delete(msg.id);
@@ -271,14 +293,11 @@ export class CodexAdapter {
         return;
       }
       if (msg.id != null && msg.method) {
-        // App-server initiated approval/elicitation request.
-        try {
-          send({ id: msg.id, result: await codexApproval(ctx, msg) });
-        } catch (error) {
-          send({ id: msg.id, error: { code: -32601, message: error.message } });
-        }
+        // App-server initiated approval/elicitation request; one replayed after a restart waits for the rebuild (pickUp).
+        if (!host?.rebuilding) await answer(msg);
         return;
       }
+      if (host?.rebuilding && msg.id != null) return; // a response to the Postbox before the restart
       if (msg.method === 'turn/started') activeTurnId = msg.params?.turn?.id ?? activeTurnId;
       const result = mapper.push(msg);
       if (result?.completed) {
@@ -291,67 +310,59 @@ export class CodexAdapter {
       }
     };
     rl.on('line', (line) => {
-      void onLine(line).catch(fail);
+      if (host?.rebuilding) host.replay(line, onLine, fail);
+      else void onLine(line).catch(fail);
     });
     child.on('error', (e) => {
+      if (child.remote) endError ??= e;
       const err = new Error(
         /** @type {any} */ (e).code === 'ENOENT'
           ? 'Codex CLI is not installed or not on PATH. Install it, or set POSTBOX_CODEX_BIN.'
-          : `Codex app-server could not start: ${e.message}`,
+          : child.remote
+            ? `Codex on the host stopped being reachable: ${e.message}`
+            : `Codex app-server could not start: ${e.message}`,
       );
       fail(err);
-      finish(err);
+      if (!child.remote) finish(err); // a remote turn ends at its close, which comes next and fails it with endError
     });
     child.on('close', (code) => {
       exited = true;
-      const err = new Error(
-        code !== 0
-          ? why(`Codex app-server exited with code ${code}${stderr ? ` (${stderr.trim().slice(-500)})` : ''}`)
-          : why('Codex app-server exited before the turn completed'),
-      );
+      endError ??= remoteEnd(child);
+      const err =
+        endError ??
+        new Error(
+          code !== 0
+            ? why(`Codex app-server exited with code ${code}${stderr ? ` (${stderr.trim().slice(-500)})` : ''}`)
+            : why('Codex app-server exited before the turn completed'),
+        );
       fail(err);
       finish(err);
     });
     // Stop asks Codex to interrupt the turn; the app-server itself is stopped as the turn ends, below.
     const onAbort = () => {
-      const threadId = ctx.state.codexThreadId;
-      if (threadId && activeTurnId) send({ id: requestId++, method: 'turn/interrupt', params: { threadId, turnId: activeTurnId } });
-      finish();
+      const threadId = ctx.state.codexThreadId ?? host?.rebuild?.threadId; // one still being rebuilt: what the rebuild has
+      const turnId = activeTurnId ?? host?.rebuild?.turnId;
+      if (host?.rebuilding && host.rebuild) requestId = Math.max(requestId, host.rebuild.nextRequestId());
+      if (!threadId || !turnId) return finish();
+      const id = requestId++;
+      send({ id, method: 'turn/interrupt', params: { threadId, turnId } });
+      if (child.remote) interruptReached(child, id).then(() => finish());
+      else finish();
     };
     if (ctx.signal.aborted) onAbort();
     else ctx.signal.addEventListener('abort', onAbort, { once: true });
     try {
-      await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
-      send({ method: 'initialized', params: {} });
-      const permissions = codexPermissions(ctx.persona, cwd);
-      const fork = ctx.state.fork ?? ctx.state.forkFrom;
-      const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
-      const opened =
-        fork?.turnId && sourceThreadId
-          ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true })
-          : sourceThreadId
-            ? await request('thread/resume', { threadId: sourceThreadId, cwd })
-            : await request('thread/start', { cwd, ...(codexModelOf(ctx.persona) ? { model: codexModelOf(ctx.persona) } : {}) });
-      const threadId = sourceThreadId;
-      const id = opened?.thread?.id ?? threadId;
-      if (!id) throw new Error('Codex app-server did not return a thread id.');
-      ctx.state.codexThreadId = id;
-      ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
-      // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
-      const guide = agentGuide({ ...ctx, session, brief: session?.brief, toolRules: null });
-      const inputText = formatMessage(message, ctx.pathOf);
-      const started = await request('turn/start', {
-        threadId: id,
-        input: [{ type: 'text', text: inputText }],
-        settings: { developer_instructions: guide },
-        ...(codexModelOf(ctx.persona) ? { model: codexModelOf(ctx.persona) } : {}),
-        effort: codexEffortOf(ctx.persona),
-        cwd,
-        ...permissions,
-      });
+      if (attach && host) {
+        const resume = (turnId, next) => {
+          activeTurnId = turnId;
+          requestId = Math.max(requestId, next);
+        };
+        return await pickUp(host, ctx, { ended, exited: () => exited, resume, answer, fail });
+      }
+      const { started, model } = await startTurn(ctx, request, send, cwd, session, message);
       activeTurnId = started?.turn?.id ?? activeTurnId;
       ctx.reported?.({
-        ...(started?.turn?.model || codexModelOf(ctx.persona) ? { model: started?.turn?.model ?? codexModelOf(ctx.persona) } : {}),
+        ...(started?.turn?.model || model ? { model: started?.turn?.model ?? model } : {}),
         effort: started?.turn?.effort ?? codexEffortOf(ctx.persona),
       });
       await ended;

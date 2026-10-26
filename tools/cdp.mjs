@@ -22,23 +22,65 @@ export const js = (value) => String(JSON.stringify(value)).replace(/[<>\u2028\u2
 // longer than the 12 s this used to allow (run 39977434749).
 const START_MS = 45000;
 
-const FLAGS = ['--headless=new', '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--force-color-profile=srgb'];
+/**
+ * Asks a child to end, and resolves once it has, so its ports are free (a UAT run’s stop checks them,
+ * tools/uat/stop.mjs). One still there after ms is killed. Its stderr is let go then too, since a helper it started
+ * (Chrome’s crash handler, say) can hold that pipe open after it, and keep this process from exiting.
+ * @param {import('node:child_process').ChildProcess} child @param {number} [ms]
+ */
+export async function untilGone(child, ms = 10_000) {
+  if (child.exitCode === null && child.signalCode === null) {
+    const gone = new Promise((ok) => child.once('exit', ok));
+    child.kill();
+    if (!(await within(gone, ms))) {
+      child.kill('SIGKILL');
+      await within(gone, ms);
+    }
+  }
+  child.stderr?.destroy();
+}
+
+/** Whether p settles within ms. Its timer is cleared either way, so it never holds the process open. @param {Promise<unknown>} p @param {number} ms */
+function within(p, ms) {
+  /** @type {NodeJS.Timeout | undefined} */
+  let timer;
+  const late = new Promise((ok) => {
+    timer = setTimeout(ok, ms, false);
+  });
+  return Promise.race([p.then(() => true), late]).finally(() => clearTimeout(timer));
+}
+
+/** The test Chrome’s command line: headless, on its own DevTools port and a fresh profile. */
+const flags = (port, profile) => [
+  '--headless=new',
+  `--remote-debugging-port=${port}`,
+  `--user-data-dir=${profile}`,
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--hide-scrollbars',
+  '--force-color-profile=srgb',
+  // A machine’s force-installed extensions load even into this fresh profile, and as their workers start they
+  // cancel the page’s first requests (net::ERR_ABORTED before anything is sent), so a check sometimes never sees
+  // the page load. CI’s runners have none; this makes a laptop run match. It touches only this test browser.
+  '--disable-extensions',
+  'about:blank',
+];
 
 /**
- * Launches headless Chrome on a DevTools port, after stopping the Chrome and servers a killed earlier run left running,
- * which would otherwise hold memory for good (tools/orphans.mjs).
- * @param {{ port?: number }} [opts]
+ * Starts a headless Chrome and opens its page, after stopping the Chrome and servers a killed earlier run left running,
+ * which would otherwise hold memory for good (tools/orphans.mjs). detached: Chrome runs in a process group of its own,
+ * so a terminal’s Ctrl-C doesn’t stop it under a script that still needs its page to clean up (tools/uat-run.mjs).
+ * @param {{ port?: number, detached?: boolean }} [opts]
  */
 export async function launch(opts) {
   await stopOrphans({ log: (line) => console.error(line) });
   return start(opts);
 }
 
-async function start({ port = 9333 } = {}) {
+/** @param {{ port?: number, detached?: boolean }} [o] */
+async function start({ port = 9333, detached = false } = {}) {
   const profile = join(tmpdir(), `pb-cdp-${process.pid}-${port}`);
-  const chrome = spawn(CHROME, [...FLAGS, `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], {
-    stdio: ['ignore', 'ignore', 'pipe'],
-  });
+  const chrome = spawn(CHROME, flags(port, profile), { stdio: ['ignore', 'ignore', 'pipe'], detached });
   // What Chrome last said, and whether it ended, to say why when it doesn’t start.
   let said = '';
   chrome.stderr.on('data', (d) => {
@@ -214,7 +256,7 @@ async function start({ port = 9333 } = {}) {
     },
     async close() {
       ws.close();
-      chrome.kill();
+      await untilGone(chrome);
       process.off('exit', orphan);
       await rm(profile, { recursive: true, force: true }).catch(() => {});
     },

@@ -35,15 +35,16 @@ async function freePort() {
  * Starts a fresh Postbox for one spec file. stop() closes it and removes its data. Its temp folder is also the home
  * it reads Claude Code’s config from, so no spec reads the person’s own.
  * @param {string} name  a short name for its temp folder
- * @param {{ demo?: boolean, mockOnly?: boolean, prepare?: (root: string) => Promise<void> }} [options]  demo: false
- *   starts it as a fresh install, without the demo’s conversations; mockOnly: false lets it look for real backends, as
- *   POSTBOX_BACKENDS says; prepare writes what it should find in its home before it starts
+ * @param {{ demo?: boolean, mockOnly?: boolean, prepare?: (root: string) => Promise<void>, server?: Parameters<typeof start>[0] }} [options]
+ *   demo: false starts it as a fresh install, without the demo’s conversations; mockOnly: false lets it look for real
+ *   backends, as POSTBOX_BACKENDS says; prepare writes what it should find in its home before it starts; server adds
+ *   options of start() (server/index.mjs), such as a fake hosts manager and probes
  */
-export async function startPostbox(name, { demo = true, mockOnly = true, prepare } = {}) {
+export async function startPostbox(name, { demo = true, mockOnly = true, prepare, server } = {}) {
   if (mockOnly) process.env.POSTBOX_BACKENDS = 'mock';
   const root = await mkdtemp(join(tmpdir(), `pb-spec-${name}-`));
   await prepare?.(root);
-  const app = await start({ port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root });
+  const app = await start({ ...server, port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root });
   return {
     ...app,
     root,

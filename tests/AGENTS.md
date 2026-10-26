@@ -26,7 +26,7 @@ Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/
 - Measure what fits a narrow window against `windowWidth(page)`, never `innerWidth`. On a phone (`isMobile`), a page that overflows widens `innerWidth` to fit, so a check against it can’t fail. Settings’ tabs ran past a 375 px window behind one.
 - A test that holds what were separate checks makes its expects soft (`expect.soft`), so each reports whichever fails first.
 - Tests that don’t depend on each other stay independent; a story whose steps build on each other is one test with `test.step`s and `expect.soft`.
-- Show a new spec failing on the code without its fix. CI runs a spec a pull request adds or changes ten times, with the events late.
+- Show a new spec failing on the code without its fix. CI runs a spec a pull request adds or edits ten times, with the events late. A later push repeats only the specs it changed or brought in, where the job passed on the push before; where it failed, was canceled or skipped, every one again (`tools/repeat-specs.mjs`).
 
 ## UAT docs
 

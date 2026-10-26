@@ -4,11 +4,14 @@
 import { formatDuration } from '/shared/text.mjs';
 import { formatCost, formatTokens, signed } from '/shared/work.mjs';
 import { retiredApp } from '/shared/work-list.mjs';
+import { client } from './client.mjs';
 import { h, icon, plural, timeOf } from './dom.mjs';
 import { navigate, openWork, paneHref, route, setPaneFull } from './ui.mjs';
 
 export const dur = (ms) => (ms ? formatDuration(ms) : '');
-export const who = (e) => `@${e.handle}${e.who ? ` · ${e.who}` : ''}`;
+/** A host’s name now (it may have been renamed since), else as the ledger kept it (#120). */
+export const hostName = (x) => client.state.hosts?.[x.host?.id]?.name ?? x.host?.name ?? 'a host';
+export const who = (e) => `@${e.handle}${e.host ? ` on ${hostName(e)}` : ''}${e.who ? ` · ${e.who}` : ''}`;
 export const priced = (n, has) => (has ? formatCost(n) : '—');
 /** +a −d, with the signs as text and each count in its color. */
 export function signedEl(added, deleted) {
@@ -44,7 +47,7 @@ export function vcsSection(s, git) {
   const rows = [
     ...s.branches.map((b) => ({
       at: b.at,
-      el: h('li', icon('right', 'i-sm'), 'Made branch ', h('b.mono', b.name), h('span.small.dim', ` · @${b.handle} · ${timeOf(b.at)}`)),
+      el: h('li', icon('right', 'i-sm'), 'Made branch ', h('b.mono', b.name), h('span.small.dim', ` · ${who(b)} · ${timeOf(b.at)}`)),
     })),
     ...s.commits.map((c) => {
       const pushed = git?.commits?.[c.id]?.pushed;
@@ -59,11 +62,17 @@ export function vcsSection(s, git) {
           c.branch ? h('span.small.dim', ` on ${c.branch}`) : null,
           c.left ? h('span.small.dim', ' · no longer on a branch') : null,
           c.overlap ? h('span.small.dim', ' · or a command beside it') : null,
-          ' · ',
-          c.files.length ? [plural(c.files.length, 'file'), ' ', signedEl(c.added, c.deleted)] : 'files unknown',
-          ' ',
-          h('span.status-tag', { class: pushed ? 'ws-pushed' : 'ws-committed' }, git ? (pushed ? 'Pushed' : 'Not pushed') : '…'),
-          h('span.small.dim', ` · @${c.handle} · ${timeOf(c.at)}`),
+          // Git here can’t say what a host’s commit holds or whether it was pushed (#120); its push, if the stream
+          // reported one, is listed.
+          c.host
+            ? null
+            : [
+                ' · ',
+                c.files.length ? [plural(c.files.length, 'file'), ' ', signedEl(c.added, c.deleted)] : 'files unknown',
+                ' ',
+                h('span.status-tag', { class: pushed ? 'ws-pushed' : 'ws-committed' }, git ? (pushed ? 'Pushed' : 'Not pushed') : '…'),
+              ],
+          h('span.small.dim', ` · ${who(c)} · ${timeOf(c.at)}`),
         ),
       };
     }),
@@ -77,7 +86,7 @@ export function vcsSection(s, git) {
         h('b.mono', p.branch || 'a branch'),
         p.remote ? [' to ', h('span.mono', p.remote)] : null,
         p.refs.length ? h('span.small.dim', ` (${p.refs.join(', ')})`) : null,
-        h('span.small.dim', ` · @${p.handle} · ${timeOf(p.at)}`),
+        h('span.small.dim', ` · ${who(p)} · ${timeOf(p.at)}`),
       ),
     })),
   ].sort((a, b) => a.at - b.at);

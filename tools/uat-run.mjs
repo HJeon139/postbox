@@ -14,6 +14,12 @@
 // releases (none today) needs --release (releaseGate), which also counts as --compat:
 //
 //   node tools/uat-run.mjs --scenario mixedroom --compat
+//
+// Host mode (#120) puts agents on other machines over ssh, Claude Code only: --host for each (host1, host2…),
+// --host-setting hostN.key=value, and --place over a scenario’s `- place:` (tests/uat/e2e/README.md, “Host mode”):
+//
+//   node tools/uat-run.mjs --scenario remotehosts --host host-a.example.com --host host-b.example.com
+//
 // Everything a run makes goes in uat-runs/<time>-<scenario>/ in the main checkout, or POSTBOX_UAT_RUNS (tools/uat/runs.mjs),
 // ignored by git: report.md, findings.json, run.json, screenshots, each agent turn’s raw stream, and Postbox’s data.
 // A run is 15 steps unless its scenario or --steps says otherwise; a targeted scenario’s phases end on their triggers
@@ -26,9 +32,6 @@ import { createServer } from 'node:net';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { agyVersion, findAgy } from '../server/adapters/antigravity-cli.mjs';
-import { codexModels, codexVersion, findCodex } from '../server/adapters/codex.mjs';
-import { findKiro, kiroVersion } from '../server/adapters/kiro-cli.mjs';
 import { launch, sleep } from './cdp.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
@@ -36,7 +39,13 @@ import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { goToNeedsStep } from './uat/driver-needs.mjs';
 import { followEvents, readHistory } from './uat/history.mjs';
+import { endHosts } from './uat/hosts-end.mjs';
+import { HOST_OPTIONS, hostMode } from './uat/hosts-options.mjs';
+import { createHostRun, readHosts, startHosts } from './uat/hosts-run.mjs';
+import { forHosts } from './uat/hosts-scenario.mjs';
+import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
+import { startPostbox } from './uat/postbox.mjs';
 import { newProbes } from './uat/probes.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
@@ -44,6 +53,8 @@ import { reviewFindings } from './uat/review.mjs';
 import { readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
+import { seedAgents } from './uat/seed.mjs';
+import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
@@ -82,6 +93,8 @@ const { values: opt } = parseArgs({
     release: { type: 'boolean', default: false },
     // Run a compatibility scenario: one with agents on a backend other than Claude’s, such as the Kiro CLI.
     compat: { type: 'boolean', default: false },
+    // Host mode’s options (#120, tools/uat/hosts-options.mjs).
+    ...HOST_OPTIONS,
     // Every run records itself and saves one telemetry report (designs/telemetry-persona.md, U4); no opts out.
     telemetry: { type: 'string', default: 'yes' },
   },
@@ -102,7 +115,9 @@ const portFree = (port) =>
 
 async function main() {
   const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
-  const scenario = parseScenario(readFileSync(scenarioFile, 'utf8'));
+  const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
+  // Host mode (#120): agents on other machines over ssh (--host), Claude Code only (tools/uat/hosts-options.mjs).
+  const { hosts, placement, scenario } = hostMode(opt, name, parseScenario(readFileSync(scenarioFile, 'utf8')));
   const other = compatBackends(scenario);
   if (other.length && !opt.compat && !opt.release)
     throw new Error(
@@ -117,7 +132,6 @@ async function main() {
   const steps = stepCap(scenario, opt.steps);
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = {
     data: join(dir, 'data'),
@@ -148,75 +162,16 @@ async function main() {
   const origin = `http://127.0.0.1:${port}`;
   // The runner must talk to its own fresh Postbox, never to one that’s already running there.
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
-  // A fresh install has one generic agent, so the scenario's agents are seeded from agents.json: every
-  // persona in personas.json, since scenarios bring more agents (@critic) into topic threads than they start with.
-  const personas = JSON.parse(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
-  let codexDefaultModel = null;
-  if (Object.values(scenario.backends).some((b) => b.backend === 'codex')) {
-    const v = await codexVersion(findCodex());
-    if (!v) throw new Error('This scenario puts agents on Codex, and the Codex CLI is not installed here (or set POSTBOX_CODEX_BIN).');
-    codexDefaultModel = (await codexModels(findCodex()))[0] ?? null;
-    log(`Codex ${v}${codexDefaultModel ? ` · default model ${codexDefaultModel}` : ''}.`);
-  }
-  // An agent the scenario puts on another backend runs there with the model it names. A Kiro agent is Isolated: it
-  // runs with Postbox’s own Kiro home, so the run never writes into the person’s ~/.kiro, and the Kiro checks can
-  // tell the person’s steering and servers from Postbox’s (#57).
-  const onBackend = (p) => {
-    const b = scenario.backends[p.handle];
-    return b
-      ? {
-          ...p,
-          backend: b.backend,
-          ...(scenario.permissionModes[p.handle] ? { permissionMode: scenario.permissionModes[p.handle] } : {}),
-          ...(b.model ? { model: b.model } : b.backend === 'codex' && codexDefaultModel ? { model: codexDefaultModel } : {}),
-          ...(b.backend === 'kiro-cli' ? { usesHostSetup: false } : {}),
-        }
-      : p;
-  };
-  // Claude agents run on the run’s model, unless the scenario keeps the persona’s and --force-agent-model doesn’t override it.
-  const fast = (p) => {
-    if ((scenario.models === 'persona' && !opt['force-agent-model']) || scenario.backends[p.handle]) return p;
-    return {
-      ...p,
-      ...(opt['agent-model'] !== 'persona' ? { model: opt['agent-model'] } : {}),
-      ...(opt['agent-effort'] !== 'persona' ? { effort: opt['agent-effort'] } : {}),
-    };
-  };
-  const agents = [
-    ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),
-    ...personas.filter((p) => !scenario.agents.includes(p.handle)),
-  ]
-    .map(fast)
-    .map(onBackend);
-  if (opt.release) log('A release run: the release-only backends are on.');
-  // Postbox registers the Kiro CLI only when it can run it, and seeding an agent on a backend it doesn’t have fails.
-  // The same for the Antigravity CLI, which a compatibility run may use. It always runs with the
-  // person’s own agy setup: it has no Isolated mode (server/adapters/antigravity-cli.mjs).
-  if (Object.values(scenario.backends).some((b) => b.backend === 'antigravity-cli')) {
-    const v = await agyVersion(findAgy());
-    if (!v) throw new Error('This scenario puts agents on the Antigravity CLI, and agy isn’t installed here (or set POSTBOX_AGY_BIN).');
-    log(`Antigravity CLI ${v}: this run uses its quota.`);
-  }
-  if (Object.values(scenario.backends).some((b) => b.backend === 'kiro-cli')) {
-    const v = await kiroVersion(findKiro());
-    if (!v) throw new Error('This scenario puts agents on the Kiro CLI, and kiro-cli isn’t installed here (or set POSTBOX_KIRO_BIN).');
-    log(
-      `Kiro CLI ${v}: ${Object.entries(scenario.backends)
-        .map(([h, b]) => `@${h} on ${b.backend}${b.model ? ` (${b.model})` : ''}`)
-        .join(', ')}.`,
-    );
-  }
-  await writeFile(join(paths.data, 'agents.json'), JSON.stringify(agents, null, 2));
-  // What the agents ran on, for the report: a fast run’s findings about agent choices aren’t the default model’s.
-  const agentModels = agents.map((p) => `@${p.handle} ${p.model ?? 'its default model'}${p.effort ? `, ${p.effort} effort` : ''}`).join('; ');
-  log(`Agents: ${agentModels}.`);
-  // The effort the scenario’s Claude agents run at, for run.json: a `- models: persona` run keeps each persona’s own.
-  const efforts = [...new Set(agents.filter((p) => scenario.agents.includes(p.handle) && !scenario.backends[p.handle]).map((p) => p.effort ?? null))];
-  const agentEffort = efforts.length > 1 ? efforts.map((e) => e ?? 'default').join('/') : (efforts[0] ?? null);
-  const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', paths.data, '--fresh'], {
-    cwd: ROOT,
+  const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
+  // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
+  const run = { log };
+  const stop = runStop(run);
+  const signals = onStopSignal(stop, { log });
+  const postbox = await startPostbox({
+    root: ROOT,
+    port,
+    data: paths.data,
     env: {
-      ...process.env,
       ...gate.env,
       POSTBOX_CLAUDE_RECORD: paths.streams,
       POSTBOX_KIRO_RECORD: paths.kiroStreams,
@@ -224,35 +179,16 @@ async function main() {
       POSTBOX_CODEX_RECORD: paths.codexStreams,
       ...tm.telemetryEnv(scenario, dir, opt),
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    log,
   });
-  server.stdout.on('data', (d) => log(`postbox: ${String(d).trim()}`));
-  server.stderr.on('data', (d) => log(`postbox (stderr): ${String(d).trim()}`));
-  let exited = null;
-  server.on('exit', (code) => (exited = code));
-  // Stopping the run stops its Postbox too, and with it the agents' turns: an orphaned server keeps agents running,
-  // and spending, after the run is gone.
-  for (const sig of ['SIGINT', 'SIGTERM'])
-    process.once(sig, () => {
-      if (exited === null) server.kill('SIGTERM');
-      process.exit(130);
-    });
-  const api = async (p) => {
-    if (exited !== null) throw new Error(`Postbox exited (code ${exited}); see run.log.`);
-    return (await fetch(origin + p)).json();
-  };
-  for (let i = 0; ; i++) {
-    try {
-      await api('/api/state');
-      break;
-    } catch (e) {
-      if (exited !== null || i > 80) throw new Error(`Postbox didn’t start: ${e.message}`);
-      await sleep(250);
-    }
-  }
+  const { api } = postbox;
   // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
   const history = followEvents(origin);
-  const page = await launch({ port: Number(opt['chrome-port']) });
+  const page = await launch({ port: Number(opt['chrome-port']), detached: true });
+  // Host mode’s record of its hosts (tools/uat/hosts-run.mjs), which its checks and triggers read as facts.hosts.
+  const hr = hosts.length ? createHostRun({ hosts, placement, launcher: scenario.launcher, root: ROOT, stamp, data: paths.data, log }) : null;
+  Object.assign(run, { hr, history, page, postbox });
+  if (hr) hr.hostStates = history.hostStates;
   const findings = new Map(); // key → finding
   const timeline = [];
   const facts = {
@@ -273,6 +209,7 @@ async function main() {
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
+    ...(hr ? { hosts: hr.record } : {}),
   };
   let unwatch = () => {};
   try {
@@ -280,8 +217,9 @@ async function main() {
     await page.goto(`${origin}/`);
     const state0 = (await api('/api/state')).state;
     facts.startPersonas = Object.values(state0.personas).filter((p) => !p.retired);
-    const d = driver(page);
+    const d = driver(page, { beforeStop: () => beforeStop(hr) });
     await d.newProject(scenario.project, paths.workspace);
+    if (hr) await startHosts(hr, { postbox, api, kit: d.kit, dir, project: scenario.project });
     const hash = await d.newConversation(scenario.project, scenario.conversation, scenario.agents);
     const mainThread = /#\/t\/([^/]+)/.exec(hash)?.[1];
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
@@ -331,6 +269,8 @@ async function main() {
       await noteStale();
       return `Answered ${it.item}${now?.revision ? ` (at revision ${now.revision} when you answered)` : ''} while the agent worked.`;
     };
+    // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
+    const hostFault = (spec) => (hr ? fault(hr, spec, page) : Promise.reject(new Error('A fault needs a run with --host.')));
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
@@ -374,6 +314,7 @@ async function main() {
     const midTurn = [];
     let lastMidTurn = 0;
     const midTurnChecks = async (st = null) => {
+      if (hr) await sample(hr, st ?? (await api('/api/state')).state);
       if (Date.now() - lastMidTurn < 15_000) return;
       lastMidTurn = Date.now();
       facts.state = st ?? (await api('/api/state')).state;
@@ -392,9 +333,11 @@ async function main() {
     // With --max-cost, the budget watches the agents’ turns through the steps and the wait after them.
     unwatch = watchBudget({ budget, api, threadsUnderTest, stop: stopThroughPage(page), log });
     for (let step = 1; step <= steps; step++) {
+      if (signals.stopping) throw new Error('The run was stopped by a signal.');
       const timedOut = await settle(true);
       if (budget.stopped) break;
       await refreshFacts();
+      if (hr) await afterStep(hr, facts);
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
       const obs = await observe();
@@ -463,7 +406,8 @@ async function main() {
       const idle = !busy;
       if (waiting.length && (a.type === 'next_phase' || a.type === 'done' || (a.type === 'wait' && idle)) && pushedBack !== waiting.join('\n')) {
         pushedBack = waiting.join('\n');
-        actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first.`;
+        // The same again goes ahead, so a scenario that says to leave a card open (for a minute, say) still can.
+        actionError = `Not yet: ${waiting.length === 1 ? 'this is' : 'these are'} still waiting on you: ${waiting.join('; ')}. Answer ${waiting.length === 1 ? 'it' : 'them'} first, or, to leave ${waiting.length === 1 ? 'it' : 'them'} waiting on purpose, as the scenario says to, ask for the same again: the second time it goes ahead.`;
         log(`action held: ${waiting.length} waiting on the person`);
         continue;
       }
@@ -583,13 +527,19 @@ async function main() {
           await sleep(1500);
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
-        } else if (a.type === 'wait') await sleep(Math.min(WAIT_MAX_S, a.seconds ?? 30) * 1000);
+        } else if (a.type === 'fault') actionResult = await hostFault(a);
+        else if (a.type === 'wait') await sleep(Math.min(WAIT_MAX_S, a.seconds ?? 30) * 1000);
         else if (a.type === 'stop') await d.stopAll();
         // Stop or Send now while the turn this action started is running (#126).
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
           // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
-          const said = await d.interrupt(a.interrupt, { panel, onWait: () => midTurnChecks(), answer: () => answerMidTurn(a.interrupt) });
+          // A fault mid-turn is the driver’s answer while the agent works, with the fault for its answer.
+          const now = a.interrupt.do === 'fault' ? () => hostFault(a.interrupt) : () => answerMidTurn(a.interrupt);
+          const said = await d.interrupt(
+            { ...a.interrupt, do: a.interrupt.do === 'fault' ? 'answer' : a.interrupt.do },
+            { panel, onWait: () => midTurnChecks(), answer: now },
+          );
           facts.probes.interrupts.push({ step, at: Date.now(), do: a.interrupt.do, answered: /You answered “([^”]+)”/.exec(said)?.[1] ?? null });
           actionResult = actionResult ? `${actionResult} ${said}` : said;
         }
@@ -604,6 +554,7 @@ async function main() {
     // After the last step, no agent takes another turn: the runner’s 🚩s and its report (U4).
     if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ td, flags: tel.flags, dir, data: paths.data, main: mainThread, shown: tel.shown, log });
     await refreshFacts();
+    if (hr) await endHosts(hr, dir);
     newFindings();
     // What the last action caused counts, and every phase with triggers that didn’t all happen is a coverage gap.
     await noteStale();
@@ -633,9 +584,7 @@ async function main() {
     });
   } finally {
     unwatch();
-    history.close();
-    await page.close().catch(() => {});
-    server.kill();
+    await stop();
   }
 }
 
@@ -659,7 +608,10 @@ async function recheck(dir) {
   // Its record before the report is rewritten: the minutes it took are only in the first report.
   const record = readRun(dir);
   const name = existsSync(join(dir, 'run.json')) && record?.scenario ? record.scenario : dir.replace(/^.*-(\w+)$/, '$1');
-  const scenario = parseScenario(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8'));
+  // A host-mode run’s record of its hosts (#120): its phases as it played them, and what its checks read.
+  const hostsRec = readHosts(dir);
+  const parsed = parseScenario(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8'));
+  const scenario = hostsRec ? forHosts(parsed, hostsRec.placement, hostsRec.hosts) : parsed;
   const port = Number(opt.port);
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', join(dir, 'data')], {
@@ -706,6 +658,7 @@ async function recheck(dir) {
       budget: saved.budget ?? null,
       ui: {},
       ...userSetup(join(dir, 'workspace')),
+      ...(hostsRec ? { hosts: hostsRec } : {}),
     };
     facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
@@ -803,5 +756,6 @@ async function recheck(dir) {
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
   (opt.recheck ? recheck(opt.recheck) : main()).catch((e) => {
     console.error(`UAT run failed: ${e.stack ?? e.message}`);
-    process.exit(1);
+    // A run stopped by a signal exits as stopped (130, tools/uat/stop.mjs), whatever it failed with meanwhile.
+    process.exit(process.exitCode || 1);
   });

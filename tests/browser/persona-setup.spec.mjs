@@ -87,7 +87,7 @@ test('#358 the Gemini boilerplate picks the Antigravity CLI’s preferred Gemini
   await page.locator('.dialog').getByRole('button', { name: 'New agent', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'New agent' });
   await dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini', exact: true }).click();
-  await expect.soft(dialog.getByLabel('Runs on'), 'the Antigravity CLI').toHaveValue('antigravity-cli');
+  await expect.soft(dialog.getByLabel('Backend'), 'the Antigravity CLI').toHaveValue('antigravity-cli');
   await expect.soft(dialog.getByLabel('Model'), 'gemini-3.8-flash-high, not the first one listed').toHaveValue('gemini-3.8-flash-high');
   await expect.soft(dialog.getByLabel('Instructions'), 'its prompt').toHaveValue(/^# Gemini\n/);
 });

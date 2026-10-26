@@ -136,6 +136,15 @@ export const BOILERPLATES = [
     instructions: 'Build and maintain search indexes. Report progress as you go.',
     tools: ['corpus.search', 'corpus.read', 'corpus.stats', 'shell'],
   },
+  {
+    id: 'bp-gpt',
+    name: 'GPT',
+    description: 'Helps with questions, writing and code using Codex',
+    backend: 'codex',
+    model: '',
+    instructions: prompt('gpt'),
+    tools: ['shell', 'web.fetch'],
+  },
   { id: 'bp-blank', name: 'Blank', description: 'Write it yourself', instructions: '', tools: [] },
 ];
 

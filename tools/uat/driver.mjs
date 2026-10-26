@@ -6,7 +6,8 @@
 import { writeFile } from 'node:fs/promises';
 import { js, sleep } from '../cdp.mjs';
 import { review } from './driver-review.mjs';
-import { ITEM } from './selectors.mjs';
+import { pressKey } from './keys.mjs';
+import { byText, ITEM } from './selectors.mjs';
 
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
@@ -18,8 +19,12 @@ const JOBS_BUTTON = (answer) =>
 const JOBS_BOX = (b) =>
   `((${b}.closest('.stop-ask, [role=dialog], [role=alertdialog], .dialog, .toast') ?? ${b}.parentElement)?.innerText ?? ${b}.textContent).replace(/\\s+/g, ' ').trim().slice(0, 400)`;
 
-/** @param {any} page  from tools/cdp.mjs launch() */
-export function driver(page) {
+/**
+ * @param {any} page  from tools/cdp.mjs launch()
+ * @param {{ beforeStop?: () => Promise<void> }} [hooks]  beforeStop: runs just before every press of Stop (a host-mode
+ *   run looks at what runs under each turn on its hosts then, tools/uat/hosts-watch.mjs)
+ */
+export function driver(page, hooks = {}) {
   const ev = (expr) => page.evaluate(expr);
 
   /** Clicks the centre of the first element that matches, after scrolling it into view. */
@@ -37,21 +42,7 @@ export function driver(page) {
       await page.send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: 'left', clickCount: 1 });
     await sleep(250);
   }
-  // Matches a control by its visible text or its label, since icon buttons (Expand table) have only a label.
-  const byText = (scope, sel, text) =>
-    `[...(${scope}?.querySelectorAll(${js(sel)}) ?? [])].find((e) => e.offsetParent !== null && (e.textContent + ' ' + (e.getAttribute('aria-label') ?? '')).replace(/\\s+/g, ' ').trim().toLowerCase().includes(${js(String(text).toLowerCase())}))`;
-  const press = async (key) => {
-    const codes = { Enter: 13, Escape: 27, Tab: 9 };
-    for (const type of ['keyDown', 'keyUp'])
-      await page.send('Input.dispatchKeyEvent', {
-        type,
-        key,
-        code: key,
-        windowsVirtualKeyCode: codes[key],
-        ...(type === 'keyDown' && key === 'Enter' ? { text: '\r' } : {}),
-      });
-    await sleep(150);
-  };
+  const press = (key) => pressKey(page, key);
   const typeInto = async (findExpr, text, what) => {
     await clickAt(findExpr, what);
     await ev(`(() => { const el = ${findExpr}; if (el && 'value' in el) { el.select?.(); } })()`);
@@ -92,6 +83,8 @@ export function driver(page) {
   return {
     clickAt,
     press,
+    // What tools/uat/driver-hosts.mjs drives the Hosts tab and a persona’s Runs on with (#120).
+    kit: { ev, clickAt, press, page },
 
     async newProject(name, folder) {
       await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
@@ -450,6 +443,7 @@ export function driver(page) {
     },
 
     async stopAll() {
+      await hooks.beforeStop?.();
       await ev(
         `(() => { const b = [...document.querySelectorAll('.composer button.stop')].find((x) => x.getClientRects().length && !x.disabled); if (!b) throw new Error('No Stop control is visible.'); b.click(); })()`,
       );
@@ -519,6 +513,7 @@ export function driver(page) {
       // An answer isn’t a Stop: Postbox asks nothing about background jobs.
       if (action === 'answer') return `${await /** @type {() => Promise<string>} */ (answer)()} (after ${after} s of ${who || 'its reply'})`;
       if (action === 'stop') {
+        await hooks.beforeStop?.();
         await clickAt(stop, 'the Stop button');
         notes.push(`Pressed Stop on ${who || 'the working agent’s reply'} after ${after} s.`);
       } else {

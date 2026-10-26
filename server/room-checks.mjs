@@ -1075,11 +1075,8 @@ export const CHECKS = [
     inputs: ['state', 'streams'],
     issue: 132,
     run: (f) => {
-      const ledger = new Set(
-        ledgerEntries(f)
-          .filter((e) => e.kind === 'file')
-          .map((e) => e.path),
-      );
+      // A file changed on a host is in Work as an edit step there, with no diff (server/ledger-remote.mjs, #120).
+      const ledger = new Set(ledgerEntries(f).flatMap((e) => (e.kind === 'file' || e.kind === 'edit' ? [e.path] : [])));
       const edited = new Set(
         (f.streams ?? []).flatMap((s) =>
           toolCalls(s.events)

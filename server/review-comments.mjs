@@ -6,26 +6,8 @@
 // agent resolves it instead.
 
 import { validateBlock } from '../shared/catalog.mjs';
-import { COMMENT_MAX, commentErrors, QUOTE_MAX, quoteOf } from '../shared/review-comments.mjs';
+import { commentErrors, MAX_COMMENTS, quoteOf, VERDICTS } from '../shared/review-comments.mjs';
 import { findQuote, splitLines } from '../shared/review-diff.mjs';
-
-const MAX_COMMENTS = 50;
-const VERDICTS = ['comment', 'approve', 'request_changes'];
-
-/** The tool, as agents read it. */
-export const REVIEW_BLOCK_DEF = {
-  name: 'review_block',
-  description: `Comment on another agent’s review block in this conversation, as its reviewer. Each comment becomes an open comment thread on the draft, with your handle, where the person sees it, and the block’s agent hears about it, so it can revise and resolve it. It doesn’t answer the block: that stays the person’s to approve. blockId: the review’s id, or its item id if two agents use the same one. comments (1–${MAX_COMMENTS}, each up to ${COMMENT_MAX.toLocaleString('en-US')} characters): { line, text } on a line; { line, col, endLine, endCol, quote, text } on a selection, with columns from 1, endCol the column of its last character, and quote the exact text there (up to ${QUOTE_MAX.toLocaleString('en-US')} characters); { anchor, text } on an app’s part; or { threadId, text } to reply in its comment thread. verdict?: “comment”, “approve” or “request_changes”, shown on the block.`,
-  inputSchema: {
-    type: 'object',
-    properties: {
-      blockId: { type: 'string' },
-      comments: { type: 'array', items: { type: 'object' } },
-      verdict: { type: 'string', enum: VERDICTS },
-    },
-    required: ['blockId', 'comments'],
-  },
-};
 
 /**
  * review_block { blockId, comments, verdict? } for the session’s turn.

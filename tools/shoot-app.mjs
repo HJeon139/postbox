@@ -4,16 +4,15 @@
 //   node tools/shoot-app.mjs              → screenshots/latest/app/ (ignored by git)
 //   node tools/shoot-app.mjs --baseline   → screenshots/app/, the approved set
 //
-// Every variant is also checked with axe-core for WCAG 2.1 A and AA problems; any violation fails the
-// run and is listed in axe.json beside the screenshots. AXE=0 skips it.
+// It takes pictures and checks nothing: axe-core runs on the same scenes and variants in
+// tests/browser/demo-a11y.spec.mjs, CI’s gate on the demo.
 
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { access, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from '../server/index.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { play } from './demo.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -58,12 +57,40 @@ const settle = async () => {
     });
   await sleep(900);
 };
-page.attach = async (rel) => {
-  const { root } = await page.send('DOM.getDocument', {});
-  const { nodeId } = await page.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.composer input[type=file]' });
-  if (nodeId) await page.send('DOM.setFileInputFiles', { nodeId, files: [resolve(ROOT, rel)] });
-  await sleep(600);
-};
+
+/**
+ * A scene’s prepare steps (tools/demo.mjs, UI) on the shooter: each waits for the first element a selector finds,
+ * then acts on it in the page.
+ * @type {import('./demo.mjs').UI}
+ */
+const ui = (() => {
+  const node = (sel, text) => `[...document.querySelectorAll(${js(sel)})].find((n) => ${text === undefined ? 'true' : `n.textContent.includes(${js(text)})`})`;
+  const act = async (sel, text, code) => {
+    await page.waitFor(`!!${node(sel, text)}`, { label: `${sel}${text === undefined ? '' : ` with “${text}”`}` });
+    await page.evaluate(`(() => { const n = ${node(sel, text)}; ${code}; })()`);
+  };
+  return {
+    click: (sel, text) => act(sel, text, 'n.click()'),
+    activate: (sel, text) => act(sel, text, 'n.click()'),
+    press: (sel, key) =>
+      act(
+        sel,
+        undefined,
+        `n.scrollIntoView({ block: 'center' }); n.focus(); n.dispatchEvent(new KeyboardEvent('keydown', { key: ${js(key)}, bubbles: true }))`,
+      ),
+    fill: (sel, value) => act(sel, undefined, `n.value = ${js(value)}; n.dispatchEvent(new Event('input', { bubbles: true }))`),
+    attach: async (sel, file) => {
+      await page.waitFor(`!!document.querySelector(${js(sel)})`, { label: sel });
+      const { root } = await page.send('DOM.getDocument', {});
+      const { nodeId } = await page.send('DOM.querySelector', { nodeId: root.nodeId, selector: sel });
+      await page.send('DOM.setFileInputFiles', { nodeId, files: [file] });
+    },
+    scroll: (sel) => act(sel, undefined, `n.scrollIntoView({ block: 'center' })`),
+    shows: async (sel, text) => {
+      await page.waitFor(`!!${node(sel, text)}?.checkVisibility()`, { label: `${sel}${text === undefined ? '' : ` with “${text}”`} to show` });
+    },
+  };
+})();
 
 async function goto(theme, w, h, scale) {
   await page.size(w, h, { theme, scale });
@@ -74,21 +101,6 @@ async function goto(theme, w, h, scale) {
 async function drive(h) {
   await driver.size(1280, 900, { theme: 'dark' });
   await driver.goto(`${origin}/?v=${++loads}${h}`);
-}
-
-// axe runs in the app page. Agent apps are sandboxed frames with an opaque origin, which it can’t enter;
-// their own pre-display check covers labels, contrast and overflow inside them.
-const AXE = process.env.AXE === '0' ? null : await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8').catch(() => null);
-if (!AXE && process.env.AXE !== '0') console.log('axe-core isn’t installed, so accessibility checks are skipped. Run npm install.');
-const AXE_RUN = `axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] })
-  .then((r) => r.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 5).map((n) => n.target.join(' ')) })))`;
-const violations = [];
-async function audit(name, theme, w) {
-  if (!AXE) return;
-  // The screenshot made the viewport tall for a moment; let frames resize back first.
-  await sleep(300);
-  await page.evaluate(`${AXE};0`);
-  for (const v of await page.evaluate(AXE_RUN)) violations.push({ scene: name, variant: `${theme}-${w}`, ...v });
 }
 
 const shots = [];
@@ -106,11 +118,10 @@ try {
     shot: async (name, { prepare } = {}) => {
       for (const [theme, w, h, scale] of VARIANTS) {
         await goto(theme, w, h, scale);
-        if (prepare) await prepare(page);
+        if (prepare) await prepare(ui);
         const file = join(OUT, `${name}-${theme}-${w}.png`);
         const height = await page.shoot(file, { width: w, baseH: h, scale });
         console.log(`  ${name}-${theme}-${w}.png  ${w}×${height}`);
-        await audit(name, theme, w);
       }
       shots.push(name);
       if (STOP_AFTER && name === STOP_AFTER) throw new Error(`Stopped after ${name}, as asked.`);
@@ -154,15 +165,6 @@ for (const name of shots) {
   await page.shoot(join(OUT, 'sheets', `${name}.png`), { width: 1360, baseH: 700, scale: 1 });
   await rm(sheetFile);
   console.log(`  sheets/${name}.png`);
-}
-
-if (AXE) {
-  await writeFile(join(OUT, 'axe.json'), JSON.stringify(violations, null, 2));
-  if (violations.length) {
-    console.log(`\nAccessibility (axe-core): ${violations.length} violation${violations.length === 1 ? '' : 's'}, listed in ${join(OUT, 'axe.json')}`);
-    for (const v of violations) console.log(`  ${v.scene} ${v.variant}  ${v.id} (${v.impact}): ${v.help}\n    ${v.nodes.join('\n    ')}`);
-    process.exitCode = 1;
-  } else console.log('\nAccessibility (axe-core): no violations.');
 }
 
 const errors = [...driver.logs, ...page.logs].filter((l) => !/api\/stream|ERR_INCOMPLETE_CHUNKED|503|ERR_CONNECTION_REFUSED/.test(l));
