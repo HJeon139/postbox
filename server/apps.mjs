@@ -4,6 +4,7 @@
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
 import { httpError } from './helpers.mjs';
 
@@ -234,7 +235,7 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
     if (app.threadId === threadId()) endSegment();
     moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
   }
-  return { ok: true, message: `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.` };
+  return appReceipt(next, `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.`);
 }
 
 /** Host tools that apps (through the bridge) and agents can use, if granted. */
