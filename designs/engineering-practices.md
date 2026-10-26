@@ -29,7 +29,7 @@ The browser half of the gate is the specs. A change that’s visible in the UI a
 ```bash
 npx playwright test                               # every spec
 POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events late, as CI’s second pass
-npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs a new or changed one
+npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs one a pull request adds or edits
 ```
 
 CI runs every spec on each pull request, normally and with the server’s events late, and a spec the pull request adds or changes ten times more with the events late. There are no retries: one failure fails the run.

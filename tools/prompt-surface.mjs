@@ -19,7 +19,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { agyRules } from '../server/adapters/antigravity-cli.mjs';
-import { agentGuide, offText } from '../server/adapters/guide.mjs';
+import { agentGuide, formatMessage, offText } from '../server/adapters/guide.mjs';
 import { KIRO_TOOL_RULES } from '../server/adapters/kiro-cli.mjs';
 import { TOOL_RULES, toolsOff } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
@@ -83,6 +83,15 @@ export function render(out) {
   const agent = { handle: 'agent', tools: Object.keys(TOOL_RULES) };
   const guide = agentGuide({ persona: agent, handles: ['agent'] });
   write('scan/guide.md', guide);
+  write(
+    'scan/queued-messages.md',
+    formatMessage({
+      messages: [
+        { kind: 'agent', from: '@reviewer', text: 'Review the latest revision.', at: 0 },
+        { kind: 'user', text: 'Keep the change focused.', at: 1000 },
+      ],
+    }),
+  );
   write('scan/agy-rules.md', agyRules({ persona: agent, guide: agentGuide({ persona: agent, handles: ['agent'], toolRules: null, setup: false }) }));
   write('scan/mcp-tools.md', toolsText());
   const personas = [...DEMO_PERSONAS.map((p) => ['demo', p]), ...BOILERPLATES.map((b) => ['boilerplate', asPersona(b)])];
