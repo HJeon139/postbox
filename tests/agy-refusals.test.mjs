@@ -97,6 +97,7 @@ async function runDeliverTurn(permissionMode, opts = {}) {
       env: spOpts.env,
       hasHooks: existsSync(hooksFile),
       hooksMode: existsSync(hooksFile) ? statSync(hooksFile).mode & 0o777 : null,
+      rules: readFileSync(join(spOpts.cwd, PLUGIN_DIR, 'rules', 'AGENTS.md'), 'utf8'),
     });
     const child = new EventEmitter();
     Object.assign(child, { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => {} });
@@ -143,6 +144,7 @@ test('#370 condition 1: AntigravityCliAdapter writes read-only hooks.json and fa
   assert.ok(confirmed.args.includes('--dangerously-skip-permissions'));
   assert.equal(confirmed.env.POSTBOX_AGY_MODE, 'auto');
   assert.equal(confirmed.env.POSTBOX_MCP_URL, 'http://127.0.0.1:4280/mcp?session=se_1&token=t1');
+  assert.match(confirmed.rules, /## Calls that need approval/, 'a confirmed hook asks, and the rules say so');
 
   const defaultVer = await runDeliverTurn('auto');
   assert.equal(defaultVer.hasHooks, false, 'unknown default version (null) means no hook');
@@ -156,5 +158,8 @@ test('#370 condition 1: AntigravityCliAdapter writes read-only hooks.json and fa
 
   const missingScript = await runDeliverTurn('acceptEdits', { version: '1.4.7', hookScript: '/nonexistent/agy-hook.mjs' });
   assert.ok(!missingScript.args.includes('--dangerously-skip-permissions'));
+  // With no hook to ask, the rules say calls are refused, not that a card will come.
+  assert.match(missingScript.rules, /## Refused tool calls/);
+  assert.doesNotMatch(missingScript.rules, /## Calls that need approval/);
   assert.deepEqual(missingScript.args.slice(missingScript.args.indexOf('--mode'), missingScript.args.indexOf('--mode') + 2), ['--mode', 'accept-edits']);
 });

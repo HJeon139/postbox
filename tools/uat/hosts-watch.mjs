@@ -13,7 +13,7 @@
 //   kill-ssh, also which processes it killed.
 
 import { spawnSync } from 'node:child_process';
-import { sleep } from '../cdp.mjs';
+import { sleep } from '../browser.mjs';
 import { localListeners, newListeners, remoteListeners, treeOf } from './hosts-probe.mjs';
 import { recovery, says } from './hosts-recovery.mjs';
 import { leftInFolder, measureOn, onHost, parseTree, SCRIPTS, stillRunning, treeScript, turnTrees } from './hosts-ssh.mjs';

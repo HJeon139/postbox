@@ -61,7 +61,7 @@ const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.rep
 /**
  * What the page shows that the checks read (#105, #146): the Agents section’s text and rows, whether the top bar cuts
  * its title or project, and the raw table rows each review block shows.
- * @param {any} page  from tools/cdp.mjs launch()
+ * @param {any} page  from tools/browser.mjs launch()
  */
 export async function readUi(page) {
   return {

@@ -32,6 +32,10 @@ export async function focusItem(itemId) {
   await frame();
   node = find() ?? node;
   node.scrollIntoView({ block: 'center' });
+  // Tell its transcript now, as its scroll event would a frame later: what grows in between (an app’s check giving way to
+  // its frame) would read as the view having stopped short of the end, and be held there, the item under the composer (#410).
+  const scroller = node.parentElement?.parentElement;
+  (scroller?.matches('.sp-body') ? scroller : window).dispatchEvent(new Event('scroll'));
   const control = node.querySelector('button:not([disabled]), input, textarea, select');
   if (!control && !node.hasAttribute('tabindex')) node.setAttribute('tabindex', '-1');
   (control ?? node).focus({ preventScroll: true });

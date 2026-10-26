@@ -245,7 +245,7 @@ Options:
 - `--budget` (the tester’s spend cap, in dollars)
 - `--max-cost` (the most the whole run may spend, in dollars), below
 - `--tester-model`
-- `--port`, `--chrome-port`, for two runs at once
+- `--port`, for two runs at once (each run’s Chromium is its own, on a pipe, with no port)
 - `--phase` (start at that phase, to rerun a later one; the tester sets up what it needs first)
 - `--release`: the run for a version release, the only one that may use a backend kept to releases (`RELEASE_ONLY` in `tools/uat/scenario.mjs`). Without it, a scenario that puts an agent on one is refused, and Postbox starts without that backend, so the tester can’t pick it in a sheet either. No backend is release-only today: the Antigravity CLI was while it ran on a free tier, and since 25 October 2026 it runs with `--compat`. A merge’s validation pass still leaves compatibility runs off; the Antigravity adapter’s recorded streams (`tests/antigravity-cli.test.mjs`) cover it there, at no cost.
 
