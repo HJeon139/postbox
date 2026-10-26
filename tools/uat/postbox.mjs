@@ -6,7 +6,8 @@
 
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { sleep, untilGone } from '../cdp.mjs';
+import { sleep } from '../cdp.mjs';
+import { untilGone } from './until-gone.mjs';
 
 /**
  * @typedef {{ root: string, port: number, data: string, env: Record<string, string>, log: (line: string) => void,

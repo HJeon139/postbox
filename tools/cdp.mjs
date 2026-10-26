@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { untilGone } from './uat/until-gone.mjs';
 
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -20,34 +21,6 @@ export const js = (value) => String(JSON.stringify(value)).replace(/[<>\u2028\u2
 // How long Chrome may take to open its DevTools port. A fresh CI runner’s first launch, with nothing cached, took
 // longer than the 12 s this used to allow (run 39977434749).
 const START_MS = 45000;
-
-/**
- * Asks a child to end, and resolves once it has, so its ports are free (a UAT run’s stop checks them,
- * tools/uat/stop.mjs). One still there after ms is killed. Its stderr is let go then too, since a helper it started
- * (Chrome’s crash handler, say) can hold that pipe open after it, and keep this process from exiting.
- * @param {import('node:child_process').ChildProcess} child @param {number} [ms]
- */
-export async function untilGone(child, ms = 10_000) {
-  if (child.exitCode === null && child.signalCode === null) {
-    const gone = new Promise((ok) => child.once('exit', ok));
-    child.kill();
-    if (!(await within(gone, ms))) {
-      child.kill('SIGKILL');
-      await within(gone, ms);
-    }
-  }
-  child.stderr?.destroy();
-}
-
-/** Whether p settles within ms. Its timer is cleared either way, so it never holds the process open. @param {Promise<unknown>} p @param {number} ms */
-function within(p, ms) {
-  /** @type {NodeJS.Timeout | undefined} */
-  let timer;
-  const late = new Promise((ok) => {
-    timer = setTimeout(ok, ms, false);
-  });
-  return Promise.race([p.then(() => true), late]).finally(() => clearTimeout(timer));
-}
 
 /** The test Chrome’s command line: headless, on its own DevTools port and a fresh profile. */
 const flags = (port, profile) => [

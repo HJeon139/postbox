@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
-import { untilGone } from '../tools/cdp.mjs';
 import { runStop } from '../tools/uat/stop.mjs';
+import { untilGone } from '../tools/uat/until-gone.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
