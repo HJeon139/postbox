@@ -16,10 +16,11 @@ It runs, in order:
 3. `lint:project`: Postbox’s own lints for design tokens, DOM safety and copy.
 4. `check:contrast`: every color pair in both themes.
 5. `test`: `node:test`, with the network and process spawning blocked.
-6. `test:process`: the few `node:test` tests that must run npm, git or an installed postbox (`tests/process/`).
+6. `test:integration`: `node:test` over `tests/integration/*.test.mjs`, the real-process tests of the remote host’s programs (the daemon, the runner and the shim). They start local child processes and bind Unix sockets in temp folders, never the network, and run without the guard.
+7. `test:process`: the few `node:test` tests that must run npm, git or an installed postbox (`tests/process/`).
 
 **At review,** the reviewing session runs these over the merged UI of each wave:
-- `node tools/shoot-app.mjs`: it plays the demo, takes screenshots and runs axe on every scene. It must end with “Accessibility (axe-core): no violations.”
+- `node tools/shoot-app.mjs`: it plays the demo and screenshots every scene. axe on those scenes is a spec, `tests/browser/demo-a11y.spec.mjs`, which every pass of `npx playwright test` runs.
 - `node tools/shoot-uat.mjs`: it refreshes the UAT doc screenshots.
 - The end-to-end UAT ([tests/uat/e2e](../tests/uat/e2e/README.md)), which runs real agents and costs real usage.
 
@@ -28,7 +29,7 @@ The browser half of the gate is the specs. A change that’s visible in the UI a
 ```bash
 npx playwright test                               # every spec
 POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events late, as CI’s second pass
-npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs a new or changed one
+npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs one a pull request adds or edits
 ```
 
 CI runs every spec on each pull request, normally and with the server’s events late, and a spec the pull request adds or changes ten times more with the events late. There are no retries: one failure fails the run.
@@ -140,7 +141,7 @@ The target is WCAG 2.1 AA, with zero axe violations in every demo scene.
 - Don’t use `aria-pressed` on radios, an unlabeled field, or a scroll container you can’t reach by keyboard. axe caught all three.
 
 **Enforced by:**
-- axe in `tools/shoot-app.mjs`.
+- axe on every demo scene, in `tests/browser/demo-a11y.spec.mjs`.
 - `npm run check:contrast`.
 - `lint-tokens`, which flags raw colors.
 - The UAT’s keyboard and focus steps.
@@ -167,6 +168,7 @@ The target is WCAG 2.1 AA, with zero axe violations in every demo scene.
 
 **Do**
 - Keep `node:test` deterministic and fast (the suite runs in about a second). No network, no processes, no real time: inject `now`, and use `unref()` on timers.
+- Put a test that has to run a real process in `tests/integration/`: the host programs’ process groups, sockets and signals, which a fake can’t stand in for. It uses local child processes and Unix sockets in a temp folder only, never the network, and tests that need Linux (`/proc`) skip elsewhere with the reason. Everything a fake can test stays in `tests/`, under the guard.
 - Build fixtures from recorded reality: real Claude Code streams, with local paths removed.
 - Fix a bug with a test that fails without the fix. For browser behavior, a headless Chrome check (`tools/cdp.mjs`) counts. Show it failing on the old code when you can.
 - Give each UI change a UAT doc under `tests/uat/` with a screenshot, why it exists, what it should do, and steps to reproduce.
@@ -174,6 +176,7 @@ The target is WCAG 2.1 AA, with zero axe violations in every demo scene.
 
 **Don’t**
 - Don’t read the person’s home folder or real config in tests. Inject it.
+- Don’t get around the guard in `tests/`, with a worker thread or otherwise. A test that needs a real process belongs in `tests/integration/`.
 - Don’t sleep in a test to wait for something you could await.
 
 ## Words, diagrams and commits

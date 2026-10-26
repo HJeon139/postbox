@@ -3,13 +3,13 @@
 // add an agent the conversation doesn’t have, and the lines of side threads from before #372. Functions take the
 // Runtime first (architecture.md, “What a move may change”).
 
+import { HOP_LIMIT, PAIR_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 
-/** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
-export const HOP_LIMIT = 10;
-/** Wakes in a row between the same two agents before the next waits for your Allow (#372): a hand-off and its answer. */
-export const PAIR_LIMIT = 2;
+// Agent wakes in a row, without you, and between the same two agents, before the next waits for your Allow
+// (shared/limits.mjs: wake_agent’s description on a host names them too).
+export { HOP_LIMIT, PAIR_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 

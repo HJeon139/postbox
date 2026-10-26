@@ -5,6 +5,7 @@ import {
   applyBoilerplate,
   BACKENDS,
   boilerplateUnavailable,
+  codexDefault,
   EFFORT_NAMES,
   effortNamedBy,
   GEMINI_MODEL,
@@ -12,13 +13,17 @@ import {
   MCP_STATUS,
   MODELS,
   modeHelp,
+  modelName,
   PERMISSIONS,
   selectBackend,
 } from '/shared/agent-facts.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
+import { hostsPanel } from './hosts.mjs';
 import { openPermissions } from './permissions.mjs';
+import { placeField, saveRefused } from './sheets-place.mjs';
+import { appearance, connect } from './sheets-settings.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
@@ -171,7 +176,11 @@ function mcpField(st, paint, { idp, personaId = null, projectId = null }) {
  * idp prefixes element ids; personaId and projectId say whose MCP servers to list.
  */
 function backendFields(st, paint, { idp, fixedBackend = false, personaId = null, projectId = null }) {
-  const available = new Set(client.config.adapters ?? ['mock']);
+  // One that isn’t on this computer can still run on a host, when there is one and it says how (#120).
+  const hosts = Object.values(S().hosts ?? {});
+  const onHost = (id) => Boolean(capsOf(id).remote) && hosts.length > 0;
+  const local = new Set(client.config.adapters ?? ['mock']);
+  const available = new Set(BACKENDS.map(([id]) => id).filter((id) => local.has(id) || onHost(id)));
   const real = st.backend !== 'mock';
   const perm = PERMISSIONS.find(([id]) => id === st.permissionMode) ?? PERMISSIONS[0];
   return [
@@ -179,7 +188,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
     // field. One this computer can’t run stays in the list, disabled, so you can see it exists.
     h(
       'div.field',
-      fixedBackend ? h('span.label', 'Runs on') : h('label.label', { for: `${idp}-b` }, 'Runs on'),
+      fixedBackend ? h('span.label', 'Backend') : h('label.label', { for: `${idp}-b` }, 'Backend'),
       fixedBackend
         ? h('span', BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend)
         : h(
@@ -191,6 +200,11 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
                 'aria-describedby': `${idp}-b-help`,
                 onchange: (e) => {
                   selectBackend(st, e.target.value, client.config);
+                  // Where it runs: only a backend that can run on a host keeps one, and one that isn’t on this
+                  // computer gets the first host.
+                  if (!capsOf(st.backend).remote) st.remote = null;
+                  else if (!local.has(st.backend) && !st.remote) st.remote = hosts[0]?.id ?? null;
+                  st.placeError = null;
                   paint();
                 },
               },
@@ -198,7 +212,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
                 h(
                   'option',
                   { value: id, selected: st.backend === id, disabled: !available.has(id) },
-                  available.has(id) ? name : `${name} (not on this computer)`,
+                  local.has(id) ? name : available.has(id) ? `${name} (on a host only)` : `${name} (not on this computer)`,
                 ),
               ),
             ),
@@ -206,6 +220,9 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           ),
       h('span.help', { id: `${idp}-b-help` }, BACKENDS.find(([id]) => id === st.backend)?.[2] ?? ''),
     ),
+    real && capsOf(st.backend).remote && (hosts.length || !local.has(st.backend))
+      ? placeField(st, paint, { idp, hosts, here: local.has(st.backend), name: BACKENDS.find(([id]) => id === st.backend)?.[1] ?? st.backend })
+      : null,
     real
       ? h(
           'div.field',
@@ -231,8 +248,10 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           h(
             'datalist',
             { id: `${idp}-models` },
-            modelsFor(st.backend).map((m) => h('option', { value: m })),
+            modelsFor(st.backend).map((m) => h('option', { value: m, label: codexDefault(st.backend, m) ? modelName(st.backend, m) : null })),
           ),
+          // Codex picks its own model for `auto`: it isn’t one of Claude’s.
+          st.backend === 'codex' ? h('span.help', 'auto is Codex’s default: the model your Codex configuration picks.') : null,
         )
       : null,
     // Next to the model, and always passed with it, so your own settings don’t decide it (#60).
@@ -401,6 +420,8 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     canPublish: false,
     mcpOff: [],
     folder: '',
+    remote: null,
+    placeError: null,
     saveBp: false,
     error: null,
   };
@@ -554,6 +575,8 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         permissionMode: st.permissionMode,
         ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish, mcpOff: st.mcpOff }),
         folder: st.folder,
+        // Where it runs (#120): null for this computer.
+        remote: st.backend !== 'mock' && st.remote ? { hostId: st.remote } : null,
         saveAsBoilerplate: st.saveBp,
         join: st.where === 'join' ? { threadId } : { projectId, title: `With @${st.handle}` },
       });
@@ -827,6 +850,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
         ['appearance', 'Appearance'],
         ['personas', 'Personas'],
         ['projects', 'Projects'],
+        ['hosts', 'Hosts'],
         ['connect', 'Backends'],
       ].map(([id, label]) =>
         h(
@@ -844,32 +868,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
         ),
       ),
     );
-    fill(panel, ...{ appearance, personas, projects, connect }[cur]());
-  };
-  const appearance = () => {
-    const pref = S().settings.theme ?? 'system';
-    return [
-      h(
-        'div.field',
-        h('span.label', 'Mode'),
-        h(
-          'div.seg',
-          { role: 'radiogroup', 'aria-label': 'Mode' },
-          [
-            ['system', 'System'],
-            ['light', 'Light'],
-            ['dark', 'Dark'],
-          ].map(([v, l]) =>
-            h(
-              'button',
-              { type: 'button', role: 'radio', 'aria-checked': String(pref === v), onclick: () => api('/api/settings', { theme: v }, 'PUT').then(paint) },
-              l,
-            ),
-          ),
-        ),
-      ),
-      h('p.small.dim', 'System follows your computer’s setting. The choice is saved in Postbox, so it follows you to other browsers.'),
-    ];
+    fill(panel, ...{ appearance: () => appearance(paint), personas, projects, hosts: () => [hostsPanel()], connect }[cur]());
   };
   const personas = () => {
     const list = Object.values(S().personas);
@@ -890,6 +889,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
             h('b', `@${p.handle}`),
             mockMarker(p),
             h('span.small.dim.grow', p.retired ? 'Retired' : p.description),
+            p.remote?.hostId ? h('span.small.dim', `On ${S().hosts?.[p.remote.hostId]?.name ?? 'a removed host'}`) : null,
             h('span.small.dim', `v${p.version ?? 1}`),
             h(
               'button.btn.sm',
@@ -930,7 +930,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
     const tools = new Set(p.tools);
     const run = {
       backend: p.backend ?? 'mock',
-      model: p.model,
+      // A Codex persona kept from before `auto` may name a Claude model, which Codex ignores: it reads as its default.
+      model: p.backend === 'codex' && codexDefault(p.backend, p.model) ? 'auto' : p.model,
+      remote: p.remote?.hostId ?? null,
+      placeError: null,
       effort: p.effort ?? client.config.defaultEffort ?? 'medium',
       permissionMode: p.permissionMode ?? 'auto',
       folder: p.folder ?? '',
@@ -998,6 +1001,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                   instructions: ins.value,
                   tools: [...tools],
                   backend: run.backend,
+                  remote: run.backend !== 'mock' && run.remote ? { hostId: run.remote } : null,
                   ...(run.backend === 'mock'
                     ? {}
                     : {
@@ -1017,6 +1021,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                     title: `Saved @${p.handle}`,
                     text:
                       run.backend !== (p.backend ?? 'mock') ||
+                      (run.remote ?? null) !== (p.remote?.hostId ?? null) ||
                       run.permissionMode !== (p.permissionMode ?? 'auto') ||
                       run.usesHostSetup !== (p.usesHostSetup !== false) ||
                       run.canPublish !== (p.canPublish === true) ||
@@ -1027,7 +1032,8 @@ export function openSettings(tab = 'appearance', personaId = null) {
                   });
                   back();
                 })
-                .catch((e) => toast({ title: 'Couldn’t save', text: e.message, level: 'blocking' })),
+                // Where it runs changed: the server’s refusal shows under Runs on (#120).
+                .catch((e) => saveRefused(e, run, p, paintRun, runBox)),
           },
           'Save',
         ),
@@ -1073,19 +1079,6 @@ export function openSettings(tab = 'appearance', personaId = null) {
       h('p.small.dim', 'The folder bounds the file picker and is where Claude Code sessions start.'),
     ];
   };
-  const connect = () => [
-    h(
-      'p',
-      'Real agents reach Postbox’s UI tools over MCP. Postbox connects each backend it runs, with a token for each turn, so only an agent turn Postbox started can call them.',
-    ),
-    h(
-      'dl.facts',
-      h('dt', 'Adapters'),
-      h('dd', client.config.adapters.join(', ')),
-      h('dt', 'Corpus'),
-      h('dd', `${plural(client.config.corpus.passages, 'passage')} in ${plural(client.config.corpus.books.length, 'book')}`),
-    ),
-  ];
   paint();
   const dlg = openDialog({ title: 'Settings', size: 'lg', body: [tabs, panel] });
 }

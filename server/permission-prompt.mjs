@@ -67,13 +67,5 @@ export function asksByPrompt(rt, sessionId) {
   return Boolean(adapter) && adapter.capabilities?.promptTool !== false;
 }
 
-/** What a call from an agent that doesn’t ask through permission_prompt gets, at once. */
-export const NOT_YOUR_PROMPT = {
-  content: [
-    {
-      type: 'text',
-      text: 'Postbox didn’t run permission_prompt: it’s how the Claude Code CLI asks the person before a risky call, and your backend asks another way, or not at all. Don’t call it yourself. Make the call you need: if it needs the person’s permission, Postbox asks them.',
-    },
-  ],
-  isError: true,
-};
+// What a call from an agent that doesn’t ask through permission_prompt gets, at once: one text with the host’s shim.
+export { NOT_YOUR_PROMPT } from '../shared/mcp-tools.mjs';

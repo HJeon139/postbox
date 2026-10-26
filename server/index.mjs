@@ -7,27 +7,25 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
-import { extname, join, relative, resolve, sep } from 'node:path';
+import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
-import { AgentSdkAdapter, loadAgentSdk } from './adapters/agent-sdk.mjs';
-import { AntigravityCliAdapter, agyModels, agyVersion, findAgy } from './adapters/antigravity-cli.mjs';
-import { ClaudeCodeAdapter, claudeVersion, findClaude } from './adapters/claude-code.mjs';
-import { CodexAdapter, codexModels, codexVersion, findCodex } from './adapters/codex.mjs';
-import { findKiro, KiroCliAdapter, kiroModels, kiroVersion } from './adapters/kiro-cli.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { PROBES, registerBackends } from './backends.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
+import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
+import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { DEFAULT_MODEL, HOP_LIMIT, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { KNOWN_TOOLS, seed, toBoilerplate } from './seed.mjs';
@@ -75,12 +73,18 @@ const MEDIA_HEADERS = { 'content-security-policy': "sandbox; default-src 'none';
 
 /**
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
- *           host?: string, spawnShell?: typeof import('node:child_process').spawn }} [opts]
+ *           host?: string, spawnShell?: typeof import('node:child_process').spawn, hosts?: import('./remote/hosts.mjs').HostManager|null,
+ *           wake?: Parameters<typeof import('./remote/wake.mjs').watchWake>[1], probes?: Partial<typeof PROBES> }} [opts]
  *   claudeHome: where the person’s Claude Code config is read for the persona sheet’s MCP list (the home folder;
  *   checks pass a temp folder, so they never read the real one)
  *   listen: false builds everything but doesn’t listen, so tests can call the returned handle(req, res) directly
  *   host: the address it listens on, 127.0.0.1; `!` commands refuse to run on any other (tests check that)
  *   spawnShell: how `!` commands start (tests pass a fake)
+ *   hosts: the remote hosts’ manager (#120). Left out, Postbox makes its own (server/remote/hosts.mjs), keeping the
+ *   hosts’ tokens in dataDir; tests pass a fake, or null for none, and then agents run only on this computer
+ *   wake: the clock and timers that notice this computer waking, so the hosts reconnect (tests pass fakes)
+ *   probes: how the real backends are looked for (PROBES); tests pass fakes, which turn them on even with
+ *   POSTBOX_BACKENDS=mock
  */
 export async function start({
   port = 4173,
@@ -92,6 +96,9 @@ export async function start({
   listen = true,
   host = '127.0.0.1',
   spawnShell = undefined,
+  hosts: given = undefined,
+  wake = undefined,
+  probes = undefined,
 } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
@@ -106,23 +113,7 @@ export async function start({
   const blobs = new Blobs(join(dataDir, 'blobs'));
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
-  // Real backends register only when they can run here. POSTBOX_BACKENDS=mock turns them off (tests, demo).
-  const real = process.env.POSTBOX_BACKENDS !== 'mock' && !demo;
-  const claude = real ? await claudeVersion(findClaude()) : null;
-  if (claude) adapters.register(new ClaudeCodeAdapter({ workRoot: join(dataDir, 'workspaces') }));
-  const sdk = real ? await loadAgentSdk() : null;
-  if (sdk) adapters.register(new AgentSdkAdapter({ sdk, workRoot: join(dataDir, 'workspaces') }));
-  // An Isolated Kiro persona runs with a Kiro home of Postbox’s own (#117), next to the workspaces.
-  const kiro = real ? await kiroVersion(findKiro()) : null;
-  if (kiro)
-    adapters.register(
-      new KiroCliAdapter({ workRoot: join(dataDir, 'workspaces'), isolatedHome: join(dataDir, 'kiro-home'), models: await kiroModels(findKiro()) }),
-    );
-  // The Antigravity CLI brings Gemini models (#143). It always runs with your own agy setup: see its adapter.
-  const agy = real ? await agyVersion(findAgy()) : null;
-  if (agy) adapters.register(new AntigravityCliAdapter({ workRoot: join(dataDir, 'workspaces'), models: await agyModels(findAgy()), version: agy }));
-  const codex = real ? await codexVersion(findCodex()) : null;
-  if (codex) adapters.register(new CodexAdapter({ workRoot: join(dataDir, 'workspaces'), models: await codexModels(findCodex()) }));
+  const { real, claude, kiro, agy, codex } = await registerBackends(adapters, { dataDir, demo, probes });
   const config = {
     origin,
     // Which build this is, shown under Personas in the sidebar.
@@ -134,10 +125,12 @@ export async function start({
   };
   // Kokoro is optional; without it, narration says it isn’t installed.
   const narrator = narrationInstalled() ? new Narrator({ modelsDir: join(dataDir, 'models'), blobs }) : null;
-  const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell });
+  // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
+  const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
+  const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
   // Recording conversations for telemetry, and its 30-day sweep (designs/telemetry-persona.md, R7, R11).
   watchTelemetry(rt);
-  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.names().includes(b)) ?? 'mock';
+  const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
   // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
   for (const se of Object.values(store.state.sessions))
@@ -152,6 +145,9 @@ export async function start({
   rt.ledger.expireStale();
   rt.expireStaleJobs();
   rt.rearmMirrors();
+  // Turns that went on on their hosts are attached again, each host’s status is kept for the page, and the hosts
+  // reconnect when this computer wakes (#120).
+  const stopWake = startHosts(rt, hosts, wake);
   for (const f of Object.values(store.state.files))
     if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
@@ -214,6 +210,8 @@ export async function start({
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
           fieldErrors: e.fieldErrors,
           code: e.code,
+          // What to do about a host’s failure (#120): the page shows it under the error.
+          next: e.status ? e.next : undefined,
         });
       else res.end();
     }
@@ -299,9 +297,11 @@ export async function start({
           hopLimit: HOP_LIMIT,
           // Postbox’s tools, then those only real backends have (#5).
           knownTools: [...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS],
-          adapters: adapters.names(),
-          // What each one can do (#117), so the page hides what a backend can’t honor rather than checking its name.
-          backends: Object.fromEntries(adapters.names().map((n) => [n, adapters.get(n).capabilities ?? {}])),
+          // The backends that run on this computer.
+          adapters: rt.localBackends(),
+          // What each one can do (#117), so the page hides what a backend can’t honor rather than checking its name;
+          // local: whether it runs on this computer, since one that can run on a host is listed without its CLI here.
+          backends: Object.fromEntries(adapters.names().map((n) => [n, { ...(adapters.get(n).capabilities ?? {}), local: adapters.runsHere(n) }])),
           defaultModel: DEFAULT_MODEL,
           effortLevels: EFFORT_LEVELS,
           defaultEffort: DEFAULT_EFFORT,
@@ -341,6 +341,8 @@ export async function start({
         'content-security-policy': "sandbox; default-src 'none'",
         'cache-control': 'no-store',
       });
+    if ((m = path.match(/^\/api\/hosts\/([^/]+)\/install$/)) && req.method === 'GET') return send(res, 200, await rt.describeHostInstall(m[1]));
+    if ((m = path.match(/^\/api\/hosts\/([^/]+)\/status$/)) && req.method === 'GET') return send(res, 200, { status: rt.hostStatus(m[1]) });
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
         res.writeHead(503, { 'retry-after': '1' });
@@ -387,9 +389,12 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/diagram$/)) && req.method === 'POST')
       return send(res, 200, rt.diagramCheck(m[1], m[2], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/retry$/)) && req.method === 'POST') {
-      rt.retry(m[1], m[2]);
+      await rt.retry(m[1], m[2]);
       return send(res, 200, { ok: true });
     }
+    // Resume, after a turn on a host stopped with Sign-in needed or Interrupted (#120): a 409 says why when there’s
+    // nothing to resume.
+    if ((m = path.match(/^\/api\/sessions\/([^/]+)\/resume$/)) && req.method === 'POST') return send(res, 200, rt.resumeRemote(m[1]));
     // A session’s own actions: Stop, archive, restore, delete, its jobs and its run (server/session-routes.mjs).
     const sessionDid = await sessionRoute(rt, path, req.method, body);
     if (sessionDid) return send(res, sessionDid.status, sessionDid.body);
@@ -417,6 +422,17 @@ export async function start({
     if (path === '/api/permissions/rules' && req.method === 'POST') return send(res, 200, await rt.changePermissionRule(body));
     if (path === '/api/permissions/folders' && req.method === 'POST') return send(res, 200, await rt.changePermissionFolder(body));
     if (path === '/api/permissions/mode' && req.method === 'POST') return send(res, 200, await rt.setPermissionMode(body.personaId, body.mode));
+    // Remote hosts (#120): add, change and remove one, a project’s folder on one, installing Postbox’s host program
+    // (the page shows the GET’s text and asks first), connecting again, and the connection’s status. The hosts and
+    // their status are also in /api/state, kept current by 'host' and 'host.status' events.
+    if (path === '/api/hosts' && req.method === 'POST') return send(res, 201, rt.addHost(body));
+    if ((m = path.match(/^\/api\/hosts\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updateHost(m[1], body));
+    if ((m = path.match(/^\/api\/hosts\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, await rt.removeHost(m[1]));
+    if ((m = path.match(/^\/api\/hosts\/([^/]+)\/install$/)) && req.method === 'POST') return send(res, 200, await rt.installHost(m[1]));
+    if ((m = path.match(/^\/api\/hosts\/([^/]+)\/retry$/)) && req.method === 'POST')
+      return send(res, 200, rt.retryHost(m[1], { takeover: body.takeover ?? false }));
+    if ((m = path.match(/^\/api\/projects\/([^/]+)\/hosts\/([^/]+)\/folder$/)) && req.method === 'PUT')
+      return send(res, 200, rt.setProjectHostFolder(m[1], m[2], body.folder));
     if (path === '/api/projects' && req.method === 'POST') {
       const folder = resolve(String(body.folder ?? ''));
       const st = await stat(folder).catch(() => null);
@@ -530,35 +546,15 @@ export async function start({
     return { id, name, size, type: f.type, sha256 };
   }
 
-  async function listFolder(project, sub) {
-    if (!project) throw httpError(404, 'That project doesn’t exist.');
-    const root = await realpath(project.folder);
-    const target = await realpath(resolve(root, sub)).catch(() => null);
-    // The picker can’t leave the project’s folder, even through symbolic links.
-    if (!target || (target !== root && !target.startsWith(root + sep))) throw httpError(403, 'That’s outside the project’s folder.');
-    const entries = await readdir(target, { withFileTypes: true });
-    const list = [];
-    for (const e of entries.filter((x) => !x.name.startsWith('.')).slice(0, 500)) {
-      const full = join(target, e.name);
-      const s = await stat(full).catch(() => null);
-      if (!s) continue;
-      // A symbolic link that leads out of the folder is marked, so the picker says so instead of opening it (#28).
-      const to = e.isSymbolicLink() ? await realpath(full).catch(() => null) : null;
-      const outside = !!to && to !== root && !to.startsWith(root + sep);
-      list.push({ name: e.name, path: relative(root, full), dir: s.isDirectory(), size: s.size, ...(outside ? { outside } : {}) });
-    }
-    list.sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
-    return { root: project.folder, path: relative(root, target), entries: list };
-  }
-
   if (listen)
     await new Promise((ok, fail) => {
       server.once('error', fail);
       server.listen(port, host, () => ok(rt.drainAll())); // listening: what waited in the queues across a restart goes (#228)
     });
+  const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
   if (!quiet)
     console.log(
-      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${adapters.names().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${agy ? ` (Antigravity CLI ${agy})` : ''}${codex ? ` (Codex ${codex})` : ''}${demo ? '\nDemo controls are on.' : ''}`,
+      `Postbox is running at ${origin}/\nData: ${dataDir}\nBackends: ${rt.localBackends().join(', ')}${claude ? ` (Claude Code ${claude})` : ''}${kiro ? ` (Kiro CLI ${kiro})` : ''}${agy ? ` (Antigravity CLI ${agy})` : ''}${codex ? ` (Codex ${codex})` : ''}${remoteOnly.length ? `\nOn hosts only: ${remoteOnly.join(', ')}` : ''}${demo ? '\nDemo controls are on.' : ''}`,
     );
   return {
     server,
@@ -576,6 +572,8 @@ export async function start({
       // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
       await rt.stopShellCommands();
       await rt.stopTurns();
+      // After the turns, whose Stop goes to their hosts over these links (#120).
+      await stopHosts(hosts, stopWake);
       narrator?.stop();
       if (listen) await new Promise((ok) => server.close(ok));
       await store.flush();

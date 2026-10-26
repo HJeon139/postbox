@@ -5,8 +5,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { TOOL_DEFS } from '../server/mcp.mjs';
 import { reactTool } from '../server/reactions.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { flaggedRoom, report } from './telemetry-fixture.mjs';
 

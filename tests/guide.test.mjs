@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { agyRules } from '../server/adapters/antigravity-cli.mjs';
 import { agentGuide, guideText } from '../server/adapters/guide.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
 import { freshInstall } from '../server/seed.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 test('#131: the guide says to check a setup before blaming it, and to rerun only what just reads or checks', () => {
   const g = agentGuide({

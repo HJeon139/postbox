@@ -1,16 +1,20 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
-import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { CODEX_CAPABILITIES, CodexAdapter, codexApproval, codexConfigArgs, codexPermissions, createCodexMapper } from '../server/adapters/codex.mjs';
+import { fakeAppServer } from './codex-fixture.mjs';
 
 test('Codex reports the capabilities its app-server implements', () => {
-  assert.deepEqual(CODEX_CAPABILITIES, { resume: true, fork: true, permissions: 'none', tools: 'none', isolation: false, promptTool: false });
-  assert.deepEqual(codexPermissions({ permissionMode: 'ask' }, '/work'), {
-    sandboxPolicy: { type: 'readOnly' },
-    approvalPolicy: 'on-request',
+  assert.deepEqual(CODEX_CAPABILITIES, {
+    resume: true,
+    fork: true,
+    permissions: 'none',
+    tools: 'none',
+    isolation: false,
+    promptTool: false,
+    remote: { stdin: 'held', env: [], server: 'codex-config', work: 'model-checks', signInError: null },
   });
+  assert.deepEqual(codexPermissions({ permissionMode: 'ask' }, '/work'), { sandboxPolicy: { type: 'readOnly' }, approvalPolicy: 'on-request' });
   assert.deepEqual(codexPermissions({ permissionMode: 'acceptEdits' }, '/work'), {
     sandboxPolicy: { type: 'workspaceWrite', writableRoots: ['/work'], networkAccess: false },
     approvalPolicy: 'on-request',
@@ -180,52 +184,6 @@ test('the recorded app-server stream maps text and command activity to Postbox',
   assert.equal(calls.activity[1].state, 'done');
   assert.deepEqual(calls.checkpoint, { turnId: 'turn_postbox_1', threadId: 'thr_postbox_1' });
 });
-
-function fakeAppServer(seen, { hold = false, error = null, then = 'complete' } = {}) {
-  const child = new EventEmitter();
-  child.stdout = new PassThrough();
-  child.stderr = new PassThrough();
-  child.stdin = new PassThrough();
-  child.kill = () => {
-    child.emit('close', 0);
-    return true;
-  };
-  let buffer = '';
-  child.stdin.on('data', (chunk) => {
-    buffer += chunk.toString();
-    let n;
-    while ((n = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, n);
-      buffer = buffer.slice(n + 1);
-      if (!line) continue;
-      const req = JSON.parse(line);
-      seen.push(req);
-      if (req.method === 'initialize') child.stdout.write(`${JSON.stringify({ id: req.id, result: {} })}\n`);
-      if (['thread/start', 'thread/resume', 'thread/fork'].includes(req.method)) {
-        const id = req.method === 'thread/fork' ? 'thr_branch' : req.method === 'thread/resume' ? req.params.threadId : 'thr_fake';
-        child.stdout.write(`${JSON.stringify({ id: req.id, result: { thread: { id } } })}\n`);
-      }
-      if (req.method === 'turn/start') {
-        child.stdout.write(`${JSON.stringify({ id: req.id, result: { turn: { id: 'turn_fake', status: 'inProgress' } } })}\n`);
-        if (hold) continue;
-        // A turn that fails: Codex reports why in an error notification, then ends the turn as failed, or exits.
-        if (error)
-          setImmediate(() => {
-            child.stdout.write(`${JSON.stringify({ method: 'error', params: { error: { message: error } } })}\n`);
-            if (then === 'complete')
-              child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'failed' } } })}\n`);
-            else child.emit('close', 1);
-          });
-        else
-          setImmediate(() => {
-            child.stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'reply' } })}\n`);
-            child.stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_fake', status: 'completed' } } })}\n`);
-          });
-      }
-    }
-  });
-  return child;
-}
 
 test('a turn starts and saves a Codex thread and supplies Postbox instructions', async () => {
   const seen = [];

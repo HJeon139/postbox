@@ -116,11 +116,34 @@ test('#352: the state has only its own records, fresh, reloaded from JSON, and f
   apply(saved, 'app', { id: 'a1', title: 'One' });
   apply(saved, 'glossary', { threadId: 't', entry: { key: 'k', term: 'K' } });
   for (const s of [emptyState(), ownState(JSON.parse(JSON.stringify(saved)))])
-    for (const c of ['projects', 'personas', 'boilerplates', 'threads', 'sessions', 'items', 'apps', 'files', 'datasets', 'schedules', 'glossary', 'work'])
+    for (const c of [
+      'projects',
+      'personas',
+      'boilerplates',
+      'threads',
+      'sessions',
+      'items',
+      'apps',
+      'files',
+      'datasets',
+      'schedules',
+      'glossary',
+      'work',
+      'hosts',
+      'hostStatus',
+    ])
       for (const key of KEYS) assert.equal(s[c][key], undefined, `${c}[${key}]`);
   const reloaded = ownState(JSON.parse(JSON.stringify(saved)));
   assert.equal(reloaded.apps.a1.title, 'One', 'its records survive the reload');
   assert.equal(reloaded.glossary.t.toString, undefined, 'a conversation’s glossary too');
+  // A host's collections made by its first event, in a state from before there were any (#120), are maps too.
+  const before = emptyState();
+  delete before.hosts;
+  delete before.hostStatus;
+  apply(before, 'host', { id: 'h1', name: 'devbox' });
+  apply(before, 'host.status', { id: 'h1', status: { state: 'disconnected' } });
+  assert.equal(Object.getPrototypeOf(before.hosts), null);
+  assert.equal(Object.getPrototypeOf(before.hostStatus), null);
   // A glossary term an agent names __proto__ is a term, not the map's prototype.
   const g = emptyState();
   apply(g, 'glossary', { threadId: 't', entry: { key: '__proto__', term: 'proto' } });

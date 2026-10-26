@@ -31,6 +31,7 @@ test('it renders what agents read: the guide, the tools, each boilerplate’s in
     render(out);
     const files = new Map(filesOf(out));
     assert.match(files.get('scan/guide.md') ?? '', /^You are @agent, an agent in Postbox/);
+    assert.match(files.get('scan/queued-messages.md') ?? '', /2 messages arrived[\s\S]*@reviewer[\s\S]*the person/);
     assert.match(files.get('scan/mcp-tools.md') ?? '', /## show_block\n\nShow a catalog block/);
     for (const b of BOILERPLATES) {
       const handle = b.name.toLowerCase().replace(/[^a-z0-9-]/g, '');

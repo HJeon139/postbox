@@ -14,6 +14,7 @@ import {
   factsText,
   GEMINI_MODEL,
   installNote,
+  modelName,
   runsWith,
   sameModel,
   selectBackend,
@@ -106,6 +107,22 @@ test('the overview says how to install Claude Code only when Postbox looked for 
   assert.equal(installNote({ realBackends: true, versions: { claudeCode: '2.1.296' }, adapters: ['mock', 'claude-code'] }), null);
   assert.equal(installNote({ realBackends: false, versions: { claudeCode: null }, adapters: ['mock'] }), null);
   assert.equal(installNote({}), null);
+});
+
+test('#120 L6: a Codex agent set to auto, or to a Claude model it ignores, reads as Codex’s default, never a Claude model', () => {
+  const config = { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT };
+  for (const model of ['auto', 'claude-opus-5-5']) {
+    const f = runsWith({ personaSnapshot: { model, effort: 'medium' } }, { backend: 'codex' }, config);
+    assert.equal(chipModel(f), 'Codex’s default');
+    assert.equal(factsText(f), 'Codex · Codex’s default · medium effort');
+  }
+  // The model that answered is whichever Codex picked, so it isn’t marked as different from the default.
+  const answered = runsWith({ personaSnapshot: { model: 'auto', effort: 'medium' }, lastModel: 'gpt-5.5' }, { backend: 'codex' }, config);
+  assert.equal(answered.modelDiffers, false);
+  assert.equal(chipModel(answered), 'gpt-5.5');
+  // A model Codex names is shown as it is, and on Claude Code a Claude model keeps its short name.
+  assert.equal(modelName('codex', 'gpt-5.5'), 'gpt-5.5');
+  assert.equal(modelName('claude-code', 'claude-opus-5-5'), 'Opus 5.5');
 });
 
 test('picking the Gemini boilerplate prefers its model when offered, then the first gemini-* model, then its model', () => {
