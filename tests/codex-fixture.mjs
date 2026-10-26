@@ -25,7 +25,12 @@ export function fakeAppServer(seen, { hold = false, error = null, then = 'comple
       seen.push(req);
       if (req.method === 'initialize') child.stdout.write(`${JSON.stringify({ id: req.id, result: {} })}\n`);
       if (req.method === 'mcpServerStatus/list')
-        child.stdout.write(`${JSON.stringify({ id: req.id, result: { data: mcpServers.map((name) => ({ name })), nextCursor: null } })}\n`);
+        child.stdout.write(
+          `${JSON.stringify({
+            id: req.id,
+            result: { data: mcpServers.map((server) => (typeof server === 'string' ? { name: server } : server)), nextCursor: null },
+          })}\n`,
+        );
       if (['thread/start', 'thread/resume', 'thread/fork'].includes(req.method)) {
         const id = req.method === 'thread/fork' ? 'thr_branch' : req.method === 'thread/resume' ? req.params.threadId : 'thr_fake';
         child.stdout.write(`${JSON.stringify({ id: req.id, result: { thread: { id } } })}\n`);

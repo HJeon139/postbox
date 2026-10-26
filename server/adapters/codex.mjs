@@ -6,7 +6,7 @@ import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { codexApproval } from './codex-approval.mjs';
-import { codexMcpPromptConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
+import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { findCodex } from './codex-models.mjs';
 import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { codexContextPercent } from './context-usage.mjs';
@@ -121,6 +121,7 @@ export function createCodexMapper(ctx) {
       case 'item/completed': {
         const item = p.item;
         if (item?.type === 'agentMessage' && item.text && !messageText.has(item.id)) writeMessage(item.id, item.text);
+        if (item?.type === 'webSearch' && item.query) labels.set(item.id, `Search the web: ${item.query}`);
         const label = labels.get(item?.id);
         if (label && !(item?.type === 'mcpToolCall' && item.server === POSTBOX_SERVER))
           ctx.activity({ id: item.id, label, state: item.status === 'failed' || item.status === 'declined' ? 'denied' : 'done', kind: 'tool' });
@@ -192,7 +193,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
   send({ method: 'initialized', params: {} });
   const permissions = codexPermissions(ctx.persona, cwd);
-  const mcpConfig = await codexMcpPromptConfig(request, ctx.persona?.permissionMode === 'ask');
+  const mcpConfig = await codexMcpApprovalConfig(request, ctx.persona?.permissionMode);
   const openConfig = mcpConfig ? { config: mcpConfig } : {};
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;

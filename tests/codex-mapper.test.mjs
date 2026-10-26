@@ -37,3 +37,20 @@ test('separate Codex agent messages keep a paragraph break in the reply', () => 
 
   assert.equal(text, 'A.\n\nB.');
 });
+
+test('a web search gets its query when Codex reports it only at completion', () => {
+  const activity = [];
+  const mapper = createCodexMapper({
+    activity: (event) => activity.push(event),
+    status: () => {},
+    text: () => {},
+    state: {},
+  });
+  mapper.push({ method: 'item/started', params: { item: { id: 'search_late', type: 'webSearch' } } });
+  mapper.push({ method: 'item/completed', params: { item: { id: 'search_late', type: 'webSearch', query: 'late query', status: 'completed' } } });
+
+  assert.deepEqual(activity, [
+    { id: 'search_late', label: 'Search the web', state: 'running', kind: 'tool' },
+    { id: 'search_late', label: 'Search the web: late query', state: 'done', kind: 'tool' },
+  ]);
+});
