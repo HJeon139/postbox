@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.36.3 (2026-10-26)
+
+### Fixes
+
+- **queue:** deliver refreshed context instead of dropping waiting handoffs
+- **queue:** recheck pending batches before starting their turn
+- **queue:** deliver queued wakes together and discard superseded requests
+
 ## 0.36.2 (2026-10-26)
 
 ### Fixes
