@@ -15,8 +15,10 @@ test('new sessions initialize with ctx: null instead of 2%', () => {
 test('Antigravity resolves cited context windows and calculates active context percentage with cache', () => {
   assert.equal(agyWindowFor('gemini-4-argon'), 1_000_000);
   assert.equal(agyWindowFor('gemini-4-argon-medium'), 1_000_000);
-  assert.equal(agyWindowFor('gemini-3.8-flash'), null);
-  assert.equal(agyWindowFor('gemini-3.8-flash-high'), null);
+  assert.equal(agyWindowFor('gemini-3.8-flash'), 1_048_576);
+  assert.equal(agyWindowFor('gemini-3.8-flash-low'), 1_048_576);
+  assert.equal(agyWindowFor('gemini-3.8-flash-medium'), 1_048_576);
+  assert.equal(agyWindowFor('gemini-3.8-flash-high'), 1_048_576);
   assert.equal(agyWindowFor('gemini-1.5-pro'), null);
   assert.equal(agyWindowFor('gemini-2.0-flash'), null);
   assert.equal(agyWindowFor('unknown-model'), null);

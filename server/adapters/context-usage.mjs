@@ -3,10 +3,13 @@
 /**
  * Context window sizes for models offered by agy (see `agy models`):
  * - Gemini 4 Argon: 1,000,000 tokens (https://ai.google.dev/gemini-api/docs/models)
- * Models not listed here (including Gemini 3.8 Flash, which reports no window size in documentation)
- * return null so context percentage is never guessed.
+ * - Gemini 3.8 Flash: 1,048,576 tokens (https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini/3-8-flash)
+ * Models not listed here return null so context percentage is never guessed.
  */
-const CITED_AGY_WINDOWS = /** @type {[RegExp, number][]} */ ([[/^gemini-4-argon(?:-low|-medium|-high)?/, 1_000_000]]);
+const CITED_AGY_WINDOWS = /** @type {[RegExp, number][]} */ ([
+  [/^gemini-4-argon(?:-low|-medium|-high)?/, 1_000_000],
+  [/^gemini-3\.8-flash(?:-low|-medium|-high)?/, 1_048_576],
+]);
 
 /** Whether a token count a backend sent is usable: a finite number, not negative. JSON can carry 1e400, which is Infinity. */
 const isCount = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
