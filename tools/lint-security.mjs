@@ -18,7 +18,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** A pattern that is a constant regex’s own source, such as EDGE.source. */
 const CONSTANT_SOURCE = /^\s*[A-Z][A-Z0-9_]*\.source\b/;
 /** The calls that run their first argument as code in the page, and Runtime.evaluate’s expression. */
-const RUNS_IN_PAGE = /(?:\.evaluate|\.waitFor\w*|\bclickAt|\bev)\(\s*$|\bexpression:\s*$/;
+const RUNS_IN_PAGE = /(?:\.evaluate|\.waitFor\w*|\.frameOf|\bclickAt|\bev)\(\s*$|\bexpression:\s*$/;
 /** Template text that reads as code for the page, however the template gets there (a helper builds most of it). */
 const PAGE_TEXT =
   /\b(?:document|window|location|navigator|getComputedStyle|querySelector(?:All)?|getElementById|activeElement|requestAnimationFrame)\b|import\('\/(?:app|shared)\//;
