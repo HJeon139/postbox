@@ -2,8 +2,8 @@
 // Antigravity CLI PreToolUse hook (#370): runs before every tool call when agy starts with
 // --dangerously-skip-permissions in Ask me, Auto or Accept edits. It allows safe calls for the mode, denies edits to
 // Postbox’s plugin, this script or ~/.gemini/antigravity-cli, and asks the person through Postbox’s permission_prompt
-// MCP tool for the rest. In Auto it also allows routine commands, web searches and public fetches, and MCP tools
-// that don’t write (server/adapters/agy-auto.mjs). Fails closed to { decision: "deny", reason } on any error; never
+// MCP tool for the rest. In Auto it also allows routine commands, gh’s issue and pull request commands, web searches
+// and public fetches, and MCP tools outside Postbox (server/adapters/agy-auto.mjs). Fails closed to { decision: "deny", reason } on any error; never
 // outputs ask, force_ask or empty stdout, which agy fails open on under --dangerously-skip-permissions.
 
 import { randomUUID } from 'node:crypto';

@@ -3,18 +3,19 @@
 // 1.4.7 logged “rollout flag off” on every run here), and a hook’s allow only hands the call on to agy’s policy
 // (antigravity.google/docs/hooks), so in Auto Postbox decides here and everything else becomes a card:
 // - a command whose every part (splitCommand) is a routine one: a read (ls, cat, grep, find without -exec or
-//   -delete…), local git (status, diff, log, add, commit without --amend…), gh that reads (issue list, pr view…),
-//   npm test or npm run, or mkdir, touch, cp or mv, with every path it names inside the agent’s folders and none of
+//   -delete…), local git (status, diff, log, add, commit without --amend…), gh’s issue, pull request and release
+//   commands (list, view, create, comment, edit, review), npm test or npm run, or mkdir, touch, cp or mv, with every path it names inside the agent’s folders and none of
 //   Antigravity’s own files. A word the reader can’t be sure of ($, `, a redirect other than to /dev/null, a
 //   subshell) makes it a card. npm test, npm run and git run what the folder holds (its scripts, git’s hooks and
 //   config), so in Auto an agent can run code it wrote in its folders without a card, as Claude Code’s Auto runs
 //   npm test;
 // - a web search, and a fetch of a public http(s) address with no query, which is where a fetch could carry data out;
-// - an MCP tool outside Postbox that doesn’t write, by the names the write guard knows (#112, server/write-guard.mjs).
+// - any MCP tool outside Postbox, its writes included.
+// Writes outside Postbox, through MCP tools and gh, go without a card here, where Claude Code’s Auto brings them to one
+// (#112): the maintainer accepted that for Codex’s reviewer (#415) and chose the same here. gh api isn’t one of them.
 
 import { join, resolve, sep } from 'node:path';
 import { splitCommand } from '../../shared/command-chains.mjs';
-import { isWriteCall } from '../write-guard.mjs';
 
 const READS = new Set([
   ...['ls', 'pwd', 'cat', 'head', 'tail', 'wc', 'grep', 'egrep', 'fgrep', 'rg', 'tree', 'file', 'stat', 'du', 'df'],
@@ -23,7 +24,8 @@ const READS = new Set([
 ]);
 const WRITES = new Set(['mkdir', 'touch', 'cp', 'mv']);
 const GIT = new Set(['status', 'diff', 'log', 'show', 'rev-parse', 'ls-files', 'blame', 'grep', 'describe', 'shortlog', 'add', 'commit']);
-// gh subcommands that only read (gh api can write, so it isn’t one); gh’s writes are the write guard’s (#112).
+// gh’s commands for issues, pull requests and releases: the ones that read, and the writes the write guard knows
+// (#112). gh api, which can do anything, isn’t one.
 const GH = new Set([
   'issue list',
   'issue view',
@@ -37,6 +39,14 @@ const GH = new Set([
   'run view',
   'release list',
   'release view',
+  'issue create',
+  'issue comment',
+  'issue edit',
+  'pr create',
+  'pr comment',
+  'pr edit',
+  'pr review',
+  'release create',
 ]);
 // git branch and git remote only list with these.
 const GIT_LISTS = new Set(['-a', '-r', '-v', '-vv', '--all', '--list', '--remotes', '--show-current', '--verbose']);
@@ -163,11 +173,8 @@ export function autoAllows(name, args, where) {
     case 'list_resources':
     case 'read_resource':
       return true;
-    case 'call_mcp_tool': {
-      const server = String(args.ServerName ?? '');
-      const tool = String(args.ToolName ?? '');
-      return Boolean(server && tool) && !isWriteCall(`mcp__${server}__${tool}`, args.Arguments ?? {});
-    }
+    case 'call_mcp_tool':
+      return Boolean(String(args.ServerName ?? '') && String(args.ToolName ?? ''));
     default:
       return false;
   }

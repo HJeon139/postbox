@@ -1,6 +1,6 @@
-// What Postbox’s Antigravity hook approves on its own in Auto (server/adapters/agy-auto.mjs): routine commands, web
-// searches, public fetches and MCP tools that don’t write run without a card; everything else still asks, and Ask me
-// and Accept edits are unchanged.
+// What Postbox’s Antigravity hook approves on its own in Auto (server/adapters/agy-auto.mjs): routine commands, gh’s
+// issue and pull request commands, web searches, public fetches and MCP tools outside Postbox run without a card;
+// everything else still asks, and Ask me and Accept edits are unchanged.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
@@ -36,6 +36,8 @@ const ROUTINE = [
   'npm test',
   'gh issue list --state open --limit 10',
   'gh pr view 415 --json title',
+  'gh issue create --title "Flaky check" --body "It fails on main."',
+  'gh pr comment 423 --body "Looks good."',
   'npm run check 2>&1',
   'grep -rn "TODO" src/*.js',
   "find . -name '*.md'",
@@ -61,7 +63,6 @@ const ASKS = [
   ['cat $(ls)', 'a substitution'],
   ['echo "$HOME"', 'an expansion in quotes'],
   ['git push', 'git that leaves the computer'],
-  ['gh issue create --title x', 'gh that writes'],
   ['gh api repos/x/y -X DELETE', 'gh api, which can write'],
   ['git commit --amend', 'git that rewrites a commit'],
   ['git branch -D old', 'git that deletes a branch'],
@@ -121,15 +122,17 @@ test('Auto allows web searches and public fetches; a query, a sign-in or a local
   assert.equal(publicFetch('https://example.com/a#part'), true);
 });
 
-test('Auto allows MCP tools outside Postbox that don’t write; writes still ask (#112), and permission_prompt is denied', () => {
+test('Auto allows MCP tools outside Postbox, writes included (as Codex’s reviewer may, #415); permission_prompt is denied', () => {
   const { call } = workspace();
   assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'get_issue', Arguments: { number: 1 } }), { decision: 'allow' });
   assert.deepEqual(call('read_resource', { ServerName: 'docs', Uri: 'docs://a' }), { decision: 'allow' });
-  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }), {
-    decision: 'ask',
-    toolName: 'mcp__github__create_issue',
-    input: { title: 'Hi' },
-  });
+  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }), { decision: 'allow' });
+  for (const mode of ['ask', 'acceptEdits'])
+    assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }, mode), {
+      decision: 'ask',
+      toolName: 'mcp__github__create_issue',
+      input: { title: 'Hi' },
+    });
   assert.equal(call('call_mcp_tool', { ServerName: 'github', ToolName: '', Arguments: {} }).decision, 'ask');
   assert.equal(call('call_mcp_tool', { ServerName: 'github', ToolName: 'get_issue', Arguments: {} }, 'ask').decision, 'ask');
   for (const mode of ['auto', 'ask', 'acceptEdits'])
@@ -193,7 +196,8 @@ test('the hook in Auto allows a routine command without asking Postbox, and asks
 
 test('the persona sheet says Auto on Antigravity is Postbox’s own approval, and what still asks', () => {
   const help = (id) => modeHelp('antigravity-cli', /** @type {any} */ (PERMISSIONS.find(([m]) => m === id)));
-  assert.match(help('auto'), /^Antigravity’s Auto: Postbox approves routine actions itself/);
+  assert.match(help('auto'), /^Antigravity’s Auto: Postbox approves routine actions itself, since agy’s own Auto isn’t available on this account/);
+  assert.match(help('auto'), /including writes outside Postbox through MCP tools and gh/);
   assert.match(help('auto'), /asks with a card before anything else, such as rm, git push, curl, or edits outside its folders/);
   assert.notEqual(help('auto'), help('acceptEdits'));
 });

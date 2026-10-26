@@ -38,7 +38,7 @@ const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
     acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
   },
   'antigravity-cli': {
-    auto: 'Antigravity’s Auto: Postbox approves routine actions itself, since agy’s own auto mode isn’t offered to every account. It reads and edits in its folders, runs everyday commands there (ls, grep, git status, git commit, npm test), searches the web and fetches public pages without asking. It asks with a card before anything else, such as rm, git push, curl, or edits outside its folders.',
+    auto: 'Antigravity’s Auto: Postbox approves routine actions itself, since agy’s own Auto isn’t available on this account. It reads and edits in its folders, runs everyday commands there (ls, grep, git status, git commit, npm test), searches the web and fetches public pages without asking, including writes outside Postbox through MCP tools and gh, such as a new issue or a comment. It asks with a card before anything else, such as rm, git push, curl, or edits outside its folders.',
     ask: 'It reads in its folders, and asks with a card before edits, commands, reads outside its folders, and web fetches.',
     acceptEdits: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
   },

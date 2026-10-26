@@ -97,7 +97,7 @@ test('#370 conditions 2 & 3: decideAgyTool classifies file, command, web, MCP an
   }
   assert.equal(call('call_mcp_tool', { ServerName: 'postbox_postbox', ToolName: 'show_block', Arguments: {} }).decision, 'allow');
   assert.equal(call('call_mcp_tool', { ServerName: 'postbox_postbox', ToolName: 'permission_prompt', Arguments: {} }).decision, 'deny');
-  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }), {
+  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }, 'ask'), {
     decision: 'ask',
     toolName: 'mcp__github__create_issue',
     input: { title: 'Hi' },
