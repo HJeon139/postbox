@@ -45,7 +45,7 @@ test('#330 { id, outcome } records an outcome on an answered review, and warns o
   let wrongType;
   await turn(rt, adapter, t, (tools) => {
     bare = tools.update_block({ block: { id: review.id, outcome: 'Filed as #105.' } });
-    typed = tools.update_block({ block: { id: review.id, type: 'review', version: 1, outcome: 'Filed as #105, labeled.' } });
+    typed = tools.update_block({ block: { id: review.id, type: 'review', version: 1, revision: 99, outcome: 'Filed as #105, labeled.' } });
     changed = tools.update_block({ block: { id: review.id, content: '# Another draft', outcome: 'Filed as #106.' } });
     wrongType = tools.update_block({ block: { id: review.id, type: 'choice', outcome: 'Filed.' } });
   });
@@ -61,4 +61,33 @@ test('#330 { id, outcome } records an outcome on an answered review, and warns o
   assert.equal(it.block.outcome, 'Filed as #106.');
   assert.equal(it.block.content, '# Draft', 'the draft the person approved stays');
   assert.equal(it.answered, true);
+});
+
+test('an identical answered choice asks again', async () => {
+  const { rt, store, t, adapter } = setup();
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: choice }));
+  const item = store.items(t.id).find((entry) => entry.kind === 'block');
+  rt.act(t.id, item.id, 'choose', { selected: ['issue'] });
+  await settle(rt);
+
+  const result = await turn(rt, adapter, t, (tools) => tools.update_block({ block: choice }));
+
+  assert.equal(result.ok, true, result.message);
+  assert.match(result.message, /asks again/);
+  assert.equal(store.item(t.id, item.id).answered, false);
+  assert.equal(store.item(t.id, item.id).revision, 2);
+});
+
+test('an identical withdrawn choice reopens', async () => {
+  const { rt, store, t, adapter } = setup();
+  await turn(rt, adapter, t, (tools) => tools.show_block({ block: choice }));
+  const item = store.items(t.id).find((entry) => entry.kind === 'block');
+  await turn(rt, adapter, t, (tools) => tools.update_block({ block: { id: choice.id, withdraw: 'Ask again later.' } }));
+
+  const result = await turn(rt, adapter, t, (tools) => tools.update_block({ block: choice }));
+
+  assert.equal(result.ok, true, result.message);
+  assert.match(result.message, /asks again/);
+  assert.equal(store.item(t.id, item.id).answered, false);
+  assert.equal(store.item(t.id, item.id).closed, null);
 });

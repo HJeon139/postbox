@@ -134,5 +134,8 @@ test('#248 an outcome recorded on an approved review isn’t a revision: it stil
   await room.idle();
   await synced(page, room.app);
   await expect(block.locator('.outcome')).toHaveText('Filed as #418.');
+  expect(itemOf().revision ?? 1, 'recording the outcome did not raise the revision').toBe(1);
+  rt.patchItem(thread.id, itemOf().id, { revision: 2 }); // Older Postbox versions counted the outcome as a revision.
+  await synced(page, room.app);
   await expect(block.locator('.block-head .small.dim').filter({ hasText: /^v\d+$/ })).toHaveText('v1');
 });

@@ -127,7 +127,7 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   // answered, and an outcome can follow (#286).
   if (existing.answered) {
     const differ = changedKeys(v.block, existing.block).filter((k) => k !== 'outcome');
-    if (differ.every((k) => UNSEEN.has(k))) {
+    if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k))) {
       if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now });
       return {
         ok: true,
@@ -178,7 +178,7 @@ function recordOutcome(rt, sessionId, block, { se, threadId }) {
   // Nor over an answer the agent hasn’t read (#123): it can’t know what came of an answer it hasn’t seen, and
   // “Deleted.” could land under a Cancel.
   if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing, true);
-  const { id: _id, outcome, ...sent } = block;
+  const { id: _id, outcome, revision: _revision, ...sent } = block;
   const differ = Object.keys(sent).filter((k) => JSON.stringify(sent[k]) !== JSON.stringify(existing.block[k]));
   // Not a new revision: the draft the person answered is unchanged, and an answered block can’t be answered again.
   rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, updatedAt: Date.now() });

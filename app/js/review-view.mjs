@@ -11,7 +11,7 @@ const KEY = (id) => `pb.review-view.${id}`;
  * The revision Postbox counted for the block. An agent may leave the block’s own revision out, or send a wrong one,
  * so it’s only for a block from before Postbox counted (#248). @param {any} item @param {any} b
  */
-export const revisionOf = (item, b) => item.revision ?? b.revision ?? 1;
+export const revisionOf = (item, b) => item.answer?.revision ?? item.revision ?? b.revision ?? 1;
 const FOCUSABLE = 'button, [href], input, select, textarea, summary, iframe, [tabindex]:not([tabindex="-1"])';
 
 /**
