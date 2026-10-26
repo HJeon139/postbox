@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.38.0 (2026-10-26)
+
+### Features
+
+- **personas:** add a GPT boilerplate using Codex
+
+### Fixes
+
+- **seed:** preserve boilerplates on the first start after merging main
+- **codex:** discard unoffered Claude models when switching backends
+- **personas:** require a confirm block for destructive or costly actions
+- **codex:** label the backend default without a false model mismatch
+- **personas:** describe all built-in boilerplates in the add menu
+- **personas:** align GPT publishing with the agent contract
+- **codex:** omit the unoffered Claude model fallback
+
 ## 0.37.1 (2026-10-26)
 
 ### Fixes
