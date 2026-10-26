@@ -3,7 +3,7 @@
 // one above, so every exception says why it’s safe.
 //   - regex (#344): a regular expression built at run time takes only constants, or text through escapeRegExp().
 //   - tags (#345): tags are stripped only by stripTags() (shared/markdown-inline.mjs), which repeats until none is left.
-//   - page-code (#343): a value spliced into code a browser check runs goes through js() (tools/cdp.mjs), not
+//   - page-code (#343): a value spliced into code a browser check runs goes through js() (tools/browser.mjs), not
 //     JSON.stringify, which leaves <, >, U+2028 and U+2029 as they are.
 //   - token (#351): a token is compared only in constant time, through sameToken() (server/helpers.mjs).
 //   - git (#351): git runs only through runGit() (server/ledger-git.mjs), which sets the read-only safeguards.
@@ -31,7 +31,7 @@ const MESSAGES = {
   tags: 'Strips tags with one pass of a regular expression. Use stripTags() from shared/markdown-inline.mjs (#345).',
   token: 'A token compared with === or !==, which takes longer the more of it matches. Use sameToken() from server/helpers.mjs.',
   git: 'Runs git directly. Run it through runGit() in server/ledger-git.mjs, which sets the read-only safeguards.',
-  'page-code': 'A value spliced into page code with JSON.stringify. Use js() from tools/cdp.mjs, which escapes <, >, U+2028 and U+2029 too (#343).',
+  'page-code': 'A value spliced into page code with JSON.stringify. Use js() from tools/browser.mjs, which escapes <, >, U+2028 and U+2029 too (#343).',
 };
 
 /** new RegExp(…) whose pattern isn’t one string, a template with nothing spliced in, a constant’s source or escaped text. */

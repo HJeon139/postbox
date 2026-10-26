@@ -1,7 +1,7 @@
 // The UAT driver’s answer to a review block, as a person gives it. Moved out of tools/uat/driver.mjs; the driver’s own
 // helpers it reads come in as its first parameter: ev, clickAt, byText and typeInto.
 
-import { js } from '../cdp.mjs';
+import { js } from '../browser.mjs';
 import { ITEM } from './selectors.mjs';
 
 /**

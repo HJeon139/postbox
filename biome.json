@@ -416,8 +416,8 @@
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 52 } } } } }
     },
     {
-      "includes": ["tools/cdp.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 148 } } } } }
+      "includes": ["tools/browser.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 93 } } } } }
     },
     {
       "includes": ["tools/demo.mjs"],

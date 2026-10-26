@@ -6,7 +6,7 @@
 
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { sleep } from '../cdp.mjs';
+import { sleep } from '../browser.mjs';
 import { untilGone } from './until-gone.mjs';
 
 /**

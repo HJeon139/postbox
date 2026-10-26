@@ -504,7 +504,13 @@ flowchart LR
 
 - a check measuring a phone against `innerWidth`, which a page that overflows widens to fit, so it couldn’t fail: Settings’ tabs ran past a 375 px window behind one (fixed in #375). Specs measure against `windowWidth(page)`.
 
-**Revisit when** the UAT driver or the screenshot tools next need a change `tools/cdp.mjs` can’t make simply: then they move to Playwright’s library too, and `cdp.mjs` goes.
+**Done** (25 October 2026). The UAT runner and the screenshot tools moved to Playwright’s library too, and `tools/cdp.mjs` is gone. `tools/browser.mjs` starts Playwright’s Chromium and gives them the page `cdp.mjs` did: its DevTools calls go over a CDP session, and an agent app’s frame is Playwright’s `Frame`. What moved them was orphans, not a change `cdp.mjs` couldn’t make:
+- **A Chrome on a DevTools port outlived its parent.** An agent harness SIGKILLs a background job’s node at the end of its turn, and its Chrome lived on with no parent, holding memory, so successive UAT and screenshot runs piled them up.
+- **Playwright drives Chromium over a pipe, and its headless shell exits when the pipe closes.** Chromium’s full headless mode, which the specs run (`channel: 'chromium'`), didn’t: with a page open it outlived its killed parent too (Chromium 156 on macOS). So the tools run the headless shell, with `--site-per-process`: without it the shell ran an agent app’s sandboxed frame in the page’s own process, where Chrome gives it one of its own.
+- **`tests/process/browser-kill.test.mjs` SIGKILLs a run both ways `launch()` starts one,** and fails on `cdp.mjs` and on the full headless mode.
+- **The UAT runner’s `--chrome-port` and the screenshot tools’ `PB_CHROME_PORT` went with it:** a pipe needs no port, so parallel runs can’t collide on one.
+
+**Revisit when** a Playwright upgrade changes what the kill test sees: if the full headless mode starts exiting with its pipe, the tools follow the specs onto it; if the headless shell stops, they need another way to end with their parent before they move.
 
 ## 17. Prompt changes are reviewed as rendered text
 
