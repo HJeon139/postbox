@@ -138,7 +138,9 @@ test('a finished progress block says when it last moved, and the clock leaves it
 
 test('#46 a diagram Mermaid can’t draw comes back to the agent once as a lint turn, and the person still has its frame and Show source', async ({ page }) => {
   const { lints, idle } = await conversation(page, 'Diagram', 'diagram');
-  await expect.poll(() => lints().length, { message: 'a lint turn' }).toBeGreaterThan(0);
+  // The frame loads Mermaid before it can report the error, then Postbox waits LINT_SETTLE_MS before the lint turn
+  // goes: on a busy runner the two together passed the default 5 s.
+  await expect.poll(() => lints().length, { message: 'a lint turn', timeout: 15_000 }).toBeGreaterThan(0);
   const problem = lints()[0].problems.find((p) => p.code === 'diagram-error');
   expect(problem, 'for the diagram that couldn’t be drawn').toBeTruthy();
   expect(problem.message, 'with Mermaid’s message and line').toMatch(/line 2[\s\S]*Parse error|Parse error[\s\S]*line 2/);
