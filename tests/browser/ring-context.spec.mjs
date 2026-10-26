@@ -2,7 +2,7 @@
 // subagent (tests/fixtures/claude-code/subagent-tree.jsonl), so its ring says its context is unknown rather than 0%,
 // and its activity still shows, as the person decided on 24 October 2026:
 // - each subagent ring in the agent tree is labeled “context unknown”, not “0%”;
-// - a thinking or generating subagent still draws an arc to move along, though no context is known.
+// - a thinking or generating subagent draws no arc, which would read as an amount, but its dot still moves.
 // With a scripted Claude Code agent that replays the stream and holds partway, in a conversation of its own.
 
 import { readFileSync } from 'node:fs';
@@ -72,14 +72,19 @@ test('#189 a subagent with no reported context says so, and its activity still s
   // The agent’s own ring lists its subagents the same way.
   const own = page.locator(`.rail pb-ring[data-session="${se.id}"] svg`).first();
   await expect(own).toHaveAttribute('aria-label', /subagents: .*context unknown/);
-  // A subagent thinking or generating still has an arc to move along: its first dash isn’t zero long.
-  const arcs = await rings.evaluateAll((els) =>
-    els.map((el) => ({ state: el.getAttribute('state'), dash: Number.parseFloat(el.querySelector('.arc')?.getAttribute('stroke-dasharray') ?? '0') })),
+  // A subagent thinking or generating draws no arc, which would read as an amount, but its dot still moves.
+  const marks = await rings.evaluateAll((els) =>
+    els.map((el) => ({
+      state: el.getAttribute('state'),
+      dash: Number.parseFloat(el.querySelectorAll('.arc')[el.querySelectorAll('.arc').length - 1]?.getAttribute('stroke-dasharray') ?? '0'),
+      dot: !!el.querySelectorAll('svg circle.dot').length,
+    })),
   );
-  for (const a of arcs.filter((x) => x.state === 'think' || x.state === 'gen')) expect(a.dash, `a ${a.state} subagent’s arc`).toBeGreaterThan(0);
-  expect(
-    arcs.some((x) => x.state === 'think' || x.state === 'gen'),
-    'the replay holds a subagent thinking or generating',
-  ).toBe(true);
+  const active = marks.filter((x) => x.state === 'think' || x.state === 'gen');
+  expect(active.length, 'the replay holds a subagent thinking or generating').toBeGreaterThan(0);
+  for (const a of active) {
+    expect(a.dash, `a ${a.state} subagent draws no arc`).toBe(0);
+    expect(a.dot, `a ${a.state} subagent’s dot moves`).toBe(true);
+  }
   go();
 });

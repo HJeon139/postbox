@@ -37,9 +37,11 @@ export function paintStateWords(root, sessions, latestItemOf) {
 function ringSvg(c, r, sw, state, ctx) {
   const color = `var(${STATE_VAR[state] ?? '--st-idle'})`;
   const C = 2 * Math.PI * r;
-  // With no measured context (#189), thinking and generating still move along a nominal quarter arc, so the activity
-  // shows whether or not the backend reports context; the label says it’s unknown.
-  const L = ctx != null ? (C * ctx) / 100 : state === 'think' || state === 'gen' ? C / 4 : 0;
+  // With no measured context (#189) there’s no arc, since any length would read as an amount used; thinking and
+  // generating show as the dot that crosses the ring, as calling tools does, so the activity still shows. The label
+  // says the context is unknown.
+  const L = ctx != null ? (C * ctx) / 100 : 0;
+  const moving = state === 'tool' || (ctx == null && (state === 'think' || state === 'gen'));
   let out = `<circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${sw}"/>`;
   if (state === 'think' && L > 0) {
     const n = Math.max(6, Math.round(L / (sw * 1.1)));
@@ -53,7 +55,7 @@ function ringSvg(c, r, sw, state, ctx) {
   } else {
     out += `<g transform="rotate(-90 ${c} ${c})"><circle class="arc" cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${L} ${C - L}"/></g>`;
   }
-  if (state === 'tool') {
+  if (moving) {
     const margin = ((sw * 1.6) / r) * (180 / Math.PI);
     const ctxNum = ctx ?? 0;
     const a1 = 3.6 * ctxNum + margin,
