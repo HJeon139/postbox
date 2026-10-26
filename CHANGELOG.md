@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.5 (2026-10-26)
+
+### Fixes
+
+- **adapters:** take a turn's tokens from its own usage, and leave a fork's cost unknown
+- **ring:** draw no arc for an unknown context, and move its dot instead
+- **ring:** show a subagent's unreported context as unknown, not 0%
+- **adapters:** count a resumed Claude Code turn's own spend, not the session's
+
 ## 0.41.4 (2026-10-26)
 
 ### Fixes
