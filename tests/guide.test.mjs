@@ -136,7 +136,7 @@ test('agy’s rules file for a busy room stays within its 12,000 characters', ()
     toolRules: null,
     setup: false,
   });
-  assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity/mcp/postbox' }).length <= 12250);
+  assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity/mcp/postbox' }).length <= 12000);
 });
 
 // A reply wakes its waker only by an @-mention (#372), so the guide says when to mention: too often loops, never stalls.
