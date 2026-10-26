@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createAgyMapper } from '../server/adapters/antigravity-cli.mjs';
 import { createCodexMapper } from '../server/adapters/codex.mjs';
@@ -14,18 +15,43 @@ test('new sessions initialize with ctx: null instead of 2%', () => {
 test('Antigravity resolves cited context windows and calculates active context percentage with cache', () => {
   assert.equal(agyWindowFor('gemini-4-argon'), 1_000_000);
   assert.equal(agyWindowFor('gemini-4-argon-medium'), 1_000_000);
-  assert.equal(agyWindowFor('gemini-3.8-flash'), null);
-  assert.equal(agyWindowFor('gemini-3.8-flash-high'), null);
+  assert.equal(agyWindowFor('gemini-3.8-flash'), 1_048_576);
+  assert.equal(agyWindowFor('gemini-3.8-flash-low'), 1_048_576);
+  assert.equal(agyWindowFor('gemini-3.8-flash-medium'), 1_048_576);
+  assert.equal(agyWindowFor('gemini-3.8-flash-high'), 1_048_576);
   assert.equal(agyWindowFor('gemini-1.5-pro'), null);
   assert.equal(agyWindowFor('gemini-2.0-flash'), null);
   assert.equal(agyWindowFor('unknown-model'), null);
 
   // Uncached prompt only
   assert.equal(agyContextPercent({ input_tokens: 10_000, cache_read_tokens: 0 }, 1_000_000), 1);
-  // Real agy step 245 evidence: 2,787 input_tokens + 23,525 cache_read_tokens = 26,312 prompt tokens
-  assert.equal(agyContextPercent({ input_tokens: 2787, cache_read_tokens: 23525 }, 1_000_000), 3);
   assert.equal(agyContextPercent(null, 1_000_000), null);
   assert.equal(agyContextPercent({ input_tokens: 100 }, null), null);
+});
+
+test('agy’s prompt is its uncached input plus its cached reads, as a recorded step shows', () => {
+  // error-after-refusal.jsonl, step 32: total_tokens is input plus output, so cached reads come on top of input.
+  const step = readFileSync(new URL('./fixtures/antigravity-cli/error-after-refusal.jsonl', import.meta.url), 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => JSON.parse(l).step_update)
+    .find((u) => u?.step_index === 32);
+  const { usage } = step;
+  assert.deepEqual([usage.input_tokens, usage.output_tokens, usage.cache_read_tokens, usage.total_tokens], [2682, 248, 20545, 2930]);
+  assert.equal(usage.input_tokens + usage.output_tokens, usage.total_tokens);
+  // 2,682 + 20,545 = 23,227 of 1,000,000.
+  assert.equal(agyContextPercent(usage, 1_000_000), 2);
+});
+
+test('a token count that isn’t a finite, non-negative number makes context unknown, never 100% or NaN', () => {
+  for (const bad of ['2787', Number.NaN, Number.POSITIVE_INFINITY, -1, {}, true]) {
+    assert.equal(agyContextPercent({ input_tokens: bad, cache_read_tokens: 23525 }, 1_000_000), null, String(bad));
+    assert.equal(agyContextPercent({ input_tokens: 2787, cache_read_tokens: bad }, 1_000_000), null, String(bad));
+    assert.equal(codexContextPercent(bad, 475_000), null, String(bad));
+    assert.equal(codexContextPercent(47_500, bad), null, String(bad));
+  }
+  // JSON can carry a number too large to be finite.
+  assert.equal(codexContextPercent(JSON.parse('{"n":1e400}').n, 475_000), null);
 });
 
 test('Codex calculates active context percentage from reported modelContextWindow', () => {

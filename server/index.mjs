@@ -23,6 +23,7 @@ import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
+import { listen as listenServer } from './listen.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
@@ -546,11 +547,22 @@ export async function start({
     return { id, name, size, type: f.type, sha256 };
   }
 
-  if (listen)
-    await new Promise((ok, fail) => {
-      server.once('error', fail);
-      server.listen(port, host, () => ok(rt.drainAll())); // listening: what waited in the queues across a restart goes (#228)
-    });
+  async function close() {
+    clearInterval(keepAlive);
+    for (const r of streams) r.destroy();
+    for (const t of rt.timers.values()) clearTimeout(t);
+    rt.stopMirrors();
+    // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67). So do the
+    // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
+    await rt.stopShellCommands();
+    await rt.stopTurns();
+    // After the turns, whose Stop goes to their hosts over these links (#120).
+    await stopHosts(hosts, stopWake);
+    narrator?.stop();
+    if (server.listening) await new Promise((ok) => server.close(ok));
+    await store.flush();
+  }
+  if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
   if (!quiet)
     console.log(
@@ -563,21 +575,7 @@ export async function start({
     origin,
     /** The request handler, for tests that call routes without a network (start({ listen: false })). */
     handle,
-    async close() {
-      clearInterval(keepAlive);
-      for (const r of streams) r.destroy();
-      for (const t of rt.timers.values()) clearTimeout(t);
-      rt.stopMirrors();
-      // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67). So do the
-      // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
-      await rt.stopShellCommands();
-      await rt.stopTurns();
-      // After the turns, whose Stop goes to their hosts over these links (#120).
-      await stopHosts(hosts, stopWake);
-      narrator?.stop();
-      if (listen) await new Promise((ok) => server.close(ok));
-      await store.flush();
-    },
+    close,
   };
 }
 

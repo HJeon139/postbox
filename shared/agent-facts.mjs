@@ -43,7 +43,7 @@ const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
     acceptEdits: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
   },
   codex: {
-    auto: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval. Auto and Accept edits have the same Codex permissions.',
+    auto: 'Codex’s Auto: Codex’s own reviewer approves or denies what its sandbox stops, including writes through MCP tools and gh, instead of asking you. Its workspace-write sandbox, with network access off, still applies: this isn’t Run everything.',
     ask: 'Codex uses a read-only sandbox. It requests approval before a command can go beyond it.',
     acceptEdits: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval.',
     bypass: 'Codex runs with full filesystem and network access and no approval prompts.',
@@ -221,7 +221,7 @@ export function selectBackend(st, id, config = {}) {
 /**
  * Applies a boilerplate to the new-agent sheet’s state. A boilerplate that names a backend (such as Gemini on
  * the Antigravity CLI) selects that backend when it’s available on this computer, and prefers the boilerplate’s
- * model when offered, then the first gemini-* model the backend reported, then the boilerplate’s model. Picking a
+ * model when offered, then the first gemini-* model for Antigravity or first reported model for Codex, then the boilerplate’s model. Picking a
  * generic boilerplate after a backend-bound one restores the default backend, model and effort.
  * @param {any} st @param {any} b @param {any} [config]
  */
@@ -238,7 +238,8 @@ export function applyBoilerplate(st, b, config = {}) {
     st.backend = b.backend;
     const offered = config?.backends?.[b.backend]?.models;
     const list = Array.isArray(offered) ? offered : [];
-    st.model = (b.model && list.includes(b.model) ? b.model : list.find((m) => /^gemini-/.test(m))) ?? b.model ?? config?.defaultModel ?? MODELS[0];
+    const preferred = b.backend === 'codex' ? list[0] : list.find((m) => /^gemini-/.test(m));
+    st.model = (b.model && list.includes(b.model) ? b.model : preferred) ?? b.model ?? config?.defaultModel ?? MODELS[0];
     st.effort = effortNamedBy(st.backend, st.model) ?? config?.defaultEffort ?? 'medium';
   } else if (prevFromBp) {
     const def = BACKENDS.map(([id]) => id).find((id) => adapters.includes(id)) ?? 'mock';

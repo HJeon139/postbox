@@ -2,6 +2,7 @@
 // `codex` installation supplies sign-in, configuration, sandboxing and the model catalog.
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { codexApproval } from './codex-approval.mjs';
@@ -29,6 +30,14 @@ export const CODEX_CAPABILITIES = Object.freeze({
   remote: CODEX_REMOTE,
 });
 
+/** A local folder’s real path, or the folder as given if it can’t be resolved: Codex refuses a writable root with a symlink in its path. */
+const realFolder = (dir) => realpath(dir).catch(() => dir);
+
+/**
+ * The sandbox and approvals for a turn. In Auto, Codex’s own reviewer (approvalsReviewer auto_review) approves or
+ * denies what the sandbox stops, as Claude Code’s classifier does, instead of asking the person; Codex keeps a reviewer
+ * for later turns, so every other mode names the person.
+ */
 export function codexPermissions(persona, cwd) {
   const mode = persona?.permissionMode ?? 'auto';
   const sandboxPolicy =
@@ -37,7 +46,7 @@ export function codexPermissions(persona, cwd) {
       : mode === 'ask'
         ? { type: 'readOnly' }
         : { type: 'workspaceWrite', ...(cwd ? { writableRoots: [cwd] } : {}), networkAccess: false };
-  return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request' };
+  return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request', approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user' };
 }
 
 /**
@@ -227,7 +236,7 @@ export class CodexAdapter {
   async deliver(session, message, ctx) {
     const remote = ctx.remote ?? null;
     const attach = remote?.attach ?? null;
-    const cwd = remote ? remote.folder : await this.folderFor(ctx.persona, ctx.project);
+    const cwd = remote ? remote.folder : await realFolder(await this.folderFor(ctx.persona, ctx.project));
     const args = ['app-server', '--listen', 'stdio://', ...codexConfigArgs(ctx.mcpUrl)];
     // Its own process group, so stopping the turn reaches everything the app-server started (#126); on a host, the daemon’s.
     /** @type {any} */

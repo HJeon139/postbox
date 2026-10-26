@@ -245,3 +245,34 @@ test('#92 a confirm that asks again shows at the bottom with a stub, ⌃J goes t
   expect(store.item(t.id, item.id).answer?.revision, 'the answer is for the revision you saw').toBe(2);
   expect(store.items(t.id).filter((i) => i.kind === 'voice').length, 'one line for each answer').toBe(2);
 });
+
+test('#410 ⌃J brings a block into view when something grows between its scroll and the scroll’s event', async ({ page }) => {
+  const { rt, store } = app;
+  const { t, critic } = room('Grown under ⌃J', 'follow-grown-j', 14);
+  rt.toolsFor(critic.id).show_block({
+    block: { id: 'grown-ask', type: 'confirm', version: 1, fallback: 'Clear it?', statement: 'Clear the frames?', confirmLabel: 'Clear' },
+  });
+  const ask = store.items(t.id).at(-1);
+  for (const se of Object.values(store.state.sessions)) if (se.needs && se.id !== critic.id) rt.updateSession(se.id, { needs: null, state: 'idle' });
+  rt.updateSession(critic.id, { state: 'needs', needs: { kind: 'block', itemId: ask.id, text: 'Clear the frames?' } });
+  await open(page, `#/t/${t.id}`);
+  await wheel(page, -2000);
+  expect(await inView(page, ask.id), 'scrolled away from the block').toBe(false);
+  // The block grows in a task right after ⌃J’s scroll, before the scroll’s event, past the room the transcript holds
+  // below it: in CI, the page grew by 20 px there, as an app’s check gave way to its frame.
+  await page.evaluate((grows) => {
+    const scroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (o) {
+      Element.prototype.scrollIntoView = scroll;
+      scroll.call(this, o);
+      setTimeout(() => {
+        /** @type {HTMLElement} */ (document.querySelector(`[data-key="${grows}"]`)).style.paddingBottom = '60px';
+      });
+    };
+  }, ask.id);
+  await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
+  await page.keyboard.press('Control+j');
+  await expect.poll(() => page.evaluate((k) => !!document.activeElement?.closest(`[data-key="${k}"]`), ask.id), { message: '⌃J focuses the block' }).toBe(true);
+  await settled(page);
+  expect(await inView(page, ask.id), '⌃J brings it into view').toBe(true);
+});
