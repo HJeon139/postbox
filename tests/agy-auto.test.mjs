@@ -1,6 +1,6 @@
 // What Postbox’s Antigravity hook approves on its own in Auto (server/adapters/agy-auto.mjs): routine commands, gh’s
-// issue and pull request commands, web searches, public fetches and MCP tools outside Postbox run without a card;
-// everything else still asks, and Ask me and Accept edits are unchanged.
+// commands that read issues and pull requests, and public fetches with no query run without a card; everything else
+// still asks, and Ask me and Accept edits are unchanged.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
@@ -184,11 +184,11 @@ test('Auto asks before jq and gh --jq, which can print the environment', () => {
 });
 
 // #423’s review: a search, or a fetch’s path, subdomain or query, can carry data out. On review the maintainer kept
-// searches and query-free fetches, and sent a query or fragment on to the reviewer or the card; this computer and a
+// query-free fetches, and sent searches and a query or fragment on to the reviewer or the card; this computer and a
 // sign-in in the address ask too.
-test('Auto allows web searches and public fetches without a query or fragment; a query, a fragment, a sign-in or a local address asks', () => {
+test('Auto allows public fetches without a query or fragment; a search, a query, a fragment, a sign-in or a local address asks', () => {
   const { call } = workspace();
-  assert.deepEqual(call('search_web', { query: 'postbox secret-token-1234' }), { decision: 'allow' });
+  assert.equal(call('search_web', { query: 'postbox secret-token-1234' }).decision, 'ask');
   for (const url of ['https://example.com/docs/a', 'https://secret.example.com/', 'https://example.com/secret/path'])
     assert.deepEqual(call('read_url_content', { Url: url }), { decision: 'allow' }, url);
   for (const url of [
@@ -290,9 +290,9 @@ test('the persona sheet says Auto on Antigravity is Postbox’s own approval, an
   assert.match(help('auto'), /^Antigravity’s Auto: Postbox approves routine actions itself, since agy’s own Auto isn’t available on this account/);
   assert.match(
     help('auto'),
-    /It asks with a card before anything else, such as rm, git commit, npm test, curl, a fetch with a query, an MCP tool, edits in \.git, edits outside its folders, or a write outside Postbox/,
+    /It asks with a card before anything else, such as rm, git commit, npm test, curl, a web search, a fetch with a query, an MCP tool, edits in \.git, edits outside its folders, or a write outside Postbox/,
   );
-  assert.match(help('auto'), /A search goes out without a card, and can carry what the agent puts in it/);
+  assert.doesNotMatch(help('auto'), /searches the web/);
   // It doesn’t name a command as routine that could run what a script says (#423’s review).
   assert.doesNotMatch(/everyday commands there \(([^)]*)\)/.exec(help('auto'))?.[1] ?? 'missing npm', /npm|commit/);
   assert.notEqual(help('auto'), help('acceptEdits'));

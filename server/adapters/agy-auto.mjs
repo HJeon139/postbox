@@ -7,7 +7,8 @@
 //   mkdir, touch, cp or mv, git that reads or stages, and gh’s commands that read issues, pull requests and releases. A word the
 //   reader can’t be sure of ($, `, a redirect other than to /dev/null, a subshell) makes it a card. So does an option
 //   that isn’t listed, since some run a program (git grep -O, sort --compress-program, rg --pre);
-// - a web search, and a fetch of a public http(s) address with no query or fragment, which could carry data out.
+// - a fetch of a public http(s) address with no query or fragment. A search, or a fetch with a query or fragment,
+//   could carry data out, so it isn’t approved here.
 // What these rules leave goes on to Postbox’s permission_prompt: there the reviewer (#416) judges it, and a write outside
 // Postbox (gh’s issue and pull request writes, an MCP tool that writes) keeps its card (#112), as in Claude Code’s Auto.
 // Nothing routine runs code the agent could have written (#423’s review): npm test and npm run run the folder’s
@@ -262,8 +263,6 @@ export function autoAllows(name, args, where) {
   switch (name) {
     case 'run_command':
       return routineCommand(String(args.CommandLine ?? ''), where);
-    case 'search_web':
-      return true;
     case 'read_url_content':
       return publicFetch(args.Url ?? args.url);
     case 'list_resources':
