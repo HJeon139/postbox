@@ -70,7 +70,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 | Unit tests, with no network and no processes | `node:test` with `tests/guard.mjs` |
 | Line coverage of the pure modules (the 90% target in architecture.md) | Nothing. `npm run test:coverage` reports it and fails on no threshold |
 | Browser behavior | `npx playwright test`, normally and with `POSTBOX_STREAM_LAG=300`, in CI’s end-to-end job, not in `npm run check` |
-| No axe violations in any demo scene | `tools/shoot-app.mjs`, in CI’s end-to-end job |
+| No axe violations in any demo scene | `tests/browser/demo-a11y.spec.mjs`, with the other specs in CI’s end-to-end job |
 | Conventional Commits | `tools/lint-commits.mjs` on a pull request in CI; the local hook only after `npm run hooks` |
 | Real agents doing the right thing | The end-to-end UAT, which no CI job runs and which costs real usage |
 

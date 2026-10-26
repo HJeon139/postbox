@@ -100,7 +100,7 @@ flowchart LR
 | Lint and format | **Biome** (one dependency, no plugins) | Recommended correctness and suspicious-code rules, consistent formatting, no unused code, and a length limit on every file and function (“Module and function size”, below) |
 | Types | **TypeScript in `checkJs` mode** with JSDoc types, `noEmit` | Shapes of events, blocks and store state checked without a build. It starts with `shared/` and `server/`, then the client. |
 | Tests | `node:test` with `--experimental-test-coverage` | Pure modules (catalog, Markdown, events, BM25, store) stay above 90% line coverage |
-| End to end | `tools/shoot-app.mjs` in headless Chrome, plus **axe-core** | Every demo scene renders with no browser errors and no serious or critical accessibility violations |
+| End to end | **Playwright Test** (`tests/browser/`), with **axe-core** in `tests/browser/demo-a11y.spec.mjs` | Every demo scene renders with no exceptions and no accessibility violations against WCAG 2.1 A and AA, at 1280 and 375 px in both themes |
 | Contrast | `tools/contrast.mjs` | Every token pair meets WCAG 2.1 AA in both modes, on the app stage too |
 | Design tokens | `tools/lint-tokens.mjs` | No raw colors outside the token blocks, in CSS or in JavaScript |
 | Safe DOM | `tools/lint-dom.mjs` | `innerHTML` only where a `lint-allow dom:` comment names the source (the Markdown renderer or Postbox’s own templates); no attribute or style names chosen at run time; `target="_blank"` always with `noopener` |
@@ -461,7 +461,7 @@ flowchart LR
 
 **Decision** (24 October 2026, #303). The headless browser checks move from the repo’s own runner (`tools/cdp.mjs`, `tools/harness.mjs`, `tools/check-all.mjs`) to Playwright Test, `@playwright/test`, a dev dependency at an exact version. New specs go in `tests/browser/*.spec.mjs`. The rest move one check at a time, and `check-all.mjs` runs those not yet moved. `tools/cdp.mjs` stays while the screenshot tools and the UAT driver use it.
 
-**Done** (25 October 2026, #303). Every check is a spec in `tests/browser/`, except the two that drive no browser: they run npm, git and an installed postbox, which `tests/guard.mjs` keeps out of the unit tests, so they’re `node:test` files in `tests/process/`, which `npm run check` runs. `tools/check-all.mjs` and `tools/harness.mjs` are gone, with CI’s two steps for them. `tools/cdp.mjs` stays only for the UAT runner (`tools/uat-run.mjs`, `tools/uat/`) and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`).
+**Done** (25 October 2026, #303). Every check is a spec in `tests/browser/`, except the two that drive no browser: they run npm, git and an installed postbox, which `tests/guard.mjs` keeps out of the unit tests, so they’re `node:test` files in `tests/process/`, which `npm run check` runs. `tools/check-all.mjs` and `tools/harness.mjs` are gone, with CI’s two steps for them. The demo’s accessibility gate moved too: `tools/shoot-app.mjs` ran axe-core on every scene it shot and failed CI on a violation, and now `tests/browser/demo-a11y.spec.mjs` plays the same scenes (`play()` in `tools/demo.mjs`) and runs axe on each, in both passes. `tools/shoot-app.mjs` only takes the screenshots, which CI still uploads without failing on them. `tools/cdp.mjs` stays only for the UAT runner (`tools/uat-run.mjs`, `tools/uat/`) and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`).
 
 **What it rests on**
 - **The repo had rebuilt a test runner, and each part it lacked became a flake.**

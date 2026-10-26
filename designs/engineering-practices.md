@@ -19,7 +19,7 @@ It runs, in order:
 6. `test:process`: the few `node:test` tests that must run npm, git or an installed postbox (`tests/process/`).
 
 **At review,** the reviewing session runs these over the merged UI of each wave:
-- `node tools/shoot-app.mjs`: it plays the demo, takes screenshots and runs axe on every scene. It must end with “Accessibility (axe-core): no violations.”
+- `node tools/shoot-app.mjs`: it plays the demo and screenshots every scene. axe on those scenes is a spec, `tests/browser/demo-a11y.spec.mjs`, which every pass of `npx playwright test` runs.
 - `node tools/shoot-uat.mjs`: it refreshes the UAT doc screenshots.
 - The end-to-end UAT ([tests/uat/e2e](../tests/uat/e2e/README.md)), which runs real agents and costs real usage.
 
@@ -140,7 +140,7 @@ The target is WCAG 2.1 AA, with zero axe violations in every demo scene.
 - Don’t use `aria-pressed` on radios, an unlabeled field, or a scroll container you can’t reach by keyboard. axe caught all three.
 
 **Enforced by:**
-- axe in `tools/shoot-app.mjs`.
+- axe on every demo scene, in `tests/browser/demo-a11y.spec.mjs`.
 - `npm run check:contrast`.
 - `lint-tokens`, which flags raw colors.
 - The UAT’s keyboard and focus steps.

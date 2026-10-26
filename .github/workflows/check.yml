@@ -55,7 +55,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Play the demo, screenshot every scene and run axe-core
+      # The browser specs on Playwright Test (#303), on the Chromium build its version pins. They include the demo’s
+      # accessibility gate: axe-core on every scene, at 1280 and 375 px in both themes (tests/browser/demo-a11y.spec.mjs).
+      - name: Install Playwright’s Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser specs
+        run: npx playwright test
+      - name: Browser specs, with the server’s events late
+        if: success() || failure()
+        run: npx playwright test
+        env:
+          POSTBOX_STREAM_LAG: 300
+      # Pictures of every scene for the reviewer, not a check: the spec above is the gate, so a screenshot tool that
+      # breaks warns here and doesn’t fail the job.
+      - name: Play the demo and screenshot every scene
+        if: success() || failure()
+        continue-on-error: true
         run: CHROME="$(command -v google-chrome)" node tools/shoot-app.mjs
       - if: always()
         uses: actions/upload-artifact@v4
@@ -63,18 +78,6 @@ jobs:
           name: screenshots
           path: screenshots/latest/app/
           retention-days: 14
-      # The browser specs on Playwright Test (#303), on the Chromium build its version pins.
-      - name: Install Playwright’s Chromium
-        if: success() || failure()
-        run: npx playwright install --with-deps chromium
-      - name: Browser specs
-        if: success() || failure()
-        run: npx playwright test
-      - name: Browser specs, with the server’s events late
-        if: success() || failure()
-        run: npx playwright test
-        env:
-          POSTBOX_STREAM_LAG: 300
       - if: always()
         uses: actions/upload-artifact@v4
         with:
