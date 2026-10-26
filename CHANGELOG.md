@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.6 (2026-10-26)
+
+### Fixes
+
+- **guide:** preserve existing app check guidance on review
+- **apps:** report saved versions and readable browser check status
+
 ## 0.41.5 (2026-10-26)
 
 ### Fixes
