@@ -158,3 +158,40 @@ test('real Codex Ask me streams map third-party MCP approval requests to named c
     if (!allow) assert.equal(events[completed].params.item.durationMs, 0, 'the denied call never reached its server');
   }
 });
+
+test('real Codex plugin streams show Ask me blocks before completion and Auto runs without a card', async () => {
+  const eventsOf = (name) =>
+    readFileSync(new URL(`fixtures/codex-app-server/${name}`, import.meta.url), 'utf8')
+      .trim()
+      .split('\n')
+      .map(JSON.parse);
+  const ask = eventsOf('plugin-ask-deny.jsonl');
+  const inventory = ask.find((event) => event.result?.data);
+  const request = ask.find((event) => event.method === 'mcpServer/elicitation/request');
+  const started = ask.findIndex((event) => event.method === 'item/started');
+  const completed = ask.findIndex((event) => event.method === 'item/completed');
+  let card;
+  const denied = await codexApproval(
+    {
+      askPermission: async (value) => {
+        card = value;
+        return { allow: false };
+      },
+    },
+    request,
+  );
+
+  assert.equal(inventory.result.data[0].pluginId, 'pbtest@pbmarket');
+  assert.ok(started < ask.indexOf(request) && ask.indexOf(request) < completed);
+  assert.equal(card.tool, 'mcp__pbtest__pb_read');
+  assert.equal(card.summary, 'use pbtest tool pb_read');
+  assert.deepEqual(denied, { action: 'decline' });
+  assert.equal(ask[completed].params.item.durationMs, 0);
+
+  const auto = eventsOf('plugin-auto.jsonl');
+  assert.equal(
+    auto.some((event) => event.method === 'mcpServer/elicitation/request'),
+    false,
+  );
+  assert.equal(auto.find((event) => event.method === 'item/completed').params.item.status, 'completed');
+});
