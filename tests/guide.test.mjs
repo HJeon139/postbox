@@ -146,3 +146,15 @@ test('#372 a room’s guide says to @mention an agent only when it must act next
   assert.doesNotMatch(guideText(), /side thread/i);
   assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, /side thread/);
 });
+
+// An agent ended turns promising results that “will follow”, and nothing woke it when they did: Postbox wakes an agent
+// only for a message, a mention or a wake it scheduled. Codex agents are told so (the habit was Codex’s); other backends aren’t.
+test('a Codex agent’s guide says its turn ends when it replies, to finish a check first, or to schedule_wake', () => {
+  const g = agentGuide({ persona: { handle: 'gpt', backend: 'codex' }, session: { personaSnapshot: { model: 'gpt-6.1-sol' } }, handles: ['gpt'] });
+  assert.match(g, /## When your turn ends\n\nYour turn ends when you reply\./);
+  assert.match(g, /don’t end with “results will follow”\. If something must outlive your turn, call schedule_wake/);
+  assert.doesNotMatch(agentGuide({ persona: { handle: 'gem' }, handles: ['gem'], setup: false }), /When your turn ends/);
+  // Only Codex agents ended turns that way, so the other backends aren’t told.
+  for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
+    assert.doesNotMatch(agentGuide({ persona: { handle: 'x', backend }, handles: ['x'] }), /When your turn ends/, backend);
+});
