@@ -5,17 +5,33 @@ import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 
 /**
+ * The reason to skip, when a launch failed because Playwright’s Chromium isn’t installed, or null when it failed
+ * for any other reason: a new Chromium revision that won’t start, or a system library missing on the runner, is a
+ * failure, never a skip.
+ * @param {unknown} error
+ */
+export function notInstalled(error) {
+  const first = String(error instanceof Error ? error.message : error).split('\n')[0];
+  return /Executable doesn't exist at|\bENOENT\b/.test(first)
+    ? `Playwright’s Chromium isn’t installed (npx playwright install chromium downloads it): ${first}`
+    : null;
+}
+
+/**
  * Why the tests that drive Chromium should skip, or false when they can run: give it to node:test’s `skip`. It
- * starts Playwright’s Chromium once to see, as tools/browser.mjs starts it.
+ * starts Playwright’s Chromium once to see, as tools/browser.mjs starts it, and throws when it’s installed but
+ * won’t start, so the test file fails.
  * @returns {Promise<string | false>}
  */
 export async function chromiumMissing() {
+  const { chromium } = await import('@playwright/test');
   try {
-    const { chromium } = await import('@playwright/test');
     await (await chromium.launch()).close();
     return false;
   } catch (e) {
-    return `Playwright’s Chromium didn’t start (npx playwright install chromium downloads it): ${String(e.message).split('\n')[0]}`;
+    const why = notInstalled(e);
+    if (why) return why;
+    throw new Error(`Playwright’s Chromium is installed but didn’t start: ${String(/** @type {Error} */ (e).message).split('\n')[0]}`, { cause: e });
   }
 }
 
