@@ -34,7 +34,7 @@ export function agentGuide({ persona, handles, room = [], project, brief, sessio
     brief ? `How you joined: ${brief}` : '',
     setup ? sessionText(session, persona) : '',
     setup ? SETUP_CHECK : '',
-    setup ? TURN_ENDS : '',
+    setup && (persona?.backend ?? session?.backend) === 'codex' ? TURN_ENDS : '',
     offText(toolsOff(persona, toolRules)),
     guideText(),
   ]
@@ -90,7 +90,8 @@ Your own model calls work, so don’t ask the person to change their setup or cr
 /**
  * Work left for later is work nobody does: an agent ended turns with “results will follow”, and nothing woke it when
  * they did. Postbox wakes an agent only for a message, a mention or a wake it scheduled (intent.md, “Attention and
- * wakes”), so the agent is told to finish, or to schedule its own wake.
+ * wakes”), so the agent is told to finish, or to schedule its own wake. Only Codex agents are told: the habit was
+ * Codex’s, and on Codex the turn’s process group stops when the turn completes (adapters/codex.mjs).
  */
 const TURN_ENDS = `## When your turn ends
 
