@@ -34,6 +34,12 @@ const doneText = (it) =>
       : it.status === 'expired' && it.noAnswer
         ? 'Expired: nobody answered in time'
         : (PERMISSION_DONE[it.status] ?? it.status);
+/** The whole command, and, for an Antigravity agent in Auto, why its reviewer passed it to you (#416). */
+const detailOf = (it) => [
+  it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
+  it.review ? h('p.small.dim', `The reviewer asked you: ${it.review}`) : null,
+];
+
 /**
  * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
  * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.
@@ -177,7 +183,7 @@ export function permissionBlock(it, ctx) {
           )
         : null,
       // The whole command, wrapped: you decide on what you can see.
-      it.detail ? h('pre.md-code.perm-detail', h('code', it.detail)) : null,
+      detailOf(it),
       // What Always allow saves, in words, before you click it.
       open && it.always
         ? h(

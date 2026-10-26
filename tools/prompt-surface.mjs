@@ -8,6 +8,7 @@
 //   scan/guide.md            the guide every agent gets, for an agent with no persona text (Claude Code’s rules)
 //   scan/personas/<source>-<handle>.md  each demo and boilerplate persona’s own part: role, instructions, tools off
 //   scan/agy-rules.md        the rules file Antigravity reads, which wraps the guide
+//   scan/agy-reviewer.md     what Gemini Flash reads to review an Antigravity agent’s call in Auto (#416)
 //   scan/mcp-tools.md        every Postbox MCP tool, with its description and its arguments’ descriptions
 //   scan/repo/               the instructions for agents working on Postbox itself: AGENTS.md files and session prompts
 // and, for a reviewer’s diff, each persona’s whole guide with its backend’s session facts, without the roster of other
@@ -22,6 +23,7 @@ import { agyRules } from '../server/adapters/antigravity-cli.mjs';
 import { agentGuide, formatMessage, offText } from '../server/adapters/guide.mjs';
 import { KIRO_TOOL_RULES } from '../server/adapters/kiro-cli.mjs';
 import { TOOL_RULES, toolsOff } from '../server/adapters/setup.mjs';
+import { reviewPrompt } from '../server/agy-reviewer.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
 import { BOILERPLATES, DEMO_PERSONAS } from '../server/seed.mjs';
 
@@ -93,6 +95,7 @@ export function render(out) {
     }),
   );
   write('scan/agy-rules.md', agyRules({ persona: agent, guide: agentGuide({ persona: agent, handles: ['agent'], toolRules: null, setup: false }) }));
+  write('scan/agy-reviewer.md', reviewPrompt({ tool: 'Bash', input: { command: 'git status' }, folders: ['/work'], lastMessage: 'Keep the change focused.' }));
   write('scan/mcp-tools.md', toolsText());
   const personas = [...DEMO_PERSONAS.map((p) => ['demo', p]), ...BOILERPLATES.map((b) => ['boilerplate', asPersona(b)])];
   for (const [source, p] of personas) {

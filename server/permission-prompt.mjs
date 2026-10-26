@@ -2,6 +2,7 @@
 // “ask” mode. It waits for your answer on a card in the conversation. Only that backend asks through it.
 
 import { describePermission } from './adapters/claude-stream.mjs';
+import { reviewFirst } from './agy-reviewer.mjs';
 
 function toAbortSignal(closeOrSignal) {
   if (!closeOrSignal) return null;
@@ -31,7 +32,11 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
   };
   signal?.addEventListener?.('abort', onAbort, { once: true });
   try {
+    // An Antigravity agent in Auto: its reviewer may approve the call before anyone is asked (#416).
+    const review = await reviewFirst(rt, sessionId, { tool: String(tool_name ?? ''), input, toolUseId: tool_use_id, summary, signal });
+    if (review?.decision === 'approve') return { content: [{ type: 'text', text: JSON.stringify({ behavior: 'allow', updatedInput: input }) }] };
     const answer = await rt.requestPermission(sessionId, {
+      review: review?.why ?? null,
       tool: String(tool_name ?? ''),
       summary,
       detail,

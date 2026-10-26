@@ -27,9 +27,10 @@ export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
  * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
  * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
  * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`.
+ * review: why an Antigravity agent’s reviewer passed the call to the person (#416), shown on the card.
  * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
  *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null,
- *           hostPrompt?: { hostId: string, turn: string, id: string } | null }} req
+ *           hostPrompt?: { hostId: string, turn: string, id: string } | null, review?: string|null }} req
  * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
  */
 export async function requestPermission(rt, sessionId, req) {
@@ -42,7 +43,19 @@ export async function requestPermission(rt, sessionId, req) {
 export function askPerson(
   rt,
   sessionId,
-  { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false, draft, hostPrompt = null },
+  {
+    tool,
+    summary,
+    detail = '',
+    toolUseId = null,
+    input = null,
+    suggestions = null,
+    agentId = null,
+    suppressAlways = false,
+    draft,
+    hostPrompt = null,
+    review = null,
+  },
 ) {
   const se = rt.s.sessions[sessionId];
   const turn = rt.turns.get(sessionId);
@@ -63,6 +76,7 @@ export function askPerson(
     always: hostAlways(rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }), hostPrompt),
     // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
     who: whoAsked(turn, agentId, toolUseId),
+    ...(review ? { review: String(review).slice(0, 300) } : {}),
     ...(hostPrompt ? { remote: { hostId: hostPrompt.hostId, turn: hostPrompt.turn, prompt: hostPrompt.id } } : {}),
     status: 'open',
   });
