@@ -4,11 +4,10 @@
 //   node tools/shoot-app.mjs              → screenshots/latest/app/ (ignored by git)
 //   node tools/shoot-app.mjs --baseline   → screenshots/app/, the approved set
 //
-// Every variant is also checked with axe-core for WCAG 2.1 A and AA problems; any violation fails the
-// run and is listed in axe.json beside the screenshots. AXE=0 skips it.
+// It takes pictures and checks nothing: axe-core runs on the same scenes and variants in
+// tests/browser/demo-a11y.spec.mjs, CI’s gate on the demo.
 
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { access, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,21 +103,6 @@ async function drive(h) {
   await driver.goto(`${origin}/?v=${++loads}${h}`);
 }
 
-// axe runs in the app page. Agent apps are sandboxed frames with an opaque origin, which it can’t enter;
-// their own pre-display check covers labels, contrast and overflow inside them.
-const AXE = process.env.AXE === '0' ? null : await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8').catch(() => null);
-if (!AXE && process.env.AXE !== '0') console.log('axe-core isn’t installed, so accessibility checks are skipped. Run npm install.');
-const AXE_RUN = `axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }, resultTypes: ['violations'] })
-  .then((r) => r.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 5).map((n) => n.target.join(' ')) })))`;
-const violations = [];
-async function audit(name, theme, w) {
-  if (!AXE) return;
-  // The screenshot made the viewport tall for a moment; let frames resize back first.
-  await sleep(300);
-  await page.evaluate(`${AXE};0`);
-  for (const v of await page.evaluate(AXE_RUN)) violations.push({ scene: name, variant: `${theme}-${w}`, ...v });
-}
-
 const shots = [];
 const STOP_AFTER = process.env.STOP_AFTER;
 try {
@@ -138,7 +122,6 @@ try {
         const file = join(OUT, `${name}-${theme}-${w}.png`);
         const height = await page.shoot(file, { width: w, baseH: h, scale });
         console.log(`  ${name}-${theme}-${w}.png  ${w}×${height}`);
-        await audit(name, theme, w);
       }
       shots.push(name);
       if (STOP_AFTER && name === STOP_AFTER) throw new Error(`Stopped after ${name}, as asked.`);
@@ -182,15 +165,6 @@ for (const name of shots) {
   await page.shoot(join(OUT, 'sheets', `${name}.png`), { width: 1360, baseH: 700, scale: 1 });
   await rm(sheetFile);
   console.log(`  sheets/${name}.png`);
-}
-
-if (AXE) {
-  await writeFile(join(OUT, 'axe.json'), JSON.stringify(violations, null, 2));
-  if (violations.length) {
-    console.log(`\nAccessibility (axe-core): ${violations.length} violation${violations.length === 1 ? '' : 's'}, listed in ${join(OUT, 'axe.json')}`);
-    for (const v of violations) console.log(`  ${v.scene} ${v.variant}  ${v.id} (${v.impact}): ${v.help}\n    ${v.nodes.join('\n    ')}`);
-    process.exitCode = 1;
-  } else console.log('\nAccessibility (axe-core): no violations.');
 }
 
 const errors = [...driver.logs, ...page.logs].filter((l) => !/api\/stream|ERR_INCOMPLETE_CHUNKED|503|ERR_CONNECTION_REFUSED/.test(l));
