@@ -4,17 +4,16 @@
 // (antigravity.google/docs/hooks), so in Auto Postbox decides here and everything else becomes a card:
 // - a command whose every part (splitCommand) is a routine one, with only the options listed for it below, and every
 //   path it names inside the agent’s folders and none of Antigravity’s own files: a read (ls, cat, grep, find…),
-//   mkdir, touch, cp or mv, git that reads or stages, and gh’s issue, pull request and release commands. A word the
+//   mkdir, touch, cp or mv, git that reads or stages, and gh’s commands that read issues, pull requests and releases. A word the
 //   reader can’t be sure of ($, `, a redirect other than to /dev/null, a subshell) makes it a card. So does an option
 //   that isn’t listed, since some run a program (git grep -O, sort --compress-program, rg --pre);
-// - a web search, and a fetch of a public http(s) address. Both go out without a card and can carry what the agent
-//   puts in them, as writes outside Postbox through MCP tools and gh can;
-// - any MCP tool outside Postbox, its writes included.
+// - a web search, and a fetch of a public http(s) address with no query or fragment, which could carry data out.
+// What these rules leave goes on to Postbox’s permission_prompt: there the reviewer (#416) judges it, and a write outside
+// Postbox (gh’s issue and pull request writes, an MCP tool that writes) keeps its card (#112), as in Claude Code’s Auto.
 // Nothing routine runs code the agent could have written (#423’s review): npm test and npm run run the folder’s
 // scripts, and git commit its hooks, so they ask. git runs only where the folder’s .git is a real folder, which edits
 // in Auto can’t change without a card (agy-hook.mjs), so its config can’t name a program git would run (core.fsmonitor,
-// diff.external, gpg.program). Writes outside Postbox through MCP tools and gh go without a card here, where Claude
-// Code’s Auto brings them to one (#112): the maintainer accepted that for Codex’s reviewer (#415) and chose the same.
+// diff.external, gpg.program). No MCP tool outside Postbox is approved here: what one does can’t be read from its name.
 
 import { lstatSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -91,25 +90,16 @@ const GIT = /** @type {Record<string, Spec>} */ ({
   branch: spec('arv', '', ['--all', '--remotes', '--list', '--show-current', '--verbose'], [], { most: 0 }),
   remote: spec('v', '', ['--verbose'], [], { most: 0 }),
 });
-// gh’s commands for issues, pull requests and releases: the ones that read, and the writes the write guard knows
-// (#112). gh api, which can do anything, isn’t one; nor is --web, which opens a browser. Nor --jq: jq, gh’s
-// included, prints the environment with env, tokens and all, and a fetch could carry that out (#423’s review).
+// gh’s commands that read issues, pull requests and releases. Its writes aren’t here: they keep their card (#112). gh
+// api, which can do anything, isn’t one; nor is --web, which opens a browser. Nor --jq: jq, gh’s included, prints the
+// environment with env, tokens and all, and a fetch could carry that out (#423’s review).
 const GH_COMMANDS = new Set(
-  ['issue list', 'issue view', 'pr list', 'pr view', 'pr diff', 'pr checks', 'pr status', 'repo view', 'run list', 'run view']
-    .concat(['release list', 'release view', 'issue create', 'issue comment', 'issue edit', 'pr create', 'pr comment', 'pr edit'])
-    .concat(['pr review', 'release create']),
-);
-const GH = spec(
-  'cdfr',
-  'RsLlAaStbFBHm',
-  ['--comments', '--draft', '--fill', '--approve', '--comment', '--request-changes'],
-  ['--repo', '--state', '--limit', '--json', '--label', '--author', '--assignee', '--search', '--title', '--body'].concat([
-    '--body-file',
-    '--base',
-    '--head',
-    '--milestone',
+  ['issue list', 'issue view', 'pr list', 'pr view', 'pr diff', 'pr checks', 'pr status', 'repo view', 'run list', 'run view'].concat([
+    'release list',
+    'release view',
   ]),
 );
+const GH = spec('c', 'RsLlAaS', ['--comments'], ['--repo', '--state', '--limit', '--json', '--label', '--author', '--assignee', '--search']);
 // find’s tests and actions that only look; -exec, -delete and -fprint aren’t among them.
 const FIND_FLAGS = new Set(['-print', '-print0', '-not', '-and', '-or', '-o', '-a', '-empty', '-prune', '-depth']);
 const FIND_VALUED = new Set(['-name', '-iname', '-path', '-ipath', '-type', '-maxdepth', '-mindepth', '-newer', '-size', '-mtime', '-mmin', '-perm']);
@@ -249,12 +239,15 @@ export function routineCommand(command, where) {
   return parts.every((w) => routineWords(/** @type {string[]} */ (w), where));
 }
 
-/** Whether a fetch can go without a card: a public http(s) address, with no sign-in in it and not this computer. */
+/**
+ * Whether a fetch can go without a card: a public http(s) address, with no sign-in, query or fragment in it, and not
+ * this computer. A query or fragment could carry data out, so it goes on to the reviewer.
+ */
 export function publicFetch(url) {
   try {
     const u = new URL(String(url));
     const local = /^(?:localhost|.*\.localhost|\[.*\]|\d+\.\d+\.\d+\.\d+)$/i.test(u.hostname);
-    return (u.protocol === 'https:' || u.protocol === 'http:') && !u.username && !u.password && !local;
+    return (u.protocol === 'https:' || u.protocol === 'http:') && !u.username && !u.password && !u.search && !u.hash && !local;
   } catch {
     return false; // not an address at all: the person sees it on a card
   }
@@ -276,8 +269,6 @@ export function autoAllows(name, args, where) {
     case 'list_resources':
     case 'read_resource':
       return true;
-    case 'call_mcp_tool':
-      return Boolean(String(args.ServerName ?? '') && String(args.ToolName ?? ''));
     default:
       return false;
   }

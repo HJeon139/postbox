@@ -37,8 +37,6 @@ const ROUTINE = [
   'git branch --show-current',
   'gh issue list --state open --limit 10',
   'gh pr view 415 --json title',
-  'gh issue create --title "Flaky check" --body "It fails on main."',
-  'gh pr comment 423 --body "Looks good."',
   'grep -rn "TODO" src/*.js',
   'grep -rn --include=*.js TODO src',
   "find . -name '*.md' -type f",
@@ -64,6 +62,10 @@ const ASKS = [
   ['git push', 'git that leaves the computer'],
   ['gh api repos/x/y -X DELETE', 'gh api, which can do anything'],
   ['gh pr view 1 --web', 'gh that opens a browser'],
+  ['gh issue create --title "Flaky check" --body "It fails on main."', 'a gh write, which keeps its card (#112)'],
+  ['gh pr comment 423 --body "Looks good."', 'a gh comment'],
+  ['gh pr review 423 --approve', 'a gh review'],
+  ['gh release create v1.0.0', 'a gh release'],
   ['git commit --amend', 'git that rewrites a commit'],
   ['git branch -D old', 'git that deletes a branch'],
   ['git -C /tmp status', 'git in another folder'],
@@ -181,29 +183,42 @@ test('Auto asks before jq and gh --jq, which can print the environment', () => {
     assert.equal(call('run_command', { CommandLine: c }).decision, 'ask', c);
 });
 
-// #423’s review: a search, or a fetch’s path, subdomain or query, can carry data out. The maintainer accepted that
-// for writes outside Postbox, so these go without a card and the Auto note says so; only this computer and a
-// sign-in in the address ask.
-test('Auto allows web searches and public fetches, data in them included; a sign-in or a local address asks', () => {
+// #423’s review: a search, or a fetch’s path, subdomain or query, can carry data out. On review the maintainer kept
+// searches and query-free fetches, and sent a query or fragment on to the reviewer or the card; this computer and a
+// sign-in in the address ask too.
+test('Auto allows web searches and public fetches without a query or fragment; a query, a fragment, a sign-in or a local address asks', () => {
   const { call } = workspace();
   assert.deepEqual(call('search_web', { query: 'postbox secret-token-1234' }), { decision: 'allow' });
-  for (const url of ['https://example.com/docs/a', 'https://example.com/?q=secret', 'https://secret.example.com/', 'https://example.com/secret/path'])
+  for (const url of ['https://example.com/docs/a', 'https://secret.example.com/', 'https://example.com/secret/path'])
     assert.deepEqual(call('read_url_content', { Url: url }), { decision: 'allow' }, url);
-  for (const url of ['https://me:pw@example.com/', 'http://localhost:4173/', 'http://127.0.0.1:4320/', 'http://[::1]:4173/', 'file:///etc/passwd', 'nope'])
+  for (const url of [
+    'https://example.com/?q=secret',
+    'https://example.com/a#d=secret',
+    'https://me:pw@example.com/',
+    'http://localhost:4173/',
+    'http://127.0.0.1:4320/',
+    'http://[::1]:4173/',
+    'file:///etc/passwd',
+    'nope',
+  ])
     assert.deepEqual(call('read_url_content', { Url: url }), { decision: 'ask', toolName: 'WebFetch', input: { url } }, url);
   for (const mode of ['ask', 'acceptEdits']) {
     assert.equal(call('search_web', { query: 'postbox' }, mode).decision, 'ask', mode);
     assert.equal(call('read_url_content', { Url: 'https://example.com/docs/a' }, mode).decision, 'ask', mode);
   }
-  assert.equal(publicFetch('https://example.com/a#part'), true);
+  assert.equal(publicFetch('https://example.com/a#part'), false);
+  assert.equal(publicFetch('https://example.com/a?'), true, 'an empty query carries nothing');
 });
 
-test('Auto allows MCP tools outside Postbox, writes included (as Codex’s reviewer may, #415); permission_prompt is denied', () => {
+test('Auto approves no MCP tool outside Postbox by rule: each asks, for the reviewer or the card (#416, #112); permission_prompt is denied', () => {
   const { call } = workspace();
-  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'get_issue', Arguments: { number: 1 } }), { decision: 'allow' });
+  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'get_issue', Arguments: { number: 1 } }), {
+    decision: 'ask',
+    toolName: 'mcp__github__get_issue',
+    input: { number: 1 },
+  });
   assert.deepEqual(call('read_resource', { ServerName: 'docs', Uri: 'docs://a' }), { decision: 'allow' });
-  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }), { decision: 'allow' });
-  for (const mode of ['ask', 'acceptEdits'])
+  for (const mode of ['auto', 'ask', 'acceptEdits'])
     assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }, mode), {
       decision: 'ask',
       toolName: 'mcp__github__create_issue',
@@ -273,10 +288,12 @@ test('the hook in Auto allows a routine command without asking Postbox, and asks
 test('the persona sheet says Auto on Antigravity is Postbox’s own approval, and what still asks', () => {
   const help = (id) => modeHelp('antigravity-cli', /** @type {any} */ (PERMISSIONS.find(([m]) => m === id)));
   assert.match(help('auto'), /^Antigravity’s Auto: Postbox approves routine actions itself, since agy’s own Auto isn’t available on this account/);
-  assert.match(help('auto'), /including writes outside Postbox through MCP tools and gh/);
-  assert.match(help('auto'), /Searches and fetches go out without a card, and can carry what the agent puts in them/);
+  assert.match(
+    help('auto'),
+    /It asks with a card before anything else, such as rm, git commit, npm test, curl, a fetch with a query, an MCP tool, edits in \.git, edits outside its folders, or a write outside Postbox/,
+  );
+  assert.match(help('auto'), /A search goes out without a card, and can carry what the agent puts in it/);
   // It doesn’t name a command as routine that could run what a script says (#423’s review).
   assert.doesNotMatch(/everyday commands there \(([^)]*)\)/.exec(help('auto'))?.[1] ?? 'missing npm', /npm|commit/);
-  assert.match(help('auto'), /asks with a card before anything else, such as rm, git commit, npm test, curl, edits in .git, or edits outside its folders/);
   assert.notEqual(help('auto'), help('acceptEdits'));
 });
