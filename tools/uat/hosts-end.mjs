@@ -11,7 +11,7 @@
 // does step 3 in cleanUp, once, after any end-of-run checks already going.
 
 import { IDLE_GRACE_MS } from '../../server/remote/hosts-links.mjs';
-import { sleep } from '../cdp.mjs';
+import { sleep } from '../browser.mjs';
 import { closeAll, removeHost } from './driver-hosts.mjs';
 import { saveHosts } from './hosts-run.mjs';
 import { cleanUpScript, linesOf, measureOn, onHost, processesOf, SCRIPTS, UUID } from './hosts-ssh.mjs';
