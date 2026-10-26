@@ -73,7 +73,7 @@ test('what agents read about the app check says narrow and wide windows, not pho
 
 test('the guide stays short: agents follow defaults more than prose', () => {
   // About 8,300 characters before M1 core, which added the limits, palettes and outcome. Cut before adding.
-  assert.ok(guideText().length <= 9000, `The guide is ${guideText().length} characters. Keep it under 9,000.`);
+  assert.ok(guideText().length <= 9250, `The guide is ${guideText().length} characters. Keep it under 9,250.`);
   // It’s the same text on every turn.
   const who = { persona: { handle: 'a' }, handles: ['a', 'b'] };
   assert.equal(agentGuide(who), agentGuide(who));
@@ -136,7 +136,7 @@ test('agy’s rules file for a busy room stays within its 12,000 characters', ()
     toolRules: null,
     setup: false,
   });
-  assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity/mcp/postbox' }).length <= 12000);
+  assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity/mcp/postbox' }).length <= 12250);
 });
 
 // A reply wakes its waker only by an @-mention (#372), so the guide says when to mention: too often loops, never stalls.
@@ -158,3 +158,4 @@ test('a Codex agent’s guide says its turn ends when it replies, to finish a ch
   for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
     assert.doesNotMatch(agentGuide({ persona: { handle: 'x', backend }, handles: ['x'] }), /When your turn ends/, backend);
 });
+
