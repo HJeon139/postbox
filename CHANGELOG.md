@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.40.4 (2026-10-26)
+
+### Fixes
+
+- **tools:** let SIGTERM and SIGHUP end a screenshot run, as before Playwright
+- **uat:** kill Chromium when its close hangs, so a run's stop reaches Postbox
+- **lint:** check page code passed to frameOf, as to evaluate and waitFor
+- **uat:** drive Chromium through Playwright, so a killed run leaves no browser
+
 ## 0.40.3 (2026-10-26)
 
 ### Fixes

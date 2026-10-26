@@ -4,7 +4,7 @@
 // never read anything but Connected wasn’t cut off at all (an ssh that wasn’t its connection, say), and its fault
 // shows nothing about recovering (recovered null, unseen).
 
-import { sleep } from '../cdp.mjs';
+import { sleep } from '../browser.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);
 const RECOVER_MS = 180_000;

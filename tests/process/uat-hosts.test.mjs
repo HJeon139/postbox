@@ -2,8 +2,8 @@
 // add a host, set its settings and the project’s folder there, Install through its confirm (from the card’s Install…
 // and, for a host just added with no status, from the confirm the runner opens), put an agent on it in Runs on, and
 // Remove it through its confirm. The live run can’t be tried here, so this is what shows the driver’s selectors still
-// match the page. The driver is the UAT runner’s own code on tools/cdp.mjs, which Playwright can’t drive, so this
-// starts Chrome as the runner does, and is under tests/process/ (npm run test:process).
+// match the page. The driver is the UAT runner’s own code on tools/browser.mjs, not a Playwright spec, so this
+// starts Chromium as the runner does, and is under tests/process/ (npm run test:process).
 // It starts its own fresh Postbox with a fake host manager (no ssh, no host): a host just added is not installed, as
 // the real manager says of one with no token here, unless `quiet` holds its status back (as a Postbox before that fix
 // did, which the driver still copes with); installing makes it Disconnected. Moved from tools/check-uat-hosts.mjs.
@@ -16,9 +16,9 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { start } from '../../server/index.mjs';
 import { describeInstall } from '../../server/remote/install.mjs';
-import { freePort, useChrome } from './chrome.mjs';
+import { chromiumMissing, freePort } from './chrome.mjs';
 
-const skip = await useChrome();
+const skip = await chromiumMissing();
 const VERSION = '0.24.0';
 const WELCOME = {
   version: VERSION,
@@ -106,8 +106,7 @@ const called = (what, id) => fake.calls.some((c) => c[0] === what && c[1] === id
 
 before(async () => {
   if (skip) return;
-  // After useChrome(), which sets the CHROME that cdp.mjs reads as it loads.
-  const { launch } = await import('../../tools/cdp.mjs');
+  const { launch } = await import('../../tools/browser.mjs');
   const { driver } = await import('../../tools/uat/driver.mjs');
   hosts = await import('../../tools/uat/driver-hosts.mjs');
   dataDir = await mkdtemp(join(tmpdir(), 'pb-test-uat-hosts-'));
@@ -127,7 +126,7 @@ before(async () => {
   app = await start({ port, dataDir, fresh: true, quiet: true, claudeHome: dataDir, hosts: /** @type {any} */ (fake), probes });
   app.store.emit('project', { id: 'pr_uat', name: 'Line counter', folder: dataDir });
   coder = app.rt.createPersona({ handle: 'coder', backend: 'claude-code' });
-  page = await launch({ port: await freePort([port]) });
+  page = await launch();
   kit = driver(page).kit;
   await page.size(1280, 900);
   await page.goto(`${app.origin}/`);
