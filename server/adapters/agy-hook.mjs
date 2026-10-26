@@ -3,8 +3,9 @@
 // --dangerously-skip-permissions in Ask me, Auto or Accept edits. It allows safe calls for the mode, denies edits to
 // Postbox’s plugin, this script or ~/.gemini/antigravity-cli, and asks the person through Postbox’s permission_prompt
 // MCP tool for the rest. In Auto it also allows routine commands, gh’s issue and pull request commands, web searches
-// and public fetches, and MCP tools outside Postbox (server/adapters/agy-auto.mjs). Fails closed to { decision: "deny", reason } on any error; never
-// outputs ask, force_ask or empty stdout, which agy fails open on under --dangerously-skip-permissions.
+// and public fetches, and MCP tools outside Postbox (server/adapters/agy-auto.mjs), and asks before an edit in .git.
+// Fails closed to { decision: "deny", reason } on any error; never outputs ask, force_ask or empty stdout, which agy
+// fails open on under --dangerously-skip-permissions.
 
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
@@ -14,7 +15,7 @@ import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
-import { autoAllows } from './agy-auto.mjs';
+import { autoAllows, inGit } from './agy-auto.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
@@ -128,7 +129,9 @@ export function decideAgyTool(event, { mode = 'ask', folders = [], cwd = process
     if (isProtectedPath(raw, { cwd, scriptPath, home }))
       return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
     const real = realTarget(raw, cwd);
-    if (roots.some((r) => inside(real, r)) && (mode === 'auto' || mode === 'acceptEdits')) return { decision: 'allow' };
+    // In Auto, an edit in .git asks: its config and hooks could name a program the routine git commands would run.
+    const gitEdit = mode === 'auto' && (inGit(resolve(cwd, String(raw))) || inGit(real));
+    if (roots.some((r) => inside(real, r)) && (mode === 'auto' || mode === 'acceptEdits') && !gitEdit) return { decision: 'allow' };
     return { decision: 'ask', toolName: name.startsWith('write') ? 'Write' : 'Edit', input: { file_path: String(raw ?? '').trim() } };
   }
   if (READ_TOOLS.has(name)) {

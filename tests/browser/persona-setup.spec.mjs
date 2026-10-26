@@ -102,7 +102,9 @@ test('the Antigravity CLI’s Auto says Postbox approves routine actions itself,
   await field.getByRole('radio', { name: 'Auto', exact: true }).click();
   await expect(field.locator('.help')).toHaveText(/^Antigravity’s Auto: Postbox approves routine actions itself/);
   await expect(field.locator('.help')).toContainText('including writes outside Postbox through MCP tools and gh');
-  await expect(field.locator('.help')).toContainText('It asks with a card before anything else, such as rm, git push, curl, or edits outside its folders.');
+  await expect(field.locator('.help')).toContainText(
+    'It asks with a card before anything else, such as rm, git commit, npm test, curl, edits in .git, or edits outside its folders.',
+  );
   await field.getByRole('radio', { name: 'Accept edits', exact: true }).click();
   await expect(field.locator('.help')).not.toContainText('Postbox approves routine actions itself');
 });
