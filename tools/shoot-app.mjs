@@ -10,10 +10,10 @@
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from '../server/index.mjs';
-import { launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './cdp.mjs';
 import { play } from './demo.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -58,12 +58,40 @@ const settle = async () => {
     });
   await sleep(900);
 };
-page.attach = async (rel) => {
-  const { root } = await page.send('DOM.getDocument', {});
-  const { nodeId } = await page.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.composer input[type=file]' });
-  if (nodeId) await page.send('DOM.setFileInputFiles', { nodeId, files: [resolve(ROOT, rel)] });
-  await sleep(600);
-};
+
+/**
+ * A scene’s prepare steps (tools/demo.mjs, UI) on the shooter: each waits for the first element a selector finds,
+ * then acts on it in the page.
+ * @type {import('./demo.mjs').UI}
+ */
+const ui = (() => {
+  const node = (sel, text) => `[...document.querySelectorAll(${js(sel)})].find((n) => ${text === undefined ? 'true' : `n.textContent.includes(${js(text)})`})`;
+  const act = async (sel, text, code) => {
+    await page.waitFor(`!!${node(sel, text)}`, { label: `${sel}${text === undefined ? '' : ` with “${text}”`}` });
+    await page.evaluate(`(() => { const n = ${node(sel, text)}; ${code}; })()`);
+  };
+  return {
+    click: (sel, text) => act(sel, text, 'n.click()'),
+    activate: (sel, text) => act(sel, text, 'n.click()'),
+    press: (sel, key) =>
+      act(
+        sel,
+        undefined,
+        `n.scrollIntoView({ block: 'center' }); n.focus(); n.dispatchEvent(new KeyboardEvent('keydown', { key: ${js(key)}, bubbles: true }))`,
+      ),
+    fill: (sel, value) => act(sel, undefined, `n.value = ${js(value)}; n.dispatchEvent(new Event('input', { bubbles: true }))`),
+    attach: async (sel, file) => {
+      await page.waitFor(`!!document.querySelector(${js(sel)})`, { label: sel });
+      const { root } = await page.send('DOM.getDocument', {});
+      const { nodeId } = await page.send('DOM.querySelector', { nodeId: root.nodeId, selector: sel });
+      await page.send('DOM.setFileInputFiles', { nodeId, files: [file] });
+    },
+    scroll: (sel) => act(sel, undefined, `n.scrollIntoView({ block: 'center' })`),
+    shows: async (sel, text) => {
+      await page.waitFor(`!!${node(sel, text)}?.checkVisibility()`, { label: `${sel}${text === undefined ? '' : ` with “${text}”`} to show` });
+    },
+  };
+})();
 
 async function goto(theme, w, h, scale) {
   await page.size(w, h, { theme, scale });
@@ -106,7 +134,7 @@ try {
     shot: async (name, { prepare } = {}) => {
       for (const [theme, w, h, scale] of VARIANTS) {
         await goto(theme, w, h, scale);
-        if (prepare) await prepare(page);
+        if (prepare) await prepare(ui);
         const file = join(OUT, `${name}-${theme}-${w}.png`);
         const height = await page.shoot(file, { width: w, baseH: h, scale });
         console.log(`  ${name}-${theme}-${w}.png  ${w}×${height}`);
