@@ -2,7 +2,7 @@
 // leaves no Chromium behind, nor any of its helper processes. Chrome on a DevTools port, as tools/cdp.mjs ran it,
 // lived on with no parent, and runs piled them up; Playwright’s headless shell, as tools/browser.mjs runs it, exits
 // when its pipe closes. The run is tests/fixtures/browser-hold.mjs, started both ways tools/browser.mjs launches. A
-// Chromium that won’t close is killed.
+// SIGTERM ends a screenshot run as it would without a browser, and a Chromium that won’t close is killed.
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -62,6 +62,7 @@ async function hold(args) {
 for (const [how, signal] of [
   ['detached', 'SIGKILL'],
   ['not detached', 'SIGKILL'],
+  ['not detached', 'SIGTERM'],
 ]) {
   test(`a run ended with ${signal} leaves no Chromium, ${how}`, { skip, timeout: READY_MS + GONE_MS + 10_000 }, async () => {
     const run = await hold(how === 'detached' ? ['detached'] : []);

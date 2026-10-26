@@ -31,8 +31,9 @@ const START_MS = 45000;
  * Starts Playwright’s headless Chromium, and finds its pid, to kill it if it won’t close: Playwright doesn’t say it,
  * so it’s the child the launch added. detached: the script owns SIGINT, SIGTERM and SIGHUP, and Chromium stays up
  * through them for a script that still needs its page to clean up (tools/uat-run.mjs); Playwright runs it in a
- * process group of its own, so a terminal’s Ctrl-C doesn’t reach it either. Otherwise the first of those signals
- * closes it, and the script exits.
+ * process group of its own, so a terminal’s Ctrl-C doesn’t reach it either. Otherwise SIGINT closes it and exits
+ * 130, as Playwright does, and SIGTERM and SIGHUP end the script as they would without it: Playwright’s own handlers
+ * for them close Chromium but leave the script running.
  * @param {boolean} detached
  */
 async function start(detached) {
@@ -41,8 +42,8 @@ async function start(detached) {
     const browser = await chromium.launch({
       timeout: START_MS,
       handleSIGINT: !detached,
-      handleSIGTERM: !detached,
-      handleSIGHUP: !detached,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
       // An agent app’s sandboxed frame in a process of its own, as Chrome runs it for a person: the headless shell
       // otherwise runs it in the page’s, where a busy app would slow Postbox’s page with it.
       args: ['--site-per-process'],
