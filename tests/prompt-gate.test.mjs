@@ -39,10 +39,12 @@ const NOT_SURFACE = {
   'server/store.mjs': 'seed.mjs takes newId()',
   'server/adapters/agy-hook.mjs': 'PreToolUse hook script and hooks.json check, not prompt text',
   'server/adapters/claude-stream.mjs': 'describeTool() and isQuietTool() label tool calls for the person’s transcript',
+  'server/adapters/context-usage.mjs': 'context window sizes and token percentage calculations',
   'server/adapters/folder.mjs': 'agentFolder(), a path',
   'server/adapters/process-group.mjs': 'process control',
   'server/adapters/adapter.mjs': 'kiro-cli.mjs takes checkRemoteContext(), which checks a host turn’s context (#120)',
   'server/adapters/kiro-cli-models.mjs': 'kiro-cli.mjs takes the CLI’s path and its model ids (#120 moved them there)',
+  'server/adapters/agy-settings.mjs': 'agySettingsFile() and allowPostbox(), settings files and permission rules',
 };
 
 test('every module the rendered text comes from is prompt surface, or excused with a reason', () => {

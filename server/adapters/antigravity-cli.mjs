@@ -43,14 +43,15 @@
 
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { agyHookCommand, agyHooksJson, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT, HOOK_TIMEOUT_S } from './agy-hook.mjs';
 import { clip, HEADLESS_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
+import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
+import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
@@ -61,9 +62,6 @@ export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permi
 
 /** The agy binary: POSTBOX_AGY_BIN, then the PATH. */
 export const findAgy = (env = process.env) => env.POSTBOX_AGY_BIN || 'agy';
-
-/** Your agy settings, where the allow rule for Postbox’s tools goes. */
-export const agySettingsFile = (home = homedir()) => join(home, '.gemini', 'antigravity-cli', 'settings.json');
 
 /** The installed version (“1.4.5”), or null if the CLI can’t be run. */
 export function agyVersion(bin = findAgy()) {
@@ -161,37 +159,7 @@ const named = (model) => /-(low|medium|high)$/.exec(String(model))?.[1] ?? null;
 /** The effort a turn ran at, for the model chip: the one passed, or the one the id names. */
 export const effortRun = (model, passed) => passed ?? named(model);
 
-/** Postbox’s server, as agy names it: the plugin’s name, then the server’s. */
-export const AGY_SERVER = `${POSTBOX_SERVER}_${POSTBOX_SERVER}`;
-/** The one rule Postbox adds to your agy settings, so its own tools aren’t refused headless. */
-export const ALLOW_POSTBOX = `mcp(${AGY_SERVER}/*)`;
-
-/**
- * Adds ALLOW_POSTBOX to `permissions.allow` in your agy settings, keeping everything else. A file agy itself
- * couldn’t read is left alone (agy 1.4.5’s changelog: it no longer overwrites one), and Postbox’s tools are then
- * refused, which the turn shows.
- * @returns {Promise<'added'|'present'|'unreadable'>}
- */
-export async function allowPostbox(file = agySettingsFile()) {
-  /** @type {any} */
-  let settings = {};
-  try {
-    settings = JSON.parse(await readFile(file, 'utf8'));
-  } catch (e) {
-    if (e?.code !== 'ENOENT') return 'unreadable';
-  }
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return 'unreadable';
-  const permissions = settings.permissions && typeof settings.permissions === 'object' ? settings.permissions : {};
-  const allow = Array.isArray(permissions.allow) ? permissions.allow : [];
-  if (allow.includes(ALLOW_POSTBOX)) return 'present';
-  const next = { ...settings, permissions: { ...permissions, allow: [...allow, ALLOW_POSTBOX] } };
-  await mkdir(dirname(file), { recursive: true });
-  // Written beside it and renamed, so agy never reads half a file.
-  const tmp = `${file}.postbox-${process.pid}`;
-  await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-  await rename(tmp, file);
-  return 'added';
-}
+export { AGY_SERVER, ALLOW_POSTBOX, agyContextPercent, agySettingsFile, agyWindowFor, allowPostbox };
 
 /** The persona’s permission mode as agy’s flags (#370: --dangerously-skip-permissions only once the PreToolUse hook is confirmed). */
 export function modeArgs(persona, { hookConfirmed = false } = {}) {
@@ -337,6 +305,22 @@ export const stepId = (s) => `agy-${String(s?.conversation_id ?? '').slice(0, 8)
 const labelOf = ({ name, input }) =>
   name.startsWith('mcp__') || Object.keys(input).length || name === 'ToolSearch' ? describeTool(name, input) : clip(name.replace(/_/g, ' '), 80);
 
+// A refusal agy doesn’t mark on its step (recorded: with --mode auto unavailable for the account, the command’s
+// step ended DONE with no output, and only the result’s denied_actions said it was refused). Each one, by its
+// display_name (RunCommand is run_command), is the last step of that tool that ended done with no output.
+const deniedAfter = (actions, st, ctx) => {
+  for (const a of Array.isArray(actions) ? actions : []) {
+    const name = String(a?.display_name ?? '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .toLowerCase();
+    const t = [...st.tools.values()].reverse().find((x) => x.name === name && x.state === 'done' && !x.output);
+    if (!t) continue;
+    t.state = 'denied';
+    if (t === [...st.tools.values()].at(-1) && !st.textSinceTool) st.refusedLast = t.label;
+    if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state: 'denied', ms: t.ms, detail: refusalOf(ctx.persona?.permissionMode) });
+  }
+};
+
 /**
  * Turns agy’s stream-json output into Postbox’s turn context. Every line is { event, … }: init (the conversation,
  * the model and the tools), then step_update for each step (user_input, system_message, agent_response with its
@@ -349,6 +333,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
   const st = {
     sessionId: /** @type {string|null} */ (null),
     model: /** @type {string|null} */ (null),
+    contextWindow: agyWindowFor(ctx?.persona?.model),
+    ctx: /** @type {number|null} */ (null),
     finished: /** @type {any} */ (null),
     error: /** @type {string|null} */ (null),
     missingSession: false,
@@ -370,6 +356,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     if (patch.state) st.state = patch.state;
     ctx.status(patch);
   };
+  if (!st.contextWindow) status({ ctx: null });
   const key = (s) => `${s.conversation_id ?? ''}:${s.step_index}`;
   const startTool = (s) => {
     const tool = toolOf(s);
@@ -413,25 +400,19 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     // the Gemini room UAT, with the ring still on the tool). So the ring says so now, as Claude Code’s does.
     status({ state: 'think', currentStep: 'Thinking' });
   };
-  // A refusal agy doesn’t mark on its step (recorded: with --mode auto unavailable for the account, the command’s
-  // step ended DONE with no output, and only the result’s denied_actions said it was refused). Each one, by its
-  // display_name (RunCommand is run_command), is the last step of that tool that ended done with no output.
-  const deniedAfter = (actions) => {
-    for (const a of Array.isArray(actions) ? actions : []) {
-      const name = String(a?.display_name ?? '')
-        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-        .toLowerCase();
-      const t = [...st.tools.values()].reverse().find((x) => x.name === name && x.state === 'done' && !x.output);
-      if (!t) continue;
-      t.state = 'denied';
-      if (t === [...st.tools.values()].at(-1) && !st.textSinceTool) st.refusedLast = t.label;
-      if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state: 'denied', ms: t.ms, detail: refusalOf(ctx.persona?.permissionMode) });
-    }
-  };
   const step = (s) => {
     if (s?.step_type === 'tool' || s?.step_type === 'agent_response') {
       st.went = true;
       st.stuck = false;
+    }
+    if (s?.usage) {
+      const pct = agyContextPercent(s.usage, st.contextWindow);
+      if (pct !== null && pct !== st.ctx) {
+        st.ctx = pct;
+        status({ ctx: pct });
+      } else if (!st.contextWindow) {
+        status({ ctx: null });
+      }
     }
     switch (s?.step_type) {
       case 'agent_response': {
@@ -504,6 +485,8 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
           const model = typeof e.init?.model === 'string' && e.init.model ? e.init.model : null;
           if (model) {
             st.model = model;
+            st.contextWindow = agyWindowFor(model);
+            if (!st.contextWindow) status({ ctx: null });
             const ran = effortRun(model, effort);
             ctx.reported?.({ model, ...(ran ? { effort: ran } : {}) });
           }
@@ -516,7 +499,16 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
         case 'result': {
           const r = e.result ?? {};
           st.finished = r;
-          deniedAfter(r.denied_actions);
+          deniedAfter(r.denied_actions, st, ctx);
+          if (st.ctx === null && r.usage) {
+            const pct = agyContextPercent(r.usage, st.contextWindow);
+            if (pct !== null) {
+              st.ctx = pct;
+              status({ ctx: pct });
+            } else if (!st.contextWindow) {
+              status({ ctx: null });
+            }
+          }
           if (r.status === 'SUCCESS') return;
           const why = clip(r.error || r.status || 'no reason given', 400);
           // agy’s ERROR doesn’t say how the turn ended. Recorded in the Gemini room UAT: ERROR after a model call it

@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.36.2 (2026-10-26)
+
+### Fixes
+
+- **adapters:** render context unknown on quick panel and initialize sessions at null ctx (#392)
+- **adapters:** clear unknown context and cite Gemini 4 Argon window (#392)
+- **adapters:** align Codex token usage shape and cite model context windows (#392)
+- **adapters:** report active context usage for Antigravity and Codex (#392)
+
 ## 0.36.1 (2026-10-25)
 
 ### Fixes
