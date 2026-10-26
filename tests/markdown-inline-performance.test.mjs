@@ -24,3 +24,8 @@ test('sixty-six thousand unclosed LaTeX math delimiters render in under one seco
   assert.equal(rendered, '(a'.repeat(66_667));
   assert.ok(elapsed < 1_000, `rendering took ${Math.round(elapsed)} ms`);
 });
+
+test('an escaped backslash before a LaTeX closer stays text, not a malformed formula', () => {
+  assert.equal(inline(String.raw`\(a\\)`, {}), String.raw`(a\)`);
+  assert.equal(inline(String.raw`\[a\\]`, {}), String.raw`[a\]`);
+});

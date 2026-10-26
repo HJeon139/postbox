@@ -55,13 +55,13 @@ export function displayMath(lines, i) {
  * The math that starts at s[i], as the inline parser reads it: `$$…$$` is display math, as agents write a formula
  * on one line (#147), and `$…$` is inline math. So are LaTeX’s `\[…\]` and `\(…\)` (#137): read before backslash
  * escapes, so `\(` without its `\)` is still an escaped bracket.
- * @param {string} s @param {number} i @param {Map<number, number>} [closes]  precomputed LaTeX delimiter closes
+ * @param {string} s @param {number} i @param {Map<number, number>} closes  precomputed LaTeX delimiter closes
  * @returns {{ tex: string, display: boolean, end: number } | null}  end: the index after its closing delimiter
  */
 export function mathAt(s, i, closes) {
   const pair = s.startsWith('$$', i) ? '$$' : s.startsWith('\\(', i) ? '\\)' : s.startsWith('\\[', i) ? '\\]' : null;
   if (pair) {
-    const end = pair === '$$' || !closes ? s.indexOf(pair, i + 2) : (closes.get(i) ?? -1);
+    const end = pair === '$$' ? s.indexOf(pair, i + 2) : (closes.get(i) ?? -1);
     return end > -1 && s.slice(i + 2, end).trim() ? { tex: s.slice(i + 2, end), display: pair !== '\\)', end: end + 2 } : null;
   }
   if (s[i] !== '$' || !s[i + 1] || /\s/.test(s[i + 1])) return null;
