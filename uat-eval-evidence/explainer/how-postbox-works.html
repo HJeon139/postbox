@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Postbox works</title>
+<style>
+  .pbx-root { color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; padding: 12px; box-sizing: border-box; max-width: 1000px; margin: 0 auto; }
+  .pbx-root *, .pbx-root *::before, .pbx-root *::after { box-sizing: border-box; }
+  .pbx-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 8px; }
+  .pbx-head h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .pbx-tablist { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .pbx-tablist .btn[aria-selected="true"] { border-color: var(--accent); color: var(--accent); }
+  .pbx-view { display: none; }
+  .pbx-view.pbx-on { display: block; }
+  .pbx-stage { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  .pbx-svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .pbx-svg text { font-size: 12px; fill: var(--text); }
+  .pbx-svg .pbx-dim { fill: var(--dim); }
+  .pbx-svg .pbx-b { font-weight: 600; }
+  .pbx-svg .pbx-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .pbx-svg [tabindex] { cursor: pointer; }
+  .pbx-svg [tabindex]:focus { outline: none; }
+  .pbx-svg [tabindex]:focus-visible .pbx-ring { stroke: var(--accent); stroke-width: 3; }
+  .pbx-ctl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 0; }
+  .pbx-cap { margin: 8px 0 0; min-height: 2.9em; }
+  .pbx-root details { margin-top: 6px; color: var(--dim); font-size: 12px; }
+  .pbx-root details summary { cursor: pointer; }
+  .pbx-root details p { margin: 4px 0; }
+  .pbx-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  @media (max-width: 760px) { .pbx-two { grid-template-columns: minmax(0, 1fr); } }
+  .pbx-sub { font-size: 13px; font-weight: 600; margin: 0 0 4px; }
+  .pbx-range { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 13px; }
+  .pbx-range input[type=range] { flex: 1 1 160px; min-width: 120px; }
+  .pbx-range output { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 3.5em; }
+  .pbx-foot { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="pbx-root">
+  <div class="pbx-head">
+    <h1>How Postbox works</h1>
+    <span class="dim small">Drawn from intent.md, architecture.md and the code on main</span>
+  </div>
+  <div class="pbx-tablist" role="tablist" aria-label="Topics">
+    <button class="btn sm" role="tab" data-tab="loop" id="pbx-t-loop" aria-controls="pbx-v-loop">1. The loop</button>
+    <button class="btn sm" role="tab" data-tab="catch" id="pbx-t-catch" aria-controls="pbx-v-catch">2. Shared memory</button>
+    <button class="btn sm" role="tab" data-tab="tiers" id="pbx-t-tiers" aria-controls="pbx-v-tiers">3. The frame</button>
+    <button class="btn sm" role="tab" data-tab="store" id="pbx-t-store" aria-controls="pbx-v-store">4. The event log</button>
+    <button class="btn sm" role="tab" data-tab="wakes" id="pbx-t-wakes" aria-controls="pbx-v-wakes">5. Wakes</button>
+    <button class="btn sm" role="tab" data-tab="gate" id="pbx-t-gate" aria-controls="pbx-v-gate">6. The gate</button>
+  </div>
+
+  <section class="pbx-view" id="pbx-v-loop" role="tabpanel" aria-labelledby="pbx-t-loop">
+    <div class="pbx-stage"><svg class="pbx-svg" id="pbx-loop" role="img" aria-labelledby="pbx-loop-cap"></svg></div>
+    <div class="pbx-ctl">
+      <button class="btn sm" id="pbx-l-prev">Back</button>
+      <button class="btn sm" id="pbx-l-play">Play</button>
+      <button class="btn sm" id="pbx-l-next">Next</button>
+    </div>
+    <p class="pbx-cap" id="pbx-loop-cap" aria-live="polite"></p>
+    <details><summary>Why, and where it’s decided</summary><p id="pbx-loop-why"></p></details>
+  </section>
+
+  <section class="pbx-view" id="pbx-v-catch" role="tabpanel" aria-labelledby="pbx-t-catch">
+    <div class="pbx-stage"><svg class="pbx-svg" id="pbx-catch" role="img" aria-labelledby="pbx-catch-cap"></svg></div>
+    <div class="pbx-range">
+      <label for="pbx-c-seen">Agent A’s last turn was</label>
+      <input type="range" id="pbx-c-seen" min="1" max="80" value="18">
+      <output id="pbx-c-seen-o" for="pbx-c-seen"></output>
+    </div>
+    <p class="pbx-cap" id="pbx-catch-cap" aria-live="polite"></p>
+    <details><summary>Why, and where it’s decided</summary>
+      <p>Each turn starts with what happened since that agent’s last one, newest first, until 40 items or the next item would pass 16,000 characters. Its own messages are left out, each item is cut at 2,000 characters, and read_conversation reads what was left out. Issue #1: an agent that saw only its @-mention answered confidently about a discussion it never read.</p>
+      <p>architecture.md §12; server/runtime.mjs catchUp (CATCH_UP_ITEMS = 40), server/blocks.mjs (CATCH_UP_CHARS = 16,000). The item lengths drawn here are made up; the rule is the code’s.</p>
+    </details>
+  </section>
+
+  <section class="pbx-view" id="pbx-v-tiers" role="tabpanel" aria-labelledby="pbx-t-tiers">
+    <div class="pbx-stage"><svg class="pbx-svg" id="pbx-tiers" role="img" aria-labelledby="pbx-tiers-cap"></svg></div>
+    <div class="pbx-ctl" role="group" aria-label="Catalog block" id="pbx-kinds"></div>
+    <div class="pbx-ctl">
+      <button class="btn sm" id="pbx-a-show">Show an app</button>
+      <button class="btn sm" id="pbx-a-send">App sends an event</button>
+      <button class="btn sm" id="pbx-a-fetch">App calls fetch()</button>
+    </div>
+    <p class="pbx-cap" id="pbx-tiers-cap" aria-live="polite"></p>
+    <details><summary>Why, and where it’s decided</summary>
+      <p>Feedback that must be consistent (choices, forms, confirms, reviews) comes from a fixed catalog Postbox renders with its own code; everything else an agent writes runs in a sandbox behind a narrow bridge (principle 1). Apps are sandboxed by a CSP header, so they get an opaque origin and no network; the bridge answers only frames whose origin is null.</p>
+      <p>intent.md › Principles, Dynamic UI; architecture.md §10; app/kit/check.js (the 375 and 1280 px check).</p>
+    </details>
+  </section>
+
+  <section class="pbx-view" id="pbx-v-store" role="tabpanel" aria-labelledby="pbx-t-store">
+    <div class="pbx-stage"><svg class="pbx-svg" id="pbx-store" role="img" aria-labelledby="pbx-store-cap"></svg></div>
+    <div class="pbx-ctl">
+      <button class="btn sm" id="pbx-s-one">Add an event</button>
+      <button class="btn sm" id="pbx-s-five">Agent streams 5</button>
+      <button class="btn sm" id="pbx-s-conn">Drop the connection</button>
+      <button class="btn sm ghost" id="pbx-s-restart">Restart the server</button>
+      <button class="btn sm ghost" id="pbx-s-reset">Reset</button>
+    </div>
+    <p class="pbx-cap" id="pbx-store-cap" aria-live="polite"></p>
+    <details><summary>Why, and where it’s decided</summary>
+      <p>Every change is a numbered event appended to a JSON Lines log; the state is rebuilt from it. Postbox snapshots every 5,000 events and keeps the last 20,000 in memory for reconnecting browsers (8 and 12 here, so you can see them). A browser sends the last number it has; a server that no longer holds the next one tells it to refetch the whole state.</p>
+      <p>architecture.md §1; server/store.mjs (SNAPSHOT_EVERY, KEEP_EVENTS, since); server/index.mjs (the event stream).</p>
+    </details>
+  </section>
+
+  <section class="pbx-view" id="pbx-v-wakes" role="tabpanel" aria-labelledby="pbx-t-wakes">
+    <div class="pbx-stage"><svg class="pbx-svg" id="pbx-wakes" role="img" aria-labelledby="pbx-wakes-cap"></svg></div>
+    <div class="pbx-ctl">
+      <button class="btn sm" id="pbx-w-allow" disabled>Allow the held wake</button>
+      <button class="btn sm ghost" id="pbx-w-you">You write a message</button>
+      <button class="btn sm ghost" id="pbx-w-reset">Reset</button>
+    </div>
+    <p class="pbx-cap" id="pbx-wakes-cap" aria-live="polite"></p>
+    <details><summary>Why, and where it’s decided</summary>
+      <p>An @-mention wakes an agent; a reply wakes its waker only if it @-mentions it. After 10 agent wakes in a row, or 2 in a row between the same two agents, the next waits for your Allow. Each pair keeps its own count; your writing, Allow or a command resets them all. Only one wake waits at a time: while it does, wakes under the limits still go through, and one that needs a second card is refused and must be sent again.</p>
+      <p>intent.md › Attention and wakes; shared/limits.mjs (HOP_LIMIT = 10, PAIR_LIMIT = 2); server/side-threads.mjs.</p>
+    </details>
+  </section>
+
+  <section class="pbx-view" id="pbx-v-gate" role="tabpanel" aria-labelledby="pbx-t-gate">
+    <div class="pbx-two">
+      <div>
+        <p class="pbx-sub">npm run check, stage by stage</p>
+        <div class="pbx-stage"><svg class="pbx-svg" id="pbx-pipe" role="img" aria-labelledby="pbx-pipe-cap"></svg></div>
+        <div class="pbx-ctl" role="group" aria-label="Break something" id="pbx-breaks"></div>
+        <div class="pbx-ctl"><button class="btn sm" id="pbx-g-run">Run the gate</button></div>
+        <p class="pbx-cap" id="pbx-pipe-cap" aria-live="polite"></p>
+      </div>
+      <div>
+        <p class="pbx-sub">The generative-UI eval (#206, decided, not built)</p>
+        <div class="pbx-stage"><svg class="pbx-svg" id="pbx-score" role="img" aria-labelledby="pbx-score-cap"></svg></div>
+        <div class="pbx-range"><label for="pbx-e-now">This app’s median score</label><input type="range" id="pbx-e-now" min="0" max="100" value="70"><output id="pbx-e-now-o" for="pbx-e-now"></output></div>
+        <div class="pbx-range"><label for="pbx-e-prev">Its last score</label><input type="range" id="pbx-e-prev" min="0" max="100" value="88"><output id="pbx-e-prev-o" for="pbx-e-prev"></output></div>
+        <div class="pbx-range"><label for="pbx-e-pref">Preferred over text, of 10</label><input type="range" id="pbx-e-pref" min="0" max="10" value="7"><output id="pbx-e-pref-o" for="pbx-e-pref"></output></div>
+        <p class="pbx-cap" id="pbx-score-cap" aria-live="polite"></p>
+      </div>
+    </div>
+    <details><summary>Why, and where it’s decided</summary>
+      <p>engineering-practices.md › The gate lists the seven steps in order; each break shown here is one its rules name (raw colors, contrast pairs, the file-size ceiling, the test guard). #206: an app passes with a median of 80 or more, no script errors, and preferred over text in 7 or more of 10 pairs; a drop of 15 or more is a regression. Replay v6 and v8 both scored 84 (v8 had none of four agreed fixes); v9 scored 96 after them. Decided 25 October 2026 to run in every UAT; the issue is still open.</p>
+    </details>
+  </section>
+
+  <div class="pbx-foot">
+    <span class="dim small" id="pbx-sent" aria-live="polite"></span>
+    <button class="btn sm" id="pbx-ask">Ask the agent to go deeper on this tab</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var NS = 'http://www.w3.org/2000/svg';
+  var $ = function (id) { return document.getElementById(id); };
+  var pb = (typeof postbox !== 'undefined') ? postbox : null;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var state = { tab: 'loop', step: 0, seen: 18, kind: 'choice', brk: 'none' };
+  function save() { if (pb && pb.saveState) pb.saveState(state); }
+
+  /* ---------- drawing helpers ---------- */
+  function S(parent, tag, a, text) {
+    var n = document.createElementNS(NS, tag);
+    if (a) Object.keys(a).forEach(function (k) { if (a[k] != null) n.setAttribute(k, a[k]); });
+    if (text != null) n.textContent = text;
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function sized(svg, H) {
+    var W = Math.max(300, Math.floor(svg.parentNode.clientWidth - 16));
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('height', H);
+    return W;
+  }
+  function T(g, x, y, s, cls, anchor) { return S(g, 'text', { x: x, y: y, 'class': cls || null, 'text-anchor': anchor || null }, s); }
+  function arrowHead(g, x1, y1, x2, y2, fill, size) {
+    var a = Math.atan2(y2 - y1, x2 - x1), s = size || 7;
+    var p = [x2, y2, x2 - s * Math.cos(a - 0.45), y2 - s * Math.sin(a - 0.45), x2 - s * Math.cos(a + 0.45), y2 - s * Math.sin(a + 0.45)];
+    S(g, 'path', { d: 'M' + p[0] + ' ' + p[1] + 'L' + p[2] + ' ' + p[3] + 'L' + p[4] + ' ' + p[5] + 'Z', fill: fill });
+  }
+  var anims = {};
+  function animate(key, ms, step, done) {
+    if (anims[key]) cancelAnimationFrame(anims[key]);
+    if (reduce) { step(1); if (done) done(); return; }
+    var t0 = null;
+    function f(t) {
+      if (t0 == null) t0 = t;
+      var k = Math.min(1, (t - t0) / ms), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      step(e);
+      if (k < 1) anims[key] = requestAnimationFrame(f); else { anims[key] = 0; if (done) done(); }
+    }
+    anims[key] = requestAnimationFrame(f);
+  }
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  /* ---------- tabs ---------- */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role=tab]'));
+  var DRAW = {};
+  function showTab(name) {
+    state.tab = name;
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-tab') === name;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.setAttribute('tabindex', on ? '0' : '-1');
+      $('pbx-v-' + t.getAttribute('data-tab')).classList.toggle('pbx-on', on);
+    });
+    if (DRAW[name]) DRAW[name]();
+    save();
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { showTab(t.getAttribute('data-tab')); });
+    t.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      var j = (i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
+      tabs[j].focus(); showTab(tabs[j].getAttribute('data-tab'));
+    });
+  });
+  var rz = 0;
+  window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (DRAW[state.tab]) DRAW[state.tab](); }, 80); });
+
+  /* ======================= 1. The loop, on a time axis ======================= */
+  var LANES = [{ n: 'You', c: 'var(--s1)' }, { n: 'Postbox', c: 'var(--s2)' }, { n: 'Agent', c: 'var(--s3)' }];
+  var LY = [36, 104, 172];
+  var GAP = [0.45, 0.55];
+  var STEPS = [
+    { t: 0.03, f: 0, to: 1, l: 'message', cap: 'You write in the room. Postbox appends it to its log.', why: 'intent.md › Conversation: in a room, the composer always says who will reply.' },
+    { t: 0.07, f: 1, to: 2, l: 'wake + catch-up', cap: 'Postbox starts the agent’s turn (one claude -p process), with a catch-up of everything since its last turn.', why: 'architecture.md §5, §12. Tab 2 draws the catch-up.' },
+    { t: 0.15, f: 2, to: 1, l: 'streamed text', cap: 'The reply streams back as it’s written.', why: 'architecture.md §5: one mapper turns the CLI’s stream into text, activity and ring state.' },
+    { t: 0.23, f: 2, to: 1, l: 'show_block', cap: 'The agent calls a UI tool on Postbox’s MCP server.', why: 'intent.md › Integration: one MCP definition for every backend; a call needs the running turn’s token (#54).' },
+    { t: 0.26, f: 1, to: 1, l: 'validate', cap: 'Postbox checks the block against its catalog. An invalid one shows its plain-text fallback.', why: 'intent.md › Dynamic UI; limits come from shared/limits.mjs (#50).' },
+    { t: 0.29, f: 1, to: 2, l: 'returns at once', cap: 'The tool returns immediately. It doesn’t wait for your answer.', why: 'intent.md › Integration: MCP calls time out, and a reply may come hours later.' },
+    { t: 0.32, f: 1, to: 0, l: 'block shown', cap: 'The block appears for you, and starts waiting on you.', why: 'intent.md › Principles 1: agents author the software; Postbox owns the frame.' },
+    { t: 0.40, f: 2, to: 2, l: 'turn ends', cap: 'The agent’s turn ends. Its process exits; nothing is held open while you think.', why: 'architecture.md §5: a process per turn; a crash affects one turn.' },
+    { t: 0.60, f: 0, to: 1, l: 'you answer', cap: 'Minutes or hours later, you answer. The block turns read-only and shows your answer in your voice.', why: 'intent.md › Dynamic UI (#38, #51): only Postbox writes in your voice.' },
+    { t: 0.63, f: 1, to: 2, l: 'answer → new turn', cap: 'Your answer starts the agent’s next turn as a message: { blockId, revision, action, values }.', why: 'An answer is for the revision you saw; if the block changed meanwhile it’s refused and your draft stays (#123).' },
+    { t: 0.75, f: 2, to: 1, l: 'update_block', cap: 'The agent replies, or updates the same block by its id.', why: 'intent.md › Dynamic UI: one block per id, so an answer belongs to exactly one block (#125).' },
+    { t: 0.78, f: 1, to: 0, l: 'updated', cap: 'You see the update in place, or at the newest point if it asks you again.', why: 'An ask-again moves down so what needs you is in sight (#92).' }
+  ];
+  var loopPlay = 0;
+  function drawLoop(animStep) {
+    var svg = $('pbx-loop'), H = 236, W = sized(svg, H);
+    var L = W < 520 ? 62 : 84, R = W - 12, X = function (t) { return L + t * (R - L); };
+    var cur = STEPS[state.step], narrow = W < 560;
+    var g = S(svg, 'g');
+    // lanes
+    LANES.forEach(function (ln, i) {
+      S(g, 'rect', { x: L, y: LY[i] - 15, width: R - L, height: 30, rx: 4, fill: ln.c, 'fill-opacity': 0.12 });
+      T(g, 8, LY[i] + 4, ln.n, 'pbx-b');
+    });
+    // the agent's two turns, and the block waiting on you
+    var turns = [[0.07, 0.40, 'turn 1'], [0.63, 0.86, 'turn 2']];
+    turns.forEach(function (tr) {
+      S(g, 'rect', { x: X(tr[0]), y: LY[2] - 10, width: X(tr[1]) - X(tr[0]), height: 20, rx: 3, fill: 'var(--s3)', 'fill-opacity': 0.75 });
+      if (X(tr[1]) - X(tr[0]) > 48) T(g, (X(tr[0]) + X(tr[1])) / 2, LY[2] + 4, tr[2], 'pbx-b', 'middle');
+    });
+    if (state.step >= 6) {
+      var end = state.step >= 8 ? 0.60 : 0.98;
+      S(g, 'rect', { x: X(0.32), y: LY[0] - 10, width: X(end) - X(0.32), height: 20, rx: 3, fill: 'var(--s1)', 'fill-opacity': 0.75 });
+      if (X(GAP[0]) - X(0.32) > 96) T(g, X(0.32) + 8, LY[0] + 4, state.step >= 8 ? 'waited on you' : 'waits on you', 'pbx-b');
+    }
+    // the gap: time passes, nothing runs
+    var gx0 = X(GAP[0]), gx1 = X(GAP[1]);
+    S(g, 'rect', { x: gx0, y: LY[0] - 18, width: gx1 - gx0, height: LY[2] - LY[0] + 36, fill: 'var(--panel)' });
+    LY.forEach(function (y) { [gx0, gx1].forEach(function (x) { S(g, 'path', { d: 'M' + (x - 4) + ' ' + (y + 15) + 'l8 -30', stroke: 'var(--line-strong)', 'stroke-width': 1.5, fill: 'none' }); }); });
+    if (!narrow) T(g, (gx0 + gx1) / 2, LY[1] + 4, 'later', 'pbx-dim', 'middle');
+    // time axis
+    var ay = LY[2] + 30;
+    S(g, 'line', { x1: L, y1: ay, x2: gx0, y2: ay, stroke: 'var(--line-strong)' });
+    S(g, 'line', { x1: gx1, y1: ay, x2: R, y2: ay, stroke: 'var(--line-strong)' });
+    arrowHead(g, R - 8, ay, R, ay, 'var(--line-strong)');
+    T(g, L, ay + 18, 'time →', 'pbx-dim');
+    T(g, (gx0 + gx1) / 2, ay + 18, narrow ? 'minutes–hours' : 'minutes to hours: no process runs', 'pbx-dim', 'middle');
+    // the event log ticks on Postbox's lane: every arrow into Postbox is an event
+    STEPS.forEach(function (s, i) {
+      if (s.to === 1 && i <= state.step) S(g, 'line', { x1: X(s.t) + 2, y1: LY[1] + 9, x2: X(s.t) + 2, y2: LY[1] + 14, stroke: 'var(--s2)', 'stroke-width': 2 });
+    });
+    // arrows
+    STEPS.forEach(function (s, i) {
+      var on = i === state.step, done = i < state.step;
+      var col = on ? 'var(--text)' : (done ? 'var(--dim)' : 'var(--line-strong)');
+      var x = X(s.t), sw = on ? 2.5 : 1.25;
+      if (s.f === s.to) {
+        if (s.f === 1) S(g, 'circle', { cx: x, cy: LY[1], r: on ? 6 : 4, fill: 'none', stroke: col, 'stroke-width': sw });
+        else S(g, 'line', { x1: x, y1: LY[2] - 14, x2: x, y2: LY[2] + 14, stroke: col, 'stroke-width': sw + 1 });
+      } else {
+        var y1 = LY[s.f] + (s.to > s.f ? 15 : -15), y2 = LY[s.to] + (s.to > s.f ? -15 : 15), x2 = x + 4;
+        S(g, 'line', { x1: x, y1: y1, x2: x2, y2: y2, stroke: col, 'stroke-width': sw });
+        arrowHead(g, x, y1, x2, y2, col, on ? 9 : 6);
+      }
+    });
+    // the current step: its number and label, and a dot travelling along it
+    var cx = X(cur.t), labY = cur.f === cur.to ? LY[cur.f] - 22 : (LY[cur.f] + LY[cur.to]) / 2 + 4;
+    var right = cx < W * 0.6;
+    var lab = T(g, cx + (right ? 12 : -12), labY, (state.step + 1) + '. ' + cur.l, 'pbx-b', right ? 'start' : 'end');
+    lab.setAttribute('paint-order', 'stroke'); lab.setAttribute('stroke', 'var(--panel)'); lab.setAttribute('stroke-width', 4);
+    if (cur.f !== cur.to && animStep) {
+      var dot = S(g, 'circle', { r: 5, fill: 'var(--text)' });
+      var ya = LY[cur.f], yb = LY[cur.to];
+      animate('loop', 600, function (k) { dot.setAttribute('cx', cx + 4 * k); dot.setAttribute('cy', ya + (yb - ya) * k); }, function () { dot.remove(); });
+    }
+    $('pbx-loop-cap').textContent = 'Step ' + (state.step + 1) + ' of ' + STEPS.length + ': ' + cur.cap;
+    $('pbx-loop-why').textContent = cur.why;
+    $('pbx-l-prev').disabled = state.step === 0;
+    $('pbx-l-next').disabled = state.step === STEPS.length - 1;
+  }
+  function loopTo(i) { state.step = Math.max(0, Math.min(STEPS.length - 1, i)); drawLoop(true); save(); }
+  function stopPlay() { if (loopPlay) { clearInterval(loopPlay); loopPlay = 0; $('pbx-l-play').textContent = 'Play'; } }
+  $('pbx-l-prev').addEventListener('click', function () { stopPlay(); loopTo(state.step - 1); });
+  $('pbx-l-next').addEventListener('click', function () { stopPlay(); loopTo(state.step + 1); });
+  $('pbx-l-play').addEventListener('click', function () {
+    if (loopPlay) return stopPlay();
+    if (state.step === STEPS.length - 1) loopTo(0);
+    $('pbx-l-play').textContent = 'Pause';
+    loopPlay = setInterval(function () { if (state.step >= STEPS.length - 1) return stopPlay(); loopTo(state.step + 1); }, 1500);
+  });
+  DRAW.loop = function () { drawLoop(false); };
+
+  /* ======================= 2. Shared memory: the catch-up bracket ======================= */
+  var ITEMS = (function () {
+    var out = [], seed = 7;
+    function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+    for (var i = 0; i < 80; i++) {
+      var r = rnd(), who = r < 0.38 ? 'you' : (r < 0.86 ? 'b' : 'a');
+      var len = Math.round(120 + Math.pow(rnd(), 2.2) * 2600);
+      out.push({ who: who, len: Math.min(2000, len), cut: len > 2000 });
+    }
+    return out;
+  })();
+  function catchUp(seenBack) {
+    var n = ITEMS.length, start = n - seenBack, kept = [], size = 0, stop = null, skipped = 0;
+    for (var i = n - 1; i >= start; i--) {
+      var it = ITEMS[i];
+      if (it.who === 'a') { skipped++; continue; }
+      if (kept.length >= 40) { stop = 'items'; break; }
+      if (size + it.len > 16000) { stop = 'chars'; break; }
+      kept.push(i); size += it.len;
+    }
+    var eligible = 0;
+    for (var j = start; j < n; j++) if (ITEMS[j].who !== 'a') eligible++;
+    return { kept: kept, size: size, stop: stop, start: start, left: eligible - kept.length, own: skipped };
+  }
+  function drawCatch() {
+    var svg = $('pbx-catch'), H = 254, W = sized(svg, H), n = ITEMS.length;
+    var x0 = 10, x1 = W - 10, bw = (x1 - x0) / n, base = 130, hmax = 70;
+    var c = catchUp(state.seen), keptSet = {};
+    c.kept.forEach(function (i) { keptSet[i] = 1; });
+    var g = S(svg, 'g');
+    var COL = { you: 'var(--s1)', b: 'var(--s2)', a: 'var(--s3)' };
+    ITEMS.forEach(function (it, i) {
+      var h = Math.max(3, it.len / 2000 * hmax), inWin = i >= c.start, k = keptSet[i];
+      S(g, 'rect', { x: x0 + i * bw + 0.5, y: base - h, width: Math.max(1, bw - 1.5), height: h,
+        fill: COL[it.who], 'fill-opacity': it.who === 'a' ? 0.35 : (k ? 0.95 : (inWin ? 0.3 : 0.12)) });
+    });
+    S(g, 'line', { x1: x0, y1: base + 0.5, x2: x1, y2: base + 0.5, stroke: 'var(--line-strong)' });
+    // the agent's marker: where its last turn was
+    var mx = x0 + c.start * bw;
+    S(g, 'line', { x1: mx, y1: base - hmax - 26, x2: mx, y2: base + 8, stroke: 'var(--text)', 'stroke-width': 2 });
+    var ml = T(g, mx + (mx < W - 140 ? 6 : -6), base - hmax - 16, 'A’s last turn', 'pbx-b', mx < W - 140 ? 'start' : 'end');
+    T(g, x1, base - hmax - 16, 'now', 'pbx-b', 'end');
+    // the bracket over what the catch-up holds
+    if (c.kept.length) {
+      var lo = Math.min.apply(null, c.kept), bx0 = x0 + lo * bw, bx1 = x1;
+      var by = base + 18;
+      S(g, 'path', { d: 'M' + bx0 + ' ' + (by - 6) + 'V' + by + 'H' + bx1 + 'V' + (by - 6), stroke: 'var(--text)', 'stroke-width': 2, fill: 'none' });
+      var lab = c.kept.length + ' items · ' + fmt(c.size) + ' chars';
+      T(g, Math.max(bx0, Math.min((bx0 + bx1) / 2, bx1 - 60)), by + 16, W < 420 ? lab : 'catch-up: ' + lab, 'pbx-b', 'middle');
+      if (c.left > 0) {
+        var lx0 = mx, lx1 = bx0;
+        S(g, 'path', { d: 'M' + lx0 + ' ' + (by - 6) + 'V' + by + 'H' + (lx1 - 3), stroke: 'var(--dim)', 'stroke-width': 1.5, fill: 'none' });
+      }
+    }
+    // the two limits as gauges
+    var gy = base + 56, gw = (W - 30) / 2;
+    [['items', c.kept.length, 40, '40 items'], ['chars', c.size, 16000, '16,000 chars']].forEach(function (lim, i) {
+      var gx = 10 + i * (gw + 10), hit = c.stop === lim[0];
+      S(g, 'rect', { x: gx, y: gy, width: gw, height: 12, rx: 3, fill: 'var(--sunk)', stroke: 'var(--line)' });
+      S(g, 'rect', { x: gx, y: gy, width: Math.min(1, lim[1] / lim[2]) * gw, height: 12, rx: 3, fill: hit ? 'var(--alert)' : 'var(--seq-4)' });
+      T(g, gx, gy + 28, fmt(lim[1]) + ' of ' + lim[3], hit ? 'pbx-b' : 'pbx-dim');
+      if (hit) T(g, gx, gy + 44, 'the limit hit', 'pbx-b');
+    });
+    // legend
+    var lg = [['you', 'You'], ['b', 'Agent B'], ['a', 'A’s own (left out)']], lx = 10;
+    lg.forEach(function (l) {
+      S(g, 'rect', { x: lx, y: 8, width: 10, height: 10, fill: COL[l[0]], 'fill-opacity': l[0] === 'a' ? 0.35 : 0.95 });
+      var t = T(g, lx + 14, 17, l[1], 'pbx-dim'); lx += 22 + l[1].length * 6.6;
+    });
+    $('pbx-c-seen-o').textContent = state.seen + ' items ago';
+    var msg;
+    if (!c.kept.length) msg = 'Nothing new from anyone else, so the turn starts with no catch-up.';
+    else if (!c.stop) msg = 'Everything since A’s last turn fits: ' + c.kept.length + ' items, ' + fmt(c.size) + ' characters' + (c.own ? ', leaving out A’s own ' + c.own : '') + '.';
+    else msg = 'Only the newest ' + c.kept.length + ' fit before the ' + (c.stop === 'items' ? '40-item' : '16,000-character') + ' limit. The other ' + c.left + ' are left out, and the catch-up says so: read_conversation has them.';
+    $('pbx-catch-cap').textContent = msg;
+  }
+  $('pbx-c-seen').value = state.seen;
+  $('pbx-c-seen').addEventListener('input', function (e) { state.seen = +e.target.value; drawCatch(); save(); });
+  DRAW.catch = drawCatch;
+
+  /* ======================= 3. The frame: catalog blocks and the sandbox ======================= */
+  var KINDS = [['choice', 'Choice'], ['form', 'Form'], ['review', 'Review'], ['table', 'Table'], ['progress', 'Progress'], ['confirm', 'Confirm'], ['invalid', 'An invalid block']];
+  var KCAP = {
+    choice: 'A choice: Postbox draws the buttons. Your click goes back as { action: "choose", values: { selected } }.',
+    form: 'A form: one field per question, drawn and validated by Postbox.',
+    review: 'A review: you comment on lines and give a verdict; the next revision shows as a diff.',
+    table: 'A table: sortable columns, up to 5,000 rows, drawn by Postbox.',
+    progress: 'A progress block: updated in place by its id as steps finish.',
+    confirm: 'A confirm: the button says exactly what will happen.',
+    invalid: 'An invalid block never breaks the transcript: you see its plain-text fallback and “Show the raw block”.'
+  };
+  var app = { shown: false, last: '' };
+  function drawTiers(anim) {
+    var svg = $('pbx-tiers'), H = 316, W = sized(svg, H);
+    var aw = W < 520 ? 58 : 92, fx0 = aw + 26, fx1 = W - 10, g = S(svg, 'g');
+    // the agent, outside Postbox
+    S(g, 'rect', { x: 6, y: 40, width: aw, height: 230, rx: 6, fill: 'var(--s3)', 'fill-opacity': 0.2, stroke: 'var(--s3)' });
+    T(g, 6 + aw / 2, 160, 'Agent', 'pbx-b', 'middle');
+    // Postbox's frame
+    S(g, 'rect', { x: fx0, y: 6, width: fx1 - fx0, height: H - 12, rx: 8, fill: 'none', stroke: 'var(--s2)', 'stroke-width': 2 });
+    T(g, fx0 + 10, 24, W < 520 ? 'Postbox' : 'Postbox: its own code', 'pbx-b');
+    var bx = fx0 + 12, bw = 72, mx0 = bx + bw + 18, mx1 = fx1 - 12;
+    // row 1: a catalog block
+    var r1 = 44;
+    S(g, 'rect', { x: bx, y: r1 + 22, width: bw, height: 30, rx: 4, fill: 'var(--sunk)', stroke: 'var(--line-strong)' });
+    T(g, bx + bw / 2, r1 + 41, 'validate', null, 'middle');
+    S(g, 'line', { x1: 6 + aw, y1: r1 + 37, x2: bx - 2, y2: r1 + 37, stroke: 'var(--text)', 'stroke-width': 1.5 });
+    arrowHead(g, 6 + aw, r1 + 37, bx - 2, r1 + 37, 'var(--text)');
+    T(g, bx, r1 + 14, 'show_block', 'pbx-dim');
+    S(g, 'line', { x1: bx + bw, y1: r1 + 37, x2: mx0 - 2, y2: r1 + 37, stroke: 'var(--text)', 'stroke-width': 1.5 });
+    arrowHead(g, bx + bw, r1 + 37, mx0 - 2, r1 + 37, 'var(--text)');
+    drawMock(g, state.kind, mx0, r1, mx1 - mx0, 76);
+    // row 2: an app behind a wall
+    var r2 = 150, sx = bx, wx0 = mx0, wx1 = mx1, wy0 = r2, wy1 = H - 40;
+    // the pre-display check: two screens
+    var ok = app.shown;
+    S(g, 'rect', { x: sx + 8, y: r2 + 6, width: 20, height: 38, rx: 3, fill: 'none', stroke: ok ? 'var(--good)' : 'var(--line-strong)', 'stroke-width': 1.5 });
+    S(g, 'rect', { x: sx + 34, y: r2 + 14, width: 38, height: 26, rx: 3, fill: 'none', stroke: ok ? 'var(--good)' : 'var(--line-strong)', 'stroke-width': 1.5 });
+    T(g, sx + 40, r2 + 62, 'check', null, 'middle');
+    T(g, sx + 40, r2 + 80, '375 · 1280', 'pbx-dim', 'middle');
+    S(g, 'line', { x1: 6 + aw, y1: r2 + 26, x2: sx + 4, y2: r2 + 26, stroke: 'var(--text)', 'stroke-width': 1.5 });
+    arrowHead(g, 6 + aw, r2 + 26, sx + 4, r2 + 26, 'var(--text)');
+    T(g, sx, r2 - 6, 'show_app', 'pbx-dim');
+    // the wall: thick on every side, with one opening, the bridge, on the left
+    var gate0 = wy0 + 50, gate1 = wy0 + 82;
+    var wall = 'M' + wx0 + ' ' + gate0 + 'V' + wy0 + 'H' + wx1 + 'V' + wy1 + 'H' + wx0 + 'V' + gate1;
+    S(g, 'path', { d: wall, stroke: 'var(--line-strong)', 'stroke-width': 6, fill: 'none', 'stroke-linejoin': 'round' });
+    T(g, wx0 - 6, gate1 + 16, 'bridge', 'pbx-b', 'end');
+    T(g, wx1 - 6, wy0 - 6, 'sandbox: no network', 'pbx-dim', 'end');
+    S(g, 'line', { x1: sx + bw + 2, y1: (gate0 + gate1) / 2, x2: wx0 - 4, y2: (gate0 + gate1) / 2, stroke: 'var(--line-strong)', 'stroke-width': 1.5 });
+    if (app.shown) {
+      var iw = wx1 - wx0 - 24, ix = wx0 + 12, ih = wy1 - wy0 - 24, iy = wy0 + 12;
+      var bars = [0.4, 0.7, 0.55, 0.9, 0.65];
+      bars.forEach(function (v, i) {
+        var w = iw / bars.length;
+        S(g, 'rect', { x: ix + i * w + 4, y: iy + ih - v * (ih - 22), width: w - 8, height: v * (ih - 22), fill: 'var(--s' + (i + 1) + ')' });
+      });
+      T(g, ix + 2, iy + 12, 'agent-written app', 'pbx-dim');
+    } else {
+      T(g, (wx0 + wx1) / 2, (wy0 + wy1) / 2 + 4, 'no app yet', 'pbx-dim', 'middle');
+    }
+    // the way back to the agent: the bridge to Postbox, then a new message
+    var backY = H - 20, bridgeX = sx + bw + 10, gm = (gate0 + gate1) / 2;
+    S(g, 'path', { d: 'M' + bridgeX + ' ' + gm + 'V' + backY + 'H' + (6 + aw + 4), stroke: 'var(--dim)', 'stroke-width': 1.5, fill: 'none' });
+    arrowHead(g, 6 + aw + 20, backY, 6 + aw + 4, backY, 'var(--dim)');
+    T(g, bridgeX + 6, backY + 4, W >= 520 ? 'to the agent: its next message' : 'next message', 'pbx-dim');
+    if (anim === 'show') {
+      var d1 = S(g, 'circle', { r: 6, fill: 'var(--text)' });
+      animate('tiers', 900, function (k) { d1.setAttribute('cx', 6 + aw + (sx + 40 - 6 - aw) * k); d1.setAttribute('cy', r2 + 26); }, function () { d1.remove(); app.shown = true; drawTiers(); });
+    } else if (anim === 'send') {
+      var d2 = S(g, 'circle', { r: 6, fill: 'var(--text)' }), pts = [[(wx0 + wx1) / 2, (wy0 + wy1) / 2], [wx0 + 6, gm], [bridgeX, gm], [bridgeX, backY], [6 + aw + 4, backY]];
+      animate('tiers', 1400, function (k) { var p = along(pts, k); d2.setAttribute('cx', p[0]); d2.setAttribute('cy', p[1]); }, function () { d2.remove(); });
+    } else if (anim === 'fetch') {
+      var d3 = S(g, 'circle', { r: 6, fill: 'var(--text)' }), cx0 = (wx0 + wx1) / 2, cy0 = (wy0 + wy1) / 2, hit = wx1 - 9;
+      animate('tiers', 1100, function (k) {
+        var x = k < 0.5 ? cx0 + (hit - cx0) * (k * 2) : hit - (hit - cx0) * ((k - 0.5) * 2);
+        d3.setAttribute('cx', x); d3.setAttribute('cy', cy0);
+      }, function () {
+        d3.remove();
+        var x = S(g, 'g'); S(x, 'path', { d: 'M' + (hit - 8) + ' ' + (cy0 - 8) + 'l16 16M' + (hit + 8) + ' ' + (cy0 - 8) + 'l-16 16', stroke: 'var(--alert)', 'stroke-width': 3 });
+      });
+    }
+  }
+  function along(pts, k) {
+    var segs = [], tot = 0;
+    for (var i = 1; i < pts.length; i++) { var d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); segs.push(d); tot += d; }
+    var want = k * tot;
+    for (var j = 0; j < segs.length; j++) {
+      if (want <= segs[j] || j === segs.length - 1) { var f = segs[j] ? Math.min(1, want / segs[j]) : 1; return [pts[j][0] + (pts[j + 1][0] - pts[j][0]) * f, pts[j][1] + (pts[j + 1][1] - pts[j][1]) * f]; }
+      want -= segs[j];
+    }
+    return pts[pts.length - 1];
+  }
+  function drawMock(g, kind, x, y, w, h) {
+    S(g, 'rect', { x: x, y: y, width: w, height: h, rx: 6, fill: 'var(--bg)', stroke: 'var(--line)' });
+    var p = x + 10, q = y + 10, iw = w - 20;
+    function btn(bx, by, bw, label, on) {
+      S(g, 'rect', { x: bx, y: by, width: bw, height: 22, rx: 5, fill: on ? 'var(--sunk)' : 'none', stroke: on ? 'var(--accent)' : 'var(--line-strong)' });
+      T(g, bx + bw / 2, by + 15, label, null, 'middle');
+    }
+    function line(lx, ly, lw, c) { S(g, 'rect', { x: lx, y: ly, width: lw, height: 6, rx: 3, fill: c || 'var(--line-strong)' }); }
+    if (kind === 'choice') { T(g, p, q + 12, 'How often?'); var bw = Math.min(80, (iw - 8) / 2); btn(p, q + 24, bw, 'Weekly', true); btn(p + bw + 8, q + 24, bw, 'Monthly'); }
+    else if (kind === 'form') { T(g, p, q + 12, 'Who reads it?'); S(g, 'rect', { x: p, y: q + 20, width: iw, height: 18, rx: 4, fill: 'none', stroke: 'var(--line-strong)' }); T(g, p, q + 52, 'How many words?', 'pbx-dim'); }
+    else if (kind === 'review') { line(p, q + 2, iw * 0.9); line(p, q + 14, iw * 0.7, 'var(--diff-add)'); line(p, q + 26, iw * 0.8); line(p, q + 38, iw * 0.5); S(g, 'rect', { x: p + iw * 0.72, y: q + 8, width: iw * 0.28, height: 20, rx: 4, fill: 'var(--sunk)', stroke: 'var(--line-strong)' }); T(g, p + iw * 0.86, q + 22, 'comment', null, 'middle'); }
+    else if (kind === 'table') { for (var r = 0; r < 4; r++) for (var c2 = 0; c2 < 3; c2++) S(g, 'rect', { x: p + c2 * (iw / 3), y: q + r * 14, width: iw / 3 - 3, height: 11, fill: r ? 'var(--sunk)' : 'var(--line-strong)' }); }
+    else if (kind === 'progress') { [1, 1, 0.45].forEach(function (v, i) { S(g, 'rect', { x: p, y: q + i * 18, width: iw, height: 10, rx: 3, fill: 'var(--sunk)' }); S(g, 'rect', { x: p, y: q + i * 18, width: iw * v, height: 10, rx: 3, fill: v === 1 ? 'var(--good)' : 'var(--seq-4)' }); }); }
+    else if (kind === 'confirm') { T(g, p, q + 12, 'Delete 23 frames?'); btn(p, q + 24, Math.min(140, iw), 'Delete 23 frames'); }
+    else { T(g, p, q + 12, 'fallback: “Pick weekly or monthly.”'); T(g, p, q + 32, 'Show the raw block', 'pbx-dim'); }
+  }
+  KINDS.forEach(function (k) {
+    var b = document.createElement('button');
+    b.className = 'chip'; b.type = 'button'; b.textContent = k[1]; b.setAttribute('data-k', k[0]);
+    b.addEventListener('click', function () { state.kind = k[0]; markKinds(); drawTiers(); $('pbx-tiers-cap').textContent = KCAP[k[0]]; save(); });
+    $('pbx-kinds').appendChild(b);
+  });
+  function markKinds() { Array.prototype.forEach.call($('pbx-kinds').children, function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-k') === state.kind ? 'true' : 'false'); }); }
+  $('pbx-a-show').addEventListener('click', function () { app.shown = false; drawTiers('show'); $('pbx-tiers-cap').textContent = 'Before you see an app, Postbox loads it in hidden frames at 375 and 1280 px and checks contrast, overflow, labels and keyboard traps. Problems go back to the agent.'; });
+  $('pbx-a-send').addEventListener('click', function () {
+    if (!app.shown) { $('pbx-tiers-cap').textContent = 'Show an app first.'; return; }
+    drawTiers('send'); $('pbx-tiers-cap').textContent = 'An app talks only through the bridge: postbox.send leaves through the one opening and reaches the agent as its next message.';
+  });
+  $('pbx-a-fetch').addEventListener('click', function () {
+    if (!app.shown) { $('pbx-tiers-cap').textContent = 'Show an app first.'; return; }
+    drawTiers('fetch'); $('pbx-tiers-cap').textContent = 'A request to the network hits the wall: the page’s CSP sandbox header allows nothing that loads from a URL.';
+  });
+  DRAW.tiers = function () { markKinds(); drawTiers(); if (!$('pbx-tiers-cap').textContent) $('pbx-tiers-cap').textContent = KCAP[state.kind]; };
+
+  /* ======================= 4. The event log on a number line ======================= */
+  var SNAP = 8, BUF = 12, WIN = 36, st;
+  function storeReset() { st = { seq: 0, snaps: [], buf: 0, up: true, last: 0, flash: null }; }
+  storeReset();
+  function emit(n) {
+    for (var i = 0; i < n; i++) {
+      st.seq++; st.buf = Math.min(BUF, st.buf + 1);
+      if (st.up) st.last = st.seq;
+      if (st.seq % SNAP === 0) st.snaps.push(st.seq);
+    }
+  }
+  function drawStore(anim) {
+    var svg = $('pbx-store'), H = 240, W = sized(svg, H), g = S(svg, 'g');
+    var lo = Math.max(1, st.seq - WIN + 1), hi = lo + WIN - 1, x0 = 10, cw = (W - 20) / WIN;
+    var X = function (s) { return x0 + (s - lo) * cw; };
+    var snap = st.snaps.length ? st.snaps[st.snaps.length - 1] : 0, bufLo = st.seq - st.buf + 1;
+    var rows = [{ y: 16, n: 'Log on disk (since the last snapshot)' }, { y: 86, n: 'In memory, for reconnects (last ' + BUF + ')' }, { y: 146, n: 'Your browser' }];
+    rows.forEach(function (r) { T(g, x0, r.y, r.n, 'pbx-dim'); });
+    for (var s = lo; s <= hi; s++) {
+      var have = s <= st.seq, x = X(s) + 1, w = Math.max(2, cw - 2);
+      // disk: live cells after the last snapshot; older ones were folded into it
+      S(g, 'rect', { x: x, y: 24, width: w, height: 22, rx: 2, fill: have ? (s > snap ? 'var(--seq-4)' : 'var(--seq-1)') : 'none', stroke: have ? 'none' : 'var(--line)' });
+      // memory
+      if (have && s >= bufLo) S(g, 'rect', { x: x, y: 94, width: w, height: 22, rx: 2, fill: 'var(--seq-3)' });
+      else S(g, 'rect', { x: x, y: 94, width: w, height: 22, rx: 2, fill: 'none', stroke: 'var(--line)' });
+      // the browser
+      var got = have && s <= st.last;
+      S(g, 'rect', { x: x, y: 154, width: w, height: 22, rx: 2, fill: got ? 'var(--s1)' : 'none', stroke: got ? 'none' : (have ? 'var(--line-strong)' : 'var(--line)'), 'data-seq': s, 'class': 'pbx-bcell' });
+    }
+    // snapshot ticks
+    st.snaps.forEach(function (sn) {
+      if (sn < lo || sn > hi) return;
+      var x = X(sn) + cw;
+      S(g, 'line', { x1: x, y1: 22, x2: x, y2: 50, stroke: 'var(--text)', 'stroke-width': 2 });
+      T(g, x, 64, 'snapshot ' + sn, 'pbx-b', x > W - 80 ? 'end' : 'middle');
+    });
+    // seq axis
+    for (var a = lo; a <= hi; a++) if (a % SNAP === 0 || a === lo) T(g, X(a) + cw / 2, 192, String(a), 'pbx-dim', 'middle');
+    T(g, W - 10, 234, 'event number →', 'pbx-dim', 'end');
+    // the browser's marker
+    if (st.seq) {
+      var mx = X(Math.max(lo, st.last)) + cw;
+      S(g, 'path', { d: 'M' + mx + ' 198l-6 9h12z', fill: st.up ? 'var(--s1)' : 'var(--alert)' });
+      T(g, Math.min(W - 10, mx + 10), 216, st.up ? 'has ' + st.last : 'offline at ' + st.last, 'pbx-b', mx > W - 90 ? 'end' : 'start');
+    }
+    if (anim && anim.type === 'replay') {
+      var cells = Array.prototype.slice.call(svg.querySelectorAll('.pbx-bcell')).filter(function (c) { var q = +c.getAttribute('data-seq'); return q > anim.from && q <= anim.to; });
+      cells.forEach(function (c) { c.setAttribute('fill', 'none'); });
+      animate('store', Math.min(1600, 160 * cells.length + 200), function (k) {
+        var nOn = Math.round(k * cells.length);
+        cells.forEach(function (c, i) { if (i < nOn) { c.setAttribute('fill', 'var(--s1)'); c.setAttribute('stroke', 'none'); } });
+      });
+    } else if (anim && anim.type === 'resync') {
+      var r = S(g, 'rect', { x: x0 - 4, y: 150, width: W - 12, height: 30, rx: 4, fill: 'none', stroke: 'var(--text)', 'stroke-width': 2 });
+      T(g, W / 2, 170, 'resync: refetch the whole state', 'pbx-b', 'middle').setAttribute('paint-order', 'stroke');
+    }
+    $('pbx-s-conn').textContent = st.up ? 'Drop the connection' : 'Reconnect';
+  }
+  function storeCap(t) { $('pbx-store-cap').textContent = t; }
+  $('pbx-s-one').addEventListener('click', function () { emit(1); drawStore(); storeCap(st.up ? 'Event ' + st.seq + ' is appended to the log and pushed to your browser at once.' : 'Event ' + st.seq + ' is appended while your browser is away.'); });
+  $('pbx-s-five').addEventListener('click', function () { emit(5); drawStore(); storeCap(st.up ? 'Five more events, each numbered, each pushed as it happens.' : 'Five events your browser hasn’t seen. Reconnect to see how it catches up.'); });
+  $('pbx-s-conn').addEventListener('click', function () {
+    if (st.up) { st.up = false; drawStore(); storeCap('Your browser is offline at event ' + st.last + '. Add events, then reconnect.'); return; }
+    var from = st.last, missed = st.seq - st.last, bufLo = st.seq - st.buf + 1;
+    st.up = true; st.last = st.seq;
+    if (missed > 0 && from + 1 < bufLo) { drawStore({ type: 'resync' }); storeCap('Your browser was at ' + from + ', but memory only reaches back to ' + bufLo + '. So it refetches the whole state instead. Nothing lost, nothing twice.'); }
+    else { drawStore({ type: 'replay', from: from, to: st.seq }); storeCap(missed ? 'Your browser sent “I have ' + from + '”, and the server replays ' + (missed === 1 ? 'event ' + st.seq : 'exactly ' + (from + 1) + '–' + st.seq) + ' from memory.' : 'Nothing was missed.'); }
+  });
+  $('pbx-s-restart').addEventListener('click', function () {
+    var snap = st.snaps.length ? st.snaps[st.snaps.length - 1] : 0;
+    st.buf = 0; if (st.up) st.up = false;
+    drawStore(); storeCap('The server rebuilt its state from snapshot ' + snap + ' plus the ' + (st.seq - snap) + ' log lines after it. Memory starts empty, so a browser that missed anything will resync.');
+  });
+  $('pbx-s-reset').addEventListener('click', function () { storeReset(); emit(10); drawStore(); storeCap('Ten events so far. Each one is a cell; numbers only grow.'); });
+  emit(10);
+  DRAW.store = function () { drawStore(); if (!$('pbx-store-cap').textContent) storeCap('Each cell is one event. Drop the connection, add events, then reconnect.'); };
+
+  /* ======================= 5. Wakes as a graph ======================= */
+  var AG = ['researcher', 'critic', 'tester', 'editor'], AC = ['var(--s1)', 'var(--s2)', 'var(--s4)', 'var(--s5)'];
+  var EDGES = [[0, 1, 0.5], [0, 2, 0.5], [1, 3, 0.5], [2, 3, 0.5], [0, 3, 0.32], [1, 2, 0.68]];
+  var RUN_MAX = 10, PAIR_MAX = 2, wk, sel = null;
+  function wakeReset() { wk = { run: 0, pairs: {}, held: null, last: null }; sel = null; }
+  wakeReset();
+  function pk(a, b) { return [a, b].sort().join('|'); }
+  function nodePos(W, H) {
+    var cx = W / 2, top = 70, bot = H - 54, mid = (top + bot) / 2, dx = Math.min(W / 2 - 60, 260);
+    return [[cx, top], [cx - dx, mid], [cx + dx, mid], [cx, bot]];
+  }
+  function drawWakes(anim) {
+    var svg = $('pbx-wakes'), H = 330, W = sized(svg, H), g = S(svg, 'g'), P = nodePos(W, H);
+    // the run gauge: ten cells
+    var gw = Math.min(W - 20, 360), gx = (W - gw) / 2, cw = gw / RUN_MAX;
+    T(g, gx, 14, 'Agent wakes in a row: ' + wk.run + ' of ' + RUN_MAX, 'pbx-b');
+    for (var i = 0; i < RUN_MAX; i++) S(g, 'rect', { x: gx + i * cw + 1, y: 20, width: cw - 2, height: 12, rx: 2, fill: i < wk.run ? (wk.run >= RUN_MAX ? 'var(--alert)' : 'var(--seq-4)') : 'var(--sunk)', stroke: 'var(--line)' });
+    // edges: a track, filled toward the pair limit
+    EDGES.forEach(function (e) {
+      var a = P[e[0]], b = P[e[1]], n = wk.pairs[pk(AG[e[0]], AG[e[1]])] || 0, pf = e[2];
+      S(g, 'line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: 'var(--sunk)', 'stroke-width': 14, 'stroke-linecap': 'round' });
+      S(g, 'line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: 'var(--line-strong)', 'stroke-width': 1 });
+      if (n) {
+        var m = [a[0] + (b[0] - a[0]) * pf, a[1] + (b[1] - a[1]) * pf], f = n / PAIR_MAX * Math.min(pf, 1 - pf);
+        S(g, 'line', { x1: m[0] - (b[0] - a[0]) * f, y1: m[1] - (b[1] - a[1]) * f, x2: m[0] + (b[0] - a[0]) * f, y2: m[1] + (b[1] - a[1]) * f, stroke: n >= PAIR_MAX ? 'var(--alert)' : 'var(--seq-4)', 'stroke-width': 8, 'stroke-linecap': 'round' });
+      }
+      var mx = a[0] + (b[0] - a[0]) * pf, my = a[1] + (b[1] - a[1]) * pf;
+      S(g, 'rect', { x: mx - 17, y: my - 10, width: 34, height: 20, rx: 10, fill: 'var(--panel)', stroke: 'var(--line-strong)' });
+      T(g, mx, my + 4, n + '/' + PAIR_MAX, 'pbx-mono', 'middle');
+    });
+    // a held wake: a card on its edge
+    if (wk.held) {
+      var hi = AG.indexOf(wk.held.a), hj = AG.indexOf(wk.held.b), he = EDGES.filter(function (e) { return (e[0] === hi && e[1] === hj) || (e[0] === hj && e[1] === hi); })[0];
+      var ha = P[he[0]], hb = P[he[1]], hx = ha[0] + (hb[0] - ha[0]) * he[2], hy = ha[1] + (hb[1] - ha[1]) * he[2] + 26;
+      S(g, 'rect', { x: hx - 34, y: hy - 13, width: 68, height: 22, rx: 4, fill: 'var(--panel)', stroke: 'var(--accent)', 'stroke-width': 1.5 });
+      T(g, hx, hy + 2, 'Allow?', 'pbx-b', 'middle');
+    }
+    // nodes: focusable, select one, then another, to wake
+    AG.forEach(function (name, i) {
+      var p = P[i], on = sel === name;
+      var n = S(g, 'g', { tabindex: 0, role: 'button', 'aria-label': (sel && sel !== name ? '@' + sel + ' wakes @' + name : 'Choose @' + name + ' as the waker') });
+      S(n, 'circle', { cx: p[0], cy: p[1], r: 22, fill: AC[i], 'fill-opacity': 0.85 });
+      S(n, 'circle', { cx: p[0], cy: p[1], r: 26, fill: 'none', stroke: on ? 'var(--accent)' : 'var(--line-strong)', 'stroke-width': on ? 3 : 1, 'class': 'pbx-ring' });
+      var nl = T(n, p[0], p[1] + 44, '@' + name, 'pbx-b', 'middle');
+      nl.setAttribute('paint-order', 'stroke'); nl.setAttribute('stroke', 'var(--panel)'); nl.setAttribute('stroke-width', 5);
+      var act = function () { pickNode(name); };
+      n.addEventListener('click', act);
+      n.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
+    });
+    if (anim) {
+      var A = P[AG.indexOf(anim.a)], B = P[AG.indexOf(anim.b)], dot = S(g, 'circle', { r: 7, fill: 'var(--text)' });
+      var stopAt = anim.kind === 'woke' ? 1 : 0.5;
+      animate('wake', anim.kind === 'refused' ? 1100 : 700, function (k) {
+        var f = anim.kind === 'refused' ? (k < 0.5 ? k * 2 * 0.45 : (1 - (k - 0.5) * 2) * 0.45) : k * stopAt;
+        dot.setAttribute('cx', A[0] + (B[0] - A[0]) * f); dot.setAttribute('cy', A[1] + (B[1] - A[1]) * f);
+      }, function () {
+        if (anim.kind === 'refused') {
+          dot.remove();
+          var xm = A[0] + (B[0] - A[0]) * 0.45, ym = A[1] + (B[1] - A[1]) * 0.45;
+          S(g, 'path', { d: 'M' + (xm - 7) + ' ' + (ym - 7) + 'l14 14M' + (xm + 7) + ' ' + (ym - 7) + 'l-14 14', stroke: 'var(--alert)', 'stroke-width': 3 });
+        } else dot.remove();
+      });
+    }
+    $('pbx-w-allow').disabled = !wk.held;
+  }
+  function wcap(t) { $('pbx-wakes-cap').textContent = t; }
+  function pickNode(name) {
+    if (!sel || sel === name) { sel = sel === name ? null : name; drawWakes(); wcap(sel ? '@' + sel + ' is about to mention someone. Choose who it wakes.' : 'Choose an agent, then the one it wakes.'); return; }
+    var a = sel, b = name; sel = null; attemptWake(a, b);
+  }
+  function attemptWake(a, b) {
+    var key = pk(a, b), n = wk.pairs[key] || 0;
+    if (wk.run >= RUN_MAX || n >= PAIR_MAX) {
+      var why = wk.run >= RUN_MAX ? 'it would be agent wake ' + (wk.run + 1) + ' in a row' : '@' + a + ' and @' + b + ' have woken each other ' + PAIR_MAX + ' times in a row';
+      if (wk.held) { drawWakes({ a: a, b: b, kind: 'refused' }); wcap('Refused, not queued: another wake is already waiting for you. @' + a + ' is told to send it again later.'); return; }
+      wk.held = { a: a, b: b };
+      drawWakes({ a: a, b: b, kind: 'held' }); wcap('Held: ' + why + '. It waits on a card for your Allow.'); return;
+    }
+    wk.run++; wk.pairs[key] = n + 1;
+    drawWakes({ a: a, b: b, kind: 'woke' });
+    wcap('@' + a + ' woke @' + b + '. Its reply posts in the room and wakes @' + a + ' only if it mentions it.' + (wk.held ? ' (A wake under the limits still goes through while a card waits.)' : ''));
+  }
+  $('pbx-w-allow').addEventListener('click', function () {
+    var h = wk.held; wk.run = 1; wk.pairs = {}; wk.pairs[pk(h.a, h.b)] = 1; wk.held = null;
+    drawWakes({ a: h.a, b: h.b, kind: 'woke' }); wcap('You allowed it. Your action resets every count, so this wake starts a new run.');
+  });
+  $('pbx-w-you').addEventListener('click', function () { wk.run = 0; wk.pairs = {}; wk.held = null; drawWakes(); wcap('You wrote a message: every count empties.'); });
+  $('pbx-w-reset').addEventListener('click', function () { wakeReset(); drawWakes(); wcap('Choose an agent, then the one it wakes.'); });
+  DRAW.wakes = function () { drawWakes(); if (!$('pbx-wakes-cap').textContent) wcap('Choose an agent, then the one it wakes. Try the same pair three times, or every pair twice.'); };
+
+  /* ======================= 6. The gate ======================= */
+  var STAGES = ['lint', 'typecheck', 'lint:project', 'check:contrast', 'test', 'test:integration', 'test:process'];
+  var BREAKS = [
+    ['none', 'Nothing broken', -1, 'Every stage passes: the change can merge.'],
+    ['size', 'A file past its ceiling', 0, 'lint stops it: Biome fails a file longer than its recorded ceiling, which can only come down (architecture.md §15).'],
+    ['color', 'A raw color', 2, 'lint:project stops it: lint-tokens allows no raw colors outside the token blocks.'],
+    ['contrast', 'Dim text on a dim panel', 3, 'check:contrast stops it: every token pair must meet WCAG 2.1 AA in both themes.'],
+    ['net', 'A test that calls the network', 4, 'test stops it: tests/guard.mjs blocks the network and process spawning in unit tests.']
+  ];
+  var pipe = { at: -1, stop: -1, ran: false };
+  function drawPipe() {
+    var svg = $('pbx-pipe'), narrow = svg.parentNode.clientWidth < 520;
+    var H = narrow ? STAGES.length * 30 + 10 : 120, W = sized(svg, H), g = S(svg, 'g');
+    var boxes = STAGES.map(function (s, i) {
+      if (narrow) return { x: 30, y: 6 + i * 30, w: W - 40, h: 24 };
+      var cols = 4, bw = (W - 10 - (cols - 1) * 8) / cols, r = Math.floor(i / cols), c = i % cols;
+      return { x: 5 + c * (bw + 8), y: 10 + r * 54, w: bw, h: 34 };
+    });
+    boxes.forEach(function (b, i) {
+      var passed = pipe.ran && i < pipe.at, stopped = pipe.ran && i === pipe.stop, cur = i === pipe.at && !stopped;
+      S(g, 'rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 5, fill: 'var(--bg)', stroke: stopped ? 'var(--alert)' : (passed ? 'var(--good)' : 'var(--line-strong)'), 'stroke-width': stopped || passed ? 2 : 1 });
+      T(g, b.x + 8, b.y + b.h / 2 + 4, (i + 1) + ' ' + STAGES[i], 'pbx-mono');
+      if (passed) T(g, b.x + b.w - 8, b.y + b.h / 2 + 4, '✓', 'pbx-b', 'end').setAttribute('fill', 'var(--good)');
+      if (stopped) T(g, b.x + b.w - 8, b.y + b.h / 2 + 4, '✕', 'pbx-b', 'end').setAttribute('fill', 'var(--alert)');
+      if (cur) S(g, 'circle', { cx: narrow ? 16 : b.x + b.w - 14, cy: b.y + b.h / 2, r: 6, fill: 'var(--text)' });
+    });
+  }
+  BREAKS.forEach(function (b) {
+    var el = document.createElement('button'); el.className = 'chip'; el.type = 'button'; el.textContent = b[1]; el.setAttribute('data-b', b[0]);
+    el.addEventListener('click', function () { state.brk = b[0]; pipe = { at: -1, stop: -1, ran: false }; markBreaks(); drawPipe(); $('pbx-pipe-cap').textContent = 'Run the gate to see which stage catches it.'; save(); });
+    $('pbx-breaks').appendChild(el);
+  });
+  function markBreaks() { Array.prototype.forEach.call($('pbx-breaks').children, function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-b') === state.brk ? 'true' : 'false'); }); }
+  var pipeTimer = 0;
+  $('pbx-g-run').addEventListener('click', function () {
+    clearInterval(pipeTimer);
+    var br = BREAKS.filter(function (b) { return b[0] === state.brk; })[0];
+    pipe = { at: 0, stop: -1, ran: true };
+    var tick = function () {
+      if (br[2] === pipe.at) { pipe.stop = pipe.at; drawPipe(); $('pbx-pipe-cap').textContent = br[3]; clearInterval(pipeTimer); return; }
+      if (pipe.at >= STAGES.length - 1) { pipe.at = STAGES.length; drawPipe(); $('pbx-pipe-cap').textContent = br[3]; clearInterval(pipeTimer); return; }
+      pipe.at++; drawPipe();
+    };
+    drawPipe();
+    if (reduce) { while (pipe.stop < 0 && pipe.at < STAGES.length) tick(); return; }
+    pipeTimer = setInterval(tick, 350);
+  });
+  function drawScore() {
+    var svg = $('pbx-score'), H = 150, W = sized(svg, H), g = S(svg, 'g');
+    var now = +$('pbx-e-now').value, prev = +$('pbx-e-prev').value, pref = +$('pbx-e-pref').value;
+    var x0 = 14, x1 = W - 14, X = function (v) { return x0 + v / 100 * (x1 - x0); }, ay = 74;
+    // the drop window under the last score, and the bar at 80
+    S(g, 'rect', { x: X(Math.max(0, prev - 15)), y: ay - 30, width: X(prev) - X(Math.max(0, prev - 15)), height: 30, fill: 'var(--alert)', 'fill-opacity': 0.15 });
+    S(g, 'rect', { x: X(80), y: ay - 30, width: X(100) - X(80), height: 30, fill: 'var(--good)', 'fill-opacity': 0.15 });
+    S(g, 'line', { x1: x0, y1: ay, x2: x1, y2: ay, stroke: 'var(--line-strong)' });
+    [0, 20, 40, 60, 80, 100].forEach(function (v) { S(g, 'line', { x1: X(v), y1: ay, x2: X(v), y2: ay + 5, stroke: 'var(--line-strong)' }); T(g, X(v), ay + 18, String(v), 'pbx-dim', 'middle'); });
+    S(g, 'line', { x1: X(80), y1: ay - 34, x2: X(80), y2: ay, stroke: 'var(--text)', 'stroke-width': 2 });
+    T(g, X(80) - 4, ay - 38, 'bar 80', 'pbx-b', 'end');
+    // recorded scores from #206
+    [[84, 'v6, v8'], [96, 'v9']].forEach(function (m) { S(g, 'circle', { cx: X(m[0]), cy: ay, r: 5, fill: 'var(--dim)' }); T(g, X(m[0]), ay + 34, m[1], 'pbx-dim', 'middle'); });
+    // the last score, and this app
+    S(g, 'path', { d: 'M' + X(prev) + ' ' + (ay - 2) + 'l-6 -10h12z', fill: 'var(--dim)' });
+    T(g, X(prev), ay - 40, 'last', 'pbx-dim', X(prev) > W - 40 ? 'end' : 'middle');
+    var pass = now >= 80 && pref >= 7, reg = prev - now >= 15;
+    S(g, 'circle', { cx: X(now), cy: ay, r: 8, fill: pass && !reg ? 'var(--good)' : 'var(--alert)', stroke: 'var(--panel)', 'stroke-width': 2 });
+    T(g, X(now), ay - 18, 'this app', 'pbx-b', X(now) < 40 ? 'start' : (X(now) > W - 40 ? 'end' : 'middle'));
+    // preference: ten pairs
+    for (var i = 0; i < 10; i++) S(g, 'circle', { cx: x0 + 6 + i * 16, cy: 120, r: 5, fill: i < pref ? 'var(--seq-4)' : 'var(--sunk)', stroke: 'var(--line)' });
+    T(g, x0, 144, 'preferred over text, of 10 pairs (needs 7)', 'pbx-dim');
+    $('pbx-e-now-o').textContent = now; $('pbx-e-prev-o').textContent = prev; $('pbx-e-pref-o').textContent = pref;
+    var why = [];
+    if (now < 80) why.push('below the bar');
+    if (pref < 7) why.push('preferred over text only ' + pref + ' of 10');
+    if (reg) why.push('a regression: ' + (prev - now) + ' points below its last score');
+    $('pbx-score-cap').textContent = why.length ? 'Becomes a finding in the UAT run: ' + why.join('; ') + '.' : 'Meets the bar, with no regression.';
+  }
+  ['pbx-e-now', 'pbx-e-prev', 'pbx-e-pref'].forEach(function (id) { $(id).addEventListener('input', drawScore); });
+  DRAW.gate = function () { markBreaks(); drawPipe(); drawScore(); if (!$('pbx-pipe-cap').textContent) $('pbx-pipe-cap').textContent = 'Pick something to break, then run the gate.'; };
+
+  /* ---------- ask ---------- */
+  var LABELS = { loop: 'the loop', catch: 'shared memory', tiers: 'the frame', store: 'the event log', wakes: 'wakes', gate: 'the gate' };
+  $('pbx-ask').addEventListener('click', function () {
+    if (!pb || !pb.send) { $('pbx-sent').textContent = 'Sending needs Postbox.'; return; }
+    var p = pb.send('go-deeper', { topic: state.tab, step: state.tab === 'loop' ? state.step + 1 : undefined }, 'Asked to go deeper on ' + LABELS[state.tab]);
+    $('pbx-sent').textContent = 'Asked about ' + LABELS[state.tab] + '.';
+    if (p && p.catch) p.catch(function (e) { $('pbx-sent').textContent = 'Couldn’t send: ' + (e && e.message ? e.message : e); });
+  });
+
+  /* ---------- start ---------- */
+  function start(saved) {
+    if (saved && typeof saved === 'object') {
+      if (typeof saved.step === 'number' && saved.step >= 0 && saved.step < STEPS.length) state.step = saved.step;
+      if (typeof saved.seen === 'number') state.seen = Math.max(1, Math.min(80, saved.seen));
+      if (typeof saved.kind === 'string' && KCAP[saved.kind]) state.kind = saved.kind;
+      if (typeof saved.brk === 'string') state.brk = saved.brk;
+      if (typeof saved.tab === 'string' && LABELS[saved.tab]) state.tab = saved.tab;
+    }
+    $('pbx-c-seen').value = state.seen;
+    showTab(state.tab);
+  }
+  var restored = null;
+  try { restored = pb && pb.restoreState ? pb.restoreState() : null; } catch (e) { restored = null; }
+  Promise.resolve(restored).then(start, function () { start(null); });
+})();
+</script>
+</body>
+</html>
