@@ -2,8 +2,8 @@
 // installed there, and turns that go on running, and spending, until something removes them. So the runner owns
 // SIGINT, SIGTERM and SIGHUP, not its parts: the first one runs the run’s own stop (its hosts removed through the
 // page, then the page and Postbox closed) and exits 130 once that’s done; another one exits at once, saying what’s
-// left to clean up by hand. Postbox and Chrome run in process groups of their own (tools/uat/postbox.mjs,
-// tools/cdp.mjs), so a terminal’s Ctrl-C, which reaches its whole foreground group, leaves them up for the cleanup.
+// left to clean up by hand. Postbox and Chromium run in process groups of their own (tools/uat/postbox.mjs,
+// tools/browser.mjs), so a terminal’s Ctrl-C, which reaches its whole foreground group, leaves them up for the cleanup.
 
 import { cleanUp } from './hosts-end.mjs';
 

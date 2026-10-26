@@ -33,6 +33,10 @@ jobs:
       # Install scripts are skipped: the checks need no native builds, and the optional narration
       # packages would otherwise download models and binaries they don't use here.
       - run: npm ci --ignore-scripts
+      # The process tests drive the UAT runner's Chromium (tools/browser.mjs): Playwright's headless shell, which is
+      # all they need of its Chromium build.
+      - name: Install Playwright’s headless Chromium
+        run: npx playwright install --with-deps --only-shell chromium
       - run: npm run check
       # Conventional Commits, from v0.2.0 on: older commits on long-running branches keep their plain messages.
       - name: Commit messages follow Conventional Commits
@@ -71,7 +75,7 @@ jobs:
       - name: Play the demo and screenshot every scene
         if: success() || failure()
         continue-on-error: true
-        run: CHROME="$(command -v google-chrome)" node tools/shoot-app.mjs
+        run: node tools/shoot-app.mjs
       - if: always()
         uses: actions/upload-artifact@v4
         with:

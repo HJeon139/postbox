@@ -1,4 +1,4 @@
-// Screenshots the real app: plays the demo (tools/demo.mjs) in headless Chrome and captures every scene
+// Screenshots the real app: plays the demo (tools/demo.mjs) in headless Chromium and captures every scene
 // at 1280 and 375 px in dark and light, plus a sheet per scene that puts the approved mockup beside the app.
 //
 //   node tools/shoot-app.mjs              → screenshots/latest/app/ (ignored by git)
@@ -12,15 +12,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from '../server/index.mjs';
-import { js, launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './browser.mjs';
 import { play } from './demo.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const baseline = process.argv.includes('--baseline');
 const OUT = join(ROOT, 'screenshots', ...(baseline ? ['app'] : ['latest', 'app']));
-// PB_PORT and PB_CHROME_PORT move it, so sessions working in parallel don’t collide.
+// PB_PORT moves it, so sessions working in parallel don’t collide.
 const PORT = Number(process.env.PB_PORT ?? 4281);
-const CHROME = Number(process.env.PB_CHROME_PORT ?? 9341);
 const VARIANTS = [
   ['dark', 1280, 900, 1],
   ['light', 1280, 900, 1],
@@ -34,8 +33,8 @@ const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: t
 const origin = `http://127.0.0.1:${PORT}`;
 // The driver stays on the current thread at desktop size so agent apps get checked there; the shooter,
 // a second browser, captures each variant without running checks of its own.
-const driver = await launch({ port: CHROME });
-const page = await launch({ port: CHROME + 3 });
+const driver = await launch();
+const page = await launch();
 let hash = '#/';
 let loads = 0;
 const settle = async () => {
