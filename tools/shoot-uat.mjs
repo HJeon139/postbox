@@ -1,4 +1,4 @@
-// Screenshots for the UAT docs (tests/uat/): plays the demo in headless Chrome, then captures each UI
+// Screenshots for the UAT docs (tests/uat/): plays the demo in headless Chromium, then captures each UI
 // component on its own, cropped to the element, at 1280 px in light mode.
 //
 //   node tools/shoot-uat.mjs            → tests/uat/screenshots/<component>.png
@@ -12,12 +12,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from '../server/index.mjs';
-import { js, launch, sleep } from './cdp.mjs';
+import { js, launch, sleep } from './browser.mjs';
 import { play } from './demo.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, 'tests', 'uat', 'screenshots');
-// PB_PORT and PB_CHROME_PORT move it, so sessions working in parallel don’t collide.
+// PB_PORT moves it, so sessions working in parallel don’t collide.
 const PORT = Number(process.env.PB_PORT ?? 4291);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 
@@ -183,7 +183,7 @@ await mkdir(OUT, { recursive: true });
 const dataDir = join(tmpdir(), `pb-uat-${process.pid}`);
 const app = await start({ port: PORT, dataDir, fresh: true, demo: true, quiet: true });
 const origin = `http://127.0.0.1:${PORT}`;
-const page = await launch({ port: Number(process.env.PB_CHROME_PORT ?? 9391) });
+const page = await launch();
 await page.size(1280, 1000, { theme: 'light' });
 let loads = 0;
 const goto = async (hash) => {

@@ -1,10 +1,10 @@
-// Drives Postbox in headless Chrome the way a person does: real clicks and key presses, typing, and the file
+// Drives Postbox in headless Chromium the way a person does: real clicks and key presses, typing, and the file
 // picker. It reads what’s on screen from the page, never from the API, so the UAT sees what a person sees.
-// Agent apps run in sandboxed frames; the driver reaches into them through an isolated world (CDP), to read
-// and click them as a person would.
+// Agent apps run in sandboxed frames; the driver reaches into them through Playwright, to read and click them as a
+// person would.
 
 import { writeFile } from 'node:fs/promises';
-import { js, sleep } from '../cdp.mjs';
+import { js, sleep } from '../browser.mjs';
 import { review } from './driver-review.mjs';
 import { pressKey } from './keys.mjs';
 import { byText, ITEM } from './selectors.mjs';
@@ -20,7 +20,7 @@ const JOBS_BOX = (b) =>
   `((${b}.closest('.stop-ask, [role=dialog], [role=alertdialog], .dialog, .toast') ?? ${b}.parentElement)?.innerText ?? ${b}.textContent).replace(/\\s+/g, ' ').trim().slice(0, 400)`;
 
 /**
- * @param {any} page  from tools/cdp.mjs launch()
+ * @param {any} page  from tools/browser.mjs launch()
  * @param {{ beforeStop?: () => Promise<void> }} [hooks]  beforeStop: runs just before every press of Stop (a host-mode
  *   run looks at what runs under each turn on its hosts then, tools/uat/hosts-watch.mjs)
  */
@@ -50,35 +50,22 @@ export function driver(page, hooks = {}) {
     await sleep(150);
   };
 
-  /** The isolated-world context of an agent app’s frame, so its content can be read and clicked. */
+  /** An agent app’s frame and where it sits on the page, so its content can be read and clicked. */
   async function appContext(key) {
     // Apps far off screen are unloaded: bring it into view, and give its frame a moment to load.
     await ev(`${ITEM(key)}?.scrollIntoView({ block: 'center' })`);
     for (let i = 0; i < 20 && !(await ev(`!!${ITEM(key)}?.querySelector('.appframe iframe')`)); i++) await sleep(200);
     await sleep(800);
-    const { result } = await page.send('Runtime.evaluate', { expression: `${ITEM(key)}?.querySelector('.appframe iframe, iframe')` });
-    if (!result.objectId) return null;
-    const { node } = await page.send('DOM.describeNode', { objectId: result.objectId });
-    if (!node.frameId) return null;
+    // Playwright reaches into the frame wherever Chromium runs it, in the page’s process or a sandboxed one of its own.
+    const frame = await page.frameOf(`${ITEM(key)}?.querySelector('.appframe iframe, iframe')`);
+    if (!frame) return null;
     const frameRect = await ev(
       `(() => { const b = ${ITEM(key)}.querySelector('.appframe iframe, iframe').getBoundingClientRect(); return { x: b.left, y: b.top }; })()`,
     );
-    // Chrome runs sandboxed frames in their own process; cdp.mjs attaches to each one.
-    const session = page.frameSession(node.frameId);
-    if (session) return { session, frameRect };
-    try {
-      const { executionContextId } = await page.send('Page.createIsolatedWorld', { frameId: node.frameId, worldName: 'uat' });
-      return { id: executionContextId, frameRect };
-    } catch {
-      return null;
-    }
+    return { frame, frameRect };
   }
-  const inApp = async (ctx, expression) => {
-    const r = ctx.session
-      ? await page.send('Runtime.evaluate', { expression, returnByValue: true }, ctx.session)
-      : await page.send('Runtime.evaluate', { expression, contextId: ctx.id, returnByValue: true });
-    return r.result?.value;
-  };
+  // What the expression gives in the app, or undefined when it throws there, or the frame has gone.
+  const inApp = (ctx, expression) => ctx.frame.evaluate(expression).catch(() => undefined);
 
   return {
     clickAt,

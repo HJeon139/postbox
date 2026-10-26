@@ -3,7 +3,7 @@
 // tools/uat-run.mjs, to keep those files to their size; it uses the driver’s clickAt and press.
 
 import { needsAt } from '../../server/room-checks-needs.mjs';
-import { js, sleep } from '../cdp.mjs';
+import { js, sleep } from '../browser.mjs';
 
 /**
  * Clicks the place named and returns where focus landed a moment later: the item it’s in, whether that’s on screen
