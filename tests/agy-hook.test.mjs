@@ -80,7 +80,7 @@ test('#370 conditions 2 & 3: decideAgyTool classifies file, command, web, MCP an
   });
   assert.equal(call('write_file', { Path: join(ws, 'escape-link', 'a.txt') }, 'auto').decision, 'ask');
 
-  for (const mode of ['ask', 'auto', 'acceptEdits']) {
+  for (const mode of ['ask', 'acceptEdits']) {
     assert.deepEqual(call('run_command', { CommandLine: 'git status', toolSummary: 'Check status' }, mode), {
       decision: 'ask',
       toolName: 'Bash',
@@ -137,7 +137,7 @@ function setupHookRuntime() {
 test('#370 condition 4: runAgyHook asks through permission_prompt with its own request id and handles edit, deny and expiry', async () => {
   const { root, store, adapter, rt, t, env, fetchMcp } = setupHookRuntime();
   const cmdEvent = JSON.stringify({
-    toolCall: { name: 'run_command', args: { CommandLine: 'touch a.txt', WaitMsBeforeAsync: 5000, toolSummary: 'Touch a.txt' } },
+    toolCall: { name: 'run_command', args: { CommandLine: 'touch /tmp/a.txt', WaitMsBeforeAsync: 5000, toolSummary: 'Touch a.txt' } },
   });
   /** @type {any[]} */
   const results = [];
@@ -214,7 +214,7 @@ test('#370 condition 4: disconnecting permission_prompt expires only that reques
 test('#370 condition 2: runAgyHook fails closed to deny on every error path and never outputs ask, force_ask or empty stdout', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pb-agy-fail-'));
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
-  const cmdEvent = JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls' } } });
+  const cmdEvent = JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls /' } } });
   const rpcReply = (id, text) => ({ ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id, result: { content: [{ text }] } }) });
 
   for (const [label, stdin, fetchImpl] of [
@@ -283,7 +283,7 @@ test('#370 condition 4: mcpPost uses node:http with HOOK_TIMEOUT_S instead of un
   };
   const root = mkdtempSync(join(tmpdir(), 'pb-agy-http-'));
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
-  const out = await runAgyHook(JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls' } } }), {
+  const out = await runAgyHook(JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls /' } } }), {
     cwd: root,
     env,
     fetchImpl: (url, init) => mcpPost(url, { ...init, requestImpl: /** @type {any} */ (fakeReq) }),
