@@ -28,3 +28,16 @@ test('#367 start() on a taken port throws EADDRINUSE and leaves nothing running,
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('#367 the startup error handler is gone after a successful bind', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pb-spec-start-listener-'));
+  const app = await start({ port: 0, dataDir: join(root, 'data'), fresh: true, demo: true, quiet: true, claudeHome: root });
+  try {
+    app.server.once('error', () => {});
+    app.server.emit('error', Object.assign(new Error('later server error'), { code: 'EIO' }));
+    expect(app.server.listening).toBe(true);
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

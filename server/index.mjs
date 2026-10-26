@@ -23,6 +23,7 @@ import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
+import { listen as listenServer } from './listen.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
@@ -561,11 +562,7 @@ export async function start({
     if (server.listening) await new Promise((ok) => server.close(ok));
     await store.flush();
   }
-  if (listen)
-    await new Promise((ok, fail) => {
-      server.once('error', (e) => close().then(() => fail(e), fail)); // a taken port closes all this first, so a caller can retry (#367)
-      server.listen(port, host, () => ok(rt.drainAll())); // listening: what waited in the queues across a restart goes (#228)
-    });
+  if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
   if (!quiet)
     console.log(
