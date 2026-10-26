@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.38.1 (2026-10-26)
+
+### Fixes
+
+- **codex:** pass a local folder to Codex by its real path
+
 ## 0.38.0 (2026-10-26)
 
 ### Features
