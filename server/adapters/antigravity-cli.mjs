@@ -53,7 +53,7 @@ import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { agyHookCommand, agyHooksJson, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT, HOOK_TIMEOUT_S } from './agy-hook.mjs';
-import { clip, HEADLESS_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
+import { clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
@@ -216,9 +216,12 @@ export const toolsNote = (dir) =>
  * The plugin’s rules file: the guide, the note on refusals, and what the persona turned off that agy can’t (in
  * TOOL_WORDS, the words the agent can act on).
  * Pure, so the tests can check it.
- * @param {{ persona: any, guide: string, schemas?: string|null }} turn  schemas: agy’s schema folder for Postbox’s server
+ * What it says about approval follows how agy runs: with the PreToolUse hook, calls ask through a card (HOOK_NOTE); in Run
+ * everything, nothing is asked; without the hook (agy before 1.4.7), headless agy refuses them (HEADLESS_NOTE).
+ * @param {{ persona: any, guide: string, schemas?: string|null, hooked?: boolean }} turn  schemas: agy’s schema folder for
+ *   Postbox’s server; hooked: the PreToolUse hook runs this turn
  */
-export function agyRules({ persona, guide, schemas = null }) {
+export function agyRules({ persona, guide, schemas = null, hooked = false }) {
   const ids = toolsOff(persona, TOOL_WORDS);
   const off = ids.map((id) => `${TOOL_WORDS[id]} (${id})`);
   const { canPublish } = setupOf(persona);
@@ -228,9 +231,11 @@ export function agyRules({ persona, guide, schemas = null }) {
     ? ` If a task needs ${ids.length === 1 ? 'it' : 'one of the tools'}, say it’s turned off in Postbox, and ask the person to turn it on with ask_for_tool { tool: "${ids[0]}", why }.`
     : '';
   const limits = off.length
-    ? `\n\n## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}. Antigravity can’t enforce that, so it’s up to you: don’t do them, and say so if a task needs one.${ask}`
+    ? `## What you don’t do here\n\nThe person turned these off for you in Postbox: ${off.join('; ')}. Antigravity can’t enforce that, so it’s up to you: don’t do them, and say so if a task needs one.${ask}`
     : '';
-  return `${guide}\n\n${schemas ? `${toolsNote(schemas)}\n\n` : ''}${HEADLESS_NOTE}${persona?.permissionMode === 'bypass' ? '' : `\n\n${LOOKING_NOTE}`}${limits}\n`;
+  const bypass = persona?.permissionMode === 'bypass';
+  const approval = bypass ? '' : hooked ? HOOK_NOTE : `${HEADLESS_NOTE}\n\n${LOOKING_NOTE}`;
+  return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
 }
 
 export { refusalFollowUp, refusalOf };
@@ -677,7 +682,9 @@ export class AntigravityCliAdapter {
     const prompt = formatMessage(message, ctx.pathOf);
     // agy can’t turn tools off (agyRules says what’s off), and its 12,000-character rules file has no room for #131’s sections.
     const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null, setup: false });
-    const rules = agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER) });
+    const useHook = persona?.permissionMode !== 'bypass' && agySupportsHooks(this.version);
+    const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
+    const rules = rulesWith(useHook);
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
     await this.folders.run(cwd, async () => {
@@ -687,7 +694,6 @@ export class AntigravityCliAdapter {
         this.excluded.add(cwd);
         await excludePlugin(cwd).catch(() => false);
       }
-      const useHook = persona?.permissionMode !== 'bypass' && agySupportsHooks(this.version);
       const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
       for (const [path, text] of Object.entries(agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand }))) {
         const file = join(plugin, path);
@@ -696,6 +702,8 @@ export class AntigravityCliAdapter {
         await writeFile(file, text, path === 'hooks.json' ? { mode: 0o444 } : undefined);
       }
       const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
+      // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
+      if (useHook && !hookConfirmed) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
       try {
         let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.
