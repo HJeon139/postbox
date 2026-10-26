@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.4 (2026-10-26)
+
+### Fixes
+
+- **permissions:** give a rule only to what it can't widen (#281)
+- **permissions:** read the program by its name, and its script by path
+- **permissions:** no broad rule for code given on the command line
+- **permissions:** no rule wider than the command the card showed
+
 ## 0.41.3 (2026-10-26)
 
 ### Fixes
