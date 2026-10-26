@@ -16,10 +16,18 @@ export async function codexMcpPromptConfig(request, ask) {
   const cursors = new Set();
   let cursor = null;
   do {
-    const page = await request('mcpServerStatus/list', { cursor, limit: 100, detail: 'toolsAndAuthOnly' });
+    let page;
+    try {
+      page = await request('mcpServerStatus/list', { cursor, limit: 100, detail: 'toolsAndAuthOnly' });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Codex couldn’t list its MCP servers, so Ask me can’t make them ask first: ${reason}`, { cause: error });
+    }
     for (const server of page?.data ?? []) {
       const name = typeof server?.name === 'string' ? server.name : '';
-      if (name && name !== POSTBOX_SERVER) config[`mcp_servers.${JSON.stringify(name)}.default_tools_approval_mode`] = 'prompt';
+      if (!name || name === POSTBOX_SERVER) continue;
+      if (name.includes('.')) throw new Error(`Codex MCP server “${name}” has a dot in its name, so Ask me can’t make its tools ask first.`);
+      config[`mcp_servers.${name}.default_tools_approval_mode`] = 'prompt';
     }
     cursor = typeof page?.nextCursor === 'string' && page.nextCursor && !cursors.has(page.nextCursor) ? page.nextCursor : null;
     if (cursor) cursors.add(cursor);
