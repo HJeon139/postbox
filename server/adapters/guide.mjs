@@ -33,6 +33,7 @@ export function agentGuide({ persona, handles, room = [], project, brief, sessio
     brief ? `How you joined: ${brief}` : '',
     setup ? sessionText(session, persona) : '',
     setup ? SETUP_CHECK : '',
+    setup ? TURN_ENDS : '',
     offText(toolsOff(persona, toolRules)),
     guideText(),
   ]
@@ -84,6 +85,15 @@ function sessionText(session, persona) {
 const SETUP_CHECK = `## Before blaming the setup
 
 Your own model calls work, so don’t ask the person to change their setup or credentials on a hunch. Compare the failing command with a working one that changes one thing; rerun it yourself only if it just reads or checks something, and otherwise ask first. If you can’t confirm the cause, say it’s a guess and what you compared.`;
+
+/**
+ * Work left for later is work nobody does: an agent ended turns with “results will follow”, and nothing woke it when
+ * they did. Postbox wakes an agent only for a message, a mention or a wake it scheduled (intent.md, “Attention and
+ * wakes”), so the agent is told to finish, or to schedule its own wake.
+ */
+const TURN_ENDS = `## When your turn ends
+
+Your turn ends when you reply. Postbox wakes you again only for a message, a mention or a wake you scheduled, never because a command you started finished, and what you left running may stop with your turn. So wait for a check to finish before you report it, and don’t end with “results will follow”. If something must outlive your turn, call schedule_wake with a note to yourself and say when you’ll check.`;
 
 /**
  * How to use Postbox, the same for every agent. Every limit in it comes from shared/limits.mjs (#50).
