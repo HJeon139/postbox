@@ -34,7 +34,8 @@ export function inline(s, ctx, at) {
     from = 0;
   // Code spans bind tighter than emphasis, so **`x`** is bold: each span waits in the text run as a
   // U+0000 and goes back in, in order, once the run's emphasis is applied.
-  const codes = [];
+  const codes = [],
+    closes = delimiterCloses(s);
   const mark = (html, a, z) => (at && html ? `<span data-sl="${at.n + 1}" data-sc="${at.c + a}" data-se="${at.c + z}">${html}</span>` : html);
   const flush = () => {
     out += mark(
@@ -62,7 +63,6 @@ export function inline(s, ctx, at) {
       i += 2;
       continue;
     }
-
     if (c === '`') {
       const run = /** @type {RegExpMatchArray} */ (s.slice(i).match(/^`+/))[0];
       const end = s.indexOf(run, i + run.length);
@@ -78,7 +78,7 @@ export function inline(s, ctx, at) {
       continue;
     }
 
-    const ref = c === '[' || (c === '!' && s[i + 1] === '[') ? bracket(s, i, ctx) : null;
+    const ref = c === '[' || (c === '!' && s[i + 1] === '[') ? bracket(s, i, ctx, closes) : null;
     if (ref) {
       piece(ref.html, ref.end);
       continue;
@@ -101,41 +101,46 @@ export function inline(s, ctx, at) {
   return out;
 }
 
-/**
- * The index of what closes the ( at s[open], or another pair such as '[]', counting nested pairs; -1 if none does
- * before limit.
- */
-function matchParen(s, open, [a, b] = '()', limit = s.length) {
-  let depth = 0;
-  for (let j = open; j < Math.min(s.length, limit); j++) {
-    if (s[j] === '\\') {
-      j++;
+/** The matching unescaped close for every balanced [] and () opener, found in one pass. */
+function delimiterCloses(s) {
+  const closes = new Map();
+  const brackets = [];
+  const parens = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\') {
+      i++;
       continue;
     }
-    if (s[j] === a) depth++;
-    else if (s[j] === b && --depth === 0) return j;
+    const stack = c === '[' || c === ']' ? brackets : c === '(' || c === ')' ? parens : null;
+    if (!stack) continue;
+    if (c === '[' || c === '(') stack.push(i);
+    else {
+      const open = stack.pop();
+      if (open !== undefined) closes.set(open, i);
+    }
   }
-  return -1;
+  return closes;
 }
 
 /**
  * What starts at s[i], a [ or an image’s !: a link, an image, or the marker of a source that exists. Anything else is
  * text, and gets null.
- * @param {string} s @param {number} i @param {any} ctx
+ * @param {string} s @param {number} i @param {any} ctx @param {Map<number, number>} closes
  * @returns {{ html: string, end: number } | null}  end is the index just after it
  */
-function bracket(s, i, ctx) {
+function bracket(s, i, ctx, closes) {
   const image = s[i] === '!';
   const open = image ? i + 1 : i;
   // Brackets nest, so an image can be a link’s text. A label is looked for over the next LABEL_MAX characters only, so
   // a line of unclosed brackets isn’t scanned to its end from each one.
-  const close = matchParen(s, open, '[]', open + LABEL_MAX);
-  if (close < 0) return null;
+  const close = closes.get(open);
+  if (close === undefined || close >= open + LABEL_MAX) return null;
   const label = s.slice(open + 1, close);
   // A link’s text holds no link, since an <a> can’t hold another.
   if (s[close + 1] === '(' && !(ctx.inLink && !image)) {
-    const end = matchParen(s, close + 1);
-    if (end < 0) return null;
+    const end = closes.get(close + 1);
+    if (end === undefined) return null;
     const target = s.slice(close + 2, end).trim();
     return { html: image ? img(label, target, ctx) : link(label, target, ctx), end: end + 1 };
   }
