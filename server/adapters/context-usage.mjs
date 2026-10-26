@@ -19,8 +19,8 @@ export const agyWindowFor = (model) => CITED_AGY_WINDOWS.find(([re]) => re.test(
  * In Antigravity CLI usage reporting, total_tokens = input_tokens + output_tokens, meaning
  * input_tokens counts only uncached prompt tokens and cache_read_tokens counts cached prompt tokens.
  * Together, input_tokens + cache_read_tokens represent the full prompt context loaded into the model.
- * Evidence recorded in ~/.gemini/antigravity-cli/brain/93aa5dd9-c75c-4c80-8b5a-206e898de577/.system_generated/logs/transcript.jsonl step 245:
- * input_tokens (2,787) + output_tokens (148) = 2,935 total_tokens, while cache_read_tokens is 23,525.
+ * Recorded in tests/fixtures/antigravity-cli/error-after-refusal.jsonl, step 32: input_tokens (2,682) +
+ * output_tokens (248) = 2,930 total_tokens, while cache_read_tokens is 20,545.
  * A count that isn’t a finite, non-negative number makes the percentage unknown, rather than one added as text or NaN.
  */
 export function agyContextPercent(usage, window) {
