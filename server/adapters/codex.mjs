@@ -80,6 +80,12 @@ const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server fa
 export function createCodexMapper(ctx) {
   const labels = new Map();
   const messageText = new Map();
+  let lastMessageId = null;
+  const writeMessage = (id, text) => {
+    if (lastMessageId !== null && id !== lastMessageId) ctx.text('\n\n');
+    lastMessageId = id;
+    ctx.text(text);
+  };
   const pushItem = (item, state = 'running') => {
     if (!item?.id) return;
     if (item.type === 'commandExecution') {
@@ -114,7 +120,7 @@ export function createCodexMapper(ctx) {
         break;
       case 'item/completed': {
         const item = p.item;
-        if (item?.type === 'agentMessage' && item.text && !messageText.has(item.id)) ctx.text(item.text);
+        if (item?.type === 'agentMessage' && item.text && !messageText.has(item.id)) writeMessage(item.id, item.text);
         const label = labels.get(item?.id);
         if (label && !(item?.type === 'mcpToolCall' && item.server === POSTBOX_SERVER))
           ctx.activity({ id: item.id, label, state: item.status === 'failed' || item.status === 'declined' ? 'denied' : 'done', kind: 'tool' });
@@ -124,7 +130,7 @@ export function createCodexMapper(ctx) {
         if (typeof p.delta === 'string') {
           messageText.set(p.itemId, `${messageText.get(p.itemId) ?? ''}${p.delta}`);
           ctx.status({ state: 'gen', currentStep: 'Writing a reply' });
-          ctx.text(p.delta);
+          writeMessage(p.itemId, p.delta);
         }
         break;
       case 'item/commandExecution/outputDelta': {
