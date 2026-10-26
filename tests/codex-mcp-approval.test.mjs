@@ -1,8 +1,9 @@
 // Codex’s Ask me mode applies a separate approval policy to third-party MCP tools (#421).
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { CodexAdapter, codexConfigArgs } from '../server/adapters/codex.mjs';
+import { CodexAdapter, codexApproval, codexConfigArgs } from '../server/adapters/codex.mjs';
 import { codexMcpPromptConfig } from '../server/adapters/codex-mcp-policy.mjs';
 import { fakeAppServer } from './codex-fixture.mjs';
 
@@ -90,4 +91,38 @@ test('Ask me explains that it fails closed when Codex cannot list its MCP server
     assert.equal(error.cause, cause);
     return true;
   });
+});
+
+test('real Codex Ask me streams map third-party MCP approval requests to named cards', async () => {
+  for (const [fixture, allow] of [
+    ['ask-mcp-allow.jsonl', true],
+    ['ask-mcp-deny.jsonl', false],
+  ]) {
+    const events = readFileSync(new URL(`fixtures/codex-app-server/${fixture}`, import.meta.url), 'utf8')
+      .trim()
+      .split('\n')
+      .map(JSON.parse);
+    const request = events.find((event) => event.method === 'mcpServer/elicitation/request');
+    const started = events.findIndex((event) => event.method === 'item/started');
+    const asked = events.indexOf(request);
+    const completed = events.findIndex((event) => event.method === 'item/completed');
+    let card;
+
+    const answer = await codexApproval(
+      {
+        askPermission: async (value) => {
+          card = value;
+          return { allow };
+        },
+      },
+      request,
+    );
+
+    assert.ok(started < asked && asked < completed, `${fixture}: Codex asked before the tool completed`);
+    assert.equal(card.tool, 'mcp__acme-mcp__LookupTerm');
+    assert.equal(card.summary, 'use acme-mcp tool LookupTerm');
+    assert.match(card.detail, /"term": "XYZ"/);
+    assert.deepEqual(answer, allow ? { action: 'accept', content: {} } : { action: 'decline' });
+    if (!allow) assert.equal(events[completed].params.item.durationMs, 0, 'the denied call never reached its server');
+  }
 });
