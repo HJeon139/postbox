@@ -2,7 +2,7 @@
 // at 1280 and 375 px in dark and light, plus a sheet per scene that puts the approved mockup beside the app.
 //
 //   node tools/shoot-app.mjs              → screenshots/latest/app/ (ignored by git)
-//   node tools/shoot-app.mjs --baseline   → screenshots/app/, the approved set
+//   node tools/shoot-app.mjs --baseline   → screenshots/app/ (ignored by git, but the README’s picture)
 //
 // It takes pictures and checks nothing: axe-core runs on the same scenes and variants in
 // tests/browser/demo-a11y.spec.mjs, CI’s gate on the demo.
