@@ -38,7 +38,7 @@ function fakeAgy(how) {
   const runs = [];
   const spawn = (_bin, args) => {
     runs.push(args);
-    const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter() });
+    const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
     child.kill = () => {
       setImmediate(() => child.emit('close', null));
       return true;
@@ -46,6 +46,7 @@ function fakeAgy(how) {
     if (!how.hang)
       setImmediate(() => {
         if (!how.exit) child.stdout.emit('data', how.raw ?? stream(how.answer, { tool: how.tool }));
+        if (how.stderr) child.stderr.emit('data', how.stderr);
         child.emit('close', how.exit ?? 0);
       });
     return child;
@@ -216,4 +217,10 @@ test('the prompt quotes the call and the request as data, says who asked, and on
     stream({ decision: 'approve', why: 'ok' }, { tool: true }),
   ])
     assert.equal(parseReview(out).decision, 'ask', out);
+});
+
+test('a reviewer that fails says why on the card, from what agy printed, and one that agy stopped says it didn’t finish', async () => {
+  const quota = await turn('auto', { exit: 1, stderr: 'Error: RESOURCE_EXHAUSTED: Individual quota reached for gemini-3.8-flash-low\n' }, [ask('git status')]);
+  assert.match(quota.cards[0].review, /^The reviewer exited with code 1: Error: RESOURCE_EXHAUSTED/);
+  assert.match(parseReview(JSON.stringify({ event: 'result', result: { status: 'TIMEOUT' } })).why, /didn’t finish \(TIMEOUT\)/);
 });

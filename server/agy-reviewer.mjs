@@ -80,6 +80,9 @@ export function parseReview(stdout) {
     if (ev?.event === 'result') result = ev.result;
   }
   const s = result?.structured_output;
+  // agy’s own --print-timeout ends the run with a result but no answer.
+  if (!s && result?.status && result.status !== 'SUCCESS')
+    return { decision: 'ask', why: `The reviewer didn’t finish (${String(result.status).slice(0, 40)}).` };
   if (!s) return { decision: 'ask', why: 'The reviewer’s answer wasn’t readable.' };
   const why = typeof s.why === 'string' ? s.why.trim().slice(0, 300) : '';
   return s.decision === 'approve' ? { decision: 'approve', why } : { decision: 'ask', why: why || 'The reviewer didn’t approve it.' };
@@ -108,6 +111,7 @@ export async function reviewAgyCall(call, { bin = 'agy', model = REVIEW_MODEL, t
 function run(spawnImpl, bin, args, dir, timeoutMs, signal) {
   return new Promise((resolve) => {
     let out = '';
+    let err = '';
     /** @type {any} */
     let child;
     let settled = false;
@@ -132,7 +136,7 @@ function run(spawnImpl, bin, args, dir, timeoutMs, signal) {
     };
     const onAbort = () => stop('The request closed.');
     try {
-      child = spawnImpl(bin, args, { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'], detached: true });
+      child = spawnImpl(bin, args, { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     } catch {
       settle({ decision: 'ask', why: 'The reviewer couldn’t start.' });
       return;
@@ -143,8 +147,15 @@ function run(spawnImpl, bin, args, dir, timeoutMs, signal) {
     child.stdout?.on('data', (c) => {
       out = (out + c).slice(-400_000);
     });
+    // What agy said when it failed (a spent quota, a sign-in), for the card’s reason.
+    child.stderr?.on('data', (c) => {
+      err = (err + c).slice(-2000);
+    });
     child.on('error', () => settle({ decision: 'ask', why: 'The reviewer couldn’t start.' }));
-    child.on('close', (code) => settle(code === 0 ? parseReview(out) : { decision: 'ask', why: `The reviewer exited with code ${code}.` }));
+    child.on('close', (code) => {
+      const said = err.trim().split('\n').filter(Boolean).at(-1)?.slice(0, 200);
+      settle(code === 0 ? parseReview(out) : { decision: 'ask', why: `The reviewer exited with code ${code}${said ? `: ${said}` : '.'}` });
+    });
   });
 }
 
