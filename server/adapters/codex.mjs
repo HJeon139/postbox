@@ -100,7 +100,11 @@ export function createCodexMapper(ctx) {
       labels.set(item.id, label);
       ctx.activity({ id: item.id, label, state, kind: 'tool' });
     } else if (item.type === 'reasoning') ctx.status({ state: 'think' });
-    else if (item.type === 'webSearch') ctx.activity({ id: item.id, label: `Search the web${item.query ? `: ${item.query}` : ''}`, state, kind: 'tool' });
+    else if (item.type === 'webSearch') {
+      const label = `Search the web${item.query ? `: ${item.query}` : ''}`;
+      labels.set(item.id, label);
+      ctx.activity({ id: item.id, label, state, kind: 'tool' });
+    }
   };
   const push = (msg) => {
     const p = msg?.params ?? {};
