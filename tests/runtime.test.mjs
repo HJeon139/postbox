@@ -1360,7 +1360,7 @@ test('#94: an outcome on an answered confirm reports the result: it stays answer
   assert.equal(it.block.confirmLabel, 'Delete');
   assert.equal(it.turnId, item.turnId);
   assert.equal(said.ok, true);
-  assert.match(said.message, /stays answered\. Your other changes weren’t applied/);
+  assert.match(said.message, /stays answered\. Your other changes \(title, confirmLabel\) weren’t applied/);
   assert.equal(store.state.sessions[se.id].needs, null);
   assert.equal(store.state.sessions[se.id].state, 'idle');
   assert.throws(() => rt.act(t.id, item.id, 'confirm', {}), /already answered/);

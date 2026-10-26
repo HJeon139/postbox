@@ -6,6 +6,7 @@
 // - a click on a diagram in Preview, which can’t be selected inside, opens Lines at its lines, with their comment box;
 //   a click on text stays in Preview;
 // - full screen opens and closes from the keyboard, with focus kept.
+// - a revised draft’s header shows the revision Postbox counted, not one the agent left out (#248).
 // review-comments.spec.mjs checks comments. Each test has a conversation of its own, where a scripted @drafter shows
 // the draft (tests/browser/review.mjs). Moved from tools/check-review.mjs (#303).
 
@@ -106,4 +107,19 @@ test.describe('dark', () => {
     const { block } = await room.withReview(page, 'Dark');
     await drawn(block, 'Preview');
   });
+});
+
+test('#248 a draft revised without a revision of its own opens each revision in Lines, as v2 then v3, with its diff', async ({ page }) => {
+  const { rt } = room.app;
+  const { thread, block, itemOf } = await room.withReview(page, 'Revised');
+  await expect(block.locator('.block-head .small.dim').filter({ hasText: /^v\d+$/ })).toHaveText('v1');
+  const changes = block.locator('[aria-label="Changes"]');
+  for (const n of [2, 3]) {
+    rt.sendMessage(thread.id, { text: `@drafter revise ${n}` });
+    await expect.poll(() => itemOf().revision, { message: `revision ${n}` }).toBe(n);
+    await room.idle();
+    await synced(page, room.app);
+    await expect(viewRadio(block, 'Lines'), `revision ${n} opens in Lines`).toHaveAttribute('aria-checked', 'true');
+    await expect(changes.getByRole('radio'), `v${n}, with its diff`).toHaveText([`Diff v${n - 1} → v${n}`, `v${n}`]);
+  }
 });

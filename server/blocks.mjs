@@ -107,35 +107,13 @@ export function unreadAnswer(rt, sessionId, threadId, it, outcome = false) {
  */
 export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endSegment }) {
   if (block && typeof block === 'object' && Object.hasOwn(block, 'withdraw')) return withdraw(rt, sessionId, block, { se, threadId });
+  if (block && typeof block === 'object' && typeof block.outcome === 'string') return recordOutcome(rt, sessionId, block, { se, threadId });
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
   const { where, existing } = shownBy(rt, sessionId, v.block.id, threadId(), se());
   if (!existing) return notShown(rt, sessionId, v.block.id);
   if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
   const now = Date.now();
-  // An update that sets outcome reports a result, not a question (#94): it goes under the person’s answer, the
-  // block stays answered, and nobody is asked again. The question they answered stays as they saw it.
-  if (typeof v.block.outcome === 'string') {
-    // Nor under a dismissal: the person said the block isn’t needed, so there’s no answer to report on.
-    if (existing.closed?.by === 'person' || (existing.closed && !existing.answer))
-      return { ok: false, message: `${existing.answer ? 'The person dismissed' : 'You withdrew'} ${v.block.id}, so it has no answer to report on.` };
-    if (!existing.answer)
-      return {
-        ok: false,
-        message: OUTCOME_LATER(v.block.id, 'The update wasn’t applied.'),
-      };
-    // Nor over an answer the agent hasn’t read (#123): it can’t know what came of an answer it hasn’t seen, and
-    // “Deleted.” could land under a Cancel.
-    if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing, true);
-    const { outcome, ...asked } = v.block;
-    const keys = new Set([...Object.keys(asked), ...Object.keys(existing.block)].filter((k) => k !== 'outcome'));
-    const changed = [...keys].some((k) => JSON.stringify(asked[k]) !== JSON.stringify(existing.block[k]));
-    rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, revision: (existing.revision ?? 1) + 1, updatedAt: now });
-    return {
-      ok: true,
-      message: `Recorded the outcome under the person’s answer to ${v.block.id}; it stays answered.${changed ? ' Your other changes weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.' : ''}`,
-    };
-  }
   // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
   // read (#123): the person would see it vanish, and the agent would never learn what it erased.
   if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
@@ -144,6 +122,18 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
     v.block = keepReviewThreads(existing, v.block);
     const kept = validateBlock(v.block, { imageOrigins: rt.config.imageOrigins });
     if (!kept.ok) return { ok: false, message: `The update wasn’t applied: with the reviewers’ threads it leaves out, which stay, ${kept.errors.join(' ')}` };
+  }
+  // One that changes only what the person can’t see (its fallback) asks nothing new, so an answered block stays
+  // answered, and an outcome can follow (#286).
+  if (existing.answered) {
+    const differ = changedKeys(v.block, existing.block).filter((k) => k !== 'outcome');
+    if (differ.every((k) => UNSEEN.has(k))) {
+      if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now });
+      return {
+        ok: true,
+        message: `${differ.length ? `Updated the ${differ.join(', ')} of ${v.block.id}` : `Nothing in ${v.block.id} changed`}; it stays answered, since nothing the person sees changed. To ask again, change what it asks.`,
+      };
+    }
   }
   /** @type {Record<string, any>} */
   const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
@@ -159,6 +149,42 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   if (where === threadId()) endSegment();
   const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
   return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
+}
+
+// What a block holds that the person never sees: changing it alone doesn’t ask again (#286).
+const UNSEEN = new Set(['fallback', 'version']);
+
+/** The keys whose values differ between two blocks. @param {Record<string, any>} a @param {Record<string, any>} b */
+const changedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));
+
+/**
+ * update_block with outcome reports a result, not a question (#94): it goes under the person’s answer, the block
+ * stays answered, and nobody is asked again. { id, outcome } is enough: the rest is the block the person answered,
+ * and any other field sent is only compared with it, to say it wasn’t applied (#330).
+ * @param {any} rt @param {string} sessionId @param {Record<string, any>} block
+ * @param {{ se: () => any, threadId: () => string }} at
+ */
+function recordOutcome(rt, sessionId, block, { se, threadId }) {
+  const id = String(block.id ?? '');
+  const { where, existing } = shownBy(rt, sessionId, id, threadId(), se());
+  if (!existing) return notShown(rt, sessionId, id);
+  if (block.type !== undefined && block.type !== existing.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
+  const v = validateBlock({ ...existing.block, outcome: block.outcome }, { imageOrigins: rt.config.imageOrigins });
+  if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
+  // Nor under a dismissal: the person said the block isn’t needed, so there’s no answer to report on.
+  if (existing.closed?.by === 'person' || (existing.closed && !existing.answer))
+    return { ok: false, message: `${existing.answer ? 'The person dismissed' : 'You withdrew'} ${id}, so it has no answer to report on.` };
+  if (!existing.answer) return { ok: false, message: OUTCOME_LATER(id, 'The update wasn’t applied.') };
+  // Nor over an answer the agent hasn’t read (#123): it can’t know what came of an answer it hasn’t seen, and
+  // “Deleted.” could land under a Cancel.
+  if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing, true);
+  const { id: _id, outcome, ...sent } = block;
+  const differ = Object.keys(sent).filter((k) => JSON.stringify(sent[k]) !== JSON.stringify(existing.block[k]));
+  rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, revision: (existing.revision ?? 1) + 1, updatedAt: Date.now() });
+  return {
+    ok: true,
+    message: `Recorded the outcome under the person’s answer to ${id}; it stays answered.${differ.length ? ` Your other changes (${differ.join(', ')}) weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.` : ''}`,
+  };
 }
 
 /**
