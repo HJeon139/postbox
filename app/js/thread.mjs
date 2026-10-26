@@ -3,6 +3,7 @@
 
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
+import { resolveCommand } from '/shared/slash-line.mjs';
 import { activityLabel, stepTree } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
@@ -12,7 +13,7 @@ import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { asWake, queuedRow } from './composer-queue.mjs';
-import { addressLine, addressSig } from './composer-to.mjs';
+import { addressLine, addressSig, commandHint } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
@@ -1246,21 +1247,20 @@ export function mountComposer(threadId, { side = false } = {}) {
     return members.find((x) => x.id === thread()?.lastSpeaker) ?? members[0] ?? null;
   };
   const isMock = (se) => S().personas[se?.personaId]?.backend === 'mock';
-  /** Postbox’s own commands, which act on Postbox without a turn. */
+  /** Postbox’s own commands, which act on Postbox without a turn, for se: the agent named (#405), else target(). */
   const POSTBOX = [
-    ['permissions', 'Its mode, rules, folders and MCP servers', () => openPermissions({ threadId, sessionId: target()?.id })],
-    ['mode', 'Ask me, Auto, Accept edits or Run everything', () => openRunChoice('mode', { threadId, sessionId: target()?.id })],
-    ['model', 'The model for this conversation', () => openRunChoice('model', { threadId, sessionId: target()?.id })],
-    ['effort', 'How much it thinks, for this conversation', () => openRunChoice('effort', { threadId, sessionId: target()?.id })],
-    ['add-dir', 'Let it work in another folder', () => addDir()],
-    ['mcp', 'Its MCP servers: status, on or off', () => openPermissions({ threadId, sessionId: target()?.id, focus: 'mcp' })],
-    ['compact', 'Summarize its context to make room', () => compact()],
-    ['stop', 'Stop the agents that are working', () => stopAll()],
+    ['permissions', 'Its mode, rules, folders and MCP servers', (se = target()) => openPermissions({ threadId, sessionId: se?.id })],
+    ['mode', 'Ask me, Auto, Accept edits or Run everything', (se = target()) => openRunChoice('mode', { threadId, sessionId: se?.id })],
+    ['model', 'The model for this conversation', (se = target()) => openRunChoice('model', { threadId, sessionId: se?.id })],
+    ['effort', 'How much it thinks, for this conversation', (se = target()) => openRunChoice('effort', { threadId, sessionId: se?.id })],
+    ['add-dir', 'Let it work in another folder', (se) => addDir(se)],
+    ['mcp', 'Its MCP servers: status, on or off', (se = target()) => openPermissions({ threadId, sessionId: se?.id, focus: 'mcp' })],
+    ['compact', 'Summarize its context to make room', (se) => compact(se)],
+    ['stop', 'Stop the agents that are working', (_se, named) => stopAll(named)],
     ['rename', 'Rename this conversation', () => openRename(threadId)],
   ];
   const POSTBOX_NAMES = new Set(POSTBOX.map(([n]) => n));
-  function addDir() {
-    const se = target();
+  function addDir(se = target()) {
     const projectId = thread()?.projectId;
     if (!se || !projectId) return;
     openFolderPicker(
@@ -1272,16 +1272,16 @@ export function mountComposer(threadId, { side = false } = {}) {
       { folders: true },
     );
   }
-  function compact() {
-    const se = target();
+  function compact(se = target()) {
     if (!se) return;
     if (isMock(se)) return toast({ title: 'Nothing to compact', text: `@${se.handle} is a mock agent.` });
     runAgentCommand(se, '/compact');
   }
-  function stopAll() {
+  function stopAll(only = null) {
     // In a conversation, Stop reaches its side threads too (#121), but not a turn in a topic thread: it has its own (#228).
+    // only: the agent `@handle /stop` names (#405).
     const t = thread();
-    const go = (se) => busy(se) && !(t?.kind !== 'topic' && S().threads[se.sideTurn?.threadId]?.kind === 'topic');
+    const go = (se) => (!only || se.id === only.id) && busy(se) && !(t?.kind !== 'topic' && S().threads[se.sideTurn?.threadId]?.kind === 'topic');
     const working = (t?.kind === 'side' || t?.kind === 'topic' ? sessionsAt(threadId) : [...sessionsOf(threadId), ...sideSessionsOf(threadId)]).filter(go);
     if (!working.length) return say('Nothing is running here.');
     for (const se of working)
@@ -1418,23 +1418,24 @@ export function mountComposer(threadId, { side = false } = {}) {
           return false;
         }
       };
-    const m = text.match(/^\/([\w:.@/-]+)(\s[\s\S]*)?$/);
-    if (!m) return null;
-    const [, name, rest] = m;
-    const own = POSTBOX.find(([n]) => n === name);
-    if (own && !rest?.trim())
+    const r = resolved(text);
+    if (!r || r.missing) return null;
+    if (r.own)
       return async () => {
-        own[2]();
+        POSTBOX.find(([n]) => n === r.name)?.[2](r.se ?? undefined, r.named);
         return true;
       };
-    const picked = slashTarget?.name === name ? sessionsOf(threadId).find((x) => x.id === slashTarget.sessionId) : null;
-    const reply = target();
-    const se =
-      picked ??
-      (reply && agentCommands(reply).list.some((c) => c.name === name) ? reply : null) ??
-      sessionsOf(threadId).find((x) => !x.archived && agentCommands(x).list.some((c) => c.name === name));
-    return se ? () => runAgentCommand(se, text) : null;
+    return () => runAgentCommand(r.se, r.line);
   }
+  /** Which command a line runs and for whom, with `@handle /name` aimed at that agent (#405). */
+  const resolved = (text) =>
+    resolveCommand(text, {
+      members: sessionsOf(threadId),
+      reply: target(),
+      pick: (name) => (slashTarget?.name === name ? sessionsOf(threadId).find((x) => x.id === slashTarget?.sessionId) : null),
+      own: [...POSTBOX_NAMES],
+      has: (se, name) => agentCommands(se).list.some((c) => c.name === name),
+    });
 
   async function submit(sendNow = false) {
     const text = ta.value.trim();
@@ -1580,7 +1581,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     // The hint line follows what the line will do: a picked skill, a ! command, or a message, and whom it reaches.
     if (slashTarget && !ta.value.startsWith(`/${slashTarget.name}`)) slashTarget = null;
     const to = hint.dataset.to !== addressSig(threadId, ta.value);
-    if (to || ta.value.startsWith('!') || hint.dataset.mode || (commands && ta.value.startsWith('/'))) paint();
+    if (to || ta.value.startsWith('!') || hint.dataset.mode || (commands && /^(@\S+\s+)?\//.test(ta.value))) paint();
     // Said once, when it appears, since the hint isn’t read as you type.
     if (to && hint.querySelector('.did-you-mean')) say(`${hint.querySelector('.did-you-mean').textContent} Its button follows the message box.`);
   });
@@ -1797,7 +1798,9 @@ export function mountComposer(threadId, { side = false } = {}) {
           ? 'shell'
           : slashTarget && line.startsWith(`/${slashTarget.name}`)
             ? 'skill'
-            : '';
+            : resolved(line)?.named
+              ? 'command'
+              : '';
     if (mode) hint.dataset.mode = mode;
     else delete hint.dataset.mode;
     hint.dataset.to = addressSig(threadId, ta.value);
@@ -1823,16 +1826,8 @@ export function mountComposer(threadId, { side = false } = {}) {
               h('b', '! runs commands only in the conversation’s own composer.'),
               ` Here, this goes to ${topic ? 'the agent' : 'the agents'} as a message. To run it, send it from the conversation.`,
             )
-          : mode === 'skill'
-            ? h(
-                'span',
-                'Enter runs ',
-                h('span.mono', `/${slashTarget.name}`),
-                slashTarget.argumentHint ? [' ', h('span.mono.dim', slashTarget.argumentHint)] : null,
-                ' as ',
-                h('b', `@${slashTarget.handle}`),
-                '’s turn',
-              )
+          : mode === 'command' || mode === 'skill'
+            ? commandHint(mode === 'skill' ? { name: slashTarget.name, hint: slashTarget.argumentHint, named: slashTarget } : resolved(line))
             : offline
               ? h('span', 'You’re offline. Messages you send now go out when the connection is back.')
               : [
