@@ -1,4 +1,5 @@
 // Codex’s Ask me mode applies a separate approval policy to third-party MCP tools (#421).
+// The Ask me fixtures are claude-ssh-aarch64’s real Codex 0.164.0 runs, with IDs and internal tool details redacted.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
