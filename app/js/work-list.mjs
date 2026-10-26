@@ -81,6 +81,8 @@ function rowBody(r) {
             )
           : null,
       ];
+    case 'review':
+      return [icon('check', 'i-sm'), h('code.wl-label', r.label), h('span.small.dim', ` · approved by the reviewer${r.detail ? `: ${r.detail}` : ''}`)];
     default:
       return [icon('search', 'i-sm'), h('span.wl-label', r.label)];
   }

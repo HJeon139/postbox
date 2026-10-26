@@ -600,6 +600,11 @@ export class Runtime {
               .replace(/^@/, '')
               .toLowerCase()
           : null,
+      // What started it, and who sent it (null for the person), for the Antigravity reviewer (#416).
+      request: {
+        by: message.kind === 'agent' ? String(message.from ?? '').replace(/^@/, '') || null : (message.event?.from ?? null),
+        text: String(message.text ?? ''),
+      },
       sessionId,
       // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
       backend: persona?.backend ?? 'mock',

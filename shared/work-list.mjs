@@ -50,6 +50,8 @@ export function turnRows(entries, turnId, { folders = [] } = {}) {
   for (const p of s.pushes) rows.push({ kind: 'push', at: p.id, label: `Pushed ${p.branch || 'a branch'}`, detail: p.remote ?? '' });
   for (const x of s.external) rows.push({ kind: 'external', at: x.id, label: x.what, url: x.urls?.[0] ?? null, state: x.state });
   for (const c of s.commands) rows.push({ kind: 'command', at: c.id, label: commandLabel(c, folders), state: c.state, exit: c.exit ?? null });
+  // An Antigravity agent’s call its reviewer approved, with no one asked (#416).
+  for (const r of entries) if (r.kind === 'review' && r.turnId === turnId) rows.push({ kind: 'review', at: r.id, label: r.label, detail: r.why ?? '' });
   if (s.reads.length) rows.push({ kind: 'reads', at: 'work-reads', label: readsLine(s.reads), count: s.reads.length });
   return rows;
 }
