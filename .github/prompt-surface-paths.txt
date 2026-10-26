@@ -7,6 +7,7 @@
 
 # What every Postbox agent is told, and how each backend hands it over
 server/adapters/guide.mjs
+server/adapters/queued-messages.mjs
 server/adapters/setup.mjs
 server/adapters/agent-sdk.mjs
 server/adapters/agy-refusals.mjs
@@ -28,6 +29,8 @@ server/bring.mjs
 server/permission-prompt.mjs
 server/reactions.mjs
 server/side-threads.mjs
+server/message-queue.mjs
+server/queue-batch.mjs
 server/subagent-end.mjs
 shared/reactions.mjs
 shared/review-comments.mjs
