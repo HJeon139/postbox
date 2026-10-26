@@ -3,7 +3,8 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { addAllowRule, chains, rulesFor } from '../server/permission-rules.mjs';
+import { addAllowRule, chains, cleanRule, rulesFor, takeBackRule } from '../server/permission-rules.mjs';
+import { splitCommand } from '../shared/command-chains.mjs';
 
 test('a refused command is allowed once exactly, and always by its command (or exactly, if it has shell syntax)', () => {
   assert.deepEqual(rulesFor('Bash', { command: 'rm copy.txt' }), {
@@ -27,10 +28,10 @@ test('a chained command gets no rule to allow once or always: no rule for the wh
     'make; make install',
     'sleep 60 &',
     'npm ci\nnpm test',
-    'cat $(ls)',
-    'echo `date`',
+    'cat <(ls)',
+    'echo $((1|2))',
   ])
-    assert.deepEqual(rulesFor('Bash', { command }), { once: null, always: null, alwaysWords: '' }, command);
+    assert.deepEqual(rulesFor('Bash', { command }), { once: null, always: null, alwaysWords: '', why: 'chained' }, command);
 });
 
 test('what isn’t a separator doesn’t make a command chained: quotes, escapes, heredoc bodies, redirects, arithmetic', () => {
@@ -45,8 +46,7 @@ test('what isn’t a separator doesn’t make a command chained: quotes, escapes
     'echo "it\'s here"',
   ])
     assert.equal(chains(command), false, command);
-  for (const command of ['cat <<EOF\nhi\nEOF\nls', 'cat <<EOF | tee out.txt\nhi\nEOF', 'echo "$(ls)"', 'echo "it\'s" | grep i'])
-    assert.equal(chains(command), true, command);
+  for (const command of ['cat <<EOF\nhi\nEOF\nls', 'cat <<EOF | tee out.txt\nhi\nEOF', 'echo "it\'s" | grep i']) assert.equal(chains(command), true, command);
 });
 
 // A heredoc’s word as the shell reads it (POSIX, “Here-Document”; bash’s manual, “Here Documents”): quote removal
@@ -76,28 +76,31 @@ test('a heredoc whose word is quoted, escaped or has punctuation in it is one co
     'cat <<END-JSON\n{}\nEND-JSON\nls',
     'cat <<E"O"F\nx\nEOF\nls',
     'cat <<-EOF\n\tx\n\tEOF\nls',
-    // An unquoted word’s body is expanded, so a command substitution in it runs.
-    'cat <<EOF\n$(date)\nEOF',
-    'cat <<END-X\n`date`\nEND-X',
     // A << in $(( )) is a shift, not a heredoc that would hide the next line.
     'echo $((1 << 2))\nls',
   ])
     assert.equal(chains(command), true, command);
   assert.equal(chains('cat <<EOF\n\\$(not run)\nEOF'), false, 'an escaped $ in an expanded body');
+  // An unquoted word’s body is expanded, so a substitution in it runs: a part (below), though it doesn’t chain (#309).
+  for (const command of ['cat <<EOF\n$(date)\nEOF', 'cat <<END-X\n`date`\nEND-X']) {
+    assert.equal(chains(command), false, command);
+    assert.ok(splitCommand(command).includes('date'), command);
+  }
   assert.equal(rulesFor('Bash', { command: "cat > a.json <<'END-JSON'\n{}\nEND-JSON" }).once, "Bash(cat > a.json <<'END-JSON'\n{}\nEND-JSON)");
 });
 
 // The shell removes a backslash-newline before it reads words, except in single quotes and in a body whose word is
 // quoted (POSIX, “Escape Character”, “Here-Document”), and its quote removal applies to a heredoc’s word: in "",
 // a backslash escapes only $ ` " \ and newline; in '', none. Each command ran as /bin/bash -c (bash 3.2.57) in an
-// empty folder; true where the echo printed RAN, so the shell ran a second command.
+// empty folder; true where the echo printed RAN, so the shell ran a second command. 'sub' where it ran inside a
+// command substitution, which since #309 doesn’t chain the command but is still one of its parts.
 test('a backslash-newline or an escaped quote in or around a heredoc reads as the shell reads it', () => {
   const C = 'cat >/dev/null';
   const M = 'echo R""AN >&2';
   for (const [command, ran] of [
     [`${C} <<EO\\\nF\na; b\nEOF\n${M}`, true],
     [`${C} <<EO\\\nF\na; b\nEOF`, false],
-    [`${C} <<EO\\\nF\n$(${M})\nEOF`, true], // the word has no quotes, so the body is expanded
+    [`${C} <<EO\\\nF\n$(${M})\nEOF`, 'sub'], // the word has no quotes, so the body is expanded
     [`${C} <<\\\nEOF\na; b\nEOF\n${M}`, true],
     [`${C} <<\\\n-EOF\n\ta; b\n\tEOF\n${M}`, true],
     [`${C} <\\\n<EOF\na; b\nEOF`, false],
@@ -121,18 +124,155 @@ test('a backslash-newline or an escaped quote in or around a heredoc reads as th
     [`${C} <<EOF\nhi\\\nEOF\n${M}`, false],
     [`${C} <<EOF\nhi\\\\\nEOF\n${M}`, true],
     [`${C} <<EOF\nhi\nEOF\\\n${M}\nEOF`, false],
-    [`${C} <<EOF\n$\\\n(${M})\nEOF`, true],
+    [`${C} <<EOF\n$\\\n(${M})\nEOF`, 'sub'],
     [`${C} <<'EOF'\na; b\nEO\\\nF\nEOF\n${M}`, true],
     [`${C} <<'EOF'\nhi\\\nEOF\n${M}`, true],
     [`${C} <<'EOF'\n$\\\n(${M})\nEOF`, false],
     // And outside heredocs: an operator or $( that a backslash-newline splits is still one.
-    [`echo $\\\n(${M})`, true],
+    [`echo $\\\n(${M})`, 'sub'],
     ['echo $(\\\n(1+2))', false],
     ['echo hi >\\\n| /dev/null', false],
     ['echo hi 2>\\\n&1', false],
     ['echo hi &\\\n>/dev/null', false],
   ])
-    assert.equal(chains(command), ran, command);
+    if (ran === 'sub') {
+      assert.equal(chains(command), false, command);
+      assert.ok(splitCommand(command).includes(M), command);
+    } else assert.equal(chains(command), ran, command);
+});
+
+// #281: Claude Code reads * in a Bash rule as a wildcard, so a rule with the command’s own text allows more than it: with
+// only Bash(touch D/a*) allowed, a real Claude Code 2.1.310 ran `touch D/a2 D/zz` (claude-ssh-aarch64’s check on #281).
+test('#281 a command with a * gets no rule at all, since its own text would be a wildcard rule', () => {
+  for (const command of ['rm -rf build/*', 'ls *.md', 'git add "src/*.mjs"', 'grep -r x .:*'])
+    assert.deepEqual(rulesFor('Bash', { command }), { once: null, always: null, alwaysWords: '', why: 'wildcard' }, command);
+});
+
+// #281: Claude Code doesn’t strip env or bash -c, so Bash(env:*) and Bash(bash:*) let anything run after them (checked
+// with real Claude Code on #281). A wrapper only ever gets its exact text.
+test('#281 a program that runs the command after it gets only its exact text, never Bash(env:*) or Bash(bash:*)', () => {
+  for (const command of ["bash -c 'ls'", 'env X=1 ls', 'sudo ls', '/usr/bin/env ls', 'nohup make', 'xargs rm', 'time make', 'nice make'])
+    assert.deepEqual(rulesFor('Bash', { command }), { once: `Bash(${command})`, always: `Bash(${command})`, alwaysWords: `exactly “${command}”` }, command);
+  assert.equal(rulesFor('Bash', { command: 'make test' }).always, 'Bash(make test:*)', 'other programs keep their broader rule');
+  // So do programs that run code given as an argument, and a flag as the second word (`node -e`, `git -c`), which
+  // would otherwise make Bash(node -e:*): as wide as Bash(bash:*) (claude-ssh-aarch64’s review of this change).
+  for (const command of [
+    "node -e 'x'",
+    "python3 -c 'x'",
+    'python -m pytest -q',
+    'git -c core.pager=sh log',
+    "perl -e 'x'",
+    "ruby -e 'x'",
+    'awk 1 f',
+    'ssh host ls',
+    'npx -y pkg',
+    '/usr/bin/node -e x',
+    'python3.12 -c x',
+    'pypy3 -c x',
+    'python3',
+  ])
+    assert.equal(rulesFor('Bash', { command }).always, `Bash(${command})`, command);
+  for (const [command, always] of [
+    ['git status', 'Bash(git status:*)'],
+    ['npm test', 'Bash(npm test:*)'],
+    ['python script.py --x', 'Bash(python script.py:*)'],
+    ['python3 tools/a.py', 'Bash(python3 tools/a.py:*)'],
+    ['node app/x.js', 'Bash(node app/x.js:*)'],
+  ])
+    assert.equal(rulesFor('Bash', { command }).always, always, command);
+});
+
+// #309: what real Claude Code 2.1.310 turns (claude -p, default mode) ran on the exact command’s allow rule, and what
+// they refused on it, in a temp folder with each command’s effect checked on disk; bash reads each as written.
+test(`#309 a substitution, \${ } or [[ ]] doesn’t chain, so it gets Allow once; <( ) and $(( )) still chain`, () => {
+  for (const command of [
+    'touch "$(echo f)"',
+    'touch "`echo f`"',
+    'cat > out <<EOF\n$(echo x)\nEOF',
+    'git commit -m "$(cat <<\'EOF\'\nFix it; and && more\nEOF\n)"',
+    `echo \${UNSET:-a;b} > out`,
+    '[[ -d a && -d b ]]',
+  ]) {
+    assert.equal(chains(command), false, command);
+    assert.equal(rulesFor('Bash', { command }).once, `Bash(${command})`, command);
+  }
+  // Refused on their exact rules, so still no Allow once: a process substitution and $(( )). And a separator inside a
+  // substitution, or after [[ ]], is still a chain.
+  for (const command of ['cat <(echo hi) > out', 'echo $((1|2)) > out', 'touch "$(a; b)"', '[[ -d a ]] && rm x', 'x=[[ ; y'])
+    assert.equal(chains(command), true, command);
+  // The write guard still reads the commands inside each, as deny and ask rules do.
+  assert.deepEqual(splitCommand('touch "$(rm -rf x)"'), ['rm -rf x', 'touch "$(rm -rf x)"']);
+});
+
+const exactly = (command) => ({ once: `Bash(${command})`, always: `Bash(${command})`, alwaysWords: `exactly “${command}”` });
+
+// The PR #434 review: a rule for a program’s name must allow only that program, with arguments that run nothing else.
+test('#281 an assignment, a quoted or escaped program, a package runner or an unknown program gets only its exact text', () => {
+  for (const command of [
+    'NODE_ENV=test npm test', // Bash(NODE_ENV=test:*) would allow any command after it
+    'LD_PRELOAD=./x.so ls',
+    "'sh' -c ls",
+    '"/bin/bash" -c x', // the quotes hide bash from WRAPPERS
+    '\\env ls',
+    "'git' -c core.pager=sh log",
+    '"./my dir/run.sh" x', // a path with a space: its first word is "./my
+    'source ./setup.sh',
+    '. ./setup.sh',
+    'npx pkg', // runs whatever package it names
+    'npm exec pkg',
+    'pnpm dlx pkg',
+    'yarn dlx pkg',
+    'bun x pkg',
+    'find . -name x -delete', // find -exec, rg --pre, tar --to-command and the like run code, so no Bash(find:*)
+    'rg --pre ./x y',
+    'tar xf a.tar',
+    'jest --config x.js',
+    'caffeinate make',
+    'uv run x',
+    'tsx x.ts',
+    'stdbuf -oL make',
+    'setsid make',
+    'watch make',
+  ])
+    assert.deepEqual(rulesFor('Bash', { command }), exactly(command), command);
+  for (const [command, always] of [
+    ['ls -la', 'Bash(ls:*)'],
+    ['cat notes.txt', 'Bash(cat:*)'],
+    ['npm test', 'Bash(npm test:*)'],
+    ['npm run build', 'Bash(npm run:*)'],
+  ])
+    assert.equal(rulesFor('Bash', { command }).always, always, command);
+});
+
+// Real Claude Code 2.1.310, claude -p in a temp folder, the rule as one --allowedTools argument: with
+// `Bash(echo "x)" Bash "(")` an unrelated `touch zz` ran; with `Bash(ls)`, `Bash(echo "(x)" Bash)` or
+// `Bash(echo ")(" Bash)` it was refused. A ) that closes the rule early leaves a bare Bash, which allows any command.
+test('#281 a command whose ) would end its rule early gets no rule, and the panel refuses such a rule', () => {
+  for (const command of ['echo "x)" Bash "("', 'echo ")(" Bash', 'echo a) b'])
+    assert.deepEqual(rulesFor('Bash', { command }), { once: null, always: null, alwaysWords: '', why: 'paren' }, command);
+  assert.equal(rulesFor('Bash', { command: 'echo "(x)" Bash' }).once, 'Bash(echo "(x)" Bash)', 'balanced parentheses are one rule');
+  assert.equal(cleanRule('Bash(echo "x)" Bash "(")'), null);
+  assert.equal(cleanRule('Bash(echo ")(" Bash)'), null);
+  assert.equal(cleanRule('Bash(echo "(x)")'), 'Bash(echo "(x)")');
+});
+
+test('#309 [[ opens a test only where a command starts, and in one only && and || join', () => {
+  for (const command of ['[[ -d a && -d b ]]', '! [[ -d a || -d b ]]', 'if [[ -d a && -d b ]]', '( [[ -n x && -n y ]] )'])
+    assert.equal(chains(command), false, command);
+  for (const command of ['npm test [[\nrm -rf ~', 'echo [[ ; rm -rf x', 'echo [[ x | sh', '[[ -d a ; rm x ]]', '[[ -d a | sh ]]', '[[ -d a & rm x ]]'])
+    assert.equal(chains(command), true, command);
+});
+
+test('#281 taking back an expired card’s rule leaves it when someone asked for it since', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pb-rules-'));
+  const first = await addAllowRule(dir, 'Bash(ls:*)');
+  assert.equal(first.added, true);
+  await addAllowRule(dir, 'Bash(ls:*)'); // another card, or the panel, asks for it while the first card expires
+  await takeBackRule(first.file, 'Bash(ls:*)', first.claim);
+  assert.deepEqual(JSON.parse(await readFile(first.file, 'utf8')).permissions.allow, ['Bash(ls:*)']);
+  const alone = await addAllowRule(dir, 'Bash(cat:*)');
+  await takeBackRule(alone.file, 'Bash(cat:*)', alone.claim);
+  assert.deepEqual(JSON.parse(await readFile(alone.file, 'utf8')).permissions.allow, ['Bash(ls:*)'], 'with no one else, it goes');
 });
 
 test('fetches are allowed by domain, files by path, anything else by tool', () => {
