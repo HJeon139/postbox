@@ -100,7 +100,7 @@ test('#114: with no line per wake, a telemetry report still counts the room’s 
   assert.deepEqual([room.wakeChains, room.longestWakeChain], [1, 2]);
 });
 
-test('#135, #372: an agent that wakes a busy agent from two turns in a row sends two messages, each from its own turn', async () => {
+test('#135, #374: both wakes keep their transcript provenance, but only the newer turn’s wake is delivered', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   // beta is busy, so alpha’s two wakes, one by wake_agent and one by an @-mention, wait together in the conversation’s
   // queue until beta answers. Each keeps the turn it came from, so the second one gets its own sender line.
@@ -141,7 +141,7 @@ test('#135, #372: an agent that wakes a busy agent from two turns in a row sends
   assert.deepEqual([first.hop, second.hop], [1, 1]);
   assert.deepEqual(
     adapter.calls.filter((x) => x.sessionId === beta.id && x.message.kind === 'agent').map((x) => x.message.itemId),
-    [first.id, second.id],
+    [second.id],
   );
 });
 

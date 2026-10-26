@@ -6,6 +6,7 @@ import { factsText, runsWith } from '../../shared/agent-facts.mjs';
 import { LIMITS, limitText, PALETTES } from '../../shared/limits.mjs';
 import { commentAt } from '../../shared/review-comments.mjs';
 import { formatLint } from '../checks.mjs';
+import { formatQueuedMessages } from './queued-messages.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /**
@@ -179,7 +180,7 @@ const isReview = (event) =>
  */
 export function formatMessage(message, pathOf = () => null) {
   // Context that waited for this turn (a topic thread’s brief, something shared back) comes first.
-  const body = formatBody(message, pathOf);
+  const body = message.messages?.length ? formatQueuedMessages(message.messages, pathOf, formatMessage) : formatBody(message, pathOf);
   return message.context?.length ? `${message.context.join('\n\n')}\n\n${body}` : body;
 }
 

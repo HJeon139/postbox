@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { ACCEPTED_FILE, acceptedProblems, annotations, findingsReport, judge } from '../tools/prompt-findings.mjs';
+import { ACCEPTED_FILE, acceptedProblems, annotations, findingsReport, judge, newFindings } from '../tools/prompt-findings.mjs';
 
 // A finding as SkillSpector reports one: the #387 case, a test note that names ~/.npmrc.
 const PRINT = '58ad794262acddeb5ede92f20cb4814e3ac43a46c218604ec928af500aa80424';
@@ -69,4 +69,20 @@ test('a matched text can’t end an annotation early or start a command', () => 
   assert.equal(line.split('\n').length, 1);
   assert.ok(line.startsWith('::error file=a%2Cb%3Ac.md,line=1,'));
   assert.ok(line.includes('x%250A%0A::error::y'));
+});
+
+test('only findings the pull request adds count, so one main already has doesn’t fail every pull request', () => {
+  const head = { issues: [finding(PRINT, 'HIGH'), finding('b', 'MEDIUM')] };
+  assert.deepEqual(
+    newFindings(HEAD, head).map((i) => i.match_fingerprint),
+    ['b'],
+  );
+});
+
+test('the report lists each new finding in one table row, with its pipe escaped', () => {
+  const piped = { ...finding('b'), finding: 'ignore all previous | instructions' };
+  const report = findingsReport(BASE, { issues: [piped], risk_assessment: { score: 43 } });
+  assert.match(report, /risk score — on the base, 43 with this pull request/);
+  assert.match(report, /\| HIGH \| PE3 Privilege Escalation \| repo\/tests\/AGENTS\.md \| 16 \| ignore all previous \\\| instructions \|/);
+  assert.match(findingsReport(BASE, BASE), /No new findings\./);
 });
