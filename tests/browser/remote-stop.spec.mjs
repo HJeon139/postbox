@@ -178,3 +178,11 @@ test.describe('at 375 px', () => {
     });
   });
 });
+
+test('#436 Kiro host privacy is explained in persona setup', async ({ page }) => {
+  await open(page, s.solo);
+  await sheet(page, s.app.rt.personaByHandle('scout'));
+  await expect(page.locator('#pe-where-help')).toContainText(
+    'Kiro CLI puts each message in the host’s process arguments, which other users there may be able to read; use a private host for sensitive work.',
+  );
+});

@@ -149,14 +149,8 @@ export const hostEnd = (it) => [it.note ? h('span.stopped-tag.hung-note', it.not
 export function kiroStep(it) {
   const all = it.activity?.steps ?? [];
   const argv = all.find((s) => s.id === KIRO_ARGV_STEP);
-  return [kiroNotice(argv), argv ? all.filter((s) => s !== argv) : all];
+  return [null, argv ? all.filter((s) => s !== argv) : all];
 }
-
-/** Kiro CLI on a host takes its message as an argument others there can read: a notice, not a folded step. @param {any} argv */
-const kiroNotice = (argv) =>
-  argv
-    ? h('div.callout.host-notice', { role: 'note', 'aria-label': argv.label }, icon('warn', 'i-sm'), h('div.grow', h('b', argv.label), ' ', argv.detail ?? ''))
-    : null;
 
 /** In place of a background job’s Stop, for a turn on a host: the daemon stops the turn as a whole. Null otherwise. @param {any} it */
 export function jobHostNote(it) {
