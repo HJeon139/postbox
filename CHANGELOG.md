@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.40.0 (2026-10-26)
+
+### Features
+
+- **codex:** say on the persona sheet that Auto is Codex's own reviewer
+- **codex:** let Codex's own reviewer decide in Auto, as Claude Code's classifier does
+
 ## 0.39.0 (2026-10-26)
 
 ### Features
