@@ -343,7 +343,7 @@ export function closeMenu() {
   openAnchor = null;
 }
 /**
- * A popover menu anchored to a button. items: [{ label, icon?, desc?, kbd?, danger?, current?, run }] or 'hr' or
+ * A popover menu anchored to a button. items: [{ label, icon?, desc?, kbd?, danger?, current?, currentMark?, run }] or 'hr' or
  * { heading }; an icon is a name or a drawn element. Focus starts on the item marked current, else on the first.
  */
 export function openMenu(anchor, items, { className = '', placement = 'below', label = 'Menu' } = {}) {
@@ -369,8 +369,8 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
       'button.mi',
       {
         role: 'menuitem',
-        type: 'button',
         class: it.danger ? 'danger' : '',
+        'aria-current': it.current ? 'true' : null,
         onclick: () => {
           closeMenu();
           // Focus goes back to the menu’s button first, so a dialog the item opens returns focus there when it
@@ -381,7 +381,7 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
       },
       typeof it.icon === 'string' ? icon(it.icon) : (it.icon ?? null),
       h('span.grow', { style: { textAlign: 'left' } }, it.label, it.desc ? h('span.d', it.desc) : null),
-      it.kbd ? h('span.k', it.kbd) : null,
+      it.currentMark ? icon('check', 'i-sm') : it.kbd ? h('span.k', it.kbd) : null,
     );
     buttons.push(b);
     menu.append(b);
