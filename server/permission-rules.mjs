@@ -14,6 +14,29 @@ export { chains };
 const TWO_WORD = new Set(['git', 'npm', 'npx', 'pnpm', 'yarn', 'bun', 'node', 'python', 'python3', 'pip', 'cargo', 'go', 'make', 'docker', 'kubectl', 'gh']);
 // Any other command with shell syntax in it (a redirect, a quoted | or ;) only ever gets its exact text allowed.
 const COMPOUND = /[|;&`<>]|\$\(/;
+// Programs that run the command after them: a rule for their name (Bash(env:*)) would allow every command, since
+// Claude Code doesn’t strip them (#281), so they only ever get their exact text allowed.
+const WRAPPERS = new Set([
+  'bash',
+  'sh',
+  'zsh',
+  'dash',
+  'ksh',
+  'fish',
+  'env',
+  'xargs',
+  'sudo',
+  'doas',
+  'su',
+  'nohup',
+  'time',
+  'nice',
+  'timeout',
+  'exec',
+  'command',
+  'builtin',
+  'eval',
+]);
 
 const hostOf = (url) => {
   try {
@@ -24,10 +47,11 @@ const hostOf = (url) => {
 };
 
 /**
- * once and always are null for a chained command, which no one rule can allow (chains).
+ * once and always are null, and why says which, for a chained command, which no one rule can allow (chains), and for
+ * one with a *, which Claude Code reads in a Bash rule as a wildcard, so its rule would allow more than the command.
  * @param {string} tool
  * @param {Record<string, any>} [input]
- * @returns {{ once: string|null, always: string|null, alwaysWords: string }}
+ * @returns {{ once: string|null, always: string|null, alwaysWords: string, why?: 'chained' | 'wildcard' }}
  */
 export function rulesFor(tool, input = {}) {
   const i = input ?? {};
@@ -36,9 +60,12 @@ export function rulesFor(tool, input = {}) {
       const cmd = String(i.command ?? '').trim();
       if (!cmd) return { once: 'Bash', always: 'Bash', alwaysWords: 'any command' };
       const exact = `Bash(${cmd})`;
-      if (chains(cmd)) return { once: null, always: null, alwaysWords: '' };
-      if (COMPOUND.test(cmd)) return { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
+      if (chains(cmd)) return { once: null, always: null, alwaysWords: '', why: 'chained' };
+      // `rm -rf build/*`’s rule would allow `rm -rf build/ ~` too (#281).
+      if (cmd.includes('*')) return { once: null, always: null, alwaysWords: '', why: 'wildcard' };
       const words = cmd.split(/\s+/);
+      if (COMPOUND.test(cmd) || WRAPPERS.has(words[0].slice(words[0].lastIndexOf('/') + 1)))
+        return { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
       const prefix = TWO_WORD.has(words[0]) && words[1] && /^[\w:.-]+$/.test(words[1]) ? `${words[0]} ${words[1]}` : words[0];
       return { once: exact, always: `Bash(${prefix}:*)`, alwaysWords: `commands that start with “${prefix}”` };
     }

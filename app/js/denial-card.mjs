@@ -21,6 +21,11 @@ const DENIAL_WHY = {
   asyncAgent: 'a background subagent can’t ask you',
 };
 /** Why a host turn’s refusal has no Always allow: Postbox can’t save a rule where its Claude Code reads it (server/permission-cards.mjs, hostAlways). @param {string} by */
+/** Why a refusal has no rule to allow once or always (server/permission-rules.mjs, rulesFor): a * or a chain. */
+const noRuleNote = (why, by) =>
+  why === 'wildcard'
+    ? `Claude Code reads * in a rule as a wildcard, so a rule for this command would also allow commands you haven’t seen, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to name the files instead of using *.`
+    : `Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run the parts as separate commands: a part that’s refused again gets a card of its own.`;
 const onHostNote = (by) =>
   `${by} runs on a host, and Postbox can’t save a rule there, so there’s no Always allow. Allow it once and retry, or add the rule to the agent folder’s .claude/settings.local.json on the host.`;
 export function denialBlock(it, ctx) {
@@ -31,8 +36,9 @@ export function denialBlock(it, ctx) {
       .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
   const titleId = `dn-${it.id}`;
   const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
-  // A chained command gets no rule (server/permission-rules.mjs, chains): one for the whole line would never match (#238).
-  const chained = !it.rules.once;
+  // A chained command gets no rule: one for the whole line would never match (#238). Nor does one with a *, which a
+  // rule reads as a wildcard (#281). server/permission-rules.mjs, rulesFor, says which in why.
+  const noRule = !it.rules.once;
   return h(
     'div.col.block',
     { role: 'group', 'aria-labelledby': titleId, class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
@@ -48,11 +54,8 @@ export function denialBlock(it, ctx) {
       it.reason || DENIAL_WHY[it.reasonType]
         ? h('p.small', h('b', 'Why: '), it.reason || '', DENIAL_WHY[it.reasonType] ? ` (${DENIAL_WHY[it.reasonType]})` : '')
         : null,
-      open && chained
-        ? h(
-            'p.small',
-            `Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &, or inside $( )) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask ${by} to run the parts as separate commands: a part that’s refused again gets a card of its own.`,
-          )
+      open && noRule
+        ? h('p.small', noRuleNote(it.rules.why, by))
         : open && it.remote
           ? h('p.small.dim', onHostNote(by))
           : open

@@ -1,7 +1,11 @@
 // Claude Code checks each part of a chained command against the rules on its own, splitting at &&, ||, ;, |, |&, & and
 // newlines (code.claude.com/docs/en/permissions, “Compound commands”). So a rule for the whole text never matches it,
-// and Allow once or Always allow with one would do nothing (#238). A command substitution is taken as a part too, as
-// the same section says deny and ask rules find one there. Quoted text, escapes, a heredoc’s body, and the | or & of a
+// and Allow once or Always allow with one would do nothing (#238). Allow rules don’t split at a command substitution,
+// $( ) or backquotes, a separator in ${ }, or one in [[ ]], so none of those chains: real Claude Code 2.1.310 turns ran
+// `touch "$(echo f)"`, a backquoted one, `echo ${x:-a;b}` and `[[ -d a && -d b ]]` on the exact command’s rule, and
+// refused `cat <(echo hi)` and `echo $((1|2))` on theirs, which still chain (#309). A separator inside a substitution
+// still chains, since no turn showed a rule matching it. Each of these is still a part (splitCommand), as deny and ask
+// rules find a command there. Quoted text, escapes, a heredoc’s body, and the | or & of a
 // redirect (>|, 2>&1, &>) aren’t separators, and $(( )) is arithmetic, where << is a shift. A backslash-newline is
 // nothing, outside single quotes and a quoted heredoc’s body: the shell removes it before it reads the words (POSIX,
 // “Escape Character”), so it can’t split an operator such as << or $(, nor end a line. A comment runs to the end of
@@ -76,9 +80,9 @@ export const splitCommand = (cmd) => read(String(cmd ?? '')).parts;
 
 /**
  * @typedef {{ cmd: string, found: Found, sub: boolean, quote: string, open: number, arith: number, braces: number,
- *   parens: number, start: number, line: number, last: number, heredocs: Heredoc[], done: boolean }} Scan
+ *   tests: number, parens: number, start: number, line: number, last: number, heredocs: Heredoc[], done: boolean }} Scan
  *   where a scan is: the open quote, and where its text starts; how many $(( )) (where << is a shift), ${ } (where #
- *   starts no comment) and ( are open; where the current command and line start; where the text ends before any
+ *   starts no comment and a separator doesn’t chain), [[ ]] (where && and || don’t chain) and ( are open; where the current command and line start; where the text ends before any
  *   blanks, as a newline before that chains (-1 until one asks); the heredocs that start on the line; and whether a )
  *   ended the substitution
  */
@@ -91,7 +95,7 @@ export const splitCommand = (cmd) => read(String(cmd ?? '')).parts;
 function scan(cmd, from, found, sub, line = from) {
   if (++found.depth > MAX_DEPTH) throw TOO_DEEP;
   /** @type {Scan} */
-  const s = { cmd, found, sub, quote: '', open: 0, arith: 0, braces: 0, parens: 0, start: from, line, last: -1, heredocs: [], done: false };
+  const s = { cmd, found, sub, quote: '', open: 0, arith: 0, braces: 0, tests: 0, parens: 0, start: from, line, last: -1, heredocs: [], done: false };
   let i = from;
   for (; i < cmd.length; i++) {
     if (--found.work.left < 0) throw TOO_DEEP;
@@ -120,7 +124,7 @@ function quoting(s, i) {
   }
   if (c === '\\') return i + 1;
   if (c === '`') return backquoted(cmd, i, s.found);
-  if (c === '$' && cmd[n] === '(' && cmd[past(cmd, n + 1)] !== '(') return substitution(cmd, n + 1, s.found, s.line);
+  if (c === '$' && cmd[n] === '(' && cmd[past(cmd, n + 1)] !== '(') return substitution(cmd, n + 1, s.found, s.line, false);
   if (s.quote === '"') {
     if (c === '"') s.quote = '';
     return i;
@@ -154,7 +158,15 @@ function operator(s, i) {
     return n;
   }
   if (s.arith && !separates(cmd, i, n)) return i; // in arithmetic, only a separator still counts, to be safe
-  if ((c === '<' || c === '>') && cmd[n] === '(') return substitution(cmd, n + 1, found, s.line);
+  if ((c === '<' || c === '>') && cmd[n] === '(') return substitution(cmd, n + 1, found, s.line, true);
+  if (c === '[' && cmd[n] === '[' && (i === s.start || ' \t\n;&|('.includes(before(cmd, i)))) {
+    s.tests++;
+    return n;
+  }
+  if (s.tests && c === ']' && cmd[n] === ']') {
+    s.tests--;
+    return n;
+  }
   if (c === '#' && !s.braces && ' \t\n;&|()<>'.includes(before(cmd, i))) {
     const end = cmd.indexOf('\n', i); // a comment, to the end of its line
     return (end < 0 ? cmd.length : end) - 1;
@@ -170,7 +182,10 @@ function operator(s, i) {
   else if (c === ')') s.done = s.sub;
   else if (separates(cmd, i, n)) {
     if (c === '\n' && s.last < 0) s.last = cmd.trimEnd().length;
-    if (c !== '\n' || i < s.last) found.chained = true;
+    // A newline with only blanks before the ) that ends a substitution ends nothing: the line after a heredoc's
+    // delimiter in `-m "$(cat <<'EOF' … EOF\n)"`, Claude Code's own shape for a commit (#309).
+    const closes = c === '\n' && s.sub && /^\s*\)/.test(cmd.slice(i + 1));
+    if ((c !== '\n' || i < s.last) && !closes && !s.braces && !s.tests) found.chained = true;
     if (c === '\n') s.line = i + 1;
     add(found, cmd.slice(s.start, i));
     s.start = i + 1;
@@ -197,9 +212,13 @@ function readsCommands(text) {
   return text.split(/\s+/).some((w) => SHELLS.has(w.slice(w.lastIndexOf('/') + 1)));
 }
 
-/** Reads the command substitution that starts at k, to its ), into found: it runs. Returns where it ends. */
-function substitution(cmd, k, found, line) {
-  found.chained = true;
+/**
+ * Reads the command substitution that starts at k, to its ), into found: it runs. chainsIt: a process substitution,
+ * <( ) or >( ), chains the command; $( ) doesn’t (#309). Returns where it ends.
+ * @param {string} cmd @param {number} k @param {Found} found @param {number} line @param {boolean} chainsIt
+ */
+function substitution(cmd, k, found, line, chainsIt) {
+  if (chainsIt) found.chained = true;
   return scan(cmd, k, found, true, line);
 }
 
@@ -211,8 +230,7 @@ function backquoted(cmd, i, found) {
     if (cmd[j] === '\\' && '$`\\'.includes(cmd[j + 1] ?? '')) j++; // in ` `, a backslash escapes only these
     text += cmd[j];
   }
-  found.chained = true;
-  scan(text, 0, found, false);
+  scan(text, 0, found, false); // as $( ), it doesn’t chain the command (#309)
   return j;
 }
 
@@ -302,6 +320,6 @@ function substitutions(body, found) {
   for (let k = 0; k < body.length; k++) {
     if (body[k] === '\\') k++;
     else if (body[k] === '`') k = backquoted(body, k, found);
-    else if (body[k] === '$' && body[k + 1] === '(' && body[k + 2] !== '(') k = substitution(body, k + 2, found);
+    else if (body[k] === '$' && body[k + 1] === '(' && body[k + 2] !== '(') k = substitution(body, k + 2, found, k + 2, false);
   }
 }

@@ -3,6 +3,8 @@
 //   says it’s on, and the agent carries on.
 // - #238: a refusal card for a chained command offers no Allow once or Always allow, and says why and what to do; one
 //   for a single command still offers both.
+// - #281: one for a command with a * offers neither, and says a * is a wildcard; one for env or bash -c offers only
+//   its exact text, never Bash(env:*).
 // - #220: a permission card nobody answered for CARD_WAIT_MS says it expired and how long it waited.
 // With a scripted Claude Code agent (no real turns), a persona and conversation of its own for each test. Moved from
 // tools/checks/permission-cards.mjs (#303).
@@ -99,13 +101,34 @@ test('#238 a refused chained command offers no Allow once or Always allow, and s
   await synced(page, app);
   await expect(chained.locator('.block-foot button')).toHaveText(['Leave it']);
   await expect(chained.locator('.block-body')).toContainText(
-    /Claude Code checks each part of a chained command \(joined by &&, \|\|, ;, \| or &, or inside \$\( \)\) against its rules on its own/,
+    /Claude Code checks each part of a chained command \(joined by &&, \|\|, ;, \| or &\) against its rules on its own/,
   );
   await expect(chained.locator('.block-body')).toContainText('ask @tester to run the parts as separate commands');
   await expect(single.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow commands that start with “python -m”', 'Leave it']);
   // The UAT runner reads these cards from the page the same way, for the allow-once scenario’s trigger (readUi).
   const facts = { threads: [thread.id], state: rt.s, ui: { denialCards: (await readUi(page)).denialCards } };
   expect(ALLOW_ONCE_TRIGGERS['chained-refusal-no-allow'].run(facts).length, 'the trigger sees the chained card only').toBe(1);
+});
+
+test('#281 a refused command with a * offers no rule and says why; one with env offers only its exact text', async ({ page }) => {
+  const { rt } = app;
+  const { thread, script, idle } = await agent(page, 'wild');
+  const refuse = (command, label) =>
+    script((ctx) => ctx.denied({ toolUseId: `tu-${label}`, tool: 'Bash', input: { command }, label, reason: '[Data Exfiltration]', reasonType: 'classifier' }));
+  refuse('rm -rf build/*', 'Clear the build');
+  refuse('env CI=1 make test', 'Run make');
+  rt.sendMessage(thread.id, { text: 'Clean and test.' });
+  rt.sendMessage(thread.id, { text: 'And again.' });
+  const wild = card(page, 'tried to clear the build');
+  const env = card(page, 'tried to run make');
+  await expect(wild.locator('.block-foot')).toBeVisible();
+  await expect(env.locator('.block-foot')).toBeVisible();
+  await idle();
+  await synced(page, app);
+  await expect(wild.locator('.block-foot button')).toHaveText(['Leave it']);
+  await expect(wild.locator('.block-body')).toContainText('Claude Code reads * in a rule as a wildcard');
+  await expect(wild.locator('.block-body')).toContainText('ask @wild to name the files instead of using *');
+  await expect(env.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “env CI=1 make test”', 'Leave it']);
 });
 
 test('#220 a permission card nobody answered for 25 hours says it expired, and how long it waited', async ({ page }) => {
