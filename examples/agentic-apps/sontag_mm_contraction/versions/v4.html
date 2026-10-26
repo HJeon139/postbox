@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Michaelis–Menten Networks: Global Stability & Thompson Contraction</title>
+<style>
+  :root {
+    --bg: #0f141c;
+    --panel: #18202c;
+    --panel-sub: #1e293b;
+    --text: #f8fafc;
+    --dim: #94a3b8;
+    --line: #334155;
+    --line-sub: #243042;
+    --accent: #38bdf8;
+    --accent-dim: rgba(56, 189, 248, 0.15);
+    --s1: #38bdf8;
+    --s2: #fbbf24;
+    --s3: #c084fc;
+    --good: #34d399;
+    --alert: #fca5a5;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --panel-sub: #f1f5f9;
+      --text: #0f172a;
+      --dim: #475569;
+      --line: #cbd5e1;
+      --line-sub: #e2e8f0;
+      --accent: #0284c7;
+      --accent-dim: rgba(2, 132, 199, 0.12);
+      --s1: #0284c7;
+      --s2: #b45309;
+      --s3: #7e22ce;
+      --good: #047857;
+      --alert: #b91c1c;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    line-height: 1.45;
+    font-size: 14px;
+  }
+
+  .lab-header {
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+  .lab-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 4px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .lab-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .lab-subtitle {
+    font-size: 13px;
+    color: var(--dim);
+  }
+
+  /* Thesis banner */
+  .lab-thesis {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+  }
+  .lab-thesis-title {
+    font-weight: 700;
+    color: var(--text);
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .lab-thesis-body {
+    font-size: 12px;
+    color: var(--dim);
+    margin-top: 3px;
+  }
+
+  .lab-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  @media (min-width: 860px) {
+    .lab-layout {
+      grid-template-columns: 1.15fr 1fr;
+    }
+  }
+
+  .lab-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .lab-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .lab-sync-time {
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* SVG canvases */
+  .lab-svg-wrap {
+    width: 100%;
+    background: var(--panel-sub);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--line-sub);
+  }
+  svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* Controls */
+  .lab-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+    align-items: center;
+  }
+  .lab-btn {
+    appearance: none;
+    background: var(--panel-sub);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+  }
+  .lab-btn:hover {
+    background: var(--line);
+  }
+  .lab-btn.primary {
+    background: #38bdf8;
+    color: #0f172a;
+    border-color: #38bdf8;
+  }
+  @media (prefers-color-scheme: light) {
+    .lab-btn.primary {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #0284c7;
+    }
+  }
+
+  .lab-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .lab-chip {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 14px;
+    background: var(--panel-sub);
+    border: 1px solid var(--line);
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .lab-chip:hover, .lab-chip.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  /* Metric callout */
+  .lab-metric-box {
+    background: var(--panel-sub);
+    border: 1px solid var(--line-sub);
+    border-radius: 6px;
+    padding: 10px;
+    margin-top: 10px;
+  }
+  .lab-metric-val {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--good);
+  }
+  .lab-metric-desc {
+    font-size: 12px;
+    color: var(--dim);
+    margin-top: 2px;
+  }
+
+  /* Challenges */
+  .lab-challenge {
+    background: var(--panel-sub);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 12px;
+    margin-top: 10px;
+  }
+  .lab-challenge h4 {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .lab-challenge p {
+    font-size: 12px;
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+  .lab-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .lab-option-btn {
+    text-align: left;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .lab-option-btn:hover {
+    border-color: var(--accent);
+  }
+  .lab-feedback {
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    display: none;
+  }
+
+  /* Data Table */
+  .lab-table-wrap {
+    overflow-x: auto;
+    margin-top: 8px;
+  }
+  table.lab-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  table.lab-table th, table.lab-table td {
+    padding: 6px 8px;
+    text-align: right;
+    border-bottom: 1px solid var(--line-sub);
+  }
+  table.lab-table th {
+    color: var(--dim);
+    font-weight: 600;
+  }
+  table.lab-table th:first-child, table.lab-table td:first-child {
+    text-align: left;
+  }
+
+  .lab-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 8px;
+  }
+  .lab-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .lab-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .lab-notice {
+    display: none;
+    background: var(--panel-sub);
+    border: 1px solid var(--good);
+    color: var(--good);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="lab-header">
+  <div class="lab-badge">Paper #5 · arXiv:2610.24351 · Sontag (Oct 2026)</div>
+  <h1 class="lab-title">Global Stability of Michaelis–Menten Networks</h1>
+  <p class="lab-subtitle">Sontag’s theorem in action: any positive trajectory contracts monotonically toward the unique steady state under the Thompson metric $d_T(x, y) = \max_i |\ln x_i - \ln y_i|$.</p>
+</div>
+
+<div class="lab-thesis">
+  <div class="lab-thesis-title">
+    <span>Visual Thesis: Two Disparate Initial States → One Unique Equilibrium</span>
+    <span class="lab-sync-time" id="syncTimeGlobal">t = 0.00s (synchronized across views)</span>
+  </div>
+  <div class="lab-thesis-body">
+    No matter where Flask A and Flask B start in the state space, their Thompson distance $d_T(A, B)$ contracts monotonically toward zero. Watch all three coordinated panels converge simultaneously.
+  </div>
+</div>
+
+<div class="lab-layout">
+  <!-- Left column: Simplex Phase Space & Metric Chart (Primary Thesis) -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+    <!-- Simplex Phase Space -->
+    <div class="lab-card">
+      <div class="lab-card-title">
+        <span>1. Conservation Simplex ($S_1 + S_2 + S_3 = M$)</span>
+        <span class="lab-sync-time" id="syncTimeSimplex">t = 0.00s</span>
+      </div>
+      <div class="lab-svg-wrap">
+        <svg id="svgSimplex" viewBox="0 0 360 250">
+          <!-- Triangle boundary -->
+          <polygon points="180,30 320,220 40,220" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+          <text x="180" y="20" text-anchor="middle" font-size="11" font-weight="600" fill="var(--accent)">100% S₁</text>
+          <text x="330" y="235" text-anchor="start" font-size="11" font-weight="600" fill="var(--s2)">100% S₂</text>
+          <text x="30" y="235" text-anchor="end" font-size="11" font-weight="600" fill="var(--s3)">100% S₃</text>
+
+          <!-- Trajectory paths (solid A, clear 6px/4px dash B) -->
+          <polyline id="trajPathA" points="" fill="none" stroke="var(--accent)" stroke-width="2.5" opacity="0.9"/>
+          <polyline id="trajPathB" points="" fill="none" stroke="var(--s2)" stroke-width="2.5" opacity="0.9" stroke-dasharray="6,4"/>
+
+          <!-- Distance line between A and B -->
+          <line id="distLineAB" x1="0" y1="0" x2="0" y2="0" stroke="var(--alert)" stroke-width="1.8" stroke-dasharray="6,4"/>
+
+          <!-- Equilibrium Star -->
+          <g id="starEquil" transform="translate(180, 156)">
+            <polygon points="0,-7 2,-2 7,-2 3,1 5,6 0,3 -5,6 -3,1 -7,-2 -2,-2" fill="var(--good)"/>
+          </g>
+
+          <!-- Current position dots -->
+          <circle id="dotA" cx="180" cy="156" r="5" fill="var(--accent)" stroke="#fff" stroke-width="1.5"/>
+          <circle id="dotB" cx="180" cy="156" r="5" fill="var(--s2)" stroke="#fff" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="lab-legend">
+        <div class="lab-legend-item"><span style="width:14px; height:2.5px; background:var(--accent); display:inline-block;"></span> Flask A Trajectory</div>
+        <div class="lab-legend-item"><span style="width:14px; height:2.5px; background:var(--s2); display:inline-block; border-top:2px dashed var(--s2);"></span> Flask B Trajectory</div>
+        <div class="lab-legend-item"><span style="color:var(--good); font-size:13px;">★</span> Unique Attractor $S^*$</div>
+      </div>
+    </div>
+
+    <!-- Metric Contraction Plot -->
+    <div class="lab-card">
+      <div class="lab-card-title">
+        <span>2. Thompson Distance Decay ($d_T \to 0$)</span>
+        <span class="lab-sync-time" id="syncTimeMetric">t = 0.00s</span>
+      </div>
+      <div class="lab-svg-wrap">
+        <svg id="svgChart" viewBox="0 0 360 160">
+          <!-- Grid lines -->
+          <line x1="40" y1="20" x2="340" y2="20" stroke="var(--line-sub)" stroke-width="1"/>
+          <line x1="40" y1="65" x2="340" y2="65" stroke="var(--line-sub)" stroke-width="1"/>
+          <line x1="40" y1="110" x2="340" y2="110" stroke="var(--line-sub)" stroke-width="1"/>
+          <line x1="40" y1="140" x2="340" y2="140" stroke="var(--line)" stroke-width="1"/>
+          <line x1="40" y1="20" x2="40" y2="140" stroke="var(--line)" stroke-width="1"/>
+
+          <!-- Y axis labels -->
+          <text x="32" y="24" text-anchor="end" font-size="10" fill="var(--dim)">2.0</text>
+          <text x="32" y="69" text-anchor="end" font-size="10" fill="var(--dim)">1.0</text>
+          <text x="32" y="114" text-anchor="end" font-size="10" fill="var(--dim)">0.5</text>
+          <text x="32" y="144" text-anchor="end" font-size="10" fill="var(--dim)">0.0</text>
+
+          <!-- Plot line for dT -->
+          <path id="pathMetric" d="" fill="none" stroke="var(--good)" stroke-width="2.5"/>
+          <path id="pathMetricAB" d="" fill="none" stroke="var(--alert)" stroke-width="2" stroke-dasharray="6,4"/>
+
+          <!-- Vertical current time cursor (solid line for crisp mobile legibility) -->
+          <line id="timeCursor" x1="40" y1="20" x2="40" y2="140" stroke="var(--accent)" stroke-width="1.5" opacity="0.85"/>
+        </svg>
+      </div>
+
+      <div class="lab-metric-box">
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <div>
+            <div style="font-size:11px; text-transform:uppercase; color:var(--dim); font-weight:600;">Thompson Distance $d_T(A(t), S^*)$</div>
+            <div id="valDistance" class="lab-metric-val">1.482</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px; text-transform:uppercase; color:var(--dim); font-weight:600;">Inter-Flask $d_T(A, B)$</div>
+            <div id="valDistanceAB" style="font-size:16px; font-weight:700; font-family:monospace; color:var(--alert);">2.197</div>
+          </div>
+        </div>
+        <div class="lab-metric-desc">
+          Strict non-expansion: $d_T(A(t), B(t))$ never increases, pulling both distinct starting conditions into alignment.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column: Reaction Cycle, Controls & Challenges -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+    <!-- Visual Network Diagram -->
+    <div class="lab-card">
+      <div class="lab-card-title">
+        <span>3. Reaction Cycle Mechanics</span>
+        <span class="lab-sync-time" id="syncTimeNetwork">t = 0.00s</span>
+      </div>
+      <div class="lab-svg-wrap">
+        <svg id="svgNetwork" viewBox="0 0 380 280">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--dim)"/>
+            </marker>
+          </defs>
+          <!-- Dynamic paths with fluxes -->
+          <path id="path12" d="M 205 75 Q 315 110 295 180" fill="none" stroke="var(--line)" stroke-width="4" marker-end="url(#arrow)"/>
+          <path id="path23" d="M 270 230 Q 190 265 110 230" fill="none" stroke="var(--line)" stroke-width="4" marker-end="url(#arrow)"/>
+          <path id="path31" d="M 85 180 Q 65 110 175 75" fill="none" stroke="var(--line)" stroke-width="4" marker-end="url(#arrow)"/>
+
+          <!-- Flux labels -->
+          <text id="fluxText1" x="275" y="125" fill="var(--dim)" font-size="11" font-family="monospace">v₁: 1.33</text>
+          <text id="fluxText2" x="190" y="260" text-anchor="middle" fill="var(--dim)" font-size="11" font-family="monospace">v₂: 1.33</text>
+          <text id="fluxText3" x="45" y="125" fill="var(--dim)" font-size="11" font-family="monospace">v₃: 1.33</text>
+
+          <!-- Explicitly labeled target steady-state rings S* -->
+          <circle id="targetRing1" cx="190" cy="65" r="28" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6,4" opacity="0.8"/>
+          <text x="190" y="26" text-anchor="middle" font-size="10" font-weight="600" fill="var(--dim)">Steady-state S₁*</text>
+
+          <circle id="targetRing2" cx="295" cy="205" r="28" fill="none" stroke="var(--s2)" stroke-width="2" stroke-dasharray="6,4" opacity="0.8"/>
+          <text x="350" y="208" text-anchor="start" font-size="10" font-weight="600" fill="var(--dim)">Steady-state S₂*</text>
+
+          <circle id="targetRing3" cx="85" cy="205" r="28" fill="none" stroke="var(--s3)" stroke-width="2" stroke-dasharray="6,4" opacity="0.8"/>
+          <text x="30" y="208" text-anchor="end" font-size="10" font-weight="600" fill="var(--dim)">Steady-state S₃*</text>
+
+          <!-- Active Nodes (Solid) -->
+          <g id="node1" transform="translate(190, 65)">
+            <circle id="circle1" r="26" fill="var(--panel)" stroke="var(--accent)" stroke-width="3"/>
+            <text text-anchor="middle" dy="-4" font-weight="700" font-size="12" fill="var(--text)">S₁</text>
+            <text id="valText1" text-anchor="middle" dy="12" font-size="11" font-family="monospace" fill="var(--text)">2.00</text>
+          </g>
+
+          <g id="node2" transform="translate(295, 205)">
+            <circle id="circle2" r="26" fill="var(--panel)" stroke="var(--s2)" stroke-width="3"/>
+            <text text-anchor="middle" dy="-4" font-weight="700" font-size="12" fill="var(--text)">S₂</text>
+            <text id="valText2" text-anchor="middle" dy="12" font-size="11" font-family="monospace" fill="var(--text)">2.00</text>
+          </g>
+
+          <g id="node3" transform="translate(85, 205)">
+            <circle id="circle3" r="26" fill="var(--panel)" stroke="var(--s3)" stroke-width="3"/>
+            <text text-anchor="middle" dy="-4" font-weight="700" font-size="12" fill="var(--text)">S₃</text>
+            <text id="valText3" text-anchor="middle" dy="12" font-size="11" font-family="monospace" fill="var(--text)">2.00</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="lab-legend">
+        <div class="lab-legend-item"><span class="lab-dot" style="background:var(--accent);"></span> Species 1 ($S_1$)</div>
+        <div class="lab-legend-item"><span class="lab-dot" style="background:var(--s2);"></span> Species 2 ($S_2$)</div>
+        <div class="lab-legend-item"><span class="lab-dot" style="background:var(--s3);"></span> Species 3 ($S_3$)</div>
+        <div class="lab-legend-item"><span style="border-bottom:2px dashed var(--dim); width:16px; display:inline-block;"></span> Target $S^*$</div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="lab-card">
+      <div class="lab-card-title">Interactive Controls</div>
+      
+      <div class="lab-toolbar">
+        <button id="btnPlay" class="lab-btn primary">▶ Run</button>
+        <button id="btnStep" class="lab-btn">Step</button>
+        <button id="btnReset" class="lab-btn">Reset</button>
+        <button id="btnShock" class="lab-btn" title="Add +3.0 bolus to both flasks, preserving conserved class">⚡ Bolus S₁ (+3.0 to both)</button>
+      </div>
+
+      <div id="noticeShock" class="lab-notice">
+        ⚡ Injected +3.0 substrate to both Flask A and Flask B. Conserved mass shifted ($M=6 \to 9$), moving $S^*$ while maintaining the identical invariant manifold.
+      </div>
+
+      <div style="margin-top:12px;">
+        <span style="font-size:11px; font-weight:600; color:var(--dim); text-transform:uppercase;">Presets:</span>
+        <div class="lab-presets">
+          <div class="lab-chip active" data-preset="disparate">Divergent Starting States</div>
+          <div class="lab-chip" data-preset="saturation">Enzyme Saturation ($S \gg K_m$)</div>
+          <div class="lab-chip" data-preset="linear">Linear Regime ($S \ll K_m$)</div>
+          <div class="lab-chip" data-preset="bottleneck">Asymmetric Bottleneck</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Challenges -->
+    <div class="lab-card">
+      <div class="lab-card-title">Predict-First Challenges</div>
+
+      <div class="lab-challenge">
+        <h4>Challenge 1: Can Thompson distance ever rebound?</h4>
+        <p>If Flask A and Flask B start with drastically different substrate ratios, can $d_T(A(t), B(t))$ ever increase during settling?</p>
+        <div class="lab-options" id="c1Options">
+          <button class="lab-option-btn" data-ans="no">No, Sontag proves $d_T$ is strictly non-increasing ($d(t_2) \le d(t_1)$)</button>
+          <button class="lab-option-btn" data-ans="yes">Yes, nonlinear enzyme saturation can temporarily cause divergence</button>
+        </div>
+        <div id="c1Feedback" class="lab-feedback"></div>
+      </div>
+
+      <div class="lab-challenge">
+        <h4>Challenge 2: What happens when enzymes saturate ($S \gg K_m$)?</h4>
+        <p>In the saturation regime, reaction fluxes become nearly constant zero-order velocities ($v_i \approx V_i$). How does this affect contraction speed?</p>
+        <div class="lab-options" id="c2Options">
+          <button class="lab-option-btn" data-ans="slower">Contraction slows down: saturation flattens sensitivity gradients</button>
+          <button class="lab-option-btn" data-ans="faster">Contraction accelerates because fluxes operate at maximum velocity</button>
+        </div>
+        <div id="c2Feedback" class="lab-feedback"></div>
+      </div>
+    </div>
+
+    <!-- Data View Toggle -->
+    <div class="lab-card">
+      <div class="lab-card-title">
+        <span>Coordinate Data Table</span>
+        <button id="btnToggleTable" class="lab-btn" style="padding:3px 8px; font-size:11px;">Show Table</button>
+      </div>
+      <div id="tableContainer" class="lab-table-wrap" style="display:none; max-height:160px;">
+        <table class="lab-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>S₁</th>
+              <th>S₂</th>
+              <th>S₃</th>
+              <th>v₁</th>
+              <th>v₂</th>
+              <th>v₃</th>
+              <th>$d_T(A, S^*)$</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Model parameters & state
+let params = {
+  V: [2.0, 2.0, 2.0],
+  K: [1.0, 1.0, 1.0],
+  M_total: 6.0
+};
+
+let stateA = [4.5, 0.8, 0.7];
+let stateB = [0.6, 4.6, 0.8];
+let time = 0.0;
+let isRunning = false;
+let animId = null;
+
+let historyA = [];
+let historyB = [];
+let historyDT = [];
+let historyDTAB = [];
+
+// Steady-state solver for Michaelis-Menten cycle
+function solveSteadyState(V, K, M) {
+  let vLow = 1e-6;
+  let vHigh = Math.min(...V) - 1e-6;
+  for (let iter = 0; iter < 40; iter++) {
+    let vMid = (vLow + vHigh) / 2.0;
+    let sumS = 0;
+    for (let i = 0; i < 3; i++) {
+      sumS += (K[i] * vMid) / (V[i] - vMid);
+    }
+    if (sumS < M) vLow = vMid;
+    else vHigh = vMid;
+  }
+  let vStar = (vLow + vHigh) / 2.0;
+  let SStar = [];
+  for (let i = 0; i < 3; i++) {
+    SStar.push((K[i] * vStar) / (V[i] - vStar));
+  }
+  return { vStar, SStar };
+}
+
+let equil = solveSteadyState(params.V, params.K, params.M_total);
+
+// Thompson metric distance: max_i |ln(x_i) - ln(y_i)|
+function thompsonDist(x, y) {
+  let maxD = 0;
+  for (let i = 0; i < 3; i++) {
+    let d = Math.abs(Math.log(x[i]) - Math.log(y[i]));
+    if (d > maxD) maxD = d;
+  }
+  return maxD;
+}
+
+// ODE derivatives: dS1/dt = v3 - v1; dS2/dt = v1 - v2; dS3/dt = v2 - v3
+function calcDerivs(s, p) {
+  let v1 = (p.V[0] * s[0]) / (p.K[0] + s[0]);
+  let v2 = (p.V[1] * s[1]) / (p.K[1] + s[1]);
+  let v3 = (p.V[2] * s[2]) / (p.K[2] + s[2]);
+  return {
+    ds: [v3 - v1, v1 - v2, v2 - v3],
+    v: [v1, v2, v3]
+  };
+}
+
+// RK4 integrator step
+function rk4Step(s, dt, p) {
+  let k1 = calcDerivs(s, p);
+  let s_k2 = [s[0] + 0.5 * dt * k1.ds[0], s[1] + 0.5 * dt * k1.ds[1], s[2] + 0.5 * dt * k1.ds[2]];
+  let k2 = calcDerivs(s_k2, p);
+  let s_k3 = [s[0] + 0.5 * dt * k2.ds[0], s[1] + 0.5 * dt * k2.ds[1], s[2] + 0.5 * dt * k2.ds[2]];
+  let k3 = calcDerivs(s_k3, p);
+  let s_k4 = [s[0] + dt * k3.ds[0], s[1] + dt * k3.ds[1], s[2] + dt * k3.ds[2]];
+  let k4 = calcDerivs(s_k4, p);
+
+  let nextS = [
+    Math.max(1e-4, s[0] + (dt / 6) * (k1.ds[0] + 2*k2.ds[0] + 2*k3.ds[0] + k4.ds[0])),
+    Math.max(1e-4, s[1] + (dt / 6) * (k1.ds[1] + 2*k2.ds[1] + 2*k3.ds[1] + k4.ds[1])),
+    Math.max(1e-4, s[2] + (dt / 6) * (k1.ds[2] + 2*k2.ds[2] + 2*k3.ds[2] + k4.ds[2]))
+  ];
+  return { nextS, v: k1.v };
+}
+
+// Convert S1, S2, S3 into 2D ternary coordinates
+function toSimplexCoords(s) {
+  let total = s[0] + s[1] + s[2];
+  let p1 = s[0] / total;
+  let p2 = s[1] / total;
+  let p3 = s[2] / total;
+
+  let x = p1 * 180 + p2 * 320 + p3 * 40;
+  let y = p1 * 30 + p2 * 220 + p3 * 220;
+  return { x, y };
+}
+
+// Update all UI elements
+function updateUI() {
+  let dtVal = thompsonDist(stateA, equil.SStar);
+  let dtAB = thompsonDist(stateA, stateB);
+  let timeStr = `t = ${time.toFixed(2)}s`;
+
+  document.getElementById("syncTimeGlobal").textContent = `${timeStr} (synchronized across views)`;
+  document.getElementById("syncTimeSimplex").textContent = timeStr;
+  document.getElementById("syncTimeMetric").textContent = timeStr;
+  document.getElementById("syncTimeNetwork").textContent = timeStr;
+
+  document.getElementById("valDistance").textContent = dtVal.toFixed(3);
+  document.getElementById("valDistanceAB").textContent = dtAB.toFixed(3);
+
+  // Network node radiuses and labels
+  let rBase = 20;
+  let rScale = 6;
+  document.getElementById("circle1").setAttribute("r", Math.max(16, rBase + stateA[0] * rScale));
+  document.getElementById("circle2").setAttribute("r", Math.max(16, rBase + stateA[1] * rScale));
+  document.getElementById("circle3").setAttribute("r", Math.max(16, rBase + stateA[2] * rScale));
+
+  document.getElementById("targetRing1").setAttribute("r", Math.max(16, rBase + equil.SStar[0] * rScale));
+  document.getElementById("targetRing2").setAttribute("r", Math.max(16, rBase + equil.SStar[1] * rScale));
+  document.getElementById("targetRing3").setAttribute("r", Math.max(16, rBase + equil.SStar[2] * rScale));
+
+  document.getElementById("valText1").textContent = stateA[0].toFixed(2);
+  document.getElementById("valText2").textContent = stateA[1].toFixed(2);
+  document.getElementById("valText3").textContent = stateA[2].toFixed(2);
+
+  let fluxes = calcDerivs(stateA, params).v;
+  document.getElementById("fluxText1").textContent = `v₁: ${fluxes[0].toFixed(2)}`;
+  document.getElementById("fluxText2").textContent = `v₂: ${fluxes[1].toFixed(2)}`;
+  document.getElementById("fluxText3").textContent = `v₃: ${fluxes[2].toFixed(2)}`;
+
+  document.getElementById("path12").setAttribute("stroke-width", Math.min(8, Math.max(2, fluxes[0] * 3)));
+  document.getElementById("path23").setAttribute("stroke-width", Math.min(8, Math.max(2, fluxes[1] * 3)));
+  document.getElementById("path31").setAttribute("stroke-width", Math.min(8, Math.max(2, fluxes[2] * 3)));
+
+  // Simplex plot update
+  let ptA = toSimplexCoords(stateA);
+  let ptB = toSimplexCoords(stateB);
+  let ptStar = toSimplexCoords(equil.SStar);
+
+  document.getElementById("dotA").setAttribute("cx", ptA.x);
+  document.getElementById("dotA").setAttribute("cy", ptA.y);
+  document.getElementById("dotB").setAttribute("cx", ptB.x);
+  document.getElementById("dotB").setAttribute("cy", ptB.y);
+
+  document.getElementById("starEquil").setAttribute("transform", `translate(${ptStar.x}, ${ptStar.y})`);
+
+  document.getElementById("distLineAB").setAttribute("x1", ptA.x);
+  document.getElementById("distLineAB").setAttribute("y1", ptA.y);
+  document.getElementById("distLineAB").setAttribute("x2", ptB.x);
+  document.getElementById("distLineAB").setAttribute("y2", ptB.y);
+
+  // Polyline strings
+  let strA = historyA.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  let strB = historyB.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  document.getElementById("trajPathA").setAttribute("points", strA);
+  document.getElementById("trajPathB").setAttribute("points", strB);
+
+  // Thompson Distance Chart
+  let chartW = 300;
+  let chartH = 120;
+  let chartX0 = 40;
+  let chartY0 = 140;
+
+  let maxT = Math.max(5.0, time);
+  let maxY = 2.5;
+
+  if (historyDT.length > 1) {
+    let dStr = "M " + historyDT.map(pt => {
+      let px = chartX0 + (pt.t / maxT) * chartW;
+      let py = chartY0 - Math.min(1.0, pt.d / maxY) * chartH;
+      return `${px.toFixed(1)} ${py.toFixed(1)}`;
+    }).join(" L ");
+    document.getElementById("pathMetric").setAttribute("d", dStr);
+
+    let dStrAB = "M " + historyDTAB.map(pt => {
+      let px = chartX0 + (pt.t / maxT) * chartW;
+      let py = chartY0 - Math.min(1.0, pt.d / maxY) * chartH;
+      return `${px.toFixed(1)} ${py.toFixed(1)}`;
+    }).join(" L ");
+    document.getElementById("pathMetricAB").setAttribute("d", dStrAB);
+  }
+
+  // Update synchronized time cursor on chart (solid line)
+  let curX = chartX0 + (time / maxT) * chartW;
+  document.getElementById("timeCursor").setAttribute("x1", curX);
+  document.getElementById("timeCursor").setAttribute("x2", curX);
+
+  // Update table row
+  let tbody = document.getElementById("tableBody");
+  if (tbody.children.length > 50) {
+    tbody.removeChild(tbody.firstChild);
+  }
+  let row = document.createElement("tr");
+  row.innerHTML = `
+    <td>${time.toFixed(2)}s</td>
+    <td>${stateA[0].toFixed(2)}</td>
+    <td>${stateA[1].toFixed(2)}</td>
+    <td>${stateA[2].toFixed(2)}</td>
+    <td>${fluxes[0].toFixed(2)}</td>
+    <td>${fluxes[1].toFixed(2)}</td>
+    <td>${fluxes[2].toFixed(2)}</td>
+    <td style="color:var(--good); font-weight:600;">${dtVal.toFixed(3)}</td>
+  `;
+  tbody.appendChild(row);
+}
+
+function stepSim(dt) {
+  let resA = rk4Step(stateA, dt, params);
+  let resB = rk4Step(stateB, dt, params);
+  stateA = resA.nextS;
+  stateB = resB.nextS;
+  time += dt;
+
+  let ptA = toSimplexCoords(stateA);
+  let ptB = toSimplexCoords(stateB);
+  historyA.push(ptA);
+  historyB.push(ptB);
+
+  historyDT.push({ t: time, d: thompsonDist(stateA, equil.SStar) });
+  historyDTAB.push({ t: time, d: thompsonDist(stateA, stateB) });
+
+  updateUI();
+}
+
+function loop() {
+  if (!isRunning) return;
+  stepSim(0.04);
+  animId = requestAnimationFrame(loop);
+}
+
+// Preset configurations
+function loadPreset(name) {
+  if (isRunning) togglePlay();
+  time = 0.0;
+  historyA = [];
+  historyB = [];
+  historyDT = [];
+  historyDTAB = [];
+  document.getElementById("tableBody").innerHTML = "";
+  document.getElementById("noticeShock").style.display = "none";
+
+  if (name === "disparate") {
+    params = { V: [2.0, 2.0, 2.0], K: [1.0, 1.0, 1.0], M_total: 6.0 };
+    stateA = [4.5, 0.8, 0.7];
+    stateB = [0.6, 4.6, 0.8];
+  } else if (name === "saturation") {
+    params = { V: [2.0, 2.0, 2.0], K: [0.15, 0.15, 0.15], M_total: 6.0 };
+    stateA = [4.8, 0.6, 0.6];
+    stateB = [0.8, 4.4, 0.8];
+  } else if (name === "linear") {
+    params = { V: [6.0, 6.0, 6.0], K: [8.0, 8.0, 8.0], M_total: 6.0 };
+    stateA = [4.0, 1.0, 1.0];
+    stateB = [1.0, 4.0, 1.0];
+  } else if (name === "bottleneck") {
+    params = { V: [4.0, 1.2, 2.8], K: [1.0, 1.0, 1.0], M_total: 6.0 };
+    stateA = [1.0, 4.0, 1.0];
+    stateB = [3.0, 1.0, 2.0];
+  }
+
+  equil = solveSteadyState(params.V, params.K, params.M_total);
+  historyA.push(toSimplexCoords(stateA));
+  historyB.push(toSimplexCoords(stateB));
+  historyDT.push({ t: 0, d: thompsonDist(stateA, equil.SStar) });
+  historyDTAB.push({ t: 0, d: thompsonDist(stateA, stateB) });
+
+  updateUI();
+}
+
+function togglePlay() {
+  isRunning = !isRunning;
+  let btn = document.getElementById("btnPlay");
+  if (isRunning) {
+    btn.textContent = "⏸ Pause";
+    btn.classList.remove("primary");
+    loop();
+  } else {
+    btn.textContent = "▶ Run";
+    btn.classList.add("primary");
+    if (animId) cancelAnimationFrame(animId);
+  }
+}
+
+// UI Event Handlers
+document.getElementById("btnPlay").addEventListener("click", togglePlay);
+document.getElementById("btnStep").addEventListener("click", () => {
+  if (isRunning) togglePlay();
+  stepSim(0.1);
+});
+document.getElementById("btnReset").addEventListener("click", () => {
+  let active = document.querySelector(".lab-chip.active");
+  loadPreset(active ? active.getAttribute("data-preset") : "disparate");
+});
+document.getElementById("btnShock").addEventListener("click", () => {
+  stateA[0] += 3.0;
+  stateB[0] += 3.0;
+  params.M_total += 3.0;
+  equil = solveSteadyState(params.V, params.K, params.M_total);
+
+  let n = document.getElementById("noticeShock");
+  n.style.display = "block";
+  setTimeout(() => { n.style.display = "none"; }, 5000);
+
+  updateUI();
+});
+
+document.querySelectorAll(".lab-chip").forEach(chip => {
+  chip.addEventListener("click", e => {
+    document.querySelectorAll(".lab-chip").forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    loadPreset(chip.getAttribute("data-preset"));
+  });
+});
+
+// Challenges logic
+document.querySelectorAll("#c1Options .lab-option-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    let fb = document.getElementById("c1Feedback");
+    fb.style.display = "block";
+    if (btn.getAttribute("data-ans") === "no") {
+      fb.style.color = "var(--good)";
+      fb.innerHTML = "✓ Correct! Sontag proved that the vector field is strictly non-expansive in the Thompson metric. Even with extreme saturation, $d_T(A(t), B(t))$ never rebounds.";
+    } else {
+      fb.style.color = "var(--alert)";
+      fb.innerHTML = "✗ Incorrect. While saturation alters fluxes, the Thompson cone metric guarantees monotonic contraction without rebound.";
+    }
+  });
+});
+
+document.querySelectorAll("#c2Options .lab-option-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    let fb = document.getElementById("c2Feedback");
+    fb.style.display = "block";
+    if (btn.getAttribute("data-ans") === "slower") {
+      fb.style.color = "var(--good)";
+      fb.innerHTML = "✓ Correct! When $S \\gg K_m$, fluxes approach constant velocities ($V_{i-1} - V_i$), flattening logarithmic relative sensitivity and lengthening contraction time.";
+    } else {
+      fb.style.color = "var(--alert)";
+      fb.innerHTML = "✗ Incorrect. While absolute velocity is high, sensitivity to concentration differences vanishes, causing the logarithmic Thompson distance to contract more slowly.";
+    }
+  });
+});
+
+document.getElementById("btnToggleTable").addEventListener("click", () => {
+  let box = document.getElementById("tableContainer");
+  let btn = document.getElementById("btnToggleTable");
+  if (box.style.display === "none") {
+    box.style.display = "block";
+    btn.textContent = "Hide Table";
+  } else {
+    box.style.display = "none";
+    btn.textContent = "Show Table";
+  }
+});
+
+// Initial boot
+loadPreset("disparate");
+</script>
+</body>
+</html>

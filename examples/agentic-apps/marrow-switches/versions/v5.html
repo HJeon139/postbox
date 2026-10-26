@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twelve switches: diabetic marrow toy</title>
+<style>
+  body { margin: 0; padding: 8px; color: var(--text); background: var(--bg); font: 13px/1.4 system-ui, sans-serif; }
+  .ms-wrap { max-width: 1000px; margin: 0 auto; display: grid; gap: 8px; }
+  .ms-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 0 2px; }
+  .ms-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .ms-main { display: grid; grid-template-columns: minmax(0, 270px) minmax(0, 1fr); gap: 8px; align-items: start; }
+  @media (max-width: 760px) { .ms-main { grid-template-columns: minmax(0, 1fr); } }
+  .ms-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0; }
+  .ms-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .ms-tabs button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .ms-scroll { max-height: 470px; overflow-y: auto; }
+  .ms-sw-grp { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; margin: 8px 0 2px; }
+  .ms-h { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+  .ms-note { font-size: 13px; color: var(--dim); }
+  .ms-group-title { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+  .ms-sw { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 2px 0; border-top: 1px solid var(--line); }
+  .ms-sw-label { font-size: 13px; }
+  .ms-sw-help { font-size: 12px; color: var(--dim); }
+  .ms-tog { min-width: 56px; }
+  .ms-tog.ms-kind { border-color: var(--good); }
+  .ms-tog.ms-harsh { border-color: var(--alert); }
+  .ms-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+  .ms-row button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .ms-variant { font-size: 13px; margin-top: 8px; }
+  .ms-table { margin-top: 10px; display: grid; gap: 0; }
+  .ms-tr { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr) minmax(0, 1.5fr); gap: 8px; align-items: center; padding: 6px 4px; border-top: 1px solid var(--line); text-align: left; background: transparent; color: var(--text); font: inherit; border-left: 0; border-right: 0; border-bottom: 0; width: 100%; cursor: pointer; }
+  .ms-tr.ms-head { cursor: default; font-size: 12px; color: var(--dim); border-top: 0; }
+  .ms-tr.ms-sel { background: var(--bg); outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+  .ms-name { font-size: 13px; }
+  .ms-rank { color: var(--dim); font-size: 12px; margin-right: 4px; }
+  .ms-yours { font-size: 13px; }
+  .ms-shift { font-size: 12px; color: var(--dim); display: block; }
+  .ms-track { position: relative; height: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  .ms-span { position: absolute; top: 2px; bottom: 2px; background: var(--seq-3); border-radius: 4px; min-width: 3px; }
+  .ms-dot { position: absolute; top: -3px; width: 4px; height: 16px; background: var(--text); border-radius: 2px; margin-left: -2px; }
+  .ms-range { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .ms-dom { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) 44px; gap: 8px; align-items: center; padding: 3px 0; font-size: 13px; }
+  .ms-dbar { height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; position: relative; overflow: hidden; }
+  .ms-dfill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--seq-4); }
+  .ms-cmp { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px 10px; font-size: 13px; margin-top: 8px; }
+  .ms-cmp b { font-weight: 600; }
+  .ms-cmp .ms-hd { font-size: 12px; color: var(--dim); }
+  .ms-q { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .ms-q:first-of-type { border-top: 0; margin-top: 4px; padding-top: 0; }
+  .ms-fb { font-size: 13px; margin-top: 6px; }
+  .ms-ok { color: var(--good); font-weight: 600; } .ms-no { color: var(--alert); font-weight: 600; }
+  .ms-caption { font-size: 13px; margin-top: 8px; }
+  .ms-tr:focus-visible, .ms-sum:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ms-yours, .ms-range, .ms-cmp div { font-variant-numeric: tabular-nums; }
+  .ms-paper { display: block; font-size: 12px; color: var(--dim); margin-top: 1px; }
+  .ms-paper b { color: var(--text); font-weight: 600; }
+  .ms-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .ms-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--dim); margin-top: 8px; align-items: center; }
+  .ms-key { display: inline-block; vertical-align: middle; margin-right: 4px; }
+  .ms-key-span { width: 22px; height: 8px; background: var(--seq-3); border-radius: 4px; }
+  .ms-key-dot { width: 4px; height: 14px; background: var(--text); border-radius: 2px; }
+  .ms-grp { border-top: 1px solid var(--line); padding: 6px 0; }
+  .ms-grp:first-of-type { border-top: 0; }
+  .ms-sum { cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: transparent; border: 0; padding: 2px 0; text-align: left; }
+  .ms-sum-state { font-weight: 400; color: var(--dim); margin-left: 6px; }
+  .ms-groups { display: block; margin-top: 8px; }
+  .ms-grp-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 0 16px; margin-top: 4px; }
+  .ms-chart { width: 100%; margin-top: 8px; }
+  .ms-chart svg { display: block; overflow: visible; }
+  .ms-chart text { fill: var(--text); font: 12px system-ui, sans-serif; }
+  .ms-chart .ms-t-dim { fill: var(--dim); }
+  .ms-chart .ms-t-b { font-weight: 600; }
+  .ms-chart .ms-grid { stroke: var(--line); stroke-width: 1; }
+  .ms-chart .ms-rowbg { fill: transparent; }
+  .ms-chart .ms-rowsel { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; }
+  .ms-chart [role="button"] { cursor: pointer; }
+  .ms-chart [role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .ms-c1 { stroke: var(--s1); fill: var(--s1); } .ms-c2 { stroke: var(--s2); fill: var(--s2); } .ms-c3 { stroke: var(--s3); fill: var(--s3); } .ms-c4 { stroke: var(--s4); fill: var(--s4); }
+  .ms-insight { font-size: 13px; margin-top: 6px; }
+  .ms-keyrow { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--dim); margin-top: 6px; align-items: center; }
+  .ms-keyrow svg, .ms-chart .ms-keyrow svg { display: inline-block; vertical-align: middle; margin-right: 4px; }
+  .ms-paperm { fill: var(--panel); stroke: var(--s5); stroke-width: 2.5; }
+</style>
+</head>
+<body>
+<div class="ms-wrap">
+  <div class="ms-head"><h2>Twelve open questions, 4,096 models</h2><span class="small dim">Green border: the answer kinder to the patient; red: the harsher one.</span><span class="small dim">A toy model I wrote with the kinds of switches Madeddu (arXiv:2610.24728) leaves open; compare its patterns, not its numbers.</span></div>
+  <div class="ms-main">
+    <aside class="ms-panel">
+      <div class="ms-row" style="margin-top:0">
+        <button class="btn sm" id="kind">All kind</button>
+        <button class="btn sm" id="harsh">All harsh</button>
+        <button class="btn sm ghost" id="rand">Random</button>
+      </div>
+      <div class="ms-variant small" id="variant" aria-live="polite"></div>
+      <div id="switches"></div>
+    </aside>
+    <section class="ms-panel">
+      <div class="ms-tabs" role="group" aria-label="View">
+        <button class="btn sm ghost" data-tab="quiz">Predict first</button>
+        <button class="btn sm ghost" data-tab="slope">Rank shift</button>
+        <button class="btn sm ghost" data-tab="range">Ranges</button>
+        <button class="btn sm ghost" data-tab="hist">One treatment</button>
+        <button class="btn sm ghost" data-tab="cmp">Paper vs toy</button>
+      </div>
+      <div data-pane="quiz"><div id="quiz"></div></div>
+      <div data-pane="slope">
+        <div class="ms-row" role="group" aria-label="Compare the worst-case ranking with" style="margin-top:0">
+          <span class="small dim">Worst-case rank compared with:</span>
+          <button class="btn sm ghost" data-cmp="cur">Your variant</button>
+          <button class="btn sm ghost" data-cmp="max">Best case</button>
+        </div>
+        <div class="ms-chart" id="slope"></div>
+        <div class="ms-keyrow" id="slopekey"></div>
+        <div class="ms-insight" id="insight"></div>
+      </div>
+      <div data-pane="range">
+        <div class="ms-row" role="group" aria-label="Sort by" style="margin-top:0">
+          <span class="small dim">Sort:</span>
+          <button class="btn sm ghost" data-sort="min">Worst</button>
+          <button class="btn sm ghost" data-sort="cur">Yours</button>
+          <button class="btn sm ghost" data-sort="max">Best</button>
+          <button class="btn sm ghost" id="pairs" aria-pressed="false">Include pairs</button>
+          <button class="btn sm ghost" id="tview" aria-pressed="false">Show as table</button>
+        </div>
+        <div class="ms-keyrow" id="rangekey"></div>
+        <div class="ms-scroll"><div class="ms-chart" id="range"></div><div class="ms-table" id="table"></div></div>
+      </div>
+      <div data-pane="hist">
+        <div class="ms-note" id="histhead"></div>
+        <div class="ms-chart" id="hist"></div>
+        <div class="ms-note" id="domhead" style="margin-top:8px"></div>
+        <div id="domains" style="margin-top:4px"></div>
+      </div>
+      <div data-pane="cmp">
+        <div class="ms-note">Glucose lowered to low, no drug: average gain when one switch flips to its kind answer and the other 11 stay fixed, as in the paper’s Figure 5B.</div>
+        <div class="ms-chart" id="cmpchart"></div>
+        <div class="ms-note" style="margin-top:8px">The paper’s three single variants (all injuries persist with both loops on; only vessel injury heals; everything heals, no loops): 4.5, 31.8 and 100. Toy: <span id="toyscen"></span>.</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+// ---- Toy model (levels 0–2, AND = min, OR = max, NOT a = 2 − a, one step per round) ----
+const SW = [
+  { k: "healEndo", g: "Can this injury heal?", label: "Vessel-lining injury", help: "Heals once glucose falls, or stays", kind: 1 },
+  { k: "healPeri", g: "Can this injury heal?", label: "Pericyte injury", help: "Cells that wrap and support vessels", kind: 1 },
+  { k: "healInfl", g: "Can this injury heal?", label: "Inflammatory memory", help: "Lasting changes in blood-forming cells (epigenetic)", kind: 1 },
+  { k: "healNeur", g: "Can this injury heal?", label: "Nerve injury", help: "Marrow nerves that signal stem cells", kind: 1 },
+  { k: "healProg", g: "Can this injury heal?", label: "Progenitor injury", help: "Repair cells’ supportive signaling", kind: 1 },
+  { k: "healMot", g: "Can this injury heal?", label: "Repair-cell movement", help: "Ability of repair cells to migrate", kind: 1 },
+  { k: "osmLoop", g: "Self-sustaining loops", label: "OSM keeps itself going", help: "Once on, stays on without inflammation", kind: 0 },
+  { k: "adLoop", g: "Self-sustaining loops", label: "Fat-cell loop keeps going", help: "Fat cells crowd the niche even at low glucose", kind: 0 },
+  { k: "aktFGF", g: "Other open questions", label: "Akt also restores FGF2", help: "A vessel support signal", kind: 1 },
+  { k: "aktJag", g: "Other open questions", label: "Akt also restores Jagged", help: "Another vessel support signal", kind: 1 },
+  { k: "transfer", g: "Other open questions", label: "Progenitor injury hits vessels", help: "Damaged progenitors injure the lining", kind: 0 },
+  { k: "mid", g: "Other open questions", label: "Medium glucose harms like high", help: "Matters only when glucose is medium", kind: 0 },
+];
+const sw = (v) => { const s = {}; SW.forEach((d, i) => s[d.k] = (v >> i) & 1); return s; };
+
+const START = { EI: 2, PI: 2, IM: 2, NI: 2, PG: 2, RM: 2, INF: 2, ROS: 2, ROCK: 2, MY: 2, OSM: 2, RET: 2, AD: 2 };
+function targets(x, u, s) {
+  const Gi = u.G === 1 && s.mid ? 2 : u.G;
+  const inj = (cur, drive, heals) => heals ? drive : Math.max(cur, drive);
+  const t = (k) => u.tx.includes(k) ? 2 : 0;
+  return {
+    EI: inj(x.EI, Math.max(Gi, s.transfer ? x.PG : 0), s.healEndo),
+    PI: inj(x.PI, Gi, s.healPeri),
+    IM: inj(x.IM, x.INF, s.healInfl),
+    NI: inj(x.NI, Gi, s.healNeur),
+    PG: inj(x.PG, Gi, s.healProg),
+    RM: inj(x.RM, Gi, s.healMot),
+    INF: Math.min(u.G, 2 - t("nfkb")),
+    ROS: Math.min(x.EI, 2 - t("ros")),
+    ROCK: Math.min(x.ROS, 2 - t("rock")),
+    MY: Math.min(x.IM, 2 - t("p66")),
+    OSM: Math.min(Math.max(x.MY, s.osmLoop ? x.OSM : 0), 2 - t("osm")),
+    RET: Math.min(x.OSM, 2 - t("cxcr4")),
+    AD: Math.max(Gi, s.adLoop ? x.AD : 0),
+  };
+}
+function settle(x, u, s) {
+  for (let i = 0; i < 60; i++) {
+    const tg = targets(x, u, s); let moved = false; const n = {};
+    for (const k in x) { n[k] = x[k] + Math.sign(tg[k] - x[k]); if (n[k] !== x[k]) moved = true; }
+    if (!moved) return x; x = n;
+  }
+  return x;
+}
+// Readouts: [domain, endpoint, good-when-high?]
+const DOMS = ["Vessel integrity", "Vessel-cell migration", "Vessel support signals", "Pericyte support", "Myeloid inflammatory drive",
+  "Stem cells held back (OSM)", "Fat-cell restraint", "Nerve response", "Repair-cell movement", "Stimulated inflammation", "Progenitor signaling"];
+function readouts(x, u, s) {
+  const akt = u.tx.includes("akt") ? 2 : 0, aktP = u.tx.includes("aktp") ? 2 : 0;
+  return [
+    [0, Math.max(2 - x.ROS, akt), 1], [0, x.ROS, 0],
+    [1, Math.max(2 - x.ROS, akt), 1],
+    [2, Math.max(2 - x.ROCK, s.aktFGF ? akt : 0), 1], [2, Math.max(2 - x.ROS, s.aktJag ? akt : 0), 1], [2, 2 - x.EI, 1],
+    [3, Math.max(2 - x.PI, aktP), 1],
+    [4, x.OSM, 0], [5, x.RET, 0], [6, x.AD, 0], [7, 2 - x.NI, 1], [8, 2 - x.RM, 1], [9, x.IM, 0], [10, 2 - x.PG, 1],
+  ];
+}
+function evaluate(u, v) {
+  const s = sw(v);
+  const base = readouts(settle({ ...START }, { G: 2, tx: [] }, s), { G: 2, tx: [] }, s);
+  const now = readouts(settle(settle({ ...START }, { G: 2, tx: [] }, s), u, s), u, s);
+  const per = DOMS.map(() => []);
+  now.forEach(([d, val, good], i) => per[d].push((good ? val - base[i][1] : base[i][1] - val) / 2));
+  const doms = per.map((a) => a.reduce((p, q) => p + q, 0) / a.length);
+  return { score: 100 * doms.reduce((p, q) => p + q, 0) / DOMS.length, doms };
+}
+
+const DRUGS = [["ros", "Suppress ROS in vessel lining"], ["akt", "Boost Akt in vessel lining"], ["rock", "Inhibit ROCK"], ["osm", "Block OSM"],
+  ["p66", "Remove p66Shc in blood cells"], ["aktp", "Boost Akt in pericytes"], ["cxcr4", "Block CXCR4"], ["nfkb", "Suppress NF-κB"]];
+const SHORT = { ros: "ROS suppression", akt: "Akt boost (vessel)", rock: "ROCK inhibition", osm: "OSM block", p66: "p66Shc loss",
+  aktp: "Akt boost (pericyte)", cxcr4: "CXCR4 block", nfkb: "NF-κB suppression", g1: "Glucose to medium", g0: "Glucose to low" };
+const TINY = { ros: "ROS", akt: "Akt (vessel)", rock: "ROCK", osm: "OSM", p66: "p66Shc", aktp: "Akt (pericyte)", cxcr4: "CXCR4", nfkb: "NF-κB" };
+const CAT = { ros: 1, akt: 1, rock: 1, aktp: 1, osm: 2, p66: 2, cxcr4: 2, nfkb: 2, g1: 3, g0: 3 };
+const CATNAME = { 1: "Acts on vessels", 2: "Acts on inflammation", 3: "Lowers glucose", 4: "Drug pair" };
+const ROWS = DRUGS.map(([k, n]) => ({ id: k, name: n, short: SHORT[k], cat: CAT[k], u: { G: 2, tx: [k] }, pair: false }))
+  .concat([{ id: "g1", name: "Lower glucose to medium (no drug)", short: SHORT.g1, cat: 3, u: { G: 1, tx: [] }, pair: false },
+           { id: "g0", name: "Lower glucose to low (no drug)", short: SHORT.g0, cat: 3, u: { G: 0, tx: [] }, pair: false }]);
+for (let i = 0; i < DRUGS.length; i++) for (let j = i + 1; j < DRUGS.length; j++)
+  ROWS.push({ id: DRUGS[i][0] + "+" + DRUGS[j][0], short: TINY[DRUGS[i][0]] + " + " + TINY[DRUGS[j][0]], cat: 4, name: DRUGS[i][1] + " + " + DRUGS[j][1].replace(/^./, (c) => c.toLowerCase()), u: { G: 2, tx: [DRUGS[i][0], DRUGS[j][0]] }, pair: true });
+
+// Worst-case scores the paper reports in its text (Results), where a toy row has a counterpart.
+const PAPER = { ros: 24.2, akt: 15.2, rock: 12.1, osm: 13.6, p66: 13.6, aktp: 9.1, nfkb: 4.5,
+  "ros+osm": 37.9, "ros+p66": 37.9, "ros+aktp": 33.3, "ros+cxcr4": 33.3, "ros+nfkb": 28.8 };
+const N = 4096;
+for (const r of ROWS) {
+  r.all = new Float32Array(N); let mn = 1e9, mx = -1e9;
+  for (let v = 0; v < N; v++) { const sc = evaluate(r.u, v).score; r.all[v] = sc; if (sc < mn) mn = sc; if (sc > mx) mx = sc; }
+  r.min = mn; r.max = mx;
+}
+const kindV = SW.reduce((a, d, i) => a | (d.kind << i), 0), harshV = (N - 1) ^ kindV;
+const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
+
+// ---- Quiz ----
+const singles = ROWS.filter((r) => !r.pair);
+const widest = singles.slice().sort((a, b) => (b.max - b.min) - (a.max - a.min))[0];
+const drugsOnly = singles.filter((r) => r.u.tx.length);
+const rankBy = (arr, key) => arr.slice().sort((a, b) => b[key] - a[key] || a.name.localeCompare(b.name));
+const climber = drugsOnly.map((r) => ({ r, d: rankBy(drugsOnly, "min").indexOf(r) - rankBy(drugsOnly, "max").indexOf(r) })).sort((a, b) => b.d - a.d)[0].r;
+const QUIZ = [
+  { id: "q1", q: "Which single option has the widest gap between its worst and best case?", opts: ["ros", "nfkb", "p66", "g0"], ans: widest.id,
+    why: () => `${widest.name}: ${f1(widest.min)} to ${f1(widest.max)}. Lowering glucose removes the cause but can’t undo injuries that persist, so its result depends on almost every switch. The paper found the same pattern: 4.5 to 100.` },
+  { id: "q2", q: "Which drug climbs the most places when you rank by best case instead of worst case?", opts: ["ros", "osm", "nfkb", "cxcr4"], ans: climber.id,
+    why: () => `${climber.name}: worst ${f1(climber.min)}, best ${f1(climber.max)}. It works upstream, so it helps only if inflammatory memory can fade. Ranking by worst case, as the paper does, rewards drugs that work under every answer.` },
+];
+const nameOf = (id) => ROWS.find((r) => r.id === id).name;
+
+// ---- State ----
+let S = { v: harshV, sort: "min", pairs: false, sel: "ros", quiz: {}, open: {}, cmp: "cur", tview: false, tab: "quiz" };
+const $ = (id) => document.getElementById(id);
+const save = () => postbox.saveState && postbox.saveState(S);
+
+function renderQuiz() {
+  $("quiz").innerHTML = QUIZ.map((q) => {
+    const a = S.quiz[q.id];
+    const btns = q.opts.map((o) => `<button class="btn sm ghost" data-q="${q.id}" data-o="${o}" aria-pressed="${a === o}">${nameOf(o)}</button>`).join("");
+    const fb = a ? `<div class="ms-fb">${a === q.ans ? '<span class="ms-ok">Right.</span>' : '<span class="ms-no">Not this one.</span>'} ${q.why()}</div>` : "";
+    return `<div class="ms-q"><div class="small">${q.q}</div><div class="ms-row">${btns}</div>${fb}</div>`;
+  }).join("");
+  $("quiz").querySelectorAll("[data-q]").forEach((b) => b.onclick = () => { S.quiz[b.dataset.q] = b.dataset.o; renderAll(); });
+}
+
+function renderSwitches() {
+  const s = sw(S.v); const groups = [...new Set(SW.map((d) => d.g))];
+  $("switches").innerHTML = groups.map((g, gi) => {
+    const items = SW.map((d, i) => ({ d, i })).filter(({ d }) => d.g === g);
+    const nk = items.filter(({ d }) => s[d.k] === d.kind).length;
+    const open = true;
+    return `<div><div class="ms-sw-grp">${g} · ${nk} of ${items.length} kind</div>` +
+      (!open ? `</div>` : `<div>` +
+      items.map(({ d, i }) => {
+        const on = s[d.k], isKind = on === d.kind;
+        const word = d.g === "Can this injury heal?" ? (on ? "Heals" : "Stays") : (on ? "Yes" : "No");
+        return `<div class="ms-sw"><div><div class="ms-sw-label">${d.label}</div></div>` +
+          `<button class="btn sm ghost ms-tog ${isKind ? "ms-kind" : "ms-harsh"}" data-i="${i}" aria-pressed="${!!on}" aria-label="${d.label}: ${word}, ${isKind ? "kind" : "harsh"} answer">${word}</button></div>`;
+      }).join("") + `</div></div>`);
+  }).join("");
+  $("switches").querySelectorAll("[data-i]").forEach((b) => b.onclick = () => { S.v ^= 1 << +b.dataset.i; renderAll(); });
+  $("switches").querySelectorAll("[data-g]").forEach((b) => b.onclick = () => { S.open[b.dataset.g] = !S.open[b.dataset.g]; renderAll(); });
+  const nk = SW.filter((d, i) => ((S.v >> i) & 1) === d.kind).length;
+  $("variant").textContent = `Variant ${S.v + 1} of 4,096 · ${nk} of 12 kind`;
+}
+
+function renderTable() {
+  document.querySelectorAll("[data-sort]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.sort === S.sort));
+  $("pairs").setAttribute("aria-pressed", S.pairs);
+  const rows = ROWS.filter((r) => S.pairs || !r.pair).map((r) => ({ r, cur: r.all[S.v] }));
+  const key = (o) => S.sort === "min" ? o.r.min : S.sort === "max" ? o.r.max : o.cur;
+  const byWorst = rows.slice().sort((a, b) => b.r.min - a.r.min || a.r.name.localeCompare(b.r.name)).map((o) => o.r.id);
+  rows.sort((a, b) => key(b) - key(a) || b.r.min - a.r.min || a.r.name.localeCompare(b.r.name));
+  const head = `<div class="ms-legend"><span><span class="ms-key ms-key-span"></span>Toy: worst to best over all 4,096 variants</span><span><span class="ms-key ms-key-dot"></span>Toy: your variant</span><span><b>Paper</b>: the paper’s own worst-case score, where it reports one</span></div>` +
+    `<div class="ms-tr ms-head"><div>Treatment</div><div>Toy score, your variant</div><div><div>Toy range (score 0–100)</div><div class="ms-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div></div></div>`;
+  $("table").innerHTML = head + rows.map((o, i) => {
+    const r = o.r, wr = byWorst.indexOf(r.id) - i;
+    const shift = S.sort === "min" ? "" : `<span class="ms-shift">${wr > 0 ? "↑ " + wr + " vs worst-case rank" : wr < 0 ? "↓ " + (-wr) + " vs worst-case rank" : "same as worst-case rank"}</span>`;
+    return `<button class="ms-tr ${S.sel === r.id ? "ms-sel" : ""}" data-r="${r.id}" aria-pressed="${S.sel === r.id}">` +
+      `<div class="ms-name"><span class="ms-rank">#${i + 1}</span>${r.name}${PAPER[r.id] !== undefined ? `<span class="ms-paper">Paper worst case: <b>${PAPER[r.id]}</b></span>` : ""}</div>` +
+      `<div class="ms-yours"><b>${f1(o.cur)}</b>${shift}</div>` +
+      `<div><div class="ms-track" aria-hidden="true"><div class="ms-span" style="left:${r.min}%;width:${Math.max(r.max - r.min, 0.5)}%"></div><div class="ms-dot" style="left:${o.cur}%"></div></div>` +
+      `<div class="ms-range">${r.min === r.max ? "always " + f1(r.min) : f1(r.min) + " to " + f1(r.max)}</div></div></button>`;
+  }).join("");
+  $("table").querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { S.sel = b.dataset.r; renderAll(); });
+}
+
+function renderDomains() {
+  const r = ROWS.find((x) => x.id === S.sel) || ROWS[0];
+  const e = evaluate(r.u, S.v);
+  $("domhead").textContent = `${r.name}, in variant ${S.v + 1}: score ${f1(e.score)}. Each domain counts 1/11 of the score.`;
+  $("domains").innerHTML = DOMS.map((d, i) => `<div class="ms-dom"><div>${d}</div><div class="ms-dbar" aria-hidden="true"><div class="ms-dfill" style="width:${Math.max(0, e.doms[i]) * 100}%"></div></div><div class="mono small">${Math.round(e.doms[i] * 100)}%</div></div>`).join("");
+}
+
+// Paper vs toy matched-pair effects for glucose to low
+const g0 = ROWS.find((r) => r.id === "g0");
+function matched(i) {
+  const kindBit = SW[i].kind; let sum = 0, n = 0;
+  for (let v = 0; v < N; v++) if (((v >> i) & 1) !== kindBit) { sum += g0.all[v ^ (1 << i)] - g0.all[v]; n++; }
+  return sum / n;
+}
+function renderCmp() {
+  renderCmpChart();
+  // The paper's scenarios name only injuries and loops, so the other four switches take their kind answer here.
+  const core = harshV ^ (1 << 10) ^ (1 << 11) ^ (1 << 8) ^ (1 << 9);
+  $("toyscen").textContent = `${f1(g0.all[core])}, ${f1(g0.all[core ^ 1])} and ${f1(g0.all[kindV])}`;
+}
+
+// ---- SVG helpers ----
+const NS = "http://www.w3.org/2000/svg";
+const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const ctx = document.createElement("canvas").getContext("2d");
+const tw = (t, bold) => { ctx.font = `${bold ? "600 " : ""}12px system-ui, sans-serif`; return ctx.measureText(t).width; };
+function wrap(t, max, bold) {
+  const words = t.split(" "), lines = []; let cur = "";
+  for (const w of words) { const n = cur ? cur + " " + w : w; if (tw(n, bold) <= max || !cur) cur = n; else { lines.push(cur); cur = w; } }
+  if (cur) lines.push(cur); return lines;
+}
+const textLines = (lines, x, y, anchor, cls) => `<text x="${x}" y="${y}" text-anchor="${anchor}" class="${cls || ""}">` +
+  lines.map((l, i) => `<tspan x="${x}" dy="${i ? 14 : 0}">${esc(l)}</tspan>`).join("") + `</text>`;
+const diamond = (x, y, r, cls) => `<path class="${cls}" d="M${x},${y - r} L${x + r},${y} L${x},${y + r} L${x - r},${y} Z"/>`;
+const widthOf = (id) => Math.max(280, $(id).clientWidth || 600);
+const pressKeys = (root, fn) => root.querySelectorAll('[role="button"]').forEach((g) => {
+  g.onclick = () => fn(g.dataset.id);
+  g.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(g.dataset.id); } };
+});
+const selectRow = (id) => { S.sel = id; renderAll(); };
+
+// Slope chart: worst-case rank on the left, your variant (or best case) on the right.
+function renderSlope() {
+  document.querySelectorAll("[data-cmp]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.cmp === S.cmp));
+  const W = widthOf("slope"), rows = singles.slice();
+  const right = (r) => S.cmp === "max" ? r.max : r.all[S.v];
+  const L = rankBy(rows, "min");
+  const R = rows.slice().sort((a, b) => right(b) - right(a) || b.min - a.min || a.name.localeCompare(b.name));
+  const lab = Math.min(200, Math.max(96, (W - 70) / 2)), xL = lab, xR = W - lab;
+  const lines = (r, i, sc) => wrap(`${i + 1}. ${r.short} ${f1(sc)}`, lab - 10, r.id === S.sel);
+  const two = rows.some((r) => lines(r, L.indexOf(r), r.min).length > 1 || lines(r, R.indexOf(r), right(r)).length > 1);
+  const rh = two ? 34 : 24, top = 34, H = top + rows.length * rh + 4;
+  const y = (i) => top + i * rh + rh / 2;
+  let g = `<text x="${xL - 8}" y="14" text-anchor="end" class="ms-t-dim">Worst case</text><text x="${xR + 8}" y="14" class="ms-t-dim">${S.cmp === "max" ? "Best case" : "Your variant"}</text>`;
+  g += `<text x="${(xL + xR) / 2}" y="14" text-anchor="middle" class="ms-t-dim">rank</text>`;
+  for (const r of rows) {
+    const i = L.indexOf(r), j = R.indexOf(r), sel = r.id === S.sel, w = sel ? 4 : 2.2;
+    g += `<line x1="${xL}" y1="${y(i)}" x2="${xR}" y2="${y(j)}" class="ms-c${r.cat}" stroke-width="${w}" fill="none" opacity="${sel ? 1 : 0.85}"/>`;
+    g += `<circle cx="${xL}" cy="${y(i)}" r="${sel ? 5 : 4}" class="ms-c${r.cat}"/><circle cx="${xR}" cy="${y(j)}" r="${sel ? 5 : 4}" class="ms-c${r.cat}"/>`;
+    const aria = `${r.short}: rank ${i + 1} by worst case (${f1(r.min)}), rank ${j + 1} by ${S.cmp === "max" ? "best case" : "your variant"} (${f1(right(r))})`;
+    const lL = lines(r, i, r.min), lR = lines(r, j, right(r)), off = (n) => 4 - (n - 1) * 7;
+    g += `<g role="button" tabindex="0" data-id="${r.id}" aria-label="${esc(aria)}" aria-pressed="${sel}">` +
+      `<rect class="ms-rowbg" x="0" y="${y(i) - rh / 2}" width="${xL - 6}" height="${rh}"/>` +
+      textLines(lL, xL - 10, y(i) + off(lL.length), "end", sel ? "ms-t-b" : "") + `</g>`;
+    g += `<g role="button" tabindex="-1" data-id="${r.id}" aria-hidden="true"><rect class="ms-rowbg" x="${xR + 6}" y="${y(j) - rh / 2}" width="${W - xR - 6}" height="${rh}"/>` +
+      textLines(lR, xR + 10, y(j) + off(lR.length), "start", sel ? "ms-t-b" : "") + `</g>`;
+  }
+  $("slope").innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="Slope chart of treatment ranks">${g}</svg>`;
+  pressKeys($("slope"), selectRow);
+  const key = (c) => `<span><svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" class="ms-c${c}" stroke-width="3"/></svg>${CATNAME[c]}</span>`;
+  $("slopekey").innerHTML = [1, 2, 3].map(key).join("");
+  const moves = rows.map((r) => ({ r, d: L.indexOf(r) - R.indexOf(r) })).sort((a, b) => b.d - a.d);
+  const up = moves[0], down = moves[moves.length - 1];
+  const steady = rows.filter((r) => r.min === r.max).map((r) => r.short);
+  $("insight").innerHTML = up.d > 0
+    ? `<b>Biggest climb:</b> ${up.r.short}, from #${L.indexOf(up.r) + 1} to #${R.indexOf(up.r) + 1}.${down.d < 0 ? ` <b>Biggest fall:</b> ${down.r.short}, #${L.indexOf(down.r) + 1} to #${R.indexOf(down.r) + 1}.` : ""} Flat lines belong to treatments that score the same under every assumption (${steady.join(", ")}).`
+    : `In this variant the order matches the worst-case ranking. Flip switches toward the kind answers to see upstream treatments climb.`;
+}
+
+// Range chart: worst-to-best bar, your variant (circle), the paper’s worst case (diamond).
+function renderRange() {
+  document.querySelectorAll("[data-sort]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.sort === S.sort));
+  $("pairs").setAttribute("aria-pressed", S.pairs); $("tview").setAttribute("aria-pressed", S.tview);
+  $("tview").textContent = S.tview ? "Show as chart" : "Show as table";
+  $("range").style.display = S.tview ? "none" : ""; $("table").style.display = S.tview ? "" : "none";
+  $("rangekey").innerHTML = `<span><svg width="22" height="10" aria-hidden="true"><rect x="0" y="2" width="22" height="6" rx="3" style="fill:var(--seq-3)"/></svg>Toy: worst to best over 4,096 variants</span>` +
+    `<span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="5" style="fill:var(--text)"/></svg>Toy: your variant</span>` +
+    `<span><svg width="14" height="14" aria-hidden="true">${diamond(7, 7, 5, "ms-paperm")}</svg>Paper’s worst case, where reported</span>`;
+  if (S.tview) { renderTable(); return; }
+  const W = widthOf("range"), rows = ROWS.filter((r) => S.pairs || !r.pair);
+  const key = (r) => S.sort === "min" ? r.min : S.sort === "max" ? r.max : r.all[S.v];
+  rows.sort((a, b) => key(b) - key(a) || b.min - a.min || a.name.localeCompare(b.name));
+  const lab = Math.min(220, Math.max(110, W * 0.36)), x0 = lab + 8, x1 = W - 40, X = (v) => x0 + (v / 100) * (x1 - x0);
+  const L = rows.map((r, i) => wrap(`${i + 1}. ${r.short}`, lab - 4, r.id === S.sel));
+  const rhs = L.map((l) => Math.max(26, l.length * 14 + 10));
+  let yy = 28, g = "";
+  for (const t of [0, 25, 50, 75, 100]) g += `<line x1="${X(t)}" x2="${X(t)}" y1="20" y2="${28 + rhs.reduce((a, b) => a + b, 0)}" class="ms-grid"/><text x="${X(t)}" y="13" text-anchor="middle" class="ms-t-dim">${t}</text>`;
+  rows.forEach((r, i) => {
+    const h = rhs[i], cy = yy + h / 2, sel = r.id === S.sel, cur = r.all[S.v];
+    const aria = `${r.short}: your variant ${f1(cur)}, worst ${f1(r.min)}, best ${f1(r.max)}${PAPER[r.id] !== undefined ? `, paper worst case ${PAPER[r.id]}` : ""}`;
+    g += `<g role="button" tabindex="0" data-id="${r.id}" aria-label="${esc(aria)}" aria-pressed="${sel}">` +
+      `<rect x="0" y="${yy + 1}" width="${W}" height="${h - 2}" rx="5" class="${sel ? "ms-rowsel" : "ms-rowbg"}"/>` +
+      textLines(L[i], 4, cy + 4 - (L[i].length - 1) * 7, "start", sel ? "ms-t-b" : "") +
+      `<rect x="${X(r.min)}" y="${cy - 4}" width="${Math.max(X(r.max) - X(r.min), 3)}" height="8" rx="4" style="fill:var(--seq-3)"/>` +
+      `<circle cx="${X(cur)}" cy="${cy}" r="5" style="fill:var(--text)"/>` +
+      (PAPER[r.id] !== undefined ? diamond(X(PAPER[r.id]), cy, 7, "ms-paperm").replace("<path", '<path style="fill:none"') : "") +
+      `<text x="${W - 2}" y="${cy + 4}" text-anchor="end" class="${sel ? "ms-t-b" : ""}">${f1(cur)}</text></g>`;
+    yy += h;
+  });
+  $("range").innerHTML = `<svg width="${W}" height="${yy + 4}" role="img" aria-label="Range chart of treatment scores">${g}</svg>`;
+  pressKeys($("range"), selectRow);
+}
+
+// Histogram: how often each score occurs across the 4,096 variants for the selected treatment.
+function renderHist() {
+  const r = ROWS.find((x) => x.id === S.sel) || ROWS[0], W = widthOf("hist");
+  const counts = new Map(); for (let v = 0; v < N; v++) { const k = Math.round(r.all[v] * 10) / 10; counts.set(k, (counts.get(k) || 0) + 1); }
+  const max = Math.max(...counts.values()), x0 = 40, x1 = W - 12, X = (v) => x0 + (v / 100) * (x1 - x0), H = 150, base = 120, Y = (c) => base - (c / max) * 96;
+  let g = "";
+  for (const t of [0, 25, 50, 75, 100]) g += `<line x1="${X(t)}" x2="${X(t)}" y1="16" y2="${base}" class="ms-grid"/><text x="${X(t)}" y="${base + 16}" text-anchor="middle" class="ms-t-dim">${t}</text>`;
+  g += `<text x="0" y="${Y(max) + 4}" class="ms-t-dim">${Math.round((max / N) * 100)}%</text><text x="0" y="${base}" class="ms-t-dim">0%</text>`;
+  for (const [k, c] of counts) g += `<rect x="${X(k) - 4}" y="${Y(c)}" width="8" height="${base - Y(c)}" rx="2" class="ms-c${r.cat}"><title>${f1(k)}: ${c} variants</title></rect>`;
+  const cur = r.all[S.v];
+  g += `<line x1="${X(cur)}" x2="${X(cur)}" y1="8" y2="${base}" style="stroke:var(--text)" stroke-width="2" stroke-dasharray="4 3"/>`;
+  const lx = X(cur) > W - 110;
+  g += `<text x="${X(cur) + (lx ? -6 : 6)}" y="14" text-anchor="${lx ? "end" : "start"}" class="ms-t-b">your variant: ${f1(cur)}</text>`;
+  $("hist").innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="Histogram of ${esc(r.short)} scores across 4,096 variants">${g}</svg>`;
+  const parts = [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([k, c]) => `${f1(k)} in ${c.toLocaleString()} (${Math.round((c / N) * 100)}%)`);
+  $("histhead").textContent = `${r.name}: each bar is a score and its height is how many of the 4,096 variants give it. ` +
+    (counts.size === 1 ? `Every variant gives ${f1(r.min)}: no open question changes it.` : `Scores: ${parts.join("; ")}.`);
+}
+
+// Paper vs toy: diamond (paper) and circle (toy) per switch on a 0–25 scale.
+function renderCmpChart() {
+  const items = [["Vessel-lining injury heals", 0, 21.2], ["Progenitor injury heals", 4, 15.2], ["OSM loop switched off", 6, 13.6], ["Fat-cell loop switched off", 7, 9.1]];
+  const W = widthOf("cmpchart"), lab = Math.min(200, Math.max(110, W * 0.36)), x0 = lab + 8, x1 = W - 16, X = (v) => x0 + (v / 25) * (x1 - x0);
+  let g = "", yy = 26;
+  for (const t of [0, 5, 10, 15, 20, 25]) g += `<line x1="${X(t)}" x2="${X(t)}" y1="18" y2="${26 + items.length * 34}" class="ms-grid"/><text x="${X(t)}" y="12" text-anchor="middle" class="ms-t-dim">+${t}</text>`;
+  for (const [n, i, p] of items) {
+    const t = matched(i), cy = yy + 17, lines = wrap(n, lab - 4);
+    g += textLines(lines, 4, cy + 4 - (lines.length - 1) * 7, "start") +
+      `<line x1="${X(Math.min(p, t))}" x2="${X(Math.max(p, t))}" y1="${cy}" y2="${cy}" style="stroke:var(--line)" stroke-width="4"/>` +
+      `<circle cx="${X(t)}" cy="${cy}" r="6" style="fill:var(--text)"/>` + diamond(X(p), cy, 8, "ms-paperm").replace("<path", '<path style="fill:none"') +
+      `<text x="${X(Math.max(p, t)) + 10}" y="${cy + 4}" class="ms-t-dim">${p > t ? "" : ""}</text>`;
+    yy += 34;
+  }
+  $("cmpchart").innerHTML = `<div class="ms-keyrow"><span><svg width="14" height="14" aria-hidden="true">${diamond(7, 7, 5, "ms-paperm")}</svg>Paper (Fig. 5B)</span><span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="5" style="fill:var(--text)"/></svg>This toy</span></div>` +
+    `<svg width="${W}" height="${yy + 4}" role="img" aria-label="Paper versus toy switch effects">${g}</svg>` +
+    `<div class="ms-cmp">${`<div class="ms-hd">Switch flipped</div><div class="ms-hd">Paper</div><div class="ms-hd">Toy</div>` + items.map(([n, i, p]) => `<div>${n}</div><div><b>+${p}</b></div><div>+${f1(matched(i))}</div>`).join("")}</div>`;
+}
+
+function renderAll() {
+  document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tab === S.tab));
+  document.querySelectorAll("[data-pane]").forEach((el) => el.style.display = el.dataset.pane === S.tab ? "" : "none");
+  renderSwitches();
+  if (S.tab === "quiz") renderQuiz();
+  if (S.tab === "slope") renderSlope();
+  if (S.tab === "range") renderRange();
+  if (S.tab === "hist") { renderHist(); renderDomains(); }
+  if (S.tab === "cmp") renderCmp();
+  save();
+}
+
+document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { S.tab = b.dataset.tab; renderAll(); });
+$("kind").onclick = () => { S.v = kindV; renderAll(); };
+$("harsh").onclick = () => { S.v = harshV; renderAll(); };
+$("rand").onclick = () => { S.v = Math.floor(Math.random() * N); renderAll(); };
+document.querySelectorAll("[data-sort]").forEach((b) => b.onclick = () => { S.sort = b.dataset.sort; renderAll(); });
+document.querySelectorAll("[data-cmp]").forEach((b) => b.onclick = () => { S.cmp = b.dataset.cmp; renderAll(); });
+$("tview").onclick = () => { S.tview = !S.tview; renderAll(); };
+let rsz; new ResizeObserver(() => { clearTimeout(rsz); rsz = setTimeout(renderAll, 80); }).observe(document.body);
+$("pairs").onclick = () => { S.pairs = !S.pairs; renderAll(); };
+
+(async () => {
+  await postbox.ready;
+  const r = postbox.restoreState ? await postbox.restoreState() : null;
+  if (r && typeof r.v === "number") S = Object.assign(S, r, { open: r.open || {}, cmp: r.cmp || "cur", tview: !!r.tview, tab: r.tab || "quiz" });
+  renderAll();
+})();
+</script>
+</body>
+</html>

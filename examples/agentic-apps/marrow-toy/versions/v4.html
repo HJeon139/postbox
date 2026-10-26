@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toy diabetic marrow network</title>
+<style>
+  body { margin: 0; padding: 8px; color: var(--text); background: var(--bg); font: 13px/1.4 system-ui, sans-serif; }
+  .bm-wrap { max-width: 1000px; margin: 0 auto; display: grid; gap: 8px; }
+  .bm-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 0 2px; }
+  .bm-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .bm-main { display: grid; grid-template-columns: minmax(0, 210px) minmax(0, 1fr) minmax(0, 290px); gap: 8px; align-items: start; }
+  @media (max-width: 860px) { .bm-main { grid-template-columns: minmax(0, 1fr); } }
+  .bm-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0; }
+  .bm-h { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+  .bm-tabs { display: flex; gap: 4px; margin: 10px 0 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .bm-tabs button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .bm-chnav { display: flex; align-items: center; gap: 6px; justify-content: space-between; margin-bottom: 4px; }
+  .bm-gr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) 40px; gap: 6px; align-items: center; font-size: 12px; margin-top: 3px; }
+  .bm-gtrack { height: 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); overflow: hidden; }
+  .bm-gfill { height: 100%; background: var(--seq-4); }
+  .bm-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .bm-ctl-label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 2px; }
+  .bm-seg { display: flex; flex-wrap: wrap; gap: 4px; }
+  .bm-seg button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .bm-net { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 14px; }
+  .bm-top { grid-column: 1 / -1; }
+  .bm-col { display: grid; gap: 0; align-content: start; }
+  .bm-colhead { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+  .bm-node { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: var(--bg); }
+  .bm-node-name { font-weight: 600; font-size: 13px; }
+  .bm-node-note { font-size: 12px; color: var(--dim); }
+  .bm-lvl { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+  .bm-cells { display: flex; gap: 3px; }
+  .bm-cell { width: 18px; height: 10px; border-radius: 2px; border: 1px solid var(--line); background: transparent; }
+  .bm-cell.on1 { background: var(--seq-2); } .bm-cell.on2 { background: var(--seq-4); } .bm-cell.on3 { background: var(--seq-6); }
+  .bm-lvltext { font-size: 12px; }
+  .bm-changed { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .bm-arrow { text-align: center; font-size: 12px; color: var(--dim); padding: 2px 0; }
+  .bm-drug { font-size: 12px; margin-top: 4px; }
+  .bm-run { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .bm-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
+  .bm-stat b { font-size: 18px; }
+  .bm-caption { margin-top: 6px; font-size: 12px; min-height: 34px; }
+  .bm-formula { font-size: 12px; color: var(--dim); margin-top: 6px; }
+  .bm-ch { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+  .bm-ch:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .bm-ch-title { font-weight: 600; }
+  .bm-ch-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+  .bm-ch-row button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .bm-fb { margin-top: 6px; font-size: 13px; }
+  .bm-ok { color: var(--good); font-weight: 600; } .bm-no { color: var(--alert); font-weight: 600; }
+  .bm-third { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 14px; }
+  .bm-group-title { grid-column: 1 / -1; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; margin-top: 4px; }
+  .bm-paper { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .bm-traj { display: grid; gap: 2px; margin-top: 8px; }
+  .bm-tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 64px; gap: 6px; align-items: center; font-size: 12px; white-space: normal; }
+  .bm-tr svg { width: 100%; height: 16px; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }
+  .bm-line { fill: none; stroke: var(--s1); stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .bm-line.bm-score { stroke: var(--s2); }
+  .bm-mark { stroke: var(--dim); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+  .bm-axis { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 64px; gap: 6px; font-size: 11px; color: var(--dim); }
+  .bm-axis span:nth-child(2) { display: flex; justify-content: space-between; }
+  .bm-marks { font-size: 12px; color: var(--dim); margin-top: 6px; }
+  .bm-tblwrap { overflow-x: auto; margin-top: 8px; }
+  .bm-tbl { border-collapse: collapse; font-size: 12px; }
+  .bm-tbl th, .bm-tbl td { border: 1px solid var(--line); padding: 2px 6px; text-align: center; }
+  .bm-progress { font-size: 13px; color: var(--dim); margin-bottom: 10px; }
+  .bm-svg { width: 100%; margin-top: 6px; }
+  .bm-svg svg { display: block; overflow: visible; }
+  .bm-svg text { fill: var(--text); font: 12px system-ui, sans-serif; }
+  .bm-svg .bm-t-dim { fill: var(--dim); }
+  .bm-svg .bm-t-b { font-weight: 600; }
+  .bm-svg .bm-t-acc { fill: var(--accent); font-weight: 600; }
+  .bm-svg .bm-t-alert { fill: var(--alert); }
+  .bm-edge { stroke: var(--dim); stroke-width: 1.6; fill: none; }
+  .bm-edge.bm-cut { stroke-dasharray: 3 4; opacity: .55; }
+  .bm-edge.bm-part { stroke-dasharray: 6 3; }
+  .bm-lv0 { fill: var(--bg); stroke: var(--dim); } .bm-lv1 { fill: var(--seq-3); stroke: var(--text); } .bm-lv2 { fill: var(--seq-5); stroke: var(--text); }
+  .bm-ring { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+  .bm-block { stroke: var(--accent); stroke-width: 3; }
+  .bm-loop { stroke: var(--s2); stroke-width: 2; fill: none; }
+  .bm-band { fill: var(--bg); stroke: var(--line); }
+  .bm-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--dim); margin-top: 4px; align-items: center; }
+  .bm-legend svg { display: inline-block; vertical-align: middle; margin-right: 4px; }
+  .bm-gauge text { font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="bm-wrap">
+  <div class="bm-head"><h2>Toy diabetic marrow network</h2><span class="small dim">Illustrative cartoon of Madeddu, arXiv:2610.24728: each part is low, medium or high and moves one step per round.</span></div>
+  <div class="bm-main">
+    <aside class="bm-panel">
+      <h3 class="bm-h">Conditions</h3>
+      <div class="bm-controls" id="controls"></div>
+    </aside>
+    <section class="bm-panel">
+      <h3 class="bm-h">Network</h3>
+      <div class="bm-svg" id="net"></div>
+      <div class="bm-legend" id="netkey"></div>
+    </section>
+    <section class="bm-panel">
+      <div class="bm-run">
+        <button class="btn sm" id="step">Step one round</button>
+        <button class="btn sm" id="runall">Run to the end</button>
+        <button class="btn sm ghost" id="reset">Reset</button>
+      </div>
+      <div class="bm-stats">
+        <div class="bm-stat">Round <b id="round">0</b></div>
+        <div class="bm-stat">Score <b id="score">0</b> / 100</div>
+      </div>
+      <div id="gauge"></div>
+      <div class="bm-caption" id="caption" aria-live="polite"></div>
+      <div class="bm-tabs" role="group" aria-label="Show">
+        <button class="btn sm ghost" data-rtab="ch">Predict, then run</button>
+        <button class="btn sm ghost" data-rtab="traj">Trajectory</button>
+      </div>
+      <div id="rch">
+        <div class="bm-chnav"><button class="btn sm ghost" id="chprev">‹ Previous</button><span class="bm-progress" id="progress"></span><button class="btn sm ghost" id="chnext">Next ›</button></div>
+        <div id="challenges"></div>
+      </div>
+      <div id="rtraj">
+        <div class="bm-run"><button class="btn sm ghost" id="tview" aria-pressed="false">Show as table</button><span class="small dim">Low at the bottom; dashes mark a change.</span></div>
+        <div id="traj"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const LV = ["low", "medium", "high"];
+const BASE = { ros: 2, dmg: 2, bar: 0, inf: 2, osm: 2, cx: 2, ret: 2, pg: 2, ad: 2 };
+const DEF_U = { g: 2, dr: 0, dosm: 0, heal: 1, pheal: 1, oloop: 0, aloop: 0 };
+
+// Regulatory targets: AND = min, NOT a = 2 − a, as in the paper.
+function targets(x, u) {
+  return {
+    ros: Math.min(u.g, 2 - u.dr),
+    dmg: u.heal ? x.ros : Math.max(x.dmg, x.ros),
+    bar: 2 - x.dmg,
+    inf: u.g,
+    osm: Math.min(Math.max(x.inf, u.oloop ? x.osm : 0), 2 - u.dosm),
+    cx: x.osm,
+    ret: x.cx,
+    pg: u.pheal ? u.g : Math.max(x.pg, u.g),
+    ad: Math.max(u.g, u.aloop ? x.ad : 0),
+  };
+}
+function step(x, u) {
+  const t = targets(x, u), n = {};
+  for (const k in x) n[k] = x[k] + Math.sign(t[k] - x[k]);
+  return n;
+}
+const same = (a, b) => Object.keys(a).every((k) => a[k] === b[k]);
+const score = (x) => Math.round(100 * ((x.bar / 2) + ((2 - x.ret) / 2) + ((2 - x.pg) / 2) + ((2 - x.ad) / 2)) / 4);
+
+const NODES = {
+  ros: ["ROS in vessel lining", "target = min(glucose, 2 − ROS drug)"],
+  dmg: ["Vessel damage", "heals: follows ROS · no healing: max(damage, ROS)"],
+  bar: ["Vessel barrier", "target = 2 − damage (good when high)"],
+  inf: ["Inflammatory cells", "target = glucose"],
+  osm: ["OSM signal", "target = min(inflammation, 2 − OSM block); with the loop on, OSM also keeps itself up"],
+  cx: ["CXCL12 from stroma", "target = OSM"],
+  ret: ["Stem cells trapped", "target = CXCL12 (bad when high)"],
+  pg: ["Progenitor injury", "heals: follows glucose · no healing: max(injury, glucose)"],
+  ad: ["Fat-cell crowding", "target = glucose; with the loop on, stays up on its own"],
+};
+
+const K = { heal: 1, pheal: 1, oloop: 0, aloop: 0 };
+const CH = [
+  { id: "c1", title: "ROS drug alone", setup: { g: 2, dr: 2, dosm: 0, ...K }, from: "base",
+    q: "Glucose stays high. You give the ROS drug at full strength. What score does the fixed point have?",
+    ans: 25, why: "The barrier recovers (one of four domains), but trapped stem cells, progenitor injury and fat-cell crowding never see the drug. Like the paper: one fix helps one part." },
+  { id: "c2", title: "Both drugs", setup: { g: 2, dr: 2, dosm: 2, ...K }, from: "base",
+    q: "Now add the OSM block at full strength too. Score?",
+    ans: 50, why: "The two drugs act on separate branches, so their gains simply add: 25 + 25. That’s “complementary”, not synergy. Glucose still drives progenitor injury and fat cells. (The paper’s best pair reached 37.9.)" },
+  { id: "c3", title: "Stop the drugs", setup: { g: 2, dr: 0, dosm: 0, ...K }, from: "c2",
+    q: "Start from the end of the last challenge (score 50) and stop both drugs, with glucose still high. Score?",
+    ans: 0, why: "Nothing in these rules remembers treatment, and glucose keeps pushing ROS and inflammation up. The network falls back to the diabetic state: the paper’s withdrawal result in miniature. The trajectory strips show the climb back up." },
+  { id: "c4", title: "Damage that doesn’t heal", setup: { g: 2, dr: 2, dosm: 0, ...K, heal: 0 }, from: "base",
+    q: "Switch vessel healing off: damage, once high, stays high. Give the ROS drug again. Score?",
+    ans: 0, why: "ROS falls, but damage keeps its old high value, so the barrier never recovers. The same drug scores 25 or 0 depending on one assumption, which is why the paper ranks each treatment by its worst case across 4,096 variants." },
+  { id: "c5", title: "Lower glucose, vessels don’t heal", setup: { g: 0, dr: 0, dosm: 0, ...K, heal: 0 }, from: "base",
+    q: "Bring glucose down to low, no drugs. Vessel damage can’t heal; everything else can. Score?",
+    ans: 75, why: "Inflammation, progenitor injury and fat cells all clear, but the barrier stays broken. Flip vessel healing on and it reaches 100. In the paper, letting vessel injury heal was the biggest single lever: +21.2 on average." },
+  { id: "c6", title: "Lower glucose, OSM loop on", setup: { g: 0, dr: 0, dosm: 0, ...K, oloop: 1 }, from: "base",
+    q: "Glucose low, every injury can heal, but OSM now keeps itself going once on. Score?",
+    ans: 75, why: "Inflammation clears, but OSM sustains itself, so CXCL12 stays high and stem cells stay trapped. Removing the cause doesn’t stop a self-sustaining loop; the OSM block would. In the paper, switching this loop off was worth +13.6 on average." },
+];
+
+let S = { u: { ...DEF_U }, x: { ...BASE }, prev: null, round: 0, fixed: false, ch: {}, active: null, hist: [{ ...BASE }], marks: [], tview: false, ver: 2, rtab: "ch", chIdx: 0 };
+
+const $ = (id) => document.getElementById(id);
+const save = () => postbox.saveState && postbox.saveState(S);
+
+function renderControls() {
+  const defs = [
+    ["g", "Glucose", [[0, "Low"], [1, "Medium"], [2, "High"]]],
+    ["dr", "ROS drug", [[0, "Off"], [1, "Half"], [2, "Full"]]],
+    ["dosm", "OSM block", [[0, "Off"], [1, "Half"], [2, "Full"]]],
+  ];
+  const open = [
+    ["heal", "Vessel damage can heal?", [[1, "Yes"], [0, "No"]], "Paper: yes adds +21.2"],
+    ["pheal", "Progenitor injury can heal?", [[1, "Yes"], [0, "No"]], "Paper: yes adds +15.2"],
+    ["oloop", "OSM keeps itself going?", [[0, "No"], [1, "Yes"]], "Paper: no adds +13.6"],
+    ["aloop", "Fat-cell loop keeps going?", [[0, "No"], [1, "Yes"]], "Paper: no adds +9.1"],
+  ];
+  const ctl = ([k, label, opts, paper]) =>
+    `<div><span class="bm-ctl-label" id="lab-${k}">${label}</span><div class="bm-seg" role="group" aria-labelledby="lab-${k}">` +
+    opts.map(([v, t]) => `<button class="btn sm ghost" data-k="${k}" data-v="${v}" aria-pressed="${S.u[k] === v}">${t}</button>`).join("") +
+    `</div>${paper ? `<div class="bm-paper">${paper}</div>` : ""}</div>`;
+  $("controls").innerHTML = `<div class="bm-group-title">Glucose and drugs</div>` + defs.map(ctl).join("") +
+    `<div class="bm-group-title">Open questions (paper’s average effect)</div>` + open.map(ctl).join("");
+  $("controls").querySelectorAll("button").forEach((b) => b.onclick = () => {
+    const k = b.dataset.k, v = +b.dataset.v; if (S.u[k] === v) return;
+    S.u[k] = v; S.fixed = false; S.active = null;
+    S.marks.push({ i: S.hist.length - 1, label: b.closest("div").parentElement.querySelector(".bm-ctl-label").textContent + " → " + b.textContent });
+    caption("Conditions changed. Step or run to see the network respond.");
+    renderAll();
+  });
+}
+
+// ---- Network diagram, drawn at the container’s width so text stays 12 px ----
+const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const mctx = document.createElement("canvas").getContext("2d");
+const tw = (t) => { mctx.font = "12px system-ui, sans-serif"; return mctx.measureText(t).width; };
+function wrap(t, max) {
+  const out = []; let cur = "";
+  for (const w of t.split(" ")) { const n = cur ? cur + " " + w : w; if (tw(n) <= max || !cur) cur = n; else { out.push(cur); cur = w; } }
+  if (cur) out.push(cur); return out;
+}
+const SHORTN = { ros: "ROS", dmg: "Vessel damage", bar: "Vessel barrier", inf: "Inflammation", osm: "OSM", cx: "CXCL12", ret: "Stem cells trapped", pg: "Progenitor injury", ad: "Fat cells" };
+const PLACE = { ros: [0, 1], dmg: [0, 2], bar: [0, 3], inf: [1, 1], osm: [1, 2], cx: [1, 3], ret: [1, 4], pg: [2, 1], ad: [2, 2] };
+function renderNet() {
+  const W = Math.max(300, $("net").clientWidth || 600), cw = W / 3, R = 17;
+  const cx = (c) => c * cw + 36, rowY = (r) => 104 + (r - 1) * 86, H = rowY(4) + 44;
+  const P = (k) => ({ x: cx(PLACE[k][0]), y: rowY(PLACE[k][1]) });
+  const lvl = ["low", "medium", "high"], u = S.u;
+  let g = `<defs><marker id="bm-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--dim)"/></marker>` +
+    `<marker id="bm-arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--s2)"/></marker></defs>`;
+  // Glucose band
+  g += `<rect class="bm-band" x="2" y="4" width="${W - 4}" height="34" rx="8"/>` +
+    `<circle cx="22" cy="21" r="8" class="bm-lv${u.g}"/><text x="38" y="25" class="bm-t-b">Glucose: ${lvl[u.g]}</text>` +
+    `<text x="${W - 12}" y="25" text-anchor="end" class="bm-t-dim">feeds every branch</text>`;
+  const down = (x, y2, cls) => `<line x1="${x}" y1="38" x2="${x}" y2="${y2 - R - 3}" class="bm-edge ${cls || ""}" marker-end="url(#bm-arr)"/>`;
+  const vert = (a, b, inhib) => { const A = P(a), B = P(b); return inhib
+    ? `<line x1="${A.x}" y1="${A.y + R}" x2="${B.x}" y2="${B.y - R - 4}" class="bm-edge"/><line x1="${B.x - 8}" x2="${B.x + 8}" y1="${B.y - R - 4}" y2="${B.y - R - 4}" class="bm-edge" style="stroke-width:2.4"/>`
+    : `<line x1="${A.x}" y1="${A.y + R}" x2="${B.x}" y2="${B.y - R - 3}" class="bm-edge" marker-end="url(#bm-arr)"/>`; };
+  const drugCls = (d) => d === 2 ? "bm-cut" : d === 1 ? "bm-part" : "";
+  g += down(cx(0), rowY(1), drugCls(u.dr)) + down(cx(1), rowY(1)) + down(cx(2), rowY(1));
+  // Glucose → fat cells, routed left of the progenitor node
+  const ad = P("ad"), xr = cx(2) - 30;
+  g += `<path d="M${xr},38 V${rowY(1) + 26} L${ad.x - R * 0.75},${ad.y - R * 0.75}" class="bm-edge" marker-end="url(#bm-arr)"/>`;
+  g += vert("ros", "dmg") + vert("dmg", "bar", true) + vert("osm", "cx") + vert("cx", "ret");
+  const io = P("inf"), oo = P("osm");
+  g += `<line x1="${io.x}" y1="${io.y + R}" x2="${oo.x}" y2="${oo.y - R - 3}" class="bm-edge ${drugCls(u.dosm)}" marker-end="url(#bm-arr)"/>`;
+  // Drug markers on the edges they cut
+  const drug = (x, y, name, d) => (d ? `<line x1="${x - 9}" x2="${x + 9}" y1="${y}" y2="${y}" class="bm-block"/>` : "") +
+    `<text x="${x + 13}" y="${y + 4}" class="${d ? "bm-t-acc" : "bm-t-dim"}">${name}: ${["off", "half", "full"][d]}</text>`;
+  g += drug(cx(0), (38 + rowY(1) - R) / 2 + 2, "ROS drug", u.dr) + drug(io.x, (io.y + R + oo.y - R) / 2, "OSM block", u.dosm);
+  // Loops
+  if (u.oloop) g += `<path d="M${oo.x - R + 2},${oo.y - 7} C${oo.x - 46},${oo.y - 24} ${oo.x - 46},${oo.y + 24} ${oo.x - R + 1},${oo.y + 7}" class="bm-loop" marker-end="url(#bm-arr2)"/>`;
+  if (u.aloop) g += `<path d="M${ad.x - 7},${ad.y + R - 1} C${ad.x - 26},${ad.y + 48} ${ad.x + 26},${ad.y + 48} ${ad.x + 7},${ad.y + R}" class="bm-loop" marker-end="url(#bm-arr2)"/>`;
+  // Nodes and labels
+  const extra = { dmg: u.heal ? null : "won’t heal", pg: u.pheal ? null : "won’t heal", osm: u.oloop ? "keeps itself on" : null, ad: u.aloop ? "keeps itself on" : null };
+  for (const k of Object.keys(PLACE)) {
+    const { x, y } = P(k), v = S.x[k], changed = S.prev && S.prev[k] !== v;
+    g += (changed ? `<circle cx="${x}" cy="${y}" r="${R + 5}" class="bm-ring"/>` : "") + `<circle cx="${x}" cy="${y}" r="${R}" class="bm-lv${v}"/>`;
+    const mw = cw - 64, lab = wrap(SHORTN[k], mw).map((l) => [l, "bm-t-b"]);
+    wrap(`${lvl[v]} (${v})`, mw).forEach((l) => lab.push([l, ""]));
+    if (extra[k]) wrap(extra[k], mw).forEach((l) => lab.push([l, k === "osm" || k === "ad" ? "bm-t-dim" : "bm-t-alert"]));
+    const y0 = y + 4 - (lab.length - 1) * 7;
+    g += lab.map(([t, c], i) => `<text x="${x + R + 9}" y="${y0 + i * 14}" class="${c}">${esc(t)}</text>`).join("");
+  }
+  const aria = Object.keys(PLACE).map((k) => `${SHORTN[k]} ${lvl[S.x[k]]}`).join(", ");
+  $("net").innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="Network: glucose ${lvl[u.g]}; ${esc(aria)}">${g}</svg>`;
+  $("netkey").innerHTML =
+    [0, 1, 2].map((v) => `<span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="6" class="bm-lv${v}"/></svg>${lvl[v]}</span>`).join("") +
+    `<span><svg width="24" height="10" aria-hidden="true"><line x1="0" y1="5" x2="20" y2="5" class="bm-edge"/><path d="M18,1 L24,5 L18,9 z" style="fill:var(--dim)"/></svg>raises</span>` +
+    `<span><svg width="24" height="12" aria-hidden="true"><line x1="0" y1="6" x2="20" y2="6" class="bm-edge"/><line x1="21" y1="0" x2="21" y2="12" class="bm-edge" style="stroke-width:2.4"/></svg>lowers</span>` +
+    `<span><svg width="24" height="12" aria-hidden="true"><line x1="0" y1="6" x2="24" y2="6" class="bm-edge bm-cut"/><line x1="12" x2="12" y1="0" y2="12" class="bm-block"/></svg>cut by a drug</span>` +
+    `<span><svg width="20" height="14" aria-hidden="true"><path d="M4,12 C-2,0 18,0 14,10" class="bm-loop"/></svg>keeps itself going</span>` +
+    `<span><svg width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="8" class="bm-ring"/></svg>moved this round</span>`;
+}
+
+function renderGauge() {
+  const x = S.x;
+  const D = [["Barrier restored", x.bar / 2], ["Stem cells freed", (2 - x.ret) / 2], ["Progenitors healed", (2 - x.pg) / 2], ["Fat cells cleared", (2 - x.ad) / 2]];
+  $("gauge").innerHTML = D.map(([n, f]) => `<div class="bm-gr"><span>${n}</span><span class="bm-gtrack" aria-hidden="true"><span class="bm-gfill" style="display:block;width:${f * 100}%"></span></span><span class="mono">${Math.round(f * 25)}/25</span></div>`).join("");
+}
+
+function renderStats() {
+  $("round").textContent = S.round;
+  $("score").textContent = score(S.x);
+}
+
+function caption(t) { S.cap = t; $("caption").textContent = t; }
+
+function doStep() {
+  if (S.fixed) { caption("Already at a fixed point: another round changes nothing."); return; }
+  const n = step(S.x, S.u);
+  if (same(n, S.x)) { S.fixed = true; S.prev = null; caption(`Fixed point after ${S.round} rounds: no variable moves. Score ${score(S.x)}.`); checkActive(); renderAll(); return; }
+  S.prev = S.x; S.x = n; S.round++; pushHist();
+  const moved = Object.keys(n).filter((k) => n[k] !== S.prev[k]).map((k) => NODES[k][0]);
+  caption(`Round ${S.round}: ${moved.join(", ")} moved one step.`);
+  renderAll();
+}
+function runAll() {
+  for (let i = 0; i < 50 && !S.fixed; i++) {
+    const n = step(S.x, S.u);
+    if (same(n, S.x)) { S.fixed = true; break; }
+    S.prev = S.x; S.x = n; S.round++; pushHist();
+  }
+  S.prev = null;
+  caption(`Fixed point after ${S.round} rounds. Score ${score(S.x)}.`);
+  checkActive(); renderAll();
+}
+function reset() {
+  S.x = { ...BASE }; S.prev = null; S.round = 0; S.fixed = false; S.active = null; S.hist = [{ ...S.x }]; S.marks = [];
+  caption("Back at the diabetic fixed point (glucose high, no drugs): score 0.");
+  renderAll();
+}
+
+function endStateOf(id) {
+  const c = CH.find((q) => q.id === id); let x = c.from === "base" ? { ...BASE } : endStateOf(c.from);
+  for (let i = 0; i < 50; i++) { const n = step(x, c.setup); if (same(n, x)) break; x = n; }
+  return x;
+}
+
+function setupChallenge(c) {
+  S.u = { ...c.setup }; S.x = c.from === "base" ? { ...BASE } : endStateOf(c.from);
+  S.prev = null; S.round = 0; S.fixed = false; S.active = c.id; S.hist = [{ ...S.x }]; S.marks = [];
+  caption(`“${c.title}” is set up. Pick your prediction, then step or run.`);
+  renderAll();
+}
+function checkActive() {
+  const c = CH.find((q) => q.id === S.active); if (!c) return;
+  const st = S.ch[c.id] || {}; if (st.pred === undefined) return;
+  st.done = true; st.got = score(S.x); S.ch[c.id] = st;
+}
+
+function renderChallenges() {
+  const right = CH.filter((c) => S.ch[c.id] && S.ch[c.id].done && S.ch[c.id].pred === c.ans).length;
+  S.chIdx = Math.max(0, Math.min(CH.length - 1, S.chIdx || 0));
+  $("progress").textContent = `${S.chIdx + 1} of ${CH.length} · ${right} right`;
+  $("chprev").disabled = S.chIdx === 0; $("chnext").disabled = S.chIdx === CH.length - 1;
+  $("challenges").innerHTML = [CH[S.chIdx]].map((c) => { const i = S.chIdx;
+    const st = S.ch[c.id] || {};
+    const preds = [0, 25, 50, 75, 100].map((p) =>
+      `<button class="btn sm ghost" data-c="${c.id}" data-p="${p}" aria-pressed="${st.pred === p}">${p}</button>`).join("");
+    let fb = "";
+    if (st.done) fb = `<div class="bm-fb">${st.pred === c.ans ? '<span class="bm-ok">Right.</span>' : `<span class="bm-no">Not quite: the answer is ${c.ans}.</span>`} ${c.why}</div>`;
+    else if (S.active === c.id && st.pred === undefined) fb = `<div class="bm-fb dim">Pick a prediction before you run.</div>`;
+    else if (S.active === c.id) fb = `<div class="bm-fb dim">Prediction locked in: ${st.pred}. Now step or run above.</div>`;
+    return `<div class="bm-ch"><div class="bm-ch-title">${i + 1}. ${c.title}</div><div class="small">${c.q}</div>` +
+      `<div class="bm-ch-row"><button class="btn sm" data-setup="${c.id}">${S.active === c.id ? "Set up again" : "Set up"}</button>` +
+      `<span class="small dim">Your prediction:</span>${preds}</div>${fb}</div>`;
+  }).join("");
+  $("challenges").querySelectorAll("[data-setup]").forEach((b) => b.onclick = () => setupChallenge(CH.find((c) => c.id === b.dataset.setup)));
+  $("challenges").querySelectorAll("[data-p]").forEach((b) => b.onclick = () => {
+    const id = b.dataset.c; const st = S.ch[id] || {};
+    const wasDone = st.done;
+    st.pred = +b.dataset.p; st.done = false; S.ch[id] = st;
+    if (S.active !== id || wasDone) setupChallenge(CH.find((c) => c.id === id)); else renderAll();
+  });
+}
+
+function pushHist() { S.hist.push({ ...S.x }); if (S.hist.length > 60) { S.hist.shift(); S.marks = S.marks.map((m) => ({ ...m, i: m.i - 1 })).filter((m) => m.i >= 0); } }
+
+const TRAJ = ["ros", "dmg", "bar", "inf", "osm", "cx", "ret", "pg", "ad"];
+function strip(vals, max, cls) {
+  const n = Math.max(vals.length - 1, 1), W = 100, H = 24, y = (v) => H - 2 - (v / max) * (H - 4);
+  let d = `M0,${y(vals[0])}`;
+  for (let i = 1; i < vals.length; i++) d += ` H${(i / n) * W} V${y(vals[i])}`;
+  if (vals.length === 1) d += ` H${W}`;
+  const marks = S.marks.map((m) => `<line class="bm-mark" x1="${(m.i / n) * W}" x2="${(m.i / n) * W}" y1="0" y2="${H}"/>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${marks}<path class="bm-line ${cls || ""}" d="${d}"/></svg>`;
+}
+function renderTraj() {
+  $("tview").setAttribute("aria-pressed", S.tview); $("tview").textContent = S.tview ? "Show as strips" : "Show as table";
+  const H = S.hist, last = H.length - 1;
+  const markTxt = S.marks.length ? `<div class="bm-marks">Changes: ${S.marks.map((m) => `after round ${m.i}, ${m.label}`).join("; ")}.</div>` : "";
+  if (S.tview) {
+    $("traj").innerHTML = `<div class="bm-tblwrap"><table class="bm-tbl"><thead><tr><th>Round</th>${TRAJ.map((k) => `<th>${NODES[k][0]}</th>`).join("")}<th>Score</th></tr></thead><tbody>` +
+      H.map((x, i) => `<tr><td>${i}</td>${TRAJ.map((k) => `<td>${x[k]}</td>`).join("")}<td>${score(x)}</td></tr>`).join("") + `</tbody></table></div>` + markTxt;
+    return;
+  }
+  $("traj").innerHTML = `<div class="bm-traj">` +
+    TRAJ.map((k) => `<div class="bm-tr"><div>${SHORTN[k]}</div>${strip(H.map((x) => x[k]), 2)}<div><b>${H[last][k]}</b> ${LV[H[last][k]]}</div></div>`).join("") +
+    `<div class="bm-tr"><div><b>Score</b></div>${strip(H.map(score), 100, "bm-score")}<div><b>${score(H[last])}</b> / 100</div></div>` +
+    `<div class="bm-axis"><span></span><span><span>round 0</span><span>round ${last}</span></span><span></span></div></div>` + markTxt;
+}
+
+function renderTabs() {
+  document.querySelectorAll("[data-rtab]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.rtab === S.rtab));
+  $("rch").style.display = S.rtab === "ch" ? "" : "none"; $("rtraj").style.display = S.rtab === "traj" ? "" : "none";
+}
+function renderAll() { renderControls(); renderNet(); renderStats(); renderGauge(); renderTabs(); if (S.rtab === "traj") renderTraj(); renderChallenges(); $("caption").textContent = S.cap || ""; save(); }
+
+let rsz; new ResizeObserver(() => { clearTimeout(rsz); rsz = setTimeout(() => { renderNet(); renderGauge(); }, 80); }).observe(document.body);
+document.querySelectorAll("[data-rtab]").forEach((b) => b.onclick = () => { S.rtab = b.dataset.rtab; renderAll(); });
+$("chprev").onclick = () => { S.chIdx--; renderAll(); };
+$("chnext").onclick = () => { S.chIdx++; renderAll(); };
+$("tview").onclick = () => { S.tview = !S.tview; renderAll(); };
+$("step").onclick = doStep; $("runall").onclick = runAll; $("reset").onclick = reset;
+
+(async () => {
+  await postbox.ready;
+  const r = postbox.restoreState ? await postbox.restoreState() : null;
+  if (r && r.u && r.x && r.ver === 2) S = Object.assign(S, { rtab: "ch", chIdx: 0 }, r, { u: { ...DEF_U, ...r.u }, x: { ...BASE, ...r.x } });
+  if (!Array.isArray(S.hist) || !S.hist.length) { S.hist = [{ ...S.x }]; S.marks = []; }
+  if (!S.cap) S.cap = "Start: the diabetic fixed point (glucose high, no drugs). Change a control, then step or run.";
+  renderAll();
+})();
+</script>
+</body>
+</html>

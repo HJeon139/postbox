@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twelve switches: diabetic marrow toy</title>
+<style>
+  body { margin: 0; padding: 12px; color: var(--text); background: var(--bg); font: 14px/1.45 system-ui, sans-serif; }
+  .ms-wrap { max-width: 900px; margin: 0 auto; display: grid; gap: 14px; }
+  .ms-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+  .ms-h { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+  .ms-note { font-size: 13px; color: var(--dim); }
+  .ms-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; margin-top: 10px; }
+  .ms-group-title { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+  .ms-sw { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }
+  .ms-sw:first-of-type { border-top: 0; }
+  .ms-sw-label { font-size: 13px; }
+  .ms-sw-help { font-size: 12px; color: var(--dim); }
+  .ms-tog { min-width: 64px; }
+  .ms-tog.ms-kind { border-color: var(--good); }
+  .ms-tog.ms-harsh { border-color: var(--alert); }
+  .ms-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+  .ms-row button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .ms-variant { font-size: 13px; margin-top: 8px; }
+  .ms-table { margin-top: 10px; display: grid; gap: 0; }
+  .ms-tr { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr) minmax(0, 1.5fr); gap: 8px; align-items: center; padding: 6px 4px; border-top: 1px solid var(--line); text-align: left; background: transparent; color: var(--text); font: inherit; border-left: 0; border-right: 0; border-bottom: 0; width: 100%; cursor: pointer; }
+  .ms-tr.ms-head { cursor: default; font-size: 12px; color: var(--dim); border-top: 0; }
+  .ms-tr.ms-sel { background: var(--bg); outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+  .ms-name { font-size: 13px; }
+  .ms-rank { color: var(--dim); font-size: 12px; margin-right: 4px; }
+  .ms-yours { font-size: 13px; }
+  .ms-shift { font-size: 12px; color: var(--dim); display: block; }
+  .ms-track { position: relative; height: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  .ms-span { position: absolute; top: 2px; bottom: 2px; background: var(--seq-3); border-radius: 4px; min-width: 3px; }
+  .ms-dot { position: absolute; top: -3px; width: 4px; height: 16px; background: var(--text); border-radius: 2px; margin-left: -2px; }
+  .ms-range { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .ms-dom { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) 44px; gap: 8px; align-items: center; padding: 3px 0; font-size: 13px; }
+  .ms-dbar { height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; position: relative; overflow: hidden; }
+  .ms-dfill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--seq-4); }
+  .ms-cmp { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px 10px; font-size: 13px; margin-top: 8px; }
+  .ms-cmp b { font-weight: 600; }
+  .ms-cmp .ms-hd { font-size: 12px; color: var(--dim); }
+  .ms-q { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .ms-q:first-of-type { border-top: 0; margin-top: 4px; padding-top: 0; }
+  .ms-fb { font-size: 13px; margin-top: 6px; }
+  .ms-ok { color: var(--good); font-weight: 600; } .ms-no { color: var(--alert); font-weight: 600; }
+  .ms-caption { font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="ms-wrap">
+  <div class="ms-panel">
+    <h2 class="ms-h">Twelve open questions, 4,096 models</h2>
+    <div class="ms-note">Madeddu (arXiv:2610.24728) leaves 12 biological questions open as yes/no switches and ranks each treatment by its worst score over all 2¹² = 4,096 combinations. The paper’s rules are in a locked supplement, so this is a <b>toy model I wrote</b>, with 12 switches matching the kinds the paper lists. Its numbers show how the method behaves, not the paper’s results; those are in section 5.</div>
+  </div>
+
+  <div class="ms-panel">
+    <h3 class="ms-h">1. Predict first</h3>
+    <div id="quiz"></div>
+  </div>
+
+  <div class="ms-panel">
+    <h3 class="ms-h">2. Flip the switches</h3>
+    <div class="ms-note">Green border: the kinder answer for the patient. Red border: the harsher one.</div>
+    <div class="ms-row">
+      <button class="btn sm" id="kind">All kind</button>
+      <button class="btn sm" id="harsh">All harsh</button>
+      <button class="btn sm ghost" id="rand">Random variant</button>
+    </div>
+    <div class="ms-variant" id="variant" aria-live="polite"></div>
+    <div class="ms-groups" id="switches"></div>
+  </div>
+
+  <div class="ms-panel">
+    <h3 class="ms-h">3. See how the ranking moves</h3>
+    <div class="ms-note">High glucose throughout, except the two “lower glucose” rows. Bar: worst to best score over all 4,096 variants; the dark tick is your current variant. Click a row to see where its score comes from.</div>
+    <div class="ms-row" role="group" aria-label="Sort by">
+      <span class="small dim">Sort by:</span>
+      <button class="btn sm ghost" data-sort="min">Worst case (the paper’s way)</button>
+      <button class="btn sm ghost" data-sort="cur">Your variant</button>
+      <button class="btn sm ghost" data-sort="max">Best case</button>
+    </div>
+    <div class="ms-row">
+      <button class="btn sm ghost" id="pairs" aria-pressed="false">Include drug pairs</button>
+    </div>
+    <div class="ms-table" id="table"></div>
+  </div>
+
+  <div class="ms-panel">
+    <h3 class="ms-h">4. Where the score comes from</h3>
+    <div class="ms-note" id="domhead"></div>
+    <div id="domains" style="margin-top:8px"></div>
+  </div>
+
+  <div class="ms-panel">
+    <h3 class="ms-h">5. The paper’s numbers next to the toy’s</h3>
+    <div class="ms-note">Lowering glucose to low with no drug, as in the paper’s Figure 5B: the average gain when one switch is flipped to its kind answer and the other 11 are held fixed (2,048 matched pairs each).</div>
+    <div class="ms-cmp" id="cmp"></div>
+    <div class="ms-note" style="margin-top:8px">The paper also gives three single variants: everything persists with both loops on, 4.5; only vessel injury heals, 31.8; everything heals with no loops, 100. Toy: <span id="toyscen"></span>.</div>
+  </div>
+</div>
+
+<script>
+// ---- Toy model (levels 0–2, AND = min, OR = max, NOT a = 2 − a, one step per round) ----
+const SW = [
+  { k: "healEndo", g: "Can this injury heal?", label: "Vessel-lining injury", help: "Heals once glucose falls, or stays", kind: 1 },
+  { k: "healPeri", g: "Can this injury heal?", label: "Pericyte injury", help: "Cells that wrap and support vessels", kind: 1 },
+  { k: "healInfl", g: "Can this injury heal?", label: "Inflammatory memory", help: "Lasting changes in blood-forming cells (epigenetic)", kind: 1 },
+  { k: "healNeur", g: "Can this injury heal?", label: "Nerve injury", help: "Marrow nerves that signal stem cells", kind: 1 },
+  { k: "healProg", g: "Can this injury heal?", label: "Progenitor injury", help: "Repair cells’ supportive signaling", kind: 1 },
+  { k: "healMot", g: "Can this injury heal?", label: "Repair-cell movement", help: "Ability of repair cells to migrate", kind: 1 },
+  { k: "osmLoop", g: "Self-sustaining loops", label: "OSM keeps itself going", help: "Once on, stays on without inflammation", kind: 0 },
+  { k: "adLoop", g: "Self-sustaining loops", label: "Fat-cell loop keeps itself going", help: "Fat cells crowd the niche even at low glucose", kind: 0 },
+  { k: "aktFGF", g: "Other open questions", label: "Akt boost also restores FGF2", help: "A vessel support signal", kind: 1 },
+  { k: "aktJag", g: "Other open questions", label: "Akt boost also restores Jagged", help: "Another vessel support signal", kind: 1 },
+  { k: "transfer", g: "Other open questions", label: "Progenitor injury spreads to vessels", help: "Damaged progenitors injure the lining", kind: 0 },
+  { k: "mid", g: "Other open questions", label: "Medium glucose harms like high", help: "Matters only when glucose is medium", kind: 0 },
+];
+const sw = (v) => { const s = {}; SW.forEach((d, i) => s[d.k] = (v >> i) & 1); return s; };
+
+const START = { EI: 2, PI: 2, IM: 2, NI: 2, PG: 2, RM: 2, INF: 2, ROS: 2, ROCK: 2, MY: 2, OSM: 2, RET: 2, AD: 2 };
+function targets(x, u, s) {
+  const Gi = u.G === 1 && s.mid ? 2 : u.G;
+  const inj = (cur, drive, heals) => heals ? drive : Math.max(cur, drive);
+  const t = (k) => u.tx.includes(k) ? 2 : 0;
+  return {
+    EI: inj(x.EI, Math.max(Gi, s.transfer ? x.PG : 0), s.healEndo),
+    PI: inj(x.PI, Gi, s.healPeri),
+    IM: inj(x.IM, x.INF, s.healInfl),
+    NI: inj(x.NI, Gi, s.healNeur),
+    PG: inj(x.PG, Gi, s.healProg),
+    RM: inj(x.RM, Gi, s.healMot),
+    INF: Math.min(u.G, 2 - t("nfkb")),
+    ROS: Math.min(x.EI, 2 - t("ros")),
+    ROCK: Math.min(x.ROS, 2 - t("rock")),
+    MY: Math.min(x.IM, 2 - t("p66")),
+    OSM: Math.min(Math.max(x.MY, s.osmLoop ? x.OSM : 0), 2 - t("osm")),
+    RET: Math.min(x.OSM, 2 - t("cxcr4")),
+    AD: Math.max(Gi, s.adLoop ? x.AD : 0),
+  };
+}
+function settle(x, u, s) {
+  for (let i = 0; i < 60; i++) {
+    const tg = targets(x, u, s); let moved = false; const n = {};
+    for (const k in x) { n[k] = x[k] + Math.sign(tg[k] - x[k]); if (n[k] !== x[k]) moved = true; }
+    if (!moved) return x; x = n;
+  }
+  return x;
+}
+// Readouts: [domain, endpoint, good-when-high?]
+const DOMS = ["Vessel integrity", "Vessel-cell migration", "Vessel support signals", "Pericyte support", "Myeloid inflammatory drive",
+  "Stem cells held back (OSM)", "Fat-cell restraint", "Nerve response", "Repair-cell movement", "Stimulated inflammation", "Progenitor signaling"];
+function readouts(x, u, s) {
+  const akt = u.tx.includes("akt") ? 2 : 0, aktP = u.tx.includes("aktp") ? 2 : 0;
+  return [
+    [0, Math.max(2 - x.ROS, akt), 1], [0, x.ROS, 0],
+    [1, Math.max(2 - x.ROS, akt), 1],
+    [2, Math.max(2 - x.ROCK, s.aktFGF ? akt : 0), 1], [2, Math.max(2 - x.ROS, s.aktJag ? akt : 0), 1], [2, 2 - x.EI, 1],
+    [3, Math.max(2 - x.PI, aktP), 1],
+    [4, x.OSM, 0], [5, x.RET, 0], [6, x.AD, 0], [7, 2 - x.NI, 1], [8, 2 - x.RM, 1], [9, x.IM, 0], [10, 2 - x.PG, 1],
+  ];
+}
+function evaluate(u, v) {
+  const s = sw(v);
+  const base = readouts(settle({ ...START }, { G: 2, tx: [] }, s), { G: 2, tx: [] }, s);
+  const now = readouts(settle(settle({ ...START }, { G: 2, tx: [] }, s), u, s), u, s);
+  const per = DOMS.map(() => []);
+  now.forEach(([d, val, good], i) => per[d].push((good ? val - base[i][1] : base[i][1] - val) / 2));
+  const doms = per.map((a) => a.reduce((p, q) => p + q, 0) / a.length);
+  return { score: 100 * doms.reduce((p, q) => p + q, 0) / DOMS.length, doms };
+}
+
+const DRUGS = [["ros", "Suppress ROS in vessel lining"], ["akt", "Boost Akt in vessel lining"], ["rock", "Inhibit ROCK"], ["osm", "Block OSM"],
+  ["p66", "Remove p66Shc in blood cells"], ["aktp", "Boost Akt in pericytes"], ["cxcr4", "Block CXCR4"], ["nfkb", "Suppress NF-κB"]];
+const ROWS = DRUGS.map(([k, n]) => ({ id: k, name: n, u: { G: 2, tx: [k] }, pair: false }))
+  .concat([{ id: "g1", name: "Lower glucose to medium (no drug)", u: { G: 1, tx: [] }, pair: false },
+           { id: "g0", name: "Lower glucose to low (no drug)", u: { G: 0, tx: [] }, pair: false }]);
+for (let i = 0; i < DRUGS.length; i++) for (let j = i + 1; j < DRUGS.length; j++)
+  ROWS.push({ id: DRUGS[i][0] + "+" + DRUGS[j][0], name: DRUGS[i][1] + " + " + DRUGS[j][1].replace(/^./, (c) => c.toLowerCase()), u: { G: 2, tx: [DRUGS[i][0], DRUGS[j][0]] }, pair: true });
+
+const N = 4096;
+for (const r of ROWS) {
+  r.all = new Float32Array(N); let mn = 1e9, mx = -1e9;
+  for (let v = 0; v < N; v++) { const sc = evaluate(r.u, v).score; r.all[v] = sc; if (sc < mn) mn = sc; if (sc > mx) mx = sc; }
+  r.min = mn; r.max = mx;
+}
+const kindV = SW.reduce((a, d, i) => a | (d.kind << i), 0), harshV = (N - 1) ^ kindV;
+const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
+
+// ---- Quiz ----
+const singles = ROWS.filter((r) => !r.pair);
+const widest = singles.slice().sort((a, b) => (b.max - b.min) - (a.max - a.min))[0];
+const drugsOnly = singles.filter((r) => r.u.tx.length);
+const rankBy = (arr, key) => arr.slice().sort((a, b) => b[key] - a[key] || a.name.localeCompare(b.name));
+const climber = drugsOnly.map((r) => ({ r, d: rankBy(drugsOnly, "min").indexOf(r) - rankBy(drugsOnly, "max").indexOf(r) })).sort((a, b) => b.d - a.d)[0].r;
+const QUIZ = [
+  { id: "q1", q: "Which single option has the widest gap between its worst and best case?", opts: ["ros", "nfkb", "p66", "g0"], ans: widest.id,
+    why: () => `${widest.name}: ${f1(widest.min)} to ${f1(widest.max)}. Lowering glucose removes the cause but can’t undo injuries that persist, so its result depends on almost every switch. The paper found the same pattern: 4.5 to 100.` },
+  { id: "q2", q: "Which drug climbs the most places when you rank by best case instead of worst case?", opts: ["ros", "osm", "nfkb", "cxcr4"], ans: climber.id,
+    why: () => `${climber.name}: worst ${f1(climber.min)}, best ${f1(climber.max)}. It works upstream, so it helps only if inflammatory memory can fade. Ranking by worst case, as the paper does, rewards drugs that work under every answer.` },
+];
+const nameOf = (id) => ROWS.find((r) => r.id === id).name;
+
+// ---- State ----
+let S = { v: harshV, sort: "min", pairs: false, sel: "ros", quiz: {} };
+const $ = (id) => document.getElementById(id);
+const save = () => postbox.saveState && postbox.saveState(S);
+
+function renderQuiz() {
+  $("quiz").innerHTML = QUIZ.map((q) => {
+    const a = S.quiz[q.id];
+    const btns = q.opts.map((o) => `<button class="btn sm ghost" data-q="${q.id}" data-o="${o}" aria-pressed="${a === o}">${nameOf(o)}</button>`).join("");
+    const fb = a ? `<div class="ms-fb">${a === q.ans ? '<span class="ms-ok">Right.</span>' : '<span class="ms-no">Not this one.</span>'} ${q.why()}</div>` : "";
+    return `<div class="ms-q"><div class="small">${q.q}</div><div class="ms-row">${btns}</div>${fb}</div>`;
+  }).join("");
+  $("quiz").querySelectorAll("[data-q]").forEach((b) => b.onclick = () => { S.quiz[b.dataset.q] = b.dataset.o; renderAll(); });
+}
+
+function renderSwitches() {
+  const s = sw(S.v); const groups = [...new Set(SW.map((d) => d.g))];
+  $("switches").innerHTML = groups.map((g) => `<div><div class="ms-group-title">${g}</div>` + SW.map((d, i) => {
+    if (d.g !== g) return "";
+    const on = s[d.k], isKind = on === d.kind;
+    const word = d.g === "Can this injury heal?" ? (on ? "Heals" : "Stays") : (on ? "Yes" : "No");
+    return `<div class="ms-sw"><div><div class="ms-sw-label">${d.label}</div><div class="ms-sw-help">${d.help}</div></div>` +
+      `<button class="btn sm ghost ms-tog ${isKind ? "ms-kind" : "ms-harsh"}" data-i="${i}" aria-pressed="${!!on}" aria-label="${d.label}: ${word}, ${isKind ? "kind" : "harsh"} answer">${word}</button></div>`;
+  }).join("") + `</div>`).join("");
+  $("switches").querySelectorAll("[data-i]").forEach((b) => b.onclick = () => { S.v ^= 1 << +b.dataset.i; renderAll(); });
+  const nk = SW.filter((d, i) => ((S.v >> i) & 1) === d.kind).length;
+  $("variant").textContent = `Variant ${S.v + 1} of 4,096 · ${nk} of 12 switches set to the kind answer.`;
+}
+
+function renderTable() {
+  document.querySelectorAll("[data-sort]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.sort === S.sort));
+  $("pairs").setAttribute("aria-pressed", S.pairs);
+  const rows = ROWS.filter((r) => S.pairs || !r.pair).map((r) => ({ r, cur: r.all[S.v] }));
+  const key = (o) => S.sort === "min" ? o.r.min : S.sort === "max" ? o.r.max : o.cur;
+  const byWorst = rows.slice().sort((a, b) => b.r.min - a.r.min || a.r.name.localeCompare(b.r.name)).map((o) => o.r.id);
+  rows.sort((a, b) => key(b) - key(a) || b.r.min - a.r.min || a.r.name.localeCompare(b.r.name));
+  const head = `<div class="ms-tr ms-head"><div>Treatment</div><div>Your variant</div><div>Worst to best (all 4,096)</div></div>`;
+  $("table").innerHTML = head + rows.map((o, i) => {
+    const r = o.r, wr = byWorst.indexOf(r.id) - i;
+    const shift = S.sort === "min" ? "" : `<span class="ms-shift">${wr > 0 ? "↑ " + wr + " vs worst-case rank" : wr < 0 ? "↓ " + (-wr) + " vs worst-case rank" : "same as worst-case rank"}</span>`;
+    return `<button class="ms-tr ${S.sel === r.id ? "ms-sel" : ""}" data-r="${r.id}" aria-pressed="${S.sel === r.id}">` +
+      `<div class="ms-name"><span class="ms-rank">#${i + 1}</span>${r.name}</div>` +
+      `<div class="ms-yours"><b>${f1(o.cur)}</b>${shift}</div>` +
+      `<div><div class="ms-track" aria-hidden="true"><div class="ms-span" style="left:${r.min}%;width:${Math.max(r.max - r.min, 0.5)}%"></div><div class="ms-dot" style="left:${o.cur}%"></div></div>` +
+      `<div class="ms-range">${f1(r.min)} to ${f1(r.max)}</div></div></button>`;
+  }).join("");
+  $("table").querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { S.sel = b.dataset.r; renderAll(); });
+}
+
+function renderDomains() {
+  const r = ROWS.find((x) => x.id === S.sel) || ROWS[0];
+  const e = evaluate(r.u, S.v);
+  $("domhead").textContent = `${r.name}, in variant ${S.v + 1}: score ${f1(e.score)}. Each domain counts 1/11 of the score.`;
+  $("domains").innerHTML = DOMS.map((d, i) => `<div class="ms-dom"><div>${d}</div><div class="ms-dbar" aria-hidden="true"><div class="ms-dfill" style="width:${Math.max(0, e.doms[i]) * 100}%"></div></div><div class="mono small">${Math.round(e.doms[i] * 100)}%</div></div>`).join("");
+}
+
+// Paper vs toy matched-pair effects for glucose to low
+const g0 = ROWS.find((r) => r.id === "g0");
+function matched(i) {
+  const kindBit = SW[i].kind; let sum = 0, n = 0;
+  for (let v = 0; v < N; v++) if (((v >> i) & 1) !== kindBit) { sum += g0.all[v ^ (1 << i)] - g0.all[v]; n++; }
+  return sum / n;
+}
+function renderCmp() {
+  const items = [["Vessel-lining injury heals", 0, 21.2], ["Progenitor injury heals", 4, 15.2], ["OSM loop switched off", 6, 13.6], ["Fat-cell loop switched off", 7, 9.1]];
+  $("cmp").innerHTML = `<div class="ms-hd">Switch flipped</div><div class="ms-hd">Paper (Fig. 5B)</div><div class="ms-hd">This toy</div>` +
+    items.map(([n, i, p]) => `<div>${n}</div><div><b>+${p}</b></div><div>+${f1(matched(i))}</div>`).join("");
+  // The paper's scenarios name only injuries and loops, so the other four switches take their kind answer here.
+  const core = harshV ^ (1 << 10) ^ (1 << 11) ^ (1 << 8) ^ (1 << 9);
+  $("toyscen").textContent = `${f1(g0.all[core])}, ${f1(g0.all[core ^ 1])} and ${f1(g0.all[kindV])}`;
+}
+
+function renderAll() { renderQuiz(); renderSwitches(); renderTable(); renderDomains(); save(); }
+
+$("kind").onclick = () => { S.v = kindV; renderAll(); };
+$("harsh").onclick = () => { S.v = harshV; renderAll(); };
+$("rand").onclick = () => { S.v = Math.floor(Math.random() * N); renderAll(); };
+document.querySelectorAll("[data-sort]").forEach((b) => b.onclick = () => { S.sort = b.dataset.sort; renderAll(); });
+$("pairs").onclick = () => { S.pairs = !S.pairs; renderAll(); };
+
+(async () => {
+  await postbox.ready;
+  const r = postbox.restoreState ? await postbox.restoreState() : null;
+  if (r && typeof r.v === "number") S = Object.assign(S, r);
+  renderCmp(); renderAll();
+})();
+</script>
+</body>
+</html>

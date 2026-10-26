@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Michaelis–Menten Networks: Global Stability & Thompson Contraction</title>
+<style>
+  :root {
+    --bg: #0f141c;
+    --panel: #18202c;
+    --panel-sub: #1e293b;
+    --text: #f8fafc;
+    --dim: #94a3b8;
+    --line: #334155;
+    --line-sub: #243042;
+    --accent: #38bdf8;
+    --accent-dim: rgba(56, 189, 248, 0.15);
+    --s1: #38bdf8;
+    --s2: #fbbf24;
+    --s3: #c084fc;
+    --good: #34d399;
+    --alert: #fca5a5;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --panel-sub: #f1f5f9;
+      --text: #0f172a;
+      --dim: #475569;
+      --line: #cbd5e1;
+      --line-sub: #e2e8f0;
+      --accent: #0284c7;
+      --accent-dim: rgba(2, 132, 199, 0.12);
+      --s1: #0284c7;
+      --s2: #b45309;
+      --s3: #7e22ce;
+      --good: #047857;
+      --alert: #b91c1c;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    overflow-x: hidden;
+  }
+
+  /* Compact Top Bar */
+  .lab-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+  }
+  .lab-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .lab-badge {
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 4px;
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+  .lab-topbar-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .lab-sync-pill {
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--accent);
+    font-weight: 600;
+    background: var(--panel-sub);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--line-sub);
+  }
+
+  /* Controls Toolbar */
+  .lab-ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lab-btn {
+    appearance: none;
+    background: var(--panel-sub);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+  }
+  .lab-btn:hover { background: var(--line); }
+  .lab-btn.primary {
+    background: #38bdf8;
+    color: #0f172a;
+    border-color: #38bdf8;
+  }
+  @media (prefers-color-scheme: light) {
+    .lab-btn.primary {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #0284c7;
+    }
+  }
+
+  .lab-chip {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: var(--panel-sub);
+    border: 1px solid var(--line);
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .lab-chip:hover, .lab-chip.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  /* 3-Column Visual Stage */
+  .lab-stage {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  @media (min-width: 900px) {
+    .lab-stage {
+      grid-template-columns: 1fr 1fr 1.08fr;
+      height: 485px;
+    }
+  }
+
+  .lab-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+  }
+  .lab-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .lab-card-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .lab-card-sub {
+    font-size: 10px;
+    color: var(--dim);
+  }
+
+  .lab-svg-wrap {
+    width: 100%;
+    background: var(--panel-sub);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--line-sub);
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-height: 250px;
+  }
+
+  /* Card Footers & Metrics */
+  .lab-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 6px;
+  }
+  .lab-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .lab-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  .lab-metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .lab-metric-cell {
+    background: var(--panel-sub);
+    border: 1px solid var(--line-sub);
+    border-radius: 4px;
+    padding: 6px 8px;
+  }
+  .lab-metric-num {
+    font-size: 15px;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--good);
+  }
+  .lab-metric-lbl {
+    font-size: 10px;
+    color: var(--dim);
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  /* Challenges & Drawer */
+  .lab-subpanel {
+    background: var(--panel-sub);
+    border: 1px solid var(--line-sub);
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin-top: 6px;
+  }
+  .lab-opt-btn {
+    appearance: none;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 4px 6px;
+    font-size: 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    margin-top: 3px;
+  }
+  .lab-opt-btn:hover { border-color: var(--accent); }
+
+  /* Footer Thesis Strip */
+  .lab-thesis-strip {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .lab-thesis-strip strong { color: var(--text); font-weight: 600; }
+
+  /* Data Table Overlay */
+  .lab-table-wrap {
+    overflow-x: auto;
+    max-height: 120px;
+    margin-top: 4px;
+  }
+  table.lab-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  table.lab-table th, table.lab-table td {
+    padding: 3px 5px;
+    text-align: right;
+    border-bottom: 1px solid var(--line-sub);
+  }
+  table.lab-table th { color: var(--dim); font-weight: 600; }
+  table.lab-table th:first-child, table.lab-table td:first-child { text-align: left; }
+</style>
+</head>
+<body>
+
+<!-- Top Horizontal Bar (Controls & Sync Time) -->
+<div class="lab-topbar">
+  <div class="lab-topbar-left">
+    <span class="lab-badge">Paper #5 · arXiv:2610.24351</span>
+    <span class="lab-topbar-title">Michaelis–Menten Thompson Contraction</span>
+    <span class="lab-sync-pill" id="syncTimeGlobal">t = 0.00s</span>
+  </div>
+  <div class="lab-ctrl-group">
+    <button id="btnPlay" class="lab-btn primary">▶ Run</button>
+    <button id="btnStep" class="lab-btn">Step</button>
+    <button id="btnReset" class="lab-btn">Reset</button>
+    <button id="btnShock" class="lab-btn" title="Add +3.0 substrate to both flasks">+3.0 Bolus</button>
+  </div>
+  <div class="lab-ctrl-group">
+    <span style="font-size:10px; color:var(--dim); font-weight:600;">PRESETS:</span>
+    <span class="lab-chip active" data-preset="disparate">Divergent</span>
+    <span class="lab-chip" data-preset="saturation">Saturation</span>
+    <span class="lab-chip" data-preset="linear">Linear</span>
+    <span class="lab-chip" data-preset="bottleneck">Bottleneck</span>
+  </div>
+</div>
+
+<!-- 3-Column Synchronized Visual Stage (<485px) -->
+<div class="lab-stage">
+
+  <!-- Column 1: Reaction Cycle Network -->
+  <div class="lab-card">
+    <div class="lab-card-header">
+      <span class="lab-card-title">1. Reaction Network</span>
+      <span class="lab-card-sub">Cycle: $S_1 \to S_2 \to S_3$</span>
+    </div>
+    <div class="lab-svg-wrap">
+      <svg id="svgNetwork" viewBox="0 0 340 250">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--dim)"/>
+          </marker>
+        </defs>
+        <!-- Flux paths -->
+        <path id="path12" d="M 185 65 Q 285 95 265 160" fill="none" stroke="var(--line)" stroke-width="3" marker-end="url(#arrow)"/>
+        <path id="path23" d="M 240 205 Q 170 235 100 205" fill="none" stroke="var(--line)" stroke-width="3" marker-end="url(#arrow)"/>
+        <path id="path31" d="M 75 160 Q 55 95 155 65" fill="none" stroke="var(--line)" stroke-width="3" marker-end="url(#arrow)"/>
+
+        <!-- Flux readouts -->
+        <text id="fluxText1" x="250" y="110" fill="var(--dim)" font-size="9" font-family="monospace">v₁:1.33</text>
+        <text id="fluxText2" x="170" y="235" text-anchor="middle" fill="var(--dim)" font-size="9" font-family="monospace">v₂:1.33</text>
+        <text id="fluxText3" x="35" y="110" fill="var(--dim)" font-size="9" font-family="monospace">v₃:1.33</text>
+
+        <!-- Steady State Target Rings (Dashed min 6px/4px) -->
+        <circle id="targetRing1" cx="170" cy="55" r="25" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6,4" opacity="0.8"/>
+        <text x="170" y="22" text-anchor="middle" font-size="9" font-weight="600" fill="var(--dim)">Target S₁*</text>
+
+        <circle id="targetRing2" cx="265" cy="180" r="25" fill="none" stroke="var(--s2)" stroke-width="2" stroke-dasharray="6,4" opacity="0.8"/>
+        <text x="315" y="183" text-anchor="start" font-size="9" font-weight="600" fill="var(--dim)">Target S₂*</text>
+
+        <circle id="targetRing3" cx="75" cy="180" r="25" fill="none" stroke="var(--s3)" stroke-width="2" stroke-dasharray="6,4" opacity="0.8"/>
+        <text x="25" y="183" text-anchor="end" font-size="9" font-weight="600" fill="var(--dim)">Target S₃*</text>
+
+        <!-- Dynamic Nodes -->
+        <g id="node1" transform="translate(170, 55)">
+          <circle id="circle1" r="23" fill="var(--panel)" stroke="var(--accent)" stroke-width="2.5"/>
+          <text text-anchor="middle" dy="-3" font-weight="700" font-size="11" fill="var(--text)">S₁</text>
+          <text id="valText1" text-anchor="middle" dy="10" font-size="10" font-family="monospace" fill="var(--text)">2.00</text>
+        </g>
+        <g id="node2" transform="translate(265, 180)">
+          <circle id="circle2" r="23" fill="var(--panel)" stroke="var(--s2)" stroke-width="2.5"/>
+          <text text-anchor="middle" dy="-3" font-weight="700" font-size="11" fill="var(--text)">S₂</text>
+          <text id="valText2" text-anchor="middle" dy="10" font-size="10" font-family="monospace" fill="var(--text)">2.00</text>
+        </g>
+        <g id="node3" transform="translate(75, 180)">
+          <circle id="circle3" r="23" fill="var(--panel)" stroke="var(--s3)" stroke-width="2.5"/>
+          <text text-anchor="middle" dy="-3" font-weight="700" font-size="11" fill="var(--text)">S₃</text>
+          <text id="valText3" text-anchor="middle" dy="10" font-size="10" font-family="monospace" fill="var(--text)">2.00</text>
+        </g>
+      </svg>
+    </div>
+    <div class="lab-legend">
+      <div class="lab-legend-item"><span class="lab-dot" style="background:var(--accent);"></span> S₁</div>
+      <div class="lab-legend-item"><span class="lab-dot" style="background:var(--s2);"></span> S₂</div>
+      <div class="lab-legend-item"><span class="lab-dot" style="background:var(--s3);"></span> S₃</div>
+      <div class="lab-legend-item"><span style="border-bottom:2px dashed var(--dim); width:12px; display:inline-block;"></span> Target S*</div>
+    </div>
+  </div>
+
+  <!-- Column 2: Conservation Simplex (Ternary Phase Space) -->
+  <div class="lab-card">
+    <div class="lab-card-header">
+      <span class="lab-card-title">2. Conservation Simplex</span>
+      <span class="lab-card-sub">Invariant: $\sum S_i = M$</span>
+    </div>
+    <div class="lab-svg-wrap">
+      <svg id="svgSimplex" viewBox="0 0 320 250">
+        <!-- Triangle boundaries -->
+        <polygon points="160,25 295,215 25,215" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="160" y="16" text-anchor="middle" font-size="10" font-weight="600" fill="var(--accent)">100% S₁</text>
+        <text x="302" y="228" text-anchor="start" font-size="10" font-weight="600" fill="var(--s2)">100% S₂</text>
+        <text x="18" y="228" text-anchor="end" font-size="10" font-weight="600" fill="var(--s3)">100% S₃</text>
+
+        <!-- Simultaneous Dual Trajectories -->
+        <polyline id="trajPathA" points="" fill="none" stroke="var(--accent)" stroke-width="2.5" opacity="0.9"/>
+        <polyline id="trajPathB" points="" fill="none" stroke="var(--s2)" stroke-width="2.5" opacity="0.9" stroke-dasharray="6,4"/>
+
+        <!-- Distance chord between flasks -->
+        <line id="distLineAB" x1="0" y1="0" x2="0" y2="0" stroke="var(--alert)" stroke-width="1.8" stroke-dasharray="6,4"/>
+
+        <!-- Attractor star S* -->
+        <g id="starEquil" transform="translate(160, 152)">
+          <polygon points="0,-6 1.8,-1.8 6,-1.8 2.5,1 4,5 0,2.5 -4,5 -2.5,1 -6,-1.8 -1.8,-1.8" fill="var(--good)"/>
+        </g>
+
+        <!-- Trajectory cursor dots -->
+        <circle id="dotA" cx="160" cy="152" r="4.5" fill="var(--accent)" stroke="#fff" stroke-width="1.5"/>
+        <circle id="dotB" cx="160" cy="152" r="4.5" fill="var(--s2)" stroke="#fff" stroke-width="1.5"/>
+      </svg>
+    </div>
+    <div class="lab-legend">
+      <div class="lab-legend-item"><span style="width:12px; height:2.5px; background:var(--accent); display:inline-block;"></span> Flask A</div>
+      <div class="lab-legend-item"><span style="width:12px; height:2.5px; background:var(--s2); display:inline-block; border-top:2px dashed var(--s2);"></span> Flask B</div>
+      <div class="lab-legend-item"><span style="color:var(--good); font-size:11px;">★</span> Unique Attractor S*</div>
+    </div>
+  </div>
+
+  <!-- Column 3: Thompson Contraction Chart & Challenges -->
+  <div class="lab-card">
+    <div class="lab-card-header">
+      <span class="lab-card-title">3. Thompson Distance Decay</span>
+      <span class="lab-card-sub">$d_T(A, B) \to 0$</span>
+    </div>
+
+    <!-- Chart -->
+    <div class="lab-svg-wrap" style="max-height: 155px;">
+      <svg id="svgChart" viewBox="0 0 320 130">
+        <!-- Grid -->
+        <line x1="35" y1="15" x2="310" y2="15" stroke="var(--line-sub)" stroke-width="1"/>
+        <line x1="35" y1="55" x2="310" y2="55" stroke="var(--line-sub)" stroke-width="1"/>
+        <line x1="35" y1="95" x2="310" y2="95" stroke="var(--line-sub)" stroke-width="1"/>
+        <line x1="35" y1="115" x2="310" y2="115" stroke="var(--line)" stroke-width="1"/>
+        <line x1="35" y1="15" x2="35" y2="115" stroke="var(--line)" stroke-width="1"/>
+
+        <text x="28" y="19" text-anchor="end" font-size="9" fill="var(--dim)">2.5</text>
+        <text x="28" y="59" text-anchor="end" font-size="9" fill="var(--dim)">1.2</text>
+        <text x="28" y="99" text-anchor="end" font-size="9" fill="var(--dim)">0.4</text>
+        <text x="28" y="118" text-anchor="end" font-size="9" fill="var(--dim)">0.0</text>
+
+        <!-- Metric lines -->
+        <path id="pathMetric" d="" fill="none" stroke="var(--good)" stroke-width="2.5"/>
+        <path id="pathMetricAB" d="" fill="none" stroke="var(--alert)" stroke-width="2" stroke-dasharray="6,4"/>
+
+        <!-- Solid time cursor -->
+        <line id="timeCursor" x1="35" y1="15" x2="35" y2="115" stroke="var(--accent)" stroke-width="1.5" opacity="0.85"/>
+      </svg>
+    </div>
+
+    <!-- Live Readouts -->
+    <div class="lab-metric-grid">
+      <div class="lab-metric-cell">
+        <div class="lab-metric-lbl">$d_T(A, S^*)$</div>
+        <div id="valDistance" class="lab-metric-num">1.482</div>
+      </div>
+      <div class="lab-metric-cell">
+        <div class="lab-metric-lbl">$d_T(A, B)$ (Inter-Flask)</div>
+        <div id="valDistanceAB" class="lab-metric-num" style="color:var(--alert);">2.197</div>
+      </div>
+    </div>
+
+    <!-- Mini Challenge & Table Switcher -->
+    <div class="lab-subpanel">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:10px; font-weight:700; color:var(--text);">Can Thompson distance ever rebound?</span>
+        <button id="btnToggleTable" class="lab-btn" style="padding:1px 5px; font-size:9px;">Table</button>
+      </div>
+      <div id="challengeBox">
+        <button class="lab-opt-btn" id="btnAnsNo">Predict: No, strictly non-increasing (Sontag)</button>
+        <div id="cFeedback" style="font-size:9.5px; font-weight:600; display:none; margin-top:3px; color:var(--good);">
+          ✓ Sontag’s theorem: $d_T(A(t), B(t))$ contracts monotonically without rebound.
+        </div>
+      </div>
+      <div id="tableContainer" class="lab-table-wrap" style="display:none;">
+        <table class="lab-table">
+          <thead>
+            <tr><th>Time</th><th>S₁</th><th>S₂</th><th>S₃</th><th>$d_T(A,B)$</th></tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Compact Footer Thesis Strip -->
+<div class="lab-thesis-strip">
+  <span><strong>Sontag’s Global Stability:</strong> Any positive trajectory contracts monotonically under $d_T(x,y)=\max_i |\ln x_i - \ln y_i|$.</span>
+  <span id="noticeShock" style="color:var(--good); font-weight:600; display:none;">⚡ +3.0 Bolus shifted invariant manifold (M=6→9)</span>
+</div>
+
+<script>
+let params = { V: [2.0, 2.0, 2.0], K: [1.0, 1.0, 1.0], M_total: 6.0 };
+let stateA = [4.5, 0.8, 0.7];
+let stateB = [0.6, 4.6, 0.8];
+let time = 0.0;
+let isRunning = false;
+let animId = null;
+
+let historyA = [];
+let historyB = [];
+let historyDT = [];
+let historyDTAB = [];
+
+function solveSteadyState(V, K, M) {
+  let vLow = 1e-6, vHigh = Math.min(...V) - 1e-6;
+  for (let iter = 0; iter < 40; iter++) {
+    let vMid = (vLow + vHigh) / 2.0;
+    let sumS = 0;
+    for (let i = 0; i < 3; i++) sumS += (K[i] * vMid) / (V[i] - vMid);
+    if (sumS < M) vLow = vMid;
+    else vHigh = vMid;
+  }
+  let vStar = (vLow + vHigh) / 2.0;
+  let SStar = V.map((v, i) => (K[i] * vStar) / (v - vStar));
+  return { vStar, SStar };
+}
+
+let equil = solveSteadyState(params.V, params.K, params.M_total);
+
+function thompsonDist(x, y) {
+  let maxD = 0;
+  for (let i = 0; i < 3; i++) {
+    let d = Math.abs(Math.log(x[i]) - Math.log(y[i]));
+    if (d > maxD) maxD = d;
+  }
+  return maxD;
+}
+
+function calcDerivs(s, p) {
+  let v1 = (p.V[0] * s[0]) / (p.K[0] + s[0]);
+  let v2 = (p.V[1] * s[1]) / (p.K[1] + s[1]);
+  let v3 = (p.V[2] * s[2]) / (p.K[2] + s[2]);
+  return { ds: [v3 - v1, v1 - v2, v2 - v3], v: [v1, v2, v3] };
+}
+
+function rk4Step(s, dt, p) {
+  let k1 = calcDerivs(s, p);
+  let s_k2 = s.map((x, i) => x + 0.5 * dt * k1.ds[i]);
+  let k2 = calcDerivs(s_k2, p);
+  let s_k3 = s.map((x, i) => x + 0.5 * dt * k2.ds[i]);
+  let k3 = calcDerivs(s_k3, p);
+  let s_k4 = s.map((x, i) => x + dt * k3.ds[i]);
+  let k4 = calcDerivs(s_k4, p);
+
+  let nextS = s.map((x, i) => Math.max(1e-4, x + (dt / 6) * (k1.ds[i] + 2*k2.ds[i] + 2*k3.ds[i] + k4.ds[i])));
+  return { nextS, v: k1.v };
+}
+
+function toSimplexCoords(s) {
+  let total = s[0] + s[1] + s[2];
+  let p1 = s[0] / total, p2 = s[1] / total, p3 = s[2] / total;
+  let x = p1 * 160 + p2 * 295 + p3 * 25;
+  let y = p1 * 25 + p2 * 215 + p3 * 215;
+  return { x, y };
+}
+
+function updateUI() {
+  let dtVal = thompsonDist(stateA, equil.SStar);
+  let dtAB = thompsonDist(stateA, stateB);
+  let timeStr = `t = ${time.toFixed(2)}s`;
+
+  document.getElementById("syncTimeGlobal").textContent = timeStr;
+  document.getElementById("valDistance").textContent = dtVal.toFixed(3);
+  document.getElementById("valDistanceAB").textContent = dtAB.toFixed(3);
+
+  // Network node radiuses
+  let rBase = 18, rScale = 5;
+  document.getElementById("circle1").setAttribute("r", Math.max(15, rBase + stateA[0] * rScale));
+  document.getElementById("circle2").setAttribute("r", Math.max(15, rBase + stateA[1] * rScale));
+  document.getElementById("circle3").setAttribute("r", Math.max(15, rBase + stateA[2] * rScale));
+
+  document.getElementById("targetRing1").setAttribute("r", Math.max(15, rBase + equil.SStar[0] * rScale));
+  document.getElementById("targetRing2").setAttribute("r", Math.max(15, rBase + equil.SStar[1] * rScale));
+  document.getElementById("targetRing3").setAttribute("r", Math.max(15, rBase + equil.SStar[2] * rScale));
+
+  document.getElementById("valText1").textContent = stateA[0].toFixed(2);
+  document.getElementById("valText2").textContent = stateA[1].toFixed(2);
+  document.getElementById("valText3").textContent = stateA[2].toFixed(2);
+
+  let fluxes = calcDerivs(stateA, params).v;
+  document.getElementById("fluxText1").textContent = `v₁:${fluxes[0].toFixed(2)}`;
+  document.getElementById("fluxText2").textContent = `v₂:${fluxes[1].toFixed(2)}`;
+  document.getElementById("fluxText3").textContent = `v₃:${fluxes[2].toFixed(2)}`;
+
+  document.getElementById("path12").setAttribute("stroke-width", Math.min(6, Math.max(2, fluxes[0] * 2.5)));
+  document.getElementById("path23").setAttribute("stroke-width", Math.min(6, Math.max(2, fluxes[1] * 2.5)));
+  document.getElementById("path31").setAttribute("stroke-width", Math.min(6, Math.max(2, fluxes[2] * 2.5)));
+
+  // Simplex
+  let ptA = toSimplexCoords(stateA);
+  let ptB = toSimplexCoords(stateB);
+  let ptStar = toSimplexCoords(equil.SStar);
+
+  document.getElementById("dotA").setAttribute("cx", ptA.x);
+  document.getElementById("dotA").setAttribute("cy", ptA.y);
+  document.getElementById("dotB").setAttribute("cx", ptB.x);
+  document.getElementById("dotB").setAttribute("cy", ptB.y);
+  document.getElementById("starEquil").setAttribute("transform", `translate(${ptStar.x}, ${ptStar.y})`);
+
+  document.getElementById("distLineAB").setAttribute("x1", ptA.x);
+  document.getElementById("distLineAB").setAttribute("y1", ptA.y);
+  document.getElementById("distLineAB").setAttribute("x2", ptB.x);
+  document.getElementById("distLineAB").setAttribute("y2", ptB.y);
+
+  document.getElementById("trajPathA").setAttribute("points", historyA.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "));
+  document.getElementById("trajPathB").setAttribute("points", historyB.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "));
+
+  // Chart
+  let chartW = 275, chartH = 100, chartX0 = 35, chartY0 = 115;
+  let maxT = Math.max(5.0, time), maxY = 2.5;
+
+  if (historyDT.length > 1) {
+    document.getElementById("pathMetric").setAttribute("d", "M " + historyDT.map(pt => `${(chartX0 + (pt.t / maxT) * chartW).toFixed(1)} ${(chartY0 - Math.min(1.0, pt.d / maxY) * chartH).toFixed(1)}`).join(" L "));
+    document.getElementById("pathMetricAB").setAttribute("d", "M " + historyDTAB.map(pt => `${(chartX0 + (pt.t / maxT) * chartW).toFixed(1)} ${(chartY0 - Math.min(1.0, pt.d / maxY) * chartH).toFixed(1)}`).join(" L "));
+  }
+  let curX = chartX0 + (time / maxT) * chartW;
+  document.getElementById("timeCursor").setAttribute("x1", curX);
+  document.getElementById("timeCursor").setAttribute("x2", curX);
+
+  // Table
+  let tbody = document.getElementById("tableBody");
+  if (tbody.children.length > 40) tbody.removeChild(tbody.firstChild);
+  let row = document.createElement("tr");
+  row.innerHTML = `<td>${time.toFixed(2)}s</td><td>${stateA[0].toFixed(2)}</td><td>${stateA[1].toFixed(2)}</td><td>${stateA[2].toFixed(2)}</td><td style="color:var(--alert);">${dtAB.toFixed(3)}</td>`;
+  tbody.appendChild(row);
+}
+
+function stepSim(dt) {
+  let resA = rk4Step(stateA, dt, params);
+  let resB = rk4Step(stateB, dt, params);
+  stateA = resA.nextS;
+  stateB = resB.nextS;
+  time += dt;
+
+  historyA.push(toSimplexCoords(stateA));
+  historyB.push(toSimplexCoords(stateB));
+  historyDT.push({ t: time, d: thompsonDist(stateA, equil.SStar) });
+  historyDTAB.push({ t: time, d: thompsonDist(stateA, stateB) });
+
+  updateUI();
+}
+
+function loop() {
+  if (!isRunning) return;
+  stepSim(0.04);
+  animId = requestAnimationFrame(loop);
+}
+
+function loadPreset(name) {
+  if (isRunning) togglePlay();
+  time = 0.0;
+  historyA = []; historyB = []; historyDT = []; historyDTAB = [];
+  document.getElementById("tableBody").innerHTML = "";
+  document.getElementById("noticeShock").style.display = "none";
+
+  if (name === "disparate") {
+    params = { V: [2.0, 2.0, 2.0], K: [1.0, 1.0, 1.0], M_total: 6.0 };
+    stateA = [4.5, 0.8, 0.7]; stateB = [0.6, 4.6, 0.8];
+  } else if (name === "saturation") {
+    params = { V: [2.0, 2.0, 2.0], K: [0.15, 0.15, 0.15], M_total: 6.0 };
+    stateA = [4.8, 0.6, 0.6]; stateB = [0.8, 4.4, 0.8];
+  } else if (name === "linear") {
+    params = { V: [6.0, 6.0, 6.0], K: [8.0, 8.0, 8.0], M_total: 6.0 };
+    stateA = [4.0, 1.0, 1.0]; stateB = [1.0, 4.0, 1.0];
+  } else if (name === "bottleneck") {
+    params = { V: [4.0, 1.2, 2.8], K: [1.0, 1.0, 1.0], M_total: 6.0 };
+    stateA = [1.0, 4.0, 1.0]; stateB = [3.0, 1.0, 2.0];
+  }
+
+  equil = solveSteadyState(params.V, params.K, params.M_total);
+  historyA.push(toSimplexCoords(stateA));
+  historyB.push(toSimplexCoords(stateB));
+  historyDT.push({ t: 0, d: thompsonDist(stateA, equil.SStar) });
+  historyDTAB.push({ t: 0, d: thompsonDist(stateA, stateB) });
+  updateUI();
+}
+
+function togglePlay() {
+  isRunning = !isRunning;
+  let btn = document.getElementById("btnPlay");
+  if (isRunning) {
+    btn.textContent = "⏸ Pause";
+    btn.classList.remove("primary");
+    loop();
+  } else {
+    btn.textContent = "▶ Run";
+    btn.classList.add("primary");
+    if (animId) cancelAnimationFrame(animId);
+  }
+}
+
+document.getElementById("btnPlay").addEventListener("click", togglePlay);
+document.getElementById("btnStep").addEventListener("click", () => { if (isRunning) togglePlay(); stepSim(0.1); });
+document.getElementById("btnReset").addEventListener("click", () => {
+  let active = document.querySelector(".lab-chip.active");
+  loadPreset(active ? active.getAttribute("data-preset") : "disparate");
+});
+document.getElementById("btnShock").addEventListener("click", () => {
+  stateA[0] += 3.0; stateB[0] += 3.0; params.M_total += 3.0;
+  equil = solveSteadyState(params.V, params.K, params.M_total);
+  let n = document.getElementById("noticeShock");
+  n.style.display = "inline";
+  setTimeout(() => { n.style.display = "none"; }, 4000);
+  updateUI();
+});
+
+document.querySelectorAll(".lab-chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll(".lab-chip").forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    loadPreset(chip.getAttribute("data-preset"));
+  });
+});
+
+document.getElementById("btnAnsNo").addEventListener("click", () => {
+  document.getElementById("cFeedback").style.display = "block";
+});
+
+document.getElementById("btnToggleTable").addEventListener("click", () => {
+  let box = document.getElementById("tableContainer");
+  let ch = document.getElementById("challengeBox");
+  let btn = document.getElementById("btnToggleTable");
+  if (box.style.display === "none") {
+    box.style.display = "block"; ch.style.display = "none"; btn.textContent = "Challenge";
+  } else {
+    box.style.display = "none"; ch.style.display = "block"; btn.textContent = "Table";
+  }
+});
+
+loadPreset("disparate");
+</script>
+</body>
+</html>
