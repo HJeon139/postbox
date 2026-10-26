@@ -678,7 +678,8 @@ export class AntigravityCliAdapter {
     // agy can’t turn tools off (agyRules says what’s off), and its 12,000-character rules file has no room for #131’s sections.
     const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null, setup: false });
     const useHook = persona?.permissionMode !== 'bypass' && agySupportsHooks(this.version);
-    const rules = agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked: useHook });
+    const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
+    const rules = rulesWith(useHook);
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && resolve(d) !== resolve(cwd));
     if (this.folders.busy(cwd)) ctx.status({ currentStep: 'Waiting for another Antigravity turn in this folder' });
     await this.folders.run(cwd, async () => {
@@ -696,6 +697,8 @@ export class AntigravityCliAdapter {
         await writeFile(file, text, path === 'hooks.json' ? { mode: 0o444 } : undefined);
       }
       const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
+      // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
+      if (useHook && !hookConfirmed) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
       try {
         let done = await this.run({ ctx, cwd, addDirs, prompt, sessionId: ctx.state.agySessionId ?? null, hookConfirmed });
         // A conversation agy no longer has (its history was cleared, or the agent’s folder changed) starts over, once.

@@ -12,7 +12,7 @@ test('with the hook, the rules say calls ask through a card, and nothing says th
     const rules = agyRules({ persona: { permissionMode, tools: ['shell'] }, guide: 'G', hooked: true });
     assert.match(
       rules,
-      /## Calls that need approval\n\nA command, a web search or fetch, a tool of another MCP server, or a file outside your folders asks the person through a card in Postbox/,
+      /## Calls that need approval\n\nA command, a web search or fetch, a tool of another MCP server, or a file outside your folders may ask the person through a card in Postbox/,
     );
     assert.match(rules, /list_dir, find_by_name, grep_search and view_file need no approval/);
     assert.match(rules, /read_message \{ id \} gives one item in full: it isn’t on disk/);

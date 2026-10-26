@@ -23,7 +23,7 @@ export const LOOKING_NOTE =
 // person a card, and waits for their answer. HEADLESS_NOTE and LOOKING_NOTE told agents every such call was refused, so
 // they stopped running commands at all (the Agent research room, 26 October).
 export const HOOK_NOTE =
-  '## Calls that need approval\n\nA command, a web search or fetch, a tool of another MCP server, or a file outside your folders asks the person through a card in Postbox, and your call waits for their answer. If they don’t allow it, the call fails with their reason: carry on without it, and don’t try it another way. To look at files in your folders, list_dir, find_by_name, grep_search and view_file need no approval. What another agent wrote or showed in a block is in your history and read_conversation, and read_message { id } gives one item in full: it isn’t on disk.';
+  '## Calls that need approval\n\nA command, a web search or fetch, a tool of another MCP server, or a file outside your folders may ask the person through a card in Postbox, and then your call waits for their answer. If they don’t allow it, the call fails with their reason: carry on without it, and don’t try it another way. To look at files in your folders, list_dir, find_by_name, grep_search and view_file need no approval. What another agent wrote or showed in a block is in your history and read_conversation, and read_message { id } gives one item in full: it isn’t on disk.';
 
 /** What Postbox tells the agent when agy ended its turn at a refused call. */
 export const refusalFollowUp = (label) =>
