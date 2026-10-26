@@ -108,7 +108,7 @@ Merge order: M1 core, then transcript and threads.
 
 The root `AGENTS.md` carries these rules, short, for any agent working in the repo, prompted or not (#315). A change to a rule here changes it there too, in the same commit.
 
-**Ports and data.** Use only your ports, for any server you start (`node server/index.mjs --port …`) and any headless Chrome (`launch({ port })` in `tools/cdp.mjs`). Give every server you start `--data` with a folder of your own, such as one in your scratchpad: without it, Postbox uses `~/.postbox`, which every clone, worktree and installed copy shares (#90). Never touch the preview on 4173, another tool’s server on 4320, the clone’s `data/`, or `~/.postbox`.
+**Ports and data.** Use only your ports, for any server you start (`node server/index.mjs --port …`). Chromium needs none: Playwright and `tools/browser.mjs` drive it over a pipe. Give every server you start `--data` with a folder of your own, such as one in your scratchpad: without it, Postbox uses `~/.postbox`, which every clone, worktree and installed copy shares (#90). Never touch the preview on 4173, another tool’s server on 4320, the clone’s `data/`, or `~/.postbox`.
 
 **Length limits** (architecture.md, “Module and function size”). Biome fails any file or function past its default length (`biome.json`), and a file already past it can shrink but not grow. So:
 - **Make room first.** When your change would grow a file at its ceiling, such as `server/runtime.mjs`, `server/ledger.mjs` or `app/js/thread.mjs`, first move the concern your prompt names into a module of its own, as its own commit, with no other change.

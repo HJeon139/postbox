@@ -1,6 +1,6 @@
 // How the runner waits on the agents’ turns between steps, and stops one when the tester asks it to.
 
-import { js, sleep } from '../cdp.mjs';
+import { js, sleep } from '../browser.mjs';
 import { waitingOnYou } from './checks.mjs';
 
 /** The longest the tester’s wait action waits: five minutes. */
@@ -122,7 +122,7 @@ export async function sendThenStop(d, a, { step, probes, log = () => {}, onWait 
  * Stops a session’s turn, and its background jobs, through the page’s own request, as its Stop does: the run budget
  * names the turn to stop, which the composer’s Stop can’t (it stops the agent that spoke last), nor one in a thread
  * that isn’t open.
- * @param {any} page  from tools/cdp.mjs launch()
+ * @param {any} page  from tools/browser.mjs launch()
  */
 export const stopThroughPage = (page) => (/** @type {string} */ id) =>
   page.evaluate(
