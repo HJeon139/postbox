@@ -54,7 +54,10 @@ test('#120 each ring’s label says where its agent runs and the connection, not
   await test.step('as each host stands', async () => {
     await expect
       .soft(ring(page, 'builder'))
-      .toHaveAttribute('aria-label', /^@builder: Idle, (?:\d+% of context used|context unknown); on build\.example\.com, disconnected \(working\), last heard from 40 min ago$/);
+      .toHaveAttribute(
+        'aria-label',
+        /^@builder: Idle, (?:\d+% of context used|context unknown); on build\.example\.com, disconnected \(working\), last heard from 40 min ago$/,
+      );
     await expect.soft(ring(page, 'coder')).toHaveAttribute('aria-label', /; on host\.example\.com, connected, last heard from 2 min ago$/);
   });
   await test.step('a change to the host’s status reaches the rings and the rows without a session change', async () => {
