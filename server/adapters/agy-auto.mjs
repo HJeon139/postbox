@@ -63,7 +63,6 @@ const READS = /** @type {Record<string, Spec>} */ ({
   diff: spec('uqrNwbBi', 'U'),
   cmp: spec('s'),
   comm: spec('123'),
-  jq: spec('rcSen'),
   basename: spec(),
   dirname: spec(),
   realpath: spec(),
@@ -93,7 +92,8 @@ const GIT = /** @type {Record<string, Spec>} */ ({
   remote: spec('v', '', ['--verbose'], [], { most: 0 }),
 });
 // gh’s commands for issues, pull requests and releases: the ones that read, and the writes the write guard knows
-// (#112). gh api, which can do anything, isn’t one; nor is --web, which opens a browser.
+// (#112). gh api, which can do anything, isn’t one; nor is --web, which opens a browser. Nor --jq: jq, gh’s
+// included, prints the environment with env, tokens and all, and a fetch could carry that out (#423’s review).
 const GH_COMMANDS = new Set(
   ['issue list', 'issue view', 'pr list', 'pr view', 'pr diff', 'pr checks', 'pr status', 'repo view', 'run list', 'run view']
     .concat(['release list', 'release view', 'issue create', 'issue comment', 'issue edit', 'pr create', 'pr comment', 'pr edit'])
@@ -101,9 +101,9 @@ const GH_COMMANDS = new Set(
 );
 const GH = spec(
   'cdfr',
-  'RsLqlAaStbFBHm',
+  'RsLlAaStbFBHm',
   ['--comments', '--draft', '--fill', '--approve', '--comment', '--request-changes'],
-  ['--repo', '--state', '--limit', '--json', '--jq', '--label', '--author', '--assignee', '--search', '--title', '--body'].concat([
+  ['--repo', '--state', '--limit', '--json', '--label', '--author', '--assignee', '--search', '--title', '--body'].concat([
     '--body-file',
     '--base',
     '--head',
@@ -150,8 +150,14 @@ export function words(part) {
 }
 
 const inside = (target, dir) => target === dir || target.startsWith(`${dir}${sep}`);
-/** Whether a path is in a .git folder, where an edit could name a program for git to run. */
-export const inGit = (p) => String(p).split(/[\\/]/).includes('.git');
+/**
+ * Whether a path is in a .git folder, where an edit could name a program for git to run. Without case: macOS’s file
+ * system ignores it, so .GIT/config is .git/config there (#423’s review).
+ */
+export const inGit = (p) =>
+  String(p)
+    .split(/[\\/]/)
+    .some((s) => s.toLowerCase() === '.git');
 
 /**
  * Whether a word, read as a path, stays in the agent’s folders. Every operand and option value is read as one, a grep

@@ -26,7 +26,7 @@ const WRITE_TOOLS = new Set(['write_file', 'write_to_file', 'edit_file', 'replac
 const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search']);
 const SUBAGENT_TOOLS = new Set(['invoke_subagent', 'define_subagent', 'send_message', 'manage_subagents', 'manage_task']);
 // A command that names Antigravity’s plugin, this hook or agy’s settings: always a card, flagged.
-const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/;
+const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/i;
 
 /** Whether an agy version supports PreToolUse hooks (1.4.7 and newer). */
 export function agySupportsHooks(version) {
@@ -84,18 +84,21 @@ export function realTarget(rawPath, baseDir = process.cwd()) {
 const inside = (target, dir) => Boolean(target && dir && (target === dir || target.startsWith(`${dir}${sep}`)));
 const pathArg = (args) => args?.Path ?? args?.TargetFile ?? args?.AbsolutePath ?? args?.DirectoryPath ?? args?.SearchPath ?? args?.SearchDirectory ?? null;
 
-/** Whether a path points at Postbox’s plugin, this hook script, or ~/.gemini/antigravity-cli (directly or via symlink). */
+/**
+ * Whether a path points at Postbox’s plugin, this hook script, or ~/.gemini/antigravity-cli (directly or via symlink).
+ * Compared without case: macOS’s file system ignores it, so .AGENTS/plugins is .agents/plugins there (#423’s review).
+ */
 export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir() } = {}) {
   if (typeof rawPath !== 'string' || !rawPath.trim()) return true;
-  const abs = resolve(cwd, rawPath.trim());
-  const real = realTarget(rawPath, cwd) ?? abs;
+  const abs = resolve(cwd, rawPath.trim()).toLowerCase();
+  const real = (realTarget(rawPath, cwd) ?? abs).toLowerCase();
   const pluginRe = /(?:^|[\\/])\.agents(?:[\\/]plugins(?:[\\/]|$)|$)/;
   if (pluginRe.test(abs) || pluginRe.test(real)) return true;
-  const realScript = realTarget(scriptPath, '/') ?? resolve(scriptPath);
-  if (abs === resolve(scriptPath) || real === realScript) return true;
+  const realScript = (realTarget(scriptPath, '/') ?? resolve(scriptPath)).toLowerCase();
+  if (abs === resolve(scriptPath).toLowerCase() || real === realScript) return true;
   const agyDir = resolve(home, '.gemini', 'antigravity-cli');
   const realAgyDir = realTarget(agyDir, '/') ?? agyDir;
-  return inside(abs, agyDir) || inside(real, realAgyDir);
+  return inside(abs, agyDir.toLowerCase()) || inside(real, realAgyDir.toLowerCase());
 }
 
 /**

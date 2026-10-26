@@ -160,6 +160,27 @@ test('Auto flags a command that names Antigravity’s plugin, hook or settings o
   }
 });
 
+// #423’s re-review: macOS’s file system ignores case, so .GIT/config is .git/config, and .AGENTS/plugins is the
+// plugin. An exact match let an edit there through.
+test('Auto asks before an edit in .git in any letter case, and the hook’s own files are denied in any case', () => {
+  const { ws, home, call } = workspace();
+  for (const target of [join(ws, '.GIT', 'config'), join(ws, '.Git', 'hooks', 'x')])
+    for (const tool of ['write_to_file', 'replace_file_content']) assert.equal(call(tool, { TargetFile: target }).decision, 'ask', `${tool} ${target}`);
+  for (const c of ['cp src/x .GIT/config', 'mv src/x .Git/hooks/x', 'touch .gIt/hooks/pre-commit'])
+    assert.equal(call('run_command', { CommandLine: c }).decision, 'ask', c);
+  for (const target of [join(ws, '.AGENTS', 'plugins', 'postbox', 'hooks.json'), join(home, '.GEMINI', 'Antigravity-CLI', 'settings.json')])
+    for (const mode of ['auto', 'ask', 'acceptEdits']) assert.equal(call('write_to_file', { TargetFile: target }, mode).decision, 'deny', `${mode} ${target}`);
+  const flagged = call('run_command', { CommandLine: 'cat .AGENTS/plugins/postbox/hooks.json', toolSummary: 'Look' });
+  assert.match(flagged.input.description, /^Touches Antigravity’s plugin, hook or settings/);
+});
+
+// #423’s re-review: jq’s env, and gh’s --jq, which is jq too, print the environment, tokens included.
+test('Auto asks before jq and gh --jq, which can print the environment', () => {
+  const { call } = workspace();
+  for (const c of ['jq -n env', 'jq . src/a.json', 'gh pr view 1 --json title --jq env', 'gh pr view 1 --json title -q env', 'gh issue list --jq=env'])
+    assert.equal(call('run_command', { CommandLine: c }).decision, 'ask', c);
+});
+
 // #423’s review: a search, or a fetch’s path, subdomain or query, can carry data out. The maintainer accepted that
 // for writes outside Postbox, so these go without a card and the Auto note says so; only this computer and a
 // sign-in in the address ask.
