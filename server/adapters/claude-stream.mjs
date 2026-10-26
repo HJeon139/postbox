@@ -255,7 +255,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         id,
         name: sub,
         state: 'think',
-        ctx: 0,
+        ctx: null, // unknown until its own usage arrives, shown as unavailable rather than 0% (#189)
         asked: askedOf(input),
         doing: clip(input?.description, 120),
         thinking: false,

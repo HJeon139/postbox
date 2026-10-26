@@ -37,7 +37,9 @@ export function paintStateWords(root, sessions, latestItemOf) {
 function ringSvg(c, r, sw, state, ctx) {
   const color = `var(${STATE_VAR[state] ?? '--st-idle'})`;
   const C = 2 * Math.PI * r;
-  const L = ctx != null ? (C * ctx) / 100 : 0;
+  // With no measured context (#189), thinking and generating still move along a nominal quarter arc, so the activity
+  // shows whether or not the backend reports context; the label says it’s unknown.
+  const L = ctx != null ? (C * ctx) / 100 : state === 'think' || state === 'gen' ? C / 4 : 0;
   let out = `<circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${sw}"/>`;
   if (state === 'think' && L > 0) {
     const n = Math.max(6, Math.round(L / (sw * 1.1)));
@@ -68,11 +70,13 @@ const parseSubs = (spec) =>
     .filter(Boolean)
     .map((p) => {
       const [state, ctx, name] = p.split(':');
-      return { state, ctx: Math.max(0, Math.min(100, +ctx || 0)), name: name || 'subagent' };
+      // An empty ctx is unknown (#189): the subagent sent no usage, so it isn’t shown as 0%.
+      return { state, ctx: ctx === '' || ctx === undefined || Number.isNaN(+ctx) ? null : Math.max(0, Math.min(100, +ctx)), name: name || 'subagent' };
     });
 
 /** Builds the subs attribute from a session’s subagents. */
-export const subsAttr = (subagents = []) => subagents.map((s) => `${s.state}:${Math.round(s.ctx)}:${String(s.name).replace(/[,:]/g, ' ')}`).join(',');
+export const subsAttr = (subagents = []) =>
+  subagents.map((s) => `${s.state}:${Number.isFinite(s.ctx) ? Math.round(s.ctx) : ''}:${String(s.name).replace(/[,:]/g, ' ')}`).join(',');
 
 class PbRing extends HTMLElement {
   static observedAttributes = ['state', 'ctx', 'subs', 'size', 'name', 'where'];
@@ -107,7 +111,8 @@ class PbRing extends HTMLElement {
     svg.innerHTML = inner; // lint-allow dom: ringSvg() builds it from numbers and Postbox’s fixed state names.
     svg.setAttribute('role', 'img');
     const subText = subs.length
-      ? `; ${subs.length} subagent${subs.length === 1 ? '' : 's'}: ` + subs.map((x) => `${x.name} ${stateWord(x.state).toLowerCase()}, ${x.ctx}%`).join('; ')
+      ? `; ${subs.length} subagent${subs.length === 1 ? '' : 's'}: ` +
+        subs.map((x) => `${x.name} ${stateWord(x.state).toLowerCase()}, ${x.ctx == null ? 'context unknown' : `${x.ctx}%`}`).join('; ')
       : '';
     const where = this.getAttribute('where') || '';
     const ctxText = ctx != null ? `${ctx}% of context used` : 'context unknown';
