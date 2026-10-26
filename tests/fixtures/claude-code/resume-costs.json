@@ -1,0 +1,74 @@
+{
+  "recorded": "Three result events from one Claude Code session: `claude -p --model haiku --output-format json`, then `--resume` twice, claude 2.1.310, 26 October 2026 (#295). Trimmed to the fields Postbox reads; nothing else changed.",
+  "results": [
+    {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "6445ba44-7ea0-450f-aea5-772dc62b346e",
+      "total_cost_usd": 0.003123215,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 10839,
+        "cache_creation_input_tokens": 24097
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 5,
+          "cacheReadInputTokens": 10839,
+          "cacheCreationInputTokens": 24097,
+          "costUSD": 0.003123215,
+          "contextWindow": 1000000
+        }
+      }
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "6445ba44-7ea0-450f-aea5-772dc62b346e",
+      "total_cost_usd": 0.005950745,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "cache_read_input_tokens": 13508,
+        "cache_creation_input_tokens": 21510
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 12,
+          "cacheReadInputTokens": 24347,
+          "cacheCreationInputTokens": 45607,
+          "costUSD": 0.005950745,
+          "contextWindow": 1000000
+        }
+      }
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "6445ba44-7ea0-450f-aea5-772dc62b346e",
+      "total_cost_usd": 0.008788775,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "cache_read_input_tokens": 13508,
+        "cache_creation_input_tokens": 21594
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 19,
+          "cacheReadInputTokens": 37855,
+          "cacheCreationInputTokens": 67201,
+          "costUSD": 0.008788775,
+          "contextWindow": 1000000
+        }
+      }
+    }
+  ]
+}

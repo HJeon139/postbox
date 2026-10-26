@@ -278,7 +278,7 @@ export class AgentSdkAdapter {
       thrown = e;
     } finally {
       ctx.signal.removeEventListener('abort', onAbort);
-      ctx.saveState({ contextWindow: mapper.contextWindow, model: mapper.model ?? undefined });
+      ctx.saveState(mapper.endState);
       // A stopped turn ends once its CLI’s whole group has exited, so the session’s next turn never runs beside it (#126).
       const stopped = /** @type {Promise<{ gone: Promise<void> }>|null} */ (stopping); // set in onAbort
       if (ctx.signal.aborted && stopped) await stopped.then((r) => r.gone);

@@ -2,13 +2,13 @@
 // (#238), and how long a card waits (#220).
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { POSTBOX_TIMEOUT_MS } from '../server/adapters/setup.mjs';
-import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
+import { CARD_WAIT_MS, expireWait } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
@@ -75,7 +75,7 @@ async function refused(rt, adapter, t, command) {
 test('#238 a refused chained command offers no Allow once or Always allow, and refuses both if asked', async () => {
   const { store, rt, adapter, t, se } = await setup();
   const card = await refused(rt, adapter, t, 'cd src && python -m pytest -q 2>&1 | tail -20');
-  assert.deepEqual(card.rules, { once: null, always: null, alwaysWords: '' });
+  assert.deepEqual(card.rules, { once: null, always: null, alwaysWords: '', why: 'chained' });
   const turns = adapter.calls.length;
   for (const action of ['once', 'always'])
     await assert.rejects(rt.act(t.id, card.id, action), { status: 409, message: /checks each part of a chained command on its own/ });
@@ -85,6 +85,36 @@ test('#238 a refused chained command offers no Allow once or Always allow, and r
   assert.equal(adapter.calls.length, turns, 'the agent isn’t told to try again');
   await rt.act(t.id, card.id, 'leave');
   assert.equal(store.item(t.id, card.id).status, 'left');
+});
+
+test('#281 a refused command with a * offers no rule, and says a * is a wildcard if asked', async () => {
+  const { store, rt, adapter, t } = await setup();
+  const card = await refused(rt, adapter, t, 'rm -rf build/*');
+  assert.deepEqual(card.rules, { once: null, always: null, alwaysWords: '', why: 'wildcard' });
+  for (const action of ['once', 'always']) await assert.rejects(rt.act(t.id, card.id, action), { status: 409, message: /reads \* in a rule as a wildcard/ });
+  assert.equal(store.item(t.id, card.id).status, 'open', 'it stays open, for Leave it');
+});
+
+// #281: the card’s 25-hour expiry can fire while Always allow is writing its rule. The rule must not stay saved for a
+// call nobody is waiting on: it’s taken out again, and the answer says nothing was saved.
+test('#281 a card that expires while Always allow writes its rule leaves no rule saved', async () => {
+  const { store, rt, adapter, t } = await setup();
+  let answer = null;
+  adapter.next.push(async (c) => {
+    answer = await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'npm test' } });
+  });
+  rt.sendMessage(t.id, { text: 'run the tests' });
+  await sleep(20);
+  const card = store.items(t.id).find((i) => i.kind === 'permission');
+  assert.equal(card.always.saves, 'Bash(npm test:*)');
+  const pending = rt.act(t.id, card.id, 'always');
+  expireWait(rt, card.id); // while the rule is being written
+  await assert.rejects(pending, { status: 409, message: /no rule was saved/ });
+  const file = join(adapter.folder, '.claude', 'settings.local.json');
+  assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).permissions.allow, [], 'the rule was taken out again');
+  assert.equal(store.item(t.id, card.id).status, 'expired');
+  await settle(rt);
+  assert.equal(answer.allow, false, 'the call was refused, as an expired card is');
 });
 
 test('#238 Allow once on a single command passes its exact rule, and tells the agent to retry it exactly', async () => {
