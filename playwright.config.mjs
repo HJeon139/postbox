@@ -13,6 +13,8 @@ const CI = !!process.env.CI;
 export default defineConfig({
   testDir: 'tests/browser',
   testMatch: '**/*.spec.mjs',
+  // Stops what a killed earlier run left running: its browsers and Postbox servers (tools/orphans.mjs).
+  globalSetup: './tests/browser/global-setup.mjs',
   outputDir: 'test-results',
   // A test.only left in fails CI instead of skipping the rest; a test that passed only on a rerun fails it too.
   forbidOnly: CI,

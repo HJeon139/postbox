@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stopOrphans } from './orphans.mjs';
 
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -23,7 +24,17 @@ const START_MS = 45000;
 
 const FLAGS = ['--headless=new', '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', '--force-color-profile=srgb'];
 
-export async function launch({ port = 9333 } = {}) {
+/**
+ * Launches headless Chrome on a DevTools port, after stopping the Chrome and servers a killed earlier run left running,
+ * which would otherwise hold memory for good (tools/orphans.mjs).
+ * @param {{ port?: number }} [opts]
+ */
+export async function launch(opts) {
+  await stopOrphans({ log: (line) => console.error(line) });
+  return start(opts);
+}
+
+async function start({ port = 9333 } = {}) {
   const profile = join(tmpdir(), `pb-cdp-${process.pid}-${port}`);
   const chrome = spawn(CHROME, [...FLAGS, `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], {
     stdio: ['ignore', 'ignore', 'pipe'],
