@@ -5,8 +5,10 @@
 // Chromium 156, as Chrome on a DevTools port did under tools/cdp.mjs. The callers read and drive the page through
 // the DevTools protocol (send), as they did there.
 
+import { spawnSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
+import { closeOrKill } from './uat/until-gone.mjs';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -18,22 +20,25 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  */
 export const js = (value) => String(JSON.stringify(value)).replace(/[<>\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
+/** The processes this one started that are still running, by their pids: what pgrep finds, or none without it. */
+const children = () => (spawnSync('pgrep', ['-P', String(process.pid)], { encoding: 'utf8' }).stdout ?? '').split('\n').filter(Boolean).map(Number);
+
 // How long Chromium may take to start. A fresh CI runner’s first launch, with nothing cached, took longer than the
 // 12 s the old driver allowed (run 39977434749).
 const START_MS = 45000;
 
 /**
- * Starts Playwright’s headless Chromium and opens its page. detached: the script owns SIGINT, SIGTERM and SIGHUP,
- * and Chromium stays up through them for a script that still needs its page to clean up (tools/uat-run.mjs).
- * Playwright runs it in a process group of its own, so a terminal’s Ctrl-C doesn’t reach it either. Otherwise the
- * first of those signals closes it, and the script exits.
- * @param {{ detached?: boolean }} [o]
+ * Starts Playwright’s headless Chromium, and finds its pid, to kill it if it won’t close: Playwright doesn’t say it,
+ * so it’s the child the launch added. detached: the script owns SIGINT, SIGTERM and SIGHUP, and Chromium stays up
+ * through them for a script that still needs its page to clean up (tools/uat-run.mjs); Playwright runs it in a
+ * process group of its own, so a terminal’s Ctrl-C doesn’t reach it either. Otherwise the first of those signals
+ * closes it, and the script exits.
+ * @param {boolean} detached
  */
-export async function launch({ detached = false } = {}) {
-  /** @type {import('@playwright/test').Browser} */
-  let browser;
+async function start(detached) {
+  const before = children();
   try {
-    browser = await chromium.launch({
+    const browser = await chromium.launch({
       timeout: START_MS,
       handleSIGINT: !detached,
       handleSIGTERM: !detached,
@@ -42,9 +47,24 @@ export async function launch({ detached = false } = {}) {
       // otherwise runs it in the page’s, where a busy app would slow Postbox’s page with it.
       args: ['--site-per-process'],
     });
+    return { browser, pid: children().find((p) => !before.includes(p)) };
   } catch (e) {
     throw new Error(`Chromium didn’t start: ${String(e.message).split('\n')[0]}. npx playwright install chromium downloads the one Playwright pins.`);
   }
+}
+
+/** Kills Chromium and its process group, which Playwright gave it, or the process alone. @param {number | undefined} pid */
+function kill(pid) {
+  for (const target of pid ? [-pid, pid] : [])
+    try {
+      process.kill(target, 'SIGKILL');
+      return;
+    } catch {}
+}
+
+/** Starts Playwright’s headless Chromium, as start() says, and opens its page. @param {{ detached?: boolean }} [o] */
+export async function launch({ detached = false } = {}) {
+  const { browser, pid } = await start(detached);
   // No viewport or color scheme of Playwright’s: size() sets them, as a check asks.
   const context = await browser.newContext({ viewport: null, colorScheme: null, reducedMotion: null });
   const pw = await context.newPage();
@@ -142,8 +162,13 @@ export async function launch({ detached = false } = {}) {
       );
       return h;
     },
-    /** Closes Chromium, and resolves once it has exited. */
-    close: () => browser.close(),
+    /** Closes Chromium, and resolves once it has exited. One that hasn’t within ms is killed. */
+    close: (ms = 10_000) =>
+      closeOrKill(
+        () => browser.close(),
+        () => kill(pid),
+        ms,
+      ),
   };
   return page;
 }

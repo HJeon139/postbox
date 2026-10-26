@@ -417,7 +417,7 @@
     },
     {
       "includes": ["tools/browser.mjs"],
-      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 93 } } } } }
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 87 } } } } }
     },
     {
       "includes": ["tools/demo.mjs"],

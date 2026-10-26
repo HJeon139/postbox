@@ -27,3 +27,15 @@ function within(p, ms) {
   });
   return Promise.race([p.then(() => true), late]).finally(() => clearTimeout(timer));
 }
+
+/**
+ * Runs close, and resolves once it has. One still going after ms gets kill(), then up to ms more: a browser whose
+ * graceful close hangs mustn’t keep a run’s stop from reaching its Postbox (tools/uat/stop.mjs).
+ * @param {() => Promise<unknown>} close @param {() => void} kill @param {number} [ms]
+ */
+export async function closeOrKill(close, kill, ms = 10_000) {
+  const closed = close();
+  if (await within(closed, ms)) return;
+  kill();
+  await within(closed, ms);
+}

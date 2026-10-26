@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { runStop } from '../tools/uat/stop.mjs';
-import { untilGone } from '../tools/uat/until-gone.mjs';
+import { closeOrKill, untilGone } from '../tools/uat/until-gone.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -55,5 +55,35 @@ test('#120: untilGone kills a child that’s still there after its wait', async 
   const c = fakeChild(['SIGTERM']);
   await untilGone(c, 20);
   assert.deepEqual(c.signals, ['SIGTERM', 'SIGKILL']);
+  assert.equal(timers(), before, 'no timer left running');
+});
+
+test('a browser that closes in time isn’t killed, and no timer is left to hold the process open', async () => {
+  const before = timers();
+  let killed = false;
+  await closeOrKill(
+    () => sleep(5),
+    () => (killed = true),
+    60_000,
+  );
+  assert.equal(killed, false);
+  assert.equal(timers(), before, 'no timer left running');
+});
+
+test('a browser whose close hangs is killed after its wait, and the close resolves once it has gone', async () => {
+  const before = timers();
+  /** @type {(v?: unknown) => void} */
+  let gone = () => {};
+  const said = [];
+  await closeOrKill(
+    () => new Promise((ok) => (gone = ok)),
+    () => {
+      said.push('killed');
+      setImmediate(gone);
+    },
+    20,
+  );
+  said.push('closed');
+  assert.deepEqual(said, ['killed', 'closed']);
   assert.equal(timers(), before, 'no timer left running');
 });
