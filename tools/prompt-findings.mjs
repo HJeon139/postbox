@@ -1,11 +1,20 @@
 // SkillSpector’s findings on the prompt surface, as prompt-surface-scan.yml judges them: what a pull request adds,
-// which of it stops a merge, and the report for the job summary. Moved out of tools/prompt-gate.mjs, which runs it.
+// which of it stops a merge, and the report for the job summary.
+//
+//   node tools/prompt-findings.mjs findings <base.json> <head.json> [accepted.json]  the findings the head adds, as
+//                                                    Markdown; exit 1 if one is high or critical and not accepted, or
+//                                                    an accepted one no longer matches
+//   node tools/prompt-findings.mjs annotations <base.json> <head.json> [accepted.json]  the same, as run-page annotations
 //
 // A high or critical finding the pull request adds stops it, unless .github/prompt-surface-accepted.json accepts it:
 // an entry names one match by SkillSpector’s fingerprint, which stays the same when the line moves and changes when
-// the matched text does, and says why it isn’t a threat. The list is under .github/, so adding to it needs the
-// maintainer’s approval at the prompt gate. Whole rules are never turned off: the rule that flags a mention of
-// ~/.npmrc in a test note is the one that catches an instruction to read it.
+// the matched text does, and says why it isn’t a threat. Adding to the list is a change a reviewer reads like any
+// other. Whole rules are never turned off: the rule that flags a mention of ~/.npmrc in a test note is the one that
+// catches an instruction to read it.
+
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const RANK = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 /** Where the accepted findings are listed, in the repository. */
@@ -99,7 +108,7 @@ export function findingsReport(base, head, accepted = []) {
       '',
       '### If a finding isn’t a threat',
       '',
-      `Reword the text if it can change: a fact about a file doesn’t need the file’s path, for one. If it has to stay, add its line below to \`${ACCEPTED_FILE}\` with a reason a reviewer can check. That file is prompt surface, so the change waits for approval at the prompt gate. If the matched text changes later, the finding gets a new fingerprint and is flagged again.`,
+      `Reword the text if it can change: a fact about a file doesn’t need the file’s path, for one. If it has to stay, add its line below to \`${ACCEPTED_FILE}\` with a reason a reviewer can check. A reviewer reads the entry in the diff, like any change. If the matched text changes later, the finding gets a new fingerprint and is flagged again.`,
       '',
       '```json',
       ...blocking.map(entryFor),
@@ -141,4 +150,29 @@ export function annotations(base, head, accepted = []) {
     }),
     ...stale.map((e) => `::warning title=Stale accepted finding::${esc(`${e.rule} in ${e.file} no longer matches. Remove it from ${ACCEPTED_FILE}.`)}`),
   ];
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  const [cmd, a, b, accepted] = process.argv.slice(2);
+  if ((cmd === 'findings' || cmd === 'annotations') && a && b) {
+    const [base, head] = [a, b].map((f) => JSON.parse(readFileSync(f, 'utf8')));
+    const list = accepted && existsSync(accepted) ? JSON.parse(readFileSync(accepted, 'utf8')) : [];
+    const problems = acceptedProblems(list);
+    if (problems.length) {
+      console.log(
+        cmd === 'annotations'
+          ? problems.map((p) => `::error title=Accepted findings::${p}`).join('\n')
+          : ['The accepted findings list has problems:', ...problems.map((p) => `- ${p}`)].join('\n'),
+      );
+      process.exitCode = 1;
+    } else if (cmd === 'annotations') console.log(annotations(base, head, list).join('\n'));
+    else {
+      console.log(findingsReport(base, head, list));
+      const { blocking, stale } = judge(base, head, list);
+      process.exitCode = blocking.length || stale.length ? 1 : 0;
+    }
+  } else {
+    console.error('Usage: node tools/prompt-findings.mjs findings|annotations <base.json> <head.json> [accepted.json]');
+    process.exitCode = 2;
+  }
 }
