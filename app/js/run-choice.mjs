@@ -46,7 +46,7 @@ export function openRunChoice(kind, { threadId, sessionId = null }) {
     try {
       const r =
         kind === 'mode' ? await api('/api/permissions/mode', { personaId: se.personaId, mode: id }) : await api(`/api/sessions/${se.id}/run`, { [kind]: id });
-      const now = kind === 'mode' ? r.now.includes(se.handle) : r.now;
+      const now = kind === 'mode' ? r.now.includes(se.id) : r.now;
       const scope = kind === 'mode' ? ', in every conversation' : ' in this conversation';
       status = now
         ? `@${se.handle} uses ${name}${scope}, from now: its running turn changed too.`
