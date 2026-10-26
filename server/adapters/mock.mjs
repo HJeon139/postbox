@@ -946,8 +946,8 @@ async function tidyWorkspace(a) {
   await a.refused({
     label: 'Delete the old exports',
     tool: 'Bash',
-    input: { command: 'rm exports/2026-10-14-*.jsonl' },
-    reason: 'Permission to use Bash with command rm exports/2026-10-14-*.jsonl has been denied.',
+    input: { command: 'rm exports/2026-10-14-full.jsonl exports/2026-10-14-delta.jsonl exports/2026-10-14-log.jsonl' },
+    reason: 'Permission to use Bash with command rm exports/2026-10-14-full.jsonl exports/2026-10-14-delta.jsonl exports/2026-10-14-log.jsonl has been denied.',
     reasonType: 'rule',
     who: 'tidier',
   });
