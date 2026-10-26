@@ -23,7 +23,7 @@ for (const models of [['gpt-example'], []]) {
     await boilerplates.click();
     await page.getByRole('radio', { name: 'GPT', exact: true }).click();
     await expect(page.getByRole('radio', { name: 'GPT', exact: true })).toBeChecked();
-    await expect(page.getByLabel('Runs on', { exact: true })).toHaveValue('codex');
+    await expect(page.getByLabel('Backend', { exact: true })).toHaveValue('codex');
     await expect(page.getByLabel('Model', { exact: true })).toHaveValue(models[0] ?? '');
     await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(/^# GPT\n/);
     await page.getByLabel('Instructions', { exact: true }).fill('Help me review code.');
