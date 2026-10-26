@@ -347,7 +347,7 @@ export function closeMenu() {
  */
 export function openMenu(anchor, items, { className = '', placement = 'below', label = 'Menu' } = {}) {
   if (openMenuEl && openAnchor?.() === anchor) {
-    closeMenu();
+    closeMenu(); // Clicking the menu’s own button again closes it instead of reopening it (#29).
     return null;
   }
   closeMenu();
