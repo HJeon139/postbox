@@ -1,8 +1,7 @@
 // Screenshots every mockup at 375 px and 1280 px, in dark and light, through headless Chrome over the
 // DevTools protocol (no dependencies). Then builds one review sheet per page.
 // Usage: node tools/shoot.mjs [--baseline] [page-prefix ...]     e.g. node tools/shoot.mjs 03 07
-// Retakes go to screenshots/latest/ (ignored by git). --baseline writes the approved set in screenshots/,
-// which is committed and only changes when a design change is approved.
+// Retakes go to screenshots/latest/. --baseline writes to screenshots/. Git ignores both (designs/developing.md, “Screenshots”).
 import { spawn } from 'node:child_process';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

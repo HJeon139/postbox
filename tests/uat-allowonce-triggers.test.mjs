@@ -163,11 +163,11 @@ test('the seed writes an obviously fake .env, and one in sub, inside the project
 });
 
 const CHAINED_TEXT =
-  'Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &, or inside $( )) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask @researcher to run the parts as separate commands: a part that’s refused again gets a card of its own.';
+  'Claude Code checks each part of a chained command (joined by &&, ||, ;, | or &) against its rules on its own, so no one rule can allow this whole line, and there’s nothing to allow once or always. To let it run, leave it and ask @researcher to run the parts as separate commands: a part that’s refused again gets a card of its own.';
 
 test('the chained trigger needs the card on the page with no Allow once or Always allow, and saying why', () => {
   const c = card(CHAINED, { reasonType: 'subcommandResults' });
-  assert.deepEqual(c.rules, { once: null, always: null, alwaysWords: '' });
+  assert.deepEqual(c.rules, { once: null, always: null, alwaysWords: '', why: 'chained' });
   const shown = (buttons, text = CHAINED_TEXT) =>
     facts([c], { ui: { denialCards: { [c.id]: { buttons, text: `${CHAINED}\nWhy: Credential Materialization\n${text}` } } } });
   assert.equal(T['chained-refusal-no-allow'].run(shown(['Leave it'])).length, 1);
