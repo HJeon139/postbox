@@ -148,9 +148,10 @@ test('every demo scene has no axe violations, at 1280 and 375 px in dark and lig
     speed: 0.3,
     log: () => {},
     view: async (h) => {
-      hash = h;
       // A changing query string loads the page again, as a person opening the conversation would.
       await page.goto(`${app.origin}/?v=${++loads}${h}`);
+      // Only now: the scene before may log what it means to until the next page has loaded, such as a late 503.
+      hash = h;
       await synced(page, app);
     },
     shot: (name, { prepare } = {}) =>
