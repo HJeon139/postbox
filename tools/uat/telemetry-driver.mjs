@@ -4,7 +4,7 @@
 // what File issue asked the browser to do: the text it copied and the page it opened. The runner keeps the page from
 // opening a real tab, so nothing is ever submitted.
 
-import { js, sleep } from '../cdp.mjs';
+import { js, sleep } from '../browser.mjs';
 
 /** A reaction in the open React menu, by its emoji: the item's icon says it (#263), or its text, as before icons. */
 export const reactItem = (emoji) =>
@@ -111,7 +111,7 @@ function viewActions({ ev, click, byText, until }) {
   };
 }
 
-/** @param {any} page  from tools/cdp.mjs launch() */
+/** @param {any} page  from tools/browser.mjs launch() */
 export function telemetryDriver(page) {
   const h = helpers(page);
   const d = { ...roomActions(h), ...viewActions(h) };

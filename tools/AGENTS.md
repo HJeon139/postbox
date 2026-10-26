@@ -4,7 +4,7 @@ The root `AGENTS.md` applies here too.
 
 ## Browser checks
 
-Browser checks are Playwright specs in `tests/browser/`: see `tests/AGENTS.md`, “Browser specs”. `tools/cdp.mjs` drives Chrome only for the UAT runner (`tools/uat-run.mjs`, `tools/uat/`) and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`).
+Browser checks are Playwright specs in `tests/browser/`: see `tests/AGENTS.md`, “Browser specs”. The UAT runner (`tools/uat-run.mjs`, `tools/uat/`) and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`) drive Playwright’s headless Chromium through `tools/browser.mjs`, which exits with them however they end (`tests/process/browser-kill.test.mjs`).
 
 ## Lints
 

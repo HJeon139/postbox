@@ -1,4 +1,4 @@
-// UAT, end to end. Starts a fresh Postbox with real agents, opens it in headless Chrome, and lets a tester
+// UAT, end to end. Starts a fresh Postbox with real agents, opens it in headless Chromium, and lets a tester
 // model play the person through a scenario (tests/uat/e2e/scenarios/*.md): it writes messages, answers
 // blocks, uses apps and topic threads, and judges every step. Deterministic checks (tools/uat/checks.mjs)
 // run alongside it. The report lists every finding, and which open GitHub issues the run caught again.
@@ -32,7 +32,7 @@ import { createServer } from 'node:net';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { launch, sleep } from './cdp.mjs';
+import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
@@ -67,7 +67,6 @@ const { values: opt } = parseArgs({
   options: {
     scenario: { type: 'string', default: 'scifact' },
     port: { type: 'string', default: '4310' },
-    'chrome-port': { type: 'string', default: '9510' },
     // The most steps: the scenario’s own `- steps: N`, else a targeted scenario’s phase caps added up, else 15.
     steps: { type: 'string' },
     // Start at this phase (1 is the first), to rerun a later one without the earlier ones; the tester sets up what it needs.
@@ -184,7 +183,7 @@ async function main() {
   const { api } = postbox;
   // What happened, in order, from the first event: the checks for #123 need history the state doesn’t keep.
   const history = followEvents(origin);
-  const page = await launch({ port: Number(opt['chrome-port']), detached: true });
+  const page = await launch({ detached: true });
   // Host mode’s record of its hosts (tools/uat/hosts-run.mjs), which its checks and triggers read as facts.hosts.
   const hr = hosts.length ? createHostRun({ hosts, placement, launcher: scenario.launcher, root: ROOT, stamp, data: paths.data, log }) : null;
   Object.assign(run, { hr, history, page, postbox });
@@ -620,7 +619,7 @@ async function recheck(dir) {
     stdio: 'ignore',
   });
   const origin = `http://127.0.0.1:${port}`;
-  const page = await launch({ port: Number(opt['chrome-port']) });
+  const page = await launch();
   try {
     for (let i = 0; i < 80; i++) {
       try {

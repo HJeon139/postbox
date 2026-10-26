@@ -17,22 +17,25 @@ The composer should reach what the CLI’s input reaches, without remembering sy
   - `/stop` stops the agents that are working, and `/rename` opens the rename sheet. There’s no `/archive`: an agent’s session is archived only with its conversation (#320).
 - **The agents’ skills and commands:** each agent’s, under its name, from its session’s latest turn (or, before its first, another session of the same persona, marked “from an earlier session”). Commands bound to a terminal, and the ones Postbox runs itself, aren’t listed. Each shows its description and argument hint where Claude Code gives them (the Agent SDK does; the CLI’s list has names only).
 - Picking one fills `/name ` and the hint line says what Enter does: “Enter runs /review <file> as @alpha’s turn”. Sending runs it as that agent’s turn, as the whole prompt, and the line shows in the conversation as yours. What it missed reaches it on its next turn.
+- **Aimed at one agent** ([#405](https://github.com/HJeon139/postbox/issues/405)): `@alpha /name args` runs the command for that agent, not the one the composer replies to. Postbox’s commands act on it (“Enter runs /compact for @alpha”), and an agent’s skill or command runs as its turn, with `/name args` as the whole prompt (“Enter runs /review as @alpha’s turn”). When that agent offers no such command, the hint says so before you send: “@alpha has no /release-notes skill or command, so Enter sends this to it as a message”.
 - A line that names no command is sent as a message.
 - In a thread panel, / and ! are plain text.
 
 ## Steps to reproduce
 
-1. Run `npx playwright test commands` (`tests/browser/commands.spec.mjs`). Every test should pass.
+1. Run `npx playwright test commands` (`tests/browser/commands.spec.mjs` and `commands-addressed.spec.mjs`). Every test should pass.
 2. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>. Make a room with two Claude Code agents, and send each a message so their sessions start.
 3. Type /. Check both agents’ groups, then type `rev` and pick a skill that takes arguments, such as a review skill. Add its argument and send.
 4. Type /effort, choose High for the second agent, and send it a message.
 5. Press the Commands button, pick /compact, and send.
+6. Let the second agent speak last, then send `@first /compact`, with the first agent’s handle.
 
 **Pass if:**
 - The menu lists the same skills and commands as `claude` in that folder, apart from the terminal-only ones.
 - The skill ran as the agent you picked, with your argument.
 - The second agent’s next turn ran at high effort, and the first one’s didn’t change.
 - /compact shows a compaction in the conversation.
+- `@first /compact` compacted the first agent, the one it names; the second agent got nothing, and no message with `/compact` in it was sent.
 
 ## Related
 
