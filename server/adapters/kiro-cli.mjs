@@ -34,6 +34,8 @@
 // The CLI runs in its own process group: Stop sends it SIGINT, then SIGKILL if it doesn’t exit, and to every shell it
 // started in a group of its own (server/adapters/process-group.mjs, #126). POSTBOX_KIRO_RECORD=<folder> saves each
 // turn’s raw stream.
+//
+// On a remote host (#120, ctx.remote), the turn runs through the host’s daemon: see server/adapters/kiro-cli-remote.mjs.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -42,76 +44,20 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { checkRemoteContext } from './adapter.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
+import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
+import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
-/** What this backend can do, for the runtime and the UI (#117). The adapter adds the models it found. */
-export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false });
+export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
+export { checkRemoteMessage, kiroRemoteEnv, REMOTE_ARGV_NOTE } from './kiro-cli-remote.mjs';
 
-/** The kiro-cli binary: POSTBOX_KIRO_BIN, then the PATH. */
-export const findKiro = (env = process.env) => env.POSTBOX_KIRO_BIN || 'kiro-cli';
-
-/** The installed version (“kiro-cli 2.33.1” → “2.33.1”), or null if the CLI can’t be run. */
-export function kiroVersion(bin = findKiro()) {
-  return new Promise((resolve) => {
-    let out = '';
-    const p = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => p.kill(), 8000);
-    p.stdout.on('data', (d) => {
-      out += d;
-    });
-    p.on('error', () => resolve(null));
-    p.on('close', (code) => {
-      clearTimeout(timer);
-      resolve(code === 0 ? out.trim().split(/\s+/).at(-1) || 'unknown' : null);
-    });
-  });
-}
-
-/**
- * A Postbox model id in Kiro’s spelling: Kiro writes the version with a dot (`kiro-cli chat --list-models`), so
- * claude-opus-5-5 is claude-opus-5.5. Anything else, such as auto or gpt-5.6-terra, passes as it is.
- */
-export const kiroModel = (id) => String(id).replace(/^(claude-[a-z]+-\d+)-(\d+)$/, '$1.$2');
-/** The reverse, for what the run reports, so the model chip compares like with like; null for auto. */
-export const postboxModel = (id) => (!id || id === 'auto' ? null : String(id).replace(/^(claude-[a-z]+-\d+)\.(\d+)$/, '$1-$2'));
-
-/**
- * The models this Kiro sign-in offers, in Postbox’s spelling, for the model field’s suggestions: Claude’s, and the
- * others Kiro runs (GPT, DeepSeek, GLM and more), which is half the point of a second backend (#117). Read from
- * `kiro-cli chat --list-models --format json` ({ models: [{ model_id }] }), which runs no model. Empty if it fails.
- * @returns {Promise<string[]>}
- */
-export function kiroModels(bin = findKiro()) {
-  return new Promise((resolve) => {
-    let out = '';
-    const p = spawn(bin, ['chat', '--list-models', '--format', 'json'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => p.kill(), 15000);
-    p.stdout.on('data', (d) => {
-      out = (out + d).slice(-200_000);
-    });
-    p.on('error', () => resolve([]));
-    p.on('close', (code) => {
-      clearTimeout(timer);
-      resolve(code === 0 ? modelIds(out) : []);
-    });
-  });
-}
-
-/** The model ids in a --list-models answer, bounded; auto keeps its name. */
-export function modelIds(json) {
-  try {
-    const list = JSON.parse(json)?.models;
-    if (!Array.isArray(list)) return [];
-    const ids = list.map((m) => m?.model_id).filter((id) => typeof id === 'string' && /^[\w.:-]{1,80}$/.test(id));
-    return [...new Set(ids.map((id) => postboxModel(id) ?? id))].slice(0, 60);
-  } catch {
-    return [];
-  }
-}
+/** What this backend can do, for the runtime and the UI (#117), on a remote host too (KIRO_REMOTE). The adapter adds the models it found. */
+export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false, remote: KIRO_REMOTE });
 
 /**
  * MCP tools that publish outside Postbox, as Kiro’s `server/tool` match patterns, where `*` is any text: the verb
@@ -143,12 +89,13 @@ const spellings = (dir) => {
 /**
  * The agent’s permission rules. Their order doesn’t matter: in Kiro, deny beats ask beats allow, whatever the scope
  * a rule comes from (kiro.dev/docs/permissions), so a deny here holds against an allow in your own rules.
- * @param {{ persona: any, folders: string[] }} turn  folders: where the agent works, and the folders it may also use
+ * @param {{ persona: any, folders: string[], resolve?: boolean }} turn  folders: where the agent works, and the folders
+ *   it may also use; resolve: also name each as resolved here (false for a host’s folders, which aren’t on this disk)
  */
-export function kiroRules({ persona, folders }) {
+export function kiroRules({ persona, folders, resolve = true }) {
   const { canPublish, usesHostSetup, mcpOff } = setupOf(persona);
   const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
-  const dirs = [...new Set(folders.filter(Boolean).flatMap(spellings))];
+  const dirs = [...new Set(folders.filter(Boolean).flatMap(resolve ? spellings : (d) => [d]))];
   const rules = [
     // Postbox’s own tools never need asking: they only show things in the thread.
     { capability: 'mcp', match: [`${POSTBOX_SERVER}/*`], effect: 'allow' },
@@ -181,9 +128,11 @@ const ISOLATED_NOTE =
 
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl: string, guide: string, folders: string[] }} turn
+ * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[] }} turn
+ *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
+ *   folders are then the host’s
  */
-export function kiroAgent({ name, persona, mcpUrl, guide, folders }) {
+export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) {
   const { usesHostSetup } = setupOf(persona);
   return {
     name,
@@ -192,8 +141,9 @@ export function kiroAgent({ name, persona, mcpUrl, guide, folders }) {
     tools: ['*'],
     // Your global and workspace mcp.json, unless the persona is Isolated.
     includeMcpJson: usesHostSetup,
-    mcpServers: { [POSTBOX_SERVER]: { type: 'http', url: mcpUrl } },
-    permissions: { rules: kiroRules({ persona, folders }) },
+    // A local server is a command and its arguments (kiro.dev/docs/custom-agents/configuration-reference).
+    mcpServers: { [POSTBOX_SERVER]: shim ? { command: shim.command, args: [...shim.args] } : { type: 'http', url: mcpUrl } },
+    permissions: { rules: kiroRules({ persona, folders, resolve: !shim }) },
   };
 }
 
@@ -512,37 +462,61 @@ export class KiroCliAdapter {
 
   async deliver(session, message, ctx) {
     const persona = ctx.persona;
-    const cwd = await this.folderFor(persona, ctx.project);
-    const prompt = formatMessage(message, ctx.pathOf);
+    // On a host, its folder there, and the host turn’s copies of attachments; laptop folders don’t cross (the header).
+    const cwd = ctx.remote ? ctx.remote.folder : await this.folderFor(persona, ctx.project);
+    const promptOn = (turn = ctx.remote?.turn) => formatMessage(message, attachmentPaths(ctx, turn));
     const guide = agentGuide({ ...ctx, persona, session, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
-    const folders = [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
-    const first = await this.run({ ctx, cwd, folders, prompt, guide, sessionId: ctx.state.kiroSessionId ?? null });
+    const folders = ctx.remote ? [cwd] : [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
+    // Before anything starts on the host: the turn ID and version the runtime owns. After a Postbox restart,
+    // ctx.remote.attach names a turn already there instead, which is replayed from the start and never started again.
+    const attach = ctx.remote?.attach?.turn ?? null;
+    if (ctx.remote) checkRemoteContext(ctx.remote, { attach: Boolean(attach) });
+    if (attach) {
+      await this.run({ ctx, cwd, folders, prompt: promptOn(attach), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: attach, attach: true });
+      return;
+    }
+    const first = await this.run({ ctx, cwd, folders, prompt: promptOn(), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
     // A session Kiro no longer has (its history was cleared, or the persona moved between your setup and
     // Isolated, which keep sessions in different homes) starts over, once.
     if (first.missingSession) {
       ctx.saveState({ kiroSessionId: null });
       const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
-      await this.run({ ctx, cwd, folders, prompt: note + prompt, guide, sessionId: null });
+      // On a host, a second host turn, which the runtime persists before nextTurn returns.
+      const turn = ctx.remote ? await ctx.remote.nextTurn() : undefined;
+      await this.run({ ctx, cwd, folders, prompt: note + promptOn(turn), guide, sessionId: null, turn });
     }
   }
 
-  /** @param {{ ctx: any, cwd: string, folders: string[], prompt: string, guide: string, sessionId: string|null }} turn */
-  async run({ ctx, cwd, folders, prompt, guide, sessionId }) {
+  /**
+   * @param {{ ctx: any, cwd: string, folders: string[], prompt: string, guide: string, sessionId: string|null, turn?: string, attach?: boolean }} o
+   *   turn: on a remote host, the host turn this run starts as (the runtime’s); attach: it’s already there
+   */
+  async run({ ctx, cwd, folders, prompt, guide, sessionId, turn, attach = false }) {
     const persona = ctx.persona;
-    const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
     const agent = `postbox-${String(persona.handle).replace(/[^a-z0-9_-]/gi, '')}-${randomUUID().slice(0, 8)}`;
-    const file = join(home, 'agents', `${agent}.json`);
-    await mkdir(join(home, 'agents'), { recursive: true });
-    await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders }), null, 2));
     const args = kiroArgs({ persona, agent, sessionId, prompt });
-    const env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
+    /** @type {string | null} the agent file on this computer, removed when the turn ends */
+    let file = null;
+    let spawnFn = this.spawn;
+    let env;
+    if (ctx.remote) {
+      const agentText = (shim) => JSON.stringify(kiroAgent({ name: agent, persona, shim, guide, folders }), null, 2);
+      spawnFn = /** @type {any} */ (kiroRemoteSpawn(ctx, { agent, cwd, turn, attach, prompt, agentText }));
+      env = {};
+    } else {
+      const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
+      file = join(home, 'agents', `${agent}.json`);
+      await mkdir(join(home, 'agents'), { recursive: true });
+      await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders }), null, 2));
+      env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
+    }
     const mapper = createKiroMapper(ctx, { effort: effortOf(persona) });
     try {
       return await new Promise((resolve, reject) => {
         let child;
         try {
           // Its own process group, so Stop reaches everything it started (#126).
-          child = this.spawn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+          child = spawnFn(this.bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
         } catch (e) {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
@@ -617,7 +591,8 @@ export class KiroCliAdapter {
         });
       });
     } finally {
-      await rm(file, { force: true }).catch(() => {});
+      // A remote turn’s file is the daemon’s to remove.
+      if (file) await rm(file, { force: true }).catch(() => {});
     }
   }
 }

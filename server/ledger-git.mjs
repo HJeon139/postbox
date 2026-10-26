@@ -87,7 +87,8 @@ export async function recordCommit(ledger, turn, cmdId, { sha, branch }, cwd, me
     w.convId,
     ledger.base(turn, { kind: 'commit', id: newId('wk'), commandId: cmdId, sha, branch, cwd, message: clip(message, 300), files: [], added: 0, deleted: 0 }),
   );
-  if (!cwd) return;
+  // A host’s repository isn’t here (#120): its files and lines stay unknown, rather than asking git here about that path.
+  if (!cwd || w.host) return;
   const r = await ledger.git(cwd, ['show', '--no-color', '--no-renames', '--numstat', '--format=%H%x1f%s', sha]);
   if (r.code !== 0) return;
   const [head, ...rest] = r.stdout.split('\n');
@@ -157,7 +158,7 @@ export async function gitState(ledger, convId) {
     else (byRoot.get(root) ?? byRoot.set(root, []).get(root)).push(f);
   }
   for (const c of commits) {
-    const root = c.cwd ? await ledger.rootOf(c.cwd) : null;
+    const root = c.cwd && !c.host ? await ledger.rootOf(c.cwd) : null;
     if (root && !byRoot.has(root)) byRoot.set(root, []);
   }
   for (const [root, list] of byRoot) {
@@ -192,6 +193,11 @@ export async function gitState(ledger, convId) {
     }
   }
   for (const c of commits) {
+    // Git here can’t say whether a host’s commit is on a remote (#120): null, so the view doesn’t guess.
+    if (c.host) {
+      out.commits[c.id] = { pushed: null };
+      continue;
+    }
     const root = c.cwd ? await ledger.rootOf(c.cwd) : null;
     out.commits[c.id] = { pushed: root ? await ledger.pushed(root, c.sha) : false };
   }

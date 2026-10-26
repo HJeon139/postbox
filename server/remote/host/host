@@ -1,0 +1,149 @@
+#!/bin/sh
+# The program ssh runs on a remote host (#120): `~/.postbox-remote/<version>/server/remote/host/host attach`, and
+# `host token` at install. It finds a Node 22 or later and runs host.mjs beside it with the same arguments. It’s a
+# shell script, not a Node one, because a non-interactive ssh runs it through a login shell that often doesn’t read
+# the profile that puts nvm’s or mise’s node on PATH, and the distribution’s node may be older than 22.
+#
+# Where it looks, in order, taking the first node that runs and is 22 or later:
+# 1. node-path in this version’s folder (~/.postbox-remote/<version>/node-path), an absolute path that install writes
+#    from the host’s nodePath setting.
+# 2. node on PATH.
+# 3. The usual per-user installs: nvm’s versions (~/.nvm/versions/node/v*/bin) and mise’s
+#    (~/.local/share/mise/installs/node/*/bin), each newest first, then ~/.volta/bin, /usr/local/bin and /usr/bin.
+# Finding none, it writes one protocol `error` line (shared/remote-protocol.mjs, code `no-node`, as the daemon does
+# for a Node that’s too old) naming where it looked and what it found, so Postbox can say it, and exits 69
+# (EX_UNAVAILABLE, sysexits.h).
+#
+# Every expansion is quoted, nothing is evaluated, and the arguments pass through unchanged.
+
+set -eu
+
+case $0 in
+  */*) here=${0%/*} ;;
+  *) here=. ;;
+esac
+here=$(CDPATH='' cd -- "$here" && pwd)
+code=$(CDPATH='' cd -- "$here/../../.." && pwd)
+home=${HOME:-}
+need=22
+node=''
+looked=''
+
+note() {
+  looked="$looked${looked:+; }$1"
+}
+
+# Whether $1 is a node that runs and is $need or later. Sets $found to its version, or why it isn’t.
+usable() {
+  found=''
+  if [ ! -f "$1" ] || [ ! -x "$1" ]; then
+    return 1
+  fi
+  if ! found=$("$1" --version 2>/dev/null); then
+    found='it didn’t run'
+    return 1
+  fi
+  major=${found#v}
+  major=${major%%.*}
+  case $major in
+    '' | *[!0-9]*)
+      found="it said “$found”"
+      return 1
+      ;;
+  esac
+  if [ "$major" -lt "$need" ]; then
+    found="$found, older than $need"
+    return 1
+  fi
+  return 0
+}
+
+# Tries one path: takes it if it’s usable, else notes what was there.
+try() {
+  if [ -n "$node" ]; then
+    return 0
+  fi
+  if usable "$1"; then
+    node=$1
+  elif [ -n "$found" ]; then
+    note "$1 ($found)"
+  fi
+}
+
+# Each version folder’s bin/node under $1, newest first. $2 is the folders’ prefix before the version (nvm’s v).
+newest() {
+  if [ ! -d "$1" ]; then
+    return 0
+  fi
+  ls -1 -- "$1" 2>/dev/null |
+    sed -n "s/^$2\\([0-9][0-9]*\\(\\.[0-9][0-9]*\\)*\\)\$/\\1/p" |
+    sort -t . -k 1,1nr -k 2,2nr -k 3,3nr |
+    while IFS= read -r v; do
+      printf '%s\n' "$1/$2$v/bin/node"
+    done
+}
+
+# 1. node-path, from install.
+if [ -f "$code/node-path" ]; then
+  configured=$(cat -- "$code/node-path")
+  case $configured in
+    /*)
+      try "$configured"
+      if [ -z "$node" ] && [ -z "$found" ]; then
+        note "$configured (from nodePath: not an executable file)"
+      fi
+      ;;
+    *) note "$code/node-path (not an absolute path)" ;;
+  esac
+fi
+
+# 2. PATH. command -v prints a path for a program it finds; anything else (a function, an alias) isn’t used.
+if [ -z "$node" ]; then
+  on_path=$(command -v node 2>/dev/null || true)
+  case $on_path in
+    /*) try "$on_path" ;;
+  esac
+  note "PATH ($(printf '%.400s' "${PATH:-}"))"
+fi
+
+# 3. The usual per-user installs, then the system’s.
+if [ -z "$node" ] && [ -n "$home" ]; then
+  for dir in "$home/.nvm/versions/node:v" "$home/.local/share/mise/installs/node:"; do
+    folder=${dir%:*}
+    prefix=${dir##*:}
+    candidates=$(newest "$folder" "$prefix")
+    if [ -n "$candidates" ]; then
+      while IFS= read -r candidate; do
+        try "$candidate"
+      done <<EOF
+$candidates
+EOF
+    fi
+    note "$folder/*/bin"
+  done
+  try "$home/.volta/bin/node"
+  note "$home/.volta/bin"
+fi
+if [ -z "$node" ]; then
+  try /usr/local/bin/node
+  try /usr/bin/node
+  note '/usr/local/bin; /usr/bin'
+fi
+
+if [ -n "$node" ]; then
+  exec "$node" "$here/host.mjs" "$@"
+fi
+
+# Kept under the protocol’s 2000 characters for a message: the last places go first.
+while [ "${#looked}" -gt 1400 ]; do
+  case $looked in
+    *'; '*) looked=${looked%; *} ;;
+    *) looked=$(printf '%.1400s' "$looked") ;;
+  esac
+done
+message="Postbox’s host program needs Node $need or later, and found none on this host. It looked in: $looked. Install Node $need or later, or set this host’s nodePath in Postbox to its full path and install again."
+printf 'postbox host: %s\n' "$message" >&2
+# The message as a JSON string: backslashes and quotes escaped, control characters dropped.
+json=$(printf '%s' "$message" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')
+printf '{"type":"error","code":"no-node","message":"%s"}\n' "$json"
+exit 69

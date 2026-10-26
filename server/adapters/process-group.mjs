@@ -94,8 +94,12 @@ export function runsCommand(shell, command) {
   return ran !== null && want !== '' && bare(ran) === want;
 }
 
-/** Signals a process group; a child without a pid (a test’s fake) gets the signal itself. */
+/**
+ * Signals a process group; a child without a pid (a test’s fake) gets the signal itself. A remote child (#120,
+ * server/remote/process.mjs) always does: it has no process here, and its kill sends the daemon’s `stop`.
+ */
 export function signalGroup(child, signal, kill = process.kill) {
+  if (child?.remote) return remoteKill(child, signal);
   try {
     if (child?.pid) {
       kill(-child.pid, signal);
@@ -143,6 +147,7 @@ export function signalPgid(pgid, signal, kill = process.kill) {
  * @returns {Promise<{ kept: { id: string, pgid: number, groups: KeptGroup[] }[], gone: Promise<void> }>}
  */
 export async function stopTurn(child, { keep = [], exited, graceMs = GRACE_MS, pollMs = 100, kill = process.kill, list = listProcesses }) {
+  if (child?.remote) return stopRemote(child);
   const pid = child?.pid;
   const shells = pid ? shellGroups(await list().catch(() => []), pid) : [];
   /** @type {{ id: string, pgid: number, groups: KeptGroup[] }[]} */
@@ -202,16 +207,47 @@ export async function stopTurn(child, { keep = [], exited, graceMs = GRACE_MS, p
 
 /**
  * Stops one background job by its tool shell, found under a CLI that’s still running. Resolves to the job’s group, or
- * null if no shell runs its command.
+ * null if no shell runs its command. For a remote child it’s false, at once: a job’s own Stop isn’t offered for a turn
+ * on a host (#120, remote-hosts.md “Stop, in all three”), and like null it’s falsy, so a caller that only checks for a
+ * group still refuses.
  * @param {any} child @param {{ command: string }} job
  * @param {{ kill?: KillFn, list?: () => Promise<Proc[]>, graceMs?: number }} [opts]
  */
 export async function stopJobUnder(child, job, { kill = process.kill, list = listProcesses, graceMs = GRACE_MS } = {}) {
+  if (child?.remote) return false;
   if (!child?.pid) return null;
   const shell = shellGroups(await list().catch(() => []), child.pid).find((s) => runsCommand(s, job.command));
   if (!shell) return null;
   stopPgid(shell.pgid, { kill, graceMs });
   return shell.pgid;
+}
+
+/**
+ * Stop for a turn on a remote host (#120). The child is server/remote/process.mjs’s: its kill sends the daemon’s `stop`
+ * (the daemon sends SIGINT, then SIGKILL after its own grace period, to the runner’s group on the host), and `gone`
+ * resolves when the daemon reports the turn ended, as the child’s exit or close. The local kill and ps are never used:
+ * a host’s process ID means nothing here, and -pid on the laptop would signal an unrelated group. No job is kept,
+ * whatever `keep` asked for: keeping jobs isn’t offered for a remote turn, and the adapter reports each one as stopped.
+ * @param {any} child
+ * @returns {Promise<{ kept: { id: string, pgid: number, groups: KeptGroup[] }[], gone: Promise<void> }>}
+ */
+async function stopRemote(child) {
+  const gone = new Promise((resolve) => {
+    if (child.ended || child.exitCode != null || child.signalCode != null) return resolve(undefined);
+    child.once('exit', () => resolve(undefined));
+    child.once('close', () => resolve(undefined));
+  });
+  remoteKill(child, 'SIGINT');
+  return { kept: [], gone };
+}
+
+/** A remote child’s kill, which never throws here: a stop that couldn’t be sent is the connection’s to report. */
+function remoteKill(child, signal) {
+  try {
+    return child.kill(signal) ?? false;
+  } catch {
+    return false;
+  }
 }
 
 /** SIGINT to a group, then SIGKILL if it’s still there after the grace period. */

@@ -10,6 +10,9 @@ import { id, int, obj, str } from './schema.mjs';
 export const QUOTE_MAX = 2000;
 /** The longest comment, as a review thread’s comments are (catalog.mjs). */
 export const COMMENT_MAX = 4000;
+/** The most comments one review_block call carries, and the verdicts it can give (server/review-comments.mjs). */
+export const MAX_COMMENTS = 50;
+export const VERDICTS = ['comment', 'approve', 'request_changes'];
 
 /**
  * Where a comment is: line alone, or a selection from line, col to endLine, endCol (both 1-based, endCol the column

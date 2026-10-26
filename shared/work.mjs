@@ -109,6 +109,14 @@ const add = (into, f) => {
   into.deleted += f.deleted ?? 0;
 };
 const sumTokens = (t) => (t ? (t.input ?? 0) + (t.output ?? 0) + (t.cacheRead ?? 0) + (t.cacheWrite ?? 0) : 0);
+const sum = (ts) => ({
+  turns: ts.length,
+  ms: ts.reduce((n, t) => n + (t.ms ?? 0), 0),
+  toolCalls: ts.reduce((n, t) => n + (t.toolCalls ?? 0), 0),
+  costUsd: ts.reduce((n, t) => n + (t.costUsd ?? 0), 0),
+  tokens: ts.reduce((n, t) => n + sumTokens(t.tokens), 0),
+  priced: ts.some((t) => typeof t.costUsd === 'number'),
+});
 
 /**
  * Where a file stands: the state git reports for it now, with “outside” for a file git doesn’t follow (outside a
@@ -161,6 +169,8 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
   }
   const of = (kind) => list.filter((e) => e.kind === kind && inScope(e));
   const [commands, external, commits, pushes, branches, publishes, reads] = ['command', 'external', 'commit', 'push', 'branch', 'publish', 'read'].map(of);
+  // Files an agent on a remote host edited (#120): named by the stream, never read, so they have no lines or state.
+  const edits = of('edit');
 
   // Effort, per agent and in all. Lines a file keeps count toward the agent whose turn changed it last, so the
   // agents’ kept lines add up to the conversation’s.
@@ -191,19 +201,11 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
   }
 
   // Turns that tried something (changed a file or ran a command) and left nothing lasting: no change, publish, commit,
-  // push or write outside Postbox. A turn whose change a later one put back still has it in its list (#195).
-  const lastingTurn = new Set([...changes, ...commits, ...pushes, ...external, ...publishes].map((e) => e.turnId));
+  // push or write outside Postbox. A turn whose change a later one put back still has it in its list (#195). An edit
+  // on a host may have lasted: Postbox can’t tell, so it doesn’t call that turn idle (#120).
+  const lastingTurn = new Set([...changes, ...commits, ...pushes, ...external, ...publishes, ...edits].map((e) => e.turnId));
   const tried = new Set([...changes, ...commands].map((e) => e.turnId));
   const idle = turns.filter((t) => tried.has(t.id) && !lastingTurn.has(t.id));
-
-  const sum = (ts) => ({
-    turns: ts.length,
-    ms: ts.reduce((n, t) => n + (t.ms ?? 0), 0),
-    toolCalls: ts.reduce((n, t) => n + (t.toolCalls ?? 0), 0),
-    costUsd: ts.reduce((n, t) => n + (t.costUsd ?? 0), 0),
-    tokens: ts.reduce((n, t) => n + sumTokens(t.tokens), 0),
-    priced: ts.some((t) => typeof t.costUsd === 'number'),
-  });
   return {
     files,
     total,
@@ -216,6 +218,7 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
     branches,
     publishes,
     reads,
+    edits,
     turns,
     effort: { ...sum(turns), written: changes.reduce((n, c) => n + (c.added ?? 0), 0), kept: total.added },
     idle: { ...sum(idle), list: idle },
@@ -247,9 +250,11 @@ export function carriedList(it) {
 /** One turn’s line for the transcript (“3 files +40 −12 · 2 commands · $0.31”), or null when it did no work. */
 export function turnLine(entries, turnId) {
   const s = summarize(entries, { turnId });
-  if (!s.files.length && !s.commands.length && !s.external.length && !s.commits.length && !s.publishes.length && !s.reads.length) return null;
+  if (!s.files.length && !s.edits.length && !s.commands.length && !s.external.length && !s.commits.length && !s.publishes.length && !s.reads.length)
+    return null;
   const parts = [];
   if (s.files.length) parts.push(`${s.files.length === 1 ? '1 file' : `${s.files.length} files`} ${signed(s.total.added, s.total.deleted)}`);
+  if (s.edits.length) parts.push(`${s.edits.length === 1 ? '1 file' : `${s.edits.length} files`} edited on ${s.edits[0].host?.name ?? 'a host'}`);
   if (s.commands.length) {
     const failed = s.commands.filter((c) => c.state === 'failed').length;
     parts.push(`${s.commands.length === 1 ? '1 command' : `${s.commands.length} commands`}${failed ? ` (${failed} failed)` : ''}`);

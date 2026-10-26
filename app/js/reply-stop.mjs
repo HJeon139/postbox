@@ -3,6 +3,7 @@
 
 import { api } from './client.mjs';
 import { h, timeOf } from './dom.mjs';
+import { jobHostNote } from './thread-host.mjs';
 import { say, toast } from './ui.mjs';
 
 /**
@@ -21,24 +22,26 @@ export function jobRows(it, steps) {
         h('span.g.g-running', { role: 'img', 'aria-label': 'running' }),
         // What Postbox kept running for it, when it couldn’t tell which process was the job (#164).
         h('span.grow', h('span.dim', 'Background job · '), h('span.mono', s.label), s.detail ? h('span.job-note', s.detail) : null),
-        h(
-          'button.btn.sm',
-          {
-            type: 'button',
-            'aria-label': `Stop the background job “${s.label}”`,
-            onclick: (e) => {
-              const b = e.currentTarget;
-              b.disabled = true;
-              api(`/api/sessions/${it.sessionId}/jobs/${encodeURIComponent(s.job)}/stop`, {})
-                .then(() => say(`Stopped the background job “${s.label}”.`))
-                .catch((err) => {
-                  b.disabled = false;
-                  toast({ title: 'Couldn’t stop the job', text: err.message, level: 'blocking' });
-                });
+        // A job of a turn on a host has no Stop of its own (#120): the daemon stops the turn as a whole.
+        jobHostNote(it) ??
+          h(
+            'button.btn.sm',
+            {
+              type: 'button',
+              'aria-label': `Stop the background job “${s.label}”`,
+              onclick: (e) => {
+                const b = e.currentTarget;
+                b.disabled = true;
+                api(`/api/sessions/${it.sessionId}/jobs/${encodeURIComponent(s.job)}/stop`, {})
+                  .then(() => say(`Stopped the background job “${s.label}”.`))
+                  .catch((err) => {
+                    b.disabled = false;
+                    toast({ title: 'Couldn’t stop the job', text: err.message, level: 'blocking' });
+                  });
+              },
             },
-          },
-          'Stop',
-        ),
+            'Stop',
+          ),
       ),
     ),
   );

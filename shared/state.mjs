@@ -1,6 +1,8 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
+import { applyHost } from './state-hosts.mjs';
+
 /**
  * Records by id with nothing but their own keys (#352). An id comes from a request, a tool call or an agent, and in a
  * plain object constructor, toString or __proto__ would find Object, a method or Object.prototype instead of nothing.
@@ -26,6 +28,11 @@ export function emptyState() {
     // Datasets agents loaded into the corpus (#47), so they’re loaded again after a restart.
     datasets: map(),
     schedules: map(),
+    // Remote hosts agents can run on (#120), each with its settings (shared/remote-settings.mjs).
+    hosts: map(),
+    // Each host’s connection as the host manager last reported it (#120): { state, failure, welcome, lastHeard }.
+    // Live state, like a session’s: the server replaces it at each start, since the link it described is gone.
+    hostStatus: map(),
     // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
     work: map(),
   };
@@ -128,6 +135,6 @@ export function apply(s, type, d) {
     case 'notify':
       break; // transient: shown as a toast, nothing to store
     default:
-      throw new Error(`Unknown store event “${type}”.`);
+      if (!applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
   }
 }

@@ -47,7 +47,15 @@ export function straightQuotes(text) {
 // topic threads. The conversation view (thread.mjs) isn’t checked: its panel is a topic thread, so there a
 // bare “thread” is the one you’re in. What agents read is checked too (#75): the guide and the MCP tool
 // descriptions, where a review block’s field “threads?” is a name, not a word.
-const THREAD_FILES = new Set(['app/js/shell.mjs', 'app/js/sheets.mjs', 'app/js/main.mjs', 'app/js/ui.mjs', 'server/mcp.mjs', 'server/adapters/guide.mjs']);
+const THREAD_FILES = new Set([
+  'app/js/shell.mjs',
+  'app/js/sheets.mjs',
+  'app/js/main.mjs',
+  'app/js/ui.mjs',
+  'server/mcp.mjs',
+  'shared/mcp-tools.mjs',
+  'server/adapters/guide.mjs',
+]);
 const THREAD_OK = /\b(?:topic|side) threads?\b|^Threads(?: · )?$|\bReply in thread\b|\bthreads\?/gi;
 /** “thread” in a piece of text, where it doesn’t say it’s a topic or side thread. */
 export function threadWords(text) {

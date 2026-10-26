@@ -1,6 +1,6 @@
 // The limits agents must know, in one place. The code that enforces each one reads it from here
 // (shared/catalog.mjs for blocks, shared/events.mjs and the app kit for app events), and what agents read
-// (server/adapters/guide.mjs, the MCP tool descriptions in server/mcp.mjs) is written from here, so the number
+// (server/adapters/guide.mjs, the MCP tool descriptions in shared/mcp-tools.mjs) is written from here, so the number
 // an agent is told is the number Postbox enforces (#50). tests/limits.test.mjs fails when one isn’t in the guide.
 
 /** Sizes an agent can reach. Text lengths are in characters. */
@@ -55,6 +55,11 @@ export const SENDING = Object.freeze({
   /** A message to another agent with wake_agent, and a post to the conversation with bring_to_conversation. */
   message: 50_000,
 });
+
+/** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
+export const HOP_LIMIT = 10;
+/** Wakes in a row between the same two agents before the next waits for your Allow (#372): a hand-off and its answer. */
+export const PAIR_LIMIT = 2;
 
 /** @typedef {keyof typeof LIMITS} LimitName */
 

@@ -3,6 +3,7 @@
 
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
+import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor } from './permission-rules.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
@@ -14,6 +15,9 @@ import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 // that would go nowhere. The card’s wait starts later, when the call arrives, so it ends a margin early, while Claude
 // Code still waits, and the no reaches the call. A minute is far more than a call takes to reach Postbox.
 const EXPIRY_MARGIN_MS = 60 * 1000;
+/** Why Always allow isn’t offered for a turn on a host (hostAlways). */
+const ON_HOST =
+  'This agent runs on a host, and Postbox would save the rule on this computer, where that host never reads it. Allow it once, or add the rule to the agent folder’s .claude/settings.local.json on the host.';
 export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
 
 /**
@@ -22,8 +26,10 @@ export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
  * @param {string} sessionId
  * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
  * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
+ * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`.
  * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
- *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null }} req
+ *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null,
+ *           hostPrompt?: { hostId: string, turn: string, id: string } | null }} req
  * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
  */
 export async function requestPermission(rt, sessionId, req) {
@@ -36,7 +42,7 @@ export async function requestPermission(rt, sessionId, req) {
 export function askPerson(
   rt,
   sessionId,
-  { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false, draft },
+  { tool, summary, detail = '', toolUseId = null, input = null, suggestions = null, agentId = null, suppressAlways = false, draft, hostPrompt = null },
 ) {
   const se = rt.s.sessions[sessionId];
   const turn = rt.turns.get(sessionId);
@@ -54,9 +60,10 @@ export function askPerson(
     toolUseId: toolUseId ? String(toolUseId) : null,
     // What Edit starts from; an input too large to edit here can still be allowed as it is.
     input: json && json.length <= MAX_EDIT_INPUT ? JSON.parse(json) : null,
-    always: rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }),
+    always: hostAlways(rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }), hostPrompt),
     // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
     who: whoAsked(turn, agentId, toolUseId),
+    ...(hostPrompt ? { remote: { hostId: hostPrompt.hostId, turn: hostPrompt.turn, prompt: hostPrompt.id } } : {}),
     status: 'open',
   });
   // The text so far is finished; the reply continues below the card.
@@ -68,8 +75,10 @@ export function askPerson(
   });
   rt.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
   return new Promise((resolve) => {
-    const timer = setTimeout(() => expireWait(rt, it.id), CARD_WAIT_MS);
-    timer.unref?.();
+    // A host prompt’s card expires when its host says so (permissionWaitMax, `prompt-expired`, #120): the host’s
+    // Claude Code waits on its shim, not on POSTBOX_TIMEOUT_MS, so CARD_WAIT_MS doesn’t apply to it.
+    const timer = hostPrompt ? null : setTimeout(() => expireWait(rt, it.id), CARD_WAIT_MS);
+    timer?.unref?.();
     rt.permissionWaits.set(it.id, { resolve, threadId: turn.threadId, sessionId, timer });
   });
 }
@@ -176,11 +185,22 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
 }
 
 /**
+ * What Always allow offers on a host turn’s card (#120): nothing. A rule Postbox saves itself goes in a folder on this
+ * computer, which the host never reads, and which local agents in that project would then follow. And whether the
+ * host’s Claude Code saves updatedPermissions from a --permission-prompt-tool answer isn’t documented (the SDK’s
+ * canUseTool is), and the CLI sends no suggestions (tests/fixtures/claude-code/permission-prompts.json), so none is
+ * offered either: Allow once stays.
+ * @param {ReturnType<typeof alwaysFor>} always @param {unknown} hostPrompt
+ */
+const hostAlways = (always, hostPrompt) => (hostPrompt ? null : always);
+
+/**
  * Always allow on a permission card: Claude Code’s suggestions go back as updatedPermissions, and Claude Code saves
  * them; a rule Postbox made (the CLI suggests none) Postbox saves itself, in the agent folder’s local settings.
  * @param {string} threadId @param {any} it @param {string} asked
  */
 export async function allowAlways(rt, threadId, it, asked) {
+  if (it.remote) throw httpError(409, ON_HOST);
   if (it.always.saves) {
     const se = rt.s.sessions[it.sessionId];
     const persona = se && rt.personaFor(se);
@@ -206,7 +226,8 @@ export function recordDenial(rt, turn, d) {
   const key = String(d.toolUseId ?? '');
   // Once per call, and never for a call the person answered on a permission card.
   if (key && rt.store.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission') && it.toolUseId === key)) return;
-  const rules = rulesFor(String(d.tool ?? ''), d.input ?? {});
+  // On a host, Always would save its rule on this computer (hostAlways): Allow once and Leave stay.
+  const rules = { ...rulesFor(String(d.tool ?? ''), d.input ?? {}), ...(turn.remote ? { always: null } : {}) };
   const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);
   rt.addItem(turn.threadId, {
     kind: 'denial',
@@ -221,6 +242,7 @@ export function recordDenial(rt, turn, d) {
     reasonType: d.reasonType ? String(d.reasonType).slice(0, 40) : null,
     who: d.who ? String(d.who).slice(0, 40) : null,
     rules,
+    ...(turn.remote ? { remote: { hostId: turn.remote.hostId } } : {}),
     status: 'open',
   });
   // The text so far is finished; the reply continues below the card.
@@ -232,6 +254,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'denial' || it.status !== 'open') throw httpError(409, 'That refusal was already answered.');
   if (!['once', 'always', 'leave'].includes(action)) throw httpError(400, 'A refusal takes “once”, “always” or “leave”.');
+  if (action === 'always' && it.remote) throw httpError(409, ON_HOST);
   // A chained command has no rule that can allow it (permission-rules.mjs, chains), so neither is offered (#238).
   if (action !== 'leave' && !it.rules[action])
     throw httpError(
@@ -268,10 +291,14 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   return { ok: true };
 }
 
-/** After a restart, no tool call is waiting any more, so open cards can’t be answered. */
+/**
+ * After a restart, no tool call is waiting any more, so open cards can’t be answered. A card of a turn still on a
+ * remote host stays open: the host sends its prompt again, or says it expired (#120).
+ */
 export function expireStalePermissions(rt) {
   for (const [threadId, items] of Object.entries(rt.s.items))
-    for (const it of items) if (it.kind === 'permission' && it.status === 'open') rt.patchItem(threadId, it.id, { status: 'expired' });
+    for (const it of items)
+      if (it.kind === 'permission' && it.status === 'open' && !rt.remote.keepsCard(it)) rt.patchItem(threadId, it.id, { status: 'expired' });
 }
 
 /**
@@ -317,37 +344,4 @@ function whoAsked(turn, agentId, toolUseId) {
   const ids = { agentId: agentId ? String(agentId) : null, toolUseId: toolUseId ? String(toolUseId) : null };
   const name = turn.subagentName?.(ids) ?? (ids.agentId ? 'a subagent' : null);
   return name ? String(name).slice(0, 40) : null;
-}
-
-// A permission card’s Edit (#10): the input it starts from, and what you can send back, are bounded.
-const MAX_EDIT_INPUT = 16000;
-const MAX_REASON = 1000;
-/**
- * The input an edited permission answer allows: the command you changed, for Bash, else the input you rewrote (an
- * object, or JSON that parses to one). Refused when it doesn’t parse, so a typo never reaches the agent’s tool.
- * @param {any} it @param {Record<string, any>} values
- */
-function editedInput(it, values) {
-  // Edit starts from the call’s whole input. One too large to keep on the card can only be allowed as it is, since an
-  // edit made from its shortened text would drop the rest (a command’s description, timeout or background flag).
-  if (!it.input) throw httpError(409, 'This call’s input is too large to edit here. Allow it as it is, or don’t allow it and say what to do instead.');
-  if (it.tool === 'Bash' && typeof values?.command === 'string') {
-    const command = values.command.trim();
-    if (!command) throw httpError(422, 'Write the command to run, or choose Don’t allow.');
-    if (command.length > MAX_EDIT_INPUT) throw httpError(422, `A command is limited to ${MAX_EDIT_INPUT.toLocaleString('en-US')} characters.`);
-    return { ...it.input, command };
-  }
-  let input = values?.input;
-  if (typeof input === 'string') {
-    try {
-      input = JSON.parse(input);
-    } catch (e) {
-      throw httpError(422, `The edited input isn’t valid JSON: ${e.message}`);
-    }
-  }
-  if (!input || typeof input !== 'object' || Array.isArray(input))
-    throw httpError(422, 'The edited input has to be a JSON object, like the one it started from.');
-  if (JSON.stringify(input).length > MAX_EDIT_INPUT)
-    throw httpError(422, `The edited input is limited to ${MAX_EDIT_INPUT.toLocaleString('en-US')} characters.`);
-  return input;
 }

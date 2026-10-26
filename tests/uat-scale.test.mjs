@@ -540,7 +540,7 @@ describe('every finding gets a verdict', () => {
 describe('the tester can answer a block while its agent works, to cause #123’s refusals', () => {
   test('an interrupt can answer, and the tester is told how', () => {
     const it = SCHEMA.properties.action.properties.interrupt;
-    assert.deepEqual(it.properties.do.enum, ['stop', 'send_now', 'answer']);
+    assert.deepEqual(it.properties.do.enum, ['stop', 'send_now', 'answer', 'fault']);
     assert.ok(it.properties.item && it.properties.verdict && it.properties.comments && it.properties.choose && it.properties.button);
     assert.match(systemPrompt({ scenario: parseScenario('# T\n'), issues: [] }), /or answer, to answer the block item while the agent works/);
   });

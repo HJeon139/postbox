@@ -14,7 +14,7 @@ import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES, WRITE_TOOLS } from '../server/adapters/setup.mjs';
-import { TOOL_DEFS } from '../server/mcp.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 // Streams recorded from real Claude Code turns (claude 2.1.296, claude-opus-5-5), with local paths removed.
 const fixture = (name) =>
