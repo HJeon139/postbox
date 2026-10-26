@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.40.1 (2026-10-26)
+
+### Fixes
+
+- **server:** remove startup error listener after bind
+- **server:** a start() that can't bind its port closes what it opened
+- **needs:** ⌃J tells the transcript about its scroll at once
+
 ## 0.40.0 (2026-10-26)
 
 ### Features
