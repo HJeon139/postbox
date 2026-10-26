@@ -2,6 +2,31 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.6 (2026-10-26)
+
+### Fixes
+
+- **guide:** preserve existing app check guidance on review
+- **apps:** report saved versions and readable browser check status
+
+## 0.41.5 (2026-10-26)
+
+### Fixes
+
+- **adapters:** take a turn's tokens from its own usage, and leave a fork's cost unknown
+- **ring:** draw no arc for an unknown context, and move its dot instead
+- **ring:** show a subagent's unreported context as unknown, not 0%
+- **adapters:** count a resumed Claude Code turn's own spend, not the session's
+
+## 0.41.4 (2026-10-26)
+
+### Fixes
+
+- **permissions:** give a rule only to what it can't widen (#281)
+- **permissions:** read the program by its name, and its script by path
+- **permissions:** no broad rule for code given on the command line
+- **permissions:** no rule wider than the command the card showed
+
 ## 0.41.3 (2026-10-26)
 
 ### Fixes

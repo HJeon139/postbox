@@ -1,0 +1,173 @@
+{
+  "recorded": "Two Claude Code sessions in one folder, resumed in turn (A1, B1, A2, B2, A3, B3), then `--resume A --fork-session` (F1): `claude -p --model haiku --output-format json`, claude 2.1.310, 26 October 2026, for #435's review. Trimmed to the fields Postbox reads; nothing else changed.",
+  "results": [
+    {
+      "turn": "A1",
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "1245eba7-0493-4324-9930-a6856146d1c6",
+      "total_cost_usd": 0.0031234649999999997,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 10839,
+        "cache_creation_input_tokens": 24099
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 5,
+          "cacheReadInputTokens": 10839,
+          "cacheCreationInputTokens": 24099,
+          "costUSD": 0.0031234649999999997,
+          "contextWindow": 1000000
+        }
+      }
+    },
+    {
+      "turn": "B1",
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "6b421adb-5eed-4979-89bd-d435e0488509",
+      "total_cost_usd": 0.002816415,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 13509,
+        "cache_creation_input_tokens": 21429
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 5,
+          "cacheReadInputTokens": 13509,
+          "cacheCreationInputTokens": 21429,
+          "costUSD": 0.002816415,
+          "contextWindow": 1000000
+        }
+      }
+    },
+    {
+      "turn": "A2",
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "1245eba7-0493-4324-9930-a6856146d1c6",
+      "total_cost_usd": 0.005949879999999999,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 13509,
+        "cache_creation_input_tokens": 21509
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 10,
+          "cacheReadInputTokens": 24348,
+          "cacheCreationInputTokens": 45608,
+          "costUSD": 0.005949879999999999,
+          "contextWindow": 1000000
+        }
+      }
+    },
+    {
+      "turn": "B2",
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "6b421adb-5eed-4979-89bd-d435e0488509",
+      "total_cost_usd": 0.005643455,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 6,
+        "cache_read_input_tokens": 13509,
+        "cache_creation_input_tokens": 21510
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 11,
+          "cacheReadInputTokens": 27018,
+          "cacheCreationInputTokens": 42939,
+          "costUSD": 0.005643455,
+          "contextWindow": 1000000
+        }
+      }
+    },
+    {
+      "turn": "A3",
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "1245eba7-0493-4324-9930-a6856146d1c6",
+      "total_cost_usd": 0.00878692,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 6,
+        "cache_read_input_tokens": 13509,
+        "cache_creation_input_tokens": 21590
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 16,
+          "cacheReadInputTokens": 37857,
+          "cacheCreationInputTokens": 67198,
+          "costUSD": 0.00878692,
+          "contextWindow": 1000000
+        }
+      }
+    },
+    {
+      "turn": "B3",
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "6b421adb-5eed-4979-89bd-d435e0488509",
+      "total_cost_usd": 0.00848012,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 5,
+        "cache_read_input_tokens": 13509,
+        "cache_creation_input_tokens": 21591
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 16,
+          "cacheReadInputTokens": 40527,
+          "cacheCreationInputTokens": 64530,
+          "costUSD": 0.00848012,
+          "contextWindow": 1000000
+        }
+      }
+    },
+    {
+      "turn": "F1",
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "session_id": "a66d55f8-3238-40cf-9911-9ec96212b8cf",
+      "total_cost_usd": 0.011634835,
+      "usage": {
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "cache_read_input_tokens": 13509,
+        "cache_creation_input_tokens": 21673
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 23,
+          "cacheReadInputTokens": 51366,
+          "cacheCreationInputTokens": 88871,
+          "costUSD": 0.011634835,
+          "contextWindow": 1000000
+        }
+      }
+    }
+  ]
+}

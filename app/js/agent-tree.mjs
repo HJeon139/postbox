@@ -79,7 +79,7 @@ export function paintSubagents(list, after, subs, se) {
     li.dataset.depth = String(Math.min(depth, 3));
     // Set only when changed: a ring repaints on each attribute it’s given.
     const ring = li.querySelector('pb-ring');
-    const ctx = String(Math.round(sub.ctx ?? 0));
+    const ctx = Number.isFinite(sub.ctx) ? String(Math.round(sub.ctx)) : ''; // '' is unknown (#189)
     if (ring?.getAttribute('name') !== sub.name) ring?.setAttribute('name', sub.name);
     if (ring?.getAttribute('state') !== sub.state) ring?.setAttribute('state', sub.state);
     if (ring?.getAttribute('ctx') !== ctx) ring?.setAttribute('ctx', ctx);
