@@ -6,6 +6,7 @@ import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { codexApproval } from './codex-approval.mjs';
+import { codexMcpPromptConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { findCodex } from './codex-models.mjs';
 import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { codexContextPercent } from './context-usage.mjs';
@@ -69,6 +70,7 @@ export function codexConfigArgs(mcpUrl) {
     `mcp_servers.${POSTBOX_SERVER}.enabled=true`,
     '-c',
     `mcp_servers.${POSTBOX_SERVER}.required=true`,
+    ...postboxMcpApprovalArgs(),
   ];
 }
 
@@ -180,15 +182,17 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
   send({ method: 'initialized', params: {} });
   const permissions = codexPermissions(ctx.persona, cwd);
+  const mcpConfig = await codexMcpPromptConfig(request, ctx.persona?.permissionMode === 'ask');
+  const openConfig = mcpConfig ? { config: mcpConfig } : {};
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
   const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
   const opened =
     fork?.turnId && sourceThreadId
-      ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true })
+      ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true, ...openConfig })
       : sourceThreadId
-        ? await request('thread/resume', { threadId: sourceThreadId, cwd })
-        : await request('thread/start', { cwd, ...(model ? { model } : {}) });
+        ? await request('thread/resume', { threadId: sourceThreadId, cwd, ...openConfig })
+        : await request('thread/start', { cwd, ...(model ? { model } : {}), ...openConfig });
   const threadId = sourceThreadId;
   const id = opened?.thread?.id ?? threadId;
   if (!id) throw new Error('Codex app-server did not return a thread id.');
