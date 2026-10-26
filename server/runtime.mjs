@@ -16,6 +16,7 @@ import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
+import { appCheckText, appReceipt } from './app-check-status.mjs';
 import { retireApp } from './app-retire.mjs';
 import {
   APP_HOLD_MAX,
@@ -1647,7 +1648,10 @@ export class Runtime {
       case 'block': {
         if (!i.valid) return null;
         // What it holds comes with it, so another agent can review it (#153).
-        const body = blockContent(i);
+        const body =
+          n === Number.POSITIVE_INFINITY && i.block.type === 'app' && this.s.apps[i.block.id]?.itemId === i.id
+            ? appCheckText(this.s.apps[i.block.id])
+            : blockContent(i);
         const what = i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`;
         const title = i.block.title ?? (i.block.type === 'app' ? i.block.fallback : null);
         return text(
@@ -1719,8 +1723,8 @@ export class Runtime {
     return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n);
   }
 
-  readMessage(...args) {
-    return readMessage(this, ...args);
+  readMessage(se, args = {}) {
+    return readMessage(this, se, args);
   }
 
   // ── The lint pipeline ──────────────────────────────────────────────────────────────
@@ -2998,7 +3002,12 @@ export class Runtime {
         );
         if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
         return v.ok
-          ? { ok: true, message: renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown block ${v.block.id}.` }
+          ? v.block.type === 'app'
+            ? appReceipt(
+                rt.s.apps[v.block.id],
+                renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown app ${v.block.id}.`,
+              )
+            : { ok: true, message: `Shown block ${v.block.id}.` }
           : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
       },
       update_block(args) {

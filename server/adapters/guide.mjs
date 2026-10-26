@@ -153,7 +153,7 @@ The global postbox gives you:
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG on a theme change
 
-Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for layout, accessibility and script errors; fix what it reports with update_app.
+Don’t autofocus. The browser checks apps at 375 and 1280 px; fix errors with update_app. read_message { id: appId } gives the version’s check: claim passed only for its pass. Pending is unverified; don’t wait. Summaries aren’t check evidence.
 
 ## Working with others
 

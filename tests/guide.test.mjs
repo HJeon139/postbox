@@ -67,7 +67,7 @@ test('what agents read about the app check says narrow and wide windows, not pho
     readFileSync(new URL('../app/js/apps.mjs', import.meta.url), 'utf8'),
   ].join('\n');
   assert.doesNotMatch(read, /\bphones?\b/i);
-  assert.match(read, /checks it in a narrow and a wide window \(375 and 1280 px\)/);
+  assert.match(read, /browser checks apps at 375 and 1280 px/);
   assert.match(read, /This conversation belongs to the project “P”\./);
 });
 
