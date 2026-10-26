@@ -244,10 +244,10 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await settled(index);
   await send(index, 'Show me the shelf map');
   await until((st) => st.apps['shelf-map']?.check.status === 'crashed', { label: 'the crashed app', timeout: 60000 });
-  await call('/api/demo/offline', { ms: 60000 }).catch(() => {});
-  await shot('09-errors', { prepare: (ui) => ui.shows('.pill', 'Reconnecting…') });
-  // The page reconnects on its own; the next view() loads it again anyway.
-  await call('/api/demo/offline', { ms: 1 }).catch(() => {});
+  const offline = (ms) => call('/api/demo/offline', { ms }).catch(() => {});
+  // Offline afresh in each variant, as one window can run out while a browser loads all four. The page reconnects after.
+  await shot('09-errors', { prepare: (ui) => offline(60000).then(() => ui.shows('.pill', 'Reconnecting…')) });
+  await offline(1);
 
   // 9 · A proposed teammate, the + menu and attachments
   const quotes = await call('/api/threads', { projectId: index.projectId, title: 'Check my quotes', personaIds: [ix.personaId] });

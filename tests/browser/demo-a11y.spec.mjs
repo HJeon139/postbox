@@ -75,8 +75,13 @@ function ui(page) {
   const find = (sel, text) => (text ? page.locator(sel).filter({ hasText: text }) : page.locator(sel)).first();
   return {
     click: (sel, text) => find(sel, text).click(ACT),
-    // Only for what the layout hides at one width, and the scene shows anyway: a real click can’t reach it there.
-    activate: (sel, text) => find(sel, text).dispatchEvent('click', undefined, ACT),
+    // A real click where it’s visible. Where the layout hides it, and the scene shows it anyway, no click can reach it:
+    // there it gets the click event.
+    activate: async (sel, text) => {
+      const node = find(sel, text);
+      await node.waitFor({ state: 'attached', ...ACT });
+      await ((await node.isVisible()) ? node.click(ACT) : node.dispatchEvent('click', undefined, ACT));
+    },
     press: (sel, key) => find(sel).press(key, ACT),
     fill: (sel, value) => find(sel).fill(value, ACT),
     attach: (sel, file) => find(sel).setInputFiles(file, ACT),
@@ -143,9 +148,10 @@ test('every demo scene has no axe violations, at 1280 and 375 px in dark and lig
     speed: 0.3,
     log: () => {},
     view: async (h) => {
-      hash = h;
       // A changing query string loads the page again, as a person opening the conversation would.
       await page.goto(`${app.origin}/?v=${++loads}${h}`);
+      // Only now: the scene before may log what it means to until the next page has loaded, such as a late 503.
+      hash = h;
       await synced(page, app);
     },
     shot: (name, { prepare } = {}) =>
