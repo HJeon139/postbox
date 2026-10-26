@@ -180,7 +180,8 @@ function recordOutcome(rt, sessionId, block, { se, threadId }) {
   if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing, true);
   const { id: _id, outcome, ...sent } = block;
   const differ = Object.keys(sent).filter((k) => JSON.stringify(sent[k]) !== JSON.stringify(existing.block[k]));
-  rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, revision: (existing.revision ?? 1) + 1, updatedAt: Date.now() });
+  // Not a new revision: the draft the person answered is unchanged, and an answered block can’t be answered again.
+  rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, updatedAt: Date.now() });
   return {
     ok: true,
     message: `Recorded the outcome under the person’s answer to ${id}; it stays answered.${differ.length ? ` Your other changes (${differ.join(', ')}) weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.` : ''}`,

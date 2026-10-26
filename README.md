@@ -138,7 +138,7 @@ Every block is validated before it’s shown ([`shared/catalog.mjs`](shared/cata
 | `confirm` | `statement` (say exactly what will happen), `confirmLabel`, `cancelLabel?` | `confirm` or `cancel` → `{}` |
 | `image` | `src` (https from an allowed origin), `alt` (required), `caption?`, `width?`, `height?` | None |
 | `code` | `code`, `language?`, `filename?` | None. A Copy button is built in. |
-| `review` | `format: markdown \| code \| app`, `content` (markdown and code), `appId` (app), `previous?` (shows a diff), `revision?`, `threads?: [{ id, line? \| anchor?, status: open \| resolved, comments: [{ author, text }] }]`, `language?`, `filename?` | `submit` → `{ verdict: comment \| approve \| request_changes, comments: [{ line? \| anchor?, text }] }` |
+| `review` | `format: markdown \| code \| app`, `content` (markdown and code), `appId` (app), `previous?` (shows a diff; Postbox counts revisions), `threads?: [{ id, line? \| anchor?, status: open \| resolved, comments: [{ author, text }] }]`, `language?`, `filename?` | `submit` → `{ verdict: comment \| approve \| request_changes, comments: [{ line? \| anchor?, text }] }` |
 | `app` | `code` (HTML with inline script and style), `permissions?: [tool names]` | Whatever the app sends (see below) |
 
 Long text fields (`prompt`, `body`, `statement`, review content) are Markdown. Short labels are plain text.

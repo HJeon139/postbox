@@ -62,6 +62,7 @@ export async function reviewRoom(name) {
         ctx.tools.update_block({ block: { ...block, revision: 2, content: `${DRAFT}\n\nOne more line.`, previous: DRAFT } });
       // As the UAT’s agent revised (#248): with previous, and no revision of its own, which is optional.
       const again = /revise (\d+)$/.exec(message.kind === 'user' ? message.text : '');
+      if (message.kind === 'user' && message.text.endsWith('file')) ctx.tools.update_block({ block: { id: block.id, outcome: 'Filed as #418.' } });
       if (again) ctx.tools.update_block({ block: { ...block, content: `${DRAFT}\n\nRevision ${again[1]}.`, previous: DRAFT } });
     },
   });

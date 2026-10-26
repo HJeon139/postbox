@@ -123,3 +123,16 @@ test('#248 a draft revised without a revision of its own opens each revision in 
     await expect(changes.getByRole('radio'), `v${n}, with its diff`).toHaveText([`Diff v${n - 1} → v${n}`, `v${n}`]);
   }
 });
+
+test('#248 an outcome recorded on an approved review isn’t a revision: it still reads v1', async ({ page }) => {
+  const { rt } = room.app;
+  const { thread, block, itemOf } = await room.withReview(page, 'Filed');
+  rt.act(thread.id, itemOf().id, 'submit', { verdict: 'approve', comments: [] });
+  await room.idle();
+  rt.sendMessage(thread.id, { text: '@drafter file' });
+  await expect.poll(() => itemOf().block.outcome, { message: 'the outcome' }).toBe('Filed as #418.');
+  await room.idle();
+  await synced(page, room.app);
+  await expect(block.locator('.outcome')).toHaveText('Filed as #418.');
+  await expect(block.locator('.block-head .small.dim').filter({ hasText: /^v\d+$/ })).toHaveText('v1');
+});
