@@ -130,8 +130,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'schedule_wake',
-    description:
-      'Ask to be woken later, with a note to yourself: the way to come back to work that outlives your turn, such as a long check. Nothing else wakes you when a command you started finishes. The wake shows in the conversation with Cancel, and the note reaches you when it’s due.',
+    description: 'Ask to be woken later, with a note to yourself.',
     inputSchema: { type: 'object', properties: { in_minutes: { type: 'number' }, note: { type: 'string' } }, required: ['in_minutes'] },
   },
   {

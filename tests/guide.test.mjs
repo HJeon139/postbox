@@ -148,7 +148,7 @@ test('#372 a room’s guide says to @mention an agent only when it must act next
 });
 
 // An agent ended turns promising results that “will follow”, and nothing woke it when they did: Postbox wakes an agent
-// only for a message, a mention or a wake it scheduled. Real backends are told so; agy’s rules file has no room for it.
+// only for a message, a mention or a wake it scheduled. Codex agents are told so (the habit was Codex’s); other backends aren’t.
 test('a Codex agent’s guide says its turn ends when it replies, to finish a check first, or to schedule_wake', () => {
   const g = agentGuide({ persona: { handle: 'gpt', backend: 'codex' }, session: { personaSnapshot: { model: 'gpt-6.1-sol' } }, handles: ['gpt'] });
   assert.match(g, /## When your turn ends\n\nYour turn ends when you reply\./);
@@ -157,5 +157,4 @@ test('a Codex agent’s guide says its turn ends when it replies, to finish a ch
   // Only Codex agents ended turns that way, so the other backends aren’t told.
   for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
     assert.doesNotMatch(agentGuide({ persona: { handle: 'x', backend }, handles: ['x'] }), /When your turn ends/, backend);
-  assert.match(TOOL_DEFS.find((d) => d.name === 'schedule_wake').description, /Nothing else wakes you when a command you started finishes/);
 });
