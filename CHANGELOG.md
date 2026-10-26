@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.3 (2026-10-26)
+
+### Fixes
+
+- **blocks:** tick only progress blocks with a step still running
+- **transcript:** hold the ring beside each message still, so a long conversation stops repainting
+
 ## 0.41.2 (2026-10-26)
 
 ### Fixes
