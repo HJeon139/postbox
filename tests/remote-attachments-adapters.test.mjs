@@ -85,7 +85,9 @@ test('#120: a remote Kiro CLI turn’s message names the host copy, and each hos
   assert.notEqual(first.turn, second.turn);
   for (const s of [first, second]) {
     carries(s);
-    assert.ok(s.argv.at(-1).includes(`chart (1).png (image/png): ${hostCopy(s.turn)}`), s.argv.at(-1));
+    const text = s.files.find((f) => f.name === MESSAGE_FILE).text;
+    assert.ok(text.includes(`chart (1).png (image/png): ${hostCopy(s.turn)}`), text);
+    assert.ok(!s.argv.some((arg) => arg.includes('Look at this.')), 'the message isn’t in the process arguments');
   }
 });
 

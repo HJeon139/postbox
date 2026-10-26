@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkRemoteMessage, KIRO_CAPABILITIES, KiroCliAdapter, kiroRemoteEnv, REMOTE_ARGV_NOTE } from '../server/adapters/kiro-cli.mjs';
-import { REMOTE_LIMITS } from '../shared/remote-protocol.mjs';
+import { KIRO_CAPABILITIES, KiroCliAdapter, kiroRemoteEnv } from '../server/adapters/kiro-cli.mjs';
+import { MESSAGE_FILE } from '../shared/remote-protocol.mjs';
 import { FOLDER, fixtureLines, HOME, play, SHIM, setup, startOf, until } from './kiro-cli-remote-fixture.mjs';
 
 test('#120: a remote Isolated turn starts on the host with its agent file in Postbox’s own Kiro home there, and the shim as its server', async () => {
@@ -21,10 +21,12 @@ test('#120: a remote Isolated turn starts on the host with its agent file in Pos
   const kiroHome = `${HOME}/.postbox-remote/kiro-home/kiro`;
   assert.equal(start.harness, 'kiro-cli');
   assert.equal(start.folder, FOLDER);
-  assert.equal(start.stdin, 'none');
+  assert.equal(start.stdin, 'file');
   assert.deepEqual(start.env, { KIRO_HOME: kiroHome }, 'only KIRO_HOME crosses, never the laptop’s variables');
   assert.equal(start.argv[0], 'chat', 'no program: the daemon runs the kiro-cli it found');
-  assert.deepEqual(start.argv.slice(-2), ['--', 'Remember heron.'], 'the message goes last, after --');
+  assert.ok(start.argv.includes('--no-interactive'));
+  assert.ok(!start.argv.includes('Remember heron.'), 'the message isn’t in the process arguments');
+  assert.equal(start.files.find((f) => f.name === MESSAGE_FILE)?.text, 'Remember heron.');
   const agent = start.argv[start.argv.indexOf('--agent') + 1];
   assert.deepEqual(Object.keys(start.agentFile), ['name', 'text'], 'the daemon picks the folder, from KIRO_HOME');
   assert.equal(start.agentFile.name, `${agent}.json`);
@@ -84,19 +86,7 @@ test('#120: the Kiro home on a host: yours (no variable: the daemon finds it), o
   assert.deepEqual(kiroRemoteEnv({ handle: 'x', usesHostSetup: false }, '/'), { KIRO_HOME: '/.postbox-remote/kiro-home/x' });
 });
 
-test('#120: a remote message over 128 KiB is refused before the turn starts, naming the limit', async () => {
-  assert.doesNotThrow(() => checkRemoteMessage('x'.repeat(REMOTE_LIMITS.argBytes)));
-  assert.throws(() => checkRemoteMessage('x'.repeat(REMOTE_LIMITS.argBytes + 1)), /128 KiB/);
-  // Bytes, not characters: é is two.
-  assert.throws(() => checkRemoteMessage('é'.repeat(64 * 1024)), /128 KiB/);
-  const { d, adapter, ctx, calls } = await setup();
-  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'x'.repeat(130 * 1024) }, ctx), /Linux limits one argument to 128 KiB/);
-  await new Promise((r) => setTimeout(r, 20));
-  assert.equal(d.received.filter((m) => m.type === 'start').length, 0);
-  assert.equal(calls.activity.length, 0);
-});
-
-test('#120: a remote Kiro turn warns, as a step, that other users on the host can read its message; once, even when it starts over', async () => {
+test('#436: a remote Kiro turn and its fresh retry send each prompt through stdin', async () => {
   const { d, adapter, ctx, calls } = await setup({ state: { kiroSessionId: 'sess_gone' } });
   const turn = adapter.deliver({}, { kind: 'user', text: 'hi' }, ctx);
   const first = await startOf(d, 0);
@@ -104,19 +94,14 @@ test('#120: a remote Kiro turn warns, as a step, that other users on the host ca
   const second = await startOf(d, 1);
   play(d, second, 'first');
   await turn;
-  const notes = calls.activity.filter((a) => a.id === REMOTE_ARGV_NOTE.id);
-  assert.ok(notes.length >= 1);
-  assert.equal(new Set(notes.map((n) => n.id)).size, 1, 'one step: the runtime replaces a step with the same id');
-  assert.equal(notes[0].state, 'done');
-  assert.match(notes[0].label, /Other users on the host can read this message/);
-  assert.match(notes[0].detail, /hidepid/);
-  // The missing-session fallback is unchanged: a fresh turn on the host, without --resume-id, saying so.
   assert.ok(first.argv.includes('--resume-id'));
   assert.ok(!second.argv.includes('--resume-id'));
   assert.equal(first.turn, ctx.remote.turn);
   assert.deepEqual(calls.turns, [first.turn, second.turn], 'the fresh start is a second host turn, from nextTurn');
   assert.deepEqual(calls.startsAtNext, [1], 'nextTurn came before its start');
-  assert.match(second.argv.at(-1), /fresh start/);
+  assert.equal(first.files.find((f) => f.name === MESSAGE_FILE)?.text, 'hi');
+  assert.match(second.files.find((f) => f.name === MESSAGE_FILE)?.text ?? '', /fresh start/);
+  assert.ok(!second.argv.some((arg) => /fresh start/.test(arg)));
   assert.deepEqual(JSON.parse(second.agentFile.text).mcpServers.postbox.args, [SHIM, second.turn]);
   assert.notEqual(calls.saved.kiroSessionId, 'sess_gone');
 });
@@ -134,9 +119,9 @@ test('#120: Stop on a remote Kiro turn sends the daemon’s stop and never calls
   assert.equal(calls.list, 0);
 });
 
-test('Kiro says how it runs on a remote host: no stdin, only KIRO_HOME, its agent file, an open tool call as work', () => {
+test('Kiro says how it runs on a remote host: stdin file, only KIRO_HOME, its agent file, an open tool call as work', () => {
   assert.deepEqual(KIRO_CAPABILITIES.remote, {
-    stdin: 'none',
+    stdin: 'file',
     env: ['KIRO_HOME'],
     server: 'agent-file',
     work: 'open-tool-call',

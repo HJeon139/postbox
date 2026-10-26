@@ -23,11 +23,7 @@ export function placeField(st, paint, { idp, hosts, here, name }) {
   const help = !hosts.length
     ? `${name} isn’t on this computer. Add a host under Settings, Hosts, to run it there.`
     : host
-      ? `Its turns run on ${host.name}, over your own ssh; Postbox and its tools stay on this computer.${
-          st.backend === 'kiro-cli'
-            ? ' Kiro CLI puts each message in the host’s process arguments, which other users there may be able to read; use a private host for sensitive work.'
-            : ''
-        }${here ? '' : ` ${name} isn’t on this computer, so it runs only on a host.`}`
+      ? `Its turns run on ${host.name}, over your own ssh; Postbox and its tools stay on this computer.${here ? '' : ` ${name} isn’t on this computer, so it runs only on a host.`}`
       : 'Its turns run here. A host runs them on another machine, over your own ssh.';
   return h(
     'div.field',

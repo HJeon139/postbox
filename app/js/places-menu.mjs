@@ -6,7 +6,7 @@ export function projectPlaces(projects, currentId, needsIn, open) {
     desc: needsIn(project.id) ? `${needsIn(project.id)} need you` : (project.folder ?? '').replace(/^\/Users\/[^/]+/, '~'),
     icon: 'folder',
     current: project.id === currentId,
-    currentMark: project.id === currentId,
+    kbd: project.id === currentId ? '✓' : null,
     run: () => open(project.id),
   }));
 }

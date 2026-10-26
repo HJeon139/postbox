@@ -131,7 +131,7 @@ test('#432 the places menu focuses and marks the current project with consistent
     const current = projects.filter({ hasText: new RegExp(`^${name}`) });
     await expect(current).toBeFocused();
     await expect(current).toHaveAttribute('aria-current', 'true');
-    await expect(current.locator('.i-check')).toHaveCount(1);
+    await expect(current.locator('.k')).toHaveText('✓');
     await expect(projects).toHaveCount(Object.keys(app.store.state.projects).length);
     await expect(projects.locator('.i-folder')).toHaveCount(Object.keys(app.store.state.projects).length);
     await page.keyboard.press('Escape');
