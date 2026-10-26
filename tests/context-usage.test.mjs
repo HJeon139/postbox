@@ -28,6 +28,17 @@ test('Antigravity resolves cited context windows and calculates active context p
   assert.equal(agyContextPercent({ input_tokens: 100 }, null), null);
 });
 
+test('a token count that isn’t a finite, non-negative number makes context unknown, never 100% or NaN', () => {
+  for (const bad of ['2787', Number.NaN, Number.POSITIVE_INFINITY, -1, {}, true]) {
+    assert.equal(agyContextPercent({ input_tokens: bad, cache_read_tokens: 23525 }, 1_000_000), null, String(bad));
+    assert.equal(agyContextPercent({ input_tokens: 2787, cache_read_tokens: bad }, 1_000_000), null, String(bad));
+    assert.equal(codexContextPercent(bad, 475_000), null, String(bad));
+    assert.equal(codexContextPercent(47_500, bad), null, String(bad));
+  }
+  // JSON can carry a number too large to be finite.
+  assert.equal(codexContextPercent(JSON.parse('{"n":1e400}').n, 475_000), null);
+});
+
 test('Codex calculates active context percentage from reported modelContextWindow', () => {
   assert.equal(codexContextPercent(47_500, 475_000), 10);
   assert.equal(codexContextPercent(106_596, 475_000), 22);

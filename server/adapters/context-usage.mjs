@@ -8,6 +8,9 @@
  */
 const CITED_AGY_WINDOWS = /** @type {[RegExp, number][]} */ ([[/^gemini-4-argon(?:-low|-medium|-high)?/, 1_000_000]]);
 
+/** Whether a token count a backend sent is usable: a finite number, not negative. JSON can carry 1e400, which is Infinity. */
+const isCount = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+
 /** The cited context window for a Gemini model, or null if unlisted. */
 export const agyWindowFor = (model) => CITED_AGY_WINDOWS.find(([re]) => re.test(String(model ?? '')))?.[1] ?? null;
 
@@ -18,11 +21,13 @@ export const agyWindowFor = (model) => CITED_AGY_WINDOWS.find(([re]) => re.test(
  * Together, input_tokens + cache_read_tokens represent the full prompt context loaded into the model.
  * Evidence recorded in ~/.gemini/antigravity-cli/brain/93aa5dd9-c75c-4c80-8b5a-206e898de577/.system_generated/logs/transcript.jsonl step 245:
  * input_tokens (2,787) + output_tokens (148) = 2,935 total_tokens, while cache_read_tokens is 23,525.
+ * A count that isn’t a finite, non-negative number makes the percentage unknown, rather than one added as text or NaN.
  */
 export function agyContextPercent(usage, window) {
-  if (!usage || typeof window !== 'number' || window <= 0) return null;
+  if (!usage || !isCount(window) || window <= 0) return null;
   const input = usage.input_tokens ?? 0;
   const cached = usage.cache_read_tokens ?? 0;
+  if (!isCount(input) || !isCount(cached)) return null;
   const used = input + cached;
   if (used <= 0) return null;
   return Math.min(100, Math.round((used / window) * 100));
@@ -34,6 +39,6 @@ export function agyContextPercent(usage, window) {
  * tokenUsage.last.inputTokens represents active prompt context (cachedInputTokens is a subset of inputTokens).
  */
 export function codexContextPercent(inputTokens, window) {
-  if (typeof inputTokens !== 'number' || typeof window !== 'number' || window <= 0 || inputTokens <= 0) return null;
+  if (!isCount(inputTokens) || !isCount(window) || window <= 0 || inputTokens <= 0) return null;
   return Math.min(100, Math.round((inputTokens / window) * 100));
 }
