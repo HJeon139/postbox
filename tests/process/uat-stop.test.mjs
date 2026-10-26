@@ -1,9 +1,9 @@
 // How a host-mode UAT run stops on Ctrl-C (#120; tools/uat/stop.mjs): with a host set up and installed, a SIGINT to
-// the run’s whole process group, as a terminal sends it, must leave Postbox and Chrome up long enough to remove the
+// the run’s whole process group, as a terminal sends it, must leave Postbox and Chromium up long enough to remove the
 // host through the UI, then remove the run’s own folder there and nothing else of ~/postbox-uat, then exit 130 with
-// Postbox and Chrome gone. The run is tests/fixtures/uat/stop-run.mjs, the host a folder on this computer, and ssh a
+// Postbox and Chromium gone. The run is tests/fixtures/uat/stop-run.mjs, the host a folder on this computer, and ssh a
 // stand-in that runs the remote command there with sh: Postbox’s install and Remove run for real. It starts the run,
-// its Postbox and its Chrome as processes, so it’s under tests/process/ (npm run test:process). Moved from
+// its Postbox and its Chromium as processes, so it’s under tests/process/ (npm run test:process). Moved from
 // tools/check-uat-stop.mjs.
 
 import assert from 'node:assert/strict';
@@ -12,9 +12,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { basename, dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { free, freePort, useChrome } from './chrome.mjs';
+import { childrenOf, chromiumMissing, free, freePort, isChromium, running } from './chrome.mjs';
 
-const skip = await useChrome();
+const skip = await chromiumMissing();
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 // How long the run may take to set its host up, and then to clean up and exit, on a busy computer.
 const READY_MS = 120_000;
@@ -23,7 +23,8 @@ const EXIT_MS = 120_000;
 let root = '';
 let home = '';
 let port = 0;
-let chromePort = 0;
+/** The processes the run started, its Postbox and its Chromium, as Ctrl-C reached it. @type {{ pid: number, chromium: boolean }[]} */
+let started = [];
 /** What the run printed, line by line. @type {string[]} */
 const out = [];
 /** @type {import('node:child_process').ChildProcess | null} */
@@ -105,19 +106,13 @@ before(
     if (skip) return;
     const bin = makeHost();
     port = await freePort();
-    chromePort = await freePort([port]);
-    child = spawn(
-      process.execPath,
-      [join(ROOT, 'tests', 'fixtures', 'uat', 'stop-run.mjs'), String(port), String(chromePort), join(root, 'data'), join(root, 'w'), home],
-      {
-        cwd: ROOT,
-        // CHROME comes from useChrome(). A process group of its own, as a terminal runs a job, so the signal below
-        // reaches all of it and nothing else.
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        detached: true,
-      },
-    );
+    child = spawn(process.execPath, [join(ROOT, 'tests', 'fixtures', 'uat', 'stop-run.mjs'), String(port), join(root, 'data'), join(root, 'w'), home], {
+      cwd: ROOT,
+      // A process group of its own, as a terminal runs a job, so the signal below reaches all of it and nothing else.
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
     const c = child;
     // Once its output is all read, too.
     exited = new Promise((ok) => c.once('close', (code, signal) => ok({ code, signal })));
@@ -140,6 +135,7 @@ test('the run set its host up: Postbox installed there, and its own folder made'
 
 test('Ctrl-C ends the run with 130, once it has cleaned up', { skip, timeout: EXIT_MS + 10_000 }, async (t) => {
   if (!ready) return t.skip('the run didn’t get ready');
+  started = childrenOf(/** @type {number} */ (child?.pid)).map((pid) => ({ pid, chromium: isChromium(pid) }));
   process.kill(-(/** @type {number} */ (child?.pid)), 'SIGINT');
   end = await within(exited, EXIT_MS);
   assert.deepEqual(end, { code: 130, signal: null }, tail());
@@ -152,7 +148,7 @@ const afterwards = (name, fn) =>
     await fn();
   });
 
-afterwards('the cleanup removed the host through the UI, with Postbox and Chrome still up', () => {
+afterwards('the cleanup removed the host through the UI, with Postbox and Chromium still up', () => {
   assert.ok(out.includes('Removed Postbox from host1.'), tail());
 });
 afterwards('~/.postbox-remote is gone from the host', () => {
@@ -164,6 +160,15 @@ afterwards('the run’s own ~/postbox-uat/<run> is gone from the host', () => {
 afterwards('another run’s folder under ~/postbox-uat is still there', () => {
   assert.ok(existsSync(join(home, 'postbox-uat', 'other', 'keep.txt')));
 });
-afterwards('the run’s Postbox and Chrome stopped with it', async () => {
-  assert.deepEqual([await free(port), await free(chromePort)], [true, true], 'Postbox’s port and Chrome’s are free');
+afterwards('the run’s Postbox and Chromium stopped with it', async () => {
+  assert.ok(
+    started.some((p) => p.chromium),
+    `the run had started a Chromium: ${JSON.stringify(started)}`,
+  );
+  assert.equal(await free(port), true, 'Postbox’s port is free');
+  assert.deepEqual(
+    started.filter((p) => running(p.pid)),
+    [],
+    'nothing the run started is still running',
+  );
 });

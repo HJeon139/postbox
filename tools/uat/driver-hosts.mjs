@@ -4,7 +4,7 @@
 // d.kit), as the review module’s do. Where the page offers no control for a step a run needs, the step says so in
 // what it returns, and does what the control would.
 
-import { js, sleep } from '../cdp.mjs';
+import { js, sleep } from '../browser.mjs';
 import { byText } from './selectors.mjs';
 
 const TOP = `[...document.querySelectorAll('.dialog')].at(-1)`;

@@ -33,15 +33,20 @@ const APPS = {
   grid: `<div style="display:grid;grid-template-columns:120px 1fr;color:var(--text);padding:8px"><p style="white-space:nowrap;margin:0">a long description that won’t fit</p><h3 style="margin:0">Heading</h3></div>`,
   gallery1: gallery(false),
   gallery2: gallery(true),
-  // Labels that start stacked and move apart a moment later, as a d3 transition places them.
+  // Labels that start stacked and move apart a moment later, as a d3 transition places them. They move right after
+  // the check’s first look, its first measure of text (Range’s getClientRects), so its second look always sees them
+  // apart. A wall-clock delay raced the check on a loaded runner (#398).
   moving: `<svg width="320" height="80" role="img" aria-label="Three labels"><g id="ls">${['Alpha', 'Beta', 'Gamma']
     .map((t) => `<text x="20" y="40" fill="var(--text)" font-size="14">${t}</text>`)
     .join('')}</g></svg>
-<script>postbox.ready.then(() => setTimeout(() => {
-  const ls = [...document.querySelectorAll('#ls text')], t0 = performance.now();
-  const step = (now) => { const k = Math.min(1, (now - t0) / 300); ls.forEach((l, i) => l.setAttribute('x', 20 + i * 100 * k)); if (k < 1) requestAnimationFrame(step); };
-  requestAnimationFrame(step);
-}, 1900));</script>`,
+<script>{
+  const rects = Range.prototype.getClientRects;
+  Range.prototype.getClientRects = function () {
+    Range.prototype.getClientRects = rects;
+    setTimeout(() => document.querySelectorAll('#ls text').forEach((l, i) => l.setAttribute('x', 20 + i * 100)));
+    return rects.call(this);
+  };
+}</script>`,
   // A tooltip hidden with opacity 0 over the text it explains.
   faded: `<div style="position:relative;padding:12px;color:var(--text)"><p style="margin:0">Hover a bar to see its value.</p><span style="position:absolute;left:12px;top:12px;opacity:0">Value: 42 claims</span></div>`,
   // A long list that runs under its opaque sticky footer, as the corpus explorer’s does: hidden there, not overlapped.

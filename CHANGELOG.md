@@ -2,6 +2,38 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.40.4 (2026-10-26)
+
+### Fixes
+
+- **tools:** let SIGTERM and SIGHUP end a screenshot run, as before Playwright
+- **uat:** kill Chromium when its close hangs, so a run's stop reaches Postbox
+- **lint:** check page code passed to frameOf, as to evaluate and waitFor
+- **uat:** drive Chromium through Playwright, so a killed run leaves no browser
+
+## 0.40.3 (2026-10-26)
+
+### Fixes
+
+- **guide:** keep schedule_wake's description as on main
+- **guide:** tell only Codex agents their turn ends when they reply
+- **guide:** tell agents their turn ends when they reply
+
+## 0.40.2 (2026-10-26)
+
+### Fixes
+
+- **composer:** say when @handle /command names no agent here
+- **composer:** run @agent /command for the agent it names
+
+## 0.40.1 (2026-10-26)
+
+### Fixes
+
+- **server:** remove startup error listener after bind
+- **server:** a start() that can't bind its port closes what it opened
+- **needs:** ⌃J tells the transcript about its scroll at once
+
 ## 0.40.0 (2026-10-26)
 
 ### Features

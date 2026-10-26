@@ -55,6 +55,8 @@ test('lint-security page-code: a value goes into page code through js(), not JSO
   assert.deepEqual(page('await page.evaluate(`location.hash = ${JSON.stringify(hash)}`);'), [1]);
   assert.deepEqual(page('await page.waitFor(\n  `x === ${J(id)}`,\n);'), [2]);
   assert.deepEqual(page('await clickAt(`document.querySelector(${JSON.stringify(sel)})`, label);'), [1]);
+  // tools/browser.mjs finds an app’s frame with page code too, which needn’t name document to run there.
+  assert.deepEqual(page('await page.frameOf(`${ITEM(key)}?.closest(${JSON.stringify(sel)})`);'), [1]);
   assert.deepEqual(page('await page.evaluate(`location.hash = ${js(hash)}`);'), []);
   // Page code a helper builds and passes on later, the commonest #343 shape, and Runtime.evaluate's expression.
   assert.deepEqual(page('const q = (sel) => `document.querySelector(${JSON.stringify(sel)})`;'), [1]);
