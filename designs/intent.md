@@ -260,7 +260,7 @@ Plain English and sentence case, with curly quotes and American spelling everywh
 
 ## Open questions
 
-None right now. Resolved on 21 October 2026: control borders (a stronger border for controls only), checking apps before you see them (Stage 2, in the browser), narration (Stage 3), screenshot storage (approved baselines only), the app title bar (stays on the stage), and state text in the rail (only with reduced motion).
+None right now. Resolved on 21 October 2026: control borders (a stronger border for controls only), checking apps before you see them (Stage 2, in the browser), narration (Stage 3), screenshot storage (approved baselines only; since 26 October 2026 none are committed but the images docs embed), the app title bar (stays on the stage), and state text in the rail (only with reduced motion).
 
 ## Quality bar
 
@@ -268,7 +268,7 @@ What’s checked today:
 
 - `node tools/contrast.mjs` checks every text, border and status token pair in both modes, including on the app stage.
 - The chart series were validated for color-vision deficiency.
-- Every page is screenshotted at 375 and 1280 px in both modes and reviewed. The approved set lives in `screenshots/`; working retakes go to `screenshots/latest/`, which git ignores, and Stage 2 is compared against the approved set.
+- Every page is screenshotted at 375 and 1280 px in both modes and reviewed. They’re generated into `screenshots/latest/`, which git ignores, and aren’t committed (designs/developing.md, “Screenshots”); Stage 2 was compared against the approved set when it was committed.
 
 What isn’t yet, and should be in Stage 2:
 
