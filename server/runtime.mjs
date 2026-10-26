@@ -844,7 +844,7 @@ export class Runtime {
             ...(typeof x.id === 'string' && x.id ? { id: x.id.slice(0, 100) } : {}),
             name: String(x.name).slice(0, 40),
             state: x.state,
-            ctx: Math.max(0, Math.min(100, +x.ctx || 0)),
+            ctx: Number.isFinite(x.ctx) ? Math.max(0, Math.min(100, x.ctx)) : null, // null: unknown (#189)
             doing: x.doing ? String(x.doing).slice(0, 120) : '',
             ...(x.thinking === true ? { thinking: true } : {}),
             ...(x.asked ? { asked: String(x.asked).slice(0, 120) } : {}),
