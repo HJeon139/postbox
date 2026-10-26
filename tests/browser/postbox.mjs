@@ -44,7 +44,13 @@ export async function startPostbox(name, { demo = true, mockOnly = true, prepare
   if (mockOnly) process.env.POSTBOX_BACKENDS = 'mock';
   const root = await mkdtemp(join(tmpdir(), `pb-spec-${name}-`));
   await prepare?.(root);
-  const app = await start({ ...server, port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root });
+  // Another worker can bind the port between freePort() and start(): start() then closes what it opened and throws,
+  // so try another port (#367).
+  let app;
+  for (let i = 0; !app; i++)
+    app = await start({ ...server, port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root }).catch((e) => {
+      if (e?.code !== 'EADDRINUSE' || i >= 4) throw e;
+    });
   return {
     ...app,
     root,
