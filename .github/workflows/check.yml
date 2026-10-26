@@ -46,7 +46,7 @@ jobs:
     name: Demo in Chrome, with accessibility checks
     runs-on: ubuntu-latest
     needs: check
-    # About 11 minutes on this runner (#287); each headless check also has check-all’s own 600 s limit.
+    # About 11 minutes on this runner (#287), when the old headless checks ran beside the specs.
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -63,18 +63,6 @@ jobs:
           name: screenshots
           path: screenshots/latest/app/
           retention-days: 14
-      # Every headless check (tools/check-*.mjs, tools/checks/*.mjs), in parallel, so a pull request’s own
-      # checks run before review. It runs even when the screenshots fail, so a run shows both.
-      # 4 at a time, measured on this runner (4 cores, 15 GB, PR #174): 1 at a time took 190 s, 2 took 100 s,
-      # 4 took 72 s with the CPU still over half idle, and 6 or 8 saved under 5 s more.
-      - name: Headless Chrome checks
-        if: success() || failure()
-        run: CHROME="$(command -v google-chrome)" npm run check:browser -- --jobs 4 --logs check-logs
-      # The same checks with every event held back 300 ms, as a busy runner can, so a check that reads the page
-      # before it has heard a change fails on the pull request that adds it, not now and then on main.
-      - name: Headless Chrome checks, with the server’s events late
-        if: success() || failure()
-        run: CHROME="$(command -v google-chrome)" npm run check:browser -- --jobs 4 --lag 300 --logs check-logs/lag
       # The browser specs on Playwright Test (#303), on the Chromium build its version pins.
       - name: Install Playwright’s Chromium
         if: success() || failure()

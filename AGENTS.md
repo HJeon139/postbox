@@ -10,29 +10,27 @@ Before you change files in a folder, read its `AGENTS.md` too. Some tools load i
 - `app/AGENTS.md`: the client. DOM, agent content, tokens, accessibility, motion.
 - `server/AGENTS.md`: the server and the agent backends. Node, errors, adapters, security boundaries.
 - `tests/AGENTS.md`: unit tests, the browser specs, and UAT docs.
-- `tools/AGENTS.md`: the headless browser checks, the lints, and the UAT runner.
+- `tools/AGENTS.md`: the lints, the UAT runner and the screenshot tools.
 - `designs/AGENTS.md`: writing and updating the design docs.
 
 ## The gate
 
 ```bash
-npm run check            # Biome, types, project lints, contrast, unit tests
-npm run check:browser    # the headless Chrome checks not yet moved to Playwright, 4 at a time
+npm run check            # Biome, types, project lints, contrast, unit tests, and the tests that run npm and git
 npx playwright test      # the browser specs in tests/browser/
-POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events 300 ms late, as CI runs it
-node tools/check-all.mjs <your checks> --lag 300   # the same, for the older checks
+POSTBOX_STREAM_LAG=300 npx playwright test   # with the server’s events 300 ms late, as CI runs it
 ```
 
 - A change is done when `npm run check` exits 0. A change you can see in the UI also passes both browser runs, and adds or extends a browser spec in `tests/browser/` (designs/engineering-practices.md, “The gate”).
 - Cite the command that proved a claim, and its exit code. A count of exactly 0, or a run that found nothing, is a finding about the harness until it’s explained (designs/developing.md, “Degenerate values are a defect until explained”).
-- Show a test or check failing on the code without the fix, when you can (designs/engineering-practices.md, “Tests”).
+- Show a test or spec failing on the code without the fix, when you can (designs/engineering-practices.md, “Tests”).
 
 ## Scope
 
 - Fix the cause and look for the same class of error everywhere: a bug in one adapter is a question about all of them (designs/developing.md, “Responding to a prompt”).
 - Anything beyond the task needs evidence (a repro, a measurement, a UAT result, an issue, the person’s request) and a reason it serves designs/intent.md: one person directing two to four agents on their own computer, with the loop right before the looks. Otherwise decline it, or file it with its evidence (designs/prompts/README.md, “Rules for every session”).
 - `tools/uat-run.mjs` runs real agents and costs real usage. Run it, and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`), only when the task asks for them, or when you’re the reviewing session (designs/prompts/README.md, “Rules for every session”).
-- Make simple, minimal changes, and use what Node, the browser and the repo already have (`h()`, `shared/limits.mjs`, `tools/harness.mjs`). A new dependency needs a decision in designs/architecture.md first.
+- Make simple, minimal changes, and use what Node, the browser and the repo already have (`h()`, `shared/limits.mjs`, `tests/browser/postbox.mjs`). A new dependency needs a decision in designs/architecture.md first.
 
 ## Code size
 

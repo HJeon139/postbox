@@ -9,7 +9,7 @@ This page sits beside three others, and repeats none of them:
 
 **No section here states a lint level.** `biome.json`, `jsconfig.json` and `package.json` are the authority, and a second copy goes stale silently. This page says what a green `npm run check` still lets through. Every external claim links to a source at the end, and each link there was fetched, not remembered.
 
-Make simple, minimal changes, and don’t reinvent what already exists. In Postbox that means what Node and the browser ship (`node:test`, `node:crypto`, `AbortSignal.timeout`, `structuredClone`) and the helpers the repo already has (`h()` in `app/js/dom.mjs`, `shared/limits.mjs`, `tools/harness.mjs`), because a new runtime dependency needs a decision recorded in architecture.md first.
+Make simple, minimal changes, and don’t reinvent what already exists. In Postbox that means what Node and the browser ship (`node:test`, `node:crypto`, `AbortSignal.timeout`, `structuredClone`) and the helpers the repo already has (`h()` in `app/js/dom.mjs`, `shared/limits.mjs`, `tests/browser/postbox.mjs`), because a new runtime dependency needs a decision recorded in architecture.md first.
 
 ## Responding to a prompt
 
@@ -35,8 +35,8 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 | Signal | What it usually hides |
 |---|---|
-| A count that’s exactly 0, or a run that found nothing | The thing was never exercised: no test file matched the glob, no check matched its name in `check-all`, the scenario never reached the phase |
-| `0 passed, 0 failed.` from a headless check | Every case was skipped or the check crashed before its first `record()`; `harness.mjs` reports a crash as “the check ran to the end”, so look for that line |
+| A count that’s exactly 0, or a run that found nothing | The thing was never exercised: no test file matched the glob, no spec matched the name given to `npx playwright test`, the scenario never reached the phase |
+| `--pass-with-no-tests` passing, or a spec’s test that finished with no `expect` | Nothing ran: no spec changed, or a step returned before its assertions |
 | “Accessibility (axe-core): no violations” on a scene that rendered blank | axe checked an empty frame. Headless Chrome once passed every app while the Claude desktop app’s pane showed them blank (architecture.md, “Sandboxed pages that load nothing”) |
 | A work ledger row with 0 lines, or a turn that cost $0.00 | The file tool’s result carried no `tool_use_result` (a subagent’s edit), or the turn’s last `result` was never read |
 | Every agent in a report on the same model and effort | The runner’s default (`claude-haiku-5-5`, low) replaced the personas’ own, which is right for an integration pass and wrong for a measurement scenario |
@@ -69,7 +69,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 | Every color pair in both themes, and on the app stage | `check:contrast` |
 | Unit tests, with no network and no processes | `node:test` with `tests/guard.mjs` |
 | Line coverage of the pure modules (the 90% target in architecture.md) | Nothing. `npm run test:coverage` reports it and fails on no threshold |
-| Headless Chrome behavior | `npm run check:browser`, in CI’s end-to-end job, not in `npm run check` |
+| Browser behavior | `npx playwright test`, normally and with `POSTBOX_STREAM_LAG=300`, in CI’s end-to-end job, not in `npm run check` |
 | No axe violations in any demo scene | `tools/shoot-app.mjs`, in CI’s end-to-end job |
 | Conventional Commits | `tools/lint-commits.mjs` on a pull request in CI; the local hook only after `npm run hooks` |
 | Real agents doing the right thing | The end-to-end UAT, which no CI job runs and which costs real usage |
@@ -78,18 +78,18 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 ### Running the gate
 
-**Verify a change with `npm run check`, not with the commands it runs.** Its exit code is the one a claim of “clean” cites. Run one phase (`npm run lint`, `npm run typecheck`, `node --test --import ./tests/guard.mjs tests/store.test.mjs`) only to iterate on one failure, then run the whole gate again before you call the change done. A change you can see in the UI also passes `npm run check:browser` (`node tools/check-all.mjs <name>` to run some), and adds or extends a check that reports through `tools/harness.mjs`.
+**Verify a change with `npm run check`, not with the commands it runs.** Its exit code is the one a claim of “clean” cites. Run one phase (`npm run lint`, `npm run typecheck`, `node --test --import ./tests/guard.mjs tests/store.test.mjs`) only to iterate on one failure, then run the whole gate again before you call the change done. A change you can see in the UI also passes `npx playwright test`, normally and with `POSTBOX_STREAM_LAG=300` (`npx playwright test <name>` to run some), and adds or extends a spec in `tests/browser/`.
 
 **Install the way CI does.** CI runs Node 22 and `npm ci --ignore-scripts`, so the optional packages never download their models or binaries. A result from a machine with `kokoro-js` or the Agent SDK installed, and CI without them, are two different environments, and a change that touches either path says which one it ran in.
 
-**Use only your own ports and your own data.** Start a server with `--port` and `--data` of your own, and give headless Chrome `PB_PORT` and `PB_CHROME_PORT` from `ports()` in `tools/harness.mjs`. Never touch the preview on 4173, another tool’s server on 4320, or the person’s data: `~/.postbox`, which every run without `--data` shares, and a clone’s `data/`. Postbox refuses to start on a folder another Postbox is using, but `--fresh` without `--data` would still empty the person’s store. A check that talked to a server it didn’t start reports on someone else’s Postbox.
+**Use only your own ports and your own data.** Start a server with `--port` and `--data` of your own; a spec’s `startPostbox()` picks a free port and a temp folder for it. Never touch the preview on 4173, another tool’s server on 4320, or the person’s data: `~/.postbox`, which every run without `--data` shares, and a clone’s `data/`. Postbox refuses to start on a folder another Postbox is using, but `--fresh` without `--data` would still empty the person’s store. A spec or tool that talked to a server it didn’t start reports on someone else’s Postbox.
 
 **The screenshot tools and the end-to-end UAT belong to the reviewing session** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`). It runs them once per wave on the merged UI, as [prompts/README.md](prompts/README.md), “Rules for every session”, says.
 
 **A check that passes needs a negative control before it counts.**
 - A type check that reports nothing on a new file under `app/js/` checked nothing: that folder isn’t in `jsconfig.json`’s `include`.
 - A new lint rule in `tools/lint-*.mjs` comes with a case in `tests/lint.test.mjs` that it flags.
-- A new headless check or test for a bug is shown failing on the old code, when you can.
+- A new browser spec or test for a bug is shown failing on the old code, when you can.
 
 ## JavaScript
 
@@ -105,7 +105,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 
 **An empty `catch {}` is a decision, and its line says so.** There are about thirty in the repo, and each is defensible only where failure is the expected answer: `localStorage` unavailable, an optional file missing, a best-effort cleanup. Catching everything to make an error disappear is the swallowed reason engineering-practices.md forbids. When you can name the expected error, check for it and rethrow the rest.
 
-**A library function throws; only an entry point calls `process.exit`.** The entry points are `bin/postbox.mjs` (the `postbox` command, which `node server/index.mjs` hands its flags to) and the scripts in `tools/` (`finish()` in `harness.mjs` is one). An exit code is a process-level decision, and a module that makes it can’t be tested.
+**A library function throws; only an entry point calls `process.exit`.** The entry points are `bin/postbox.mjs` (the `postbox` command, which `node server/index.mjs` hands its flags to) and the scripts in `tools/`. An exit code is a process-level decision, and a module that makes it can’t be tested.
 
 **Give a shape a type.** When data has a known shape (an event, a block, a persona, a ledger entry), describe it with a `@typedef`, as `server/adapters/process-group.mjs` does for `Proc`, rather than passing `object` and probing it with `?.` in every caller.
 
@@ -329,7 +329,7 @@ engineering-practices.md, “Commits and versions”, holds the Conventional Com
 Reviewers put off a change that looks large, so the body’s job is context, not an inventory. Decide what this reviewer has to judge, write that, and link the rest. Keep it under about 60 lines, reached by cutting content rather than rewording.
 1. **Background:** why the change is happening. Link the issue and the design section.
 2. **Details:** what changed, top-down: where in the architecture, then the specific parts. A small Mermaid `flowchart` or `sequenceDiagram` when the change crosses modules.
-3. **Testing:** how it was verified. Name each command and its result (`npm run check`, `npm run check:browser`, the checks you added), and describe manual steps so a reviewer can replay them, down to the port and the message typed.
+3. **Testing:** how it was verified. Name each command and its result (`npm run check`, `npx playwright test` with and without `POSTBOX_STREAM_LAG=300`, the specs you added), and describe manual steps so a reviewer can replay them, down to the port and the message typed.
 4. **Declined:** what the review raised that you didn’t take on, with the reason, or the issue you filed.
 
 End it with “🤖 Generated with [Claude Code](https://claude.com/claude-code)” when an agent wrote it.
