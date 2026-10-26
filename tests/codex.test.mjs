@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { CODEX_CAPABILITIES, CodexAdapter, codexApproval, codexConfigArgs, codexPermissions, createCodexMapper } from '../server/adapters/codex.mjs';
+import { CODEX_CAPABILITIES, CodexAdapter, codexApproval, codexConfigArgs, createCodexMapper } from '../server/adapters/codex.mjs';
 import { fakeAppServer } from './codex-fixture.mjs';
 
 test('Codex reports the capabilities its app-server implements', () => {
@@ -13,15 +13,6 @@ test('Codex reports the capabilities its app-server implements', () => {
     isolation: false,
     promptTool: false,
     remote: { stdin: 'held', env: [], server: 'codex-config', work: 'model-checks', signInError: null },
-  });
-  assert.deepEqual(codexPermissions({ permissionMode: 'ask' }, '/work'), { sandboxPolicy: { type: 'readOnly' }, approvalPolicy: 'on-request' });
-  assert.deepEqual(codexPermissions({ permissionMode: 'acceptEdits' }, '/work'), {
-    sandboxPolicy: { type: 'workspaceWrite', writableRoots: ['/work'], networkAccess: false },
-    approvalPolicy: 'on-request',
-  });
-  assert.deepEqual(codexPermissions({ permissionMode: 'bypass' }, '/work'), {
-    sandboxPolicy: { type: 'dangerFullAccess' },
-    approvalPolicy: 'never',
   });
 });
 

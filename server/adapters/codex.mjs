@@ -33,6 +33,11 @@ export const CODEX_CAPABILITIES = Object.freeze({
 /** A local folder’s real path, or the folder as given if it can’t be resolved: Codex refuses a writable root with a symlink in its path. */
 const realFolder = (dir) => realpath(dir).catch(() => dir);
 
+/**
+ * The sandbox and approvals for a turn. In Auto, Codex’s own reviewer (approvalsReviewer auto_review) approves or
+ * denies what the sandbox stops, as Claude Code’s classifier does, instead of asking the person; Codex keeps a reviewer
+ * for later turns, so every other mode names the person.
+ */
 export function codexPermissions(persona, cwd) {
   const mode = persona?.permissionMode ?? 'auto';
   const sandboxPolicy =
@@ -41,7 +46,7 @@ export function codexPermissions(persona, cwd) {
       : mode === 'ask'
         ? { type: 'readOnly' }
         : { type: 'workspaceWrite', ...(cwd ? { writableRoots: [cwd] } : {}), networkAccess: false };
-  return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request' };
+  return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request', approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user' };
 }
 
 /**
