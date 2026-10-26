@@ -166,12 +166,18 @@ test('#281 a program that runs the command after it gets only its exact text, ne
     'awk 1 f',
     'ssh host ls',
     'npx -y pkg',
+    '/usr/bin/node -e x',
+    'python3.12 -c x',
+    'pypy3 -c x',
+    'python3',
   ])
     assert.equal(rulesFor('Bash', { command }).always, `Bash(${command})`, command);
   for (const [command, always] of [
     ['git status', 'Bash(git status:*)'],
     ['npm test', 'Bash(npm test:*)'],
     ['python script.py --x', 'Bash(python script.py:*)'],
+    ['python3 tools/a.py', 'Bash(python3 tools/a.py:*)'],
+    ['node app/x.js', 'Bash(node app/x.js:*)'],
   ])
     assert.equal(rulesFor('Bash', { command }).always, always, command);
 });

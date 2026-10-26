@@ -12,6 +12,8 @@ export { chains };
 
 // Commands whose second word is the real command (git status, npm test): “always” allows that pair.
 const TWO_WORD = new Set(['git', 'npm', 'npx', 'pnpm', 'yarn', 'bun', 'node', 'python', 'python3', 'pip', 'cargo', 'go', 'make', 'docker', 'kubectl', 'gh']);
+// Interpreters by any version (python3.12, pypy3, node22): like TWO_WORD, allowed only with the script they run.
+const INTERPRETER = /^(python|pypy|node|nodejs|bun)[\d.]*$/;
 // Any other command with shell syntax in it (a redirect, a quoted | or ;) only ever gets its exact text allowed.
 const COMPOUND = /[|;&`<>]|\$\(/;
 // Programs that run the command or code after them: a rule for their name (Bash(env:*), Bash(perl:*)) would allow any
@@ -48,12 +50,16 @@ export function rulesFor(tool, input = {}) {
       // `rm -rf build/*`’s rule would allow `rm -rf build/ ~` too (#281).
       if (cmd.includes('*')) return { once: null, always: null, alwaysWords: '', why: 'wildcard' };
       const words = cmd.split(/\s+/);
-      if (COMPOUND.test(cmd) || WRAPPERS.has(words[0].slice(words[0].lastIndexOf('/') + 1)))
-        return { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
-      // A flag as the second word (`node -e`, `python3 -c`, `git -c`) runs what follows it, so a rule for the pair would
-      // allow any code: only the exact text (#281).
-      if (TWO_WORD.has(words[0]) && words[1]?.startsWith('-')) return { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
-      const prefix = TWO_WORD.has(words[0]) && words[1] && /^[\w:.-]+$/.test(words[1]) ? `${words[0]} ${words[1]}` : words[0];
+      const program = words[0].slice(words[0].lastIndexOf('/') + 1); // /usr/bin/node is node
+      const exactly = { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
+      if (COMPOUND.test(cmd) || WRAPPERS.has(program)) return exactly;
+      // A program whose second word says what it runs (git status, npm test, python3 tools/a.py) is allowed only with
+      // that word. With a flag there (`node -e`, `python3 -c`, `git -c`), or none, the rule for the program alone would
+      // allow any code, so only the exact text (#281). Versioned interpreters (python3.12, pypy3) count too.
+      if (!TWO_WORD.has(program) && !INTERPRETER.test(program))
+        return { once: exact, always: `Bash(${words[0]}:*)`, alwaysWords: `commands that start with “${words[0]}”` };
+      if (!words[1] || words[1].startsWith('-') || !/^[\w:./-]+$/.test(words[1])) return exactly;
+      const prefix = `${words[0]} ${words[1]}`;
       return { once: exact, always: `Bash(${prefix}:*)`, alwaysWords: `commands that start with “${prefix}”` };
     }
     case 'WebFetch': {
