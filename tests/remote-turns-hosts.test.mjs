@@ -106,6 +106,7 @@ function answerAsCodex(d, ft, reqs) {
       const req = JSON.parse(ft.writes[reqs.length]);
       reqs.push(req);
       if (req.method === 'initialize') d.append(ft.turn, JSON.stringify({ id: req.id, result: { userAgent: 'codex/0' } }));
+      else if (req.method === 'mcpServerStatus/list') d.append(ft.turn, JSON.stringify({ id: req.id, result: { data: [], nextCursor: null } }));
       else if (req.method === 'thread/start') d.append(ft.turn, JSON.stringify({ id: req.id, result: { thread: { id: 'thr_1' } } }));
       else if (req.method === 'turn/start') {
         d.append(ft.turn, JSON.stringify({ id: req.id, result: { turn: { id: 'turn_1', status: 'inProgress', items: [] } } }));
