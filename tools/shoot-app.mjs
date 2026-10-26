@@ -104,6 +104,7 @@ async function drive(h) {
 }
 
 const shots = [];
+let scene = 'the first scene';
 const STOP_AFTER = process.env.STOP_AFTER;
 try {
   await drive(hash);
@@ -116,6 +117,7 @@ try {
       await drive(h);
     },
     shot: async (name, { prepare } = {}) => {
+      scene = name;
       for (const [theme, w, h, scale] of VARIANTS) {
         await goto(theme, w, h, scale);
         if (prepare) await prepare(ui);
@@ -124,11 +126,20 @@ try {
         console.log(`  ${name}-${theme}-${w}.png  ${w}×${height}`);
       }
       shots.push(name);
+      scene = `the scene after ${name}`;
       if (STOP_AFTER && name === STOP_AFTER) throw new Error(`Stopped after ${name}, as asked.`);
     },
   });
 } catch (e) {
   console.error(`Stopped: ${e.message}`);
+  // CI goes on past this step, as the spec is the gate on the demo: a warning in the run’s summary says where the pictures stop.
+  if (process.env.GITHUB_ACTIONS) {
+    const message = `${shots.length} scenes have screenshots and the rest have none. ${e.message}`
+      .replace(/%/g, '%25')
+      .replace(/\r/g, '%0D')
+      .replace(/\n/g, '%0A');
+    console.log(`::warning title=Screenshots stopped at ${scene}::${message}`);
+  }
   console.error(page.logs.slice(-15).join('\n'));
   console.error(
     await page
