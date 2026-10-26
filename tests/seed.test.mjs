@@ -27,6 +27,7 @@ async function seeded({ demo = false, agents = null } = {}) {
     agents: Object.values(s.personas).map((p) => `@${p.handle} on ${p.backend}`),
     projects: Object.values(s.projects).map((p) => p.name),
     threads: Object.values(s.threads).length,
+    boilerplates: Object.keys(s.boilerplates),
   };
 }
 
@@ -42,6 +43,7 @@ test('a fresh install seeds three generic agents, and no projects or conversatio
     agents: ['@researcher on claude-code', '@developer on claude-code', '@critic on claude-code'],
     projects: [],
     threads: 0,
+    boilerplates: BOILERPLATES.map((b) => b.id),
   });
 });
 
@@ -117,11 +119,50 @@ test('--demo seeds the book-corpus agents, their projects and conversations', as
   );
   assert.deepEqual(demo.projects, ['Book corpus', 'Agent research']);
   assert.equal(demo.threads, 8);
+  assert.deepEqual(
+    demo.boilerplates,
+    BOILERPLATES.map((b) => b.id),
+  );
 });
 
 test('agents.json in the data folder replaces the agents in either mode', async () => {
   const agents = [{ handle: 'scout', description: 'Looks around.' }];
-  assert.deepEqual(await seeded({ agents }), { agents: ['@scout on claude-code'], projects: [], threads: 0 });
+  assert.deepEqual(await seeded({ agents }), { agents: ['@scout on claude-code'], projects: [], threads: 0, boilerplates: BOILERPLATES.map((b) => b.id) });
   // The demo's conversations need the demo's agents, so they go too.
-  assert.deepEqual(await seeded({ demo: true, agents }), { agents: ['@scout on claude-code'], projects: [], threads: 0 });
+  assert.deepEqual(await seeded({ demo: true, agents }), {
+    agents: ['@scout on claude-code'],
+    projects: [],
+    threads: 0,
+    boilerplates: BOILERPLATES.map((b) => b.id),
+  });
+});
+
+test('the GPT boilerplate uses Codex and supplies general assistant instructions', () => {
+  const bp = BOILERPLATES.find((b) => b.id === 'bp-gpt');
+  assert.ok(bp);
+  assert.equal(bp.backend, 'codex');
+  assert.match(bp.instructions, /^# GPT\n/);
+  assert.deepEqual(bp.tools, ['shell', 'web.fetch']);
+});
+
+test('an install with Gemini but no GPT gains GPT in built-in order and a second seed emits nothing', async () => {
+  const store = new Store(null);
+  store.emit('persona', { id: 'existing', handle: 'existing' });
+  for (const b of BOILERPLATES.filter((b) => b.id !== 'bp-gpt')) store.emit('boilerplate', b);
+  const custom = { id: 'bp-custom', name: 'My saved agent', instructions: 'Keep my instructions.' };
+  store.emit('boilerplate', custom);
+  const rt = { store };
+  const opts = { dataDir: '/unused', booksDir: '/unused' };
+  assert.equal(await seed(rt, opts), false);
+  assert.equal(store.state.boilerplates['bp-gpt'].backend, 'codex');
+  assert.deepEqual(Object.keys(store.state.boilerplates), [...BOILERPLATES.map((b) => b.id), custom.id]);
+  assert.deepEqual(store.state.boilerplates[custom.id], custom);
+  assert.deepEqual(
+    store.state.boilerplates['bp-gemini'],
+    BOILERPLATES.find((b) => b.id === 'bp-gemini'),
+  );
+  const seq = store.state.seq;
+  assert.equal(await seed(rt, opts), false);
+  assert.equal(store.state.seq, seq);
+  assert.deepEqual(Object.keys(store.state.personas), ['existing']);
 });
