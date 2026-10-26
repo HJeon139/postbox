@@ -259,7 +259,7 @@ export class ClaudeCodeAdapter {
         ctx.signal.removeEventListener('abort', onAbort);
         // A fork whose branch point is gone keeps nothing from this run: no session id, no checkpoint.
         if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr)) return resolve({ missingForkPoint: true });
-        ctx.saveState({ contextWindow: mapper.contextWindow, model: mapper.model ?? undefined, ...(mapper.sessionId ? { fork: null } : {}) });
+        ctx.saveState({ ...mapper.endState, ...(mapper.sessionId ? { fork: null } : {}) });
         const current = mapper.sessionId ?? ctx.state.claudeSessionId;
         if (mapper.lastUuid && current) ctx.checkpoint?.({ claudeSessionId: current, uuid: mapper.lastUuid });
         if (ctx.signal.aborted) return resolve({});

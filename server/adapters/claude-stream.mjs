@@ -2,6 +2,8 @@
 // into Postbox’s turn context: reply text, activity steps, ring state, context use, subagents and
 // compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
 
+import { sessionTotals, turnSpend } from './claude-usage.mjs';
+
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
 const QUIET =
@@ -167,6 +169,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
   /** @type {any} */
   const st = {
     sessionId: null,
+    before: ctx.state?.spent ?? null, // the session’s totals when the turn started (claude-usage.mjs)
     model: null,
     answered: null, // the model the last assistant message came from
     contextWindow,
@@ -622,20 +625,9 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         const pct = contextPercent(st.lastUsage, st.contextWindow);
         if (pct !== null) status({ ctx: pct });
       }
-      // What the process has spent so far: the result’s totals run for the whole process, so the last one counts.
-      const models = Object.values(e.modelUsage ?? {});
-      ctx.usage?.({
-        key: st.key,
-        costUsd: typeof e.total_cost_usd === 'number' ? e.total_cost_usd : null,
-        tokens: models.length
-          ? {
-              input: models.reduce((n, u) => n + (u?.inputTokens ?? 0), 0),
-              output: models.reduce((n, u) => n + (u?.outputTokens ?? 0), 0),
-              cacheRead: models.reduce((n, u) => n + (u?.cacheReadInputTokens ?? 0), 0),
-              cacheWrite: models.reduce((n, u) => n + (u?.cacheCreationInputTokens ?? 0), 0),
-            }
-          : null,
-      });
+      // What this turn has spent so far: the result’s totals run for the session, so less where it stood (#295).
+      st.spent = sessionTotals(e);
+      ctx.usage?.({ key: st.key, ...turnSpend(st.spent, st.before) });
       // Refusals the stream didn’t report as they happened.
       for (const d of e.permission_denials ?? []) denial(d, { fromResult: true });
       // A background job or subagent runs on after the reply: the CLI waits for it, then tells the agent how it went.
@@ -669,6 +661,10 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     },
     get contextWindow() {
       return st.contextWindow;
+    },
+    /** What the adapter saves when the turn ends: the window, the model, and the session’s totals (claude-usage.mjs). */
+    get endState() {
+      return { contextWindow: st.contextWindow, model: st.model ?? undefined, ...(st.spent ? { spent: st.spent } : {}) };
     },
     get result() {
       return st.result;
