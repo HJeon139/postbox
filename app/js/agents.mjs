@@ -11,6 +11,7 @@
 // started it, with what it was asked and what it’s doing now, a line each, without hover.
 
 import { BACKEND_NAMES, chipEffort, chipModel } from '/shared/agent-facts.mjs';
+import { modeWhen } from '/shared/mode-when.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { everyMinute, hostSection, modelOptions } from './agent-host.mjs';
 import { toolSwitch } from './agent-tools.mjs';
@@ -363,10 +364,8 @@ function modeChoice(se, p, done, failed) {
       value,
       (id, name) =>
         api('/api/permissions/mode', { personaId: se.personaId, mode: id }).then(
-          (r) =>
-            done(
-              `Permission mode: ${name} for @${se.handle} in every conversation, ${r.now.includes(se.handle) ? 'from now: its running turn changed too' : 'from their next turns'}.`,
-            ),
+          // A running turn its backend can’t change keeps the old mode until it ends (#371, #381): say so, and that Stop does.
+          (r) => done(`Permission mode: ${name} for @${se.handle} in every conversation, ${modeWhen(r, se.id)}`),
           failed,
         ),
     ),

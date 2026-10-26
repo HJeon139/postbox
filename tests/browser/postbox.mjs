@@ -20,8 +20,8 @@ const free = (port) =>
   });
 
 /**
- * A free port, picked at random below the ephemeral ranges, as tools/check-all.mjs picks them: the system hands those
- * out in order, so one picked there could be given away before Postbox binds it.
+ * A free port, picked at random below the ephemeral ranges: the system hands those out in order, so one picked there
+ * could be given away before Postbox binds it.
  */
 async function freePort() {
   for (let i = 0; i < 100; i++) {

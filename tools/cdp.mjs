@@ -215,7 +215,7 @@ export async function launch({ port = 9333, detached = false } = {}) {
     /**
      * Waits until Postbox’s page has applied the server’s events up to seq (its store’s state.seq). A change made
      * on the server reaches the page over its event stream, which nothing orders with this protocol: on a busy
-     * computer it comes after the next command (check-all.mjs --lag shows it).
+     * computer it comes after the next command (POSTBOX_STREAM_LAG shows it).
      */
     synced(seq, { timeout = 15000 } = {}) {
       return page.waitFor(`import('/app/js/client.mjs').then(({ client }) => client.seq >= ${Number(seq)})`, {

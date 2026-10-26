@@ -1,6 +1,6 @@
 {
   "name": "postbox",
-  "version": "0.36.0",
+  "version": "0.36.1",
   "description": "A chat room for directing several AI agents, where agents reply with software they write.",
   "license": "Apache-2.0",
   "type": "module",
@@ -31,7 +31,6 @@
     "check:contrast": "node tools/contrast.mjs",
     "test:process": "node --test --test-timeout=120000 tests/process/*.test.mjs",
     "check": "npm run lint && npm run typecheck && npm run lint:project && npm run check:contrast && npm test && npm run test:integration && npm run test:process",
-    "check:browser": "node tools/check-all.mjs",
     "shoot:mockups": "node tools/shoot.mjs",
     "shoot:app": "node tools/shoot-app.mjs",
     "uat": "node tools/uat-run.mjs",

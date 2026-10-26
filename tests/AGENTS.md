@@ -1,4 +1,4 @@
-# Unit tests and UAT docs: tests/
+# Unit tests, browser specs and UAT docs: tests/
 
 The root `AGENTS.md` applies here too.
 
@@ -13,15 +13,18 @@ The root `AGENTS.md` applies here too.
 - Share setup, but keep each action and its assertions inline in the test.
 - Check that the suite’s test count went up by the tests you added.
 
-A test that must run a real process (npm, git, an installed postbox) goes in `tests/process/*.test.mjs` instead, which `npm run test:process` runs without the guard, and `npm run check` runs too. It writes only to temp folders it makes and removes, and to nothing else it doesn’t put back (`npm pack` writes and removes `server/build-commit.txt` in the clone, and npm reads your own npm settings). It runs on a port of its own, with a timeout on every process it starts, and stays a few seconds long.
+A test that must run a real process (npm, git, an installed postbox) goes in `tests/process/*.test.mjs` instead, which `npm run test:process` runs without the guard, and `npm run check` runs too. It writes only to temp folders it makes and removes, and to nothing else it doesn’t put back (`npm pack` writes and removes `server/build-commit.txt` in the clone). It reads none of your own config: the install test gives npm an empty config file of its own. It runs on a port of its own, with a timeout on every process it starts, and stays a few seconds long.
 
 ## Browser specs
 
-New browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/architecture.md, “Browser checks on Playwright Test”, #303):
+Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/architecture.md, “Browser checks on Playwright Test”, #303):
 - Each spec file starts its own Postbox in `beforeAll` with `startPostbox()` from `tests/browser/postbox.mjs`, stops it in `afterAll`, and calls `failOnPageErrors(test)`. Wait for the page to hear the server with `synced(page, app)`.
 - Wait with web-first assertions (`expect(locator)…`), `expect.poll` or `expect(…).toPass`, never for a fixed time. The `no-fixed-waits` Biome rule fails `page.waitForTimeout` and `setTimeout` in a spec.
 - Find elements by role or name where the page gives one, else by the attribute the code sets (`data-key`, `data-session`). A locator that matches two elements is a question to answer, not to work around with `.first()`.
 - Click and type as a person does, through Playwright. Never `element.click()` in the page: it skips the mouse, and a real bug hid behind one (#307).
+- Read a position or a size only once it has stopped changing: `settled(page)` waits for the layout to hold still for two frames, then measure once (#298).
+- Measure what fits a narrow window against `windowWidth(page)`, never `innerWidth`. On a phone (`isMobile`), a page that overflows widens `innerWidth` to fit, so a check against it can’t fail. Settings’ tabs ran past a 375 px window behind one.
+- A test that holds what were separate checks makes its expects soft (`expect.soft`), so each reports whichever fails first.
 - Tests that don’t depend on each other stay independent; a story whose steps build on each other is one test with `test.step`s and `expect.soft`.
 - Show a new spec failing on the code without its fix. CI runs a spec a pull request adds or changes ten times, with the events late.
 

@@ -183,8 +183,8 @@ export async function start({
 
   const streams = new Set();
   let offlineUntil = 0;
-  // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The headless checks
-  // run with it (check-all.mjs --lag) to show they wait for the page to hear a change, not for a fixed time.
+  // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
+  // with it in CI to show they wait for the page to hear a change, not for a fixed time.
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   store.subscribe((ev) => {
     const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
