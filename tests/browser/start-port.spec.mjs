@@ -33,6 +33,8 @@ test('#367 the startup error handler is gone after a successful bind', async () 
   const root = await mkdtemp(join(tmpdir(), 'pb-spec-start-listener-'));
   const app = await start({ port: 0, dataDir: join(root, 'data'), fresh: true, demo: true, quiet: true, claudeHome: root });
   try {
+    // listening alone can’t show it: the old handler’s close() turned the server off only after it awaited the rest.
+    expect(app.server.listenerCount('error'), 'no handler of the start’s, which closes Postbox, is left').toBe(0);
     app.server.once('error', () => {});
     app.server.emit('error', Object.assign(new Error('later server error'), { code: 'EIO' }));
     expect(app.server.listening).toBe(true);
