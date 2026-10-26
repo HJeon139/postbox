@@ -2,6 +2,57 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.37.0 (2026-10-26)
+
+### Features
+
+- **remote:** give each host turn's shims a token of their own
+- **remote:** carry a message's attachments in start, onto the host's turn folder
+- **uat:** run agents on other machines over ssh, with the remotehosts scenario
+- **uat:** drive the Hosts tab and Runs on as a person sets a host up
+- **uat:** remote-aware checks and host-mode triggers
+- **remote:** show hosts, where agents run and their remote turns' states; keep host files local
+- **remote:** run a persona's turns on a host from the runtime, with states, resume and restart
+- **remote:** serve Postbox's tools on a host, install its daemon, and run the harnesses there
+- **remote:** run turns on a host through a daemon, a runner and a shim
+- **remote:** lay the foundations for agents on remote hosts
+
+### Fixes
+
+- **agents:** say when /mode changed a running turn at once
+- **remote:** admit a host turn's queued calls one at a time, so its shims can't pass the cap
+- **remote:** drop the POSTBOX_REMOTE_HOME test hook from the host's code
+- **remote:** a host card answered Allow just as the host gave up says it expired, not Allowed
+- **remote:** put an urgent note first in a host call's answer, as on this computer
+- **hosts:** refuse a host destination with spaces around it, rather than trim it
+- **personas:** tie Runs on's errors to its select
+- **hosts:** Remove's confirm says what stays, focuses Cancel first, and hands focus on after
+- **permissions:** say in the panel that an agent on a host reads the host's settings files
+- **remote:** cap a host turn's calls waiting for Postbox, and its record of them
+- **remote:** hear a turn's messages only from the host it runs on
+- **mcp:** export TOOL_DEFS from server/mcp.mjs again
+- **remote:** keep ~/.ssh/config's forwards, X11, LocalCommand and host-key policy off Postbox's ssh
+- **remote:** offer no Always allow on a host turn
+- **uat:** refuse a host where Postbox is installed, unless --replace-host-install
+- **remote:** give a host prompt's stored answer back only to the request it answered
+- **uat:** a run's stop waits until its Chrome and Postbox have exited
+- **checks:** splice values into the host checks' page code through js()
+- **remote:** compare a host's token in constant time, and say why ssh's failure pattern is safe
+- **uat:** click a host field again until it has focus
+- **checks:** drop the test Chrome's background flags now that main emulates focus
+- **remote:** continue a turn on its host as the turn it was, through restarts and Retry
+- **remote:** keep thread.mjs under main's ceiling, and count a host's edits in Work's check
+- **remote:** let a host take its own Postbox back after a dropped ssh
+- **uat:** after Stop on a host, count what's left running in the run's folder
+- **remote:** end a host's connection when ssh exits, and stop what it started
+- **uat:** count a fault only when the host was seen cut off
+- **uat:** give a scenario's permission mode to agents on Claude Code too
+- **uat:** clean hosts up only by confirmed outcomes, on Ctrl-C too
+- **remote:** give a host just added its status, so its card offers Install…
+- **remote:** connect a host when the person installs, retries or reconnects
+- **remote:** keep an answer given as Postbox shuts down, rather than crash
+- **remote:** point an agent on a host at its copy of each attachment
+
 ## 0.36.4 (2026-10-26)
 
 ### Fixes
