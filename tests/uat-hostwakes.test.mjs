@@ -1,0 +1,109 @@
+// tests/uat/e2e/scenarios/hostwakes.md: its triggers and checks (tools/uat/triggers-hostwakes.mjs), on facts shaped as
+// a host-mode run records them. The wake_agent results are the texts Postbox gives: on a host, the shim’s answer as an
+// agent on a host got it on 26 October 2026 (“Sent your message for … to Postbox. Postbox applies it as soon as it’s
+// connected to this host.”); here, busyCard’s refusal (server/side-threads.mjs).
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import { parseScenario } from '../tools/uat/scenario.mjs';
+import { unknownTriggers } from '../tools/uat/triggers.mjs';
+import { HOSTWAKE_CHECKS, HOSTWAKE_TRIGGERS as T } from '../tools/uat/triggers-hostwakes.mjs';
+
+const SENT = 'Sent your message for researcher to Postbox. Postbox applies it as soon as it’s connected to this host.';
+const REFUSED = 'Your message to @critic wasn’t sent: another request is waiting for the person to answer it. Send it again once they have.';
+const T0 = Date.parse('2026-10-26T10:00:00Z');
+const s = (n) => T0 + n * 1000;
+
+/** A wake_agent call in a stream, with its result. */
+const wakeStream = (handle, at, to, result) => ({
+  handle,
+  events: [
+    {
+      type: 'assistant',
+      timestamp: new Date(at).toISOString(),
+      message: { content: [{ type: 'tool_use', id: `tu-${handle}-${at}`, name: 'mcp__postbox__wake_agent', input: { handle: to } }] },
+    },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `tu-${handle}-${at}`, content: [{ type: 'text', text: result }] }] } },
+  ],
+});
+const turn = (handle, at) => ({ kind: 'agent', turnId: `t-${handle}-${at}`, handle, sessionId: `se-${handle}`, status: 'done', at });
+
+/** The run on today’s main: a pair card opened at 10 s; both refused hand-offs lost; the card allowed at 400 s. */
+function facts({ allowedAt = s(400), extraItems = [] } = {}) {
+  return {
+    threads: ['th1'],
+    state: {
+      items: {
+        th1: [
+          turn('researcher', s(1)),
+          { kind: 'hop', from: 'researcher', to: 'critic', at: s(10), pair: 2, status: allowedAt ? 'allowed' : 'open' },
+          turn('critic', s(20)),
+          turn('developer', s(25)),
+          ...(allowedAt ? [{ kind: 'voice', text: 'Allowed: @researcher wakes @critic', at: allowedAt }] : []),
+          ...extraItems,
+        ],
+      },
+    },
+    streams: [wakeStream('critic', s(30), 'researcher', SENT), wakeStream('developer', s(100), 'critic', REFUSED)],
+    hosts: {
+      hosts: [
+        { id: 'h1', label: 'host1' },
+        { id: 'h2', label: 'host2' },
+      ],
+      placement: { researcher: 'host1', critic: 'host2', developer: 'local' },
+    },
+  };
+}
+const check = (id) => HOSTWAKE_CHECKS.find((c) => c.id === id);
+
+test('the scenario parses, and every trigger it names is one the runner knows', () => {
+  const sc = parseScenario(readFileSync(new URL('./uat/e2e/scenarios/hostwakes.md', import.meta.url), 'utf8'));
+  assert.equal(sc.phases.length, 3);
+  assert.deepEqual(unknownTriggers(sc), []);
+});
+
+test('on main: the card opened, the local sender was told in its turn, and the host sender wasn’t', () => {
+  const f = facts();
+  assert.equal(T['pair-card-opened'].run(f).length, 1);
+  assert.match(T['local-wake-told-in-turn'].run(f)[0].evidence, /wasn’t sent/);
+  assert.deepEqual(T['refused-wake-told-in-turn'].run(f), [], 'the host sender started no turn after its refused wake');
+  assert.deepEqual(T['held-wake-delivered-after-allow'].run(f), [], 'no target started a turn after the Allow');
+});
+
+test('on main: the checks report the host sender told “Sent”, and both hand-offs lost', () => {
+  const f = facts();
+  const said = check('host-wake-said-sent').run(f);
+  assert.equal(said.length, 1);
+  assert.match(said[0].title, /@critic on host2 was told its wake of @researcher was sent/);
+  assert.deepEqual(
+    check('refused-wake-lost')
+      .run(f)
+      .map((x) => x.title),
+    ['@critic’s hand-off to @researcher was refused and lost', '@developer’s hand-off to @critic was refused and lost'],
+  );
+});
+
+test('after a fix: a host sender woken by its refusal, and a held wake delivered after the Allow, are seen', () => {
+  // The host sender starts a turn 20 s after its refused wake; the target starts one after the card is allowed.
+  const f = facts({ extraItems: [turn('critic', s(50)), turn('researcher', s(410))] });
+  assert.equal(T['refused-wake-told-in-turn'].run(f).length, 1);
+  assert.match(T['held-wake-delivered-after-allow'].run(f)[0].evidence, /@researcher started a turn after you allowed the card/);
+  assert.deepEqual(
+    check('refused-wake-lost')
+      .run(f)
+      .map((x) => x.title),
+    ['@developer’s hand-off to @critic was refused and lost'],
+  );
+});
+
+test('a wake applied at once is no refusal, even with a card open', () => {
+  const f = facts({ extraItems: [turn('researcher', s(35))] });
+  assert.deepEqual(check('host-wake-said-sent').run(f), []);
+  assert.equal(check('refused-wake-lost').run(f).length, 1, 'only the local one is left');
+});
+
+test('outside host mode, the host check says nothing', () => {
+  assert.deepEqual(check('host-wake-said-sent').run({ ...facts(), hosts: undefined }), []);
+  assert.equal(T['refused-wake-told-in-turn'].recorded({ ...facts(), hosts: undefined }), false);
+});
