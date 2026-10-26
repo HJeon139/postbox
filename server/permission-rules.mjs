@@ -14,29 +14,13 @@ export { chains };
 const TWO_WORD = new Set(['git', 'npm', 'npx', 'pnpm', 'yarn', 'bun', 'node', 'python', 'python3', 'pip', 'cargo', 'go', 'make', 'docker', 'kubectl', 'gh']);
 // Any other command with shell syntax in it (a redirect, a quoted | or ;) only ever gets its exact text allowed.
 const COMPOUND = /[|;&`<>]|\$\(/;
-// Programs that run the command after them: a rule for their name (Bash(env:*)) would allow every command, since
-// Claude Code doesn’t strip them (#281), so they only ever get their exact text allowed.
-const WRAPPERS = new Set([
-  'bash',
-  'sh',
-  'zsh',
-  'dash',
-  'ksh',
-  'fish',
-  'env',
-  'xargs',
-  'sudo',
-  'doas',
-  'su',
-  'nohup',
-  'time',
-  'nice',
-  'timeout',
-  'exec',
-  'command',
-  'builtin',
-  'eval',
-]);
+// Programs that run the command or code after them: a rule for their name (Bash(env:*), Bash(perl:*)) would allow any
+// command or any code, since Claude Code doesn’t strip them (#281), so they only ever get their exact text allowed.
+const WRAPPERS = new Set(
+  'bash sh zsh dash ksh fish env xargs sudo doas su nohup time nice timeout exec command builtin eval perl ruby php lua awk gawk deno ssh osascript pwsh'.split(
+    ' ',
+  ),
+);
 
 const hostOf = (url) => {
   try {
@@ -66,6 +50,9 @@ export function rulesFor(tool, input = {}) {
       const words = cmd.split(/\s+/);
       if (COMPOUND.test(cmd) || WRAPPERS.has(words[0].slice(words[0].lastIndexOf('/') + 1)))
         return { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
+      // A flag as the second word (`node -e`, `python3 -c`, `git -c`) runs what follows it, so a rule for the pair would
+      // allow any code: only the exact text (#281).
+      if (TWO_WORD.has(words[0]) && words[1]?.startsWith('-')) return { once: exact, always: exact, alwaysWords: `exactly “${cmd}”` };
       const prefix = TWO_WORD.has(words[0]) && words[1] && /^[\w:.-]+$/.test(words[1]) ? `${words[0]} ${words[1]}` : words[0];
       return { once: exact, always: `Bash(${prefix}:*)`, alwaysWords: `commands that start with “${prefix}”` };
     }

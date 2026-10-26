@@ -154,6 +154,26 @@ test('#281 a program that runs the command after it gets only its exact text, ne
   for (const command of ["bash -c 'ls'", 'env X=1 ls', 'sudo ls', '/usr/bin/env ls', 'nohup make', 'xargs rm', 'time make', 'nice make'])
     assert.deepEqual(rulesFor('Bash', { command }), { once: `Bash(${command})`, always: `Bash(${command})`, alwaysWords: `exactly “${command}”` }, command);
   assert.equal(rulesFor('Bash', { command: 'make test' }).always, 'Bash(make test:*)', 'other programs keep their broader rule');
+  // So do programs that run code given as an argument, and a flag as the second word (`node -e`, `git -c`), which
+  // would otherwise make Bash(node -e:*): as wide as Bash(bash:*) (claude-ssh-aarch64’s review of this change).
+  for (const command of [
+    "node -e 'x'",
+    "python3 -c 'x'",
+    'python -m pytest -q',
+    'git -c core.pager=sh log',
+    "perl -e 'x'",
+    "ruby -e 'x'",
+    'awk 1 f',
+    'ssh host ls',
+    'npx -y pkg',
+  ])
+    assert.equal(rulesFor('Bash', { command }).always, `Bash(${command})`, command);
+  for (const [command, always] of [
+    ['git status', 'Bash(git status:*)'],
+    ['npm test', 'Bash(npm test:*)'],
+    ['python script.py --x', 'Bash(python script.py:*)'],
+  ])
+    assert.equal(rulesFor('Bash', { command }).always, always, command);
 });
 
 // #309: what real Claude Code 2.1.310 turns (claude -p, default mode) ran on the exact command’s allow rule, and what

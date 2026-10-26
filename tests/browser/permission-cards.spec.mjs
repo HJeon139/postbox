@@ -104,7 +104,7 @@ test('#238 a refused chained command offers no Allow once or Always allow, and s
     /Claude Code checks each part of a chained command \(joined by &&, \|\|, ;, \| or &\) against its rules on its own/,
   );
   await expect(chained.locator('.block-body')).toContainText('ask @tester to run the parts as separate commands');
-  await expect(single.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow commands that start with “python -m”', 'Leave it']);
+  await expect(single.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “python -m pytest -q”', 'Leave it']);
   // The UAT runner reads these cards from the page the same way, for the allow-once scenario’s trigger (readUi).
   const facts = { threads: [thread.id], state: rt.s, ui: { denialCards: (await readUi(page)).denialCards } };
   expect(ALLOW_ONCE_TRIGGERS['chained-refusal-no-allow'].run(facts).length, 'the trigger sees the chained card only').toBe(1);
