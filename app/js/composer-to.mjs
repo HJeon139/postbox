@@ -61,3 +61,21 @@ export function addressLine(threadId, draft, { room, addAt }) {
     room && next ? h('span', 'Replying to ', h('b', `@${next.handle}`), mockMarker(next.agent), next.last ? ' (last speaker)' : '') : null,
   ];
 }
+
+/**
+ * What Enter runs and for whom: a skill picked from the / menu (#67), or a command aimed at one agent with
+ * `@handle /name` (#405); or, when that agent offers no such command or isn’t here, that the line goes as a message.
+ * @param {any} r  resolveCommand’s answer (shared/slash-line.mjs), or { name, hint, named } for a picked skill
+ * @param {string} threadId
+ */
+export function commandHint(r, threadId) {
+  if (r?.missing === 'agent') {
+    const next = nextSpeaker(threadId);
+    return h('span', 'No agent ', h('b', `@${r.handle}`), ' here, so Enter sends this', next ? [' to ', h('b', `@${next.handle}`)] : null, ' as a message');
+  }
+  if (!r?.named) return null;
+  const who = h('b', `@${r.named.handle}`);
+  if (r.missing) return h('span', who, ' has no ', h('span.mono', `/${r.name}`), ' skill or command, so Enter sends this to it as a message');
+  const hint = r.hint ? [' ', h('span.mono.dim', r.hint)] : null;
+  return h('span', 'Enter runs ', h('span.mono', `/${r.name}`), hint, r.own ? ' for ' : ' as ', who, r.own ? '' : '’s turn');
+}

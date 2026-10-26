@@ -43,7 +43,7 @@ const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
     acceptEdits: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
   },
   codex: {
-    auto: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval. Auto and Accept edits have the same Codex permissions.',
+    auto: 'Codex’s Auto: Codex’s own reviewer approves or denies what its sandbox stops, including writes through MCP tools and gh, instead of asking you. Its workspace-write sandbox, with network access off, still applies: this isn’t Run everything.',
     ask: 'Codex uses a read-only sandbox. It requests approval before a command can go beyond it.',
     acceptEdits: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval.',
     bypass: 'Codex runs with full filesystem and network access and no approval prompts.',

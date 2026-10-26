@@ -2,6 +2,36 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.40.3 (2026-10-26)
+
+### Fixes
+
+- **guide:** keep schedule_wake's description as on main
+- **guide:** tell only Codex agents their turn ends when they reply
+- **guide:** tell agents their turn ends when they reply
+
+## 0.40.2 (2026-10-26)
+
+### Fixes
+
+- **composer:** say when @handle /command names no agent here
+- **composer:** run @agent /command for the agent it names
+
+## 0.40.1 (2026-10-26)
+
+### Fixes
+
+- **server:** remove startup error listener after bind
+- **server:** a start() that can't bind its port closes what it opened
+- **needs:** ⌃J tells the transcript about its scroll at once
+
+## 0.40.0 (2026-10-26)
+
+### Features
+
+- **codex:** say on the persona sheet that Auto is Codex's own reviewer
+- **codex:** let Codex's own reviewer decide in Auto, as Claude Code's classifier does
+
 ## 0.39.0 (2026-10-26)
 
 ### Features

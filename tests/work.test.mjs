@@ -324,9 +324,9 @@ test('effort that left nothing lasting is listed apart', () => {
 
 // ── Restore, through the runtime ────────────────────────────────────────────────────────
 
-function runtimeWith(io) {
+function runtimeWith(io, { now = Date.now } = {}) {
   const store = new Store(null);
-  const ledger = new Ledger({ store, io, git: fakeGit([]) });
+  const ledger = new Ledger({ store, io, git: fakeGit([]), now });
   const adapter = {
     name: 'mock',
     next: [],
@@ -367,7 +367,7 @@ const edits = (io, path, next) => async (c) => {
 
 test('a turn’s work is recorded through the runtime, and its reply leads to it', async () => {
   const io = memIo({ '/proj/a.txt': 'one\n', '/home/me/.kiro/agent.json': '{}\n' });
-  const { rt, store, adapter, t } = runtimeWith(io);
+  const { rt, store, adapter, t } = runtimeWith(io, { now: () => 1_000_000 }); // still: a 100 ms turn adds “N s in all” (#386)
   adapter.next.push(async (c) => {
     await edits(io, '/proj/a.txt', 'one\ntwo\n')(c);
     await edits(io, '/home/me/.kiro/agent.json', '{"x":1}\n')(c);
