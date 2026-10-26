@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.40.3 (2026-10-26)
+
+### Fixes
+
+- **guide:** keep schedule_wake's description as on main
+- **guide:** tell only Codex agents their turn ends when they reply
+- **guide:** tell agents their turn ends when they reply
+
 ## 0.40.2 (2026-10-26)
 
 ### Fixes
