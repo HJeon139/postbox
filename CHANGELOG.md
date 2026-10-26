@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.2 (2026-10-26)
+
+### Fixes
+
+- **agy:** write the refusal notes when the hook doesn't check out, and say a call may ask
+- **agy:** stop telling Antigravity agents their calls are refused when the hook asks for them
+
 ## 0.41.1 (2026-10-26)
 
 ### Fixes
