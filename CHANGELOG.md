@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.39.0 (2026-10-26)
+
+### Features
+
+- **adapters:** add Gemini 3.8 Flash 1M context window to cited models
+
+### Fixes
+
+- **adapters:** cite Gemini 3.8 Flash's window, 1,048,576 tokens
+
 ## 0.38.1 (2026-10-26)
 
 ### Fixes
