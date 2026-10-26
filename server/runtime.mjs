@@ -38,9 +38,10 @@ import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unread
 import { bringToConversation } from './bring.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
-import { clip, clipText, fenced, httpError, queuedIn } from './helpers.mjs';
+import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
+import * as queue from './message-queue.mjs';
 import {
   allowAlways,
   alwaysFor,
@@ -58,18 +59,7 @@ import { readCapped } from './read-capped.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
-import {
-  agentWake,
-  archiveForks,
-  bumpSideLink,
-  deliverWake,
-  dropWakes,
-  recordAgentMessage,
-  resolveHop,
-  sideSession,
-  threadPersona,
-  wakeAgent,
-} from './side-threads.mjs';
+import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
@@ -502,16 +492,7 @@ export class Runtime {
   }
 
   postAndDeliver(threadId, { text, attachments }, targets) {
-    const item = this.addItem(threadId, { kind: 'user', text, attachments });
-    // You’re here: the wake limit starts again, on the conversation, where agents’ wakes count (#108, #228).
-    const conv = this.lineage(threadId).at(-1);
-    this.putThread({ ...this.s.threads[conv], hops: 0, pairRuns: null });
-    const refs = this.threadRefs(threadId, text);
-    // An agent you @-mentioned gets no “You woke” line: your message’s mention says so (#114).
-    for (const { se } of targets) {
-      this.deliver(se.id, { kind: 'user', text, attachments, itemId: item.id, ...(refs.length ? { context: refs } : {}) }, { threadId });
-    }
-    return { item };
+    return queue.postAndDeliver(this, threadId, { text, attachments }, targets);
   }
 
   /**
@@ -534,38 +515,21 @@ export class Runtime {
   }
 
   editQueued(threadId, queueId, text) {
-    const t = this.thread(threadId);
-    if (queuedIn(t, queueId).kind === 'wake') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
-    const queue = (t.queue ?? []).map((q) => (q.id === queueId ? { ...q, text: String(text) } : q));
-    this.putThread({ ...t, queue });
+    return queue.editQueued(this, threadId, queueId, text);
   }
 
   cancelQueued(threadId, queueId) {
-    const t = this.thread(threadId);
-    const q = queuedIn(t, queueId);
-    this.putThread({ ...t, queue: (t.queue ?? []).filter((x) => x.id !== queueId) });
-    // A wake you removed: its agent was told it would be answered, so it hears it won’t be (#228).
-    if (q?.kind === 'wake' && this.s.sessions[q.fromSessionId] && !this.s.sessions[q.fromSessionId].archived)
-      this.tellAgent(q.fromSessionId, `The person removed your message (“${clip(q.text, 120)}”) before it was answered. Carry on without it.`);
+    return queue.cancelQueued(this, threadId, queueId);
   }
 
   /** Send now: stops the agent’s current turn and delivers the queued message at once. */
   sendQueuedNow(threadId, queueId) {
-    const t = this.thread(threadId);
-    const q = queuedIn(t, queueId);
-    this.putThread({ ...t, queue: t.queue.filter((x) => x.id !== queueId) });
-    for (const id of q.sessionIds) this.stop(id, { silent: true, jobs: 'keep', sendNow: true });
-    if (q.kind === 'wake') return deliverWake(this, threadId, q);
-    return this.postAndDeliver(
-      threadId,
-      q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
-    );
+    return queue.sendQueuedNow(this, threadId, queueId);
   }
 
   /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
   drainAll() {
-    for (const t of Object.values(this.s.threads)) if (t.queue?.length && !t.deleting) this.drainQueue(t.id);
+    return queue.drainAll(this);
   }
 
   /**
@@ -574,28 +538,7 @@ export class Runtime {
    * your own messages wait for you to see the failure.
    */
   drainQueue(threadId, wakesOnly = false) {
-    const t = this.s.threads[threadId];
-    if (!t?.queue?.length) return;
-    const held = new Set();
-    const go = [];
-    for (const q of t.queue) {
-      const free = !q.sessionIds.some((id) => held.has(id) || this.turns.has(id) || this.exiting.has(id));
-      if (free && (!wakesOnly || q.kind === 'wake')) go.push(q);
-      if (!wakesOnly || q.kind === 'wake') for (const id of q.sessionIds) held.add(id);
-    }
-    if (!go.length) return;
-    this.putThread({ ...t, queue: t.queue.filter((x) => !go.includes(x)) });
-    for (const q of go) this.sendQueued(threadId, q);
-  }
-
-  /** One item from a queue: a wake to its agent, or your message, posted and delivered. */
-  sendQueued(threadId, q) {
-    if (q.kind === 'wake') return deliverWake(this, threadId, q);
-    this.postAndDeliver(
-      threadId,
-      q,
-      q.sessionIds.map((id) => ({ se: this.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
-    );
+    return queue.drainQueue(this, threadId, wakesOnly);
   }
 
   // ── Turns ──────────────────────────────────────────────────────────────────────────
@@ -615,14 +558,14 @@ export class Runtime {
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
-      t.pending.push({ message, summarizeTo, threadId });
+      t.pending.push({ message: { ...message, at: message.at ?? Date.now() }, summarizeTo, threadId });
       return;
     }
     // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
     // held here isn’t read yet: it’s read when the turn it starts begins.
     const exiting = this.exiting.get(sessionId);
     if (exiting) {
-      exiting.held.push({ message, summarizeTo, threadId });
+      exiting.held.push({ message: { ...message, at: message.at ?? Date.now() }, summarizeTo, threadId });
       return;
     }
     // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
@@ -1117,12 +1060,7 @@ export class Runtime {
    * only agents’ wakes waiting there (drain: 'wakes').
    */
   takePending(se, turn, drain) {
-    const next = turn.pending.shift();
-    if (next) {
-      this.deliver(se.id, next.message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
-      const t = this.turns.get(se.id);
-      if (t) t.pending.push(...turn.pending);
-    } else if (drain) this.drainQueues(se.id, turn.threadId, drain === 'wakes');
+    return queue.takePending(this, se, turn, drain);
   }
 
   /**
@@ -1139,10 +1077,7 @@ export class Runtime {
    * whose next message is for it. A session answers in more than one thread now (#110).
    */
   drainQueues(sessionId, threadId, wakesOnly = false) {
-    const ids = new Set(wakesOnly ? [] : [threadId]);
-    for (const t of Object.values(this.s.threads))
-      if (t.queue?.some((q) => q.sessionIds.includes(sessionId) && (!wakesOnly || q.kind === 'wake'))) ids.add(t.id);
-    for (const id of ids) this.drainQueue(id, wakesOnly);
+    return queue.drainQueues(this, sessionId, threadId, wakesOnly);
   }
 
   /**
@@ -1201,8 +1136,7 @@ export class Runtime {
     this.clearSummaryPending(turn.threadId);
     for (const p of turn.pending) {
       if (p.summarizeTo && p.threadId) this.clearSummaryPending(p.threadId);
-      if (p.message.kind === 'agent' && se)
-        this.tellAgent(sessionId, `${p.message.from}’s message came while your turn was stopped: “${clip(p.message.text ?? '', 300)}”`);
+      if (se) queue.rememberStoppedMessages(this, sessionId, p.message);
     }
     // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
     if (!silent && se) dropWakes(this, se);
@@ -1235,7 +1169,8 @@ export class Runtime {
       }
       return;
     }
-    for (const h of held) this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
+    for (const h of ex.silent ? held : queue.batchPending(this, held, se.threadId))
+      this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
     if (!held.length && !ex.silent) this.drainQueues(se.id, turn.threadId);
   }
 
@@ -2207,7 +2142,9 @@ export class Runtime {
    * Sets a persona’s permission mode (intent.md: it reaches running conversations from their next turn). Where the
    * backend can change a running turn (the Agent SDK’s setPermissionMode), its running turns change now too.
    * @param {string} personaId @param {string} mode
-   * @returns {Promise<{ ok: true, now: string[] }>}  now: the handles whose running turn changed at once
+   * @returns {Promise<{ ok: true, now: string[], later: string[] }>}  now: the sessions whose running turn changed at once;
+   *   later: those with a turn running that keeps the mode it started with until it ends (#371), which Stop applies now.
+   *   Sessions, not handles: a persona has one in each conversation it’s in.
    */
   async setPermissionMode(personaId, mode) {
     const p = this.persona(personaId);
@@ -2215,11 +2152,13 @@ export class Runtime {
     if (!PERMISSION_MODES.includes(mode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     if ((p.permissionMode ?? 'auto') !== mode) this.updatePersona(personaId, { permissionMode: mode });
     const now = [];
+    const later = [];
     for (const se of Object.values(this.s.sessions)) {
       const turn = se.personaId === personaId ? this.turns.get(se.id) : null;
-      if (turn?.control?.setPermissionMode && (await turn.control.setPermissionMode(mode))) now.push(se.handle);
+      if (turn?.control?.setPermissionMode && (await turn.control.setPermissionMode(mode))) now.push(se.id);
+      else if (turn) later.push(se.id);
     }
-    return { ok: true, now };
+    return { ok: true, now, later };
   }
 
   // ── Commands in the composer (#67) ─────────────────────────────────────────────────

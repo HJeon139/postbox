@@ -17,7 +17,7 @@ Where you write to agents; it must say who will answer.
 - Scrolled a little above the end, Tab through the last replies: each button, option and link you reach shows above the composer, with its focus ring, never under it or under the Jump to latest pill. A click on a message there doesn’t move the view (#232).
 - A topic or side thread’s composer is as tall as the conversation’s, and with a thread panel open the two boxes sit at the same height, side by side. The hint under each keeps room for two lines, so a shorter hint doesn’t lower its box (#116).
 - / opens the [command menu](command-menu.md), as does the Commands button beside +; a line that starts with ! runs a [command](../transcript/command-item.md) in the conversation’s folder. The hint line says what Enter will do with either. In a topic or side thread’s composer, / and ! don’t run anything: a line that starts with ! says so in the hint before you send it, and goes to the agent as a message ([#104](https://github.com/HJeon139/postbox/issues/104)).
-- Messages sent while an agent is busy are queued with Send now, Edit and remove ([screenshot](../../screenshots/queued-message.png)).
+- Messages sent while an agent is busy stay individually queued with Send now, Edit for your messages, and Remove ([screenshot](../../screenshots/queued-message.png)). When it finishes, compatible messages for it in this conversation are delivered as one turn, with each sender and time (#374). A later post from a waker replaces the older queued request’s context and still reaches its target once, even without a new mention. Removing one item leaves the others; Send now delivers only the selected item first.
 - Messages typed offline are sent when the connection returns.
 - Files attach from + (Upload from computer), by pasting, or by dropping them. A file dropped anywhere in the conversation attaches to its composer; a file dropped on an open topic or side thread panel attaches to the panel’s composer, and only there.
 - A sent image the server shows inline (PNG, JPEG, GIF or WebP) appears as a thumbnail with its name and size ([screenshot](../../screenshots/image-attachment.png)). The thumbnail is a link: click it, or Tab to it and press Enter, and the full image opens in a new tab. Every other file, an SVG included, is a file chip that downloads.
@@ -41,7 +41,7 @@ Where you write to agents; it must say who will answer.
 
 **Pass if:** The hint asks “Did you mean @critic?”, and its click makes the draft “@critic: what’s your biggest concern?”. With the @, it says “Wakes @critic, not @researcher (last speaker)”. Each thread’s composer says “Replying to @x”.
 
-`npx playwright test attachments` covers steps 3 and 4 with a drawn PNG and SVG, `npx playwright test commands` covers step 5, and `node tools/checks/composer-address.mjs` covers step 6.
+`npx playwright test attachments` covers steps 3 and 4 with a drawn PNG and SVG, `npx playwright test commands` covers step 5, and `npx playwright test composer-address` covers step 6.
 
 ## Related
 

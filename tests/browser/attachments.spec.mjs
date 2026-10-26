@@ -10,6 +10,7 @@
 // conversation of its own. Moved from tools/checks/attachments.mjs (#303).
 
 import { expect, test } from '@playwright/test';
+import { escapeRegExp } from '../../shared/regex.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -100,7 +101,7 @@ test('#48 a PNG sent gets a thumbnail from /api/files that opens the full image 
   await link.focus();
   await expect(link, 'the thumbnail link takes keyboard focus').toBeFocused();
   const [tab] = await Promise.all([context.waitForEvent('page'), page.keyboard.press('Enter')]);
-  await expect.poll(() => tab.url(), { message: 'Enter opens the full image' }).toMatch(new RegExp(`${thumb.href}$`));
+  await expect.poll(() => tab.url(), { message: 'Enter opens the full image' }).toMatch(new RegExp(`${escapeRegExp(thumb.href)}$`));
   await tab.close();
   const svg = sent.locator('.att', { hasText: 'diagram.svg' });
   await expect(svg.locator('img'), 'an SVG keeps the file chip').toHaveCount(0);

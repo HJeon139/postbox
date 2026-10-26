@@ -2,6 +2,39 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.36.4 (2026-10-26)
+
+### Fixes
+
+- **security:** run the scan's judge through a symlink, and choose it by what it does
+- **check:** repeat a spec a retarget or merge brings in, and trust only Actions' own pass
+
+## 0.36.3 (2026-10-26)
+
+### Fixes
+
+- **queue:** deliver refreshed context instead of dropping waiting handoffs
+- **queue:** recheck pending batches before starting their turn
+- **queue:** deliver queued wakes together and discard superseded requests
+
+## 0.36.2 (2026-10-26)
+
+### Fixes
+
+- **adapters:** render context unknown on quick panel and initialize sessions at null ctx (#392)
+- **adapters:** clear unknown context and cite Gemini 4 Argon window (#392)
+- **adapters:** align Codex token usage shape and cite model context windows (#392)
+- **adapters:** report active context usage for Antigravity and Codex (#392)
+
+## 0.36.1 (2026-10-25)
+
+### Fixes
+
+- **agents:** match a running turn to its own conversation in the mode note
+- **agents:** say when a running turn keeps its old permission mode
+- **permissions:** let run everything answer only codex's own sandbox asks
+- **permissions:** honor run everything in a turn that's already running
+
 ## 0.36.0 (2026-10-25)
 
 ### Features

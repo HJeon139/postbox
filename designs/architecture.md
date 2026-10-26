@@ -100,7 +100,7 @@ flowchart LR
 | Lint and format | **Biome** (one dependency, no plugins) | Recommended correctness and suspicious-code rules, consistent formatting, no unused code, and a length limit on every file and function (“Module and function size”, below) |
 | Types | **TypeScript in `checkJs` mode** with JSDoc types, `noEmit` | Shapes of events, blocks and store state checked without a build. It starts with `shared/` and `server/`, then the client. |
 | Tests | `node:test` with `--experimental-test-coverage` | Pure modules (catalog, Markdown, events, BM25, store) stay above 90% line coverage |
-| End to end | `tools/shoot-app.mjs` in headless Chrome, plus **axe-core** | Every demo scene renders with no browser errors and no serious or critical accessibility violations |
+| End to end | **Playwright Test** (`tests/browser/`), with **axe-core** in `tests/browser/demo-a11y.spec.mjs` | Every demo scene renders with no exceptions and no accessibility violations against WCAG 2.1 A and AA, at 1280 and 375 px in both themes |
 | Contrast | `tools/contrast.mjs` | Every token pair meets WCAG 2.1 AA in both modes, on the app stage too |
 | Design tokens | `tools/lint-tokens.mjs` | No raw colors outside the token blocks, in CSS or in JavaScript |
 | Safe DOM | `tools/lint-dom.mjs` | `innerHTML` only where a `lint-allow dom:` comment names the source (the Markdown renderer or Postbox’s own templates); no attribute or style names chosen at run time; `target="_blank"` always with `noopener` |
@@ -108,8 +108,7 @@ flowchart LR
 | Copy | `tools/lint-copy.mjs` | American spelling and curly quotes in user-facing strings |
 | Code scanning | **CodeQL**, GitHub’s default setup (CI only) | No pull request adds a high or critical security alert, or a CodeQL error: the `protect-main` ruleset requires its results |
 | Dependencies | `actions/dependency-review-action` (CI only, `.github/workflows/dependency-review.yml`) | No pull request adds or changes a dependency, shipped or development, with a known vulnerability of moderate severity or worse |
-| Prompt surface | `prompt-surface-gate.yml` (CI only), with the `prompt-security-review` environment | No pull request that changes what agents read, as `.github/prompt-surface-paths.txt` lists it, merges without the maintainer’s approval (“Prompt changes are reviewed as rendered text”, below) |
-| Prompt scan | `tools/prompt-surface.mjs` and **SkillSpector**, static rules (CI only, `prompt-surface-scan.yml`) | The rendered prompt diff is in the job summary, and a pull request that adds a high or critical SkillSpector finding fails it. Advice for the reviewer, not a required check |
+| Prompt scan | `tools/prompt-surface.mjs` and **SkillSpector**, static rules (CI only, `prompt-surface-scan.yml`) | The rendered prompt diff is in the job summary for the reviewer, and a pull request that adds a high or critical SkillSpector finding fails it (“Prompt changes are reviewed as rendered text”, below) |
 
 **Conventions**
 - An `.editorconfig` sets 2-space indentation, LF line endings and UTF-8.
@@ -402,7 +401,7 @@ flowchart LR
 - **A new repository:** in a folder that became one during the command (`git init`), its commits are recorded.
 - **Overlaps:** a commit made while commands overlapped in one repository is recorded under each of them, each in its own conversation, marked as overlapping.
 - **Where it compares:** always in the repository the command’s start was read in. Claude Code’s own folder for git (`vcsCwd`) can be left over from an earlier command, so it doesn’t count here.
-- **Tests:** `tests/work-git.test.mjs` uses a repository in memory, and `tools/check-ledger-git.mjs` runs the same cases against real git in temp folders.
+- **Tests:** `tests/work-git.test.mjs` uses a repository in memory, and `tests/process/ledger-git.test.mjs` runs the same cases against real git in temp folders.
 
 **What it doesn’t see yet.** A file a command changes (a formatter, a script, `sed -i`) isn’t listed: only the file tools name files. Comparing `git status` and `git diff --numstat` as a command starts and ends was tried in #226 and set aside. Git answers for the start about 10–30 ms after Postbox hears of the command, and a quick `sed` can finish sooner. #240 takes the snapshot before the command runs, through Claude Code’s PreToolUse hook. A background command still running when its process ends is shown as having said nothing about how it ended (#129). Artifacts (recordings, reports, screenshots) and servers or ports a command started aren’t picked out yet.
 
@@ -462,6 +461,8 @@ flowchart LR
 
 **Decision** (24 October 2026, #303). The headless browser checks move from the repo’s own runner (`tools/cdp.mjs`, `tools/harness.mjs`, `tools/check-all.mjs`) to Playwright Test, `@playwright/test`, a dev dependency at an exact version. New specs go in `tests/browser/*.spec.mjs`. The rest move one check at a time, and `check-all.mjs` runs those not yet moved. `tools/cdp.mjs` stays while the screenshot tools and the UAT driver use it.
 
+**Done** (25 October 2026, #303). Every check is a spec in `tests/browser/`, except the two that drive no browser: they run npm, git and an installed postbox, which `tests/guard.mjs` keeps out of the unit tests, so they’re `node:test` files in `tests/process/`, which `npm run check` runs. `tools/check-all.mjs` and `tools/harness.mjs` are gone, with CI’s two steps for them. The demo’s accessibility gate moved too: `tools/shoot-app.mjs` ran axe-core on every scene it shot and failed CI on a violation, and now `tests/browser/demo-a11y.spec.mjs` plays the same scenes (`play()` in `tools/demo.mjs`) and runs axe on each, in both passes. `tools/shoot-app.mjs` only takes the screenshots, which CI still uploads without failing on them. `tools/cdp.mjs` stays only for the UAT runner (`tools/uat-run.mjs`, `tools/uat/`) and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`).
+
 **What it rests on**
 - **The repo had rebuilt a test runner, and each part it lacked became a flake.**
   - Without focus emulation, one Escape left the page drawing no frames (#277).
@@ -491,15 +492,26 @@ flowchart LR
 - **Web-first assertions** (`expect(locator)…`), `expect.poll` for anything else. A story whose steps build on each other is one test with `test.step`s and `expect.soft`.
 - **Shown failing first.** A ported check is run against code without the fix it guards, as `needs-nav` was against the code before #285 (10 of 11 failed).
 
-**Revisit when** the last check has moved: then `tools/harness.mjs` and `tools/check-all.mjs` go, and the remaining users of `tools/cdp.mjs` are reconsidered.
+**What the move found.** Chromium under Playwright Test isn’t throttled in the background, and the lag pass runs every spec. Both surfaced what the old runner had hidden:
+- the transcript re-anchoring on its own scrolls, so a reply that grew while you read jumped the view (#297, `app/js/thread.mjs`);
+- an app’s waiting card losing its agent’s needs-you at the end of any of that agent’s turns (`server/runtime.mjs`, `tests/apps-needs.test.mjs`);
+- in the specs themselves: a coordinate click into an app’s frame after the frame moved, a page navigated by hash before it had heard the server, and a pointer measured before the hover it causes had drawn. Each is now a helper that waits for the condition (`synced()` before a hash change, `frameLocator` clicks, a `toPass` aim that re-measures).
+
+- a check measuring a phone against `innerWidth`, which a page that overflows widens to fit, so it couldn’t fail: Settings’ tabs ran past a 375 px window behind one (fixed in #375). Specs measure against `windowWidth(page)`.
+
+**Revisit when** the UAT driver or the screenshot tools next need a change `tools/cdp.mjs` can’t make simply: then they move to Playwright’s library too, and `cdp.mjs` goes.
 
 ## 17. Prompt changes are reviewed as rendered text
 
-**Decision** (25 October 2026). What Postbox tells an agent is reviewed as a security change. A pull request that touches a file in `.github/prompt-surface-paths.txt` waits for the maintainer’s approval in the `prompt-security-review` environment. Beside it, CI renders what agents read on both sides and scans it with SkillSpector. SECURITY.md, “Prompt changes”, says how to use it.
+**Decision** (25 October 2026). What Postbox tells an agent is reviewed as a security change. CI renders what agents read on both sides of a pull request and scans it with SkillSpector, and the reviewers, an agent’s adversarial review and the maintainer, read the rendered diff. SECURITY.md, “Prompt changes”, says how to use it.
+
+**Changed** (25 October 2026, the same day). At first a required check held a pull request that touched a file in a list of prompt-surface paths until the maintainer approved it in a GitHub environment, running on `pull_request_target` so a pull request couldn’t change its own verdict. It went, with its path list. In the maintainer’s words, “I don’t see the value in the manual approval step… We will need to improve UAT to protect behavior instead.” What it showed:
+- **The approval couldn’t show the change.** GitHub’s dialog names the environment, not the diff, so approving read as a click after the real review, which an agent and the maintainer did on the rendered text anyway.
+- **It cost more than it caught.** In its first day it held every workflow, AGENTS.md and persona change for a click. An invalid edit to it (#391) blocked every pull request until #394, and a merge past it needed a ruleset bypass.
 
 **What it rests on**
 - **The text an agent gets isn’t in any one file.** The guide (`server/adapters/guide.mjs`) fills in limits, tool rules and session facts, and each backend hands it over in its own way: Claude Code appends it to the system prompt, Codex sets it as developer instructions, Antigravity wraps it in a rules file. `tools/prompt-surface.mjs` renders each persona’s whole guide, the MCP tool descriptions and the repo’s agent instructions, so a reviewer reads the result, not the code that builds it.
-- **A pull request can’t judge itself.** The gate runs on `pull_request_target`: its workflow, path list and matcher come from `main`, and it never checks out the pull request. The scan runs on `pull_request`, untrusted and without secrets, so it’s advice.
+- **The scan can’t judge a pull request by itself.** It runs on `pull_request`, untrusted and without secrets, and a pull request can edit it. It’s the reviewer’s aid.
 - **SkillSpector catches the generic attacks and misses Postbox’s own.** NVIDIA’s scanner (Apache-2.0, a CI tool, never a Postbox dependency) runs regular expressions, YARA rules and Python analysis; it doesn’t read JavaScript, which is why it scans the rendered text. Run with `--no-llm` on 14 threats seeded one at a time into a persona and the tool descriptions, it reported 9 as high: an override, a directive in an HTML comment, exfiltration to a URL, a hidden `.env`, pipe-to-shell, credential paths, anti-refusal, bidirectional-text hiding and a poisoned tool description. It missed all 5 that reword a rule of Postbox’s: skipping the review block, skipping the confirm block, treating web pages and files as instructions, approving its own refused tool call, and persistence through `~/.zshrc`. Its own exit code stayed 0 for 8 of the 9 it caught, so the job fails on new high or critical findings against the base instead.
 - **On `main` it reports 7 medium findings** and nothing higher: `npx @slidev/cli` without a version in the guide and in Antigravity’s copy of it, `npx playwright` three times in the repo’s own instructions, and “without asking” in two old session prompts. They’re the baseline a pull request is compared with.
 

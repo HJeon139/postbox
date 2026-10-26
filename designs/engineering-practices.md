@@ -16,29 +16,22 @@ It runs, in order:
 3. `lint:project`: Postbox’s own lints for design tokens, DOM safety and copy.
 4. `check:contrast`: every color pair in both themes.
 5. `test`: `node:test`, with the network and process spawning blocked.
+6. `test:process`: the few `node:test` tests that must run npm, git or an installed postbox (`tests/process/`).
 
 **At review,** the reviewing session runs these over the merged UI of each wave:
-- `node tools/shoot-app.mjs`: it plays the demo, takes screenshots and runs axe on every scene. It must end with “Accessibility (axe-core): no violations.”
+- `node tools/shoot-app.mjs`: it plays the demo and screenshots every scene. axe on those scenes is a spec, `tests/browser/demo-a11y.spec.mjs`, which every pass of `npx playwright test` runs.
 - `node tools/shoot-uat.mjs`: it refreshes the UAT doc screenshots.
 - The end-to-end UAT ([tests/uat/e2e](../tests/uat/e2e/README.md)), which runs real agents and costs real usage.
 
-The browser half of the gate:
-
-```bash
-npm run check:browser
-```
-
-It runs every headless Chrome check (`tools/check-*.mjs` and `tools/checks/*.mjs`, found by name) in parallel, 4 at a time. Each check gets its own free ports and a timeout that kills it and its Chrome. The run prints each check’s counts, time and first failure, and keeps each full log. CI runs it on every pull request. `node tools/check-all.mjs shell header` runs only the checks whose name has one of those in it. `--lag 300` holds each server’s events back 300 ms, as a busy runner can: a check that passes with it waits for the page to hear a change, not for a fixed time.
-
-A change that’s visible in the UI also gets a browser spec from whoever writes it: Playwright Test, in `tests/browser/*.spec.mjs` (architecture.md, “Browser checks on Playwright Test”, #303). Each spec file starts its own Postbox with `startPostbox()` from `tests/browser/postbox.mjs` and calls `failOnPageErrors(test)`. It waits with web-first assertions or `expect.poll`, never for a fixed time: Biome’s `no-fixed-waits` rule fails `npm run check` on `page.waitForTimeout` or `setTimeout` in a spec.
+The browser half of the gate is the specs. A change that’s visible in the UI also gets a browser spec from whoever writes it: Playwright Test, in `tests/browser/*.spec.mjs` (architecture.md, “Browser checks on Playwright Test”, #303). Each spec file starts its own Postbox with `startPostbox()` from `tests/browser/postbox.mjs` and calls `failOnPageErrors(test)`. It waits with web-first assertions or `expect.poll`, never for a fixed time: Biome’s `no-fixed-waits` rule fails `npm run check` on `page.waitForTimeout` or `setTimeout` in a spec.
 
 ```bash
 npx playwright test                               # every spec
 POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events late, as CI’s second pass
-npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs a new or changed one
+npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs one a pull request adds or edits
 ```
 
-The checks not yet moved stay in `tools/check-*.mjs` and `tools/checks/*.mjs`. They report through `tools/harness.mjs`, with `ports()` for `PB_PORT` and `PB_CHROME_PORT`, `record()` for each case, and `finish()` at the end, so the run reads their results, not their text.
+CI runs every spec on each pull request, normally and with the server’s events late, and a spec the pull request adds or changes ten times more with the events late. There are no retries: one failure fails the run.
 
 ## Node
 
@@ -147,7 +140,7 @@ The target is WCAG 2.1 AA, with zero axe violations in every demo scene.
 - Don’t use `aria-pressed` on radios, an unlabeled field, or a scroll container you can’t reach by keyboard. axe caught all three.
 
 **Enforced by:**
-- axe in `tools/shoot-app.mjs`.
+- axe on every demo scene, in `tests/browser/demo-a11y.spec.mjs`.
 - `npm run check:contrast`.
 - `lint-tokens`, which flags raw colors.
 - The UAT’s keyboard and focus steps.

@@ -4,7 +4,7 @@
 //
 //   npx playwright test                             every spec
 //   POSTBOX_STREAM_LAG=300 npx playwright test       every server holds its events back 300 ms, as a busy runner can
-//   npx playwright test --only-changed=origin/main --repeat-each=10   a new or changed spec, ten times
+//   npx playwright test needs-nav --repeat-each=10   a spec ten times, as CI runs one a pull request adds or edits
 
 import { defineConfig, devices } from '@playwright/test';
 
@@ -18,12 +18,12 @@ export default defineConfig({
   forbidOnly: CI,
   failOnFlakyTests: CI,
   retries: 0,
-  // 4 at a time on CI’s 4-core runner, as check-all measured (#174).
+  // 4 at a time on CI’s 4-core runner, as the old headless runner measured there (#174).
   workers: CI ? 4 : undefined,
   timeout: 30_000,
   expect: { timeout: 5_000 },
-  // Beside check-all’s logs, one file per pass. PB_REPORT names another, for a pass that shares one of these
-  // settings, as CI’s ten-times pass shares the lag pass’s (#317).
+  // In check-logs/, one file per pass. PB_REPORT names another, for a pass that shares one of these settings, as
+  // CI’s ten-times pass shares the lag pass’s (#317).
   reporter: CI
     ? [['list'], ['json', { outputFile: process.env.PB_REPORT ?? `check-logs/${process.env.POSTBOX_STREAM_LAG ? 'lag/' : ''}playwright.json` }]]
     : 'list',
