@@ -45,7 +45,7 @@ test('Ask me prompts for raw, plugin, and built-in MCP tools while Postbox tools
   });
 });
 
-test('Auto approves enabled third-party MCP tools without a card', async () => {
+test('Auto sends no MCP setting, so Codex’s own reviewer and policy decide, and lists no servers', async () => {
   const permissionMode = 'auto';
   const seen = [];
   const adapter = new CodexAdapter({
@@ -69,10 +69,8 @@ test('Auto approves enabled third-party MCP tools without a card', async () => {
 
   await adapter.deliver({}, { kind: 'user', text: 'Search.' }, ctx);
 
-  assert.ok(seen.some((request) => request.method === 'mcpServerStatus/list'));
-  assert.deepEqual(seen.find((request) => request.method === 'thread/start').params.config, {
-    'mcp_servers.builder-mcp.default_tools_approval_mode': 'approve',
-  });
+  assert.ok(!seen.some((request) => request.method === 'mcpServerStatus/list'), 'Auto makes no inventory call, so it can’t fail on one');
+  assert.equal(seen.find((request) => request.method === 'thread/start').params.config, undefined);
 });
 
 test('Accept edits prompts for every third-party MCP tool', async () => {

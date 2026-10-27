@@ -6,12 +6,13 @@ import { POSTBOX_SERVER } from './setup.mjs';
 export const postboxMcpApprovalArgs = () => ['-c', `mcp_servers.${POSTBOX_SERVER}.default_tools_approval_mode="approve"`];
 
 /**
- * Apply MCP tool approval independently from command approval. Ask me and Accept edits prompt; Auto approves every
+ * Apply MCP tool approval independently from command approval. Ask me and Accept edits prompt; Auto and Run everything
  * enabled server. Run everything keeps Codex’s own policy. Raw, plugin, and hosted-app servers have separate paths.
  * @param {(method: string, params?: any) => Promise<any>} request @param {string} mode
  */
 export async function codexMcpApprovalConfig(request, mode) {
-  const approval = mode === 'auto' ? 'approve' : mode === 'ask' || mode === 'acceptEdits' ? 'prompt' : null;
+  // Auto and Run everything send nothing: in Auto, Codex's own reviewer and policy decide, as the maintainer chose (#415).
+  const approval = mode === 'ask' || mode === 'acceptEdits' ? 'prompt' : null;
   if (!approval) return undefined;
   const config = {};
   const cursors = new Set();
