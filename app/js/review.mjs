@@ -9,7 +9,7 @@ import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
 import { reviewersOf, threadBox as threadsFor } from './review-threads.mjs';
-import { fullScreen, seg, setView, viewOf } from './review-view.mjs';
+import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs';
 
 // ── Review ──────────────────────────────────────────────────────────────────────────────
 // Markdown is read in Preview, and commented on by selection there or line by line in Lines (#179); code is
@@ -72,8 +72,8 @@ export function renderReview(b, item, ctx, kit) {
       ),
     );
   if (hasDiff && mode === 'lines') {
-    const diff = since !== null ? 'Changes since you looked' : `Diff v${(b.revision ?? 2) - 1} → v${b.revision ?? 2}`;
-    const plain = since !== null ? 'Current' : `v${b.revision ?? 2}`;
+    const diff = since !== null ? 'Changes since you looked' : `Diff v${revisionOf(item, b) - 1} → v${revisionOf(item, b)}`;
+    const plain = since !== null ? 'Current' : `v${revisionOf(item, b)}`;
     views.push(
       seg(
         'Changes',
@@ -88,7 +88,7 @@ export function renderReview(b, item, ctx, kit) {
         },
       ),
     );
-  } else views.push(h('span.small.dim', `v${b.revision ?? 1}`));
+  } else views.push(h('span.small.dim', `v${revisionOf(item, b)}`));
   const full = b.format === 'app' ? null : fullScreen(item.id, rerender);
   const [hd, titleId] = head(b, [...views, full?.btn], `Review · ${{ markdown: 'Markdown', code: 'Code', app: 'App' }[b.format]}`);
   hd.querySelector('.title').classList.add('mono');

@@ -178,3 +178,8 @@ test.describe('at 375 px', () => {
     });
   });
 });
+
+test('#436 Kiro host prompts stay out of the conversation', async ({ page }) => {
+  await open(page, s.room);
+  await expect(page.getByRole('note', { name: 'Other users on the host can read this message' })).toHaveCount(0);
+});

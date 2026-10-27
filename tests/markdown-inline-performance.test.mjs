@@ -14,3 +14,18 @@ test('forty thousand unclosed image targets render in under one second', () => {
   assert.equal(rendered, source);
   assert.ok(elapsed < 1_000, `rendering took ${Math.round(elapsed)} ms`);
 });
+
+test('sixty-six thousand unclosed LaTeX math delimiters render in under one second', () => {
+  const source = '\\(a'.repeat(66_667);
+  const started = performance.now();
+  const rendered = inline(source, {});
+  const elapsed = performance.now() - started;
+
+  assert.equal(rendered, '(a'.repeat(66_667));
+  assert.ok(elapsed < 1_000, `rendering took ${Math.round(elapsed)} ms`);
+});
+
+test('an escaped backslash before a LaTeX closer stays text, not a malformed formula', () => {
+  assert.equal(inline(String.raw`\(a\\)`, {}), String.raw`(a\)`);
+  assert.equal(inline(String.raw`\[a\\]`, {}), String.raw`[a\]`);
+});
