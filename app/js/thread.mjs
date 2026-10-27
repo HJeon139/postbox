@@ -7,12 +7,12 @@ import { resolveCommand } from '/shared/slash-line.mjs';
 import { activityLabel, stepTree } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
+import { paintOfflineQueue } from './agent-queue.mjs';
 import { subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
-import { queueBox } from './composer-queue.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
@@ -1096,8 +1096,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       );
   const action = h('button.btn', { type: 'button' });
   const att = h('div.attachments', { role: 'group', 'aria-label': 'Attachments' });
-  const queued = queueBox(threadId, () => paint());
-  const queue = queued.el;
+  const queue = h('div.outbox');
   // Stop’s ask about background jobs (#129), one row per agent, until you answer it.
   const asks = h('div.outbox');
   /** @type {Map<string, { jobs: number, text: string, turnId?: string }>} asks the server returned before its session event arrives */
@@ -1729,8 +1728,8 @@ export function mountComposer(threadId, { side = false } = {}) {
       : side
         ? 'Join this side thread…'
         : `${members.length > 1 ? 'Reply to' : 'Message'} @${(last ?? members[0])?.handle ?? 'an agent'}`;
-    queued.paint(
-      t.queue ?? [],
+    paintOfflineQueue(
+      queue,
       outbox.filter((x) => x.threadId === threadId),
     );
     // An ask about a turn that has since ended goes with it.

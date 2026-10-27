@@ -1,8 +1,8 @@
 // The composer’s queued messages (#228): yours, waiting for a busy agent, with Send now, Edit and Remove, and another
-// agent’s wake waiting for its agent, which says whose and has no Edit. Larger queues collapse so the conversation stays usable (#427).
+// agent’s wake waiting for its agent, which says whose and has no Edit.
 
 import { api, S } from './client.mjs';
-import { h, icon, syncList } from './dom.mjs';
+import { h, icon } from './dom.mjs';
 import { toast } from './ui.mjs';
 
 /**
@@ -41,6 +41,7 @@ export function queuedRow(q, threadId, paint) {
       {
         type: 'button',
         onclick: () => {
+          // The row may have been refreshed in place, so mark the node it’s in now, not the one built here.
           const live = text.closest('.queued');
           const done = () => {
             delete live.dataset.editing;
@@ -72,45 +73,4 @@ export function queuedRow(q, threadId, paint) {
     ),
   );
   return row;
-}
-
-/** A composer queue that keeps individual rows, but collapses four or more behind one summary. */
-export function queueBox(threadId, repaint) {
-  const list = h('div.queue-list');
-  const summary = h('button.btn.sm.ghost.queue-summary', { type: 'button', 'aria-expanded': 'false' });
-  const el = h('div.outbox', summary, list);
-  let expanded = false;
-  summary.onclick = () => {
-    expanded = !expanded;
-    summary.setAttribute('aria-expanded', String(expanded));
-    list.hidden = !expanded;
-    summary.textContent = `${summary.dataset.count} queued messages · ${expanded ? 'Hide' : 'Show'}`;
-  };
-  return {
-    el,
-    paint(items, offline) {
-      syncList(
-        list,
-        items,
-        (q) => q.id,
-        (q) => asWake(queuedRow(q, threadId, repaint), q),
-        (node, q) => {
-          if (node.dataset.editing) return;
-          const fresh = asWake(queuedRow(q, threadId, repaint), q);
-          node.replaceChildren(...fresh.childNodes);
-        },
-      );
-      for (const message of offline)
-        list.append(h('div.queued', icon('clock', 'dim'), h('span.q-text', h('span.small.dim', 'Waiting for the connection'), h('br'), message.text)));
-      const count = items.length + offline.length;
-      const collapsible = count > 3;
-      summary.hidden = !collapsible;
-      summary.dataset.count = String(count);
-      summary.textContent = `${count} queued messages · ${expanded ? 'Hide' : 'Show'}`;
-      list.classList.toggle('bounded', collapsible);
-      list.hidden = collapsible && !expanded;
-      if (!collapsible) expanded = false;
-      summary.setAttribute('aria-expanded', String(collapsible && expanded));
-    },
-  };
 }

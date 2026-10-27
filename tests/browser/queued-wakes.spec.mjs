@@ -52,7 +52,18 @@ async function busyRoom(page) {
   return r;
 }
 
-const queued = (page, text) => page.locator('.outbox .queued').filter({ hasText: text });
+const queued = (page, text) => page.locator('.agent-queue-row').filter({ has: page.getByText(text, { exact: true }) });
+const mail = (page, r) =>
+  page
+    .locator('.agent-row')
+    .filter({ hasText: `@${r.worker.handle}` })
+    .getByRole('button', { name: /queued for/ });
+const openQueue = async (page, r) => {
+  await mail(page, r).click();
+  const dialog = page.locator('.dialog').filter({ hasText: `queued for @${r.worker.handle}` });
+  await expect(dialog).toBeVisible();
+  return dialog;
+};
 const turnsFor = (r) => calls.filter((call) => call.sessionId === r.worker.id);
 const idle = (r) => expect.poll(() => app.rt.turns.has(r.worker.id) || app.rt.exiting.has(r.worker.id)).toBe(false);
 
@@ -60,12 +71,16 @@ test('three individual queued wakes become one reply when the agent finishes', a
   const r = await busyRoom(page);
   for (const [index, sender] of r.senders.entries()) app.rt.agentWake(sender.id, r.worker.handle, `Question ${index + 1}`);
   await synced(page, app);
-  await expect(page.locator('.outbox .queued')).toHaveCount(3);
-  for (const sender of r.senders) await expect(page.locator('.outbox .queued').filter({ hasText: `@${sender.handle}’s message` })).toHaveCount(1);
+  await expect(mail(page, r)).toHaveAccessibleName(`3 messages queued for @${r.worker.handle}`);
+  await expect(page.locator('.composer .queued')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const dialog = await openQueue(page, r);
+  await expect(dialog.locator('.agent-queue-row')).toHaveCount(3);
+  for (const sender of r.senders) await expect(dialog.locator('.agent-queue-row').filter({ hasText: `From @${sender.handle}` })).toHaveCount(1);
   releases.get(r.worker.id)();
   await idle(r);
   await synced(page, app);
-  await expect(page.locator('.outbox .queued')).toHaveCount(0);
+  await expect(mail(page, r)).toBeHidden();
   await expect(page.getByText('Answered 3 queued messages.', { exact: true })).toBeVisible();
   expect(turnsFor(r)).toHaveLength(2);
   expect(turnsFor(r)[1].message.messages.map((message) => message.text)).toEqual(['Question 1', 'Question 2', 'Question 3']);
@@ -76,12 +91,13 @@ test('Remove and Send now still act on one queued item at a time', async ({ page
   for (const [index, text] of ['Remove only this', 'Send only this now', 'Leave this queued'].entries())
     app.rt.agentWake(r.senders[index].id, r.worker.handle, text);
   await synced(page, app);
+  await openQueue(page, r);
   await queued(page, 'Remove only this').getByRole('button', { name: 'Remove the queued message', exact: true }).click();
-  await expect(page.locator('.outbox .queued')).toHaveCount(2);
+  await expect(mail(page, r)).toHaveAccessibleName(`2 messages queued for @${r.worker.handle}`);
   await queued(page, 'Send only this now').getByRole('button', { name: 'Send now', exact: true }).click();
   await idle(r);
   await synced(page, app);
-  await expect(page.locator('.outbox .queued')).toHaveCount(0);
+  await expect(mail(page, r)).toBeHidden();
   expect(
     turnsFor(r)
       .slice(1)
@@ -95,7 +111,7 @@ test('a newer request replaces an older queued wake when the batch starts', asyn
   app.rt.agentWake(r.senders[0].id, r.worker.handle, 'Review the current revision');
   app.rt.agentWake(r.senders[1].id, r.worker.handle, 'Check the tests too');
   await synced(page, app);
-  await expect(page.locator('.outbox .queued')).toHaveCount(3);
+  await expect(mail(page, r)).toHaveAccessibleName(`3 messages queued for @${r.worker.handle}`);
   releases.get(r.worker.id)();
   await idle(r);
   await synced(page, app);
@@ -116,40 +132,55 @@ test('an unaddressed newer post reaches the waiting target exactly once', async 
     status: 'done',
   });
   await synced(page, app);
-  await expect(page.locator('.outbox .queued')).toHaveCount(1);
+  await expect(mail(page, r)).toHaveAccessibleName(`1 message queued for @${r.worker.handle}`);
   releases.get(r.worker.id)();
   await idle(r);
   await synced(page, app);
-  await expect(page.locator('.outbox .queued')).toHaveCount(0);
+  await expect(mail(page, r)).toBeHidden();
   await expect(page.getByText('Answered 1 queued messages.', { exact: true })).toBeVisible();
   expect(turnsFor(r)).toHaveLength(2);
   expect(turnsFor(r)[1].message.text).toBe(newer.text);
   expect(turnsFor(r)[1].message.itemId).toBe(newer.id);
 });
 
-test('#427 larger queues collapse, expand within a bound, and update while collapsed', async ({ page }) => {
+test('#427 ten queued messages stay out of the composer and edit in the agent’s bounded mail view', async ({ page }) => {
   const r = await busyRoom(page);
   for (let index = 0; index < 10; index++) app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Queued question ${index + 1}` });
   await synced(page, app);
-  const summary = page.locator('.queue-summary');
-  await expect(summary).toHaveAccessibleName('10 queued messages · Show');
-  await expect(summary).toBeVisible();
-  await expect(page.locator('.queue-list')).toBeHidden();
+  await expect(mail(page, r)).toHaveAccessibleName(`10 messages queued for @${r.worker.handle}`);
+  await expect(page.locator('.composer .queued')).toHaveCount(0);
   for (const width of [1280, 375]) {
     await page.setViewportSize({ width, height: 800 });
     const composer = await page.locator('.composer').boundingBox();
-    expect(composer.height, `${width} px composer height`).toBeLessThan(240);
+    expect(composer.height, `${width} px composer height`).toBeLessThan(150);
   }
-  await summary.focus();
-  await page.keyboard.press('Enter');
-  await expect(summary).toHaveAccessibleName('10 queued messages · Hide');
-  await expect(page.locator('.queue-list .queued')).toHaveCount(10);
-  const list = await page.locator('.queue-list').boundingBox();
-  expect(list.height).toBeLessThanOrEqual(360);
-  await page.keyboard.press('Enter');
-  app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Queued question 11` });
-  await synced(page, app);
-  await expect(summary).toHaveAccessibleName('11 queued messages · Show');
-  await expect(summary).toBeFocused();
-  await expect(page.locator('.queue-list')).toBeHidden();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const dialog = await openQueue(page, r);
+  await expect(dialog.locator('.agent-queue-row')).toHaveCount(10);
+  const list = await dialog.locator('.agent-queue-list').boundingBox();
+  expect(list.height).toBeLessThanOrEqual(480);
+  const row = queued(page, `@${r.worker.handle} Queued question 1`);
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  const editor = row.getByRole('textbox', { name: 'Edit the queued message' });
+  await expect(editor).toBeFocused();
+  await editor.fill('A longer revised question\nwith its second line.');
+  await row.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(queued(page, 'A longer revised question\nwith its second line.')).toBeVisible();
+  await expect(mail(page, r)).toHaveAccessibleName(`10 messages queued for @${r.worker.handle}`);
+});
+
+test('#427 offline rows replace their prior paint and disappear after reconnecting', async ({ page }) => {
+  await page.goto(app.origin);
+  const counts = await page.evaluate(async () => {
+    const { paintOfflineQueue } = await import('/app/js/agent-queue.mjs');
+    const box = document.createElement('div');
+    const message = { threadId: 't1', text: 'Saved while offline', attachments: [] };
+    paintOfflineQueue(box, [message]);
+    const first = box.children.length;
+    paintOfflineQueue(box, [message]);
+    const second = box.children.length;
+    paintOfflineQueue(box, []);
+    return [first, second, box.children.length];
+  });
+  expect(counts).toEqual([1, 1, 0]);
 });
