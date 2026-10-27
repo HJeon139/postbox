@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.8 (2026-10-27)
+
+### Fixes
+
+- **kiro:** send remote prompts through stdin
+- **kiro:** move host privacy warning to setup
+- **reactions:** show an agent-only reaction count
+- **shell:** mark the current project in places
+
 ## 0.41.7 (2026-10-27)
 
 ### Fixes
