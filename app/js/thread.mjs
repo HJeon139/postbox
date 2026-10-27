@@ -11,6 +11,7 @@ import { subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
+import { fitTextarea } from './composer-fit.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { asWake, queuedRow } from './composer-queue.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
@@ -1131,10 +1132,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     },
   });
 
-  const autosize = () => {
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(200, ta.scrollHeight)}px`;
-  };
+  const autosize = () => fitTextarea(ta);
   const save = () => {
     try {
       localStorage.setItem(key, ta.value);
