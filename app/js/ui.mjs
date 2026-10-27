@@ -4,6 +4,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { spokenSentences } from '/shared/text.mjs';
 import { $, $$, h, icon, trusted } from './dom.mjs';
+import { addToast, cleanupToast, removeToast } from './toast-stack.mjs';
 import { rememberWork } from './work-memory.mjs';
 
 export { initHoverCards } from './hovercards.mjs';
@@ -104,9 +105,7 @@ export function setPaneFull(kind, { turn = null, at = null } = {}) {
 
 export function toast({ title, text = '', ring = null, action = null, level = 'info', timeout = 8000 }) {
   const box = $('#toasts');
-  const close = () => {
-    el.remove();
-  };
+  const close = () => removeToast(el);
   const el = h(
     'div.toast',
     { class: level === 'info' ? 'plain' : '', role: level === 'blocking' ? 'alert' : 'status' },
@@ -126,17 +125,15 @@ export function toast({ title, text = '', ring = null, action = null, level = 'i
       : null,
     h('button.btn.icon.sm.ghost', { 'aria-label': 'Dismiss', onclick: close }, icon('x')),
   );
-  box.prepend(el);
-  while (box.children.length > 3) box.lastChild.remove();
+  addToast(box, el);
   if (timeout) setTimeout(close, timeout);
   return close;
 }
 
 /** Undo toast with a visible countdown. */
 export function undoToast({ text, until, onUndo }) {
-  // Each deletion keeps its own Undo; only the oldest notice goes when a fourth arrives.
+  // Each deletion keeps its own Undo; the shared stack evicts ordinary notices first.
   const box = $('#toasts');
-  while (box.children.length >= 3) box.lastElementChild.remove();
   const bar = h('i', { style: { width: '100%' } });
   const label = h('span');
   const el = h(
@@ -148,8 +145,7 @@ export function undoToast({ text, until, onUndo }) {
       'button.btn.sm',
       {
         onclick: () => {
-          stop();
-          el.remove();
+          removeToast(el);
           onUndo();
         },
       },
@@ -157,18 +153,16 @@ export function undoToast({ text, until, onUndo }) {
       label,
     ),
   );
-  box.prepend(el);
   const tick = () => {
     const left = Math.max(0, until - Date.now());
     bar.style.width = `${(left / 10000) * 100}%`;
     label.textContent = ` · ${Math.ceil(left / 1000)} s`;
-    if (!left) {
-      stop();
-      el.remove();
-    }
+    if (!left) removeToast(el);
   };
   const t = setInterval(tick, 250);
   const stop = () => clearInterval(t);
+  cleanupToast(el, stop);
+  addToast(box, el);
   tick();
 }
 
