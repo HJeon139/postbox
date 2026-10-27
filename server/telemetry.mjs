@@ -5,8 +5,9 @@
 // (thread.recording), which only the header shows; no agent reads it. The whole folder goes with the conversation (after
 // Undo’s window); recording/ goes at once with Delete recordings, and each stream 30 days after it was last written.
 
-import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import { setStreamTap } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
@@ -254,17 +255,32 @@ export { sweep };
 /** Whether a session’s turn is still running, so its stream isn’t whole yet (R10). */
 export const running = (rt, t) => rt.turns.get(t.sessionId)?.id === t.turnId;
 
-/** A JSON Lines file’s values, skipping lines that don’t parse; empty if it’s missing. */
-export function readLines(file) {
-  if (!existsSync(file)) return [];
-  return readFileSync(file, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .flatMap((l) => {
-      try {
-        return [JSON.parse(l)];
-      } catch {
-        return [];
-      }
-    });
+/** A JSON Lines file’s values, skipping lines that don’t parse; empty if it’s missing. Reads in chunks, never one size-limited string (#452). */
+export function readLines(file, io = { existsSync, openSync, readSync, closeSync }) {
+  if (!io.existsSync(file)) return [];
+  const values = [];
+  const decoder = new StringDecoder('utf8');
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  const fd = io.openSync(file, 'r');
+  let pending = '';
+  try {
+    for (let bytes = io.readSync(fd, buffer, 0, buffer.length, null); bytes; bytes = io.readSync(fd, buffer, 0, buffer.length, null)) {
+      const parts = (pending + decoder.write(buffer.subarray(0, bytes))).split('\n');
+      pending = parts.pop() ?? '';
+      for (const line of parts) parseLine(line, values);
+    }
+    parseLine(pending + decoder.end(), values);
+  } finally {
+    io.closeSync(fd);
+  }
+  return values;
+}
+
+function parseLine(line, values) {
+  if (!line) return;
+  try {
+    values.push(JSON.parse(line));
+  } catch {
+    /* a torn or malformed telemetry line is a gap, as before */
+  }
 }

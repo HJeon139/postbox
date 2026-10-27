@@ -821,7 +821,7 @@ export class Runtime {
         };
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
-        if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+        if (turn.first) rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: step });
         const s = se();
         // A thought or a subagent’s narration is in the list, but it isn’t a tool call.
         if (kind === 'thought' || kind === 'said') return;
@@ -1350,7 +1350,8 @@ export class Runtime {
     if (!Array.isArray(steps)) return;
     const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
     if (turn) turn.steps = next;
-    if (job.itemId) this.patchItem(job.threadId, job.itemId, { activity: { steps: next } });
+    const step = job.itemId ? next.find((st) => st.id === job.toolUseId) : null;
+    if (step) this.store.emit('item.patch', { threadId: job.threadId, id: job.itemId, activityStep: step });
   }
 
   /** Jobs nothing reported the end of went with their CLI (SIGKILL, or a crash), unless Postbox kept them running. */
