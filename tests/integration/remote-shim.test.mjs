@@ -84,13 +84,37 @@ test('server/discover and any other unknown method get method not found (-32601)
 test('a queued tool returns at once, and the daemon receives its call', async (t) => {
   const { shim, daemon } = await setup(t);
   await daemon.connected();
-  const id = shim.tool('show_block', { block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one' } });
+  const id = shim.tool('show_block', { block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one', options: [{ id: 'a', label: 'A' }] } });
   const res = await shim.response(id);
   assert.match(textOf(res), /Sent block pick to Postbox/);
   assert.equal(res.result.isError, undefined);
   const call = await daemon.next('call');
   assert.equal(call.name, 'show_block');
   assert.equal(call.args.block.id, 'pick');
+});
+
+// #455: an invalid block was answered “Sent block …”, and the agent heard of the rejection only a turn later.
+test('#455 an invalid block is refused in the call, with the catalog’s errors, and nothing goes to the daemon', async (t) => {
+  const { shim, daemon } = await setup(t);
+  await daemon.connected();
+  const block = {
+    id: 'plan',
+    type: 'form',
+    version: 1,
+    fallback: 'Pick a size.',
+    fields: [{ id: 'size', label: 'Size', kind: 'select', options: ['S', 'M'] }],
+  };
+  const res = await shim.response(shim.tool('show_block', { block }));
+  assert.equal(res.result.isError, true);
+  assert.match(textOf(res), /^The block wasn’t shown, and the person sees nothing yet: fields\[0\]\.options must be \{ id, label \} objects, not text/);
+  const update = await shim.response(shim.tool('update_block', { block: { ...block, fields: [] } }));
+  assert.equal(update.result.isError, true, 'a whole update is checked too');
+  // An outcome or a withdrawal names only its id, and the laptop checks it against the block it holds.
+  const outcome = await shim.response(shim.tool('update_block', { block: { id: 'plan', outcome: 'Done.' } }));
+  assert.equal(outcome.result.isError, undefined);
+  const call = await daemon.next('call');
+  assert.equal(call.name, 'update_block', 'only the outcome reached the daemon');
+  assert.equal(daemon.received.filter((m) => m.type === 'call').length, 1);
 });
 
 test('a queued tool returns at once with no daemon, and is sent with the same ID when the daemon comes up', async (t) => {

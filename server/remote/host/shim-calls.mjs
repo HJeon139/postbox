@@ -1,6 +1,7 @@
 // The host’s shim’s tool calls (#120): a tool call sent to the daemon, queued or waited on, and permission_prompt,
 // which waits for the person’s answer or denies at permissionWaitMax. shim.mjs’s header says how each waits.
 
+import { validateBlock } from '../../../shared/catalog.mjs';
 import { NOT_YOUR_PROMPT, TOOL_DEFS } from '../../../shared/mcp-tools.mjs';
 import { encode, message, TOOL_ROUTES } from '../../../shared/remote-protocol.mjs';
 import { fail, minutes, queuedText, respond, send, textResult } from './shim-harness.mjs';
@@ -22,6 +23,8 @@ export function toolCall(sh, rpcId, params) {
   if (name === 'permission_prompt' && !sh.asksByPrompt) return respond(rpcId, NOT_YOUR_PROMPT);
   if (args === null || typeof args !== 'object' || Array.isArray(args)) return fail(rpcId, -32602, `${name}’s arguments must be an object.`);
   if (name === 'permission_prompt') return permission(sh, rpcId, args, params?._meta?.progressToken);
+  const invalid = blockErrors(name, args);
+  if (invalid) return respond(rpcId, textResult(`The block wasn’t shown, and the person sees nothing yet: ${invalid} Fix it and call ${name} again.`, true));
   const route = TOOL_ROUTES[name];
   // show_app without an id gets one here, so the text can name it and the agent can update it; the laptop would
   // pick one the same way (newId('app')).
@@ -53,6 +56,22 @@ export function toolCall(sh, rpcId, params) {
   );
   if (!sh.ready) watchDown(sh, p);
   deliver(sh, p, id);
+}
+
+/**
+ * A queued call is answered “Sent” before the laptop sees it, so a block the laptop would refuse is refused here, in
+ * the call, where the agent can still fix it (#455). Without the laptop’s settings, an image’s origin is left to it,
+ * as is an outcome or a withdrawal, which names only an id the laptop looks up, and an app, which still shows its
+ * fallback.
+ * @param {string} name @param {Record<string, any>} args @returns {string | null}
+ */
+function blockErrors(name, args) {
+  const b = args.block;
+  if (name !== 'show_block' && name !== 'update_block') return null;
+  if (b && typeof b === 'object' && (b.type === 'app' || (name === 'update_block' && (Object.hasOwn(b, 'withdraw') || Object.hasOwn(b, 'outcome')))))
+    return null;
+  const v = validateBlock(b);
+  return v.ok ? null : v.errors.join(' ');
 }
 
 /** An asked call fails once the daemon has been unreachable for TIMINGS.unreachable. @param {Shim} sh @param {Pending} p */

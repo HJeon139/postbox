@@ -126,7 +126,7 @@ A block is JSON naming one component. Agents send it with the `show_block` tool.
 | `title` | No | Up to 200 characters. |
 | `fallback` | Yes | Plain text shown if the block can’t be rendered. Write it so the person can still answer in the chat. |
 
-Every block is validated before it’s shown ([`shared/catalog.mjs`](shared/catalog.mjs)). An unknown type, a newer version, a missing field or a misspelled field gets the fallback text and a collapsed **Show the raw block**. It never fails silently and never breaks the transcript. Objects are strict, so an unknown field is an error.
+Every block is validated before it’s shown ([`shared/catalog.mjs`](shared/catalog.mjs)), on a remote host too. An unknown type, a newer version, a missing field or a misspelled field isn’t shown: `show_block` returns its problems in the same call, so the agent fixes it before the person sees a broken card (#455). A block stored before that, or an app, shows its fallback text and a collapsed **Show the raw block**, so nothing fails silently or breaks the transcript. Objects are strict, so an unknown field is an error.
 
 | Component | Fields | Your action → the event’s `action` and `values` |
 |---|---|---|

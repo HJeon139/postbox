@@ -202,7 +202,7 @@ test('a turn you didn’t start keeps the agent needing you for the block it jus
   assert.equal(store.state.sessions[se.id].state, 'needs');
 });
 
-test('an invalid block is stored with its fallback, never rendered as given', async () => {
+test('#455 an invalid block isn’t shown: the agent is told why in the call, to fix it before the person sees it', async () => {
   const { rt, store, t, adapter } = setup();
   let result;
   adapter.next.push(async (c) => {
@@ -210,10 +210,11 @@ test('an invalid block is stored with its fallback, never rendered as given', as
   });
   rt.sendMessage(t.id, { text: 'go' });
   await settle(rt);
-  const b = store.items(t.id).find((i) => i.kind === 'block');
-  assert.equal(b.valid, false);
-  assert.equal(b.fallback, 'Plain version');
-  assert.equal(result.ok, false);
+  assert.equal(
+    store.items(t.id).find((i) => i.kind === 'block'),
+    undefined,
+  );
+  assert.match(`${result.ok} ${result.message}`, /^false The block wasn’t shown, and the person sees nothing yet: .+ Fix it and call show_block again\.$/);
 });
 
 test(`after ${HOP_LIMIT} agent wakes in a row, the next one waits for your confirm`, async () => {
@@ -1621,7 +1622,7 @@ test('#125: an app id the session owns still makes a new version, and an invalid
   const taken = tools.show_block({ block: { id: 'ap', type: 'confirm', version: 1, fallback: 'x', statement: 'Go?', confirmLabel: 'Go' } });
   assert.equal(taken.ok, false);
   assert.equal(taken.message, 'ap is the id of your app “A”. Pick a new id for this block.');
-  // An invalid block shows only its fallback and can’t be answered, so its fixed copy may use the same id.
+  // An invalid block isn’t shown (#455), so its fixed copy may use the same id.
   const bad = { id: 'q', type: 'choice', version: 1, fallback: 'Pick', options: [] };
   assert.equal(tools.show_block({ block: bad }).ok, false);
   assert.equal(tools.show_block({ block: { ...bad, options: [{ id: 'a', label: 'A' }] } }).ok, true);

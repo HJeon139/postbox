@@ -193,7 +193,7 @@ test('two shims of a turn sending at once can’t pass the limit on calls waitin
   }
 });
 
-test('update_block is checked with the catalog first; an invalid show_block still goes, since the laptop shows its fallback', async () => {
+test('show_block and update_block are checked with the catalog first, as the laptop refuses an invalid block (#455)', async () => {
   const h = makeHome();
   try {
     h.turn('t1');
@@ -204,11 +204,10 @@ test('update_block is checked with the catalog first; an invalid show_block stil
     assert.equal(bad.ok, false);
     assert.match(bad.text, /^The update was invalid and wasn’t applied: /);
     assert.match(k.logs.join('\n'), /update_block \(c1\) was refused/);
-    assert.equal((await s.call('c2', 'show_block', { block: { type: 'nope' } })).ok, true);
-    assert.deepEqual(
-      k.sent.map((m) => m.id),
-      ['c2'],
-    );
+    const shown = await s.call('c2', 'show_block', { block: { type: 'nope' } });
+    assert.equal(shown.ok, false);
+    assert.match(shown.text, /^The block wasn’t shown, and the person sees nothing yet: /);
+    assert.deepEqual(k.sent, [], 'neither reached Postbox');
   } finally {
     h.done();
   }

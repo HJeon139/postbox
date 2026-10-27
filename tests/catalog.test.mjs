@@ -171,3 +171,18 @@ test('a type named after an Object property is unknown, not a crash', () => {
     assert.equal(r.reason, 'unknown-type');
   }
 });
+
+// #455: an agent wrote a form’s select options as strings, and the person read a cascade of errors, one per option
+// and one per pair of “undefined” ids. One cause gets one error, saying the shape.
+test('#455 options written as strings get one error that names the shape, with no duplicate-id follow-ons', () => {
+  const form = base('form', {
+    fields: [
+      { id: 'name', label: 'Project name', kind: 'text' },
+      { id: 'size', label: 'Team size', kind: 'select', options: ['Small', 'Medium', 'Large'] },
+    ],
+  });
+  const r = bad(form, /^fields\[1\]\.options must be \{ id, label \} objects, not text: write each as \{ "id": "small", "label": "Small" \}\.$/);
+  assert.deepEqual(r.errors.length, 1, JSON.stringify(r.errors));
+  const r2 = bad(base('choice', { options: ['Yes', { id: 'no', label: 'No' }] }), /^options must be \{ id, label \} objects, not text/);
+  assert.equal(r2.errors.length, 1, JSON.stringify(r2.errors));
+});

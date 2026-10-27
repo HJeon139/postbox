@@ -127,6 +127,9 @@ async function promptAcrossRestart(s, shim, pb) {
   return pb2;
 }
 
+// A valid block, so the shim queues it (#455 refuses an invalid one in the call).
+const PICK = { id: 'pick', type: 'confirm', version: 1, fallback: 'OK?', statement: 'OK?', confirmLabel: 'OK' };
+
 test('broker and shim: queued and asked calls, the snapshot’s reading tools, a prompt across a daemon restart, and Stop', { skip: NO_UNIX }, async () => {
   const h = makeHost();
   const s = await serveDaemon(h);
@@ -148,7 +151,7 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
     shim = startShim(h, 't1');
 
     // A queued call returns at once, and crosses as `tool`; Postbox’s reply settles it.
-    const shown = await shim.response(shim.tool('show_block', { block: { id: 'pick', type: 'confirm', version: 1, fallback: 'OK?', statement: 'OK?' } }));
+    const shown = await shim.response(shim.tool('show_block', { block: PICK }));
     assert.match(shown.text, /^Sent block pick to Postbox/);
     const tool = await pb.msgs.next('tool', 5000);
     assert.deepEqual([tool.turn, tool.name, tool.args.block.id], ['t1', 'show_block', 'pick']);

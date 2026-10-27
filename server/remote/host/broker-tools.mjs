@@ -39,8 +39,12 @@ export async function prepare(b, turn, name, args) {
     if (!r.ok) return r;
     out = r.args;
   }
-  // Only what the laptop would refuse outright is refused here; an invalid show_block or show_app still goes, since
-  // the laptop shows its fallback text (server/runtime.mjs’s show_block).
+  // What the laptop refuses is refused here too: an invalid block (#455), or update. An invalid show_app still goes,
+  // since the laptop shows its fallback text (server/runtime.mjs’s show_block).
+  if (name === 'show_block' && out.block?.type !== 'app') {
+    const v = validateBlock(out.block);
+    if (!v.ok) return { ok: false, text: `The block wasn’t shown, and the person sees nothing yet: ${v.errors.join(' ')} Fix it and call show_block again.` };
+  }
   if (name === 'update_block') {
     const v = validateBlock(out.block);
     if (!v.ok) return { ok: false, text: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };

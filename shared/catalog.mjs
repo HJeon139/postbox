@@ -45,6 +45,21 @@ export const followsConversation = (block) => block.type === 'app' || (ASKING.ha
 const LANG = /^[A-Za-z0-9_+#.-]{1,32}$/;
 
 const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }) }, ['id', 'label']);
+/**
+ * A choice’s or a select’s options. Options written as plain strings, an easy guess, get one error that shows the
+ * shape, not one per option and one per pair of “undefined” ids (#455). @param {number} max
+ */
+const options = (max) => /** @type {import('./schema.mjs').Rule} */ (v, path, errs) => {
+  const text = Array.isArray(v) ? v.find((o) => typeof o === 'string') : undefined;
+  if (text === undefined) return list(option(), { min: 1, max, unique: 'id' })(v, path, errs);
+  const id =
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9_.:-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'one';
+  // lint-allow quotes: the JSON an agent writes, whose quotes are JSON’s.
+  errs.push(`${path} must be { id, label } objects, not text: write each as { "id": "${id}", "label": ${JSON.stringify(text)} }.`);
+};
 // A result reported on an answered block (#94), or an approved review (#106), shown under the answer. Markdown.
 const outcome = () => str({ min: 1, max: LIMITS.outcome });
 
@@ -57,7 +72,7 @@ const SCHEMAS = {
   choice: {
     fields: {
       prompt: str({ max: LIMITS.prompt }),
-      options: list(option(), { min: 1, max: LIMITS.choiceOptions, unique: 'id' }),
+      options: options(LIMITS.choiceOptions),
       multiple: bool(),
       max: int({ min: 1, max: LIMITS.choiceOptions }),
       other: obj({ label: str({ min: 1, max: 80 }), placeholder: str({ max: 120 }) }, ['label']),
@@ -83,7 +98,7 @@ const SCHEMAS = {
             max: num(),
             step: num(),
             maxLength: int({ min: 1, max: 20000 }),
-            options: list(option(), { min: 1, max: LIMITS.selectOptions, unique: 'id' }),
+            options: options(LIMITS.selectOptions),
             default: scalar(),
           },
           ['id', 'label', 'kind'],

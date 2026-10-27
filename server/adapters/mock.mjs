@@ -696,31 +696,31 @@ async function failingReply(a) {
 
 async function brokenBlocks(a) {
   await a.think(400);
-  await a.say('Here’s the timeline:');
-  a.block({
-    id: 'chapters-1',
-    type: 'timeline',
-    title: 'Chapters by book',
-    fallback: 'Chapters by length: Moby-Dick 135, Middlemarch 86, Emma 55, Persuasion 24, Walden 18.',
-    items: [{ book: 'Moby-Dick', chapters: 135 }],
-  });
-  a.block({
-    id: 'rebuild-steps',
-    type: 'progress',
-    version: 3,
-    title: 'Rebuild steps',
-    fallback: 'Steps: drop prefaces (done), rebuild BM25 (running), re-embed 3 books (waiting).',
-    steps: [],
-    lanes: 2,
-  });
-  a.block({
-    id: 'pick-book',
-    type: 'choice',
-    title: 'Pick a book',
-    fallback: 'Which book should I rebuild first: Middlemarch, Emma or Persuasion? Reply in the chat.',
-    options: [{ id: 'mm', label: 'Middlemarch' }, { id: 'emma' }, { id: 'pers', label: 'Persuasion' }],
-  });
-  await a.say('\nIf any of those can’t be shown, you’ll see my plain-text version instead.');
+  const refused = [
+    {
+      id: 'chapters-1',
+      type: 'timeline',
+      title: 'Chapters by book',
+      fallback: 'Chapters by length: Moby-Dick 135, Middlemarch 86, Emma 55, Persuasion 24, Walden 18.',
+      items: [{ book: 'Moby-Dick', chapters: 135 }],
+    },
+    {
+      id: 'rebuild-steps',
+      type: 'progress',
+      version: 3,
+      title: 'Rebuild steps',
+      fallback: 'Steps: drop prefaces (done), rebuild BM25 (running), re-embed 3 books.',
+      steps: [],
+      lanes: 2,
+    },
+    {
+      id: 'pick-book',
+      type: 'choice',
+      fallback: 'Rebuild which first: Middlemarch, Emma or Persuasion?',
+      options: [{ id: 'mm', label: 'Middlemarch' }, { id: 'emma' }],
+    },
+  ].filter((b) => !a.block(b).ok);
+  await a.say(`Postbox couldn’t show the timeline and its steps, so here they are in plain text:\n\n${refused.map((b) => `- ${b.fallback}`).join('\n')}`);
 }
 
 async function brokenMap(a, _mem) {

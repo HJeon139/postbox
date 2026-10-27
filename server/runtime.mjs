@@ -2953,6 +2953,10 @@ export class Runtime {
         if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
           return { ok: false, message: OUTCOME_LATER(String(block.id ?? 'this block'), 'The block wasn’t shown.') };
         const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
+        // An invalid block isn’t shown: the agent fixes it in the same reply, before the person sees a broken card
+        // (#455, decided by the person on 27 October 2026). An app still shows its fallback, as its own check reports.
+        if (!v.ok && block?.type !== 'app')
+          return { ok: false, message: `The block wasn’t shown, and the person sees nothing yet: ${v.errors.join(' ')} Fix it and call show_block again.` };
         // App ids are global. Yours already: it’s a new version. Another agent’s: yours gets a fresh id, and
         // theirs (its versions and saved state) is left alone.
         /** @type {string | null} */
