@@ -134,9 +134,9 @@ export function toast({ title, text = '', ring = null, action = null, level = 'i
 
 /** Undo toast with a visible countdown. */
 export function undoToast({ text, until, onUndo }) {
-  // Each deletion keeps its own Undo; only the oldest goes when a fourth arrives.
-  const box = $('#toasts-bottom');
-  while (box.children.length >= 3) box.firstElementChild.remove();
+  // Each deletion keeps its own Undo; only the oldest notice goes when a fourth arrives.
+  const box = $('#toasts');
+  while (box.children.length >= 3) box.lastElementChild.remove();
   const bar = h('i', { style: { width: '100%' } });
   const label = h('span');
   const el = h(
@@ -157,7 +157,7 @@ export function undoToast({ text, until, onUndo }) {
       label,
     ),
   );
-  box.append(el);
+  box.prepend(el);
   const tick = () => {
     const left = Math.max(0, until - Date.now());
     bar.style.width = `${(left / 10000) * 100}%`;

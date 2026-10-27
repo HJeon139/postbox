@@ -724,7 +724,6 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .menu.versions .mi .grow, .menu.versions .mi .d { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .toasts { position: fixed; z-index: 60; right: 16px; top: 60px; display: flex; flex-direction: column; gap: 8px; width: 340px; }
-.toasts.bottom { top: auto; bottom: 16px; left: 50%; right: auto; transform: translateX(-50%); width: auto; }
 .toast { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; }
 .toast.plain { border-left-width: 1px; }
 .toast .t-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
