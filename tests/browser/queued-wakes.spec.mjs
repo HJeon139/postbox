@@ -154,6 +154,10 @@ test('#427 ten queued messages stay out of the composer and edit in the agent’
     const composer = await page.locator('.composer').boundingBox();
     expect(composer.height, `${width} px composer height`).toBeLessThan(150);
   }
+  await page.locator('#conversation-actions').click();
+  await page.getByRole('menuitem', { name: `10 messages queued for @${r.worker.handle}` }).click();
+  await expect(page.locator('.agent-queue-dialog .agent-queue-row')).toHaveCount(10);
+  await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1280, height: 800 });
   const dialog = await openQueue(page, r);
   await expect(dialog.locator('.agent-queue-row')).toHaveCount(10);

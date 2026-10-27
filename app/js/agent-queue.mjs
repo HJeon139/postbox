@@ -78,7 +78,7 @@ function editQueuedMessage(row, q, target, repaint, from) {
   input.focus();
 }
 
-function openQueue(sessionId, anchor) {
+export function openQueue(sessionId, anchor = null) {
   const session = S().sessions[sessionId];
   if (!session) return;
   const title = h('span');
@@ -145,4 +145,16 @@ export function paintOfflineQueue(container, messages) {
       ),
     ),
   );
+}
+
+/** The phone conversation menu’s route to an agent queue, or null when it has none. */
+export function agentQueueMenuItem(session) {
+  const count = entriesFor(session.id).length;
+  return count
+    ? {
+        label: `${count} message${count === 1 ? '' : 's'} queued for @${session.handle}`,
+        icon: 'mail',
+        run: () => openQueue(session.id, document.activeElement instanceof HTMLElement ? document.activeElement : null),
+      }
+    : null;
 }

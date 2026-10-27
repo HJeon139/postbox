@@ -1,9 +1,10 @@
 // The shell: the top bar, the rail (conversations and rooms with rings, and the open conversation’s agents), the phone
 // ring strip, and a project with no conversation yet. There’s no overview (#320): Postbox opens a conversation.
 
-import { factsText, installNote } from '/shared/agent-facts.mjs';
+import { installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
-import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
+import { isMock, mockMarker } from './agent-facts.mjs';
+import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
 import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
@@ -449,7 +450,10 @@ function conversationMenu(anchor, shown) {
       },
       ...telemetryItems(t),
       'hr',
-      ...agentLines(t),
+      ...agentMenuLines(
+        sessionsOf(t.id).filter((x) => !x.archived),
+        (personaId) => openSettings('personas', personaId),
+      ),
       {
         label: `Delete ${room ? 'room' : 'conversation'}…`,
         icon: 'trash',
@@ -460,27 +464,6 @@ function conversationMenu(anchor, shown) {
     ],
     { label: `Actions for ${t.title}` },
   );
-}
-
-/**
- * Each agent in the conversation, with its backend, model, effort and state as text, with full model ids: what
- * its row in the sidebar says, for when the sidebar is hidden or the window is narrow (#60, #105). Choosing one
- * opens its persona.
- */
-function agentLines(t) {
-  const ses = sessionsOf(t.id).filter((x) => !x.archived);
-  if (!ses.length) return [];
-  return [
-    { heading: ses.length > 1 ? 'Agents' : 'Agent' },
-    ...ses.map((se) => ({
-      label: [`@${se.handle}`, mockMarker(se)],
-      icon: 'agent',
-      desc: `${factsText(factsOf(se))} · ${stateWord(se.state).toLowerCase()}`,
-      kbd: 'Edit',
-      run: () => openSettings('personas', se.personaId),
-    })),
-    'hr',
-  ];
 }
 
 export function afterDelete(se, until) {
