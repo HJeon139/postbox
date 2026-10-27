@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.11 (2026-10-27)
+
+### Fixes
+
+- **guide:** tell Codex agents how to write to the room
+
 ## 0.41.10 (2026-10-27)
 
 ### Fixes
