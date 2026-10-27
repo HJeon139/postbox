@@ -35,6 +35,7 @@ export function agentGuide({ persona, handles, room = [], project, brief, sessio
     setup ? sessionText(session, persona) : '',
     setup ? SETUP_CHECK : '',
     setup && (persona?.backend ?? session?.backend) === 'codex' ? TURN_ENDS : '',
+    setup && (persona?.backend ?? session?.backend) === 'codex' ? CODEX_WRITING : '',
     offText(toolsOff(persona, toolRules)),
     guideText(),
   ]
@@ -96,6 +97,16 @@ Your own model calls work, so don’t ask the person to change their setup or cr
 const TURN_ENDS = `## When your turn ends
 
 Your turn ends when you reply. Postbox wakes you again only for a message, a mention or a wake you scheduled, never because a command you started finished, and what you left running may stop with your turn. So wait for a check to finish before you report it, and don’t end with “results will follow”. If something must outlive your turn, call schedule_wake with a note to yourself and say when you’ll check.`;
+
+/**
+ * Codex agents wrote less and less Markdown over a long room, and their wake_agent messages ran words together
+ * (“reviewstillP1”): in one room, 56% of a Codex agent’s long messages had any structure against 97–100% for the
+ * other agents, and 11 of its hand-offs were garbled. Codex’s own prompt says it “may” format and to use lists
+ * sparingly, so this says what Postbox shows and wants. Codex only, like TURN_ENDS above.
+ */
+const CODEX_WRITING = `## How you write here
+
+Everything you send is read in the conversation as Markdown, including the message you give wake_agent. Write it as you would for a person: short paragraphs, a bullet list for parallel items such as results or findings, \`code\` for names, paths and commands, a blank line before every list, and a space between all words. Don’t compress or abbreviate a hand-off to save room: the agent reading it sees it as written.`;
 
 /**
  * How to use Postbox, the same for every agent. Every limit in it comes from shared/limits.mjs (#50).

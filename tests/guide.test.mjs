@@ -139,6 +139,17 @@ test('agy’s rules file for a busy room stays within its 12,000 characters', ()
   assert.ok(agyRules({ persona, guide, schemas: '/Users/someone/.gemini/antigravity/mcp/postbox' }).length <= 12000);
 });
 
+// Codex agents drifted to unstructured replies and wake_agent messages with the spaces left out, so they’re told how to
+// write; no other backend was seen doing it, so no other backend’s guide carries it.
+test('a Codex agent’s guide says how to write, including wake_agent messages', () => {
+  const g = agentGuide({ persona: { handle: 'gpt', backend: 'codex' }, session: { personaSnapshot: { model: 'gpt-6.1-sol' } }, handles: ['gpt'] });
+  assert.match(g, /## How you write here\n\nEverything you send is read in the conversation as Markdown, including the message you give wake_agent\./);
+  assert.match(g, /a blank line before every list, and a space between all words/);
+  for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
+    assert.doesNotMatch(agentGuide({ persona: { handle: 'x', backend }, handles: ['x'] }), /How you write here/, backend);
+  assert.doesNotMatch(agentGuide({ persona: { handle: 'gem' }, handles: ['gem'], setup: false }), /How you write here/);
+});
+
 // A reply wakes its waker only by an @-mention (#372), so the guide says when to mention: too often loops, never stalls.
 test('#372 a room’s guide says to @mention an agent only when it must act next, and to name it without @ otherwise', () => {
   const g = agentGuide({ persona: { handle: 'alpha' }, handles: ['alpha', 'beta'], room: [{ handle: 'beta', role: 'Reviews' }] });
