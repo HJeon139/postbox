@@ -13,8 +13,10 @@ test.beforeAll(async () => {
   app = await startPostbox('shell');
   const { rt, store } = app;
   store.emit('project', { id: 'pr_shell', name: 'Shell', folder: app.root });
+  store.emit('project', { id: 'pr_other', name: 'Other project', folder: app.root });
   const persona = rt.createPersona({ handle: 'shelly', backend: 'mock', permissionMode: 'auto', tools: [] });
   for (const title of ['First', 'Second']) threads.push(rt.createThread({ projectId: 'pr_shell', title, personaIds: [persona.id] }));
+  threads.push(rt.createThread({ projectId: 'pr_other', title: 'Other conversation', personaIds: [persona.id] }));
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -115,4 +117,23 @@ test('an agent’s state changing doesn’t rebuild the conversation: a draft an
   await expect(page.locator('#composer-input'), 'the same composer, not a new one').toHaveAttribute('data-marked', 'yes');
   await expect(page.locator('#composer-input')).toHaveValue('A draft that must survive');
   await expect(page.locator('#composer-input')).toBeFocused();
+});
+
+test('#432 the places menu focuses and marks the current project with consistent icons', async ({ page }) => {
+  for (const [thread, name] of [
+    [threads[0], 'Shell'],
+    [threads[2], 'Other project'],
+  ]) {
+    await open(page, `#/t/${thread.id}`);
+    await page.locator('#places-button').click();
+    const menu = page.getByRole('menu', { name: 'Go to' });
+    const projects = menu.getByRole('menuitem').filter({ has: page.locator('.i-folder') });
+    const current = projects.filter({ hasText: new RegExp(`^${name}`) });
+    await expect(current).toBeFocused();
+    await expect(current).toHaveAttribute('aria-current', 'true');
+    await expect(current.locator('.k')).toHaveText('✓');
+    await expect(projects).toHaveCount(Object.keys(app.store.state.projects).length);
+    await expect(projects.locator('.i-folder')).toHaveCount(Object.keys(app.store.state.projects).length);
+    await page.keyboard.press('Escape');
+  }
 });

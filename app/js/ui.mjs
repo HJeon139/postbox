@@ -343,13 +343,11 @@ export function closeMenu() {
   openAnchor = null;
 }
 /**
- * A popover menu anchored to a button. items: [{ label, icon?, desc?, kbd?, danger?, current?, run }] or 'hr' or
- * { heading }; an icon is a name or a drawn element. Focus starts on the item marked current, else on the first.
+ * A popover menu anchored to a button. Items have label, icon?, desc?, kbd?, danger?, current? and run; headings have heading. Focus starts on current, else first.
  */
 export function openMenu(anchor, items, { className = '', placement = 'below', label = 'Menu' } = {}) {
-  // Clicking the menu’s own button again closes it, rather than closing and reopening it (#29).
   if (openMenuEl && openAnchor?.() === anchor) {
-    closeMenu();
+    closeMenu(); // Clicking the menu’s own button again closes it instead of reopening it (#29).
     return null;
   }
   closeMenu();
@@ -371,6 +369,7 @@ export function openMenu(anchor, items, { className = '', placement = 'below', l
         role: 'menuitem',
         type: 'button',
         class: it.danger ? 'danger' : '',
+        'aria-current': it.current ? 'true' : null,
         onclick: () => {
           closeMenu();
           // Focus goes back to the menu’s button first, so a dialog the item opens returns focus there when it
