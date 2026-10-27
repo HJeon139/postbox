@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.10 (2026-10-27)
+
+### Fixes
+
+- **markdown:** pin escaped LaTeX closers
+- **markdown:** scan LaTeX math delimiters once
+
 ## 0.41.9 (2026-10-27)
 
 ### Fixes
