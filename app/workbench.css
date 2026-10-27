@@ -660,6 +660,8 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .composer .col { display: flex; flex-direction: column; gap: 4px; }
 /* Queue, outbox and attachments take no room until they hold something. */
 .composer .col > :empty { display: none; }
+.queue-summary { align-self: flex-start; }
+.queue-list.bounded { max-height: min(40vh, 360px); overflow: auto; overscroll-behavior: contain; }
 .composer-box { display: flex; align-items: flex-end; gap: 8px; padding: 5px 6px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); }
 .composer-box:focus-within { border-color: var(--accent); }
 .composer-box textarea { flex: 1; border: 0; background: transparent; resize: none; min-height: 30px; max-height: 200px; padding: 5px 4px; line-height: 1.4; outline: none; }

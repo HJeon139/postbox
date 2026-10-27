@@ -126,3 +126,30 @@ test('an unaddressed newer post reaches the waiting target exactly once', async 
   expect(turnsFor(r)[1].message.text).toBe(newer.text);
   expect(turnsFor(r)[1].message.itemId).toBe(newer.id);
 });
+
+test('#427 larger queues collapse, expand within a bound, and update while collapsed', async ({ page }) => {
+  const r = await busyRoom(page);
+  for (let index = 0; index < 10; index++) app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Queued question ${index + 1}` });
+  await synced(page, app);
+  const summary = page.locator('.queue-summary');
+  await expect(summary).toHaveAccessibleName('10 queued messages · Show');
+  await expect(summary).toBeVisible();
+  await expect(page.locator('.queue-list')).toBeHidden();
+  for (const width of [1280, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    const composer = await page.locator('.composer').boundingBox();
+    expect(composer.height, `${width} px composer height`).toBeLessThan(240);
+  }
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  await expect(summary).toHaveAccessibleName('10 queued messages · Hide');
+  await expect(page.locator('.queue-list .queued')).toHaveCount(10);
+  const list = await page.locator('.queue-list').boundingBox();
+  expect(list.height).toBeLessThanOrEqual(360);
+  await page.keyboard.press('Enter');
+  app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Queued question 11` });
+  await synced(page, app);
+  await expect(summary).toHaveAccessibleName('11 queued messages · Show');
+  await expect(summary).toBeFocused();
+  await expect(page.locator('.queue-list')).toBeHidden();
+});
