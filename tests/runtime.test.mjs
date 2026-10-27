@@ -1360,7 +1360,7 @@ test('#94: an outcome on an answered confirm reports the result: it stays answer
   assert.equal(it.block.confirmLabel, 'Delete');
   assert.equal(it.turnId, item.turnId);
   assert.equal(said.ok, true);
-  assert.match(said.message, /stays answered\. Your other changes weren’t applied/);
+  assert.match(said.message, /stays answered\. Your other changes \(title, confirmLabel\) weren’t applied/);
   assert.equal(store.state.sessions[se.id].needs, null);
   assert.equal(store.state.sessions[se.id].state, 'idle');
   assert.throws(() => rt.act(t.id, item.id, 'confirm', {}), /already answered/);
@@ -1569,7 +1569,7 @@ test('#123: an outcome over an answer the agent hasn’t read is refused, and a 
   const tools = rt.toolsFor(se.id);
   const r = tools.update_block({ block: { ...confirm, statement: 'Delete 4 more?' } });
   assert.equal(r.ok, false);
-  assert.match(r.message, /^The update wasn’t applied\. The person answered revision 2 of frames at \d\d:\d\d: cancel \{\}\. Their answer stays on screen\./);
+  assert.match(r.message, /^The update wasn’t applied\. The person answered revision 1 of frames at \d\d:\d\d: cancel \{\}\. Their answer stays on screen\./);
   assert.match(r.message, /It didn’t reach you in a turn, so that’s the whole answer\. Read it, then update\.$/);
   assert.equal(store.item(t.id, item.id).answered, true);
   // Having read it in that reply, the agent can ask again.

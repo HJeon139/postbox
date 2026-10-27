@@ -6,6 +6,12 @@
 import { h, icon } from './dom.mjs';
 
 const KEY = (id) => `pb.review-view.${id}`;
+
+/**
+ * The revision Postbox counted for the block. An agent may leave the block’s own revision out, or send a wrong one,
+ * so it’s only for a block from before Postbox counted (#248). @param {any} item @param {any} b
+ */
+export const revisionOf = (item, b) => item.answer?.revision ?? item.revision ?? b.revision ?? 1;
 const FOCUSABLE = 'button, [href], input, select, textarea, summary, iframe, [tabindex]:not([tabindex="-1"])';
 
 /**
@@ -14,7 +20,7 @@ const FOCUSABLE = 'button, [href], input, select, textarea, summary, iframe, [ta
  */
 export function viewOf(item, b, d, hasDiff) {
   if (b.format !== 'markdown') return 'lines';
-  const revision = b.revision ?? 1;
+  const revision = revisionOf(item, b);
   if (d.mode && d.modeRev === revision) return d.mode;
   let saved = null;
   try {
@@ -22,8 +28,9 @@ export function viewOf(item, b, d, hasDiff) {
   } catch {
     // Storage that’s off or unreadable leaves the default.
   }
-  const chosen = saved?.revision === revision && (saved.mode === 'preview' || saved.mode === 'lines') ? saved.mode : null;
-  d.mode = chosen ?? (hasDiff ? 'lines' : 'preview');
+  const valid = saved?.mode === 'preview' || saved?.mode === 'lines' ? saved.mode : null;
+  // A revision with changes to read opens in Lines; one without keeps what the person chose last (#248).
+  d.mode = (saved?.revision === revision ? valid : null) ?? (hasDiff ? 'lines' : (d.mode ?? valid ?? 'preview'));
   d.modeRev = revision;
   return d.mode;
 }
@@ -31,7 +38,7 @@ export function viewOf(item, b, d, hasDiff) {
 /** The person picks Preview or Lines. @param {any} item @param {any} b @param {any} d @param {'preview' | 'lines'} mode */
 export function setView(item, b, d, mode) {
   d.mode = mode;
-  d.modeRev = b.revision ?? 1;
+  d.modeRev = revisionOf(item, b);
   try {
     localStorage.setItem(KEY(item.id), JSON.stringify({ mode, revision: d.modeRev }));
   } catch {

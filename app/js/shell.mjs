@@ -1,5 +1,5 @@
 // The shell: the top bar, the rail (conversations and rooms with rings, and the open conversation’s agents), the phone
-// ring strip, and a project with no conversation yet. There’s no overview (#320): Postbox opens a conversation.
+// ring strip, the places menu, and a project with no conversation yet. There’s no overview (#320): Postbox opens one.
 
 import { factsText, installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
@@ -9,6 +9,7 @@ import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topics
 import { fill, h, icon, syncList } from './dom.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
 import { openPermissions } from './permissions.mjs';
+import { projectPlaces } from './places-menu.mjs';
 import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
@@ -39,12 +40,7 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
       e.currentTarget,
       [
         { heading: 'Projects' },
-        ...projects.map((p) => ({
-          label: p.name,
-          desc: needsIn(p.id) ? `${needsIn(p.id)} need you` : (p.folder ?? '').replace(/^\/Users\/[^/]+/, '~'),
-          icon: p.id === pid ? 'check' : 'folder',
-          run: () => navigate(`#/p/${p.id}`),
-        })),
+        ...projectPlaces(projects, pid, needsIn, (id) => navigate(`#/p/${id}`)),
         'hr',
         { label: 'New project…', icon: 'plus', run: () => openSettings('projects') },
       ],

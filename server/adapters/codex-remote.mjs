@@ -9,6 +9,7 @@
 import { codexPromptId } from '../remote/host/broker.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
+import { postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
 import { PERMISSION_WAIT_MARGIN_MS, POSTBOX_SERVER } from './setup.mjs';
 
@@ -49,6 +50,7 @@ export function codexRemoteConfigArgs(command, args, waitMax) {
     `mcp_servers.${POSTBOX_SERVER}.required=true`,
     '-c',
     `mcp_servers.${POSTBOX_SERVER}.tool_timeout_sec=${Math.ceil((waitMax + PERMISSION_WAIT_MARGIN_MS) / 1000)}`,
+    ...postboxMcpApprovalArgs(),
   ];
 }
 

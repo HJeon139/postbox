@@ -68,7 +68,7 @@ export function hostChanged(ch, threadId, nodes, rerender, hostTurns) {
   }
 }
 
-/** The step a Kiro CLI turn on a host shows (server/adapters/kiro-cli.mjs, REMOTE_ARGV_NOTE), drawn as a notice. */
+/** A warning step stored by older Kiro turns, filtered from the conversation after stdin removed its cause. */
 const KIRO_ARGV_STEP = 'kiro-remote-argv';
 
 /**
@@ -143,20 +143,14 @@ export function failedOnHost(it) {
 export const hostEnd = (it) => [it.note ? h('span.stopped-tag.hung-note', it.note) : null, it.status === 'failed' ? failedOnHost(it) : null];
 
 /**
- * A reply’s Kiro CLI notice, and its steps without the notice’s step: Kiro CLI on a host takes its message as an
- * argument others there can read, so it’s a notice, not a folded step. @param {any} it @returns {[any, any[]]}
+ * A reply’s steps without the obsolete Kiro CLI argv warning that older stored turns may carry.
+ * @param {any} it @returns {[any, any[]]}
  */
 export function kiroStep(it) {
   const all = it.activity?.steps ?? [];
   const argv = all.find((s) => s.id === KIRO_ARGV_STEP);
-  return [kiroNotice(argv), argv ? all.filter((s) => s !== argv) : all];
+  return [null, argv ? all.filter((s) => s !== argv) : all];
 }
-
-/** Kiro CLI on a host takes its message as an argument others there can read: a notice, not a folded step. @param {any} argv */
-const kiroNotice = (argv) =>
-  argv
-    ? h('div.callout.host-notice', { role: 'note', 'aria-label': argv.label }, icon('warn', 'i-sm'), h('div.grow', h('b', argv.label), ' ', argv.detail ?? ''))
-    : null;
 
 /** In place of a background job’s Stop, for a turn on a host: the daemon stops the turn as a whole. Null otherwise. @param {any} it */
 export function jobHostNote(it) {
