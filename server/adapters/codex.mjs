@@ -6,6 +6,7 @@ import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { codexApproval } from './codex-approval.mjs';
+import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { findCodex } from './codex-models.mjs';
 import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { codexContextPercent } from './context-usage.mjs';
@@ -69,6 +70,7 @@ export function codexConfigArgs(mcpUrl) {
     `mcp_servers.${POSTBOX_SERVER}.enabled=true`,
     '-c',
     `mcp_servers.${POSTBOX_SERVER}.required=true`,
+    ...postboxMcpApprovalArgs(),
   ];
 }
 
@@ -78,6 +80,12 @@ const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server fa
 export function createCodexMapper(ctx) {
   const labels = new Map();
   const messageText = new Map();
+  let lastMessageId = null;
+  const writeMessage = (id, text) => {
+    if (lastMessageId !== null && id !== lastMessageId) ctx.text('\n\n');
+    lastMessageId = id;
+    ctx.text(text);
+  };
   const pushItem = (item, state = 'running') => {
     if (!item?.id) return;
     if (item.type === 'commandExecution') {
@@ -98,7 +106,11 @@ export function createCodexMapper(ctx) {
       labels.set(item.id, label);
       ctx.activity({ id: item.id, label, state, kind: 'tool' });
     } else if (item.type === 'reasoning') ctx.status({ state: 'think' });
-    else if (item.type === 'webSearch') ctx.activity({ id: item.id, label: `Search the web${item.query ? `: ${item.query}` : ''}`, state, kind: 'tool' });
+    else if (item.type === 'webSearch') {
+      const label = `Search the web${item.query ? `: ${item.query}` : ''}`;
+      labels.set(item.id, label);
+      ctx.activity({ id: item.id, label, state, kind: 'tool' });
+    }
   };
   const push = (msg) => {
     const p = msg?.params ?? {};
@@ -108,7 +120,8 @@ export function createCodexMapper(ctx) {
         break;
       case 'item/completed': {
         const item = p.item;
-        if (item?.type === 'agentMessage' && item.text && !messageText.has(item.id)) ctx.text(item.text);
+        if (item?.type === 'agentMessage' && item.text && !messageText.has(item.id)) writeMessage(item.id, item.text);
+        if (item?.type === 'webSearch' && item.query) labels.set(item.id, `Search the web: ${item.query}`);
         const label = labels.get(item?.id);
         if (label && !(item?.type === 'mcpToolCall' && item.server === POSTBOX_SERVER))
           ctx.activity({ id: item.id, label, state: item.status === 'failed' || item.status === 'declined' ? 'denied' : 'done', kind: 'tool' });
@@ -118,7 +131,7 @@ export function createCodexMapper(ctx) {
         if (typeof p.delta === 'string') {
           messageText.set(p.itemId, `${messageText.get(p.itemId) ?? ''}${p.delta}`);
           ctx.status({ state: 'gen', currentStep: 'Writing a reply' });
-          ctx.text(p.delta);
+          writeMessage(p.itemId, p.delta);
         }
         break;
       case 'item/commandExecution/outputDelta': {
@@ -180,15 +193,17 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   await request('initialize', { clientInfo: { name: 'postbox', title: 'Postbox', version: '0.2.0' } });
   send({ method: 'initialized', params: {} });
   const permissions = codexPermissions(ctx.persona, cwd);
+  const mcpConfig = await codexMcpApprovalConfig(request, ctx.persona?.permissionMode);
+  const openConfig = mcpConfig ? { config: mcpConfig } : {};
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
   const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
   const opened =
     fork?.turnId && sourceThreadId
-      ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true })
+      ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true, ...openConfig })
       : sourceThreadId
-        ? await request('thread/resume', { threadId: sourceThreadId, cwd })
-        : await request('thread/start', { cwd, ...(model ? { model } : {}) });
+        ? await request('thread/resume', { threadId: sourceThreadId, cwd, ...openConfig })
+        : await request('thread/start', { cwd, ...(model ? { model } : {}), ...openConfig });
   const threadId = sourceThreadId;
   const id = opened?.thread?.id ?? threadId;
   if (!id) throw new Error('Codex app-server did not return a thread id.');

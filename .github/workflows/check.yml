@@ -76,12 +76,14 @@ jobs:
         if: success() || failure()
         continue-on-error: true
         run: node tools/shoot-app.mjs
-      - if: always()
+      # About 40 MB a run, so only where a reviewer reads them: when the job failed, and on main, whose copy stands in
+      # for committed screenshots (designs/developing.md, “Screenshots”). A pull request that passed uploads none.
+      - if: failure() || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
           path: screenshots/latest/app/
-          retention-days: 14
+          retention-days: 5
       - if: always()
         uses: actions/upload-artifact@v4
         with:

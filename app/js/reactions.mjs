@@ -1,6 +1,6 @@
 // Reactions (#251, #320): in a message’s, block’s or app’s actions, beside “Reply in thread”, all five as buttons,
 // always shown. Clicking one adds yours, or takes it back. Yours is highlighted (pressed); one made only by others
-// keeps the normal color, marked as made. More than one reactor adds a count to its right. Who reacted shows in a hover
+// shows its count from 1, while yours alone has no count. Who reacted shows in a hover
 // card (hover-content.mjs), on hover and on keyboard focus, and the button’s name says it too. The agents answering
 // where it is hear yours at their next turn, and an agent’s is heard by the agent whose message it is. A reaction
 // repaints only its own buttons: the item, an app’s frame among them, isn’t drawn again.
@@ -48,12 +48,12 @@ function buttons(it, threadId) {
         type: 'button',
         class: names.length ? 'made' : '',
         'aria-pressed': String(yours),
-        'aria-label': `${label}${names.length ? `, from ${who(names)}` : ''}: ${yours ? 'take yours back' : 'react'}`,
+        'aria-label': `${label}${names.length ? `, from ${who(names)}, ${names.length} reaction${names.length === 1 ? '' : 's'}` : ''}: ${yours ? 'take yours back' : 'react'}`,
         dataset: { emoji },
         onclick: () => react(threadId, it.id, emoji),
       },
       drawn(emoji),
-      names.length > 1 ? h('span.react-count', { 'aria-hidden': 'true' }, String(names.length)) : null,
+      names.length > 1 || (names.length === 1 && !yours) ? h('span.react-count', { 'aria-hidden': 'true' }, String(names.length)) : null,
     );
   });
 }

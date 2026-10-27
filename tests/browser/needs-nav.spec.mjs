@@ -261,6 +261,22 @@ test('a side thread’s agent: its ring in the Agents section opens the side pan
   await expect(page.locator(`.sp-body [data-key="${S.beta.needs.itemId}"]`), '@beta’s ask is in the side panel').toBeVisible();
 });
 
+test('a message’s ring shows its agent needs you as a steady ring, while the sidebar’s ring pulses', async ({ page }) => {
+  await open(page, `#/t/${T.room.id}`);
+  const motion = (ring) =>
+    ring.evaluate((r) => {
+      const pulse = r.querySelector('.pulse');
+      return pulse && { animation: getComputedStyle(pulse).animationName, opacity: getComputedStyle(pulse).opacity };
+    });
+  // A long conversation has a ring on every message, and each one pulsing kept Safari repainting every frame.
+  const onMessage = page.locator(`#main .who pb-ring[data-session="${S.delta.id}"]`).last();
+  await expect(onMessage).toHaveAttribute('state', 'needs');
+  expect(await motion(onMessage), 'still, and drawn as the steady ring reduced motion uses').toEqual({ animation: 'none', opacity: '0.8' });
+  const inSidebar = agentRow(page, 'delta').locator('pb-ring');
+  await expect(inSidebar).toHaveAttribute('state', 'needs');
+  expect((await motion(inSidebar))?.animation, 'the live ring in the sidebar still pulses').toBe('pb-pulse');
+});
+
 test('the ring beside an agent’s name on a message goes to its ask', async ({ page }) => {
   await open(page, `#/t/${T.room.id}`);
   // @delta’s notes share one sender line, above its ask.

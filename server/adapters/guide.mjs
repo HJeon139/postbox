@@ -35,6 +35,7 @@ export function agentGuide({ persona, handles, room = [], project, brief, sessio
     setup ? sessionText(session, persona) : '',
     setup ? SETUP_CHECK : '',
     setup && (persona?.backend ?? session?.backend) === 'codex' ? TURN_ENDS : '',
+    setup && (persona?.backend ?? session?.backend) === 'codex' ? CODEX_WRITING : '',
     offText(toolsOff(persona, toolRules)),
     guideText(),
   ]
@@ -98,6 +99,16 @@ const TURN_ENDS = `## When your turn ends
 Your turn ends when you reply. Postbox wakes you again only for a message, a mention or a wake you scheduled, never because a command you started finished, and what you left running may stop with your turn. So wait for a check to finish before you report it, and don’t end with “results will follow”. If something must outlive your turn, call schedule_wake with a note to yourself and say when you’ll check.`;
 
 /**
+ * Codex agents wrote less and less Markdown over a long room, and their wake_agent messages ran words together
+ * (“reviewstillP1”): in one room, 56% of a Codex agent’s long messages had any structure against 97–100% for the
+ * other agents, and 11 of its hand-offs were garbled. Codex’s own prompt says it “may” format and to use lists
+ * sparingly, so this says what Postbox shows and wants. Codex only, like TURN_ENDS above.
+ */
+const CODEX_WRITING = `## How you write here
+
+Everything you send is read in the conversation as Markdown, including the message you give wake_agent. Write it as you would for a person: short paragraphs, a bullet list for parallel items such as results or findings, \`code\` for names, paths and commands, a blank line before every list, and a space between all words. Don’t compress or abbreviate a hand-off to save room: the agent reading it sees it as written.`;
+
+/**
  * How to use Postbox, the same for every agent. Every limit in it comes from shared/limits.mjs (#50).
  * @param {Record<string, number>} [limits]  the limits to write in, for tests
  */
@@ -123,7 +134,7 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 - choice: options [{ id, label }] (1–${n('choiceOptions')}), prompt?, multiple?, max?, other?: { label, placeholder? }, display?: "chips" | "buttons", submitLabel?, outcome?. Answer: "choose", { selected: [ids], other? }.
 - form: fields (up to ${n('formFields')}) [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
 - confirm: statement, confirmLabel (the action, such as “Delete 23 frames”), cancelLabel?, outcome?. Answer: "confirm" or "cancel".
-- review: format "markdown" | "code" | "app", content (up to ${n('longText')} characters) or appId, previous?, revision?, threads?, language?, filename?, outcome?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
+- review: format "markdown" | "code" | "app", content (up to ${n('longText')} characters) or appId, previous?, threads?, language?, filename?, outcome?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
 - progress: steps (up to ${n('progressSteps')}) [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, progress?: { done, total, unit? }, percent?: 0–100, eta? }]. Postbox shows when it last changed and times each step.
 - table: columns (up to ${n('tableColumns')}) [{ id, label, kind?: "text" | "number", sortable? }], rows (up to ${n('tableRows')}) [{ id, cells: { [columnId]: value } }], rowAction?: { id, label }. Answer: the rowAction id, { rowId }.
 - card: body? (up to ${n('cardBody')} characters), facts? (up to ${n('cardFacts')}) [{ label, value }], actions? (up to ${n('cardActions')}) [{ id, label }]. Answer: the action id.
@@ -153,7 +164,7 @@ The global postbox gives you:
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG on a theme change
 
-Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for layout, accessibility and script errors; fix what it reports with update_app.
+Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for layout, accessibility and script errors; fix what it reports with update_app. Read the version’s check via read_message.
 
 ## Working with others
 

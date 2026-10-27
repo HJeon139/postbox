@@ -27,6 +27,8 @@ test('#120: remote Codex config names the stdio shim with TOML values, never a U
     '-c',
     // The host’s permissionWaitMax (24 h by default) plus an hour, in seconds, over Codex’s 60-second default.
     'mcp_servers.postbox.tool_timeout_sec=90000',
+    '-c',
+    'mcp_servers.postbox.default_tools_approval_mode="approve"',
   ]);
   assert.ok(!args.some((a) => a.includes('.url=')));
 });
@@ -59,10 +61,10 @@ test('#120: a remote Codex turn starts on the host with a held stdin, the shim a
   const writes = d.turns.get(start.turn).writes.map((l) => JSON.parse(l));
   assert.deepEqual(
     writes.map((w) => w.method),
-    ['initialize', 'initialized', 'thread/start', 'turn/start'],
+    ['initialize', 'initialized', 'mcpServerStatus/list', 'thread/start', 'turn/start'],
   );
-  assert.equal(writes[2].params.cwd, FOLDER, 'the thread works in the host’s folder');
-  assert.equal(writes[3].params.sandboxPolicy.type, 'readOnly');
+  assert.equal(writes[3].params.cwd, FOLDER, 'the thread works in the host’s folder');
+  assert.equal(writes[4].params.sandboxPolicy.type, 'readOnly');
   assert.equal(calls.text, 'Hello from Codex.');
   assert.equal(calls.saved.codexThreadId, 'thr_postbox_1');
   assert.deepEqual(d.stops, [start.turn], 'the app-server on the host is stopped as the turn ends');
@@ -127,7 +129,7 @@ test('#120: Stop on a remote Codex turn sends turn/interrupt first, then the dae
   const i = d.received.findIndex((m) => m.type === 'write' && JSON.parse(m.line).method === 'turn/interrupt');
   const s = d.received.findIndex((m) => m.type === 'stop');
   assert.ok(i >= 0, 'Stop interrupts the Codex turn');
-  assert.deepEqual(JSON.parse(d.received[i].line), { id: 4, method: 'turn/interrupt', params: { threadId: 'thr_postbox_1', turnId: 'turn_postbox_1' } });
+  assert.deepEqual(JSON.parse(d.received[i].line), { id: 5, method: 'turn/interrupt', params: { threadId: 'thr_postbox_1', turnId: 'turn_postbox_1' } });
   assert.ok(s > i, 'then the daemon stops the app-server');
   assert.deepEqual(f.calls, []);
 });

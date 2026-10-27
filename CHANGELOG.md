@@ -2,6 +2,85 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.12 (2026-10-27)
+
+### Fixes
+
+- **telemetry:** record activity steps incrementally
+
+## 0.41.11 (2026-10-27)
+
+### Fixes
+
+- **guide:** tell Codex agents how to write to the room
+
+## 0.41.10 (2026-10-27)
+
+### Fixes
+
+- **markdown:** pin escaped LaTeX closers
+- **markdown:** scan LaTeX math delimiters once
+
+## 0.41.9 (2026-10-27)
+
+### Fixes
+
+- **codex:** leave Auto's MCP calls to Codex's own reviewer, as on main
+- **codex:** apply MCP policy to every permission mode
+- **codex:** address MCP policy override paths
+- **codex:** separate consecutive reply messages
+- **codex:** finish web search activity
+- **codex:** ask before third-party MCP tools
+
+## 0.41.8 (2026-10-27)
+
+### Fixes
+
+- **kiro:** send remote prompts through stdin
+- **kiro:** move host privacy warning to setup
+- **reactions:** show an agent-only reaction count
+- **shell:** mark the current project in places
+
+## 0.41.7 (2026-10-27)
+
+### Fixes
+
+- **blocks:** reopen identical answered updates
+- **blocks:** an outcome isn't a new revision, and agents no longer set one
+- **blocks:** record an outcome from { id, outcome }, and show a review's real revision
+
+## 0.41.6 (2026-10-26)
+
+### Fixes
+
+- **guide:** preserve existing app check guidance on review
+- **apps:** report saved versions and readable browser check status
+
+## 0.41.5 (2026-10-26)
+
+### Fixes
+
+- **adapters:** take a turn's tokens from its own usage, and leave a fork's cost unknown
+- **ring:** draw no arc for an unknown context, and move its dot instead
+- **ring:** show a subagent's unreported context as unknown, not 0%
+- **adapters:** count a resumed Claude Code turn's own spend, not the session's
+
+## 0.41.4 (2026-10-26)
+
+### Fixes
+
+- **permissions:** give a rule only to what it can't widen (#281)
+- **permissions:** read the program by its name, and its script by path
+- **permissions:** no broad rule for code given on the command line
+- **permissions:** no rule wider than the command the card showed
+
+## 0.41.3 (2026-10-26)
+
+### Fixes
+
+- **blocks:** tick only progress blocks with a step still running
+- **transcript:** hold the ring beside each message still, so a long conversation stops repainting
+
 ## 0.41.2 (2026-10-26)
 
 ### Fixes

@@ -16,6 +16,7 @@ import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
+import { appCheckText, appReceipt } from './app-check-status.mjs';
 import { retireApp } from './app-retire.mjs';
 import {
   APP_HOLD_MAX,
@@ -63,6 +64,7 @@ import {
   setPermissionMode,
 } from './permissions-panel.mjs';
 import { readCapped } from './read-capped.mjs';
+import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
@@ -819,7 +821,7 @@ export class Runtime {
         };
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
-        if (turn.first) rt.patchItem(turn.threadId, turn.first, { activity: { steps: [...turn.steps] } });
+        if (turn.first) rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: step });
         const s = se();
         // A thought or a subagent’s narration is in the list, but it isn’t a tool call.
         if (kind === 'thought' || kind === 'said') return;
@@ -844,7 +846,7 @@ export class Runtime {
             ...(typeof x.id === 'string' && x.id ? { id: x.id.slice(0, 100) } : {}),
             name: String(x.name).slice(0, 40),
             state: x.state,
-            ctx: Math.max(0, Math.min(100, +x.ctx || 0)),
+            ctx: Number.isFinite(x.ctx) ? Math.max(0, Math.min(100, x.ctx)) : null, // null: unknown (#189)
             doing: x.doing ? String(x.doing).slice(0, 120) : '',
             ...(x.thinking === true ? { thinking: true } : {}),
             ...(x.asked ? { asked: String(x.asked).slice(0, 120) } : {}),
@@ -1348,7 +1350,8 @@ export class Runtime {
     if (!Array.isArray(steps)) return;
     const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
     if (turn) turn.steps = next;
-    if (job.itemId) this.patchItem(job.threadId, job.itemId, { activity: { steps: next } });
+    const step = job.itemId ? next.find((st) => st.id === job.toolUseId) : null;
+    if (step) this.store.emit('item.patch', { threadId: job.threadId, id: job.itemId, activityStep: step });
   }
 
   /** Jobs nothing reported the end of went with their CLI (SIGKILL, or a crash), unless Postbox kept them running. */
@@ -1646,7 +1649,10 @@ export class Runtime {
       case 'block': {
         if (!i.valid) return null;
         // What it holds comes with it, so another agent can review it (#153).
-        const body = blockContent(i);
+        const body =
+          n === Number.POSITIVE_INFINITY && i.block.type === 'app' && this.s.apps[i.block.id]?.itemId === i.id
+            ? appCheckText(this.s.apps[i.block.id])
+            : blockContent(i);
         const what = i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`;
         const title = i.block.title ?? (i.block.type === 'app' ? i.block.fallback : null);
         return text(
@@ -1718,40 +1724,8 @@ export class Runtime {
     return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n);
   }
 
-  /**
-   * read_message: one item in full, by its id (the history and read_conversation give it where they cut one) or by
-   * a block’s id, from any thread of this conversation: read_conversation { thread } reads its side and topic threads,
-   * a fork’s among them (#110), so the ids it gives must work here too. Its own thread and the conversation it
-   * branched from come first. Long text comes in parts (#109).
-   * @param {any} se @param {{ id?: string, from?: number }} [args]
-   */
-  readMessage(se, { id, from = 0 } = {}) {
-    const key = String(id ?? '').trim();
-    if (!key) return { ok: false, message: 'Name the item: read_message { id }, with an id from your history or read_conversation.' };
-    const threads = this.conversationThreads(se.threadId);
-    let it = threads.map((th) => this.store.item(th, key)).find(Boolean);
-    if (!it) {
-      const blocks = threads.flatMap((th) => this.store.items(th).filter((i) => i.kind === 'block' && i.valid && i.block?.id === key));
-      if (blocks.length > 1)
-        return {
-          ok: false,
-          message: `More than one block is called “${key}”: ${blocks.map((b) => `@${b.handle}’s is ${b.id}`).join(', ')}. Read one by that id.`,
-        };
-      it = blocks[0];
-    }
-    if (!it)
-      return {
-        ok: false,
-        message: `There’s no item “${clipText(key, 80)}” in this conversation. Your history and read_conversation give the id of each item they cut.`,
-      };
-    const full = this.readLine(it, se, Infinity);
-    if (!full) return { ok: false, message: `${it.id} has nothing to read.` };
-    const start = Math.max(0, Math.min(full.length, Math.floor(Number(from) || 0)));
-    if (start >= full.length) return { ok: true, message: `Nothing after character ${count(full.length)}: that’s the end of ${it.id}.` };
-    const end = Math.min(full.length, start + READING.part);
-    if (start === 0 && end === full.length) return { ok: true, message: full };
-    const more = end < full.length ? ` read_message { id: "${it.id}", from: ${end} } reads on.` : '';
-    return { ok: true, message: `${full.slice(start, end)}\n\n(Characters ${count(start + 1)}–${count(end)} of ${count(full.length)}.${more})` };
+  readMessage(se, args = {}) {
+    return readMessage(this, se, args);
   }
 
   // ── The lint pipeline ──────────────────────────────────────────────────────────────
@@ -3029,7 +3003,12 @@ export class Runtime {
         );
         if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
         return v.ok
-          ? { ok: true, message: renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown block ${v.block.id}.` }
+          ? v.block.type === 'app'
+            ? appReceipt(
+                rt.s.apps[v.block.id],
+                renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown app ${v.block.id}.`,
+              )
+            : { ok: true, message: `Shown block ${v.block.id}.` }
           : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
       },
       update_block(args) {

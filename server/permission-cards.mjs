@@ -4,7 +4,7 @@
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
-import { addAllowRule, alwaysAllow, cleanRule, rulesFor } from './permission-rules.mjs';
+import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
 import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
 
 // ── Permission prompts ─────────────────────────────────────────────────────────────
@@ -206,9 +206,15 @@ export async function allowAlways(rt, threadId, it, asked) {
     const persona = se && rt.personaFor(se);
     const adapter = persona && rt.adapters.get(persona.backend);
     if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
-    await addAllowRule(await adapter.folderFor(persona, rt.s.projects[rt.s.threads[threadId]?.projectId]), it.always.saves);
-    // The card may have been answered, or its turn ended, while the file was written.
-    if (!rt.permissionWaits.has(it.id)) throw httpError(409, 'The rule is saved, but the turn that asked has ended.');
+    // A card that expired, or whose turn ended, saves nothing: check before the write, and take the rule out again
+    // if it ended while the file was written (#281).
+    const ended = 'The turn that asked has ended, so no rule was saved.';
+    if (!rt.permissionWaits.has(it.id)) throw httpError(409, ended);
+    const { file, added, claim } = await addAllowRule(await adapter.folderFor(persona, rt.s.projects[rt.s.threads[threadId]?.projectId]), it.always.saves);
+    if (!rt.permissionWaits.has(it.id)) {
+      if (added) await takeBackRule(file, it.always.saves, claim);
+      throw httpError(409, ended);
+    }
   }
   rt.addItem(threadId, { kind: 'voice', text: `Always allowed (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')}): ${asked}` });
   rt.settlePermission(it.id, 'allowed-always', undefined, it.always.updates ? { updatedPermissions: it.always.updates } : {});
@@ -255,11 +261,16 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   if (it?.kind !== 'denial' || it.status !== 'open') throw httpError(409, 'That refusal was already answered.');
   if (!['once', 'always', 'leave'].includes(action)) throw httpError(400, 'A refusal takes “once”, “always” or “leave”.');
   if (action === 'always' && it.remote) throw httpError(409, ON_HOST);
-  // A chained command has no rule that can allow it (permission-rules.mjs, chains), so neither is offered (#238).
+  // A chained command, or one with a *, has no rule that can allow just it (permission-rules.mjs), so neither is
+  // offered (#238, #281).
   if (action !== 'leave' && !it.rules[action])
     throw httpError(
       409,
-      'Claude Code checks each part of a chained command on its own, so no one rule can allow this call. Leave it, and ask the agent to run the parts as separate commands.',
+      it.rules.why === 'wildcard'
+        ? 'Claude Code reads * in a rule as a wildcard, so a rule for this command would allow others too. Leave it, and ask the agent to name the files instead.'
+        : it.rules.why === 'paren'
+          ? 'Claude Code would read a ) in this command as the end of its rule, so a rule for it could allow others too. Leave it, and ask the agent to run it without the unmatched ).'
+          : 'Claude Code checks each part of a chained command on its own, so no one rule can allow this call. Leave it, and ask the agent to run the parts as separate commands.',
     );
   const se = rt.s.sessions[it.sessionId];
   const asked = it.who ? `${it.who} (your subagent)` : 'you';

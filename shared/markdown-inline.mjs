@@ -53,7 +53,7 @@ export function inline(s, ctx, at) {
   };
   while (i < s.length) {
     const c = s[i];
-    const math = c === '$' || c === '\\' ? mathAt(s, i) : null;
+    const math = c === '$' || c === '\\' ? mathAt(s, i, closes) : null;
     if (math) {
       piece(`<span class="md-math"${math.display ? ' data-display="true"' : ''}>${escapeHtml(math.tex)}</span>`, math.end);
       continue;
@@ -101,14 +101,23 @@ export function inline(s, ctx, at) {
   return out;
 }
 
-/** The matching unescaped close for every balanced [] and () opener, found in one pass. */
+/** The matching close for balanced Markdown and LaTeX delimiters, found in one pass. */
 function delimiterCloses(s) {
   const closes = new Map();
   const brackets = [];
   const parens = [];
+  const latexRound = [];
+  const latexSquare = [];
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (c === '\\') {
+      const next = s[i + 1];
+      const pending = next === '(' || next === ')' ? latexRound : next === '[' || next === ']' ? latexSquare : null;
+      if (pending && (next === '(' || next === '[')) pending.push(i);
+      else if (pending) {
+        for (const open of pending) closes.set(open, i);
+        pending.length = 0;
+      }
       i++;
       continue;
     }

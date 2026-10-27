@@ -193,6 +193,7 @@ sequenceDiagram
 | A new version of an app brings it to the newest point in the conversation, with a version menu; its old place becomes one line that leads to it. One copy runs, and its saved state carries over. There’s no agent opt-out | The thread doesn’t fill up with old copies. Changed from “in place” on 21 October 2026 (#49): the agent explains a change in its newest message, so the person scrolled back several screens to try it, and agents began posting new apps instead, leaving three running copies of one explainer with none of its state. |
 | An agent can retire an app it showed that’s wrong, replaced or no longer needed (`retire_app`). It stays where it was as one quiet line that says who retired it and why, leads to what replaced it, and keeps its version menu; it runs nothing until you open a version, which shows read-only. It doesn’t move, and a new version brings it back | Added 23 October 2026 (#193): with no way to retire an app, an agent replaced a practice lab with a one-line version that pointed “below” to the app that replaced it. Its new version moved it below that app, and the person reported that the lab “failed to load”. Nothing new needs the person, so nothing moves. |
 | Before an app is shown, Postbox checks it in your browser: it loads the app in a hidden frame at 375 and 1280 px and checks contrast, overflow, text that spills out of its box or over other text, controls that are clipped or covered, missing labels, keyboard traps and state restore. Problems go to the agent as an event; if the app still fails after one fix, it’s shown with a note | Agent-written UI meets the same bar as Postbox’s own, with no headless browser on the server. Text checks added 23 October 2026 (#194): a gallery’s descriptions ran into its demo heading and passed, because the overflow test only looked at the page. Controls added the same day (#89): an app’s filter buttons in `class="bar"`, a class of Postbox’s own, were clipped to a 4 px strip and passed. |
+| Saving an app returns its version and a pending browser check; `read_message` reads the current version’s recorded check and problems. The guide reserves a passed-check claim for that version’s recorded pass | Saving is not rendering (#337, #206). With no browser open on the conversation the check can remain pending indefinitely, so agents report it as unverified rather than waiting for a check they cannot trigger. Author summaries and separate render checks are not the recorded browser check. |
 | Reviews batch your comments with a verdict, then the revision shows as a diff | It works like a pull-request review. Comments on apps attach to anchors the app registers, so they survive re-layout. |
 
 ### Visual language
@@ -259,7 +260,7 @@ Plain English and sentence case, with curly quotes and American spelling everywh
 
 ## Open questions
 
-None right now. Resolved on 21 October 2026: control borders (a stronger border for controls only), checking apps before you see them (Stage 2, in the browser), narration (Stage 3), screenshot storage (approved baselines only), the app title bar (stays on the stage), and state text in the rail (only with reduced motion).
+None right now. Resolved on 21 October 2026: control borders (a stronger border for controls only), checking apps before you see them (Stage 2, in the browser), narration (Stage 3), screenshot storage (approved baselines only; since 26 October 2026 none are committed but the images docs embed), the app title bar (stays on the stage), and state text in the rail (only with reduced motion).
 
 ## Quality bar
 
@@ -267,7 +268,7 @@ What’s checked today:
 
 - `node tools/contrast.mjs` checks every text, border and status token pair in both modes, including on the app stage.
 - The chart series were validated for color-vision deficiency.
-- Every page is screenshotted at 375 and 1280 px in both modes and reviewed. The approved set lives in `screenshots/`; working retakes go to `screenshots/latest/`, which git ignores, and Stage 2 is compared against the approved set.
+- Every page is screenshotted at 375 and 1280 px in both modes and reviewed. They’re generated into `screenshots/latest/`, which git ignores, and aren’t committed (designs/developing.md, “Screenshots”); Stage 2 was compared against the approved set when it was committed.
 
 What isn’t yet, and should be in Stage 2:
 

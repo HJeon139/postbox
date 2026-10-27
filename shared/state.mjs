@@ -95,7 +95,7 @@ export function apply(s, type, d) {
       break;
     case 'item.patch': {
       const it = s.items[d.threadId]?.find((i) => i.id === d.id);
-      if (it) Object.assign(it, d.patch);
+      if (it) applyItemPatch(it, d);
       break;
     }
     // An item brought to the newest point (#49, #92): a stub takes its old place, and the item itself, with its id,
@@ -137,4 +137,15 @@ export function apply(s, type, d) {
     default:
       if (!applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
   }
+}
+
+/** Apply an ordinary item patch, or one activity step without repeating its accumulated list (#452). */
+function applyItemPatch(item, data) {
+  if (data.activityStep) {
+    const steps = (item.activity ??= { steps: [] }).steps;
+    const index = steps.findIndex((step) => step.id === data.activityStep.id);
+    if (index < 0) steps.push(data.activityStep);
+    else steps[index] = { ...steps[index], ...data.activityStep };
+  }
+  if (data.patch) Object.assign(item, data.patch);
 }

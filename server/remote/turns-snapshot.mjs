@@ -54,8 +54,8 @@ export function sendSnapshot(rts, live, turn) {
 export function onStoreEvent(rts, ev) {
   if (!rts.live.size) return;
   const d = ev.data ?? {};
-  if (ev.type === 'item.add' || ev.type === 'item.patch' || ev.type === 'item.text') {
-    const id = ev.type === 'item.add' ? d.item?.id : d.id;
+  if (ev.type === 'item.add' || ev.type === 'item.patch' || ev.type === 'item.text' || ev.type === 'app') {
+    const id = ev.type === 'app' ? d.itemId : ev.type === 'item.add' ? d.item?.id : d.id;
     for (const live of rts.live.values()) if (inConversation(rts, live, d.threadId)) markDirty(rts, live.sessionId, d.threadId, id);
   } else if (ev.type === 'item.move' || ev.type === 'thread') {
     // A moved item changes the order, and a new thread the list: snapshot-items can say neither, so it goes in full.
