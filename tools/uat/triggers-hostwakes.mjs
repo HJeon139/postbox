@@ -83,7 +83,7 @@ const where = (f, h) => (placeOf(f, h) === 'local' ? 'this computer' : placeOf(f
 
 /**
  * The defects, as checks (tools/uat/checks-remote.mjs): a refused wake that its host sender was told was sent, and a
- * refused hand-off that nobody resent. issue: null until the host part is filed; #326 is the dropped wake itself.
+ * refused hand-off that nobody resent. issue: null until the host part is filed; #439 is the dropped wake itself.
  */
 export const HOSTWAKE_CHECKS = [
   {
@@ -102,7 +102,7 @@ export const HOSTWAKE_CHECKS = [
   },
   {
     id: 'refused-wake-lost',
-    issue: 326,
+    issue: 439,
     run: (f) =>
       refused(f)
         .filter((c) => c.at !== null && (c.senderNext === null || c.senderNext > c.at + SILENT_MS) && c.targetNext === null)
@@ -117,7 +117,7 @@ export const HOSTWAKE_CHECKS = [
 /** @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>} */
 export const HOSTWAKE_TRIGGERS = {
   'pair-card-opened': {
-    issue: 326,
+    issue: 439,
     says: 'a third wake in a row between the same two agents raised a card, which waited for you',
     recorded: (f) => !!f.state,
     run: (f) =>
@@ -129,7 +129,7 @@ export const HOSTWAKE_TRIGGERS = {
         })),
   },
   'refused-wake-told-in-turn': {
-    issue: 326,
+    issue: 439,
     says: 'an agent on a host whose wake was refused was told so, and acted, within a minute',
     recorded: hostRun,
     run: (f) =>
@@ -141,7 +141,7 @@ export const HOSTWAKE_TRIGGERS = {
         })),
   },
   'local-wake-told-in-turn': {
-    issue: 326,
+    issue: 439,
     says: 'an agent on this computer whose wake was refused got the refusal as the call’s own result',
     recorded: (f) => !!f.state && Array.isArray(f.streams),
     run: (f) =>
@@ -150,7 +150,7 @@ export const HOSTWAKE_TRIGGERS = {
         .map((c) => ({ at: c.at, evidence: `@${c.from}’s wake of @${c.to} answered: “${c.text.slice(0, 100)}”.` })),
   },
   'held-wake-delivered-after-allow': {
-    issue: 326,
+    issue: 439,
     says: 'a hand-off refused while a card waited reached its target once you allowed the card, without being sent again',
     recorded: (f) => !!f.state && Array.isArray(f.streams),
     run: (f) => {
