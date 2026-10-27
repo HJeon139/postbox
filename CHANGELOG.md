@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.9 (2026-10-27)
+
+### Fixes
+
+- **codex:** leave Auto's MCP calls to Codex's own reviewer, as on main
+- **codex:** apply MCP policy to every permission mode
+- **codex:** address MCP policy override paths
+- **codex:** separate consecutive reply messages
+- **codex:** finish web search activity
+- **codex:** ask before third-party MCP tools
+
 ## 0.41.8 (2026-10-27)
 
 ### Fixes
