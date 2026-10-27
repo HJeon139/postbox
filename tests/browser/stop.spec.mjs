@@ -286,6 +286,7 @@ test.describe('at 375 px', () => {
     rt.sendMessage(room.id, { text: 'Run the UAT job again.' });
     await expect(page.locator('.bg-jobs li'), 'the second job’s row').toHaveCount(2);
     rt.sendMessage(room.id, { text: 'A one-line status, please.' });
+    await synced(page, app);
     await page.locator('#conversation-actions').click();
     await page.getByRole('menuitem', { name: new RegExp(`message.*queued for @${se.handle}`) }).click();
     await page.locator('.agent-queue-row').getByRole('button', { name: 'Send now', exact: true }).click();
@@ -293,8 +294,7 @@ test.describe('at 375 px', () => {
     await idle();
     await expect(page.locator('.stopped-tag'), 'both stopped replies’ tags, to measure').toHaveCount(2);
     expect(await overflowing(page, '.bg-jobs li, .stopped-tag'), 'the job rows and the tags').toEqual([]);
-    // Then a third job, and Stop’s ask.
-    rt.sendMessage(room.id, { text: 'Run the UAT job a third time.' });
+    rt.sendMessage(room.id, { text: 'Run the UAT job a third time.' }); // Then a third job, and Stop’s ask.
     await expect(page.locator('.bg-jobs li'), 'the third job’s row').toHaveCount(3);
     await expect.poll(() => rt.turns.has(se.id), { message: 'the third turn' }).toBe(true);
     await stopButton(page).click();
