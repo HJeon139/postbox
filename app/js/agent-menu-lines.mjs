@@ -5,13 +5,13 @@ import { factsOf, mockMarker } from './agent-facts.mjs';
 import { agentQueueMenuItem } from './agent-queue.mjs';
 import { stateWord } from './ring.mjs';
 
-export function agentMenuLines(sessions, openPersona) {
+export function agentMenuLines(sessions, openPersona, queueAnchor) {
   if (!sessions.length) return [];
   return [
     { heading: sessions.length > 1 ? 'Agents' : 'Agent' },
     ...sessions.flatMap((session) =>
       [
-        agentQueueMenuItem(session),
+        agentQueueMenuItem(session, queueAnchor),
         {
           label: [`@${session.handle}`, mockMarker(session)],
           icon: 'agent',

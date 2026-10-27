@@ -92,7 +92,7 @@ test('Remove and Send now still act on one queued item at a time', async ({ page
     app.rt.agentWake(r.senders[index].id, r.worker.handle, text);
   await synced(page, app);
   await openQueue(page, r);
-  await queued(page, 'Remove only this').getByRole('button', { name: 'Remove the queued message', exact: true }).click();
+  await queued(page, 'Remove only this').getByRole('button', { name: 'Remove queued message “Remove only this”', exact: true }).click();
   await expect(mail(page, r)).toHaveAccessibleName(`2 messages queued for @${r.worker.handle}`);
   await queued(page, 'Send only this now').getByRole('button', { name: 'Send now', exact: true }).click();
   await idle(r);
@@ -158,6 +158,7 @@ test('#427 ten queued messages stay out of the composer and edit in the agent’
   await page.getByRole('menuitem', { name: `10 messages queued for @${r.worker.handle}` }).click();
   await expect(page.locator('.agent-queue-dialog .agent-queue-row')).toHaveCount(10);
   await page.keyboard.press('Escape');
+  await expect(page.locator('#conversation-actions')).toBeFocused();
   await page.setViewportSize({ width: 1280, height: 800 });
   const dialog = await openQueue(page, r);
   await expect(dialog.locator('.agent-queue-row')).toHaveCount(10);
@@ -168,9 +169,30 @@ test('#427 ten queued messages stay out of the composer and edit in the agent’
   const editor = row.getByRole('textbox', { name: 'Edit the queued message' });
   await expect(editor).toBeFocused();
   await editor.fill('A longer revised question\nwith its second line.');
+  app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Queued question 11` });
+  await synced(page, app);
+  await expect(editor).toHaveValue('A longer revised question\nwith its second line.');
+  await expect(mail(page, r)).toHaveAccessibleName(`11 messages queued for @${r.worker.handle}`);
   await row.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(queued(page, 'A longer revised question\nwith its second line.')).toBeVisible();
-  await expect(mail(page, r)).toHaveAccessibleName(`10 messages queued for @${r.worker.handle}`);
+  await expect(mail(page, r)).toHaveAccessibleName(`11 messages queued for @${r.worker.handle}`);
+});
+
+test('#427 an edit stays visible if its message leaves the queue', async ({ page }) => {
+  const r = await busyRoom(page);
+  app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Keep this draft` });
+  app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Another queued message` });
+  await synced(page, app);
+  const dialog = await openQueue(page, r);
+  const removed = app.rt.s.threads[r.thread.id].queue.find((q) => q.text.endsWith('Keep this draft'));
+  const row = queued(page, `@${r.worker.handle} Keep this draft`);
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  const unsaved = dialog.getByRole('textbox', { name: 'Edit the queued message' });
+  await unsaved.fill('An unsaved draft that must not disappear.');
+  app.rt.cancelQueued(r.thread.id, removed.id);
+  await synced(page, app);
+  await expect(unsaved).toHaveValue('An unsaved draft that must not disappear.');
+  await expect(dialog.locator('.agent-queue-missing')).toContainText('left the queue while you were editing');
 });
 
 test('#427 offline rows replace their prior paint and disappear after reconnecting', async ({ page }) => {

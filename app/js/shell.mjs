@@ -453,6 +453,7 @@ function conversationMenu(anchor, shown) {
       ...agentMenuLines(
         sessionsOf(t.id).filter((x) => !x.archived),
         (personaId) => openSettings('personas', personaId),
+        anchor,
       ),
       {
         label: `Delete ${room ? 'room' : 'conversation'}…`,

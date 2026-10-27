@@ -1,7 +1,7 @@
 // Queued messages for one agent (#427): a counted mail button in its row, and a bounded dialog with each message’s actions.
 
 import { api, client } from './client.mjs';
-import { h, icon } from './dom.mjs';
+import { h, icon, syncList } from './dom.mjs';
 import { openDialog, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -48,25 +48,31 @@ function queuedMessageRow(entry, repaint) {
         'button.btn.sm.ghost',
         {
           type: 'button',
-          'aria-label': 'Remove the queued message',
+          'aria-label': `Remove queued message “${q.text.replace(/\s+/g, ' ').slice(0, 40)}”`,
           onclick: () => api(target, undefined, 'DELETE').catch((e) => toast({ title: 'Couldn’t remove', text: e.message })),
         },
         icon('x', 'i-sm'),
       ),
     ),
   );
+  row._entry = entry;
   return row;
 }
 
 function editQueuedMessage(row, q, target, repaint, from) {
   const input = h('textarea.textarea.agent-queue-edit', { 'aria-label': 'Edit the queued message' }, q.text);
+  row.dataset.editing = '1';
   const cancel = () => {
+    delete row.dataset.editing;
     repaint();
     queueMicrotask(() => from?.focus());
   };
   const save = () =>
     api(target, { text: input.value }, 'PATCH')
-      .then(repaint)
+      .then(() => {
+        delete row.dataset.editing;
+        repaint();
+      })
       .catch((e) => {
         toast({ title: 'Couldn’t edit', text: e.message });
         input.focus();
@@ -83,16 +89,35 @@ export function openQueue(sessionId, anchor = null) {
   if (!session) return;
   const title = h('span');
   const body = h('div.agent-queue-dialog');
+  const list = h('ul.agent-queue-list');
+  body.append(list);
   let dialog;
   const paint = () => {
     const entries = entriesFor(sessionId);
+    const ids = new Set(entries.map((entry) => entry.q.id));
+    const editing = [...list.children].filter((row) => row.dataset.editing);
+    const missing = editing.filter((row) => !ids.has(row.dataset.key));
+    for (const row of missing)
+      if (!row.querySelector('.agent-queue-missing'))
+        row.append(h('p.err.agent-queue-missing', 'This message left the queue while you were editing. Copy your draft before closing it.'));
     title.textContent = `${entries.length} queued for @${session.handle}`;
-    if (!entries.length) {
+    if (!entries.length && !missing.length) {
       dialog?.close();
       document.getElementById(`agent-row-${sessionId}`)?.focus();
       return;
     }
-    body.replaceChildren(h('ul.agent-queue-list', ...entries.map((entry) => queuedMessageRow(entry, paint))));
+    syncList(
+      list,
+      [...entries, ...missing.map((row) => row._entry)],
+      (entry) => entry.q.id,
+      (entry) => queuedMessageRow(entry, paint),
+      (row, entry) => {
+        if (row.dataset.editing) return;
+        const fresh = queuedMessageRow(entry, paint);
+        row.replaceChildren(...fresh.childNodes);
+        row._entry = entry;
+      },
+    );
   };
   paint();
   dialog = openDialog({
@@ -102,13 +127,13 @@ export function openQueue(sessionId, anchor = null) {
     initialFocus: () => body.querySelector('button'),
     onClose: () => {
       off();
-      anchor.setAttribute('aria-expanded', 'false');
+      anchor?.setAttribute('aria-expanded', 'false');
     },
   });
   const off = client.on((change) => {
     if (change.type === 'load' || change.type === 'thread') paint();
   });
-  anchor.setAttribute('aria-expanded', 'true');
+  anchor?.setAttribute('aria-expanded', 'true');
 }
 
 export function agentQueueButton(session) {
@@ -125,9 +150,10 @@ export function agentQueueButton(session) {
     button.replaceChildren(icon('mail', 'i-sm'), h('span.agent-queue-count', { 'aria-hidden': 'true' }, String(count)));
   };
   paint();
+  let mounted = false;
   const off = client.on((change) => {
-    if (!button.isConnected && button.dataset.seen) return off();
-    button.dataset.seen ||= String(button.isConnected);
+    if (button.isConnected) mounted = true;
+    else if (mounted) return off();
     if (change.type === 'load' || change.type === 'thread') paint();
   });
   return button;
@@ -148,13 +174,13 @@ export function paintOfflineQueue(container, messages) {
 }
 
 /** The phone conversation menu’s route to an agent queue, or null when it has none. */
-export function agentQueueMenuItem(session) {
+export function agentQueueMenuItem(session, anchor) {
   const count = entriesFor(session.id).length;
   return count
     ? {
         label: `${count} message${count === 1 ? '' : 's'} queued for @${session.handle}`,
         icon: 'mail',
-        run: () => openQueue(session.id, document.activeElement instanceof HTMLElement ? document.activeElement : null),
+        run: () => openQueue(session.id, anchor),
       }
     : null;
 }
