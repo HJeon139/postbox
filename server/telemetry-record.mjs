@@ -119,7 +119,8 @@ const statusOf = (all, turnId) => {
  */
 export function tierA(rt, c) {
   const items = c.items;
-  const turns = c.turns.map((t) => turnRow(c, t));
+  const spent = new Map(); // each session’s last reported total, for each turn’s own cost (#295)
+  const turns = c.turns.map((t) => turnRow(c, t, spent));
   const gaps = c.turns
     .filter((t) => !t.recorded)
     .map((t) => ({
@@ -173,8 +174,8 @@ export function tierA(rt, c) {
   };
 }
 
-function turnRow(c, t) {
-  const s = t.recorded ? turnStats(t.events, t.startedAt) : null;
+function turnRow(c, t, spent) {
+  const s = t.recorded ? turnStats(t.events, t.startedAt, spent) : null;
   const tools = s ? Object.fromEntries(Object.entries(s.tools).filter(([k]) => TOOL_CLASSES.includes(k))) : undefined;
   return {
     ref: c.byTurn.get(t.turnId),

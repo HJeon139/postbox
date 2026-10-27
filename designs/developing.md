@@ -85,12 +85,19 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 **Use only your own ports and your own data.** Start a server with `--port` and `--data` of your own; a spec’s `startPostbox()` picks a free port and a temp folder for it. Never touch the preview on 4173, another tool’s server on 4320, or the person’s data: `~/.postbox`, which every run without `--data` shares, and a clone’s `data/`. Postbox refuses to start on a folder another Postbox is using, but `--fresh` without `--data` would still empty the person’s store. A spec or tool that talked to a server it didn’t start reports on someone else’s Postbox.
 
-**The screenshot tools and the end-to-end UAT belong to the reviewing session** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`). It runs them once per wave on the merged UI, as [prompts/README.md](prompts/README.md), “Rules for every session”, says.
+**The screenshot tools and the end-to-end UAT belong to the reviewing session** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`). It runs them once per wave on the merged UI, as [prompts/README.md](prompts/README.md), “Rules for every session”, says. Only the UAT doc screenshots are committed (“Screenshots”, below).
 
 **A check that passes needs a negative control before it counts.**
 - A type check that reports nothing on a new file under `app/js/` checked nothing: that folder isn’t in `jsconfig.json`’s `include`.
 - A new lint rule in `tools/lint-*.mjs` comes with a case in `tests/lint.test.mjs` that it flags.
 - A new browser spec or test for a bug is shown failing on the old code, when you can.
+
+### Screenshots
+
+The demo’s screenshots are generated and not committed: a refresh adds a full new copy of every image to history, and the 62 MB it had reached made every clone slower.
+- **To see the current ones,** open the `screenshots` artifact of the latest `check` run on `main` (kept 5 days), or run `node tools/shoot-app.mjs` and read `screenshots/latest/app/`. A run that failed uploads its own copy too; a pull request that passed uploads none.
+- **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. The README’s picture, `screenshots/app/04-corpus-app-dark-1280.png`, is the one tracked image under `screenshots/`. `.gitignore` holds the rest.
+- **A doc that embeds a new image** gets an exception in `.gitignore` in the same change. A reviewing session doesn’t commit regenerated folders.
 
 ## JavaScript
 
@@ -193,7 +200,7 @@ Postbox runs on your computer, as you, for one person. Its safety rests on a few
 
 **Spawn with an argument array, never a shell string** ([child_process][node-child-process]). Git runs with `GIT_OPTIONAL_LOCKS=0` and is only ever read. The one place a shell is the point is a `!` command, which runs your own text, as you, behind the checks above.
 
-**No secret in code, in a log, in a fixture or in a commit.** Postbox never handles an API key. A fixture has its local paths removed, and `data/`, `uat-runs/`, `.env` and `screenshots/latest/` stay out of git (`.gitignore`).
+**No secret in code, in a log, in a fixture or in a commit.** Postbox never handles an API key. A fixture has its local paths removed, and `data/`, `uat-runs/`, `.env` and `screenshots/` (but for the README’s picture) stay out of git (`.gitignore`).
 
 **Use `node:crypto` and nothing hand-rolled:** `randomBytes` for a token, `timingSafeEqual` to compare one, `createHash('sha256')` for a cache key.
 
@@ -270,7 +277,7 @@ A single number, a pass or a fail, and a two-row comparison don’t get a figure
 
 **Draw diagrams in Mermaid, and hold them to the bar agents are held to.** About five boxes side by side, top-to-bottom chains, short labels, and lists as text, not inside boxes (`shared/diagram-lint.mjs`, architecture.md, “Diagram legibility”). Avoid `<br/>` and numbered lists inside nodes.
 
-**A chart or screenshot is generated, never edited.** It comes from a committed script that reads the artifact (`tools/uat-stats.mjs` for UAT runs, `tools/shoot-app.mjs` and `tools/shoot-uat.mjs` for screenshots), and it’s regenerated when the artifact changes. Approved screenshots live in `screenshots/`, and retakes go to `screenshots/latest/`.
+**A chart or screenshot is generated, never edited.** It comes from a committed script that reads the artifact (`tools/uat-stats.mjs` for UAT runs, `tools/shoot-app.mjs` and `tools/shoot-uat.mjs` for screenshots), and it’s regenerated when the artifact changes. Screenshots are generated into `screenshots/latest/` and aren’t committed, except the images a doc embeds (“Screenshots”, above).
 
 **Then look at it.** A tool can prove a screenshot was taken and axe found nothing; it can’t tell you the scene is legible. Open it at both widths and in both themes.
 

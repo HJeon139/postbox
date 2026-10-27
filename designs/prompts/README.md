@@ -4,7 +4,7 @@ Briefs for sessions that implement the plan in [#64](https://github.com/HJeon139
 
 The plan follows the triage of 22 October 2026 (#64’s last two comments), the wave 4 plan the two integrating sessions agreed on 23 October 2026, and the wave 5 plan the person approved the same day.
 
-**Issue state is the source of truth for who's on what.** The triage session labels every issue a wave session takes `in progress`, and comments with its PR. Issues waiting on the person are labeled `needs decision`, and real dependencies are GitHub "Blocked by" links. Contributors outside these sessions pick up work by CONTRIBUTING.md's saved searches.
+**Issue state is the source of truth for who's on what.** The triage session assigns every issue a wave session takes to the person running it, and comments with its PR. (Before 26 October 2026 it labeled them `in progress`; open issues still carrying the label count as claimed until they close.) Issues waiting on the person are labeled `needs decision`, and real dependencies are GitHub "Blocked by" links. Contributors outside these sessions pick up work by CONTRIBUTING.md's saved searches.
 
 **Who integrates wave 5.** The triage session integrates and merges all eight sessions, and writes this page. The architectural review session reviews each pull request before it merges. (In wave 4 the reviewing session wrote this page and integrated three of its sessions. It isn’t running now.)
 
@@ -161,7 +161,7 @@ If it costs more than it gives back to that intent, decline it. Put it under “
 **End-to-end scenarios in an integration pass are Claude only:** scifact and hotpotqa, the M1 exit scenarios (wikisearch, announcement, papersurvey), workroom for the Agents section and the right pane, and p0 when Stop or blocks change. Scenarios that put an agent on another backend (mixedroom with the Kiro CLI, later agy or Codex) are compatibility runs: `tools/uat-run.mjs` refuses them without `--compat`. They’re run only occasionally, never as part of a wave’s pass, with a model that `kiro-cli chat --list-models` offers. Agents in a pass run on Haiku at low effort (the runner’s default, from the merge of #142), except in the M1 exit scenarios, which keep the personas’ model to measure what agents choose.
 
 **Don’t run the screenshot tools or the end-to-end UAT** (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`, `tools/uat-run.mjs`). The reviewing session runs all three once per wave, on an integration branch with every wave 1 pull request merged:
-- the demo screenshots, with axe over every scene
+- the demo screenshots (not committed), with axe over every scene
 - the UAT doc screenshots
 - the end-to-end scenarios
 
@@ -171,7 +171,7 @@ That way the accessibility check and the screenshots cover the merged UI. The in
 3. M3: checks
 4. M4: shell
 
-It reports findings per pull request, including accessibility violations, and commits the refreshed screenshots. After review, it merges the pull requests in that order, and later ones may be asked to rebase.
+It reports findings per pull request, including accessibility violations, and commits the refreshed UAT doc screenshots (`tests/uat/screenshots/`) and nothing else under `screenshots/`: the demo’s pictures are generated, not committed. A reviewer reads them in CI’s `screenshots` artifact on `main`, or from `node tools/shoot-app.mjs` (designs/developing.md, “Screenshots”). After review, it merges the pull requests in that order, and later ones may be asked to rebase.
 
 **Hand off.**
 1. Push your branch and open a pull request against `main` with `gh pr create`. Don’t merge it.
