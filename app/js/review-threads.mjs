@@ -4,6 +4,7 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { h, icon, plural, trusted } from './dom.mjs';
+import { revisionOf } from './review-view.mjs';
 
 /** Whether a thread or a comment is on key: an app’s part, or a line. */
 const on = (b, x, key) => (b.format === 'app' ? x.anchor === key : x.line === key);
@@ -128,7 +129,7 @@ export function reviewersOf(item, b) {
     by.set(r.handle, { n: (was?.n ?? 0) + r.threads.length, verdict: r.verdict ?? was?.verdict, revision: r.revision });
   }
   const said = [...by].map(([handle, r]) => {
-    const on = r.revision !== (b.revision ?? 1) ? `, on v${r.revision}` : '';
+    const on = r.revision !== revisionOf(item, b) ? `, on v${r.revision}` : '';
     return `${plural(r.n, 'comment')} from @${handle}${r.verdict ? ` (${VERDICTS[r.verdict] ?? r.verdict})` : ''}${on}`;
   });
   return said.length ? h('span.rv-reviewers', ' · ', said.join(' · ')) : null;
