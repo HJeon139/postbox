@@ -70,6 +70,7 @@ export function codexOnHost(d, { turnLines = RECORDED.slice(3), threadId = 'thr_
       for (; (t.seen ?? 0) < t.writes.length; t.seen = (t.seen ?? 0) + 1) {
         const req = JSON.parse(t.writes[t.seen ?? 0]);
         if (req.method === 'initialize') d.append(t.turn, JSON.stringify({ id: req.id, result: { userAgent: 'codex/0' } }));
+        else if (req.method === 'mcpServerStatus/list') d.append(t.turn, JSON.stringify({ id: req.id, result: { data: [], nextCursor: null } }));
         else if (req.method === 'thread/start' || req.method === 'thread/resume')
           d.append(t.turn, JSON.stringify({ id: req.id, result: { thread: { id: threadId } } }));
         else if (req.method === 'turn/start') {
