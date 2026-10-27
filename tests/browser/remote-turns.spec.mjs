@@ -5,7 +5,7 @@
 //   Resume, which goes through the runtime’s resumeRemote and starts with why the last turn stopped; a hung turn’s
 //   note; Lost, with no Retry; a stop the host hasn’t confirmed; and a replayed reply once, not twice;
 // - permission cards a host ended say how: expired with nobody answering, canceled by the agent, or ended unrecorded;
-// - a Kiro CLI turn on a host shows its warning as a notice, and a `!` command says it ran on this computer.
+// - Kiro CLI’s host privacy warning belongs in persona setup, not under every reply;
 // Stop, the agent’s panel, the `!` hint, the persona sheet’s Runs on, and 375 px are tests/browser/remote-stop.spec.mjs.
 // On the seeded room of tests/browser/remote-turns.mjs. Moved from tools/check-remote-turns.mjs (#303).
 
@@ -95,7 +95,7 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
     );
 });
 
-test('#120 a replayed reply shows once, with its name, and a Kiro turn’s warning is a notice above it', async ({ page }) => {
+test('#120 a replayed reply shows once, with its name, and a Kiro host warning stays out of the conversation', async ({ page }) => {
   await open(page);
   const { replaced, replay } = s.items;
   const scouts = page
@@ -105,9 +105,8 @@ test('#120 a replayed reply shows once, with its name, and a Kiro turn’s warni
   await expect.soft(scouts, 'one reply from @scout').toHaveCount(1);
   await expect.soft(item(page, replaced), 'the replaced part doesn’t show').toBeHidden();
   await expect.soft(item(page, replay).locator('.who'), 'it names its speaker').toContainText('@scout');
-  const notice = item(page, replay).getByRole('note', { name: 'Other users on the host can read this message' });
-  await expect.soft(notice).toHaveText(/^Other users on the host can read this message Kiro CLI takes its message as a command-line argument/);
-  // The notice isn’t folded into the steps, and isn’t counted as a tool.
+  await expect.soft(item(page, replay).getByRole('note', { name: 'Other users on the host can read this message' })).toHaveCount(0);
+  // The setup warning isn’t folded into the steps, and isn’t counted as a tool.
   await expect.soft(item(page, replay).locator('details.activity summary')).toHaveText('Read 1 file · 0.0 s in tools');
 });
 

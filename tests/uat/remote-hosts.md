@@ -180,9 +180,9 @@ Use the Claude Code persona in **Ask me**, placed on the host. Remove is the las
 
 ## 4. Kiro CLI and Codex
 
-**4.1 Kiro CLI: one turn, and its warning**
-- **Steps:** ask the Kiro CLI agent: “Show me a card block that says hello, then reply done.” Then paste a message over 128 KiB (`node -e "process.stdout.write('x'.repeat(135000))" | pbcopy`) and send it.
-- **You should see:** the turn shows a step “Other users on the host can read this message”, whose detail says why (Kiro takes its message as an argument, readable in `/proc` unless it’s mounted with hidepid). The card block appears, so Postbox’s tools reached it over the shim. The long message is refused before any turn starts, saying it’s too long for Kiro CLI on a remote host and that Linux limits one argument to 128 KiB. There’s never a permission card: headless Kiro refuses what it would ask.
+**4.1 Kiro CLI: a resumed turn through stdin**
+- **Steps:** ask the Kiro CLI agent: “Show me a card block that says hello, then reply done.” Ask a follow-up in the same conversation, so it resumes.
+- **You should see:** both turns answer, the second keeps the first turn’s context, and neither turn shows a host privacy warning. During each turn, the message is absent from the Kiro process’s arguments. The card block appears, so Postbox’s tools reached it over the shim. There’s never a permission card: headless Kiro refuses what it would ask.
 - **If not:** `err.log` in the turn folder, and whether `kiro-cli` was found (the host’s card).
 
 **4.2 Codex: one turn, its approvals, and Stop**
