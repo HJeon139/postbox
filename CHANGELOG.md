@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.12 (2026-10-27)
+
+### Fixes
+
+- **telemetry:** record activity steps incrementally
+
 ## 0.41.11 (2026-10-27)
 
 ### Fixes
