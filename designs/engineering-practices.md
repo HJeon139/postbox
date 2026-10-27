@@ -20,8 +20,8 @@ It runs, in order:
 7. `test:process`: the few `node:test` tests that must run npm, git or an installed postbox (`tests/process/`).
 
 **At review,** the reviewing session runs these over the merged UI of each wave:
-- `node tools/shoot-app.mjs`: it plays the demo and screenshots every scene. axe on those scenes is a spec, `tests/browser/demo-a11y.spec.mjs`, which every pass of `npx playwright test` runs.
-- `node tools/shoot-uat.mjs`: it refreshes the UAT doc screenshots.
+- `node tools/shoot-app.mjs`: it plays the demo and screenshots every scene into `screenshots/latest/app/`. Those aren’t committed: CI uploads them from `main` and from a failed run (designs/developing.md, “Screenshots”). axe on those scenes is a spec, `tests/browser/demo-a11y.spec.mjs`, which every pass of `npx playwright test` runs.
+- `node tools/shoot-uat.mjs`: it refreshes the UAT doc screenshots, which are committed because the docs embed them.
 - The end-to-end UAT ([tests/uat/e2e](../tests/uat/e2e/README.md)), which runs real agents and costs real usage.
 
 The browser half of the gate is the specs. A change that’s visible in the UI also gets a browser spec from whoever writes it: Playwright Test, in `tests/browser/*.spec.mjs` (architecture.md, “Browser checks on Playwright Test”, #303). Each spec file starts its own Postbox with `startPostbox()` from `tests/browser/postbox.mjs` and calls `failOnPageErrors(test)`. It waits with web-first assertions or `expect.poll`, never for a fixed time: Biome’s `no-fixed-waits` rule fails `npm run check` on `page.waitForTimeout` or `setTimeout` in a spec.
