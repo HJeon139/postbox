@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.7 (2026-10-27)
+
+### Fixes
+
+- **blocks:** reopen identical answered updates
+- **blocks:** an outcome isn't a new revision, and agents no longer set one
+- **blocks:** record an outcome from { id, outcome }, and show a review's real revision
+
 ## 0.41.6 (2026-10-26)
 
 ### Fixes
