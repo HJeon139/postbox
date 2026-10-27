@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { placementOf } from '../tools/uat/hosts-options.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { unknownTriggers } from '../tools/uat/triggers.mjs';
 import { HOSTWAKE_CHECKS, HOSTWAKE_TRIGGERS as T } from '../tools/uat/triggers-hostwakes.mjs';
@@ -47,11 +48,8 @@ function facts({ allowedAt = s(400), extraItems = [] } = {}) {
     },
     streams: [wakeStream('critic', s(30), 'researcher', SENT), wakeStream('developer', s(100), 'critic', REFUSED)],
     hosts: {
-      hosts: [
-        { id: 'h1', label: 'host1' },
-        { id: 'h2', label: 'host2' },
-      ],
-      placement: { researcher: 'host1', critic: 'host2', developer: 'local' },
+      hosts: [{ id: 'h1', label: 'host1' }],
+      placement: { researcher: 'local', critic: 'host1', developer: 'local' },
     },
   };
 }
@@ -61,6 +59,12 @@ test('the scenario parses, and every trigger it names is one the runner knows', 
   const sc = parseScenario(readFileSync(new URL('./uat/e2e/scenarios/hostwakes.md', import.meta.url), 'utf8'));
   assert.equal(sc.phases.length, 3);
   assert.deepEqual(unknownTriggers(sc), []);
+});
+
+test('the scenario runs with one --host: only @critic is on a host, and the others are here', () => {
+  // One test host is enough: the defects need only a sender on a host, and the runner refuses the same destination twice (hostsOf).
+  const sc = parseScenario(readFileSync(new URL('./uat/e2e/scenarios/hostwakes.md', import.meta.url), 'utf8'));
+  assert.deepEqual(placementOf(sc, [], 1), { researcher: 'local', critic: 'host1', developer: 'local' });
 });
 
 test('on main: the card opened, the local sender was told in its turn, and the host sender wasn’t', () => {
@@ -75,7 +79,7 @@ test('on main: the checks report the host sender told “Sent”, and both hand-
   const f = facts();
   const said = check('host-wake-said-sent').run(f);
   assert.equal(said.length, 1);
-  assert.match(said[0].title, /@critic on host2 was told its wake of @researcher was sent/);
+  assert.match(said[0].title, /@critic on host1 was told its wake of @researcher was sent/);
   assert.deepEqual(
     check('refused-wake-lost')
       .run(f)
