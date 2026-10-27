@@ -54,7 +54,7 @@ import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
-export { checkRemoteMessage, kiroRemoteEnv, REMOTE_ARGV_NOTE } from './kiro-cli-remote.mjs';
+export { kiroRemoteEnv } from './kiro-cli-remote.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117), on a remote host too (KIRO_REMOTE). The adapter adds the models it found. */
 export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false, remote: KIRO_REMOTE });
@@ -149,9 +149,9 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) 
 
 /**
  * The CLI arguments for one turn. Pure, so the tests can check them.
- * @param {{ persona: any, agent: string, sessionId?: string|null, prompt: string }} turn
+ * @param {{ persona: any, agent: string, sessionId?: string|null, prompt: string, stdin?: boolean }} turn
  */
-export function kiroArgs({ persona, agent, sessionId = null, prompt }) {
+export function kiroArgs({ persona, agent, sessionId = null, prompt, stdin = false }) {
   const { usesHostSetup } = setupOf(persona);
   return [
     'chat',
@@ -171,8 +171,7 @@ export function kiroArgs({ persona, agent, sessionId = null, prompt }) {
     // Isolated loads Postbox’s server only, so a turn without it fails rather than runs blind. Your own servers
     // aren’t held to that: one that doesn’t start shouldn’t stop every turn.
     ...(usesHostSetup ? [] : ['--require-mcp-startup']),
-    '--',
-    prompt,
+    ...(stdin ? ['--no-interactive'] : ['--', prompt]),
   ];
 }
 
@@ -494,14 +493,14 @@ export class KiroCliAdapter {
   async run({ ctx, cwd, folders, prompt, guide, sessionId, turn, attach = false }) {
     const persona = ctx.persona;
     const agent = `postbox-${String(persona.handle).replace(/[^a-z0-9_-]/gi, '')}-${randomUUID().slice(0, 8)}`;
-    const args = kiroArgs({ persona, agent, sessionId, prompt });
+    const args = kiroArgs({ persona, agent, sessionId, prompt, stdin: Boolean(ctx.remote) });
     /** @type {string | null} the agent file on this computer, removed when the turn ends */
     let file = null;
     let spawnFn = this.spawn;
     let env;
     if (ctx.remote) {
       const agentText = (shim) => JSON.stringify(kiroAgent({ name: agent, persona, shim, guide, folders }), null, 2);
-      spawnFn = /** @type {any} */ (kiroRemoteSpawn(ctx, { agent, cwd, turn, attach, prompt, agentText }));
+      spawnFn = /** @type {any} */ (kiroRemoteSpawn(ctx, { agent, cwd, turn, attach, agentText }));
       env = {};
     } else {
       const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
@@ -521,6 +520,7 @@ export class KiroCliAdapter {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
+        if (ctx.remote && !attach) child.stdin.end(prompt);
         let stderr = '';
         const c = child;
         const exited = new Promise((r) => {

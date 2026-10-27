@@ -1,6 +1,5 @@
 // Reactions inline (#320, after #251): under each message, beside “Reply in thread”, all five reactions as buttons,
-// always shown. Yours is highlighted; one made only by others keeps the normal color. More than one reactor adds a
-// count to its right. Who reacted shows in a hover card, which opens on hover and on keyboard focus, and the button’s
+// always shown. Yours is highlighted; one made only by others shows a count from 1. Who reacted shows in a hover card, which opens on hover and on keyboard focus, and the button’s
 // label names them too.
 
 import { readFileSync } from 'node:fs';
@@ -77,11 +76,11 @@ test('yours is highlighted, with no count while it’s yours alone, and clicking
   await expect(reaction(page, 'Good')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('one made only by an agent keeps the normal color; a second reactor adds a count to its right', async ({ page }) => {
+test('#418 one made only by an agent shows a count; yours stays distinct and raises it to two', async ({ page }) => {
   await criticReacts(page, '🚩');
   await expect(reaction(page, 'Flag this'), 'not yours').toHaveAttribute('aria-pressed', 'false');
   await expect(reaction(page, 'Flag this'), 'but made').toHaveClass(/\bmade\b/);
-  await expect(reaction(page, 'Flag this').locator('.react-count'), 'one reactor').toHaveCount(0);
+  await expect(reaction(page, 'Flag this').locator('.react-count'), 'one agent reacted').toHaveText('1');
   await reaction(page, 'Flag this').click();
   await expect(reaction(page, 'Flag this')).toHaveAttribute('aria-pressed', 'true');
   await expect(reaction(page, 'Flag this').locator('.react-count')).toHaveText('2');
