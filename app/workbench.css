@@ -872,7 +872,6 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
   .rpane { width: 100%; border-left: 0; }
   .has-panel .main { margin-right: 0; }
   .toasts { left: 12px; right: 12px; width: auto; top: 108px; }
-  .toasts.bottom { left: 12px; right: 12px; transform: none; }
   .hovercard { width: calc(100vw - 24px); left: 12px !important; }
   .menu { max-width: calc(100vw - 24px); }
   .mention-menu { width: 100%; }

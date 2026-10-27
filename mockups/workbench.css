@@ -605,7 +605,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .ov { padding: 14px 12px 32px; }
   .ov-grid { grid-template-columns: 1fr; }
   .toasts { left: 12px; right: 12px; width: auto; top: 108px; }
-  .toasts.bottom { left: 12px; right: 12px; transform: none; }
   .hovercard { width: calc(100vw - 24px); left: 12px !important; }
   .menu { max-width: calc(100vw - 24px); }
   .mention-menu { width: 100%; }
