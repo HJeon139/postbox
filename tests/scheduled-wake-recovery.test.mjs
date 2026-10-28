@@ -66,6 +66,20 @@ test('#466 a quota failure stays failed and does not retry', async () => {
   assert.equal(f.store.items(sc.threadId).findLast((item) => item.kind === 'agent')?.status, 'failed');
 });
 
+test('#466 a host turn marked lost is attached again, not also retried as a scheduled wake', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
+  f.adapter.next.push(async () => {
+    f.rt.updateSession(f.alpha.id, { remoteTurn: { state: 'lost' } });
+    throw failure('unreachable', 'the test host', { code: 255, stderr: 'ssh: connect to host test port 22: Network is unreachable' });
+  });
+  await fire(f, sc);
+
+  assert.equal(f.store.state.schedules[sc.id], undefined, 'RemoteTurns owns reconnection, so no second recovery is armed');
+  assert.equal(f.rt.timers.has(sc.id), false);
+  assert.equal(f.adapter.calls.length, 1);
+});
+
 test('#466 retries stop after an hour and leave one visible schedule line', async () => {
   const f = setup();
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the run.' });

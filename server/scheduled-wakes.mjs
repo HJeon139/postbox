@@ -62,6 +62,8 @@ const recoveryText = (turn, tools) =>
 export function settleScheduledWake(rt, turn, err) {
   const sc = turn.asked?.message?.scheduledWake;
   if (!sc || !err || err.name === 'AbortError' || !isNetworkFailure(err)) return;
+  // A host turn marked lost is still running there and RemoteTurns will attach it again; a second retry would duplicate it.
+  if (rt.s.sessions[turn.sessionId]?.remoteTurn?.state === 'lost') return;
   const now = Date.now();
   const attempt = (sc.attempt ?? 0) + 1;
   const firstFailureAt = sc.firstFailureAt ?? now;
