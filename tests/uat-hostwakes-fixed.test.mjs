@@ -60,3 +60,16 @@ test('#451 a held hand-off you allow within a minute is delivered after the Allo
   f.received = [received('critic', 'developer', s(131), 'developer to critic')];
   assert.equal(HOSTWAKE_TRIGGERS['held-wake-delivered-after-allow'].run(f).length, 1);
 });
+
+test('#451 a hand-off held on a card that still waits isn’t lost, however long the card waits, as in the 28 October run on a fixed build', () => {
+  const f = facts({ allowedAt: null });
+  f.streams = [wakeStream('developer', s(100), 'critic', HELD)];
+  f.now = s(1000);
+  assert.deepEqual(check('refused-wake-lost').run(f), []);
+});
+
+test('#451 a held hand-off whose card you allowed, and that never reached its target, is lost', () => {
+  const f = held({ answer: 'allow', at: s(400) });
+  f.now = s(1000);
+  assert.equal(check('refused-wake-lost').run(f).length, 1);
+});

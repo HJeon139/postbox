@@ -210,14 +210,18 @@ export const HOSTWAKE_CHECKS = [
       hostRun(f)
         ? refused(f)
             // Judged only once SILENT_MS have passed since the call: run during the run, a window not over yet proves nothing.
-            .filter(
-              (c) =>
-                c.at !== null &&
-                c.at + SILENT_MS <= factsAt(f) &&
-                (c.senderNext === null || c.senderNext > c.at + SILENT_MS) &&
+            // A held one waits for the person by design (#439’s fix), so its window starts when they answer its card; one
+            // whose card still waits isn’t judged (the 28 October run on a fixed build held two for 8 minutes).
+            .filter((c) => {
+              const since = c.held ? (c.card?.answeredAt ?? null) : c.at;
+              return (
+                since !== null &&
+                since + SILENT_MS <= factsAt(f) &&
+                (c.held || c.senderNext === null || c.senderNext > since + SILENT_MS) &&
                 c.deliveredAt === null &&
-                c.toldOfDecline === null,
-            )
+                c.toldOfDecline === null
+              );
+            })
             .map((c) => ({
               key: `${c.from}:${c.to}:${c.at}`,
               title: `@${c.from}’s hand-off to @${c.to} was refused and lost`,
