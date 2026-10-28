@@ -146,7 +146,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
 function settleHeld(rt, card, allow) {
   for (const w of card.held ?? []) {
     if (allow) {
-      rt.agentWake(w.fromSessionId, w.to, w.text, { confirmed: true, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId });
+      sendHeld(rt, card, w, true);
       continue;
     }
     const se = rt.s.sessions[w.fromSessionId];
@@ -183,6 +183,32 @@ export function retireStale(rt, threadId, target, why, { byPerson = false } = {}
       from.id,
       `@${card.to} got a turn another way (${why}) before the person answered your request to wake it, so your message (“${clip(card.text ?? card.reason ?? '', 120)}”) wasn’t sent. Send it again if it’s still needed.`,
     );
-  for (const w of card.held ?? [])
-    rt.agentWake(w.fromSessionId, w.to, w.text, { confirmed: byPerson, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId });
+  for (const w of card.held ?? []) sendHeld(rt, card, w, byPerson);
+}
+
+/** A held wake goes on as its agent sent it; one that can’t go (its target was archived meanwhile) tells its agent why. */
+function sendHeld(rt, card, w, confirmed) {
+  const r = rt.agentWake(w.fromSessionId, w.to, w.text, { confirmed, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId });
+  const se = rt.s.sessions[w.fromSessionId];
+  if (!r.ok && !r.waiting && se && !se.archived)
+    rt.tellAgent(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${r.message}`);
+}
+
+/**
+ * Stopping, archiving or removing an agent reaches the wakes held for it too (#439), as dropWakes does for queued
+ * ones: a held wake mustn’t undo a Stop when the card is allowed. Each one’s agent is told at its next turn.
+ * @param {any} rt @param {any} se  the agent @param {string} how  what happened to it
+ */
+export function dropHeld(rt, se, how) {
+  const conv = rt.lineage(se.threadId).at(-1);
+  const card = openCard(rt, { id: conv });
+  const mine = (card?.held ?? []).filter((w) => w.to === se.handle);
+  if (!mine.length) return;
+  rt.patchItem(conv, card.id, { held: card.held.filter((w) => !mine.includes(w)) });
+  for (const w of mine)
+    if (rt.s.sessions[w.fromSessionId] && !rt.s.sessions[w.fromSessionId].archived && w.fromSessionId !== se.id)
+      rt.tellAgent(
+        w.fromSessionId,
+        `@${se.handle} was ${how} before your message held for it (“${clip(w.text, 120)}”) went, so it won’t go. Wake it again if you still need it.`,
+      );
 }

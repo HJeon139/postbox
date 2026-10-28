@@ -6,7 +6,7 @@
 import { HOP_LIMIT, PAIR_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
-import { askToAdd, askToWake, retireStale } from './wake-cards.mjs';
+import { askToAdd, askToWake, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
 // Agent wakes in a row, without you, and between the same two agents, before the next waits for your Allow
@@ -113,6 +113,7 @@ export function deliverWake(rt, threadId, q) {
  * @param {any} rt @param {any} se  the agent @param {string} [how]  what happened to it
  */
 export function dropWakes(rt, se, how = 'stopped') {
+  dropHeld(rt, se, how);
   for (const t of Object.values(rt.s.threads)) {
     const mine = (t.queue ?? []).filter((q) => q.kind === 'wake' && q.sessionIds.includes(se.id));
     if (!mine.length) continue;

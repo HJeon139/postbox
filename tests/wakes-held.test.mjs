@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TOOL_ROUTES } from '../shared/remote-protocol.mjs';
-import { settle, setup } from './side-threads-fixture.mjs';
+import { held, settle, setup } from './side-threads-fixture.mjs';
 
 /** The fixture's room with @gamma, and a pair card from @alpha's third wake of @beta in a row, left open. */
 async function cardOpen() {
@@ -102,4 +102,40 @@ test('#439 another agent’s wake that reaches the card’s target retires the c
   // gamma’s first wake of beta is under its own limits, so it goes, and beta has a turn without the card.
   await f.wake(f.gamma, 'beta', 'the line count is 42');
   assert.equal(f.store.item(f.t.id, f.card.id).status, 'retired');
+});
+
+test('#439 stopping the held wake’s target drops it, so allowing the card doesn’t undo the Stop, and its agent is told', async () => {
+  const f = await cardOpen();
+  await f.wake(f.gamma, 'alpha', HANDOFF);
+  // alpha is working when the person stops it.
+  const h = held();
+  f.adapter.next.push(h.step);
+  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'carry on' });
+  await new Promise((r) => setTimeout(r, 5));
+  f.rt.stop(f.alpha.id);
+  h.release();
+  await settle(f.rt);
+  f.rt.resolveHop(f.t.id, f.card.id, true);
+  await settle(f.rt);
+  assert.deepEqual(got(f, 'alpha', HANDOFF), [], 'the Stop holds');
+  const told = f.store.state.sessions[f.gamma.id].context ?? [];
+  assert.ok(
+    told.some((l) => /@alpha was stopped before your message held for it/.test(l)),
+    `gamma is told: ${told.join(' | ')}`,
+  );
+});
+
+test('#439 a held wake whose target was archived tells its agent it didn’t go when the card is allowed', async () => {
+  const f = await cardOpen();
+  await f.wake(f.gamma, 'alpha', HANDOFF);
+  f.rt.archive(f.alpha.id);
+  await settle(f.rt);
+  f.rt.resolveHop(f.t.id, f.card.id, true);
+  await settle(f.rt);
+  assert.deepEqual(got(f, 'alpha', HANDOFF), []);
+  const told = f.store.state.sessions[f.gamma.id].context ?? [];
+  assert.ok(
+    told.some((l) => /@alpha was archived before your message held for it/.test(l)),
+    `gamma is told: ${told.join(' | ')}`,
+  );
 });
