@@ -536,7 +536,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           if (st.current) st.streamed.add(st.current);
           ctx.text(d.text);
           st.wroteText = true;
-          st.said += d.text;
+          st.said = glimpseOf(st.said + d.text);
           glimpse(st.said);
         } else if (d.type === 'thinking_delta' && d.thinking && blk) {
           if (st.current) st.thoughtMessages.add(st.current);

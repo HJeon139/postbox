@@ -1,6 +1,6 @@
 // Small text helpers shared by the server and the browser.
 
-import { GLIMPSE_CHARS } from './limits.mjs';
+import { GLIMPSE_CHARS, GLIMPSE_SOURCE_CHARS } from './limits.mjs';
 import { renderMarkdown, TABLE_SEP } from './markdown.mjs';
 import { stripTags } from './markdown-inline.mjs';
 
@@ -64,10 +64,17 @@ export function finishedSentences(text, spoken, done = false) {
 
 /**
  * The latest one or two sentences an agent has streamed, bounded at a whole word and without an ellipsis (#478).
+ * Only a bounded tail is scanned on each streaming update; its first partial sentence is discarded.
  * @param {string} text @param {number} [max]
  */
 export function glimpseOf(text, max = GLIMPSE_CHARS) {
-  const sentences = finishedSentences(String(text ?? ''), 0, true)
+  const raw = String(text ?? '');
+  let source = raw.slice(-GLIMPSE_SOURCE_CHARS);
+  if (source.length < raw.length) {
+    const firstEnd = nextEnd(source, 0);
+    source = firstEnd < 0 ? '' : source.slice(firstEnd).trimStart();
+  }
+  const sentences = finishedSentences(source, 0, true)
     .sentences.map((sentence) => sentence.trim())
     .filter(Boolean);
   const latest = sentences.at(-1) ?? '';

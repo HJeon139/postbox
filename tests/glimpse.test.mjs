@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { GLIMPSE_CHARS } from '../shared/limits.mjs';
+import { GLIMPSE_CHARS, GLIMPSE_SOURCE_CHARS } from '../shared/limits.mjs';
 import { glimpseOf } from '../shared/text.mjs';
 
 test('#478 a long thinking stream keeps its latest whole sentences within the glimpse bound', () => {
@@ -12,6 +12,7 @@ test('#478 a long thinking stream keeps its latest whole sentences within the gl
   assert.ok(glimpse.length <= GLIMPSE_CHARS);
   assert.ok(!glimpse.startsWith('…'));
   assert.ok(!glimpse.endsWith('…'));
+  assert.equal(glimpseOf(`${'Discarded sentence. '.repeat(GLIMPSE_SOURCE_CHARS)}${latest}`), latest, 'only the bounded tail affects the result');
 });
 
 test('#478 an overlong latest sentence stops at a whole word without an ellipsis', () => {
