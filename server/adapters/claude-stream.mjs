@@ -2,6 +2,7 @@
 // into Postbox’s turn context: reply text, activity steps, ring state, context use, subagents and
 // compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
 
+import { contentBlocks } from './claude-content.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
@@ -413,7 +414,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
   const subagentEvent = (parent, e) => {
     const by = { who: st.subNames.get(parent) ?? 'subagent', parent };
     if (e.type === 'assistant')
-      for (const b of e.message?.content ?? [])
+      for (const b of contentBlocks(e.message?.content))
         if (b.type === 'tool_use') {
           startTool(b.id, b.name, b.input, by);
           labelTool(b.id, b.input);
@@ -437,9 +438,9 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     }
     if (e.type === 'assistant') {
       // Its messages arrive whole (recorded: subagent-tree.jsonl), so the last block says what it’s on.
-      const last = e.message?.content?.at(-1)?.type;
+      const last = contentBlocks(e.message?.content).at(-1)?.type;
       if (last) sub.state = last === 'thinking' || last === 'redacted_thinking' ? 'think' : last === 'text' ? 'gen' : 'tool';
-      for (const b of e.message?.content ?? []) {
+      for (const b of contentBlocks(e.message?.content)) {
         if (b.type === 'tool_use') doing(sub, describeTool(b.name, b.input));
         else if (b.type === 'thinking' && b.thinking) doing(sub, firstSentence(b.thinking, 120), true);
         else if (b.type === 'text' && b.text?.trim()) {
@@ -578,7 +579,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         st.answered = m.model;
         ctx.reported?.({ model: m.model });
       }
-      for (const b of m.content ?? []) {
+      for (const b of contentBlocks(m.content)) {
         if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') {
           startTool(b.id, b.name, b.input);
           labelTool(b.id, b.input);
@@ -593,12 +594,12 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         }
       }
       // A message that calls no tool, while subagents it started work on in the background: it waits on them (#189).
-      if (!(m.content ?? []).some((b) => /tool_use$/.test(b.type))) waiting([], asyncAgents());
+      if (!contentBlocks(m.content).some((b) => /tool_use$/.test(b.type))) waiting([], asyncAgents());
       return;
     }
 
     if (e.type === 'user') {
-      const results = (e.message?.content ?? []).filter((b) => b.type === 'tool_result');
+      const results = contentBlocks(e.message?.content).filter((b) => b.type === 'tool_result');
       for (const b of results) {
         // A command that went on in the background becomes a job (#129), and a subagent that did works on (#73): the
         // step stays open until it ends.
