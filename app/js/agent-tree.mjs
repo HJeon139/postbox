@@ -41,8 +41,8 @@ export function subagentsOf(se) {
 }
 
 /**
- * What a subagent is doing now, in a line (#73): its latest narration in its own words, then its step if that changed
- * since; else its step, or what it’s thinking, labeled as thinking.
+ * What a subagent is doing now, in a line, for the thread’s working row (#73): its latest narration in its own words,
+ * then its step if that changed since; else its step, or what it’s thinking, labeled as thinking.
  * @param {{ said?: string, doing?: string, thinking?: boolean, since?: boolean }} sub
  */
 export function subagentNow(sub) {
@@ -50,6 +50,13 @@ export function subagentNow(sub) {
   if (sub.said) return `“${sub.said}”${sub.since && step ? ` · ${step}` : ''}`;
   return step || 'Starting';
 }
+
+/**
+ * A subagent’s line in the Agents section (#476): its step, plainly, or “Thinking”; never its narration or its thoughts,
+ * which stay in the turn’s activity list. The person doesn’t need its running commentary to supervise it.
+ * @param {{ doing?: string, thinking?: boolean }} sub
+ */
+export const subagentStep = (sub) => (sub.thinking ? 'Thinking' : sub.doing || 'Starting');
 
 /**
  * The subagents under an agent’s row, after its side-thread entries (#73), each with End (#229). Each entry is kept and
@@ -88,9 +95,9 @@ export function paintSubagents(list, after, subs, se) {
     const now = /** @type {HTMLElement} */ (li.querySelector('.sub-now'));
     // Ended by the person: it reads “ending” until it or the turn ends, since only its agent can stop it (#229).
     const ending = !!sub.id && (S().sessions[se.id]?.endingSubagents ?? []).includes(sub.id);
-    const line = ending ? `Ending: @${se.handle} was told to stop it` : subagentNow(sub);
+    const line = ending ? `Ending: @${se.handle} was told to stop it` : subagentStep(sub);
     if (now.textContent !== line) now.textContent = line;
-    now.className = `sub-now${ending ? '' : sub.said ? ' said' : sub.thinking ? ' thinking' : ''}`;
+    now.className = `sub-now${!ending && sub.thinking ? ' thinking' : ''}`;
     const end = /** @type {HTMLButtonElement} */ (li.querySelector('.sub-end'));
     end.hidden = !sub.id || ending;
     end.setAttribute('aria-label', `End @${se.handle}’s subagent ‘${asked ?? sub.name}’`);

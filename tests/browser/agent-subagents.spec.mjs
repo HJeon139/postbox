@@ -1,5 +1,6 @@
 // An agent at work with three subagents, as the Agents section and the narrow window’s ring strip show it:
 // - #475: a ring’s “+N” sits clear of its drawn rings, and of the agent’s name beside it.
+// - #476: a subagent’s row says what it was asked and its step, never its narration or its thoughts.
 // The subagents are set on the session directly, in the shape the runtime stores (server/runtime.mjs, status()), as a
 // turn with three Task calls would leave them; tests/browser/agents.spec.mjs replays a recorded stream for the same.
 
@@ -71,6 +72,21 @@ const moreBoxes = (page) =>
       }),
   );
 const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+
+test('#476: a subagent’s row in the Agents section shows its task and a plain step, not its narration or thoughts', async ({ page }) => {
+  await atWork(page);
+  const subs = page.locator('.rail .agent-row .agent-sub.subagent');
+  await expect(subs.locator('.sub-head')).toHaveText([
+    'reader-a · subagent: Read part a',
+    'reader-b · subagent: Read part b',
+    'reader-c · subagent: Read part c',
+  ]);
+  await expect(subs.locator('.sub-now')).toHaveText(['Read papers/part-a.md', 'Read papers/part-a.md', 'Thinking']);
+  const section = page.locator('.rail .agents-sec');
+  await expect(section).not.toContainText('I’ll read part');
+  await expect(section).not.toContainText('Thinking:');
+  await expect(section).not.toContainText('Which of the three papers');
+});
 
 for (const theme of /** @type {const} */ (['light', 'dark']))
   for (const width of [1280, 375])
