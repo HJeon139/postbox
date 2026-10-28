@@ -80,13 +80,18 @@ test('#37 a visible app keeps running through another conversation’s check wit
   await page.goto(`${app.origin}/#/t/${visibleRoom.thread.id}`);
   await synced(page, app);
   await expect.poll(() => visibleRoom.rt.s.apps['visible-counter'].check.status, { timeout: 30_000 }).toBe('passed');
-  const counter = page.locator('iframe.app-iframe[title="Visible counter"]').contentFrame().locator('#counter');
+  const iframe = page.locator('iframe.app-iframe[title="Visible counter"]');
+  const handle = await iframe.elementHandle();
+  const frame = await handle?.contentFrame();
+  if (!handle || !frame) throw new Error('The visible counter has no frame to test.');
+  const counter = frame.locator('#counter');
   await expect.poll(async () => Number(await counter.textContent())).toBeGreaterThan(0);
   const before = Number(await counter.textContent());
   await page.mouse.move(1, 1);
 
   otherRoom.rt.toolsFor(otherRoom.session.id).show_app({ id: 'other-counter-app', title: 'Other counter app', code: PLAIN });
   await expect(page.locator('iframe.check-frame[title="Checking Other counter app"]')).toHaveCount(2);
+  expect(await handle.evaluate((node) => node.isConnected), 'the same visible frame stays mounted').toBe(true);
   await expect.poll(async () => Number(await counter.textContent())).toBeGreaterThan(before);
   await expect.poll(() => otherRoom.rt.s.apps['other-counter-app'].check.status, { timeout: 30_000 }).toBe('passed');
 });
