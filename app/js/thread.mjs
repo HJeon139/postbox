@@ -23,6 +23,7 @@ import { hostOf } from './remote.mjs';
 import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
 import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
+import { scheduledWakeLine } from './scheduled-wake-line.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, kiroStep, ranHere, remoteSig } from './thread-host.mjs';
@@ -767,30 +768,7 @@ function systemLine(it, _ctx) {
       );
     }
     case 'schedule':
-      return h(
-        'div.col.sys-line',
-        icon('clock', 'i-sm'),
-        h('b', `@${it.handle}`),
-        it.status === 'pending'
-          ? ` will wake itself at ${timeOf(it.at)}`
-          : it.status === 'canceled'
-            ? ' won’t wake itself (canceled)'
-            : ` woke itself at ${timeOf(it.at)}`,
-        it.note ? ` · “${it.note}”` : '',
-        it.status === 'pending'
-          ? [
-              ' · ',
-              h(
-                'button.btn.sm.ghost',
-                {
-                  type: 'button',
-                  onclick: () => api(`/api/schedules/${it.scheduleId}/cancel`, {}).catch((e) => toast({ title: 'Couldn’t cancel', text: e.message })),
-                },
-                'Cancel',
-              ),
-            ]
-          : null,
-      );
+      return scheduledWakeLine(it);
     case 'dataset':
       // An agent loaded a dataset into the corpus (#47): searched only when a search names it.
       return h(
