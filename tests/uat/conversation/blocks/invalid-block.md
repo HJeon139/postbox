@@ -11,6 +11,7 @@ A bad block must never break the transcript or fail silently.
 ## Expected functionality
 
 - Shows the agent’s plain-text fallback, “Can’t show this block”, and a collapsed Show the raw block with the reason.
+- Once the person opens the raw block, an update to its recorded errors keeps it open (#488).
 
 ## Steps to reproduce
 

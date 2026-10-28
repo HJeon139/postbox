@@ -112,22 +112,22 @@ test('a queued call while Postbox is away waits, and crosses at its hello; it ou
     k.state.attached = false;
     const s = connectShim(k.b, 't1');
     await s.next('welcome');
-    assert.equal((await s.call('c1', 'schedule_wake', { in_minutes: 5 })).ok, true, 'the shim is answered while Postbox is away');
-    assert.equal((await s.call('c2', 'wake_agent', { handle: 'reviewer', message: 'hi' })).ok, true);
+    assert.equal((await s.call('c1', 'define_term', { term: 't5', definition: 'A term.' })).ok, true, 'the shim is answered while Postbox is away');
+    assert.equal((await s.call('c2', 'define_term', { term: 'hi', definition: 'A greeting.' })).ok, true);
     assert.deepEqual(k.sent, []);
     k.state.attached = true;
-    await k.post('reply', { turn: 't1', id: 'c2', ok: true, text: 'Woken.' }); // a reply before the hello is still a reply
+    await k.post('reply', { turn: 't1', id: 'c2', ok: true, text: 'Defined.' }); // a reply before the hello is still a reply
     // A new daemon, from the records on disk.
     const again = makeBroker(h);
     await again.b.load([{ turn: 't1', state: 'running' }]);
     assert.deepEqual(
       (await again.hello()).map((m) => [m.type, m.id, m.name, m.args]),
-      [['tool', 'c1', 'schedule_wake', { in_minutes: 5 }]],
+      [['tool', 'c1', 'define_term', { term: 't5', definition: 'A term.' }]],
     );
     // The shim, reconnecting, sends c1 again: recognized from the records, so it isn’t sent a second time.
     const s2 = connectShim(again.b, 't1');
     await s2.next('welcome');
-    assert.equal((await s2.call('c1', 'schedule_wake', { in_minutes: 5 })).ok, true);
+    assert.equal((await s2.call('c1', 'define_term', { term: 't5', definition: 'A term.' })).ok, true);
     assert.deepEqual(again.sent, []);
     // A torn last line, as a crash mid-append leaves, is skipped.
     await appendFile(h.p.turn('t1', TURN_FILES.tools), '{"op":"call","id":"c3"');
@@ -150,27 +150,27 @@ test('calls waiting for Postbox stop at the host’s limits: so many, so many by
     k.state.attached = false;
     const s = connectShim(k.b, 't1');
     await s.next('welcome');
-    assert.equal((await s.call('c1', 'schedule_wake', { in_minutes: 5 })).ok, true);
-    assert.equal((await s.call('c2', 'schedule_wake', { in_minutes: 6 })).ok, true);
-    const third = await s.call('c3', 'schedule_wake', { in_minutes: 7 });
+    assert.equal((await s.call('c1', 'define_term', { term: 't5', definition: 'A term.' })).ok, true);
+    assert.equal((await s.call('c2', 'define_term', { term: 't6', definition: 'A term.' })).ok, true);
+    const third = await s.call('c3', 'define_term', { term: 't7', definition: 'A term.' });
     assert.equal(third.ok, false, 'a third waiting call is over the limit of 2');
     assert.match(third.text, /already has 2 calls .* waiting for Postbox/);
     // Once Postbox has taken them, there’s room again.
     k.state.attached = true;
     await k.hello();
     for (const id of ['c1', 'c2']) await k.post('reply', { turn: 't1', id, ok: true, text: 'Done.' });
-    assert.equal((await s.call('c3', 'schedule_wake', { in_minutes: 7 })).ok, true);
+    assert.equal((await s.call('c3', 'define_term', { term: 't7', definition: 'A term.' })).ok, true);
     // One too large for what’s left of the bytes, and then for the turn’s record.
     const small = makeBroker(h, { queueLimits: { calls: 10, bytes: 600, recordBytes: 1_000_000 } });
     small.state.attached = false;
     const s2 = connectShim(small.b, 't1');
     await s2.next('welcome');
-    const big = await s2.call('c4', 'wake_agent', { handle: 'reviewer', message: 'x'.repeat(500) });
+    const big = await s2.call('c4', 'define_term', { term: 'x', definition: 'x'.repeat(500) });
     assert.match(big.text, /waiting for Postbox, as many as this host keeps/);
     const full = makeBroker(h, { queueLimits: { calls: 10, bytes: 1_000_000, recordBytes: 100 } });
     const s3 = connectShim(full.b, 't1');
     await s3.next('welcome');
-    assert.match((await s3.call('c5', 'schedule_wake', { in_minutes: 8 })).text, /record of its calls on this host has reached/);
+    assert.match((await s3.call('c5', 'define_term', { term: 't8', definition: 'A term.' })).text, /record of its calls on this host has reached/);
   } finally {
     h.done();
   }
@@ -185,7 +185,10 @@ test('two shims of a turn sending at once can’t pass the limit on calls waitin
     const s1 = connectShim(k.b, 't1');
     const s2 = connectShim(k.b, 't1');
     await Promise.all([s1.next('welcome'), s2.next('welcome')]);
-    const got = await Promise.all([s1.call('c1', 'schedule_wake', { in_minutes: 5 }), s2.call('c2', 'schedule_wake', { in_minutes: 6 })]);
+    const got = await Promise.all([
+      s1.call('c1', 'define_term', { term: 't5', definition: 'A term.' }),
+      s2.call('c2', 'define_term', { term: 't6', definition: 'A term.' }),
+    ]);
     assert.deepEqual(got.map((r) => r.ok).sort(), [false, true], 'exactly one queued');
     assert.equal(lines(h.p.turn('t1', TURN_FILES.tools)).filter((x) => x.op === 'call').length, 1, 'and only it recorded');
   } finally {
