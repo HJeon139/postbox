@@ -157,7 +157,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_message',
-    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. For an app, also returns its current version and recorded browser check, which may stay pending indefinitely without an open browser. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
+    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters (your history, a message that @-mentions you at ${count(READING.mention)}), say how much they kept, and give its id. For an app, also returns its current version and recorded browser check, which may stay pending indefinitely without an open browser. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
     inputSchema: {
       type: 'object',
       properties: {
