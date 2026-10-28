@@ -58,3 +58,11 @@ test('the call that raised a card isn’t refused by it, though the host’s clo
   );
   assert.deepEqual(check('host-wake-said-sent').run(f), []);
 });
+
+test('a card asking to add an agent refuses other wakes too, so a hand-off it refused is seen', () => {
+  const f = run(
+    [{ kind: 'hop', join: true, from: 'researcher', to: 'editor', at: s(10), status: 'open', text: 'Join us.' }],
+    wakeStream('critic', s(100), 'researcher', SENT, 'Here is the task.'),
+  );
+  assert.equal(check('host-wake-said-sent').run(f).length, 1);
+});
