@@ -1,0 +1,184 @@
+{
+ "room | loop tags only (decides)": {
+  "limit 2 (now)": {
+   "cards": 12,
+   "cards_by_pair_rule": 11,
+   "cards_by_chain_limit": 1,
+   "wakes_held": 2,
+   "false_stops": 8,
+   "loop_wakes_delivered": 15,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  },
+  "limit 6": {
+   "cards": 2,
+   "cards_by_pair_rule": 0,
+   "cards_by_chain_limit": 2,
+   "wakes_held": 1,
+   "false_stops": 2,
+   "loop_wakes_delivered": 17,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  },
+  "content rule, detector": {
+   "cards": 2,
+   "cards_by_pair_rule": 0,
+   "cards_by_chain_limit": 2,
+   "wakes_held": 1,
+   "false_stops": 2,
+   "loop_wakes_delivered": 17,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  },
+  "content rule, oracle": {
+   "cards": 2,
+   "cards_by_pair_rule": 0,
+   "cards_by_chain_limit": 2,
+   "wakes_held": 1,
+   "false_stops": 2,
+   "loop_wakes_delivered": 17,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  }
+ },
+ "room | every NOTHING wake": {
+  "limit 2 (now)": {
+   "cards": 12,
+   "cards_by_pair_rule": 11,
+   "cards_by_chain_limit": 1,
+   "wakes_held": 2,
+   "false_stops": 8,
+   "loop_wakes_delivered": 86,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  },
+  "limit 6": {
+   "cards": 2,
+   "cards_by_pair_rule": 0,
+   "cards_by_chain_limit": 2,
+   "wakes_held": 1,
+   "false_stops": 2,
+   "loop_wakes_delivered": 91,
+   "loop_wakes_past_3rd": 1,
+   "longest_loop_delivered": 3
+  },
+  "content rule, detector": {
+   "cards": 2,
+   "cards_by_pair_rule": 0,
+   "cards_by_chain_limit": 2,
+   "wakes_held": 1,
+   "false_stops": 2,
+   "loop_wakes_delivered": 91,
+   "loop_wakes_past_3rd": 1,
+   "longest_loop_delivered": 3
+  },
+  "content rule, oracle": {
+   "cards": 3,
+   "cards_by_pair_rule": 1,
+   "cards_by_chain_limit": 2,
+   "wakes_held": 1,
+   "false_stops": 2,
+   "loop_wakes_delivered": 90,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  }
+ },
+ "uat | loop tags only (decides)": {
+  "limit 2 (now)": {
+   "cards": 15,
+   "cards_by_pair_rule": 15,
+   "cards_by_chain_limit": 0,
+   "wakes_held": 12,
+   "false_stops": 5,
+   "loop_wakes_delivered": 14,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 1
+  },
+  "limit 6": {
+   "cards": 0,
+   "cards_by_pair_rule": 0,
+   "cards_by_chain_limit": 0,
+   "wakes_held": 0,
+   "false_stops": 0,
+   "loop_wakes_delivered": 19,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  },
+  "content rule, detector": {
+   "cards": 2,
+   "cards_by_pair_rule": 2,
+   "cards_by_chain_limit": 0,
+   "wakes_held": 0,
+   "false_stops": 0,
+   "loop_wakes_delivered": 18,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  },
+  "content rule, oracle": {
+   "cards": 0,
+   "cards_by_pair_rule": 0,
+   "cards_by_chain_limit": 0,
+   "wakes_held": 0,
+   "false_stops": 0,
+   "loop_wakes_delivered": 19,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  }
+ },
+ "uat | every NOTHING wake": {
+  "limit 2 (now)": {
+   "cards": 15,
+   "cards_by_pair_rule": 15,
+   "cards_by_chain_limit": 0,
+   "wakes_held": 12,
+   "false_stops": 5,
+   "loop_wakes_delivered": 102,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  },
+  "limit 6": {
+   "cards": 0,
+   "cards_by_pair_rule": 0,
+   "cards_by_chain_limit": 0,
+   "wakes_held": 0,
+   "false_stops": 0,
+   "loop_wakes_delivered": 124,
+   "loop_wakes_past_3rd": 17,
+   "longest_loop_delivered": 5
+  },
+  "content rule, detector": {
+   "cards": 2,
+   "cards_by_pair_rule": 2,
+   "cards_by_chain_limit": 0,
+   "wakes_held": 0,
+   "false_stops": 0,
+   "loop_wakes_delivered": 122,
+   "loop_wakes_past_3rd": 15,
+   "longest_loop_delivered": 5
+  },
+  "content rule, oracle": {
+   "cards": 9,
+   "cards_by_pair_rule": 9,
+   "cards_by_chain_limit": 0,
+   "wakes_held": 8,
+   "false_stops": 0,
+   "loop_wakes_delivered": 107,
+   "loop_wakes_past_3rd": 0,
+   "longest_loop_delivered": 2
+  }
+ },
+ "detector vs labels": {
+  "wakes": 437,
+  "agree": 245,
+  "kappa_nothing_vs_new": 0.115,
+  "detector_nothing": 86,
+  "labels_nothing": 216,
+  "loop_wakes_caught": 13,
+  "loop_wakes": 36,
+  "new_wakes_called_nothing": 31
+ },
+ "conversations": {
+  "room": 5,
+  "uat": 15
+ }
+}
