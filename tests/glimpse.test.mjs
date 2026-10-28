@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { GLIMPSE_CHARS, GLIMPSE_SOURCE_CHARS } from '../shared/limits.mjs';
 import { appendGlimpseSource, glimpseOf } from '../shared/text.mjs';
 
@@ -21,6 +22,17 @@ test('#478 streamed pieces keep spaces and sentence boundaries before making a g
 
   assert.equal(source, 'I read the file. Next I check the tests. Done.');
   assert.equal(glimpseOf(source), 'Next I check the tests. Done.');
+});
+
+test('#478 Claude’s stream mapper keeps sentence boundaries across text deltas', () => {
+  let now = 0;
+  const statuses = [];
+  const mapper = createStreamMapper({ state: {}, status: (patch) => statuses.push(patch), text() {}, activity() {} }, { now: () => (now += 500) });
+  mapper.push({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } } });
+  for (const text of ['I read the file. ', 'Next I check', ' the tests.', ' Done.'])
+    mapper.push({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } } });
+
+  assert.equal(statuses.filter((status) => status.glimpse).at(-1).glimpse, 'Next I check the tests. Done.');
 });
 
 test('#478 an overlong latest sentence stops at a whole word without an ellipsis', () => {
