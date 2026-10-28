@@ -55,7 +55,7 @@ function stepRow(s) {
       // Narration is read as “name: what it said”, so its glyph isn’t read too.
       s.kind === 'said' ? h('span.g.g-said', { 'aria-hidden': 'true' }) : h('span.g.g-thought', { role: 'img', 'aria-label': 'thought' }),
       s.detail && s.detail !== s.label
-        ? h('details.step-text', h('summary', who ? [who, ' '] : null, s.label), h('p', s.detail))
+        ? h('details.step-text', { dataset: { stepId: s.id } }, h('summary', who ? [who, ' '] : null, s.label), h('p', s.detail))
         : h('span.step-text', who ? [who, ' '] : null, h('span', s.label)),
       dur,
     );
