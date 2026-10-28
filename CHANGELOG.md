@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.42.1 (2026-10-28)
+
+### Fixes
+
+- **server:** your message to a card's target goes before the card's own wake
+- **remote:** a host call Postbox waits on is applied once, though the daemon sends it again
+- **app:** a retired wake card says its message went on, or asks again
+- **server:** a retired wake card records when it was retired
+- **server:** a retired wake card's own hand-off goes on, as its held wakes do
+- **server:** Stop and archive reach a wake held on a card
+- **server:** retire a wake card whose target got a turn another way
+- **server:** hold a wake that needs a card while one waits, and settle it with that card
+
 ## 0.42.0 (2026-10-28)
 
 ### Features
