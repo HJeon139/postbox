@@ -72,11 +72,11 @@ const raisedBy = (c, call) =>
  * Every wake_agent call in the recorded streams, with its result’s text, where its sender runs, and whether Postbox
  * applied it: its target received the call’s message within APPLIED_MS. Each record answers one call, in order, so an
  * agent that sends the same text twice has the second refusal seen. A target woken by another agent meanwhile doesn’t
- * make a refused call look applied, as it did in the 27 October run.
+ * make a refused call look applied (tests/uat-hostwakes.test.mjs replays a run where it did).
  */
 export function wakeCalls(f) {
-  // The sender’s next turn counts as the refusal’s only if the person did nothing in between (28 October rerun: the
-  // person asked @critic 11 s after its refused wake, and that turn read as @critic told of the refusal).
+  // The sender’s next turn counts as the refusal’s only if the person did nothing in between: a question from the person
+  // 11 s after a refused wake read as the sender told of the refusal (replayed in tests/uat-hostwakes.test.mjs).
   const acts = personActs(f);
   const personBetween = (from, to) => acts.some((t) => t > from && t <= to);
   const startsOf = turnStarts(f);
@@ -127,8 +127,8 @@ export function wakeCalls(f) {
 
 /**
  * When each agent’s turns started, earliest first: its stream’s file says when its process started. A turn’s first item
- * can come after a call made in that same turn (28 October rerun: @developer’s refused call at 01:09:03, its turn’s
- * first item at 01:09:06), so items are only the fallback, for an agent with no recorded streams.
+ * can come after a call made in that same turn (a refused call 3 s before its turn’s first item, replayed in
+ * tests/uat-hostwakes.test.mjs), so items are only the fallback, for an agent with no recorded streams.
  * @returns {(handle: string) => number[]}
  */
 function turnStarts(f) {
@@ -257,7 +257,7 @@ export const HOSTWAKE_TRIGGERS = {
         .flatMap((c) => {
           const allow = allowedAt.filter((t) => t > /** @type {number} */ (c.at)).sort((a, b) => a - b)[0];
           // Only the refused hand-off’s own message counts, sent to its target after the Allow; a turn of its target
-          // started by anything else, such as the wake the card held, isn’t it (28 October third run). A resend by the
+          // started by anything else, such as the wake the card held, isn’t it (tests/uat-hostwakes.test.mjs). A resend by the
           // agent claims its own record, so it never reads as Postbox’s delivery.
           const delivered = c.deliveredAt;
           if (!allow || delivered === null || delivered < allow) return [];

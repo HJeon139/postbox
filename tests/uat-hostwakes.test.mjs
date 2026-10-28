@@ -71,7 +71,7 @@ test('a wake its target received is no refusal, even with a card open', () => {
 });
 
 test('a refused wake is seen though another agent woke its target meanwhile, as in the 27 October run', () => {
-  // From uat-runs/2026-10-27T23-45-51-hostwakes (data/events-1.jsonl and critic’s stream): a card from @developer to
+  // From a hostwakes run of 27 October 2026 (its data/events-1.jsonl and critic’s stream; uat-runs/ isn’t committed): a card from @developer to
   // @researcher opened at 23:46:52. @critic, on the host, called wake_agent with the same text at 23:47:25 and 23:47:36,
   // and the shim answered both with “Sent…”. researcher received only the first; the second was the pair’s third wake and was
   // refused. @developer had woken @researcher at 23:47:34, so @researcher started a turn 10 s after the refusal.
@@ -103,7 +103,7 @@ test('a refused wake is seen though another agent woke its target meanwhile, as 
   );
 });
 
-/** The 28 October rerun (uat-runs/2026-10-28T01-06-14-hostwakes): its refused calls, and when the turns after them began. */
+/** A hostwakes run of 28 October 2026 (uat-runs/ isn’t committed): its refused calls, and when the turns after them began. */
 function rerun(now) {
   const at = (hms) => Date.parse(`2026-10-28T${hms}Z`);
   const stream = (handle, started, calls = []) => ({
@@ -154,7 +154,7 @@ test('a refused hand-off is judged lost only 3 minutes on, by turns that started
 });
 
 test('a target’s turn started by the card’s own held wake isn’t a refused hand-off delivered, as in the 28 October third run', () => {
-  // From uat-runs/2026-10-28T02-04-44-hostwakes: critic’s wake_agent hand-off to developer at 02:10:37 was refused
+  // From a later hostwakes run of 28 October 2026 (uat-runs/ isn’t committed): critic’s wake_agent hand-off to developer at 02:10:37 was refused
   // while researcher’s card to developer waited. The card was allowed at 02:14:00, which delivered researcher’s held
   // thank-you, and developer’s turn started then; critic’s hand-off was never posted.
   const at = (hms) => Date.parse(`2026-10-28T${hms}Z`);
@@ -180,7 +180,7 @@ test('a target’s turn started by the card’s own held wake isn’t a refused 
 });
 
 test('a refused hand-off is lost though its target had a turn the person started, as in the 28 October third run', () => {
-  // From uat-runs/2026-10-28T02-04-44-hostwakes: developer’s wake_agent hand-off to critic was refused at 02:10:00 while
+  // From a later hostwakes run of 28 October 2026 (uat-runs/ isn’t committed): developer’s wake_agent hand-off to critic was refused at 02:10:00 while
   // researcher’s card waited; the person then messaged critic at 02:10:23, and critic’s turn started. The hand-off was
   // never posted, so it never reached critic.
   const at = (hms) => Date.parse(`2026-10-28T${hms}Z`);
