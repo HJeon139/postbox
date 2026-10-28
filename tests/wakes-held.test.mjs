@@ -84,6 +84,7 @@ test('#439 a card whose target you write to is retired, and its own wake and the
   f.rt.sendMessage(f.t.id, { text: '@beta the review is done, thanks' });
   await settle(f.rt);
   assert.equal(f.store.item(f.t.id, f.card.id).status, 'retired');
+  assert.ok(Number.isFinite(f.store.item(f.t.id, f.card.id).retiredAt), 'it says when, for the hostwakes checks (#451)');
   assert.equal(got(f, 'beta', 'alpha to beta').length, 2, 'the card’s own wake reaches beta too, after the first');
   assert.equal(got(f, 'alpha', HANDOFF).length, 1, 'gamma’s held hand-off goes on to alpha');
   assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0, 'your message started the counts again');

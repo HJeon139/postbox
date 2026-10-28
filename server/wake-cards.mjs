@@ -175,7 +175,7 @@ export function retireStale(rt, threadId, target, why, { byPerson = false } = {}
   const conv = rt.lineage(threadId).at(-1);
   const card = openCard(rt, { id: conv });
   if (!card || card.join || card.to !== target.handle) return;
-  rt.patchItem(conv, card.id, { status: 'retired', retiredWhy: why });
+  rt.patchItem(conv, card.id, { status: 'retired', retiredWhy: why, retiredAt: Date.now() });
   const from = rt.s.sessions[card.fromSessionId];
   if (from) rt.updateSession(from.id, { needs: null, state: rt.turns.has(from.id) ? from.state : 'idle' });
   // A request stored before #108 kept only the preview.
