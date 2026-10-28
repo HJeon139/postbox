@@ -6,16 +6,19 @@
 //
 // The stream is tests/fixtures/claude-code/background-moved.jsonl, a Bash call moved to the background at its timeout,
 // cut from the HotpotQA UAT of 22 October 2026 (tests/agent-activity.test.mjs). As recorded, both its results carry the
-// agent’s reply in `result.result` with no text event before them, so Postbox reads a turn of steps and no text, as in
-// #485. Whether Claude Code itself streamed text there isn’t known: the recording was cut.
+// agent’s reply in `result.result` with no text event before them: the mapper now posts that text (the tests at the
+// end). Whether Claude Code itself streamed text there isn’t known: the recording was cut. For the guard, the same
+// stream with its results’ text blanked (SILENT) ends with steps and no text anywhere, which is what Postbox read in
+// #485, whatever the cause.
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
+import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { endedWithoutReply } from '../server/empty-reply.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { readMessage } from '../server/read-message.mjs';
@@ -26,12 +29,16 @@ import { setup as blocksSetup, settle as settleBlocks } from './blocks-fixture.m
 const LINES = readFileSync(new URL('fixtures/claude-code/background-moved.jsonl', import.meta.url), 'utf8')
   .split('\n')
   .filter(Boolean);
+const SILENT = LINES.map((l) => {
+  const e = JSON.parse(l);
+  return e.type === 'result' ? JSON.stringify({ ...e, result: '' }) : l;
+});
 
-/** A claude that plays the recorded stream, then exits 0. */
+/** A claude that plays the recorded stream, its results’ text blanked, then exits 0. */
 const spawnImpl = () => {
   const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), pid: 1 });
   setImmediate(() => {
-    for (const l of LINES) child.stdout.write(`${l}\n`);
+    for (const l of SILENT) child.stdout.write(`${l}\n`);
     child.stdout.end();
     setTimeout(() => child.emit('close', 0), 5);
   });
@@ -60,7 +67,7 @@ test('#485: a turn that ends with steps and no reply text ends as a failed reply
   assert.ok(replies.length, 'the turn posted its steps');
   assert.ok(
     replies.every((i) => !i.text?.trim()),
-    'as recorded, no text reaches Postbox: the case #485 is about',
+    'no text reaches Postbox: the case #485 is about',
   );
   const last = replies.at(-1);
   assert.equal(last.status, 'failed', 'never left as a finished reply with no text');
@@ -79,7 +86,7 @@ test('#485: the empty reply keeps the turn’s raw ending, and the agent hears o
     .at(-1);
   assert.equal(last.rawEnding?.backend, 'claude-code');
   assert.ok(last.rawEnding.lines.length > 0 && last.rawEnding.lines.length <= 12);
-  assert.equal(last.rawEnding.lines.at(-1), LINES.at(-1).slice(0, 1000), 'its last line is the stream’s last event, bounded');
+  assert.equal(last.rawEnding.lines.at(-1), SILENT.at(-1).slice(0, 1000), 'its last line is the stream’s last event, bounded');
   assert.ok(
     last.rawEnding.lines.every((l) => l.length <= 1000),
     'each line is bounded',
@@ -152,4 +159,46 @@ test('#485: a turn that answers only with a Postbox call that acts, such as a re
   rt.sendMessage(t.id, { text: '@critic what did I just say?' });
   await settleBlocks(rt);
   assert.equal(store.state.sessions[se.id].needs?.kind, 'failed', 'reading isn’t answering');
+});
+
+/** The text the mapper writes for a recorded stream. */
+const mappedText = (name) => {
+  let text = '';
+  const ctx = { text: (d) => (text += d), activity() {}, status() {}, job() {}, compaction() {}, denied() {}, saveState() {}, state: {} };
+  const m = createStreamMapper(ctx, { now: () => 1000 });
+  const lines = readFileSync(new URL(`fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')
+    .split('\n')
+    .filter(Boolean);
+  for (const l of lines) {
+    // As the adapter does (claude-code.mjs, readStream): an event the mapper can’t read is skipped, not the turn.
+    try {
+      m.push(JSON.parse(l));
+    } catch {}
+  }
+  return text;
+};
+const squash = (s) => s.split(/\s+/).join(' ');
+
+test('#485: a reply that reached the stream only in its result is posted from the result', () => {
+  // background-moved.jsonl: both results carry the agent’s reply, with no text event before either (as recorded, cut).
+  const text = squash(mappedText('background-moved'));
+  assert.match(text, /You were right to doubt it, but the problem isn’t the one you named/);
+  assert.match(text, /The background search for the dataset hit its time limit and was stopped/);
+});
+
+test('#485: a result whose text was streamed isn’t posted again, in every recorded stream', () => {
+  const dir = new URL('fixtures/claude-code/', import.meta.url);
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.jsonl'))) {
+    const name = f.replace(/\.jsonl$/, '');
+    const text = squash(mappedText(name));
+    const results = readFileSync(new URL(f, dir), 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l))
+      .filter((e) => e.type === 'result' && !e.is_error && typeof e.result === 'string' && e.result.trim().length > 20);
+    for (const r of results) {
+      const head = squash(r.result.trim()).slice(0, 60);
+      assert.ok(text.split(head).length - 1 <= 1, `${name}: “${head}” posted twice`);
+    }
+  }
 });
