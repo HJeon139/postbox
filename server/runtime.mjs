@@ -72,7 +72,7 @@ import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere,
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
-import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
+import { armWake, cancelWakeSchedule, rearmWakes, recordScheduledTool, scheduleWake, settleScheduledWake } from './scheduled-wakes.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
@@ -771,7 +771,7 @@ export class Runtime {
       // what it returned ({ id, isError, text, result: the tool’s own record, vcsCwd }); a background task’s end
       // ({ toolUseId, status, summary, outputFile }); and the process’s running spend ({ key, costUsd, tokens }).
       toolUse(u) {
-        if (live()) rt.ledger.toolUse(turn, u);
+        if (live()) recordScheduledTool(rt, turn, u);
       },
       toolResult(r) {
         if (live()) rt.ledger.toolResult(turn, r);
@@ -943,6 +943,7 @@ export class Runtime {
     this.settleSubagentSteps(turn);
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
+    settleScheduledWake(this, turn, err);
     this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
