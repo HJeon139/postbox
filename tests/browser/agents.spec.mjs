@@ -2,8 +2,8 @@
 // - the rows in the sidebar, and a topic thread’s line of who is in it (#228);
 // - changing the model, effort, permission mode and shell in two clicks, and the scope each control says;
 // - the links, Stop, Compact and Delete session;
-// - the subagents at work in the tree and the working row, from a recorded stream (#73), with End on each, by keyboard
-//   (#229);
+// - the subagents at work in the tree, with their step and not their narration (#476), and the working row, from a
+//   recorded stream (#73), with End on each, by keyboard (#229);
 // - and at 375 px, a top bar with no agent rings whose menu names each agent (#320).
 // On the demo’s conversations, with @indexer and @researcher moved to Claude Code and the Agent SDK. Those backends
 // are fakes that only record what they’re sent, so no real agent runs. Each test starts from @indexer as the demo
@@ -383,14 +383,13 @@ test('a subagent at work is a child in the agent tree, with what it was asked an
     rt.sendMessage(planning.id, { text: '@indexer count the words, with a subagent' });
     await expect.poll(() => r.held, { message: 'the replay to reach its pause' }).toBe(true);
     await synced(page, app);
+    await agentRow(page, 'indexer').getByRole('button', { name: 'Show @indexer’s 2 subagents' }).click();
     const subs = agentRow(page, 'indexer').locator('.agent-sub.subagent');
-    // The Reader, then the subagent it started, nested under it; each with what it was asked and, on a line of its own,
-    // what it’s doing now: the Reader’s latest narration in its own words, then its step since.
+    // Opened (#477): the Reader, then its nested subagent; each with what it was asked and its plain step (#476).
     await expect(subs.locator('.sub-head')).toHaveText(['general-purpose · subagent: Reader', 'general-purpose · subagent in the background: Nested checker']);
     await expect(subs.nth(0)).toHaveAttribute('data-depth', '0');
     await expect(subs.nth(1)).toHaveAttribute('data-depth', '1');
-    // Its step changed after it spoke, so the line says both.
-    await expect(subs.locator('.sub-now')).toHaveText(['“The word count came back as 3.” · Subagent: Nested checker', 'Nested checker']);
+    await expect(subs.locator('.sub-now')).toHaveText(['Subagent: Nested checker', 'Nested checker']);
     // On screen, not in a tooltip.
     for (const li of await subs.all()) {
       await expect(li.locator('.sub-now')).toBeVisible();
@@ -431,6 +430,7 @@ test('End on a subagent’s row, by keyboard, tells its agent and reads “endin
     rt.sendMessage(planning.id, { text: '@indexer count the words, with a subagent' });
     await expect.poll(() => r.held, { message: 'the replay to reach its pause' }).toBe(true);
     await synced(page, app);
+    await agentRow(page, 'indexer').getByRole('button', { name: 'Show @indexer’s 2 subagents' }).click();
     const subs = agentRow(page, 'indexer').locator('.agent-sub.subagent');
     const ends = subs.locator('.sub-end');
     await expect(ends, 'End on each subagent').toHaveCount(2);

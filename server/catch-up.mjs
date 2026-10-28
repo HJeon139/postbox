@@ -76,8 +76,13 @@ function leftOut(kept, left, items, handle) {
   }
   const named = [...kinds].map(([kind, n]) => `${n} ${KINDS[kind][n === 1 ? 0 : 1]}`).join(', ');
   const newest = Math.max(-1, ...left.map((e) => (e.item ? items.indexOf(e.item) : -1)));
-  const read = newest < 0 ? 'read_conversation has them' : `read_conversation with skip: ${items.length - 1 - newest} has them`;
-  return `(the last ${kept.length}; ${left.length} earlier ${left.length === 1 ? 'item is' : 'items are'} left out: ${named}, and ${read})`;
+  // Counted as read_conversation counts, which lists a system line only if it’s a wake.
+  const after = items.slice(newest + 1).filter((i) => i.kind !== 'system' || i.variant === 'wake').length;
+  const read = newest < 0 ? 'read_conversation has them' : `read_conversation with skip: ${after} has them`;
+  // A mention kept ahead of newer items left out means what’s kept isn’t the last N, so the line doesn't say it is.
+  const gap = kept.some((e) => e.item && items.indexOf(e.item) < newest);
+  const which = gap ? `${kept.length} kept, mentions of you first; ${left.length}` : `the last ${kept.length}; ${left.length} earlier`;
+  return `(${which} ${left.length === 1 ? 'item is' : 'items are'} left out: ${named}, and ${read})`;
 }
 
 const KINDS = {
@@ -101,7 +106,8 @@ export function pointerIfSeen(rt, se, message) {
   if (at < 0 || !(se.givenMentions ?? []).includes(message.itemId)) return message;
   return {
     ...message,
-    // Its start too, in case the summary was compacted out of the agent’s context since.
-    text: `${message.from}’s message above, which your last summary gave you in full: “${clip(String(message.text ?? ''), 200)}”. It’s addressed to you: act on it now if you haven’t.`,
+    // Its start, and the call that reads it whole, in case the summary was compacted out of the agent’s context since,
+    // or never reached its model (a turn that failed to start, a session started over).
+    text: `${message.from}’s message above, which your last summary gave you in full: “${clip(String(message.text ?? ''), 200)}”. It’s addressed to you: act on it now if you haven’t. read_message { id: "${message.itemId}" } has it whole.`,
   };
 }

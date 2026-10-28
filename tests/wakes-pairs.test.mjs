@@ -49,10 +49,11 @@ test('#372 a third agent’s wakes in between don’t restart a pair’s count: 
   assert.equal(third.waiting, true);
   const card = store.items(t.id).find((x) => x.kind === 'hop' && x.status === 'open');
   assert.deepEqual([card.from, card.to, card.pair], ['alpha', 'beta', PAIR_LIMIT]);
-  // You acting clears every pair’s count.
+  // You acting clears every pair’s count. Your message goes to beta, the card’s target, which retires the card after
+  // it (#439), so the card’s own wake is the first of the run your message starts.
   rt.sendMessage(t.id, { text: 'carry on' });
   await settle(rt);
-  assert.equal(store.state.threads[t.id].pairRuns, null);
+  assert.deepEqual(store.state.threads[t.id].pairRuns, { 'alpha|beta': 1 });
 });
 
 test('#372 a message that wakes two agents counts as one chain with two wakes in telemetry', async () => {

@@ -65,6 +65,8 @@ export const SENDING = Object.freeze({
 export const HOP_LIMIT = 10;
 /** Wakes in a row between the same two agents before the next waits for your Allow (#372): a hand-off and its answer. */
 export const PAIR_LIMIT = 2;
+/** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
+export const HELD_WAKES = 20;
 
 /** @typedef {keyof typeof LIMITS} LimitName */
 

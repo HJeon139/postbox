@@ -27,6 +27,8 @@ test('#484 a mention of the agent is in its summary, though 44 newer items pass 
   const s = summary(f);
   assert.ok(s.includes(MENTION), 'the mention is kept');
   assert.match(s, /left out/, 'and the cap still left the oldest of the rest out');
+  // The mention is older than what was left out, so the summary doesn’t call what it kept the last N.
+  assert.match(s, /\(40 kept, mentions of you first; 5 items are left out: 5 messages from other agents/);
 });
 
 test('#484 a mention of the agent is in its summary, though newer long items pass the character cap', () => {
@@ -90,7 +92,10 @@ test('#484 the pointer to a seen mention quotes its start, in case the summary w
   await settle(f.rt);
   f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
   await settle(f.rt);
-  assert.match(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, /“@alpha the review of the totals is done/);
+  const text = f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text;
+  assert.match(text, /“@alpha the review of the totals is done/);
+  // And the call that reads it whole, for an agent whose summary was compacted away or never reached its model.
+  assert.ok(text.includes(`read_message { id: "${it.id}" }`), text);
 });
 
 test('#484 a mention past the mentions’ cap, left out of the summary, comes in full when its wake is delivered', async () => {
@@ -102,4 +107,18 @@ test('#484 a mention past the mentions’ cap, left out of the summary, comes in
   f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: first.text, itemId: first.id });
   await settle(f.rt);
   assert.equal(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, first.text);
+});
+
+test('#484 the skip a summary names reaches its newest left-out mention, though system lines read_conversation drops come after', () => {
+  const f = fresh();
+  for (let i = 0; i < 50; i++) say(f, `@alpha note ${i + 1}: ${'the tally needs another look. '.repeat(33)}`);
+  // Lines read_conversation doesn’t list, after the cut: a lint line and a schedule line, as the runtime adds them.
+  for (let i = 0; i < 5; i++) f.rt.addItem(f.t.id, { kind: 'system', variant: i % 2 ? 'schedule' : 'lint', text: `line ${i}` });
+  const s = summary(f);
+  const skip = Number(/read_conversation with skip: (\d+)/.exec(s)?.[1]);
+  const kept = [...s.matchAll(/@alpha note (\d+):/g)].map((m) => Number(m[1]));
+  const newestLeft = Math.min(...kept) - 1;
+  assert.ok(newestLeft > 0, `some were left out: ${s.slice(0, 300)}`);
+  const read = f.rt.readConversation(f.store.state.sessions[f.alpha.id], { skip, limit: 200 });
+  assert.match(read, new RegExp(`@alpha note ${newestLeft}:`), `skip: ${skip} reads note ${newestLeft}`);
 });
