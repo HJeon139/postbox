@@ -48,8 +48,10 @@ export function readStreams(folder) {
 /**
  * Every message Postbox sent one agent from another, read from the run’s store: recordAgentMessage
  * (server/side-threads.mjs) keeps an agent’s latest six on its session, and each change is a session event in the log.
- * A wake Postbox holds or refuses has none until it’s sent. Merged with what earlier reads found, since a snapshot
- * deletes the log segments it covers. @param {string} data  the run’s Postbox data folder
+ * A wake Postbox refuses has none. Merged with what earlier reads found, since a snapshot deletes the log segments it
+ * covers: if one does between two reads, and more than six messages reached one agent meanwhile (the session keeps its
+ * latest six, `.slice(0, 6)` in recordAgentMessage), the oldest are lost, and a delivered call reads as refused.
+ * @param {string} data  the run’s Postbox data folder
  * @param {{ handle: string, from: string, text: string, at: number }[]} [known]
  */
 export function readReceived(data, known = []) {
