@@ -5,10 +5,23 @@
 //   its row, their rows with End and a ring without subagent rings. At 375 px the sidebar doesn’t show, and the ring
 //   strip keeps the combined ring.
 // The subagents are set on the session directly, in the shape the runtime stores (server/runtime.mjs, status()), as a
-// turn with three Task calls would leave them; tests/browser/agents.spec.mjs replays a recorded stream for the same.
+// turn with three Task calls would leave them. #476’s activity list is checked on a recorded turn instead,
+// tests/fixtures/claude-code/thinking-subagent.jsonl (a subagent that thinks, then answers), replayed through the real
+// stream mapper by a stand-in Claude Code backend, as tests/browser/agents.spec.mjs does.
 
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { createStreamMapper } from '../../server/adapters/claude-stream.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+
+const RECORDED = readFileSync(new URL('../fixtures/claude-code/thinking-subagent.jsonl', import.meta.url), 'utf8')
+  .split('\n')
+  .filter(Boolean)
+  .map((l) => JSON.parse(l));
+// Paused just after the subagent’s thought (its assistant message with a thinking block), before it answers.
+const THOUGHT_AT = RECORDED.findIndex((e) => e.type === 'assistant' && e.parent_tool_use_id && e.message.content.some((b) => b.type === 'thinking')) + 1;
+/** Lets the paused replay go on. */
+let go = () => {};
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -18,8 +31,23 @@ test.beforeAll(async () => {
   app = await startPostbox('agent-subagents');
   planning = Object.values(app.store.state.threads).find((t) => t.title === 'Corpus planning');
   indexer = app.rt.sessionsIn(planning.id).find((x) => x.handle === 'indexer');
+  app.rt.adapters.register({
+    name: 'claude-code',
+    async folderFor() {
+      return app.root;
+    },
+    async deliver(_session, _message, ctx) {
+      const m = createStreamMapper(ctx);
+      for (const e of RECORDED.slice(0, THOUGHT_AT)) m.push(e);
+      await new Promise((r) => {
+        go = r;
+      });
+      for (const e of RECORDED.slice(THOUGHT_AT)) m.push(e);
+    },
+  });
 });
 test.afterAll(async () => {
+  go();
   await app?.stop();
 });
 failOnPageErrors(test);
@@ -100,6 +128,25 @@ const look = async (page, width, theme) => {
   await page.setViewportSize({ width, height: 800 });
   await page.emulateMedia({ colorScheme: theme });
 };
+
+test('#476: a thinking subagent’s row says “Thinking”, and its thought and its answer stay in the activity list', async ({ page }) => {
+  const p = app.rt.createPersona({ handle: 'pondering', backend: 'claude-code' });
+  const t = app.rt.createThread({ projectId: planning.projectId, title: 'Floating point', personaIds: [p.id] });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  app.rt.sendMessage(t.id, { text: 'Is 0.1 + 0.2 equal to 0.3? Ask a subagent.' });
+  const row = page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: /^@pondering$/ }) });
+  await row.getByRole('button', { name: 'Show @pondering’s 1 subagent' }).click();
+  await expect(row.locator('.agent-sub.subagent .sub-now')).toHaveText('Thinking');
+  await expect(row).not.toContainText('straightforward question');
+  go();
+  await expect.poll(() => app.rt.sessionsIn(t.id)[0].state, { message: 'the turn to end' }).toBe('idle');
+  await synced(page, app);
+  // The record keeps both: the subagent’s thought, and what it said.
+  const list = page.locator('.turn details.activity').last();
+  await expect(list).toContainText('straightforward question');
+  await expect(list).toContainText('IEEE 754 double precision');
+});
 
 for (const theme of /** @type {const} */ (['light', 'dark']))
   for (const width of [1280, 375]) {
