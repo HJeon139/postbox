@@ -80,6 +80,7 @@ import { reactionLines, settleThread, threadCatchUp, threadLines } from './threa
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -479,14 +480,15 @@ export class Runtime {
     }
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
-    if (busy.length && !sendNow) {
-      const q = { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() };
-      this.putThread({ ...this.s.threads[threadId], queue: [...(this.s.threads[threadId].queue ?? []), q] });
-      return { queued: q };
-    }
+    const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() } : null;
+    if (q) this.putThread({ ...this.s.threads[threadId], queue: [...(this.s.threads[threadId].queue ?? []), q] });
     // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
-    for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
-    return this.postAndDeliver(threadId, { text, attachments }, targets);
+    else for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
+    const sent = q ? { queued: q } : this.postAndDeliver(threadId, { text, attachments }, targets);
+    // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
+    // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
+    for (const { se } of targets) retireStale(this, threadId, se, 'you wrote to it', { byPerson: true });
+    return sent;
   }
 
   postAndDeliver(threadId, { text, attachments }, targets) {
