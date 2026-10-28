@@ -35,6 +35,11 @@ export function verifyPrompt({ scenario, findings, timeline, issues }) {
 
 The scenario was “${scenario.title}”. A tester model played the person, driving the UI through a runner. The runner itself can be wrong: its screenshots, its reading of the page, or its own actions (it presses Stop on a turn that runs too long, and Stop or Send now when the tester’s action asks it to). Open screenshots with the Read tool when a finding names one.
 
+The run’s records are in your working folder. The tester saw only the page, so they hold what it couldn’t: search them with Grep before you call a finding not-reproduced, a duplicate or the agent’s, and cite what you found (the file, and a line or a count).
+- data/events-*.jsonl: Postbox’s store, one event a line: every item in the conversation, and every session change, including the notices Postbox gave an agent for its next turn (a session’s context) and the messages it sent one agent from another (agentMessages). An agent paraphrasing a notice means the notice is here word for word.
+- streams/: each agent turn’s raw stream, a file a turn named for its agent: its tool calls with their inputs, and each call’s result as the agent got it.
+- run.log: each step’s action, and each one the runner held (“action held”). A held step didn’t happen as the tester asked: check here that the wait or move a finding relies on really ran.
+
 For each finding, give a verdict:
 - confirmed: a real defect or UX problem in Postbox, supported by the evidence.
 - duplicate: an open issue already covers it (give its number in duplicateOf). Related isn’t duplicate: say so in the note instead. When the tester matched a finding to an issue, check that the issue really covers it.
