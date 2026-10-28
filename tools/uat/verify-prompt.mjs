@@ -40,6 +40,11 @@ The run’s records are in your working folder. The tester saw only the page, so
 - streams/: each agent turn’s raw stream, a file a turn named for its agent: its tool calls with their inputs, and each call’s result as the agent got it.
 - run.log: each step’s action, and each one the runner held (“action held”). A held step didn’t happen as the tester asked: check here that the wait or move a finding relies on really ran.
 
+Two readings the records need:
+- What wake_agent answered says what Postbox did with that call. “Woke @x.” sent it; “Woke @x: it’s busy, so it answers when its current turn ends” queued it for x’s next turn, which isn’t a refusal; “… wasn’t sent: …” refused it. A notice “Your mention of @x woke no one: …” in a session’s context is about an @-mention in that agent’s reply, not about a wake_agent call: match a refusal to the call or mention it answers, by agent and time, before you call one reported as success.
+- An open issue that proposes changing a behavior means the behavior isn’t by-design, even if a message tells agents to work around it: a finding about it is a duplicate of that issue, or related to it.
+- Judge the claim a finding makes, not the defect nearby. When the records contradict its claim (it says a wake was refused, or reported as sent, and the call’s own answer says otherwise), it’s not-reproduced, even if another finding or an open issue covers a real defect close to it: say which in the note.
+
 For each finding, give a verdict:
 - confirmed: a real defect or UX problem in Postbox, supported by the evidence.
 - duplicate: an open issue already covers it (give its number in duplicateOf). Related isn’t duplicate: say so in the note instead. When the tester matched a finding to an issue, check that the issue really covers it.
