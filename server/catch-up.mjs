@@ -2,6 +2,7 @@
 // the person and the other agents, within a cap, and its marker moved to the end. Moved from server/runtime.mjs.
 // Functions take the Runtime first (architecture.md, “What a move may change”).
 
+import { READING } from '../shared/limits.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { CATCH_UP_CHARS } from './blocks.mjs';
 import { clip } from './helpers.mjs';
@@ -24,7 +25,8 @@ export function catchUp(rt, se, excludeId = null) {
   const root = se.seenItem === null ? rt.topicRootLine(se, t) : null;
   const fresh = items.slice(at + 1).filter((i) => i.id !== excludeId && i.sessionId !== se.id);
   const entries = fresh
-    .map((item) => ({ item, line: rt.describeItem(item, se) }))
+    // A message addressed to the agent comes whole, up to a bound of its own (#499).
+    .map((item) => ({ item, line: rt.describeItem(item, se, mentions(item, se.handle) ? READING.mention : READING.item) }))
     .filter((e) => e.line)
     // Its topic and side threads with something new, each a line it may read (#228); the person’s new reactions (#251).
     .concat([...threadLines(rt, se, items[at]?.at ?? 0), ...reactionLines(rt, se, se.threadId)].map((line) => ({ item: null, line })));
