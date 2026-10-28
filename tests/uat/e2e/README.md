@@ -4,6 +4,8 @@ The component docs one level up check each part of the interface against the dem
 
 **It’s working when a run catches the defects already reported on GitHub.** Each report ends with a coverage table: which open issues the run caught again, and which ones a check watches for but didn’t see.
 
+**A run confirms a fix; it doesn’t decide it.** Real agents don’t keep to an exact order of events, so an issue whose behavior depends on one names its deterministic `node:test` test in its acceptance before a paid run is planned for it, and that test decides the fix (#439, whose host runs took three tries to reach its order). A check or trigger is tested the same way: from a run’s recorded records, not from results written by hand, which can’t show what real agents and Postbox did (the hostwakes scenario’s checks, #451).
+
 ## How a run works
 
 ```mermaid
