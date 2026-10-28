@@ -1633,7 +1633,12 @@ export class Runtime {
       case 'user':
         return `You: ${text(i.text)}${i.attachments?.length ? ` [attached: ${i.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
       case 'agent':
-        return i.text && i.status !== 'failed' ? `@${i.handle}: ${text(i.text)}` : null;
+        // A reply that wrote its text and then failed still reaches the others, marked: it had been dropped, so a
+        // report written before the turn failed reached no one (#485).
+        if (!i.text) return null;
+        return i.status === 'failed'
+          ? `@${i.handle} (this reply failed: ${clipText(i.error || 'unknown', 200)}): ${text(i.text)}`
+          : `@${i.handle}: ${text(i.text)}`;
       case 'block': {
         if (!i.valid) return null;
         // What it holds comes with it, so another agent can review it (#153).
