@@ -25,19 +25,27 @@ const hostRun = (f) => Boolean(f.hosts?.hosts?.length);
 const itemsOf = (f) => (f.threads ?? []).flatMap((t) => f.state?.items?.[t] ?? []);
 const handleOf = (s) => String(s ?? '').replace(/^@/, '');
 
-/** Every hop card: who asked to wake whom, when it opened, whether the pair limit raised it, and when it was allowed. */
+/**
+ * Every hop card: who asked to wake whom, when it opened, whether the pair limit raised it, and when the person
+ * answered it, from the line resolveHop posts (server/side-threads.mjs): Allowed, or Didn’t allow.
+ */
 export function hopCards(f) {
   const items = itemsOf(f);
+  const said = (it, text) => items.find((v) => v.kind === 'voice' && v.text === text && (v.at ?? 0) >= (it.at ?? 0))?.at ?? null;
   return items
     .filter((it) => it.kind === 'hop' && !it.join)
     .map((it) => {
-      const allowed = items.find((v) => v.kind === 'voice' && v.text === `Allowed: @${it.from} wakes @${it.to}` && (v.at ?? 0) >= (it.at ?? 0));
-      return { from: it.from, to: it.to, at: it.at ?? null, pair: it.pair ?? null, status: it.status, allowedAt: allowed?.at ?? null };
+      const allowedAt = said(it, `Allowed: @${it.from} wakes @${it.to}`);
+      const answeredAt = allowedAt ?? said(it, `Didn’t allow @${it.from} to wake @${it.to}`);
+      return { from: it.from, to: it.to, at: it.at ?? null, pair: it.pair ?? null, status: it.status, allowedAt, answeredAt };
     });
 }
 
-/** Whether a hop card was waiting at this time: opened before it, and not yet answered. */
-const cardOpenAt = (cards, at) => cards.some((c) => (c.at ?? Infinity) <= at && (c.status === 'open' || (c.allowedAt ?? Infinity) > at));
+/**
+ * Whether a hop card was waiting at this time: opened before it, and not yet answered. An answered card with no line
+ * saying when isn’t taken as waiting: read as open for good, it would make every later refusal look like #439’s.
+ */
+const cardOpenAt = (cards, at) => cards.some((c) => (c.at ?? Infinity) <= at && (c.status === 'open' || (c.answeredAt ?? -Infinity) > at));
 
 /**
  * Every wake_agent call in the recorded streams, with its result’s text, where its sender runs, and whether Postbox
