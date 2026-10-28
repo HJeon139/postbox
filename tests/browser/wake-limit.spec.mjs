@@ -92,6 +92,6 @@ test('a card whose target you write to closes, and says why (#439)', async ({ pa
   await page.goto(`${app.origin}/#/t/${retiredRoom.id}`);
   await synced(page, app);
   const card = page.locator('.transcript .block').filter({ hasText: 'Let @waker wake @woken?' });
-  await expect(card).toContainText('Closed: @woken got a turn another way (you wrote to it)');
+  await expect(card).toContainText('Closed: @woken got a turn another way (you wrote to it), so its message went on, or asks again');
   await expect(card.getByRole('button', { name: 'Let @waker wake @woken' })).toHaveCount(0);
 });
