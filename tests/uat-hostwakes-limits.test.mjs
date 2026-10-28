@@ -28,12 +28,12 @@ test('a message from the person clears the counts, so a hand-off right after it 
   assert.equal((await wake(gamma, 'alpha')).ok, true, 'the first wake since the message never reaches the card check');
 });
 
-test('as phase 2 plays it, a hand-off that is a pair’s third wake since the person’s message is refused', async () => {
+test('as phase 2 plays it, a hand-off that is a pair’s third wake since the person’s message is held on the waiting card (#439)', async () => {
   // Each hand-off follows one message from the person: a request, its answer, then the hand-off, all between two agents.
   const { rt, t, alpha, gamma, wake } = await cardOpen();
   rt.sendMessage(t.id, { text: '@gamma ask @alpha, then hand it the line count' });
   await settle(rt);
   assert.equal((await wake(gamma, 'alpha')).ok, true);
   assert.equal((await wake(alpha, 'gamma')).ok, true);
-  assert.match((await wake(gamma, 'alpha')).message, /wasn’t sent: another request is waiting for the person/);
+  assert.match((await wake(gamma, 'alpha')).message, /^Postbox is holding your message to @alpha: .* is waiting for the person/);
 });
