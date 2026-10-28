@@ -1493,7 +1493,7 @@ export function mountComposer(threadId, { side = false } = {}) {
         .map((x) => ({ thread: x }));
     const members = new Set(sessionsOf(threadId).map((x) => x.personaId));
     return Object.values(S().personas)
-      .filter((p) => !p.retired && p.handle.toLowerCase().startsWith(mention.query))
+      .filter((p) => !p.retired && !p.deleting && p.handle.toLowerCase().startsWith(mention.query))
       .sort((a, b) => members.has(b.id) - members.has(a.id) || a.handle.localeCompare(b.handle))
       .slice(0, 6)
       .map((p) => ({ p, se: sessionsOf(threadId).find((x) => x.personaId === p.id) }));

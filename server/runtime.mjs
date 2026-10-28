@@ -89,7 +89,7 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-const DELETE_UNDO_MS = 10000;
+export const DELETE_UNDO_MS = 10000;
 /** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
 const LINT_SETTLE_MS = 1500;
 /** …and at most, while an app of the agent’s is still being checked. */
@@ -271,7 +271,7 @@ export class Runtime {
     );
   }
   personaByHandle(handle) {
-    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
+    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired && !p.deleting);
   }
   thread(id) {
     const t = this.s.threads[id];

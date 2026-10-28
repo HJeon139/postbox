@@ -35,7 +35,7 @@ import { createInterface } from 'node:readline';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
-import { agentFolder, memoryRootFor } from './folder.mjs';
+import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
@@ -125,6 +125,14 @@ export class ClaudeCodeAdapter {
   /** The folder the agent works in, by the rule every backend shares (folder.mjs). */
   folderFor(persona, project) {
     return agentFolder(persona, project, this.workRoot);
+  }
+
+  /**
+   * Forgets a deleted persona (#208): its memory folders, which the Agent SDK’s turns share. registerBackends always
+   * registers this adapter beside the SDK’s, so the SDK needs no forget of its own.
+   */
+  forget(persona) {
+    return forgetMemory(this.workRoot, persona);
   }
 
   async deliver(session, message, ctx) {

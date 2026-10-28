@@ -114,11 +114,12 @@ export function settingsFor(persona, memoryDir = null) {
  * @param {string} root  where memory folders go: Postbox’s data folder’s, or its folder on a host
  * @param {{ id?: string, handle: string }} persona @param {{ id?: string } | null | undefined} project
  */
-export function memoryFolder(root, persona, project) {
-  // Ids are Postbox’s own (newId); anything else in one is replaced, so it stays one folder under root.
-  const part = (v) => String(v).replace(/[^\w-]/g, '_');
-  return `${root}/${part(persona.id || persona.handle)}/${part(project?.id || 'no-project')}`;
-}
+export const memoryFolder = (root, persona, project) => `${personaMemory(root, persona)}/${part(project?.id || 'no-project')}`;
+
+/** A persona’s memory folders for every project, which deleting it removes (server/persona-delete.mjs). */
+export const personaMemory = (root, persona) => `${root}/${part(persona.id || persona.handle)}`;
+// Ids are Postbox’s own (newId); anything else in one is replaced, so it stays one folder under root.
+const part = (v) => String(v).replace(/[^\w-]/g, '_');
 
 /**
  * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation
