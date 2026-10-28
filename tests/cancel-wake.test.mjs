@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { describeTool, isQuietTool } from '../server/adapters/claude-stream.mjs';
 import { TOOL_ROUTES } from '../shared/remote-protocol.mjs';
 import { setup, sleep } from './side-threads-fixture.mjs';
 
@@ -51,4 +52,10 @@ test('#458 an agent on a host waits for schedule_wake’s answer, which carries 
   // A queued route answers at once, from the host, with no id.
   assert.equal(TOOL_ROUTES.schedule_wake, 'ask');
   assert.equal(TOOL_ROUTES.cancel_wake, 'ask');
+});
+
+test('#458 cancel_wake is one of Postbox’s quiet tools, with a step label of its own, on every backend', () => {
+  // The Kiro, Codex and Antigravity adapters ask claude-stream.mjs too.
+  assert.equal(isQuietTool('mcp__postbox__cancel_wake'), true);
+  assert.equal(describeTool('mcp__postbox__cancel_wake', { id: 'sc_x' }), 'Canceling a wake-up');
 });
