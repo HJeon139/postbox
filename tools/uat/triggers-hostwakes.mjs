@@ -83,6 +83,8 @@ export function wakeCalls(f) {
       .map((c) => ({ ...c, applied: postedFor(c, posted) }))
       // Once every call has claimed its own message, a refused one whose message Postbox posted later was delivered then:
       // Allow sends a held wake through agentWake, which posts it as the sender’s (resolveHop, server/side-threads.mjs).
+      // This assumes #439’s fix keeps that: a held wake is posted when it’s delivered, not while it waits. Posted while
+      // it waits, it would read as applied, never refused, so the checks below would see no defect and no delivery.
       .map((c) => ({ ...c, deliveredAt: c.applied ? null : deliveredFor(c, posted) }))
       .map((c) => ({
         ...c,
@@ -164,11 +166,11 @@ export const HOSTWAKE_CHECKS = [
     run: (f) =>
       refused(f)
         // Judged only once SILENT_MS have passed since the call: run during the run, a window not over yet proves nothing.
-        .filter((c) => c.at !== null && c.at + SILENT_MS <= factsAt(f) && (c.senderNext === null || c.senderNext > c.at + SILENT_MS) && c.targetNext === null)
+        .filter((c) => c.at !== null && c.at + SILENT_MS <= factsAt(f) && (c.senderNext === null || c.senderNext > c.at + SILENT_MS) && c.deliveredAt === null)
         .map((c) => ({
           key: `${c.from}:${c.to}:${c.at}`,
           title: `@${c.from}’s hand-off to @${c.to} was refused and lost`,
-          evidence: `A wake card was waiting, so the wake was refused; for 3 minutes after, @${c.from} started no turn but ones you started, and @${c.to} never had one.`,
+          evidence: `A wake card was waiting, so the wake was refused; for 3 minutes after, @${c.from} started no turn but ones you started, and Postbox never delivered it to @${c.to}.`,
         })),
   },
 ];
