@@ -216,3 +216,27 @@ test('#208: a purge a restart cut short finishes when Postbox starts again', asy
     await s.done();
   }
 });
+
+test('#208: a session undone while its persona is being deleted is refused, and the purge skips one already erased', async () => {
+  const s = await setup();
+  try {
+    // The integrator review’s steps (PR #496): alpha has A, alone in conversation C, and B in a side thread under C,
+    // which purging A erases with C.
+    const c = s.rt.createThread({ projectId: 'p1', title: 'C', personaIds: [s.alpha.id] });
+    const a = s.rt.sessionsIn(c.id)[0];
+    const side = s.rt.putThread({ ...c, id: 'th_side', kind: 'side', parentId: c.id, members: ['se_b'] });
+    s.rt.putSession({ ...a, id: 'se_b', threadId: side.id });
+    s.rt.deleteSession('se_b');
+    await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
+    // Undo on B now would bring back a session the purge then deletes anyway.
+    await assert.rejects(sessionRoute(s.rt, '/api/sessions/se_b/undo-delete', 'POST', {}), (e) => e.status === 409 && /being deleted/.test(e.message));
+    // Had it been undone (an older page, or a race), the purge erases B with C and goes on, rather than throwing.
+    s.store.emit('session', { ...s.store.state.sessions.se_b, deleting: null });
+    await purgePersona(s.rt, s.alpha.id);
+    assert.equal(s.store.state.personas[s.alpha.id], undefined, 'the purge finished');
+    assert.equal(s.store.state.sessions.se_b, undefined);
+    assert.equal(s.store.state.threads[c.id], undefined);
+  } finally {
+    await s.done();
+  }
+});

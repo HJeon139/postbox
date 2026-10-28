@@ -31,9 +31,10 @@ export function undoDeletePersona(rt, id) {
   if (!p?.deleting || p.purging) throw httpError(409, 'It’s too late to undo: that agent is already deleted.');
   clearTimeout(rt.timers.get(`delp:${id}`));
   rt.timers.delete(`delp:${id}`);
-  for (const sid of p.deletingSessions ?? []) if (rt.s.sessions[sid]?.deleting) rt.undoDelete(sid);
   const { deleting: _d, deletingSessions: _s, ...kept } = p;
+  // The persona first: a session’s Undo is refused while its persona is being deleted (rt.undoDelete).
   rt.store.emit('persona', kept);
+  for (const sid of p.deletingSessions ?? []) if (rt.s.sessions[sid]?.deleting) rt.undoDelete(sid);
 }
 
 /**
@@ -49,9 +50,12 @@ export async function purgePersona(rt, id) {
   if (!p?.deleting) return;
   // Not when it’s already purging: a restart can cut a purge short, and each step below is safe to repeat.
   if (!p.purging) rt.store.emit('persona', { ...p, purging: true });
-  for (const se of Object.values(rt.s.sessions).filter((x) => x.personaId === id)) {
-    if (!se.deleting) rt.deleteSession(se.id);
-    rt.purgeSession(se.id);
+  for (const { id: sid } of Object.values(rt.s.sessions).filter((x) => x.personaId === id)) {
+    // Read again each time: purging one can erase others, as its conversation goes with it, side threads too.
+    const se = rt.s.sessions[sid];
+    if (!se) continue;
+    if (!se.deleting) rt.deleteSession(sid);
+    rt.purgeSession(sid);
   }
   for (const name of rt.adapters.names()) {
     const adapter = rt.adapters.get(name);

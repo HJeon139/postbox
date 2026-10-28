@@ -2811,9 +2811,11 @@ export class Runtime {
   }
 
   undoDelete(sessionId) {
+    const se = this.session(sessionId);
+    // Its persona’s delete would take it again (persona-delete.mjs): Undo that instead.
+    if (this.s.personas[se.personaId]?.deleting) throw httpError(409, `@${se.handle} is being deleted. Undo that first.`);
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.delete(`del:${sessionId}`);
-    const _se = this.session(sessionId);
     this.updateSession(sessionId, { deleting: null });
   }
 
