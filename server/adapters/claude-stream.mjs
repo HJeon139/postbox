@@ -2,6 +2,7 @@
 // into Postbox’s turn context: reply text, activity steps, ring state, context use, subagents and
 // compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
 
+import { replyText } from './claude-reply.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
@@ -202,6 +203,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     // running totals.
     key: Math.random().toString(36).slice(2),
   };
+  const reply = replyText(ctx, st);
   const status = (patch) => {
     if (patch.state && patch.state === st.state && Object.keys(patch).length === 1) return;
     if (patch.state) st.state = patch.state;
@@ -544,7 +546,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         const blk = st.blocks.get(ev.index);
         if (d.type === 'text_delta' && d.text) {
           if (st.current) st.streamed.add(st.current);
-          ctx.text(d.text);
+          reply.write(d.text);
           st.wroteText = true;
           st.said = (st.said + d.text).slice(-400);
           glimpse(st.said);
@@ -590,7 +592,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         } else if (b.type === 'text' && b.text && !st.streamed.has(m.id)) {
           // Without partial messages, text arrives whole.
           if (st.wroteText) ctx.text('\n\n');
-          ctx.text(b.text);
+          reply.write(b.text);
           st.wroteText = true;
         }
       }
@@ -621,7 +623,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     }
 
     if (e.type === 'result') {
-      st.result = e;
+      st.result = reply.fromResult(e); // posting a reply no text event carried (#485)
       const usage = (st.model && e.modelUsage?.[st.model]) || Object.values(e.modelUsage ?? {})[0];
       if (usage?.contextWindow && usage.contextWindow !== st.contextWindow) {
         st.contextWindow = usage.contextWindow;
