@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { settle, setup } from './side-threads-fixture.mjs';
 
-const MENTION = '@alpha the review of the totals is done: two fixes needed in the tally.';
+// Longer than the pointer’s quote of a message’s start (pointerIfSeen), so a repeat in full can be told from it.
+const MENTION = `@alpha the review of the totals is done: two fixes needed in the tally. ${'Details follow on each fix. '.repeat(8)}`;
 /** A message from beta in the conversation, as a reply of its posts it (no wake: this tests the summary alone). */
 const say = (f, text) => f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.beta.id, personaId: f.beta.personaId, handle: 'beta', text, status: 'done' });
 
@@ -70,4 +71,35 @@ test('#484 a wake_agent message that names no one comes in full: a summary may h
   f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text, itemId: it.id });
   await settle(f.rt);
   assert.equal(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, text);
+});
+
+test('#484 mentions have a cap of their own: past it, the oldest are left out and counted as mentions of you', () => {
+  const f = fresh();
+  // Each line is one mention of about 1,000 characters: 50 of them are over the mentions’ cap.
+  for (let i = 0; i < 50; i++) say(f, `@alpha note ${i + 1}: ${'the tally needs another look. '.repeat(33)}`);
+  const s = summary(f);
+  assert.ok(s.length < 40_000, `the summary is bounded: ${s.length} characters`);
+  assert.ok(s.includes('@alpha note 50:'), 'the newest mention is kept');
+  assert.match(s, /left out: \d+ mentions of you/);
+});
+
+test('#484 the pointer to a seen mention quotes its start, in case the summary was compacted away', async () => {
+  const f = setup();
+  const it = say(f, MENTION);
+  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  await settle(f.rt);
+  f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
+  await settle(f.rt);
+  assert.match(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, /“@alpha the review of the totals is done/);
+});
+
+test('#484 a mention past the mentions’ cap, left out of the summary, comes in full when its wake is delivered', async () => {
+  const f = setup();
+  const first = say(f, `@alpha the oldest: ${'check this first. '.repeat(55)}`);
+  for (let i = 0; i < 40; i++) say(f, `@alpha note ${i + 1}: ${'the tally needs another look. '.repeat(33)}`);
+  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Check the build.' });
+  await settle(f.rt);
+  f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: first.text, itemId: first.id });
+  await settle(f.rt);
+  assert.equal(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, first.text);
 });

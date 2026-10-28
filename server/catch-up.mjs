@@ -4,9 +4,12 @@
 
 import { parseMentions } from '../shared/text.mjs';
 import { CATCH_UP_CHARS } from './blocks.mjs';
+import { clip } from './helpers.mjs';
 import { reactionLines, threadLines } from './thread-summary.mjs';
 
 const CATCH_UP_ITEMS = 40;
+/** How much a summary keeps of the messages that @-mention its agent, which come before the caps above (#484). */
+const MENTION_CHARS = 2 * CATCH_UP_CHARS;
 
 /** The catch-up text for a session, or null, and moves its marker to the end of the conversation. */
 export function catchUp(rt, se, excludeId = null) {
@@ -28,22 +31,29 @@ export function catchUp(rt, se, excludeId = null) {
   if (!entries.length) return root && `[Postbox] ${root}`;
   const kept = keepFor(entries, se.handle);
   const left = entries.filter((e) => !kept.includes(e));
+  // The mentions this summary gave in full, which pointerIfSeen may point to; one past the cap wasn’t given.
+  rt.updateSession(se.id, { givenMentions: kept.filter((e) => mentions(e.item, se.handle)).map((e) => e.item.id) });
   const where = t?.kind === 'room' ? 'this room' : t?.kind === 'topic' ? 'this thread' : 'this conversation';
-  return `[Postbox] ${root ? `${root}\n\n` : ''}What happened in ${where} since your last turn${left.length ? ` ${leftOut(kept, left, items)}` : ''}:\n\n${kept.map((e) => e.line).join('\n\n')}`;
+  return `[Postbox] ${root ? `${root}\n\n` : ''}What happened in ${where} since your last turn${left.length ? ` ${leftOut(kept, left, items, se.handle)}` : ''}:\n\n${kept.map((e) => e.line).join('\n\n')}`;
 }
 
 /** Whether an item’s text @-mentions this handle. */
 const mentions = (item, handle) => typeof item?.text === 'string' && parseMentions(item.text, [handle]).includes(handle);
 
 /**
- * The lines a summary keeps, in order: every message that @-mentions the agent, which is never left out (#484), then
- * the newest of the rest within CATCH_UP_ITEMS and CATCH_UP_CHARS.
+ * The lines a summary keeps, in order: the messages that @-mention the agent first (#484), the newest within a cap of
+ * their own, MENTION_CHARS, past CATCH_UP_ITEMS and CATCH_UP_CHARS; then the newest of the rest within those.
  */
 function keepFor(entries, handle) {
-  const mine = new Set(entries.filter((e) => mentions(e.item, handle)));
-  let size = [...mine].reduce((n, e) => n + e.line.length, 0);
-  let count = mine.size;
-  const kept = new Set(mine);
+  const kept = new Set();
+  let size = 0;
+  for (const e of entries.filter((x) => mentions(x.item, handle)).reverse()) {
+    // The newest always goes, however long: its line is clipped already (describeItem).
+    if (kept.size && size + e.line.length > MENTION_CHARS) break;
+    kept.add(e);
+    size += e.line.length;
+  }
+  let count = kept.size;
   for (const e of [...entries].reverse()) {
     if (kept.has(e)) continue;
     if (count >= CATCH_UP_ITEMS || size + e.line.length > CATCH_UP_CHARS) break;
@@ -55,10 +65,11 @@ function keepFor(entries, handle) {
 }
 
 /** What a summary left out, by kind, and where read_conversation finds it: skip the newer items. */
-function leftOut(kept, left, items) {
+function leftOut(kept, left, items, handle) {
   const kinds = new Map();
   for (const { item } of left) {
-    const kind = item?.kind === 'agent' ? 'agent' : item?.kind === 'user' ? 'user' : item?.kind === 'block' || item?.kind === 'app' ? 'block' : 'other';
+    const plain = item?.kind === 'agent' ? 'agent' : item?.kind === 'user' ? 'user' : item?.kind === 'block' || item?.kind === 'app' ? 'block' : 'other';
+    const kind = mentions(item, handle) ? 'mention' : plain;
     kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
   }
   const named = [...kinds].map(([kind, n]) => `${n} ${KINDS[kind][n === 1 ? 0 : 1]}`).join(', ');
@@ -68,6 +79,7 @@ function leftOut(kept, left, items) {
 }
 
 const KINDS = {
+  mention: ['mention of you', 'mentions of you'],
   agent: ['message from another agent', 'messages from other agents'],
   user: ['message from the person', 'messages from the person'],
   block: ['block or app', 'blocks and apps'],
@@ -76,19 +88,18 @@ const KINDS = {
 
 /**
  * A queued mention that a summary already gave the agent comes as a pointer to it, so the agent doesn’t read it twice as
- * new (#484). The summary moved its marker past the mention’s item, which is how Postbox knows it was given.
+ * new (#484). The summary records the mentions it gave (givenMentions), which is how Postbox knows.
  * @param {any} rt @param {any} se @param {any} message
  */
 export function pointerIfSeen(rt, se, message) {
   if (message?.kind !== 'agent' || !message.itemId || !se?.seenItem) return message;
-  const items = rt.store.items(se.threadId);
-  const at = items.findIndex((i) => i.id === message.itemId);
-  const seen = items.findIndex((i) => i.id === se.seenItem);
-  // Only a mention is sure to have been given: the summary never leaves one out (keepFor). A wake_agent message that
-  // names no one may have been left out, so it comes in full.
-  if (at < 0 || seen < 0 || at > seen || !mentions(items[at], se.handle)) return message;
+  const at = rt.store.items(se.threadId).findIndex((i) => i.id === message.itemId);
+  // Only a mention the last summary kept was given: a wake_agent message that names no one, or a mention past the
+  // mentions’ cap, may have been left out, so it comes in full.
+  if (at < 0 || !(se.givenMentions ?? []).includes(message.itemId)) return message;
   return {
     ...message,
-    text: `${message.from}’s message above, which your last summary gave you in full. It’s addressed to you: act on it now if you haven’t.`,
+    // Its start too, in case the summary was compacted out of the agent’s context since.
+    text: `${message.from}’s message above, which your last summary gave you in full: “${clip(String(message.text ?? ''), 200)}”. It’s addressed to you: act on it now if you haven’t.`,
   };
 }
