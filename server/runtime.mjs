@@ -72,6 +72,7 @@ import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere,
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
+import { armWake, cancelWakeSchedule, rearmWakes, scheduleWake } from './scheduled-wakes.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
@@ -2810,49 +2811,20 @@ export class Runtime {
 
   // ── Scheduled wake-ups ─────────────────────────────────────────────────────────────
 
-  schedule(sessionId, { inMs, note }) {
-    const se = this.session(sessionId);
-    const at = Date.now() + Math.max(1000, Math.min(inMs, 7 * 24 * 3600 * 1000));
-    const sc = { id: newId('sc'), sessionId, threadId: se.threadId, handle: se.handle, at, note: String(note ?? '').slice(0, 200) };
-    this.store.emit('schedule', sc);
-    const it = this.addItem(se.threadId, { kind: 'system', variant: 'schedule', scheduleId: sc.id, handle: se.handle, at, note: sc.note, status: 'pending' });
-    sc.itemId = it.id;
-    this.store.emit('schedule', sc);
-    this.arm(sc);
-    return sc;
+  schedule(sessionId, options) {
+    return scheduleWake(this, sessionId, options);
   }
 
   arm(sc) {
-    clearTimeout(this.timers.get(sc.id));
-    this.timers.set(
-      sc.id,
-      setTimeout(
-        () => {
-          this.timers.delete(sc.id);
-          if (!this.s.schedules[sc.id]) return;
-          this.store.emit('schedule', { id: sc.id, removed: true });
-          if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'done' });
-          // An archived agent isn’t woken: deliver() would refuse it, here outside any request (#101).
-          if (!this.s.sessions[sc.sessionId] || this.s.sessions[sc.sessionId].archived) return;
-          this.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
-          this.deliver(sc.sessionId, { kind: 'wake', note: sc.note });
-        },
-        Math.max(0, sc.at - Date.now()),
-      ).unref(),
-    );
+    return armWake(this, sc);
   }
 
   cancelSchedule(scheduleId) {
-    const sc = this.s.schedules[scheduleId];
-    if (!sc) throw httpError(404, 'That wake-up already happened or was canceled.');
-    clearTimeout(this.timers.get(scheduleId));
-    this.timers.delete(scheduleId);
-    this.store.emit('schedule', { id: scheduleId, removed: true });
-    if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'canceled' });
+    return cancelWakeSchedule(this, scheduleId);
   }
 
   rearmSchedules() {
-    for (const sc of Object.values(this.s.schedules)) this.arm(sc);
+    return rearmWakes(this);
   }
 
   // ── Apps (server/apps.mjs) ─────────────────────────────────────────────────────────
