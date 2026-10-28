@@ -105,6 +105,26 @@ test('#99 a shared summary draws its math and its Mermaid diagram, and links the
   await expect(page.locator('.hovercard')).toHaveAttribute('aria-label', 'Glossary: label weight');
 });
 
+test('#466 the schedule line shows a pending retry and when automatic retries stop', async ({ page }) => {
+  const { rt, store } = app;
+  const room = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Retry line', personaIds: [persona.id] });
+  const se = rt.sessionsIn(room.id)[0];
+  const sc = rt.schedule(se.id, { inMs: 60_000, note: 'Check the run.' });
+  rt.patchItem(room.id, sc.itemId, { status: 'pending', retryAttempt: 3, at: Date.now() + 30_000 });
+  await open(page, `#/t/${room.id}`);
+  const line = page.locator(`[data-key="${sc.itemId}"]`);
+  await expect(line).toContainText(/will retry its scheduled wake.*network error · attempt 3/);
+  await expect(line.getByRole('button', { name: 'Cancel' })).toBeVisible();
+
+  clearTimeout(rt.timers.get(sc.id));
+  rt.timers.delete(sc.id);
+  store.emit('schedule', { id: sc.id, removed: true });
+  rt.patchItem(room.id, sc.itemId, { retryStopped: true });
+  await synced(page, app);
+  await expect(line).toContainText(/stopped retrying.*after an hour of network errors/);
+  await expect(line.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+});
+
 // ── #135: a later turn of the same agent gets its own sender line ───────────────────────
 
 /** The sender line of each item with words in a transcript, with “[time]” where it shows one, or "" where it has none. */

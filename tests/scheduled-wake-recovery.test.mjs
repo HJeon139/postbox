@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { SshFailure } from '../server/remote/ssh-failures.mjs';
+import { failure, SshFailure } from '../server/remote/ssh-failures.mjs';
 import { fireScheduledWake, isNetworkFailure } from '../server/scheduled-wakes.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
@@ -23,7 +23,7 @@ test('#466 a scheduled wake retries with the same id after a network error befor
   const f = setup();
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the run.' });
   f.adapter.next.push(async () => {
-    throw networkError();
+    throw failure('unreachable', 'the test host', { code: 255, stderr: 'ssh: connect to host test port 22: Network is unreachable' });
   });
   await fire(f, sc);
 
@@ -38,6 +38,11 @@ test('#466 a scheduled wake retries with the same id after a network error befor
   f.adapter.next.push(async (ctx) => ctx.text('The run is done.'));
   await fire(f, retry);
   assert.equal(f.store.state.schedules[sc.id], undefined, 'success settles the schedule');
+  assert.equal(
+    f.store.items(sc.threadId).filter((item) => item.kind === 'system' && item.variant === 'wake').length,
+    1,
+    'retries update the schedule line instead of adding wake lines',
+  );
   assert.deepEqual(
     f.adapter.calls.map((call) => [call.message.note, call.message.scheduledWake?.id]),
     [
@@ -59,6 +64,24 @@ test('#466 a quota failure stays failed and does not retry', async () => {
   assert.equal(f.rt.timers.has(sc.id), false);
   assert.equal(f.adapter.calls.length, 1);
   assert.equal(f.store.items(sc.threadId).findLast((item) => item.kind === 'agent')?.status, 'failed');
+});
+
+test('#466 retries stop after an hour and leave one visible schedule line', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the run.' });
+  sc.firstFailureAt = Date.now() - 60 * 60_000;
+  f.store.emit('schedule', sc);
+  f.adapter.next.push(async () => {
+    throw networkError('ECONNRESET');
+  });
+  await fire(f, sc);
+
+  assert.equal(f.store.state.schedules[sc.id], undefined, 'no retry remains pending');
+  assert.equal(f.rt.timers.has(sc.id), false);
+  const line = f.store.item(sc.threadId, sc.itemId);
+  assert.equal(line.retryStopped, true);
+  assert.equal(line.retryAttempt, 1);
+  assert.equal(f.store.items(sc.threadId).filter((item) => item.kind === 'system' && item.variant === 'wake').length, 1);
 });
 
 test('#466 a network failure after a tool started runs a recovery turn instead of replaying the wake', async () => {

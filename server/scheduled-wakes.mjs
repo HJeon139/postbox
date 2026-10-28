@@ -4,7 +4,8 @@ import { httpError } from './helpers.mjs';
 import { newId } from './store.mjs';
 
 const DAY = 24 * 3600 * 1000;
-const RETRY_MAX_MS = 60_000;
+const RETRY_MAX_MS = 5 * 60_000;
+const RETRY_WINDOW_MS = 60 * 60_000;
 const NETWORK_CODES = new Set(['EADDRNOTAVAIL', 'ENOTFOUND', 'ECONNRESET']);
 
 /** Creates and arms one scheduled wake. @param {any} rt @param {string} sessionId @param {{ inMs: number, note?: string }} options */
@@ -34,7 +35,7 @@ export function fireScheduledWake(rt, sc) {
   if (sc.itemId) rt.patchItem(sc.threadId, sc.itemId, { status: 'done' });
   // An archived agent isn’t woken: deliver() would refuse it, here outside any request (#101).
   if (!rt.s.sessions[sc.sessionId] || rt.s.sessions[sc.sessionId].archived) return;
-  rt.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
+  if (!sc.attempt) rt.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
   rt.deliver(sc.sessionId, { kind: 'wake', note: sc.recoveryNote ?? sc.note, scheduledWake: sc });
 }
 
@@ -61,16 +62,23 @@ const recoveryText = (turn, tools) =>
 export function settleScheduledWake(rt, turn, err) {
   const sc = turn.asked?.message?.scheduledWake;
   if (!sc || !err || err.name === 'AbortError' || !isNetworkFailure(err)) return;
+  const now = Date.now();
   const attempt = (sc.attempt ?? 0) + 1;
+  const firstFailureAt = sc.firstFailureAt ?? now;
+  if (now - firstFailureAt >= RETRY_WINDOW_MS) {
+    if (sc.itemId) rt.patchItem(sc.threadId, sc.itemId, { status: 'pending', retryAttempt: attempt, retryStopped: true });
+    return;
+  }
   const tools = [...new Set([...(sc.recoveryTools ?? []), ...(turn.scheduledTools ?? [])])];
   const next = {
     ...sc,
-    at: Date.now() + retryDelay(attempt),
+    at: now + retryDelay(attempt),
     attempt,
+    firstFailureAt,
     ...(tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(turn, tools) } : {}),
   };
   rt.store.emit('schedule', next);
-  if (next.itemId) rt.patchItem(next.threadId, next.itemId, { status: 'pending', at: next.at });
+  if (next.itemId) rt.patchItem(next.threadId, next.itemId, { status: 'pending', at: next.at, retryAttempt: attempt, retryStopped: false });
   armWake(rt, next);
 }
 
