@@ -3,8 +3,8 @@
 // (#228).
 
 import { api, busy, client, hrefOf, stopSession } from './client.mjs';
-import { fill, h } from './dom.mjs';
-import { stateWord } from './ring.mjs';
+import { fill, h, icon, plural } from './dom.mjs';
+import { ringFor, stateWord } from './ring.mjs';
 import { navigate, say, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -51,12 +51,66 @@ export function subagentNow(sub) {
   return step || 'Starting';
 }
 
+/** The agents whose subagent rows the person opened (#477), by session, until the page reloads. */
+const expanded = new Set();
+
+/**
+ * The toggle on an agent’s row between its combined ring and its subagents’ rows (#477): collapsed by default, so each
+ * subagent shows once, either in the agent’s ring or as a row of its own with End.
+ * @param {string} sessionId @param {() => void} repaint  paints the row again
+ */
+export function subagentToggle(sessionId, repaint) {
+  const flip = () => {
+    if (!expanded.delete(sessionId)) expanded.add(sessionId);
+    repaint();
+  };
+  return h('button.btn.sm.ghost.sub-toggle', { type: 'button', hidden: true, 'aria-controls': `agent-subs-${sessionId}`, onclick: flip });
+}
+
+/**
+ * Paints an agent’s toggle for its subagents; it shows only while there are any. Returns whether their rows show.
+ * @param {HTMLElement} row @param {any} se @param {number} count
+ */
+export function paintToggle(row, se, count) {
+  const b = /** @type {HTMLButtonElement} */ (row.querySelector('.sub-toggle'));
+  const open = count > 0 && expanded.has(se.id);
+  b.hidden = !count;
+  // A chevron and the count, so the agent’s name keeps its room in the sidebar; the name says the rest.
+  const shown = `${open}:${count}`;
+  if (b.dataset.shown !== shown) {
+    b.dataset.shown = shown;
+    fill(b, icon(open ? 'down' : 'right', 'i-sm'), h('span', String(count)));
+  }
+  b.setAttribute('aria-expanded', String(open));
+  b.setAttribute('aria-label', open ? `Hide @${se.handle}’s subagents` : `Show @${se.handle}’s ${plural(count, 'subagent')}`);
+  return open;
+}
+
 /**
  * A subagent’s line in the Agents section (#476): its step, plainly, or “Thinking”; never its narration or its thoughts,
  * which stay in the turn’s activity list. The person doesn’t need its running commentary to supervise it.
  * @param {{ doing?: string, thinking?: boolean }} sub
  */
 export const subagentStep = (sub) => (sub.thinking ? 'Thinking' : sub.doing || 'Starting');
+
+/**
+ * An agent row’s ring and tree (#121): where its turn is, then its subagents. Each subagent shows once (#477): in the
+ * ring, collapsed; as its own row, expanded, with a ring of the agent alone.
+ * @param {HTMLElement} n  the row @param {any} se @param {boolean} fresh  the row was just made
+ */
+export function paintTree(n, se, fresh) {
+  const tree = treeOf(se);
+  const subagents = subagentsOf(se);
+  const open = paintToggle(n, se, subagents.length);
+  ringFor(open ? { ...se, subagents: [] } : se, 'sm', n.querySelector('.agent-line pb-ring'));
+  const subs = /** @type {HTMLElement} */ (n.querySelector('.agent-subs'));
+  subs.hidden = !tree.length && !open;
+  if (fresh || subs.dataset.sig !== treeSig(tree)) {
+    subs.dataset.sig = treeSig(tree);
+    subs.replaceChildren(...tree.map(treeEntry), ...subs.querySelectorAll(':scope > li.subagent'));
+  }
+  paintSubagents(subs, tree.length, open ? subagents : [], se);
+}
 
 /**
  * The subagents under an agent’s row, after its side-thread entries (#73), each with End (#229). Each entry is kept and

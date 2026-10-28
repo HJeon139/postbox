@@ -383,14 +383,13 @@ test('a subagent at work is a child in the agent tree, with what it was asked an
     rt.sendMessage(planning.id, { text: '@indexer count the words, with a subagent' });
     await expect.poll(() => r.held, { message: 'the replay to reach its pause' }).toBe(true);
     await synced(page, app);
+    await agentRow(page, 'indexer').getByRole('button', { name: 'Show @indexer’s 2 subagents' }).click();
     const subs = agentRow(page, 'indexer').locator('.agent-sub.subagent');
-    // The Reader, then the subagent it started, nested under it; each with what it was asked and, on a line of its own,
-    // its step now, plainly: never its narration, which stays in the activity list (#476).
+    // Opened (#477): the Reader, then its nested subagent; each with what it was asked and its plain step (#476).
     await expect(subs.locator('.sub-head')).toHaveText(['general-purpose · subagent: Reader', 'general-purpose · subagent in the background: Nested checker']);
     await expect(subs.nth(0)).toHaveAttribute('data-depth', '0');
     await expect(subs.nth(1)).toHaveAttribute('data-depth', '1');
     await expect(subs.locator('.sub-now')).toHaveText(['Subagent: Nested checker', 'Nested checker']);
-    await expect(agentRow(page, 'indexer')).not.toContainText('The word count came back as 3.');
     // On screen, not in a tooltip.
     for (const li of await subs.all()) {
       await expect(li.locator('.sub-now')).toBeVisible();
@@ -431,6 +430,7 @@ test('End on a subagent’s row, by keyboard, tells its agent and reads “endin
     rt.sendMessage(planning.id, { text: '@indexer count the words, with a subagent' });
     await expect.poll(() => r.held, { message: 'the replay to reach its pause' }).toBe(true);
     await synced(page, app);
+    await agentRow(page, 'indexer').getByRole('button', { name: 'Show @indexer’s 2 subagents' }).click();
     const subs = agentRow(page, 'indexer').locator('.agent-sub.subagent');
     const ends = subs.locator('.sub-end');
     await expect(ends, 'End on each subagent').toHaveCount(2);

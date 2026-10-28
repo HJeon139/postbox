@@ -63,15 +63,17 @@ test('#189 a subagent with no reported context says so, and its activity still s
     app.store.state.sessions[se.id].subagents.map((s) => s.ctx),
     'the server keeps it unknown',
   ).toEqual([null, null]);
+  // The agent’s own ring lists its subagents, collapsed as the Agents section starts (#477).
+  const own = page.locator(`.rail pb-ring[data-session="${se.id}"] svg`).first();
+  await expect(own).toHaveAttribute('aria-label', /subagents: .*context unknown/);
+  // Each subagent’s own ring says the same, once their rows are open.
+  await page.getByRole('button', { name: 'Show @counter’s 2 subagents' }).click();
   const rings = page.locator('.rail .agent-row .agent-sub.subagent pb-ring');
   await expect(rings).toHaveCount(2);
   for (const ring of await rings.all()) {
     await expect(ring.locator('svg')).toHaveAttribute('aria-label', /context unknown/);
     await expect(ring.locator('svg')).not.toHaveAttribute('aria-label', /0%/);
   }
-  // The agent’s own ring lists its subagents the same way.
-  const own = page.locator(`.rail pb-ring[data-session="${se.id}"] svg`).first();
-  await expect(own).toHaveAttribute('aria-label', /subagents: .*context unknown/);
   // A subagent thinking or generating draws no arc, which would read as an amount, but its dot still moves.
   const marks = await rings.evaluateAll((els) =>
     els.map((el) => ({
