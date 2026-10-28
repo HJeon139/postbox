@@ -9,6 +9,8 @@ import { keepEvent } from '../../server/room-events.mjs';
 
 export { keepEvent };
 
+export const followsEvent = (type) => ['item.add', 'item.patch', 'item.move', 'session', 'turn.context'].includes(type);
+
 /**
  * Follows a Postbox server’s event stream (/api/stream) from its first event, keeping the events the checks read,
  * and, apart from them, each host’s status as it changed, with when it arrived (#120): a host-mode fault is judged
@@ -41,7 +43,7 @@ export function followEvents(origin) {
       } catch {}
       return;
     }
-    if (type !== 'item.add' && type !== 'item.patch' && type !== 'item.move' && type !== 'session') return;
+    if (!followsEvent(type)) return;
     try {
       const e = keepEvent(seq, type, JSON.parse(data));
       if (e) kept.push(e);

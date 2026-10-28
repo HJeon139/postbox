@@ -1853,7 +1853,7 @@ test('#109 a topic thread’s root, cut at 4,000, gives its id, and read_message
   await settle(rt);
   const call = adapter.calls.at(-1);
   assert.equal(call.handle, 'critic');
-  const context = (call.message.context ?? []).join('\n');
+  const context = [call.message.taskContext, ...(call.message.context ?? [])].filter(Boolean).join('\n');
   assert.match(
     context,
     new RegExp(

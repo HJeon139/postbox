@@ -135,7 +135,7 @@ export function apply(s, type, d) {
     case 'notify':
       break; // transient: shown as a toast, nothing to store
     default:
-      if (!applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
+      if (type !== 'turn.context' && !applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
   }
 }
 

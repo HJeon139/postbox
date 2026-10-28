@@ -76,7 +76,7 @@ import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, r
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
-import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
+import { reactionLines, settleThread, threadLines, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -582,12 +582,8 @@ export class Runtime {
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
-    // And before that, what happened in the conversation since this agent last took part: a room is shared
-    // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
-    // …and in the topic or side thread it answers in, what was said there since it last took part (#228).
-    const there = slash || where === se.threadId ? null : threadCatchUp(this, this.s.sessions[sessionId], where, message.itemId);
-    const catchUp = [slash ? null : this.catchUp(this.s.sessions[sessionId], message.itemId), there].filter(Boolean);
-    if (catchUp.length) message = { ...message, context: [...catchUp, ...(message.context ?? [])] };
+    // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
+    message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
     const persona = this.persona(se.personaId);
     const adapter = this.adapters.get(persona?.backend ?? 'mock');
     const abort = new AbortController();
@@ -624,6 +620,7 @@ export class Runtime {
       keepJobs: new Set(),
       asked,
     };
+    if (message.taskContext) this.store.emit('turn.context', { turnId: turn.id, sessionId, threadId: where, first: 'thread-task' });
     this.turns.set(sessionId, turn);
     // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
     const hostId = this.remote.hostOf(persona);

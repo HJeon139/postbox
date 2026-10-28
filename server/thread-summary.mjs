@@ -19,6 +19,25 @@ export function lineOf(rt, t) {
   return null;
 }
 
+export function turnContext(rt, se, where, message, slash) {
+  if (slash) return message;
+  const thread = where === se.threadId ? null : (threadCatchUp(rt, se, where, message.itemId) ?? threadHeader(rt, where));
+  const room = rt.catchUp(se, message.itemId);
+  if (!thread) return room ? { ...message, context: [room, ...(message.context ?? [])] } : message;
+  const background = room
+    ? [`[Postbox] Meanwhile in the room (background context; answer room work in the room):\n\n${room}`, ...(message.context ?? [])]
+    : (message.context ?? []);
+  return { ...message, taskContext: thread, context: background };
+}
+
+/** The header that makes a topic or historical side thread the place this turn must answer. */
+export function threadHeader(rt, threadId) {
+  const t = rt.s.threads[threadId];
+  if (t?.kind !== 'topic' && t?.kind !== 'side') return null;
+  const where = `${t.kind === 'topic' ? 'the thread' : 'the side thread'} “${t.title}” (thread ${t.id})`;
+  return `[Postbox] You’re answering in ${where}.`;
+}
+
 /**
  * What a turn in a topic or side thread catches up on there: the message a topic thread is on, the first time, and
  * what was said in the thread since this agent last took part in it. null when there’s nothing.
@@ -44,8 +63,8 @@ export function threadCatchUp(rt, se, threadId, excludeId) {
   }
   lines.push(...reactionLines(rt, se, threadId));
   if (!root && !lines.length) return null;
-  const where = `${t.kind === 'topic' ? 'the thread' : 'the side thread'} “${t.title}” (thread ${t.id})`;
-  return `[Postbox] You’re answering in ${where}.${root ? ` ${root}` : ''}${lines.length ? `\n\nWhat was said there since you last took part:\n\n${lines.join('\n\n')}` : ''}`;
+  const header = threadHeader(rt, threadId);
+  return `${header}${root ? ` ${root}` : ''}${lines.length ? `\n\nWhat was said there since you last took part:\n\n${lines.join('\n\n')}` : ''}`;
 }
 
 /**
