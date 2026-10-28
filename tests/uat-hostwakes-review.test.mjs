@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { check, s, turn, wakeStream } from './uat-hostwakes-fixture.mjs';
+import { check, SENT, s, turn, wakeStream } from './uat-hostwakes-fixture.mjs';
 
 const HOSTS = { hosts: [{ id: 'h1', label: 'host1' }], placement: { researcher: 'local', critic: 'host1', developer: 'local' } };
 /** A conversation’s items, a wake_agent call of developer’s, and what Postbox sent, read four minutes on. */
@@ -37,4 +37,14 @@ test('outside host mode, refused-wake-lost says nothing either: it runs in every
     null,
   );
   assert.deepEqual(check('refused-wake-lost').run(f), []);
+});
+
+test('a wake to “@Researcher” that Postbox sent researcher was applied: handles match without case, as Postbox matches them', () => {
+  const text = 'Count the lines in work/.';
+  const f = run(
+    [{ kind: 'hop', from: 'developer', to: 'critic', at: s(10), pair: 2, status: 'open' }],
+    wakeStream('critic', s(100), 'Researcher', SENT, text),
+    [{ handle: 'researcher', from: 'critic', at: s(101), text }],
+  );
+  assert.deepEqual(check('host-wake-said-sent').run(f), []);
 });
