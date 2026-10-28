@@ -18,13 +18,13 @@ const T0 = Date.parse('2026-10-26T10:00:00Z');
 const s = (n) => T0 + n * 1000;
 
 /** A wake_agent call in a stream, with its result. */
-const wakeStream = (handle, at, to, result) => ({
+const wakeStream = (handle, at, to, result, message = `${handle} to ${to}`) => ({
   handle,
   events: [
     {
       type: 'assistant',
       timestamp: new Date(at).toISOString(),
-      message: { content: [{ type: 'tool_use', id: `tu-${handle}-${at}`, name: 'mcp__postbox__wake_agent', input: { handle: to } }] },
+      message: { content: [{ type: 'tool_use', id: `tu-${handle}-${at}`, name: 'mcp__postbox__wake_agent', input: { handle: to, message } }] },
     },
     { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `tu-${handle}-${at}`, content: [{ type: 'text', text: result }] }] } },
   ],
@@ -102,10 +102,49 @@ test('after a fix: a host sender woken by its refusal, and a held wake delivered
   );
 });
 
-test('a wake applied at once is no refusal, even with a card open', () => {
-  const f = facts({ extraItems: [turn('researcher', s(35))] });
+/** The message Postbox posts as the sender’s when it applies a wake (agentWake, server/side-threads.mjs). */
+const posted = (handle, at, text) => ({ kind: 'agent', handle, text, status: 'done', at });
+
+test('a wake Postbox posted is no refusal, even with a card open', () => {
+  const f = facts({ extraItems: [posted('critic', s(31), 'critic to researcher'), turn('researcher', s(35))] });
   assert.deepEqual(check('host-wake-said-sent').run(f), []);
   assert.equal(check('refused-wake-lost').run(f).length, 1, 'only the local one is left');
+});
+
+test('a refused wake is seen though another agent woke its target meanwhile, as in the 27 October run', () => {
+  // From uat-runs/2026-10-27T23-45-51-hostwakes (data/events-1.jsonl and critic’s stream): a card from @developer to
+  // @researcher opened at 23:46:52. @critic, on the host, called wake_agent with the same text at 23:47:25 and 23:47:36,
+  // and the shim answered both with “Sent…”. Postbox posted only the first; the second was the pair’s third wake and was
+  // refused. @developer had woken @researcher at 23:47:34, so @researcher started a turn 10 s after the refusal.
+  const at = (hms) => Date.parse(`2026-10-27T${hms}Z`);
+  const text = '@researcher @critic has a task for you. Please answer by @-mentioning only @critic.';
+  const f = {
+    threads: ['th1'],
+    state: {
+      items: {
+        th1: [
+          { kind: 'hop', from: 'developer', to: 'researcher', at: at('23:46:52'), pair: 2, status: 'open' },
+          posted('critic', at('23:47:25'), text),
+          turn('researcher', at('23:47:46')),
+        ],
+      },
+    },
+    streams: [
+      {
+        handle: 'critic',
+        events: [
+          ...wakeStream('critic', at('23:47:25'), 'researcher', SENT, text).events,
+          ...wakeStream('critic', at('23:47:36'), 'researcher', SENT, text).events,
+        ],
+      },
+    ],
+    hosts: { hosts: [{ id: 'h1', label: 'host1' }], placement: { researcher: 'local', critic: 'host1', developer: 'local' } },
+  };
+  const said = check('host-wake-said-sent').run(f);
+  assert.deepEqual(
+    said.map((x) => x.key),
+    [`critic:researcher:${at('23:47:36')}`],
+  );
 });
 
 test('outside host mode, the host check says nothing', () => {
