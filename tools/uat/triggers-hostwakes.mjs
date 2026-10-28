@@ -167,15 +167,21 @@ export const HOSTWAKE_CHECKS = [
   {
     id: 'refused-wake-lost',
     issue: 439,
+    // Host mode only, like host-wake-said-sent: withRemote (tools/uat/checks.mjs) puts these checks in every run, and
+    // other scenarios aren’t built to tell a refused hand-off from one an agent never meant to make.
     run: (f) =>
-      refused(f)
-        // Judged only once SILENT_MS have passed since the call: run during the run, a window not over yet proves nothing.
-        .filter((c) => c.at !== null && c.at + SILENT_MS <= factsAt(f) && (c.senderNext === null || c.senderNext > c.at + SILENT_MS) && c.deliveredAt === null)
-        .map((c) => ({
-          key: `${c.from}:${c.to}:${c.at}`,
-          title: `@${c.from}’s hand-off to @${c.to} was refused and lost`,
-          evidence: `A wake card was waiting, so the wake was refused; for 3 minutes after, @${c.from} started no turn but ones you started, and Postbox never delivered it to @${c.to}.`,
-        })),
+      hostRun(f)
+        ? refused(f)
+            // Judged only once SILENT_MS have passed since the call: run during the run, a window not over yet proves nothing.
+            .filter(
+              (c) => c.at !== null && c.at + SILENT_MS <= factsAt(f) && (c.senderNext === null || c.senderNext > c.at + SILENT_MS) && c.deliveredAt === null,
+            )
+            .map((c) => ({
+              key: `${c.from}:${c.to}:${c.at}`,
+              title: `@${c.from}’s hand-off to @${c.to} was refused and lost`,
+              evidence: `A wake card was waiting, so the wake was refused; for 3 minutes after, @${c.from} started no turn but ones you started, and Postbox never delivered it to @${c.to}.`,
+            }))
+        : [],
   },
 ];
 
