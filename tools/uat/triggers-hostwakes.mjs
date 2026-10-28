@@ -135,7 +135,9 @@ const factsAt = (f) => (Number.isFinite(f.now) ? f.now : Date.now());
 function receivedFor(c, received, from, to) {
   if (!Number.isFinite(c.at)) return null;
   const text = clip(c.message, 120);
-  const i = received.findIndex((r) => r.handle === c.to && r.from === c.from && r.text === text && r.at >= from && r.at <= to);
+  // Postbox matches a handle without case (personaByHandle), and records the session’s own.
+  const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+  const i = received.findIndex((r) => same(r.handle, c.to) && same(r.from, c.from) && r.text === text && r.at >= from && r.at <= to);
   if (i < 0) return null;
   const [r] = received.splice(i, 1);
   return /** @type {number} */ (r.at);
