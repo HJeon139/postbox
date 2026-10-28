@@ -221,7 +221,7 @@ test('a held wake the conversation shows while it waits is still a refusal until
 });
 
 test('readReceived reads what each agent received from the store’s session events, merged with what it read before', () => {
-  // Session events shaped as in the third run’s data/events-1.jsonl (seq 25 on), trimmed to the fields read here.
+  // Session events shaped as in a run’s data/events-1.jsonl, a line each as the store appends them, trimmed to the fields read here.
   const dir = mkdtempSync(join(tmpdir(), 'pb-received-'));
   const msg = (other, text, at) => ({ dir: 'from', other, text, at });
   const line = (seq, data) => JSON.stringify({ seq, type: 'session', data });
@@ -230,7 +230,9 @@ test('readReceived reads what each agent received from the store’s session eve
     [
       line(25, { id: 'se_c', handle: 'critic', agentMessages: [msg('researcher', '@critic Ready for your task.', 1)] }),
       line(26, { id: 'se_c', agentMessages: [msg('developer', '@critic, I’m ready for your task.', 2), msg('researcher', '@critic Ready for your task.', 1)] }),
-    ].join('\n'),
+    ]
+      .map((l) => `${l}\n`)
+      .join(''),
   );
   try {
     const earlier = [{ handle: 'developer', from: 'researcher', text: 'gone with an old segment', at: 0 }];

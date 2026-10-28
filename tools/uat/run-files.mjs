@@ -1,7 +1,7 @@
 // What the UAT runner reads from files after each step: the person’s own Claude Code setup, to spot it leaking into
 // agents (or missing from them), each agent turn’s recorded stream, and the agents’ own Claude Code transcripts.
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -45,39 +45,68 @@ export function readStreams(folder) {
     }));
 }
 
+/** Where readReceived got to in each run’s store: each segment’s bytes read, the handles seen, the snapshot read. */
+const cursors = new Map();
+
 /**
  * Every message Postbox sent one agent from another, read from the run’s store: recordAgentMessage
  * (server/side-threads.mjs) keeps an agent’s latest six on its session, and each change is a session event in the log.
- * A wake Postbox refuses has none. Merged with what earlier reads found, since a snapshot deletes the log segments it
- * covers: if one does between two reads, and more than six messages reached one agent meanwhile (the session keeps its
- * latest six, `.slice(0, 6)` in recordAgentMessage), the oldest are lost, and a delivered call reads as refused.
+ * A wake Postbox refuses has none. Each read parses only what the log gained since the last one in this process, and
+ * returns it merged with known, what earlier reads found, which the caller keeps; that also covers a snapshot deleting
+ * the segments it covers. If one does between two reads, and more than six messages reached one agent meanwhile (the
+ * session keeps its latest six, `.slice(0, 6)` in recordAgentMessage), the oldest are lost, and a delivered call reads
+ * as refused.
  * @param {string} data  the run’s Postbox data folder
  * @param {{ handle: string, from: string, text: string, at: number }[]} [known]
  */
 export function readReceived(data, known = []) {
   if (!existsSync(data)) return known;
+  const c = cursors.get(data) ?? { offsets: new Map(), handles: new Map(), snapshot: null };
+  cursors.set(data, c);
   const key = (/** @type {any} */ r) => `${r.handle}|${r.from}|${r.at}|${r.text}`;
   const out = new Map(known.map((r) => [key(r), r]));
-  const handles = new Map();
   const take = (/** @type {any} */ se) => {
-    if (se?.handle) handles.set(se.id, se.handle);
-    const handle = handles.get(se?.id);
+    if (se?.handle) c.handles.set(se.id, se.handle);
+    const handle = c.handles.get(se?.id);
     for (const m of Array.isArray(se?.agentMessages) ? se.agentMessages : [])
       if (handle && m?.dir === 'from' && Number.isFinite(m.at))
         out.set(key({ handle, from: m.other, text: m.text, at: m.at }), { handle, from: m.other, text: m.text, at: m.at });
   };
   try {
-    for (const se of Object.values(JSON.parse(readFileSync(join(data, 'snapshot.json'), 'utf8')).state?.sessions ?? {})) take(se);
+    const snap = join(data, 'snapshot.json');
+    const changed = statSync(snap).mtimeMs;
+    if (changed !== c.snapshot) for (const se of Object.values(JSON.parse(readFileSync(snap, 'utf8')).state?.sessions ?? {})) take(se);
+    c.snapshot = changed;
   } catch {}
   const segments = readdirSync(data).filter((n) => /^events-\d+\.jsonl$/.test(n));
-  for (const n of segments.sort((a, b) => Number(/\d+/.exec(a)) - Number(/\d+/.exec(b))))
-    for (const l of readFileSync(join(data, n), 'utf8').split('\n')) {
+  for (const n of segments.sort((a, b) => Number(/\d+/.exec(a)) - Number(/\d+/.exec(b)))) {
+    const { text, next } = gained(join(data, n), c.offsets.get(n) ?? 0);
+    c.offsets.set(n, next);
+    for (const l of text.split('\n')) {
       try {
         const e = JSON.parse(l);
         if (e?.type === 'session') take(e.data);
       } catch {}
     }
+  }
   return [...out.values()].sort((a, b) => a.at - b.at);
+}
+
+/** A log file’s whole lines after this byte, and where the next read starts; a file shorter than that was rewritten. */
+function gained(file, from) {
+  const size = statSync(file).size;
+  const at = size < from ? 0 : from;
+  if (size === at) return { text: '', next: at };
+  const buf = Buffer.alloc(size - at);
+  const fd = openSync(file, 'r');
+  try {
+    readSync(fd, buf, 0, buf.length, at);
+  } finally {
+    closeSync(fd);
+  }
+  // A line still being written waits for the next read.
+  const end = buf.lastIndexOf(10) + 1;
+  return { text: buf.subarray(0, end).toString('utf8'), next: at + end };
 }
 
 /** The agents’ own Claude Code transcripts, where injected reminders and settings show up. */
