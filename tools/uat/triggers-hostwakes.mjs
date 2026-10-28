@@ -52,39 +52,45 @@ export function wakeCalls(f) {
   const startsOf = turnStarts(f);
   const cards = hopCards(f);
   const posted = itemsOf(f).filter((it) => it.kind === 'agent' && typeof it.text === 'string' && Number.isFinite(it.at));
-  return (f.streams ?? [])
-    .flatMap((s) => {
-      const results = new Map();
-      for (const e of s.events ?? [])
-        if (e?.type === 'user')
-          for (const b of Array.isArray(e.message?.content) ? e.message.content : []) if (b?.type === 'tool_result') results.set(b.tool_use_id, b);
-      return (s.events ?? [])
-        .filter((e) => e?.type === 'assistant')
-        .flatMap((e) =>
-          (Array.isArray(e.message?.content) ? e.message.content : [])
-            .filter((b) => b?.type === 'tool_use' && /^mcp__[\w-]+__wake_agent$/.test(String(b.name)))
-            .map((b) => {
-              const at = Date.parse(e.timestamp);
-              const to = handleOf(b.input?.handle);
-              return {
-                from: s.handle,
-                to,
-                at: Number.isFinite(at) ? at : null,
-                text: resultText(results.get(b.id)),
-                message: String(b.input?.message ?? ''),
-                onHost: onHost(f, s.handle),
-                cardOpen: Number.isFinite(at) && cardOpenAt(cards, at),
-              };
-            }),
-        );
-    })
-    .sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity))
-    .map((c) => ({ ...c, applied: postedFor(c, posted) }))
-    .map((c) => ({
-      ...c,
-      senderNext: Number.isFinite(c.at) ? (startsOf(c.from).find((t) => t > /** @type {number} */ (c.at) && !personBetween(c.at, t)) ?? null) : null,
-      targetNext: Number.isFinite(c.at) ? (startsOf(c.to).find((t) => t > /** @type {number} */ (c.at)) ?? null) : null,
-    }));
+  return (
+    (f.streams ?? [])
+      .flatMap((s) => {
+        const results = new Map();
+        for (const e of s.events ?? [])
+          if (e?.type === 'user')
+            for (const b of Array.isArray(e.message?.content) ? e.message.content : []) if (b?.type === 'tool_result') results.set(b.tool_use_id, b);
+        return (s.events ?? [])
+          .filter((e) => e?.type === 'assistant')
+          .flatMap((e) =>
+            (Array.isArray(e.message?.content) ? e.message.content : [])
+              .filter((b) => b?.type === 'tool_use' && /^mcp__[\w-]+__wake_agent$/.test(String(b.name)))
+              .map((b) => {
+                const at = Date.parse(e.timestamp);
+                const to = handleOf(b.input?.handle);
+                return {
+                  from: s.handle,
+                  to,
+                  at: Number.isFinite(at) ? at : null,
+                  text: resultText(results.get(b.id)),
+                  message: String(b.input?.message ?? ''),
+                  onHost: onHost(f, s.handle),
+                  cardOpen: Number.isFinite(at) && cardOpenAt(cards, at),
+                };
+              }),
+          );
+      })
+      .sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity))
+      .map((c) => ({ ...c, applied: postedFor(c, posted) }))
+      // Once every call has claimed its own message, a refused one whose message Postbox posted later was delivered then:
+      // Allow sends a held wake through agentWake, which posts it as the sender’s (resolveHop, server/side-threads.mjs).
+      .map((c) => ({ ...c, deliveredAt: c.applied ? null : deliveredFor(c, posted) }))
+      .map((c) => ({
+        ...c,
+        senderNext: Number.isFinite(c.at) ? (startsOf(c.from).find((t) => t > /** @type {number} */ (c.at) && !personBetween(c.at, t)) ?? null) : null,
+        targetNext: Number.isFinite(c.at) ? (startsOf(c.to).find((t) => t > /** @type {number} */ (c.at)) ?? null) : null,
+        targetTurns: Number.isFinite(c.at) ? startsOf(c.to).filter((t) => t > /** @type {number} */ (c.at)) : [],
+      }))
+  );
 }
 
 /**
@@ -118,6 +124,15 @@ function postedFor(c, posted) {
   if (i < 0) return false;
   posted.splice(i, 1);
   return true;
+}
+
+/** When Postbox posted a refused call’s message after all, if it did, taking that message as postedFor does. */
+function deliveredFor(c, posted) {
+  if (!Number.isFinite(c.at)) return null;
+  const i = posted.findIndex((it) => it.handle === c.from && it.text === c.message && it.at > c.at);
+  if (i < 0) return null;
+  const [it] = posted.splice(i, 1);
+  return /** @type {number} */ (it.at);
 }
 
 /** The calls Postbox refused: a hop card was waiting, and it didn’t post the call’s message. */
@@ -206,10 +221,14 @@ export const HOSTWAKE_TRIGGERS = {
         .filter((c) => c.cardOpen && !c.applied && c.at !== null)
         .flatMap((c) => {
           const allow = allowedAt.filter((t) => t > /** @type {number} */ (c.at)).sort((a, b) => a - b)[0];
-          if (!allow || c.targetNext === null || c.targetNext < allow) return [];
-          // Sent again by its agent after the Allow: that’s the agent’s resend, not Postbox’s delivery.
-          if (calls.some((x) => x.from === c.from && x.to === c.to && x.at !== null && x.at > allow && x.at < /** @type {number} */ (c.targetNext))) return [];
-          return [{ at: c.targetNext, evidence: `@${c.to} started a turn after you allowed the card, with @${c.from}’s refused hand-off and no resend.` }];
+          // Only the refused hand-off’s own message counts, posted after the Allow; a turn of its target started by
+          // anything else, such as the wake the card held, isn’t it (28 October third run). A resend by the agent
+          // claims its own posted message, so it never reads as Postbox’s delivery.
+          const delivered = c.deliveredAt;
+          if (!allow || delivered === null || delivered < allow) return [];
+          const turn = c.targetTurns.find((t) => t >= delivered - SKEW_MS);
+          if (turn === undefined) return [];
+          return [{ at: turn, evidence: `Postbox posted @${c.from}’s refused hand-off after you allowed the card, and @${c.to} started a turn with it.` }];
         });
     },
   },
