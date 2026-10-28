@@ -7,10 +7,10 @@ import { diffLines, followLines, splitLines } from '/shared/review-diff.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
+import { newReviewDraft, startComment, stopComment } from './review-draft.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
 import { reviewersOf, threadBox as threadsFor } from './review-threads.mjs';
 import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs';
-
 // ── Review ──────────────────────────────────────────────────────────────────────────────
 // Markdown is read in Preview, and commented on by selection there or line by line in Lines (#179); code is
 // commented line by line; apps by the anchors they register. Comments stay drafts until you submit them all with a
@@ -18,7 +18,7 @@ import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs'
 
 export function renderReview(b, item, ctx, kit) {
   const { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine } = kit;
-  const d = draft(item.id, () => ({ comments: [], composing: null, verdict: 'request_changes', view: 'diff', error: null, on: b.content }));
+  const d = draft(item.id, () => newReviewDraft(b.content));
   // Draft comments name lines of the text they were written on. If the agent changed it under them (#123), each
   // follows its line into the new text; one whose line changed or went moves to the next line, marked. One on a
   // selection follows its quote (#179).
@@ -37,12 +37,12 @@ export function renderReview(b, item, ctx, kit) {
     return n;
   };
   const compose = (key) => {
-    d.composing = key;
+    startComment(d, key);
     rerender();
   };
   // Closing a comment box puts focus back where it was opened: the line, or the text selected in Preview.
   const closeComposer = (key) => {
-    d.composing = null;
+    stopComment(d);
     const n = rerender();
     if (typeof key === 'object' && key) return focusQuote(n, key);
     /** @type {HTMLElement | null} */ (n.querySelector(`.g-mark[data-line="${CSS.escape(String(key))}"]`))?.focus();
