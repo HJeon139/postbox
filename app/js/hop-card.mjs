@@ -56,7 +56,7 @@ function heldLine(held) {
 
 /** What became of an answered card; a retired one closed because its target got a turn another way (#439). */
 function answeredNote(it) {
-  if (it.status === 'retired') return `Closed: @${it.to} got a turn another way (${it.retiredWhy ?? 'before you answered'})`;
+  if (it.status === 'retired') return `Closed: @${it.to} got a turn another way (${it.retiredWhy ?? 'before you answered'}), so its message went on`;
   if (it.status === 'allowed') return it.join ? 'Added' : 'Allowed';
   return it.join ? 'Not added' : 'Not allowed';
 }

@@ -77,31 +77,26 @@ test('#439 an agent on a host waits for Postbox’s answer to wake_agent, so it 
   assert.equal(TOOL_ROUTES.wake_agent, 'ask');
 });
 
-test('#439 a card whose target got a turn another way is retired, its agent told, and the wakes held on it go on', async () => {
+test('#439 a card whose target you write to is retired, and its own wake and the wakes held on it go on', async () => {
   const f = await cardOpen();
   await f.wake(f.gamma, 'alpha', HANDOFF);
   // The person writes to the card's target, beta, which then has a turn without the card.
   f.rt.sendMessage(f.t.id, { text: '@beta the review is done, thanks' });
   await settle(f.rt);
   assert.equal(f.store.item(f.t.id, f.card.id).status, 'retired');
-  assert.deepEqual(got(f, 'beta', 'alpha to beta').length, 1, 'only the first wake of beta; the card’s own isn’t sent');
-  // Told at its next turn: here, the one gamma’s held hand-off starts, so the note comes with that message.
-  const told = [
-    ...(f.store.state.sessions[f.alpha.id].context ?? []),
-    ...f.adapter.calls.filter((c) => c.handle === 'alpha').flatMap((c) => c.message?.context ?? []),
-  ].map(String);
-  assert.ok(
-    told.some((l) => /@beta got a turn another way/.test(l)),
-    `alpha is told: ${told.join(' | ')}`,
-  );
+  assert.equal(got(f, 'beta', 'alpha to beta').length, 2, 'the card’s own wake reaches beta too, after the first');
   assert.equal(got(f, 'alpha', HANDOFF).length, 1, 'gamma’s held hand-off goes on to alpha');
+  assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0, 'your message started the counts again');
 });
 
-test('#439 another agent’s wake that reaches the card’s target retires the card too', async () => {
+test('#439 a card another agent’s wake retires keeps its own hand-off: it goes back through the limits, onto a fresh card', async () => {
   const f = await cardOpen();
   // gamma’s first wake of beta is under its own limits, so it goes, and beta has a turn without the card.
   await f.wake(f.gamma, 'beta', 'the line count is 42');
   assert.equal(f.store.item(f.t.id, f.card.id).status, 'retired');
+  // alpha and beta are still at their pair’s limit, so alpha’s hand-off waits for the person again rather than vanishing.
+  const fresh = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
+  assert.deepEqual([fresh?.from, fresh?.to, fresh?.text], ['alpha', 'beta', 'alpha to beta']);
 });
 
 test('#439 stopping the held wake’s target drops it, so allowing the card doesn’t undo the Stop, and its agent is told', async () => {

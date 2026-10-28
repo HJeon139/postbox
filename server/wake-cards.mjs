@@ -164,10 +164,10 @@ function settleHeld(rt, card, allow) {
 
 /**
  * A card whose target got a turn another way is stale (#439): the person wrote to it, or another agent’s wake reached
- * it. It closes as retired, and its own wake isn’t sent, since what it asked for may have happened that way: its agent
- * is told at its next turn, and can send it again. The wakes held on it go on as their agents sent them: through the
- * limits again, so one that still needs a card raises it, unless the person’s message is what retired it, since their
- * acting starts the counts again (intent.md).
+ * it. It closes as retired, and its own wake goes on with the wakes held on it, as their agents sent them: nothing says
+ * the other turn covered what they asked. Each goes past the limits if the person’s message retired the card, since
+ * their acting starts the counts again (intent.md), and through them otherwise, so one that still needs a card raises
+ * it. One that can’t go tells its agent why (sendHeld).
  * @param {any} rt @param {string} threadId  where the target’s turn comes from @param {any} target @param {string} why
  * @param {{ byPerson?: boolean }} [opts]
  */
@@ -178,12 +178,16 @@ export function retireStale(rt, threadId, target, why, { byPerson = false } = {}
   rt.patchItem(conv, card.id, { status: 'retired', retiredWhy: why });
   const from = rt.s.sessions[card.fromSessionId];
   if (from) rt.updateSession(from.id, { needs: null, state: rt.turns.has(from.id) ? from.state : 'idle' });
-  if (from && !from.archived)
-    rt.tellAgent(
-      from.id,
-      `@${card.to} got a turn another way (${why}) before the person answered your request to wake it, so your message (“${clip(card.text ?? card.reason ?? '', 120)}”) wasn’t sent. Send it again if it’s still needed.`,
-    );
-  for (const w of card.held ?? []) sendHeld(rt, card, w, byPerson);
+  // A request stored before #108 kept only the preview.
+  const own = {
+    fromSessionId: card.fromSessionId,
+    to: card.to,
+    text: card.text ?? card.reason ?? '',
+    replyIn: card.replyIn ?? null,
+    fromTurnId: card.fromTurnId ?? null,
+    itemId: card.itemId ?? null,
+  };
+  for (const w of [own, ...(card.held ?? [])]) sendHeld(rt, card, w, byPerson);
 }
 
 /** A held wake goes on as its agent sent it; one that can’t go (its target was archived meanwhile) tells its agent why. */
