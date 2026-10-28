@@ -90,10 +90,12 @@ test('on main: the checks report the host sender told “Sent”, and both hand-
 });
 
 test('after a fix: a host sender woken by its refusal, and a held wake delivered after the Allow, are seen', () => {
-  // The host sender starts a turn 20 s after its refused wake; the target starts one after the card is allowed.
-  const f = facts({ extraItems: [turn('critic', s(50)), turn('researcher', s(410))] });
+  // The host sender starts a turn 20 s after its refused wake. After the Allow at 400 s, Postbox posts the held
+  // hand-off as critic's message (as Allow's agentWake does), and its target starts a turn with it.
+  const delivered = { kind: 'agent', handle: 'critic', text: 'critic to researcher', status: 'done', at: s(405) };
+  const f = facts({ extraItems: [turn('critic', s(50)), delivered, turn('researcher', s(410))] });
   assert.equal(T['refused-wake-told-in-turn'].run(f).length, 1);
-  assert.match(T['held-wake-delivered-after-allow'].run(f)[0].evidence, /@researcher started a turn after you allowed the card/);
+  assert.match(T['held-wake-delivered-after-allow'].run(f)[0].evidence, /Postbox posted @critic’s refused hand-off after you allowed the card/);
   assert.deepEqual(
     check('refused-wake-lost')
       .run(f)
@@ -195,6 +197,32 @@ test('a refused hand-off is judged lost only 3 minutes on, by turns that started
       .map((x) => x.title),
     ['@critic’s hand-off to @researcher was refused and lost', '@developer’s hand-off to @critic was refused and lost'],
   );
+});
+
+test('a target’s turn started by the card’s own held wake isn’t a refused hand-off delivered, as in the 28 October third run', () => {
+  // From uat-runs/2026-10-28T02-04-44-hostwakes: critic’s wake_agent hand-off to developer at 02:10:37 was refused
+  // while researcher’s card to developer waited. The card was allowed at 02:14:00, which delivered researcher’s held
+  // thank-you, and developer’s turn started then; critic’s hand-off was never posted.
+  const at = (hms) => Date.parse(`2026-10-28T${hms}Z`);
+  const f = {
+    now: at('02:16:00'),
+    threads: ['th1'],
+    state: {
+      items: {
+        th1: [
+          { kind: 'hop', from: 'researcher', to: 'developer', at: at('02:05:32'), pair: 2, status: 'allowed' },
+          { kind: 'voice', text: 'Allowed: @researcher wakes @developer', at: at('02:14:00') },
+          turn('developer', at('02:14:07')),
+        ],
+      },
+    },
+    streams: [
+      { handle: 'critic', started: at('02:10:33'), events: wakeStream('critic', at('02:10:37'), 'developer', SENT, 'Task: list the files in work/.').events },
+      { handle: 'developer', started: at('02:14:00'), events: [] },
+    ],
+    hosts: { hosts: [{ id: 'h1', label: 'host1' }], placement: { researcher: 'local', critic: 'host1', developer: 'local' } },
+  };
+  assert.deepEqual(T['held-wake-delivered-after-allow'].run(f), []);
 });
 
 test('outside host mode, the host check says nothing', () => {
