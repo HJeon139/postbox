@@ -2,7 +2,11 @@
 // false finding against #439, in this scenario or in any other run, each on facts shaped as a run records them.
 
 import assert from 'node:assert/strict';
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { readReceived } from '../tools/uat/run-files.mjs';
 import { check, SENT, s, turn, wakeStream } from './uat-hostwakes-fixture.mjs';
 
 const HOSTS = { hosts: [{ id: 'h1', label: 'host1' }], placement: { researcher: 'local', critic: 'host1', developer: 'local' } };
@@ -75,4 +79,22 @@ test('host-wake-said-sent’s evidence says only what the check found: Postbox d
   const [found] = check('host-wake-said-sent').run(f);
   assert.match(found.evidence, /Postbox didn’t send it to @researcher within a minute: a wake card was waiting/);
   assert.doesNotMatch(found.evidence, /started a turn/, 'turns are what refused-wake-lost reads, not this check');
+});
+
+test('readReceived reads on from where it got to: a second read parses only what the log gained', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-received-'));
+  const line = (seq, at) =>
+    `${JSON.stringify({ seq, type: 'session', data: { id: 'se_c', handle: 'critic', agentMessages: [{ dir: 'from', other: 'researcher', text: `m${at}`, at }] } })}\n`;
+  try {
+    writeFileSync(join(dir, 'events-1.jsonl'), line(1, 1));
+    assert.equal(readReceived(dir).length, 1);
+    appendFileSync(join(dir, 'events-1.jsonl'), line(2, 2));
+    // Nothing known passed in: what comes back is what this read parsed, the appended line alone.
+    assert.deepEqual(
+      readReceived(dir).map((r) => r.text),
+      ['m2'],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
