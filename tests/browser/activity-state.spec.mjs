@@ -52,6 +52,26 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 test.use({ colorScheme: 'light' });
 
+test('#488 an invalid block’s raw details keep the state the person chose when the item updates', async ({ page }) => {
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  const session = app.rt.sessionsIn(thread.id)[0];
+  const shown = app.rt.toolsFor(session.id).show_block({
+    block: { id: 'invalid-state', type: 'timeline', version: 1, title: 'Unknown block', fallback: 'Plain-text fallback.' },
+  });
+  expect(shown.ok, 'the unknown block is refused').toBe(false);
+  const item = app.store.items(thread.id).find((entry) => entry.kind === 'block' && entry.raw?.id === 'invalid-state');
+  expect(item, 'the invalid block is kept with its fallback').toBeTruthy();
+  await synced(page, app);
+  const raw = page.locator(`[data-key="${item.id}"] details.raw`);
+  await raw.locator('> summary').click();
+  await expect(raw).toHaveAttribute('open', '');
+
+  app.rt.patchItem(thread.id, item.id, { errors: [...item.errors, 'A second validation error.'] });
+  await synced(page, app);
+  await expect(raw, 'the raw block stays open when its item is rebuilt').toHaveAttribute('open', '');
+});
+
 test('#488 an activity list and thought keep the state the person chose while the reply updates', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
