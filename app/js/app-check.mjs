@@ -14,19 +14,19 @@ export function recordAppCheck(appId, version, width, problems) {
   if (c.results.size === 2) finishCheck(appId, version);
 }
 
-export function startCheck(appId, version, frame) {
+export function startCheck(appId, version, frameFactory) {
   const key = `${appId}:${version}`;
   if (NO_CHECK || checks.has(key)) return;
   const c = { results: new Map(), frames: [] };
   checks.set(key, c);
-  for (const w of [375, 1280]) {
-    const f = frame(appId, version, { check: true, width: w });
-    c.frames.push(f);
-    document.body.append(f);
+  for (const width of [375, 1280]) {
+    const frame = frameFactory(appId, version, { check: true, width });
+    c.frames.push(frame);
+    document.body.append(frame);
   }
   c.timer = setTimeout(() => {
-    for (const w of [375, 1280])
-      if (!c.results.has(w)) c.results.set(w, [{ code: 'no-answer', message: `The app didn’t finish loading within 10 seconds at ${w} px.` }]);
+    for (const width of [375, 1280])
+      if (!c.results.has(width)) c.results.set(width, [{ code: 'no-answer', message: `The app didn’t finish loading within 10 seconds at ${width} px.` }]);
     finishCheck(appId, version);
   }, 10000);
 }
@@ -37,12 +37,12 @@ function finishCheck(appId, version) {
   if (!c || c.done) return;
   c.done = true;
   clearTimeout(c.timer);
-  for (const f of c.frames) f.remove();
+  for (const frame of c.frames) frame.remove();
   const seen = new Set();
-  const problems = [...c.results.values()].flat().filter((p) => {
-    const k = p.code + p.message;
-    if (seen.has(k)) return false;
-    seen.add(k);
+  const problems = [...c.results.values()].flat().filter((problem) => {
+    const problemKey = problem.code + problem.message;
+    if (seen.has(problemKey)) return false;
+    seen.add(problemKey);
     return true;
   });
   api(`/api/apps/${encodeURIComponent(appId)}/check`, { version, problems }).catch(() => {

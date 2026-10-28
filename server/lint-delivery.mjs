@@ -8,24 +8,24 @@ const LINT_SETTLE_MS = 1500;
 const LINT_WAIT_MAX_MS = 12000;
 
 export function sendLint(rt, turnId) {
-  const e = rt.lints.get(turnId);
-  if (!e || e.sent || e.timer) return;
+  const entry = rt.lints.get(turnId);
+  if (!entry || entry.sent || entry.timer) return;
   const wait = rt.config.lintSettleMs ?? LINT_SETTLE_MS;
   const until = Date.now() + LINT_WAIT_MAX_MS;
   const send = () => {
-    e.timer = null;
+    entry.timer = null;
     // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
-    const checking = Object.values(rt.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending' && !a.retired);
+    const checking = Object.values(rt.s.apps).some((app) => app.sessionId === entry.sessionId && app.check.status === 'pending' && !app.retired);
     if (wait > 0 && checking && Date.now() < until) {
-      e.timer = setTimeout(send, wait);
-      e.timer.unref?.();
+      entry.timer = setTimeout(send, wait);
+      entry.timer.unref?.();
       return;
     }
-    e.sent = true;
-    const se = rt.s.sessions[e.sessionId];
-    if (se && !se.deleting && !se.archived) rt.deliver(e.sessionId, lintMessage(e.problems), { threadId: e.threadId });
+    entry.sent = true;
+    const session = rt.s.sessions[entry.sessionId];
+    if (session && !session.deleting && !session.archived) rt.deliver(entry.sessionId, lintMessage(entry.problems), { threadId: entry.threadId });
   };
   if (wait <= 0) return send();
-  e.timer = setTimeout(send, wait);
-  e.timer.unref?.();
+  entry.timer = setTimeout(send, wait);
+  entry.timer.unref?.();
 }
