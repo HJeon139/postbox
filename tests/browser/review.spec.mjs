@@ -11,7 +11,7 @@
 // the draft (tests/browser/review.mjs). Moved from tools/check-review.mjs (#303).
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, focused, frames, synced } from './postbox.mjs';
+import { failOnPageErrors, focused, frames, settled, synced, windowWidth } from './postbox.mjs';
 import { commentOn, drawn, review, reviewRoom, shown, viewRadio } from './review.mjs';
 
 /** @type {Awaited<ReturnType<typeof reviewRoom>>} */
@@ -73,10 +73,12 @@ test('#486 Preview fills a wide review while conversation prose keeps its readin
   expect(await message.evaluate((p) => p.getBoundingClientRect().width), 'conversation prose keeps its reading measure').toBeLessThan(wide.paragraph - 100);
 
   await page.setViewportSize({ width: 375, height: 812 });
+  await settled(page);
   const narrow = await widths();
   expect(narrow.paragraph, 'the paragraph still fits at 375 px').toBeLessThanOrEqual(narrow.available + 1);
   expect(narrow.thread, 'the thread still fits at 375 px').toBeLessThanOrEqual(narrow.available + 1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth), 'nothing widens the narrow page').toBeLessThanOrEqual(375);
+  const viewport = windowWidth(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth), 'nothing widens the narrow page').toBeLessThanOrEqual(viewport);
 });
 
 test('#179 Lines opens from the keyboard, focus stays on it, draws the diagram and math whole, shows the comment on its line, and the choice holds across a reload', async ({
