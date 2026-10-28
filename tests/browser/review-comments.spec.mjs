@@ -8,7 +8,7 @@
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, synced } from './postbox.mjs';
-import { commentOn, drawn, reviewRoom, select, viewRadio } from './review.mjs';
+import { commentOn, DRAFT, drawn, review, reviewRoom, select, viewRadio } from './review.mjs';
 
 /** @type {Awaited<ReturnType<typeof reviewRoom>>} */
 let room;
@@ -81,6 +81,37 @@ test('#179 comments from Preview reach the agent with their line, columns and qu
       { line: 10, col: 11, endLine: 10, endCol: 13, quote: 'low', text: 'Say how low.' },
       { line: 23, col: 7, endLine: 23, endCol: 9, quote: 'run', text: 'Which script?' },
     ]);
+});
+
+test('#468 text being typed stays in its comment box when another agent comments or the author revises', async ({ page }) => {
+  const { rt } = room.app;
+  const { block, blockId, sessionOf } = await room.withReview(page, 'Typing');
+  await viewRadio(block, 'Lines').click();
+  await block.locator('.g-mark[data-line="3"]').click();
+  const box = block.getByRole('textbox', { name: 'Comment on line 3' });
+  await box.fill('Keep this unfinished comment.');
+  for (let i = 0; i < 5; i++) await box.press('ArrowLeft');
+  expect(await box.evaluate((x) => /** @type {HTMLTextAreaElement} */ (x).selectionStart), 'the person moved the caret').toBe(24);
+
+  const reviewed = rt.toolsFor(sessionOf('reader').id).review_block({
+    blockId,
+    verdict: 'comment',
+    comments: [{ line: 4, text: 'Another review.' }],
+  });
+  expect(reviewed.ok, reviewed.message).toBe(true);
+  await synced(page, room.app);
+  await expect(box, 'another agent’s comment keeps the unfinished text').toHaveValue('Keep this unfinished comment.');
+  await expect(box, 'and focus stays in its box').toBeFocused();
+  expect(await box.evaluate((x) => /** @type {HTMLTextAreaElement} */ (x).selectionStart), 'with its caret').toBe(24);
+
+  const updated = rt.toolsFor(sessionOf('drafter').id).update_block({
+    block: { ...review(sessionOf('drafter').threadId), content: `${DRAFT}\n\nOne more line.`, previous: DRAFT },
+  });
+  expect(updated.ok, updated.message).toBe(true);
+  await synced(page, room.app);
+  await expect(box, 'the author’s revision keeps the unfinished text too').toHaveValue('Keep this unfinished comment.');
+  await expect(box).toBeFocused();
+  expect(await box.evaluate((x) => /** @type {HTMLTextAreaElement} */ (x).selectionStart)).toBe(24);
 });
 
 test('#133 another agent’s comments show on their lines with its name; the bar says who reviewed it, and it still waits on you', async ({ page }) => {

@@ -113,7 +113,8 @@ export const TOOL_ROUTES = Object.freeze({
   // Its answer carries the wake’s id, which only Postbox has, for cancel_wake; both wait (#458).
   schedule_wake: 'ask',
   cancel_wake: 'ask',
-  wake_agent: 'queue',
+  // Postbox may send it, hold it on a waiting card or refuse it, and only its answer says which (#439), so it waits.
+  wake_agent: 'ask',
   // Whether it may post depends on the thread and who started the turn, which only Postbox knows, so it waits for the answer.
   bring_to_conversation: 'ask',
   ask_for_tool: 'queue',

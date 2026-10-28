@@ -113,10 +113,10 @@ test('a queued call while Postbox is away waits, and crosses at its hello; it ou
     const s = connectShim(k.b, 't1');
     await s.next('welcome');
     assert.equal((await s.call('c1', 'define_term', { term: 't5', definition: 'A term.' })).ok, true, 'the shim is answered while Postbox is away');
-    assert.equal((await s.call('c2', 'wake_agent', { handle: 'reviewer', message: 'hi' })).ok, true);
+    assert.equal((await s.call('c2', 'define_term', { term: 'hi', definition: 'A greeting.' })).ok, true);
     assert.deepEqual(k.sent, []);
     k.state.attached = true;
-    await k.post('reply', { turn: 't1', id: 'c2', ok: true, text: 'Woken.' }); // a reply before the hello is still a reply
+    await k.post('reply', { turn: 't1', id: 'c2', ok: true, text: 'Defined.' }); // a reply before the hello is still a reply
     // A new daemon, from the records on disk.
     const again = makeBroker(h);
     await again.b.load([{ turn: 't1', state: 'running' }]);
@@ -165,7 +165,7 @@ test('calls waiting for Postbox stop at the host’s limits: so many, so many by
     small.state.attached = false;
     const s2 = connectShim(small.b, 't1');
     await s2.next('welcome');
-    const big = await s2.call('c4', 'wake_agent', { handle: 'reviewer', message: 'x'.repeat(500) });
+    const big = await s2.call('c4', 'define_term', { term: 'x', definition: 'x'.repeat(500) });
     assert.match(big.text, /waiting for Postbox, as many as this host keeps/);
     const full = makeBroker(h, { queueLimits: { calls: 10, bytes: 1_000_000, recordBytes: 100 } });
     const s3 = connectShim(full.b, 't1');
