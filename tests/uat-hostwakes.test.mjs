@@ -225,6 +225,41 @@ test('a target’s turn started by the card’s own held wake isn’t a refused 
   assert.deepEqual(T['held-wake-delivered-after-allow'].run(f), []);
 });
 
+test('a refused hand-off is lost though its target had a turn the person started, as in the 28 October third run', () => {
+  // From uat-runs/2026-10-28T02-04-44-hostwakes: developer’s wake_agent hand-off to critic was refused at 02:10:00 while
+  // researcher’s card waited; the person then messaged critic at 02:10:23, and critic’s turn started. The hand-off was
+  // never posted, so it never reached critic.
+  const at = (hms) => Date.parse(`2026-10-28T${hms}Z`);
+  const f = {
+    now: at('02:16:00'),
+    threads: ['th1'],
+    state: {
+      items: {
+        th1: [
+          { kind: 'hop', from: 'researcher', to: 'developer', at: at('02:05:32'), pair: 2, status: 'open' },
+          { kind: 'user', text: '@critic, write one line that @-mentions developer…', at: at('02:10:23') },
+          turn('critic', at('02:10:28')),
+        ],
+      },
+    },
+    streams: [
+      {
+        handle: 'developer',
+        started: at('02:09:57'),
+        events: wakeStream('developer', at('02:10:00'), 'critic', REFUSED, 'Task: list the files in work/.').events,
+      },
+      { handle: 'critic', started: at('02:10:23'), events: [] },
+    ],
+    hosts: { hosts: [{ id: 'h1', label: 'host1' }], placement: { researcher: 'local', critic: 'host1', developer: 'local' } },
+  };
+  assert.deepEqual(
+    check('refused-wake-lost')
+      .run(f)
+      .map((x) => x.title),
+    ['@developer’s hand-off to @critic was refused and lost'],
+  );
+});
+
 test('outside host mode, the host check says nothing', () => {
   assert.deepEqual(check('host-wake-said-sent').run({ ...facts(), hosts: undefined }), []);
   assert.equal(T['refused-wake-told-in-turn'].recorded({ ...facts(), hosts: undefined }), false);
