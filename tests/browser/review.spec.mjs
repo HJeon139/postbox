@@ -12,7 +12,7 @@
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, focused, frames, synced } from './postbox.mjs';
-import { commentOn, drawn, reviewRoom, shown, viewRadio } from './review.mjs';
+import { commentOn, drawn, review, reviewRoom, shown, viewRadio } from './review.mjs';
 
 /** @type {Awaited<ReturnType<typeof reviewRoom>>} */
 let room;
@@ -37,6 +37,46 @@ test('#179 the draft opens in Preview, with its diagram and math drawn, and take
     width.block > 760 && width.block >= width.room - 2,
     `the review takes the transcript’s width (${Math.round(width.block)} of ${Math.round(width.room)} px)`,
   ).toBe(true);
+});
+
+test('#486 Preview fills a wide review while conversation prose keeps its reading measure, with no narrow change', async ({ page }) => {
+  const { rt } = room.app;
+  const { thread, block, blockId, sessionOf } = await room.withReview(page, 'Preview width');
+  const text = Array.from({ length: 30 }, () => 'The rendered review uses all of the space available for detailed feedback.').join(' ');
+  const updated = rt.toolsFor(sessionOf('drafter').id).update_block({ block: { ...review(thread.id), content: text } });
+  expect(updated.ok, updated.message).toBe(true);
+  const reviewed = rt.toolsFor(sessionOf('reader').id).review_block({
+    blockId,
+    verdict: 'comment',
+    comments: [{ line: 1, text }],
+  });
+  expect(reviewed.ok, reviewed.message).toBe(true);
+  rt.addItem(thread.id, { kind: 'user', text });
+  await synced(page, room.app);
+
+  const widths = async () =>
+    block.evaluate((b) => {
+      const preview = /** @type {HTMLElement} */ (b.querySelector('.rv-preview'));
+      const paragraph = /** @type {HTMLElement} */ (preview.querySelector(':scope > .md > p'));
+      const thread = /** @type {HTMLElement} */ (preview.querySelector('.rv-thread'));
+      const style = getComputedStyle(preview);
+      return {
+        available: preview.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        paragraph: paragraph.getBoundingClientRect().width,
+        thread: thread.getBoundingClientRect().width,
+      };
+    });
+  const wide = await widths();
+  expect(wide.paragraph, `the paragraph fills ${Math.round(wide.available)} px`).toBeGreaterThanOrEqual(wide.available - 2);
+  expect(wide.thread, `the comment thread fills ${Math.round(wide.available)} px`).toBeGreaterThanOrEqual(wide.available - 2);
+  const message = page.locator('.turn.me .me-card .md p', { hasText: 'The rendered review' });
+  expect(await message.evaluate((p) => p.getBoundingClientRect().width), 'conversation prose keeps its reading measure').toBeLessThan(wide.paragraph - 100);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  const narrow = await widths();
+  expect(narrow.paragraph, 'the paragraph still fits at 375 px').toBeLessThanOrEqual(narrow.available + 1);
+  expect(narrow.thread, 'the thread still fits at 375 px').toBeLessThanOrEqual(narrow.available + 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth), 'nothing widens the narrow page').toBeLessThanOrEqual(375);
 });
 
 test('#179 Lines opens from the keyboard, focus stays on it, draws the diagram and math whole, shows the comment on its line, and the choice holds across a reload', async ({
