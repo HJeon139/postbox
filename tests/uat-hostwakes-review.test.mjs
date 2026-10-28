@@ -28,3 +28,13 @@ test('a declined card waits no more: a wake made after the Decline that Postbox 
   );
   assert.deepEqual(check('refused-wake-lost').run(f), []);
 });
+
+test('outside host mode, refused-wake-lost says nothing either: it runs in every UAT run (withRemote)', () => {
+  const f = run(
+    [{ kind: 'hop', from: 'researcher', to: 'critic', at: s(10), pair: 2, status: 'open' }, turn('developer', s(90))],
+    wakeStream('developer', s(100), 'critic', 'refused'),
+    [],
+    null,
+  );
+  assert.deepEqual(check('refused-wake-lost').run(f), []);
+});
