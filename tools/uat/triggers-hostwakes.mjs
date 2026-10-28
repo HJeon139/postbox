@@ -26,18 +26,32 @@ const itemsOf = (f) => (f.threads ?? []).flatMap((t) => f.state?.items?.[t] ?? [
 const handleOf = (s) => String(s ?? '').replace(/^@/, '');
 
 /**
- * Every hop card: who asked to wake whom, when it opened, whether the pair limit raised it, and when the person
- * answered it, from the line resolveHop posts (server/side-threads.mjs): Allowed, or Didn’t allow.
+ * Every hop card, a wake past a limit’s or one asking to add an agent, since either refuses other wakes while it waits:
+ * who asked about whom, when it opened, whether the pair limit raised it, and when the person answered it, from the
+ * line resolveHop posts (server/side-threads.mjs). The facts are one conversation and its threads (threadsUnderTest),
+ * and a card refuses wakes only in its own conversation, so these are the ones that can.
  */
 export function hopCards(f) {
   const items = itemsOf(f);
   const said = (it, text) => items.find((v) => v.kind === 'voice' && v.text === text && (v.at ?? 0) >= (it.at ?? 0))?.at ?? null;
   return items
-    .filter((it) => it.kind === 'hop' && !it.join)
+    .filter((it) => it.kind === 'hop')
     .map((it) => {
-      const allowedAt = said(it, `Allowed: @${it.from} wakes @${it.to}`);
-      const answeredAt = allowedAt ?? said(it, `Didn’t allow @${it.from} to wake @${it.to}`);
-      return { from: it.from, to: it.to, text: it.text ?? it.reason ?? '', at: it.at ?? null, pair: it.pair ?? null, status: it.status, allowedAt, answeredAt };
+      const yes = it.join ? `Added @${it.to} to this conversation for @${it.from}` : `Allowed: @${it.from} wakes @${it.to}`;
+      const no = it.join ? `Didn’t add @${it.to} to this conversation` : `Didn’t allow @${it.from} to wake @${it.to}`;
+      const allowedAt = said(it, yes);
+      const answeredAt = allowedAt ?? said(it, no);
+      return {
+        from: it.from,
+        to: it.to,
+        join: it.join === true,
+        text: it.text ?? it.reason ?? '',
+        at: it.at ?? null,
+        pair: it.pair ?? null,
+        status: it.status,
+        allowedAt,
+        answeredAt,
+      };
     });
 }
 
