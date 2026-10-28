@@ -36,6 +36,7 @@ import { asksInProse, blockUseTally } from './block-use.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
+import { toolCalls } from './room-checks-tools.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 
@@ -329,16 +330,6 @@ export const MID_TURN = ['background-step-closed', 'two-processes-one-session'];
 
 // ── The Agents section, the Work ledger and the right pane (#105, #132, #146) ──────────────────────────────
 
-/** Every tool call in a turn’s stream, with its result when the stream has it. */
-const toolCalls = (events) => {
-  const results = new Map();
-  for (const e of events) if (e.type === 'user') for (const c of e.message?.content ?? []) if (c?.type === 'tool_result') results.set(c.tool_use_id, c);
-  const denied = new Set(events.filter((e) => e.type === 'result').flatMap((e) => (e.permission_denials ?? []).map((d) => d.tool_use_id)));
-  return events
-    .filter((e) => e.type === 'assistant')
-    .flatMap((e) => (e.message?.content ?? []).filter((c) => c?.type === 'tool_use'))
-    .map((c) => ({ id: c.id, name: c.name, input: c.input ?? {}, result: results.get(c.id) ?? null, denied: denied.has(c.id) }));
-};
 const ledgerEntries = (f) => Object.values(f.state?.work ?? {}).flat();
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 /** A model as the panel names it (“Opus 5.5”) and as a stream names it (“claude-opus-5-5”), reduced to compare. */
