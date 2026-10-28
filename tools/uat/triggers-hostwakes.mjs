@@ -183,7 +183,7 @@ export const HOSTWAKE_CHECKS = [
             .map((c) => ({
               key: `${c.from}:${c.to}:${c.at}`,
               title: `@${c.from} on ${where(f, c.from)} was told its wake of @${c.to} was sent, and Postbox refused it`,
-              evidence: `wake_agent answered “${c.text.slice(0, 80)}”, and @${c.to} never started a turn: a wake card was waiting.`,
+              evidence: `wake_agent answered “${c.text.slice(0, 80)}”, but Postbox didn’t send it to @${c.to} within a minute: a wake card was waiting.`,
             }))
         : [],
   },

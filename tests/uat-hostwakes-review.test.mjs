@@ -66,3 +66,13 @@ test('a card asking to add an agent refuses other wakes too, so a hand-off it re
   );
   assert.equal(check('host-wake-said-sent').run(f).length, 1);
 });
+
+test('host-wake-said-sent’s evidence says only what the check found: Postbox didn’t send the message on', () => {
+  const f = run(
+    [{ kind: 'hop', from: 'developer', to: 'critic', at: s(10), pair: 2, status: 'open' }],
+    wakeStream('critic', s(100), 'researcher', SENT, 'Task.'),
+  );
+  const [found] = check('host-wake-said-sent').run(f);
+  assert.match(found.evidence, /Postbox didn’t send it to @researcher within a minute: a wake card was waiting/);
+  assert.doesNotMatch(found.evidence, /started a turn/, 'turns are what refused-wake-lost reads, not this check');
+});
