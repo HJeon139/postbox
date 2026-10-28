@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { describeTool, isQuietTool } from '../server/adapters/claude-stream.mjs';
 import { TOOL_ROUTES } from '../shared/remote-protocol.mjs';
+import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 import { setup, sleep } from './side-threads-fixture.mjs';
 
 const idIn = (message) => /\b(sc_\w+)\b/.exec(message)?.[1] ?? null;
@@ -58,4 +59,18 @@ test('#458 cancel_wake is one of Postbox’s quiet tools, with a step label of i
   // The Kiro, Codex and Antigravity adapters ask claude-stream.mjs too.
   assert.equal(isQuietTool('mcp__postbox__cancel_wake'), true);
   assert.equal(describeTool('mcp__postbox__cancel_wake', { id: 'sc_x' }), 'Canceling a wake-up');
+});
+
+test('#458 a schedule_wake from the host, sent again after a hello, schedules one wake: the one whose id the agent has', async () => {
+  const r = rig();
+  const turn = await running(r);
+  const id = r.d.tool(turn, 'schedule_wake', { in_minutes: 30, note: 'Check the run.' });
+  await until(() => r.d.replies.length === 1, 'the reply');
+  r.link.hear({ type: 'tool', turn, id, name: 'schedule_wake', args: { in_minutes: 30, note: 'Check the run.' } });
+  await until(() => r.link.sent.filter((m) => m.type === 'reply' && m.id === id).length === 2, 'the repeat’s reply');
+  const wakes = Object.values(r.store.state.schedules).filter((x) => x.sessionId === r.se().id);
+  assert.equal(wakes.length, 1, 'one wake');
+  assert.match(r.d.replies[0].text, new RegExp(wakes[0].id), 'and its id is the one the agent was told');
+  r.d.end(turn);
+  await settled(r);
 });
