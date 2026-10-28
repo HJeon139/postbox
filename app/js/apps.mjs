@@ -164,7 +164,6 @@ let live = null;
 let tabbing = null;
 /** @type {HTMLIFrameElement | null} the app frame that holds focus, rightfully */
 let owner = null;
-const used = new WeakSet(); // frames the person focused: they may hold input the app hasn’t saved yet
 /** @type {Element | null} the last element of this page that had focus */
 let lastFocus = null;
 const stolen = new WeakSet(); // frames that took focus on their own, refused until you click or tab into them
@@ -270,7 +269,6 @@ function checkFocus() {
   const tabbed = tabbing?.frame === f && Date.now() - tabbing.at < 1000;
   if (f === live || tabbed) {
     owner = f;
-    used.add(f);
     stolen.delete(f);
     tabbing = null;
     return;
@@ -422,8 +420,8 @@ const isOnScreen = (iframe) => {
 function pauseAppFrames() {
   const bodies = new Set();
   for (const rec of frames) {
-    // Never interrupt the frame the person points at or uses, nor a used frame that remains on screen (#37).
-    if (rec.check || !rec.iframe.isConnected || rec.iframe === live || rec.iframe === owner || (isOnScreen(rec.iframe) && used.has(rec.iframe))) continue;
+    // Never interrupt a frame the person can see, points at, or uses with the keyboard (#37).
+    if (rec.check || !rec.iframe.isConnected || isOnScreen(rec.iframe) || rec.iframe === live || rec.iframe === owner) continue;
     const body = rec.iframe.closest('.app-body');
     if (body?._unmount) {
       bodies.add(body);

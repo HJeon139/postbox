@@ -42,23 +42,6 @@ test('#336 an open page checks an app in a topic thread nobody opened', async ({
   await expect(page.locator('iframe[title="Unopened topic"]')).toHaveCount(0);
 });
 
-test('#37 a running CPU-heavy app cannot starve the next app check', async ({ page }) => {
-  const { rt, thread, session } = room('CPU-heavy app');
-  const tools = rt.toolsFor(session.id);
-  tools.show_app({
-    id: 'busy-app',
-    title: 'Busy app',
-    code: `<p>Busy</p><script>postbox.ready.then(() => { if (!postbox.check) while (true) {} });</script>`,
-  });
-  await page.goto(`${app.origin}/#/t/${thread.id}`);
-  await synced(page, app);
-  await expect.poll(() => rt.s.apps['busy-app'].check.status, { timeout: 30_000 }).toBe('passed');
-  await expect(page.locator('iframe.app-iframe[title="Busy app"]')).toBeAttached();
-  tools.show_app({ id: 'after-busy', title: 'After busy', code: PLAIN });
-  await expect(page.locator('.app-body[data-app-id="busy-app"]')).toContainText('Paused while another app is checked');
-  await expect.poll(() => rt.s.apps['after-busy'].check.status, { timeout: 30_000 }).toBe('passed');
-});
-
 test('#37 an off-screen app pauses while the next app is checked', async ({ page }) => {
   const { rt, thread, session } = room('Off-screen app');
   const tools = rt.toolsFor(session.id);
@@ -84,6 +67,28 @@ test('#37 an off-screen app pauses while the next app is checked', async ({ page
   await expect(page.locator('iframe.check-frame[title="Checking After off-screen"]')).toHaveCount(2);
   await expect(offscreen).toHaveCount(0);
   await expect.poll(() => rt.s.apps['after-offscreen'].check.status, { timeout: 30_000 }).toBe('passed');
+});
+
+test('#37 a visible app keeps running through another conversation’s check without a click', async ({ page }) => {
+  const visibleRoom = room('Visible counter');
+  const otherRoom = room('Other counter check');
+  visibleRoom.rt.toolsFor(visibleRoom.session.id).show_app({
+    id: 'visible-counter',
+    title: 'Visible counter',
+    code: '<p id="counter">0</p><script>let n = 0; setInterval(() => { counter.textContent = String(++n); }, 50);</script>',
+  });
+  await page.goto(`${app.origin}/#/t/${visibleRoom.thread.id}`);
+  await synced(page, app);
+  await expect.poll(() => visibleRoom.rt.s.apps['visible-counter'].check.status, { timeout: 30_000 }).toBe('passed');
+  const counter = page.locator('iframe.app-iframe[title="Visible counter"]').contentFrame().locator('#counter');
+  await expect.poll(async () => Number(await counter.textContent())).toBeGreaterThan(0);
+  const before = Number(await counter.textContent());
+  await page.mouse.move(1, 1);
+
+  otherRoom.rt.toolsFor(otherRoom.session.id).show_app({ id: 'other-counter-app', title: 'Other counter app', code: PLAIN });
+  await expect(page.locator('iframe.check-frame[title="Checking Other counter app"]')).toHaveCount(2);
+  await expect.poll(async () => Number(await counter.textContent())).toBeGreaterThan(before);
+  await expect.poll(() => otherRoom.rt.s.apps['other-counter-app'].check.status, { timeout: 30_000 }).toBe('passed');
 });
 
 test('#37 a check leaves the app the person is using mounted', async ({ page }) => {
@@ -132,7 +137,22 @@ test('one tab queues one app-check lock request and waits without another store 
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   await expect.poll(() => rt.s.apps['lock-base'].check.status, { timeout: 30_000 }).toBe('passed');
-  await expect(page.locator('iframe.app-iframe[title="Lock base"]')).toBeAttached();
+  const lockBase = page.locator('iframe.app-iframe[title="Lock base"]');
+  await expect(lockBase).toBeAttached();
+  for (let i = 0; i < 12; i++)
+    rt.addItem(thread.id, {
+      kind: 'agent',
+      sessionId: session.id,
+      personaId: session.personaId,
+      handle: session.handle,
+      text: `Lock result ${i + 1}. ${'This moves the app outside the viewport before the lock is held. '.repeat(3)}`,
+      status: 'done',
+    });
+  await synced(page, app);
+  await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
+  await settled(page);
+  await expect(lockBase).toBeAttached();
+  expect(await lockBase.evaluate((frame) => frame.getBoundingClientRect().bottom <= 0), 'the base app is outside the viewport').toBe(true);
   let reloads = 0;
   page.on('request', (request) => {
     if (request.url().includes('/sandbox/app/lock-base/1')) reloads++;
