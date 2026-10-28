@@ -13,6 +13,8 @@ let room;
 let pairRoom;
 /** @type {any} */
 let heldRoom;
+/** @type {any} */
+let retiredRoom;
 
 test.beforeAll(async () => {
   app = await startPostbox('wake-limit');
@@ -39,6 +41,13 @@ test.beforeAll(async () => {
   rt.agentWake(hx.id, 'waker', 'a task for you');
   rt.agentWake(hw.id, 'other', 'ready');
   rt.agentWake(hx.id, 'waker', 'count the lines in work/');
+  // A card whose target you then write to closes, retired (#439).
+  retiredRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Retired', personaIds: personas.map((p) => p.id) });
+  const [rw, ro] = ['waker', 'woken'].map((h) => rt.sessionsIn(retiredRoom.id).find((se) => se.handle === h));
+  rt.agentWake(rw.id, 'woken', 'please check');
+  rt.agentWake(ro.id, 'waker', 'checked');
+  rt.agentWake(rw.id, 'woken', 'thanks');
+  rt.sendMessage(retiredRoom.id, { text: '@woken it’s done, thanks' });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -77,4 +86,12 @@ test('a wake held on the waiting card shows on it until you answer, and goes whe
   await expect(card).toContainText('Allowed');
   await expect(line).toHaveCount(0);
   await expect(page.locator('.transcript')).toContainText('count the lines in work/');
+});
+
+test('a card whose target you write to closes, and says why (#439)', async ({ page }) => {
+  await page.goto(`${app.origin}/#/t/${retiredRoom.id}`);
+  await synced(page, app);
+  const card = page.locator('.transcript .block').filter({ hasText: 'Let @waker wake @woken?' });
+  await expect(card).toContainText('Closed: @woken got a turn another way (you wrote to it)');
+  await expect(card.getByRole('button', { name: 'Let @waker wake @woken' })).toHaveCount(0);
 });

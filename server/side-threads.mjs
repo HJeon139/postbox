@@ -6,7 +6,7 @@
 import { HOP_LIMIT, PAIR_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
-import { askToAdd, askToWake } from './wake-cards.mjs';
+import { askToAdd, askToWake, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
 // Agent wakes in a row, without you, and between the same two agents, before the next waits for your Allow
@@ -104,6 +104,7 @@ export function deliverWake(rt, threadId, q) {
   }
   // No reply-back (#372): the reply posts where the wake was, and wakes the waker only if it @-mentions it.
   rt.deliver(target.id, { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId }, { threadId });
+  retireStale(rt, threadId, target, `@${q.from} woke it`);
 }
 
 /**

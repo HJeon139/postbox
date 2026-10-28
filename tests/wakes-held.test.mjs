@@ -76,3 +76,30 @@ test('#439 an agent on a host waits for Postbox’s answer to wake_agent, so it 
   // A queued route answers at once with “Sent your message…”, whatever Postbox does with it.
   assert.equal(TOOL_ROUTES.wake_agent, 'ask');
 });
+
+test('#439 a card whose target got a turn another way is retired, its agent told, and the wakes held on it go on', async () => {
+  const f = await cardOpen();
+  await f.wake(f.gamma, 'alpha', HANDOFF);
+  // The person writes to the card's target, beta, which then has a turn without the card.
+  f.rt.sendMessage(f.t.id, { text: '@beta the review is done, thanks' });
+  await settle(f.rt);
+  assert.equal(f.store.item(f.t.id, f.card.id).status, 'retired');
+  assert.deepEqual(got(f, 'beta', 'alpha to beta').length, 1, 'only the first wake of beta; the card’s own isn’t sent');
+  // Told at its next turn: here, the one gamma’s held hand-off starts, so the note comes with that message.
+  const told = [
+    ...(f.store.state.sessions[f.alpha.id].context ?? []),
+    ...f.adapter.calls.filter((c) => c.handle === 'alpha').flatMap((c) => c.message?.context ?? []),
+  ].map(String);
+  assert.ok(
+    told.some((l) => /@beta got a turn another way/.test(l)),
+    `alpha is told: ${told.join(' | ')}`,
+  );
+  assert.equal(got(f, 'alpha', HANDOFF).length, 1, 'gamma’s held hand-off goes on to alpha');
+});
+
+test('#439 another agent’s wake that reaches the card’s target retires the card too', async () => {
+  const f = await cardOpen();
+  // gamma’s first wake of beta is under its own limits, so it goes, and beta has a turn without the card.
+  await f.wake(f.gamma, 'beta', 'the line count is 42');
+  assert.equal(f.store.item(f.t.id, f.card.id).status, 'retired');
+});

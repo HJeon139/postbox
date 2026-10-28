@@ -80,6 +80,7 @@ import { reactionLines, settleThread, threadCatchUp, threadLines } from './threa
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -477,6 +478,8 @@ export class Runtime {
       if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
       targets.push({ se: last });
     }
+    // A card waiting to wake one of them is stale now (#439), whether this goes at once or waits in the queue.
+    for (const { se } of targets) retireStale(this, threadId, se, 'you wrote to it', { byPerson: true });
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
     if (busy.length && !sendNow) {

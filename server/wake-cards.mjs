@@ -161,3 +161,28 @@ function settleHeld(rt, card, allow) {
       );
   }
 }
+
+/**
+ * A card whose target got a turn another way is stale (#439): the person wrote to it, or another agent’s wake reached
+ * it. It closes as retired, and its own wake isn’t sent, since what it asked for may have happened that way: its agent
+ * is told at its next turn, and can send it again. The wakes held on it go on as their agents sent them: through the
+ * limits again, so one that still needs a card raises it, unless the person’s message is what retired it, since their
+ * acting starts the counts again (intent.md).
+ * @param {any} rt @param {string} threadId  where the target’s turn comes from @param {any} target @param {string} why
+ * @param {{ byPerson?: boolean }} [opts]
+ */
+export function retireStale(rt, threadId, target, why, { byPerson = false } = {}) {
+  const conv = rt.lineage(threadId).at(-1);
+  const card = openCard(rt, { id: conv });
+  if (!card || card.join || card.to !== target.handle) return;
+  rt.patchItem(conv, card.id, { status: 'retired', retiredWhy: why });
+  const from = rt.s.sessions[card.fromSessionId];
+  if (from) rt.updateSession(from.id, { needs: null, state: rt.turns.has(from.id) ? from.state : 'idle' });
+  if (from && !from.archived)
+    rt.tellAgent(
+      from.id,
+      `@${card.to} got a turn another way (${why}) before the person answered your request to wake it, so your message (“${clip(card.text ?? card.reason ?? '', 120)}”) wasn’t sent. Send it again if it’s still needed.`,
+    );
+  for (const w of card.held ?? [])
+    rt.agentWake(w.fromSessionId, w.to, w.text, { confirmed: byPerson, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId });
+}
