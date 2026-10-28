@@ -8,29 +8,31 @@
 
 A run with one host (`--host`, once), Claude Code only: @critic runs there, and @researcher and @developer on this computer. Postbox stops two agents waking each other after a hand-off and its answer: their third wake in a row raises a card for the person (`PAIR_LIMIT`, `shared/limits.mjs`). While one such card waits, a wake that needs a second card is refused (`askToWake`, `server/side-threads.mjs`). This run makes that happen from a host and from this computer, and checks what each sender is told, when, and whether the work it handed off is lost. Watch for an agent that says it handed work on when it didn’t, an agent left idle with work it was never given, and a refusal that names no card.
 
-Every message you send clears the counts of wakes in a row (`postUserMessage`, `server/message-queue.mjs`). So each wake that has to reach the limit is the third in a row between two agents since your last message: one message asks for the request, its answer and the next wake together, and you write nothing until it has happened. The checks also read which agents start a turn after a refused hand-off, so wake only the agents each step names.
+Every message you send clears the counts of wakes in a row (`postUserMessage`, `server/message-queue.mjs`). So each wake that has to reach the limit is the third in a row between two agents since your last message: one message asks for the request, its answer and the next wake together, and you write nothing until it has happened. The checks also read which agents start a turn after a refused hand-off, so wake only the agents each step names: in each message, @-mention only the agent it’s for, and name the others without @, since an @-mention wakes that agent.
 
 ## Phase 1: Open a wake card, and leave it
 
 - triggers: pair-card-opened
-- steps: 6
+- steps: 8
 
-In one message, ask @researcher to send @developer one line by @-mention, asking it to review a three-line shell function and to answer by @-mentioning @researcher. When @developer answers, @researcher sends it a short follow-up by @-mention, saying no reply is needed. That follow-up is their third wake in a row, and it raises a card (“Let @researcher wake @developer?”). Wait until the card shows, and don’t answer it.
+In one message that @-mentions only @researcher, ask it to send developer this shell function to review, word for word, in a reply that @-mentions @developer, not with wake_agent: `count_lines() { wc -l < "$1"; }`. Ask researcher to tell developer, in that same reply, to answer once by @-mentioning @researcher and not to ask anything else. When developer answers, researcher sends a one-line thank-you by @-mention that says no reply is needed. That thank-you is their third wake in a row, and it raises a card (“Let @researcher wake @developer?”). Wait until the card shows, and don’t answer it.
+
+Then, in one message to @researcher and @developer, ask them to stop: each answers you in one line without @-mentioning anyone, and neither messages the other again in this conversation. Wait until both have answered and neither is working. Your message clears the counts and leaves the card open, which is what phase 2 needs.
 
 ## Phase 2: Hand-offs while the card waits
 
 - triggers: local-wake-told-in-turn, refused-wake-told-in-turn
 - steps: 12
 
-With the card still open, in one message, ask @critic (host1) to send @researcher one line by @-mention saying it has a task, and asking it to answer by @-mentioning only @critic. When @researcher answers, @critic hands it the task with wake_agent: “count the lines in work/*.txt and post the total”. That is their third wake in a row, so it needs a second card, and Postbox refuses it. Then don’t write anything for 3 minutes (wait 180 seconds), so nothing but the refusal can wake @critic. Then ask @critic what happened to its hand-off, and tell it not to send it again.
+With the card still open, in one message that @-mentions only @critic (host1), ask it to tell researcher it has a task, in a reply that @-mentions @researcher, and to ask researcher to answer once by @-mentioning @critic. When researcher answers, critic hands it the task with the wake_agent tool, without @-mentioning anyone in its reply: “count the lines in work/*.txt and post the total”. That hand-off is their third wake in a row, so it needs a second card, and Postbox refuses it. Then don’t write anything for 3 minutes (wait 180 seconds), so nothing but the refusal can wake @critic. Then ask @critic what happened to its hand-off, and tell it not to send it again or @-mention anyone.
 
-Then, in one message, ask @developer (this computer) to do the same with @critic: one line by @-mention, asking it to answer by @-mentioning only @developer, then the task with wake_agent: “list the files in work/ and post their names”. Wait 180 seconds again, then ask @developer what happened to its hand-off, and tell it not to send it again. Don’t message @researcher or @critic after their refused hand-offs.
+Then, in one message that @-mentions only @developer (this computer), ask it to do the same with critic: one line that @-mentions @critic, asking it to answer once by @-mentioning @developer, then the task with wake_agent, without @-mentioning anyone: “list the files in work/ and post their names”. Wait 180 seconds again, then ask @developer what happened to its hand-off, and tell it not to send it again or @-mention anyone. Don’t message researcher or critic after their refused hand-offs.
 
 ## Phase 3: Answer the card
 
 - triggers: held-wake-delivered-after-allow
 - steps: 6
 
-Allow the card from phase 1. Then wait 2 minutes without writing, and read the conversation: check whether the two refused hand-offs reach @researcher and @critic, or whether each sender would have to send them again. Don’t message either of them to find out.
+Allow the card from phase 1. Then wait 120 seconds without writing (a wait of 120 seconds). If you’re told something still waits on you, such as a new card, leave it and ask for the same wait again: the second time it goes ahead. Then read the conversation, and check whether the two refused hand-offs reach researcher and critic, or whether each sender would have to send them again. Don’t message either of them to find out.
 
 On `main`, expect phase 1’s trigger and `local-wake-told-in-turn` to be seen, and `refused-wake-told-in-turn` and `held-wake-delivered-after-allow` not: a host sender hears of its refusal only at its next turn, and a refused wake is dropped (#439). The checks `host-wake-said-sent` and `refused-wake-lost` report those two defects as findings.
