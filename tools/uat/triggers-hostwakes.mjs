@@ -5,10 +5,11 @@
 // only at its next turn (server/remote/turns-tools.mjs, tellAgent), so nothing tells it its hand-off was lost.
 //
 // Postbox keeps no record of a refused wake (the told notice is in a session’s context, which the history drops), but it
-// posts every wake it sends as the sender’s message (agentWake, server/side-threads.mjs). So a wake_agent call with no
-// such message after it was refused, whatever else woke its target meanwhile. Whether its sender was told reads which
-// turns follow: the scenario keeps the person silent in those windows.
+// records every message it sends an agent from another (recordAgentMessage, server/side-threads.mjs), which the runner
+// reads from its store as facts.received (tools/uat/run-files.mjs). So a wake_agent call its target never received
+// was refused, whatever else woke the target meanwhile. Whether its sender was told reads which turns follow.
 
+import { clip } from '../../server/helpers.mjs';
 import { PAIR_LIMIT } from '../../shared/limits.mjs';
 import { agentTurns, onHost, placeOf } from './remote-facts.mjs';
 import { resultText } from './trigger-facts.mjs';
@@ -40,9 +41,9 @@ const cardOpenAt = (cards, at) => cards.some((c) => (c.at ?? Infinity) <= at && 
 
 /**
  * Every wake_agent call in the recorded streams, with its result’s text, where its sender runs, and whether Postbox
- * applied it: it posted the call’s message as the sender’s, within APPLIED_MS. Each posted message answers one call, in
- * order, so an agent that sends the same text twice has the second refusal seen. A target woken by another agent
- * meanwhile doesn’t make a refused call look applied, as it did in the 27 October run.
+ * applied it: its target received the call’s message within APPLIED_MS. Each record answers one call, in order, so an
+ * agent that sends the same text twice has the second refusal seen. A target woken by another agent meanwhile doesn’t
+ * make a refused call look applied, as it did in the 27 October run.
  */
 export function wakeCalls(f) {
   // The sender’s next turn counts as the refusal’s only if the person did nothing in between (28 October rerun: the
@@ -51,7 +52,7 @@ export function wakeCalls(f) {
   const personBetween = (from, to) => acts.some((t) => t > from && t <= to);
   const startsOf = turnStarts(f);
   const cards = hopCards(f);
-  const posted = itemsOf(f).filter((it) => it.kind === 'agent' && typeof it.text === 'string' && Number.isFinite(it.at));
+  const received = [...(f.received ?? [])];
   return (
     (f.streams ?? [])
       .flatMap((s) => {
@@ -80,12 +81,11 @@ export function wakeCalls(f) {
           );
       })
       .sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity))
-      .map((c) => ({ ...c, applied: postedFor(c, posted) }))
-      // Once every call has claimed its own message, a refused one whose message Postbox posted later was delivered then:
-      // Allow sends a held wake through agentWake, which posts it as the sender’s (resolveHop, server/side-threads.mjs).
-      // This assumes #439’s fix keeps that: a held wake is posted when it’s delivered, not while it waits. Posted while
-      // it waits, it would read as applied, never refused, so the checks below would see no defect and no delivery.
-      .map((c) => ({ ...c, deliveredAt: c.applied ? null : deliveredFor(c, posted) }))
+      .map((c) => ({ ...c, applied: receivedFor(c, received, c.at - SKEW_MS, c.at + APPLIED_MS) !== null }))
+      // Once every call has claimed what it sent, a refused one whose message Postbox sent its target later was delivered
+      // then. This reads what the target received, not what the conversation shows, so it holds however #439’s fix
+      // shows a held wake.
+      .map((c) => ({ ...c, deliveredAt: c.applied ? null : receivedFor(c, received, c.at, Infinity) }))
       .map((c) => ({
         ...c,
         senderNext: Number.isFinite(c.at) ? (startsOf(c.from).find((t) => t > /** @type {number} */ (c.at) && !personBetween(c.at, t)) ?? null) : null,
@@ -119,25 +119,20 @@ const personActs = (f) =>
 /** When the facts were read: checks run during the run, so now, unless the facts say (a replay, a test). */
 const factsAt = (f) => (Number.isFinite(f.now) ? f.now : Date.now());
 
-/** Whether Postbox posted this call’s message as its sender’s, taking the message so no later call can claim it. */
-function postedFor(c, posted) {
-  if (!Number.isFinite(c.at)) return false;
-  const i = posted.findIndex((it) => it.handle === c.from && it.text === c.message && it.at >= c.at - SKEW_MS && it.at <= c.at + APPLIED_MS);
-  if (i < 0) return false;
-  posted.splice(i, 1);
-  return true;
-}
-
-/** When Postbox posted a refused call’s message after all, if it did, taking that message as postedFor does. */
-function deliveredFor(c, posted) {
+/**
+ * When Postbox sent this call’s message to its target, between from and to, taking that record so no other call can
+ * claim it, or null. The record keeps the message as recordAgentMessage clips it (server/side-threads.mjs).
+ */
+function receivedFor(c, received, from, to) {
   if (!Number.isFinite(c.at)) return null;
-  const i = posted.findIndex((it) => it.handle === c.from && it.text === c.message && it.at > c.at);
+  const text = clip(c.message, 120);
+  const i = received.findIndex((r) => r.handle === c.to && r.from === c.from && r.text === text && r.at >= from && r.at <= to);
   if (i < 0) return null;
-  const [it] = posted.splice(i, 1);
-  return /** @type {number} */ (it.at);
+  const [r] = received.splice(i, 1);
+  return /** @type {number} */ (r.at);
 }
 
-/** The calls Postbox refused: a hop card was waiting, and it didn’t post the call’s message. */
+/** The calls Postbox refused: a hop card was waiting, and it didn’t send the call’s message to its target. */
 const refused = (f) => wakeCalls(f).filter((c) => c.cardOpen && !c.applied);
 const where = (f, h) => (placeOf(f, h) === 'local' ? 'this computer' : placeOf(f, h));
 
@@ -223,14 +218,16 @@ export const HOSTWAKE_TRIGGERS = {
         .filter((c) => c.cardOpen && !c.applied && c.at !== null)
         .flatMap((c) => {
           const allow = allowedAt.filter((t) => t > /** @type {number} */ (c.at)).sort((a, b) => a - b)[0];
-          // Only the refused hand-off’s own message counts, posted after the Allow; a turn of its target started by
-          // anything else, such as the wake the card held, isn’t it (28 October third run). A resend by the agent
-          // claims its own posted message, so it never reads as Postbox’s delivery.
+          // Only the refused hand-off’s own message counts, sent to its target after the Allow; a turn of its target
+          // started by anything else, such as the wake the card held, isn’t it (28 October third run). A resend by the
+          // agent claims its own record, so it never reads as Postbox’s delivery.
           const delivered = c.deliveredAt;
           if (!allow || delivered === null || delivered < allow) return [];
           const turn = c.targetTurns.find((t) => t >= delivered - SKEW_MS);
           if (turn === undefined) return [];
-          return [{ at: turn, evidence: `Postbox posted @${c.from}’s refused hand-off after you allowed the card, and @${c.to} started a turn with it.` }];
+          return [
+            { at: turn, evidence: `Postbox sent @${c.from}’s refused hand-off to @${c.to} after you allowed the card, and @${c.to} started a turn with it.` },
+          ];
         });
     },
   },

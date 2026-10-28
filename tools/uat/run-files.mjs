@@ -45,6 +45,39 @@ export function readStreams(folder) {
     }));
 }
 
+/**
+ * Every message Postbox sent one agent from another, read from the run’s store: recordAgentMessage
+ * (server/side-threads.mjs) keeps an agent’s latest six on its session, and each change is a session event in the log.
+ * A wake Postbox holds or refuses has none until it’s sent. Merged with what earlier reads found, since a snapshot
+ * deletes the log segments it covers. @param {string} data  the run’s Postbox data folder
+ * @param {{ handle: string, from: string, text: string, at: number }[]} [known]
+ */
+export function readReceived(data, known = []) {
+  if (!existsSync(data)) return known;
+  const key = (/** @type {any} */ r) => `${r.handle}|${r.from}|${r.at}|${r.text}`;
+  const out = new Map(known.map((r) => [key(r), r]));
+  const handles = new Map();
+  const take = (/** @type {any} */ se) => {
+    if (se?.handle) handles.set(se.id, se.handle);
+    const handle = handles.get(se?.id);
+    for (const m of Array.isArray(se?.agentMessages) ? se.agentMessages : [])
+      if (handle && m?.dir === 'from' && Number.isFinite(m.at))
+        out.set(key({ handle, from: m.other, text: m.text, at: m.at }), { handle, from: m.other, text: m.text, at: m.at });
+  };
+  try {
+    for (const se of Object.values(JSON.parse(readFileSync(join(data, 'snapshot.json'), 'utf8')).state?.sessions ?? {})) take(se);
+  } catch {}
+  const segments = readdirSync(data).filter((n) => /^events-\d+\.jsonl$/.test(n));
+  for (const n of segments.sort((a, b) => Number(/\d+/.exec(a)) - Number(/\d+/.exec(b))))
+    for (const l of readFileSync(join(data, n), 'utf8').split('\n')) {
+      try {
+        const e = JSON.parse(l);
+        if (e?.type === 'session') take(e.data);
+      } catch {}
+    }
+  return [...out.values()].sort((a, b) => a.at - b.at);
+}
+
 /** The agents’ own Claude Code transcripts, where injected reminders and settings show up. */
 export function readTranscripts(facts, workspace) {
   return facts.threads

@@ -50,7 +50,7 @@ import { newProbes } from './uat/probes.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
+import { readReceived, readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
@@ -284,7 +284,7 @@ async function main() {
     const refreshFacts = async () => {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      facts.streams = readStreams(paths.streams);
+      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
@@ -318,7 +318,7 @@ async function main() {
       lastMidTurn = Date.now();
       facts.state = st ?? (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      facts.streams = readStreams(paths.streams);
+      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
       facts.events = history.events();
       midTurn.push(...newFindings(MID_TURN));
     };
