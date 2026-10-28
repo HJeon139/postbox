@@ -101,7 +101,8 @@ export function pointerIfSeen(rt, se, message) {
   if (at < 0 || !(se.givenMentions ?? []).includes(message.itemId)) return message;
   return {
     ...message,
-    // Its start too, in case the summary was compacted out of the agent’s context since.
-    text: `${message.from}’s message above, which your last summary gave you in full: “${clip(String(message.text ?? ''), 200)}”. It’s addressed to you: act on it now if you haven’t.`,
+    // Its start, and the call that reads it whole, in case the summary was compacted out of the agent’s context since,
+    // or never reached its model (a turn that failed to start, a session started over).
+    text: `${message.from}’s message above, which your last summary gave you in full: “${clip(String(message.text ?? ''), 200)}”. It’s addressed to you: act on it now if you haven’t. read_message { id: "${message.itemId}" } has it whole.`,
   };
 }

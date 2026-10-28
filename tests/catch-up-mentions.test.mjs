@@ -90,7 +90,10 @@ test('#484 the pointer to a seen mention quotes its start, in case the summary w
   await settle(f.rt);
   f.rt.deliver(f.alpha.id, { kind: 'agent', from: '@beta', text: MENTION, itemId: it.id });
   await settle(f.rt);
-  assert.match(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, /“@alpha the review of the totals is done/);
+  const text = f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text;
+  assert.match(text, /“@alpha the review of the totals is done/);
+  // And the call that reads it whole, for an agent whose summary was compacted away or never reached its model.
+  assert.ok(text.includes(`read_message { id: "${it.id}" }`), text);
 });
 
 test('#484 a mention past the mentions’ cap, left out of the summary, comes in full when its wake is delivered', async () => {
