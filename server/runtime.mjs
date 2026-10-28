@@ -36,7 +36,7 @@ import {
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { act, answerDelivered, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
-import { catchUp } from './catch-up.mjs';
+import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
@@ -574,6 +574,8 @@ export class Runtime {
     // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
     // (#120, message.attach): it sends the agent nothing, and replays what the host has.
     const slash = message.slash === true || typeof message.attach === 'string';
+    // A queued mention its last summary already gave it comes as a pointer, not as new (#484).
+    message = pointerIfSeen(this, se, message);
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
