@@ -6,14 +6,21 @@ import { h, plural } from './dom.mjs';
 import { openDialog, toast, undoToast } from './ui.mjs';
 
 const S = () => client.state;
-/** Resolves once the page’s state, as the stream keeps it, satisfies `ok`. @param {() => unknown} ok */
-const heard = (ok) =>
+/**
+ * Resolves once the page’s state, as the stream keeps it, satisfies `ok`, or after `ms` if the stream never says, so
+ * the sheet always goes back and offers Undo. @param {() => unknown} ok @param {number} [ms]
+ */
+const heard = (ok, ms = 3000) =>
   new Promise((done) => {
     if (ok()) return done(undefined);
-    const off = client.on(() => {
-      if (!ok()) return;
+    const finish = () => {
+      clearTimeout(timer);
       off();
       done(undefined);
+    };
+    const timer = setTimeout(finish, ms);
+    const off = client.on(() => {
+      if (ok()) finish();
     });
   });
 
