@@ -57,3 +57,14 @@ test('#499 a 5,000-character mention delivered as its own queued wake comes whol
   const call = f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1);
   assert.ok([call.message.text, ...(call.message.context ?? [])].some((s) => String(s).includes(text)));
 });
+
+test('#499 two mentions at the bound both come whole: the mentions’ cap holds two', () => {
+  const f = fresh();
+  const one = `@alpha first: ${'a'.repeat(READING.mention)}`;
+  const two = `@alpha second: ${'b'.repeat(READING.mention)}`;
+  say(f, one);
+  say(f, two);
+  const s = summary(f);
+  assert.ok(s.includes(one.slice(0, READING.mention)) && s.includes(two.slice(0, READING.mention)), 'both, each cut at the bound');
+  assert.doesNotMatch(s, /left out/);
+});

@@ -43,8 +43,11 @@ export const LIMITS = Object.freeze({
 export const READING = Object.freeze({
   /** One item in the history at the start of a turn and in read_conversation, before it’s cut. */
   item: 2000,
-  /** A message that @-mentions the agent, in that history, before it’s cut (#499): cut at item, agents asked for it again. */
-  mention: 16_000,
+  /**
+   * A message that @-mentions the agent, in that history, before it’s cut (#499). Agents asked for one cut at item to be
+   * sent again rather than read the rest. Under half the summary’s cap on mentions (MENTION_CHARS), so two fit whole.
+   */
+  mention: 15_000,
   /** What one read_message call returns of a long item. */
   part: 40_000,
 });
