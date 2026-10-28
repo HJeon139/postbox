@@ -2,6 +2,25 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.42.0 (2026-10-28)
+
+### Features
+
+- **agents:** subagents collapse into the agent's ring, with a toggle to list them (#477)
+
+### Fixes
+
+- **agents:** a subagent's row shows its step, not its narration or thoughts (#476)
+- **agents:** a ring's +N no longer runs under the agent's name (#475)
+
+## 0.41.13 (2026-10-28)
+
+### Fixes
+
+- **blocks:** keep raw fallback open on updates
+- **activity:** keep expanded steps through updates
+- **review:** keep unfinished comments through updates
+
 ## 0.41.12 (2026-10-27)
 
 ### Fixes

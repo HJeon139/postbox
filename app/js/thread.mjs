@@ -21,6 +21,7 @@ import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
+import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -112,11 +113,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (i < 0) return;
     const old = nodes.get(id);
     // Keep focus inside a block that’s being edited.
-    const hadFocus = old?.contains(document.activeElement) ? document.activeElement : null;
     const n = render(list[i], list[i - 1]);
-    old?.replaceWith(n);
+    const focusedId = replaceTranscriptItem(old, n);
     nodes.set(id, n);
-    if (hadFocus?.id) document.getElementById(hadFocus.id)?.focus();
+    if (focusedId) document.getElementById(focusedId)?.focus();
   };
   const all = () => {
     el.replaceChildren();
