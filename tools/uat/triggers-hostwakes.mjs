@@ -83,8 +83,9 @@ export function wakeCalls(f) {
       .sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity))
       .map((c) => ({ ...c, applied: receivedFor(c, received, c.at - SKEW_MS, c.at + APPLIED_MS) !== null }))
       // Once every call has claimed what it sent, a refused one whose message Postbox sent its target later was delivered
-      // then. This reads what the target received, not what the conversation shows, so it holds however #439’s fix
-      // shows a held wake.
+      // then. The record is written when Postbox accepts a wake, a busy target’s queued one included (sendWake,
+      // server/side-threads.mjs), so this assumes what #439’s acceptance asks: a held wake is recorded, and posted, only
+      // when it’s delivered, not while it waits. Recorded while it waits, it would read as applied, never refused.
       .map((c) => ({ ...c, deliveredAt: c.applied ? null : receivedFor(c, received, c.at, Infinity) }))
       .map((c) => ({
         ...c,
