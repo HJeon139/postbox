@@ -1169,7 +1169,8 @@ code.wc-name { font-size: 12px; }
 .agent-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 /* The ring beside the name, a button of its own while its agent needs you (#320); the name opens the panel. */
 .agent-line { display: flex; align-items: center; gap: 2px; }
-.agent-line > .ring-slot { padding-left: 8px; }
+/* As wide as its ring needs (#475): with subagents, a sm ring is 30 px and its “+N” follows, so neither runs under the name. */
+.agent-line > .ring-slot { padding-left: 8px; width: auto; min-width: 30px; }
 .agent-btn { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; min-height: 40px; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
   background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .agent-btn:hover, .agent-btn[aria-expanded="true"] { border-color: var(--line); background: var(--panel); }
