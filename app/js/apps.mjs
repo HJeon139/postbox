@@ -427,7 +427,7 @@ function pauseAppFrames() {
     const body = rec.iframe.closest('.app-body');
     if (body?._unmount) {
       bodies.add(body);
-      body._unmount();
+      body._unmount('checking');
     }
   }
   return bodies;
@@ -444,6 +444,20 @@ function mountAfterChecks(body, mount, placeholder) {
     afterAppChecks(deferred);
   } else mount();
   body._remount = () => (appChecksRunning() ? afterAppChecks(deferred) : mount());
+}
+
+function pausedApp(placeholder, reason, height) {
+  const checking = reason === 'checking';
+  return placeholder(
+    [
+      h(
+        'span.row-flex',
+        h('b', { style: { color: 'var(--text)', fontWeight: 500 } }, checking ? 'Paused while another app is checked' : 'Unloaded while off screen'),
+      ),
+      h('span', checking ? 'It resumes when the check finishes. Its saved state is kept.' : 'It reloads from its saved state as you scroll near it.'),
+    ],
+    height,
+  );
 }
 
 installAppChecks(frame, { pause: pauseAppFrames, resume: resumeAppFrames });
@@ -576,17 +590,8 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
   } else {
     const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin, onBack }) }));
     mountAfterChecks(body, mount, placeholder);
-    body._unmount = () => {
-      const hgt = body.firstElementChild?.offsetHeight || 200;
-      body.replaceChildren(
-        placeholder(
-          [
-            h('span.row-flex', h('b', { style: { color: 'var(--text)', fontWeight: 500 } }, 'Unloaded while off screen')),
-            h('span', 'It reloads from its saved state as you scroll near it.'),
-          ],
-          hgt,
-        ),
-      );
+    body._unmount = (reason = 'offscreen') => {
+      body.replaceChildren(pausedApp(placeholder, reason, body.firstElementChild?.offsetHeight || 200));
     };
     if (!review) observer.observe(body);
   }

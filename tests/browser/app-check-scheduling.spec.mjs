@@ -55,6 +55,7 @@ test('#37 a running CPU-heavy app cannot starve the next app check', async ({ pa
   await expect.poll(() => rt.s.apps['busy-app'].check.status, { timeout: 30_000 }).toBe('passed');
   await expect(page.locator('iframe.app-iframe[title="Busy app"]')).toBeAttached();
   tools.show_app({ id: 'after-busy', title: 'After busy', code: PLAIN });
+  await expect(page.locator('.app-body[data-app-id="busy-app"]')).toContainText('Paused while another app is checked');
   await expect.poll(() => rt.s.apps['after-busy'].check.status, { timeout: 30_000 }).toBe('passed');
 });
 
@@ -124,10 +125,18 @@ test('#37 an app the person used keeps unsaved state while another conversation 
   await expect.poll(() => otherRoom.rt.s.apps['other-app'].check.status, { timeout: 30_000 }).toBe('passed');
 });
 
-test('a tab that loses the app-check lock waits and checks without another store event', async ({ page }) => {
+test('one tab queues one app-check lock request and waits without another store event', async ({ page }) => {
   const { rt, thread, session } = room('Lock queue');
+  const tools = rt.toolsFor(session.id);
+  tools.show_app({ id: 'lock-base', title: 'Lock base', code: PLAIN });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
+  await expect.poll(() => rt.s.apps['lock-base'].check.status, { timeout: 30_000 }).toBe('passed');
+  await expect(page.locator('iframe.app-iframe[title="Lock base"]')).toBeAttached();
+  let reloads = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('/sandbox/app/lock-base/1')) reloads++;
+  });
   await page.evaluate(() => {
     navigator.locks.request('postbox-app-check', () => {
       window.__appCheckLockHeld = true;
@@ -137,12 +146,15 @@ test('a tab that loses the app-check lock waits and checks without another store
     });
   });
   await expect.poll(() => page.evaluate(() => window.__appCheckLockHeld)).toBe(true);
-  rt.toolsFor(session.id).show_app({ id: 'lock-queued', title: 'Lock queued', code: PLAIN });
+  tools.show_app({ id: 'lock-queued', title: 'Lock queued', code: PLAIN });
+  for (let i = 1; i <= 3; i++) rt.appState('lock-base', { update: i });
   await synced(page, app);
   await frames(page);
   expect(rt.s.apps['lock-queued'].check.status).toBe('pending');
   await page.evaluate(() => window.__releaseAppCheckLock());
   await expect.poll(() => rt.s.apps['lock-queued'].check.status, { timeout: 30_000 }).toBe('passed');
+  await page.evaluate(() => navigator.locks.request('postbox-app-check', () => {}));
+  expect(reloads, 'the paused app reloads once after the one queued request').toBe(1);
 });
 
 test('a hidden tab leaves a pending app for a visible tab to check', async ({ page }) => {

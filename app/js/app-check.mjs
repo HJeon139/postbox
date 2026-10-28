@@ -86,7 +86,7 @@ function pending() {
 }
 
 async function drain() {
-  if (running || NO_CHECK || !makeFrame || document.visibilityState !== 'visible') return;
+  if (running || NO_CHECK || !makeFrame || document.visibilityState !== 'visible' || !pending().length) return;
   running = true;
   const paused = pauseFrames();
   try {
@@ -106,10 +106,14 @@ function schedule() {
   if (scheduled || running || NO_CHECK) return;
   scheduled = true;
   queueMicrotask(async () => {
-    scheduled = false;
-    if (!pending().length || document.visibilityState !== 'visible') return;
-    if (navigator.locks) await navigator.locks.request('postbox-app-check', () => drain());
-    else await drain();
+    try {
+      if (!pending().length || document.visibilityState !== 'visible') return;
+      if (navigator.locks) await navigator.locks.request('postbox-app-check', () => drain());
+      else await drain();
+    } finally {
+      scheduled = false;
+      if (pending().length && document.visibilityState === 'visible') schedule();
+    }
   });
 }
 
