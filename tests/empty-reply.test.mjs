@@ -17,8 +17,10 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { endedWithoutReply } from '../server/empty-reply.mjs';
+import { readMessage } from '../server/read-message.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { setup as blocksSetup, settle as settleBlocks } from './blocks-fixture.mjs';
 
 const LINES = readFileSync(new URL('fixtures/claude-code/background-moved.jsonl', import.meta.url), 'utf8')
   .split('\n')
@@ -99,4 +101,32 @@ test('#485: only a turn that owes a reply is held to it; a block or a message to
   // What else counts as its reply: a block, or a message it sent another agent.
   assert.equal(endedWithoutReply(turn('user'), [...steps, { kind: 'block', turnId: 'tu_1' }]), false);
   assert.equal(endedWithoutReply(turn('user'), [...steps, { kind: 'agent', fromTurnId: 'tu_1', text: '@beta over to you' }]), false);
+});
+
+test('#485: a reply that wrote its report and then failed still reaches the other agents, marked as failed', async () => {
+  const { store, rt, adapter, t } = blocksSetup();
+  const other = rt.createPersona({ handle: 'researcher' });
+  rt.ensureSession(t.id, other.id);
+  const researcher = rt.sessionsIn(t.id).find((x) => x.handle === 'researcher');
+  adapter.next.push(async (c) => {
+    c.activity({ id: 's1', label: 'Ran gh pr checks', state: 'done' });
+    c.text('#451 is ready at 41f3a0f, and all 8 CI checks pass.');
+    throw new Error('Claude Code exited with code 1.');
+  });
+  rt.sendMessage(t.id, { text: '@critic watch the checks' });
+  await settleBlocks(rt);
+  const report = store.items(t.id).find((i) => i.kind === 'agent' && i.text?.includes('#451 is ready'));
+  assert.equal(report.status, 'failed');
+  // read_message by another agent: the text, and that the turn failed.
+  const read = readMessage(rt, researcher, { id: report.id });
+  assert.ok(read.ok, read.message);
+  assert.match(read.message, /^@critic \(this reply failed: Claude Code exited with code 1\.\): #451 is ready at 41f3a0f/);
+  // And the catch-up at that agent’s next turn.
+  rt.sendMessage(t.id, { text: '@researcher what did critic find?' });
+  await settleBlocks(rt);
+  const sent = adapter.calls.at(-1).message;
+  assert.ok(
+    (sent.context ?? []).some((c) => c.includes('#451 is ready at 41f3a0f') && c.includes('this reply failed')),
+    JSON.stringify(sent.context),
+  );
 });
