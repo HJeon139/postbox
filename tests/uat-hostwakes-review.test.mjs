@@ -48,3 +48,13 @@ test('a wake to “@Researcher” that Postbox sent researcher was applied: hand
   );
   assert.deepEqual(check('host-wake-said-sent').run(f), []);
 });
+
+test('the call that raised a card isn’t refused by it, though the host’s clock runs ahead of this computer’s', () => {
+  // critic’s third wake of researcher raised the card at 100 s here; critic’s host stamped the call 10 s later.
+  const text = 'Here is the task.';
+  const f = run(
+    [{ kind: 'hop', from: 'critic', to: 'researcher', at: s(100), pair: 2, status: 'open', text }],
+    wakeStream('critic', s(110), 'researcher', SENT, text),
+  );
+  assert.deepEqual(check('host-wake-said-sent').run(f), []);
+});

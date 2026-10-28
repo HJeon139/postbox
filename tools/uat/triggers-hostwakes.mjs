@@ -37,7 +37,7 @@ export function hopCards(f) {
     .map((it) => {
       const allowedAt = said(it, `Allowed: @${it.from} wakes @${it.to}`);
       const answeredAt = allowedAt ?? said(it, `Didn’t allow @${it.from} to wake @${it.to}`);
-      return { from: it.from, to: it.to, at: it.at ?? null, pair: it.pair ?? null, status: it.status, allowedAt, answeredAt };
+      return { from: it.from, to: it.to, text: it.text ?? it.reason ?? '', at: it.at ?? null, pair: it.pair ?? null, status: it.status, allowedAt, answeredAt };
     });
 }
 
@@ -45,7 +45,14 @@ export function hopCards(f) {
  * Whether a hop card was waiting at this time: opened before it, and not yet answered. An answered card with no line
  * saying when isn’t taken as waiting: read as open for good, it would make every later refusal look like #439’s.
  */
-const cardOpenAt = (cards, at) => cards.some((c) => (c.at ?? Infinity) <= at && (c.status === 'open' || (c.answeredAt ?? -Infinity) > at));
+const cardOpenAt = (cards, at, call) =>
+  cards.some((c) => !raisedBy(c, call) && (c.at ?? Infinity) <= at && (c.status === 'open' || (c.answeredAt ?? -Infinity) > at));
+/**
+ * Whether this call raised the card: its own wake, which the card holds, not one the card refused. Matched by who, to
+ * whom, what and roughly when, since a host stamps its call by its own clock (SKEW_MS), so it can read as after its card.
+ */
+const raisedBy = (c, call) =>
+  c.from === call.from && c.to.toLowerCase() === call.to.toLowerCase() && c.text === call.message && Math.abs((c.at ?? Infinity) - call.at) <= SKEW_MS;
 
 /**
  * Every wake_agent call in the recorded streams, with its result’s text, where its sender runs, and whether Postbox
@@ -83,7 +90,7 @@ export function wakeCalls(f) {
                   text: resultText(results.get(b.id)),
                   message: String(b.input?.message ?? ''),
                   onHost: onHost(f, s.handle),
-                  cardOpen: Number.isFinite(at) && cardOpenAt(cards, at),
+                  cardOpen: Number.isFinite(at) && cardOpenAt(cards, at, { from: s.handle, to, message: String(b.input?.message ?? ''), at }),
                 };
               }),
           );
