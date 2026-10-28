@@ -3,6 +3,7 @@
 // Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
+import { recordAppCheck, startCheck } from './app-check.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, itemsOf } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
@@ -11,7 +12,6 @@ import { openMenu, toast } from './ui.mjs';
 export { renderAppSendCard };
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
-const checks = new Map(); // `${appId}:${v}` → { results: Map(width → problems), frames }
 const crashes = new Map(); // `${appId}:${v}` → message (a script error after the app was shown)
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
@@ -126,13 +126,9 @@ addEventListener('message', async (e) => {
         rec.onCrash?.();
       }
       break;
-    case 'check': {
-      const c = checks.get(`${rec.appId}:${rec.version}`);
-      if (!c) return;
-      c.results.set(m.width, m.problems);
-      if (c.results.size === 2) finishCheck(rec.appId, rec.version);
+    case 'check':
+      recordAppCheck(rec.appId, rec.version, m.width, m.problems);
       break;
-    }
   }
 });
 
@@ -418,47 +414,6 @@ function frame(appId, version, { check = false, width = null, review = false, on
   return iframe;
 }
 
-// ── The pre-display check ────────────────────────────────────────────────────────────────
-
-// ?nocheck turns off checks in this browser (a second, passive window such as a screenshot tool).
-const NO_CHECK = new URLSearchParams(location.search).has('nocheck');
-
-function startCheck(appId, version) {
-  const key = `${appId}:${version}`;
-  if (NO_CHECK || checks.has(key)) return;
-  const c = { results: new Map(), frames: [] };
-  checks.set(key, c);
-  for (const w of [375, 1280]) {
-    const f = frame(appId, version, { check: true, width: w });
-    c.frames.push(f);
-    document.body.append(f);
-  }
-  c.timer = setTimeout(() => {
-    for (const w of [375, 1280])
-      if (!c.results.has(w)) c.results.set(w, [{ code: 'no-answer', message: `The app didn’t finish loading within 10 seconds at ${w} px.` }]);
-    finishCheck(appId, version);
-  }, 10000);
-}
-
-function finishCheck(appId, version) {
-  const key = `${appId}:${version}`;
-  const c = checks.get(key);
-  if (!c || c.done) return;
-  c.done = true;
-  clearTimeout(c.timer);
-  for (const f of c.frames) f.remove();
-  const seen = new Set();
-  const problems = [...c.results.values()].flat().filter((p) => {
-    const k = p.code + p.message;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-  api(`/api/apps/${encodeURIComponent(appId)}/check`, { version, problems }).catch(() => {
-    checks.delete(key);
-  });
-}
-
 // ── App frames in the transcript ─────────────────────────────────────────────────────────
 
 const observer = new IntersectionObserver(
@@ -559,7 +514,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       ),
     );
   } else if (status === 'pending') {
-    startCheck(appId, v);
+    startCheck(appId, v, frame);
     body.append(
       placeholder([
         h(
