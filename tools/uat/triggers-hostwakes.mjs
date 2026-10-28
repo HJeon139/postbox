@@ -40,7 +40,8 @@ export function hopCards(f) {
       const yes = it.join ? `Added @${it.to} to this conversation for @${it.from}` : `Allowed: @${it.from} wakes @${it.to}`;
       const no = it.join ? `Didn’t add @${it.to} to this conversation` : `Didn’t allow @${it.from} to wake @${it.to}`;
       const allowedAt = said(it, yes);
-      const answeredAt = allowedAt ?? said(it, no);
+      // A card retired because its target got a turn another way (#439’s fix) records when, with no line.
+      const answeredAt = allowedAt ?? said(it, no) ?? (Number.isFinite(it.retiredAt) ? it.retiredAt : null);
       return {
         from: it.from,
         to: it.to,
