@@ -130,8 +130,13 @@ export const TOOL_DEFS = [
   },
   {
     name: 'schedule_wake',
-    description: 'Ask to be woken later, with a note to yourself.',
+    description: 'Ask to be woken later, with a note to yourself. It says the wake’s id: if you finish its work before then, cancel it with cancel_wake.',
     inputSchema: { type: 'object', properties: { in_minutes: { type: 'number' }, note: { type: 'string' } }, required: ['in_minutes'] },
+  },
+  {
+    name: 'cancel_wake',
+    description: 'Cancel a wake you scheduled, by the id schedule_wake gave you, once its work is done, so it doesn’t wake you for nothing.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
   },
   {
     name: 'wake_agent',

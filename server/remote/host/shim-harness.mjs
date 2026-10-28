@@ -42,8 +42,6 @@ export function queuedText(name, args) {
       return `Sent “${said(args.term) ?? ''}” to the glossary. ${since}.`;
     case 'propose_agent':
       return 'Proposed. The person decides whether to create it.';
-    case 'schedule_wake':
-      return `Asked Postbox to wake you in ${Number(args.in_minutes) || 1} minutes. ${since}.`;
     case 'wake_agent':
       return `Sent your message for ${said(args.handle) ?? 'that agent'} to Postbox. ${since}.`;
     case 'ask_for_tool':

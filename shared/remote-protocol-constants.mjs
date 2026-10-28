@@ -110,7 +110,9 @@ export const TOOL_ROUTES = Object.freeze({
   // such item, two blocks with that id) name what to fix, as review_block’s do: it waits.
   react: 'ask',
   propose_agent: 'queue',
-  schedule_wake: 'queue',
+  // Its answer carries the wake’s id, which only Postbox has, for cancel_wake; both wait (#458).
+  schedule_wake: 'ask',
+  cancel_wake: 'ask',
   wake_agent: 'queue',
   // Whether it may post depends on the thread and who started the turn, which only Postbox knows, so it waits for the answer.
   bring_to_conversation: 'ask',

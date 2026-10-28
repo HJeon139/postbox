@@ -70,6 +70,7 @@ import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } f
 import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
+import { cancelWake } from './schedule-tools.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
@@ -2867,6 +2868,7 @@ export class Runtime {
     const sc = this.s.schedules[scheduleId];
     if (!sc) throw httpError(404, 'That wake-up already happened or was canceled.');
     clearTimeout(this.timers.get(scheduleId));
+    this.timers.delete(scheduleId);
     this.store.emit('schedule', { id: scheduleId, removed: true });
     if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'canceled' });
   }
@@ -3096,8 +3098,9 @@ export class Runtime {
       },
       schedule_wake({ in_minutes, note }) {
         const sc = rt.schedule(sessionId, { inMs: Math.round((+in_minutes || 1) * 60000), note });
-        return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}.` };
+        return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}. Its id is ${sc.id}, for cancel_wake.` };
       },
+      cancel_wake: (args) => cancelWake(rt, sessionId, args),
       wake_agent: (args) => wakeAgent(rt, sessionId, args),
       bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
       read_conversation(args = {}) {
