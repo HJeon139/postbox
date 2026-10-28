@@ -1,7 +1,7 @@
 // Scheduling and persistence around the pre-display app check (#37, #336).
 
 import { expect, test } from '@playwright/test';
-import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
 const PLAIN = `<main style="padding:12px;color:var(--text)"><h2>Corpus summary</h2><p>Twelve books.</p></main>`;
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -58,6 +58,33 @@ test('#37 a running CPU-heavy app cannot starve the next app check', async ({ pa
   await expect.poll(() => rt.s.apps['after-busy'].check.status, { timeout: 30_000 }).toBe('passed');
 });
 
+test('#37 an off-screen app pauses while the next app is checked', async ({ page }) => {
+  const { rt, thread, session } = room('Off-screen app');
+  const tools = rt.toolsFor(session.id);
+  tools.show_app({ id: 'offscreen-app', title: 'Off-screen app', code: PLAIN });
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  await expect.poll(() => rt.s.apps['offscreen-app'].check.status, { timeout: 30_000 }).toBe('passed');
+  const offscreen = page.locator('iframe.app-iframe[title="Off-screen app"]');
+  await expect(offscreen).toBeAttached();
+  for (let i = 0; i < 20; i++)
+    rt.addItem(thread.id, {
+      kind: 'agent',
+      sessionId: session.id,
+      personaId: session.personaId,
+      handle: session.handle,
+      text: `Result ${i + 1}. ${'This keeps the earlier app outside the viewport while the next app is checked. '.repeat(3)}`,
+      status: 'done',
+    });
+  await synced(page, app);
+  await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
+  await settled(page);
+  tools.show_app({ id: 'after-offscreen', title: 'After off-screen', code: PLAIN });
+  await expect(page.locator('iframe.check-frame[title="Checking After off-screen"]')).toHaveCount(2);
+  await expect(offscreen).toHaveCount(0);
+  await expect.poll(() => rt.s.apps['after-offscreen'].check.status, { timeout: 30_000 }).toBe('passed');
+});
+
 test('#37 a check leaves the app the person is using mounted', async ({ page }) => {
   const { rt, thread, session } = room('Active app stays mounted');
   const tools = rt.toolsFor(session.id);
@@ -74,6 +101,90 @@ test('#37 a check leaves the app the person is using mounted', async ({ page }) 
   await expect(active).toBeAttached();
   await expect(active.contentFrame().locator('#draft')).toHaveValue('unsaved words');
   await expect.poll(() => rt.s.apps['checking-next'].check.status, { timeout: 30_000 }).toBe('passed');
+});
+
+test('#37 an app the person used keeps unsaved state while another conversation checks an app', async ({ page }) => {
+  const visibleRoom = room('Visible app');
+  const otherRoom = room('Other conversation check');
+  const visibleTools = visibleRoom.rt.toolsFor(visibleRoom.session.id);
+  visibleTools.show_app({ id: 'visible-app', title: 'Visible app', code: '<label>Draft <input id="visible-draft"></label>' });
+  await page.goto(`${app.origin}/#/t/${visibleRoom.thread.id}`);
+  await synced(page, app);
+  await expect.poll(() => visibleRoom.rt.s.apps['visible-app'].check.status, { timeout: 30_000 }).toBe('passed');
+  const visible = page.locator('iframe.app-iframe[title="Visible app"]');
+  await page.locator('.app-body[data-app-id="visible-app"]').hover();
+  await visible.contentFrame().locator('#visible-draft').fill('keep this draft');
+  await page.locator('#composer-input').click();
+  await page.mouse.move(1, 1);
+
+  otherRoom.rt.toolsFor(otherRoom.session.id).show_app({ id: 'other-app', title: 'Other app', code: PLAIN });
+  await expect(page.locator('iframe.check-frame[title="Checking Other app"]')).toHaveCount(2);
+  await expect(visible, 'the visible frame is not torn down').toBeAttached();
+  await expect(visible.contentFrame().locator('#visible-draft')).toHaveValue('keep this draft');
+  await expect.poll(() => otherRoom.rt.s.apps['other-app'].check.status, { timeout: 30_000 }).toBe('passed');
+});
+
+test('a tab that loses the app-check lock waits and checks without another store event', async ({ page }) => {
+  const { rt, thread, session } = room('Lock queue');
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  await page.evaluate(() => {
+    navigator.locks.request('postbox-app-check', () => {
+      window.__appCheckLockHeld = true;
+      return new Promise((resolve) => {
+        window.__releaseAppCheckLock = resolve;
+      });
+    });
+  });
+  await expect.poll(() => page.evaluate(() => window.__appCheckLockHeld)).toBe(true);
+  rt.toolsFor(session.id).show_app({ id: 'lock-queued', title: 'Lock queued', code: PLAIN });
+  await synced(page, app);
+  await frames(page);
+  expect(rt.s.apps['lock-queued'].check.status).toBe('pending');
+  await page.evaluate(() => window.__releaseAppCheckLock());
+  await expect.poll(() => rt.s.apps['lock-queued'].check.status, { timeout: 30_000 }).toBe('passed');
+});
+
+test('a hidden tab leaves a pending app for a visible tab to check', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }));
+  const { rt, thread, session } = room('Hidden tab');
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  rt.toolsFor(session.id).show_app({ id: 'hidden-tab-app', title: 'Hidden tab app', code: PLAIN });
+  await synced(page, app);
+  await frames(page);
+  await expect(page.locator('iframe.check-frame[title="Checking Hidden tab app"]')).toHaveCount(0);
+  expect(rt.s.apps['hidden-tab-app'].check.status).toBe('pending');
+
+  const visiblePage = await page.context().newPage();
+  try {
+    await visiblePage.goto(`${app.origin}/#/t/${thread.id}`);
+    await synced(visiblePage, app);
+    await expect.poll(() => rt.s.apps['hidden-tab-app'].check.status, { timeout: 30_000 }).toBe('passed');
+  } finally {
+    await visiblePage.close();
+  }
+});
+
+test('an app mounted during another check has a placeholder and loads once', async ({ page }) => {
+  const checkingRoom = room('Check in progress');
+  const readyRoom = room('Ready during check');
+  await page.goto(`${app.origin}/#/t/${checkingRoom.thread.id}`);
+  await synced(page, app);
+  checkingRoom.rt.toolsFor(checkingRoom.session.id).show_app({ id: 'check-in-progress', title: 'Check in progress', code: PLAIN });
+  await expect(page.locator('iframe.check-frame[title="Checking Check in progress"]')).toHaveCount(2);
+
+  let loads = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('/sandbox/app/ready-during-check/1')) loads++;
+  });
+  readyRoom.rt.toolsFor(readyRoom.session.id).show_app({ id: 'ready-during-check', title: 'Ready during check', code: PLAIN });
+  readyRoom.rt.appCheck('ready-during-check', { version: 1, problems: [] });
+  await page.goto(`${app.origin}/#/t/${readyRoom.thread.id}`);
+  await synced(page, app);
+  await expect(page.locator('.app-body[data-app-id="ready-during-check"]')).toContainText('Waiting for another app’s check to finish…');
+  await expect(page.locator('iframe.app-iframe[title="Ready during check"]')).toBeAttached({ timeout: 30_000 });
+  expect(loads).toBe(1);
 });
 
 test('a failed app-check save is tried again without rerunning the check', async ({ page }) => {

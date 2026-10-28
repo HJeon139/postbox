@@ -164,6 +164,7 @@ let live = null;
 let tabbing = null;
 /** @type {HTMLIFrameElement | null} the app frame that holds focus, rightfully */
 let owner = null;
+const used = new WeakSet(); // frames the person focused: they may hold input the app hasn’t saved yet
 /** @type {Element | null} the last element of this page that had focus */
 let lastFocus = null;
 const stolen = new WeakSet(); // frames that took focus on their own, refused until you click or tab into them
@@ -269,6 +270,7 @@ function checkFocus() {
   const tabbed = tabbing?.frame === f && Date.now() - tabbing.at < 1000;
   if (f === live || tabbed) {
     owner = f;
+    used.add(f);
     stolen.delete(f);
     tabbing = null;
     return;
@@ -413,11 +415,15 @@ function frame(appId, version, { check = false, width = null, review = false, on
   frames.add({ appId, version, iframe, check, review, onPin, onAnchors, onCrash });
   return iframe;
 }
+const isOnScreen = (iframe) => {
+  const rect = iframe.getBoundingClientRect();
+  return rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
+};
 function pauseAppFrames() {
   const bodies = new Set();
   for (const rec of frames) {
-    // Never interrupt an app under the person’s pointer or holding their keyboard (#37).
-    if (rec.check || !rec.iframe.isConnected || rec.iframe === live || rec.iframe === owner) continue;
+    // Never interrupt the frame the person points at or uses, nor a used frame that remains on screen (#37).
+    if (rec.check || !rec.iframe.isConnected || rec.iframe === live || rec.iframe === owner || (isOnScreen(rec.iframe) && used.has(rec.iframe))) continue;
     const body = rec.iframe.closest('.app-body');
     if (body?._unmount) {
       bodies.add(body);
@@ -429,6 +435,15 @@ function pauseAppFrames() {
 
 function resumeAppFrames(bodies) {
   for (const body of bodies) if (body.isConnected && !unloaded.has(body.dataset.appId)) body._remount?.();
+}
+
+function mountAfterChecks(body, mount, placeholder) {
+  const deferred = () => body.isConnected && mount();
+  if (appChecksRunning()) {
+    body.append(placeholder([h('span', 'Waiting for another app’s check to finish…')]));
+    afterAppChecks(deferred);
+  } else mount();
+  body._remount = () => (appChecksRunning() ? afterAppChecks(deferred) : mount());
 }
 
 installAppChecks(frame, { pause: pauseAppFrames, resume: resumeAppFrames });
@@ -560,9 +575,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
     );
   } else {
     const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin, onBack }) }));
-    if (appChecksRunning()) afterAppChecks(() => body.isConnected && mount());
-    else mount();
-    body._remount = () => (appChecksRunning() ? afterAppChecks(() => body.isConnected && mount()) : mount());
+    mountAfterChecks(body, mount, placeholder);
     body._unmount = () => {
       const hgt = body.firstElementChild?.offsetHeight || 200;
       body.replaceChildren(

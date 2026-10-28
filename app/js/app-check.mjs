@@ -86,7 +86,7 @@ function pending() {
 }
 
 async function drain() {
-  if (running || NO_CHECK || !makeFrame) return;
+  if (running || NO_CHECK || !makeFrame || document.visibilityState !== 'visible') return;
   running = true;
   const paused = pauseFrames();
   try {
@@ -107,8 +107,8 @@ function schedule() {
   scheduled = true;
   queueMicrotask(async () => {
     scheduled = false;
-    if (!pending().length) return;
-    if (navigator.locks) await navigator.locks.request('postbox-app-check', { ifAvailable: true }, (lock) => lock && drain());
+    if (!pending().length || document.visibilityState !== 'visible') return;
+    if (navigator.locks) await navigator.locks.request('postbox-app-check', () => drain());
     else await drain();
   });
 }
@@ -122,6 +122,7 @@ export function installAppChecks(frame, { pause, resume } = {}) {
     if (change.type === 'connection' && client.connection === 'open') failed.clear();
     if (change.type === 'load' || change.type === 'app' || (change.type === 'connection' && client.connection === 'open')) schedule();
   });
+  addEventListener('visibilitychange', schedule);
   schedule();
 }
 
