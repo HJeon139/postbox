@@ -11,6 +11,8 @@ let app;
 let room;
 /** @type {any} */
 let pairRoom;
+/** @type {any} */
+let heldRoom;
 
 test.beforeAll(async () => {
   app = await startPostbox('wake-limit');
@@ -27,6 +29,16 @@ test.beforeAll(async () => {
   rt.agentWake(w.id, 'woken', 'please check');
   rt.agentWake(o.id, 'waker', 'checked');
   rt.agentWake(w.id, 'woken', 'thanks');
+  // A card waits, and a third agent's hand-off that needs one of its own is held on it (#439).
+  const other = rt.createPersona({ handle: 'other', backend: 'mock', permissionMode: 'auto', tools: [] });
+  heldRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Held', personaIds: [...personas, other].map((p) => p.id) });
+  const [hw, ho, hx] = ['waker', 'woken', 'other'].map((h) => rt.sessionsIn(heldRoom.id).find((se) => se.handle === h));
+  rt.agentWake(hw.id, 'woken', 'please check');
+  rt.agentWake(ho.id, 'waker', 'checked');
+  rt.agentWake(hw.id, 'woken', 'thanks');
+  rt.agentWake(hx.id, 'waker', 'a task for you');
+  rt.agentWake(hw.id, 'other', 'ready');
+  rt.agentWake(hx.id, 'waker', 'count the lines in work/');
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -51,4 +63,18 @@ test('two agents waking each other in turn stop after a hand-off and its answer,
   const card = page.locator('.transcript .block').filter({ hasText: 'Let @waker wake @woken?' });
   await expect(card).toContainText(`@waker and @woken have woken each other ${PAIR_LIMIT} times in a row, so the next one waits for you.`);
   await expect(card.getByRole('button', { name: 'Let @waker wake @woken' })).toBeEnabled();
+});
+
+test('a wake held on the waiting card shows on it until you answer, and goes when you allow it (#439)', async ({ page }) => {
+  await page.goto(`${app.origin}/#/t/${heldRoom.id}`);
+  await synced(page, app);
+  const card = page.locator('.transcript .block').filter({ hasText: 'Let @waker wake @woken?' });
+  const line = card.locator('.hop-held');
+  // The mock agents answer each wake, and their answers are held too, so only @other’s is checked by name.
+  await expect(line).toContainText('Also waiting on your answer: @other’s message to @waker');
+  await expect(line).toContainText('Allowing this sends them too.');
+  await card.getByRole('button', { name: 'Let @waker wake @woken' }).click();
+  await expect(card).toContainText('Allowed');
+  await expect(line).toHaveCount(0);
+  await expect(page.locator('.transcript')).toContainText('count the lines in work/');
 });

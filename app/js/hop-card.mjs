@@ -34,6 +34,7 @@ export function hopBlock(it, ctx) {
             : `That would be agent wake ${it.n} since your last message. After ${client.config?.hopLimit ?? 10} in a row, the next one waits for you.`,
       ),
       it.reason ? h('p.dim.small', `@${it.from}’s reason: “${it.reason}”`) : null,
+      open && it.held?.length ? heldLine(it.held) : null,
       !open
         ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'allowed' ? (it.join ? 'Added' : 'Allowed') : it.join ? 'Not added' : 'Not allowed')
         : null,
@@ -46,4 +47,11 @@ export function hopBlock(it, ctx) {
         )
       : null,
   );
+}
+
+/** The wakes held on a waiting card (#439): they go, or don’t, with your answer, so the card says whose they are. */
+function heldLine(held) {
+  const who = held.map((w) => `@${w.from}’s message to @${w.to}`);
+  const list = who.length > 3 ? `${who.slice(0, 3).join(', ')} and ${who.length - 3} more` : who.join(who.length === 2 ? ' and ' : ', ');
+  return h('p.small.hop-held', `Also waiting on your answer: ${list}. Allowing this sends ${held.length === 1 ? 'it' : 'them'} too.`);
 }

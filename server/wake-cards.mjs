@@ -1,13 +1,15 @@
 // The wake cards (#108, #228): a wake past the limit, or of an agent the conversation doesn’t have, waits for the
-// person’s Allow on a card in the conversation, and resolveHop settles it. Moved from server/side-threads.mjs, whose
-// agentWake raises them. Functions take the Runtime first (architecture.md, “What a move may change”).
+// person’s Allow on a card in the conversation, and resolveHop settles it. One card waits at a time: a wake that needs
+// another while it does is held on it, and settled with it (#439). Moved from server/side-threads.mjs, whose agentWake
+// raises them. Functions take the Runtime first (architecture.md, “What a move may change”).
 
-import { HOP_LIMIT, PAIR_LIMIT } from '../shared/limits.mjs';
+import { HELD_WAKES, HOP_LIMIT, PAIR_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError } from './helpers.mjs';
 
 /** The card for a wake past the limit (#108), which waits for the person’s Allow. */
 export function askToWake(rt, from, parent, p, wake) {
-  if (openCard(rt, parent)) return busyCard(p);
+  const open = openCard(rt, parent);
+  if (open) return holdOnCard(rt, open, parent, from, p, wake);
   const n = (parent.hops ?? 0) + 1;
   // Under the limit, it’s the pair’s: these two agents have woken each other PAIR_LIMIT times in a row (#372).
   const pair = n <= HOP_LIMIT ? PAIR_LIMIT : null;
@@ -37,7 +39,8 @@ export function askToWake(rt, from, parent, p, wake) {
 export function askToAdd(rt, from, parent, p, wake) {
   if (rt.sessionsIn(parent.id).some((x) => x.personaId === p.id))
     return { ok: false, message: `@${p.handle}’s session in this conversation is archived, so it can’t be woken. Ask the person to restore it.` };
-  if (openCard(rt, parent)) return busyCard(p);
+  const open = openCard(rt, parent);
+  if (open) return holdOnCard(rt, open, parent, from, p, wake);
   const it = rt.addItem(parent.id, {
     kind: 'hop',
     join: true,
@@ -57,12 +60,32 @@ export function askToAdd(rt, from, parent, p, wake) {
   };
 }
 
-/** One request at a time: while a card waits for the person, a further wake isn’t sent, and the agent is told so. */
-const openCard = (rt, parent) => rt.store.items(parent.id).some((x) => x.kind === 'hop' && x.status === 'open');
-const busyCard = (p) => ({
-  ok: false,
-  message: `Your message to @${p.handle} wasn’t sent: another request is waiting for the person to answer it. Send it again once they have.`,
-});
+/** One request at a time: the card waiting for the person, if there is one. */
+const openCard = (rt, parent) => rt.store.items(parent.id).find((x) => x.kind === 'hop' && x.status === 'open') ?? null;
+/** A card as an agent is told of it: who it’s between, and since when. */
+const cardName = (c) =>
+  `@${c.from}’s request to ${c.join ? 'add' : 'wake'} @${c.to}${Number.isFinite(c.at) ? ` (since ${new Date(c.at).toISOString().slice(11, 16)} UTC)` : ''}`;
+
+/**
+ * A wake that needs a card while one waits is held on that card (#439): not sent, not recorded as received and not
+ * posted until the person allows the card, which delivers it with the card’s own (resolveHop). Its agent is told which
+ * card, as the call’s result, or as a note for a mention, whose own message is already in the conversation.
+ */
+function holdOnCard(rt, card, parent, from, p, wake) {
+  const held = card.held ?? [];
+  if (held.length >= HELD_WAKES)
+    return {
+      ok: false,
+      message: `Your message to @${p.handle} wasn’t sent: ${cardName(card)} is waiting for the person, with ${HELD_WAKES} messages already held on it. Send it again once they’ve answered.`,
+    };
+  const { text, replyIn = null, fromTurnId = null, itemId = null } = wake;
+  rt.patchItem(parent.id, card.id, {
+    held: [...held, { fromSessionId: from.id, from: from.handle, to: p.handle, text, replyIn, fromTurnId, itemId, at: Date.now() }],
+  });
+  const message = `Postbox is holding your message to @${p.handle}: ${cardName(card)} is waiting for the person. It goes to @${p.handle} when they allow that, so don’t send it again; if they don’t, you’ll be told.`;
+  if (itemId) rt.tellAgent(from.id, `Your mention of @${p.handle} is held. ${message}`);
+  return { ok: false, waiting: true, held: true, message };
+}
 
 /** The agent asking needs the person, at the card in the conversation (#121). */
 function needsCard(rt, from, parent, it, text) {
@@ -104,7 +127,9 @@ export function resolveHop(rt, threadId, itemId, allow) {
       fromTurnId: it.fromTurnId ?? null,
       itemId: it.itemId ?? null,
     });
-  else if (from && !from.archived)
+  settleHeld(rt, it, allow);
+  if (allow) return;
+  if (from && !from.archived)
     rt.deliver(
       from.id,
       {
@@ -115,4 +140,24 @@ export function resolveHop(rt, threadId, itemId, allow) {
       },
       { threadId: it.replyIn ?? null },
     );
+}
+
+/** The wakes held on a card go with it (#439): Allow delivers each as its agent sent it; otherwise each agent is told. */
+function settleHeld(rt, card, allow) {
+  for (const w of card.held ?? []) {
+    if (allow) {
+      rt.agentWake(w.fromSessionId, w.to, w.text, { confirmed: true, replyIn: w.replyIn, fromTurnId: w.fromTurnId, itemId: w.itemId });
+      continue;
+    }
+    const se = rt.s.sessions[w.fromSessionId];
+    if (se && !se.archived)
+      rt.deliver(
+        se.id,
+        {
+          kind: 'notice',
+          text: `The person chose not to allow ${cardName(card)}, so your message held on it (“${clip(w.text, 120)}”) didn’t go to @${w.to}. Send it again if you still need it.`,
+        },
+        { threadId: w.replyIn ?? null },
+      );
+  }
 }
