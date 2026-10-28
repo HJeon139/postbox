@@ -226,10 +226,10 @@ test(`after ${HOP_LIMIT} agent wakes in a row, the next one waits for your confi
   assert.equal(r.waiting, true);
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
   assert.equal(hop.status, 'open');
-  // One request waits at a time: a further wake isn’t sent, and the agent is told so, rather than losing it unsaid.
+  // One request waits at a time: a further wake is held on it, and the agent is told which card it waits for (#439).
   const again = rt.agentWake(alpha.id, 'beta', 'and again');
-  assert.deepEqual([again.ok, again.waiting], [false, undefined]);
-  assert.match(again.message, /wasn’t sent: another request is waiting for the person/);
+  assert.deepEqual([again.ok, again.waiting], [false, true]);
+  assert.match(again.message, /holding your message to @beta: @alpha’s request to wake @beta/);
   assert.equal(store.items(t.id).filter((i) => i.kind === 'hop').length, 1, 'only one request waits at a time');
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
