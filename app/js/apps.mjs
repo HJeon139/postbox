@@ -3,7 +3,7 @@
 // Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
-import { recordAppCheck, startCheck } from './app-check.mjs';
+import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, itemsOf } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
@@ -413,6 +413,25 @@ function frame(appId, version, { check = false, width = null, review = false, on
   frames.add({ appId, version, iframe, check, review, onPin, onAnchors, onCrash });
   return iframe;
 }
+function pauseAppFrames() {
+  const bodies = new Set();
+  for (const rec of frames) {
+    // Never interrupt an app under the person’s pointer or holding their keyboard (#37).
+    if (rec.check || !rec.iframe.isConnected || rec.iframe === live || rec.iframe === owner) continue;
+    const body = rec.iframe.closest('.app-body');
+    if (body?._unmount) {
+      bodies.add(body);
+      body._unmount();
+    }
+  }
+  return bodies;
+}
+
+function resumeAppFrames(bodies) {
+  for (const body of bodies) if (body.isConnected && !unloaded.has(body.dataset.appId)) body._remount?.();
+}
+
+installAppChecks(frame, { pause: pauseAppFrames, resume: resumeAppFrames });
 
 // ── App frames in the transcript ─────────────────────────────────────────────────────────
 
@@ -514,7 +533,6 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       ),
     );
   } else if (status === 'pending') {
-    startCheck(appId, v, frame);
     body.append(
       placeholder([
         h(
@@ -542,8 +560,9 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
     );
   } else {
     const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin, onBack }) }));
-    mount();
-    body._remount = () => mount();
+    if (appChecksRunning()) afterAppChecks(() => body.isConnected && mount());
+    else mount();
+    body._remount = () => (appChecksRunning() ? afterAppChecks(() => body.isConnected && mount()) : mount());
     body._unmount = () => {
       const hgt = body.firstElementChild?.offsetHeight || 200;
       body.replaceChildren(
