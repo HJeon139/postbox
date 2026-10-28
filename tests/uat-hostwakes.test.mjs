@@ -4,9 +4,12 @@
 // connected to this host.”); here, busyCard’s refusal (server/side-threads.mjs).
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { placementOf } from '../tools/uat/hosts-options.mjs';
+import { readReceived } from '../tools/uat/run-files.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { unknownTriggers } from '../tools/uat/triggers.mjs';
 import { HOSTWAKE_CHECKS, HOSTWAKE_TRIGGERS as T } from '../tools/uat/triggers-hostwakes.mjs';
@@ -91,10 +94,12 @@ test('on main: the checks report the host sender told “Sent”, and both hand-
 test('after a fix: a host sender woken by its refusal, and a held wake delivered after the Allow, are seen', () => {
   // The host sender starts a turn 20 s after its refused wake. After the Allow at 400 s, Postbox posts the held
   // hand-off as critic's message (as Allow's agentWake does), and its target starts a turn with it.
-  const delivered = { kind: 'agent', handle: 'critic', text: 'critic to researcher', status: 'done', at: s(405) };
-  const f = facts({ extraItems: [turn('critic', s(50)), delivered, turn('researcher', s(410))] });
+  const f = {
+    ...facts({ extraItems: [turn('critic', s(50)), turn('researcher', s(410))] }),
+    received: [received('researcher', 'critic', s(405), 'critic to researcher')],
+  };
   assert.equal(T['refused-wake-told-in-turn'].run(f).length, 1);
-  assert.match(T['held-wake-delivered-after-allow'].run(f)[0].evidence, /Postbox posted @critic’s refused hand-off after you allowed the card/);
+  assert.match(T['held-wake-delivered-after-allow'].run(f)[0].evidence, /Postbox sent @critic’s refused hand-off to @researcher after you allowed the card/);
   assert.deepEqual(
     check('refused-wake-lost')
       .run(f)
@@ -103,11 +108,11 @@ test('after a fix: a host sender woken by its refusal, and a held wake delivered
   );
 });
 
-/** The message Postbox posts as the sender’s when it applies a wake (agentWake, server/side-threads.mjs). */
-const posted = (handle, at, text) => ({ kind: 'agent', handle, text, status: 'done', at });
+/** A message Postbox sent an agent from another, as the runner reads it from the store (facts.received). */
+const received = (handle, from, at, text) => ({ handle, from, at, text });
 
-test('a wake Postbox posted is no refusal, even with a card open', () => {
-  const f = facts({ extraItems: [posted('critic', s(31), 'critic to researcher'), turn('researcher', s(35))] });
+test('a wake its target received is no refusal, even with a card open', () => {
+  const f = { ...facts({ extraItems: [turn('researcher', s(35))] }), received: [received('researcher', 'critic', s(31), 'critic to researcher')] };
   assert.deepEqual(check('host-wake-said-sent').run(f), []);
   assert.equal(check('refused-wake-lost').run(f).length, 1, 'only the local one is left');
 });
@@ -115,7 +120,7 @@ test('a wake Postbox posted is no refusal, even with a card open', () => {
 test('a refused wake is seen though another agent woke its target meanwhile, as in the 27 October run', () => {
   // From uat-runs/2026-10-27T23-45-51-hostwakes (data/events-1.jsonl and critic’s stream): a card from @developer to
   // @researcher opened at 23:46:52. @critic, on the host, called wake_agent with the same text at 23:47:25 and 23:47:36,
-  // and the shim answered both with “Sent…”. Postbox posted only the first; the second was the pair’s third wake and was
+  // and the shim answered both with “Sent…”. researcher received only the first; the second was the pair’s third wake and was
   // refused. @developer had woken @researcher at 23:47:34, so @researcher started a turn 10 s after the refusal.
   const at = (hms) => Date.parse(`2026-10-27T${hms}Z`);
   const text = '@researcher @critic has a task for you. Please answer by @-mentioning only @critic.';
@@ -123,11 +128,7 @@ test('a refused wake is seen though another agent woke its target meanwhile, as 
     threads: ['th1'],
     state: {
       items: {
-        th1: [
-          { kind: 'hop', from: 'developer', to: 'researcher', at: at('23:46:52'), pair: 2, status: 'open' },
-          posted('critic', at('23:47:25'), text),
-          turn('researcher', at('23:47:46')),
-        ],
+        th1: [{ kind: 'hop', from: 'developer', to: 'researcher', at: at('23:46:52'), pair: 2, status: 'open' }, turn('researcher', at('23:47:46'))],
       },
     },
     streams: [
@@ -139,6 +140,7 @@ test('a refused wake is seen though another agent woke its target meanwhile, as 
         ],
       },
     ],
+    received: [received('researcher', 'critic', at('23:47:25'), text)],
     hosts: { hosts: [{ id: 'h1', label: 'host1' }], placement: { researcher: 'local', critic: 'host1', developer: 'local' } },
   };
   const said = check('host-wake-said-sent').run(f);
@@ -257,6 +259,39 @@ test('a refused hand-off is lost though its target had a turn the person started
       .map((x) => x.title),
     ['@developer’s hand-off to @critic was refused and lost'],
   );
+});
+
+test('a held wake the conversation shows while it waits is still a refusal until its target receives it', () => {
+  // #439’s fix may post a held hand-off while it waits, so the person sees it. Only what the target received counts.
+  const f = facts({ extraItems: [{ kind: 'agent', handle: 'critic', text: 'critic to researcher', status: 'held', at: s(31) }] });
+  assert.equal(check('host-wake-said-sent').run(f).length, 1);
+});
+
+test('readReceived reads what each agent received from the store’s session events, merged with what it read before', () => {
+  // Session events shaped as in the third run’s data/events-1.jsonl (seq 25 on), trimmed to the fields read here.
+  const dir = mkdtempSync(join(tmpdir(), 'pb-received-'));
+  const msg = (other, text, at) => ({ dir: 'from', other, text, at });
+  const line = (seq, data) => JSON.stringify({ seq, type: 'session', data });
+  writeFileSync(
+    join(dir, 'events-1.jsonl'),
+    [
+      line(25, { id: 'se_c', handle: 'critic', agentMessages: [msg('researcher', '@critic Ready for your task.', 1)] }),
+      line(26, { id: 'se_c', agentMessages: [msg('developer', '@critic, I’m ready for your task.', 2), msg('researcher', '@critic Ready for your task.', 1)] }),
+    ].join('\n'),
+  );
+  try {
+    const earlier = [{ handle: 'developer', from: 'researcher', text: 'gone with an old segment', at: 0 }];
+    assert.deepEqual(
+      readReceived(dir, earlier).map((r) => [r.handle, r.from, r.at]),
+      [
+        ['developer', 'researcher', 0],
+        ['critic', 'researcher', 1],
+        ['critic', 'developer', 2],
+      ],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('outside host mode, the host check says nothing', () => {
