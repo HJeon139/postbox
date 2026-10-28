@@ -45,21 +45,11 @@ const cardOpenAt = (cards, at) => cards.some((c) => (c.at ?? Infinity) <= at && 
  * meanwhile doesn’t make a refused call look applied, as it did in the 27 October run.
  */
 export function wakeCalls(f) {
-  const turns = agentTurns(f);
   // The sender’s next turn counts as the refusal’s only if the person did nothing in between (28 October rerun: the
   // person asked @critic 11 s after its refused wake, and that turn read as @critic told of the refusal).
   const acts = personActs(f);
   const personBetween = (from, to) => acts.some((t) => t > from && t <= to);
-  // When each turn started: its stream’s file says when its process started. A turn’s first item can come after a
-  // call made in that same turn (28 October rerun: @developer’s refused call at 01:09:03, its turn’s first item at
-  // 01:09:06), so items are only the fallback, for an agent with no recorded streams.
-  const streamStarts = (handle) =>
-    (f.streams ?? []).filter((s) => s.handle === handle && Number.isFinite(s.started)).map((s) => /** @type {number} */ (s.started));
-  const startsOf = (handle) => {
-    const fromStreams = streamStarts(handle);
-    const all = fromStreams.length ? fromStreams : turns.filter((t) => t.handle === handle && Number.isFinite(t.at)).map((t) => /** @type {number} */ (t.at));
-    return all.sort((a, b) => a - b);
-  };
+  const startsOf = turnStarts(f);
   const cards = hopCards(f);
   const posted = itemsOf(f).filter((it) => it.kind === 'agent' && typeof it.text === 'string' && Number.isFinite(it.at));
   return (f.streams ?? [])
@@ -95,6 +85,21 @@ export function wakeCalls(f) {
       senderNext: Number.isFinite(c.at) ? (startsOf(c.from).find((t) => t > /** @type {number} */ (c.at) && !personBetween(c.at, t)) ?? null) : null,
       targetNext: Number.isFinite(c.at) ? (startsOf(c.to).find((t) => t > /** @type {number} */ (c.at)) ?? null) : null,
     }));
+}
+
+/**
+ * When each agent’s turns started, earliest first: its stream’s file says when its process started. A turn’s first item
+ * can come after a call made in that same turn (28 October rerun: @developer’s refused call at 01:09:03, its turn’s
+ * first item at 01:09:06), so items are only the fallback, for an agent with no recorded streams.
+ * @returns {(handle: string) => number[]}
+ */
+function turnStarts(f) {
+  const turns = agentTurns(f);
+  return (handle) => {
+    const streams = (f.streams ?? []).filter((s) => s.handle === handle && Number.isFinite(s.started)).map((s) => /** @type {number} */ (s.started));
+    const all = streams.length ? streams : turns.filter((t) => t.handle === handle && Number.isFinite(t.at)).map((t) => /** @type {number} */ (t.at));
+    return all.sort((a, b) => a - b);
+  };
 }
 
 /** When the person acted: a message, or an answer or Allow (a voice line). A turn that follows one may be theirs. */
