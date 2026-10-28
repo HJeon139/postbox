@@ -102,3 +102,12 @@ test('readReceived reads on from where it got to: a second read parses only what
 test('host-wake-said-sent is filed against #439, whose fix makes wake_agent wait for Postbox’s answer on a host', () => {
   assert.equal(check('host-wake-said-sent').issue, 439);
 });
+
+test('a retired card waits until it was retired: a refusal before counts, a wake after doesn’t', () => {
+  // #439’s fix retires a card whose target got a turn another way, and records when (retiredAt), with no line.
+  const card = { kind: 'hop', from: 'researcher', to: 'developer', at: s(10), pair: 2, status: 'retired', retiredAt: s(50) };
+  const before = run([card], wakeStream('critic', s(30), 'researcher', SENT, 'Task.'));
+  assert.equal(check('host-wake-said-sent').run(before).length, 1, 'refused while it waited');
+  const after = run([card], wakeStream('critic', s(100), 'researcher', SENT, 'Task.'));
+  assert.deepEqual(check('host-wake-said-sent').run(after), [], 'after it was retired, nothing waited');
+});
