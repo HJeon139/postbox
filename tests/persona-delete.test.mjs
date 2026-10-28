@@ -111,7 +111,8 @@ test('#208: a delete still pending when Postbox stopped finishes after a restart
     const rt = new Runtime({ store: s.store, adapters: s.rt.adapters, corpus: s.rt.corpus, config: s.rt.config });
     s.store.emit('persona', { ...s.store.state.personas[s.alpha.id], deleting: Date.now() - 1 });
     rearmPersonaDeletes(rt);
-    await new Promise((r) => setTimeout(r, 50));
+    // Removed last, after its memory (purgePersona), so this waits for the whole delete, however busy the machine.
+    for (let i = 0; i < 500 && s.store.state.personas[s.alpha.id]; i++) await new Promise((r) => setTimeout(r, 10));
     assert.equal(s.store.state.personas[s.alpha.id], undefined, 'it finished');
     assert.equal(existsSync(join(memoryRootFor(s.workRoot), s.alpha.id)), false, 'its memory is gone');
     assert.ok(rt.createPersona({ handle: 'alpha', backend: 'claude-code' }), 'the name is free again');
