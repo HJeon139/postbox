@@ -55,6 +55,10 @@ function inline(rel, closer) {
 const css = () => `<style>${inline('workbench.css', '</style')}</style>`;
 const syntaxCache = new WeakMap();
 const tagBoundary = (char) => !char || char === '>' || char === '/' || /\s/.test(char);
+const findTag = (text, tag, from) => {
+  for (let i = from; i <= text.length - tag.length; i++) if (text.slice(i, i + tag.length).toLowerCase() === tag) return i;
+  return -1;
+};
 
 /** The closing angle bracket of an HTML tag, ignoring one inside a quoted attribute. */
 function tagEnd(text, from) {
@@ -72,11 +76,10 @@ function tagEnd(text, from) {
 /** Inline script attributes and bodies, following script raw-text end tags without treating the regexp as an HTML parser. */
 function inlineScripts(code) {
   const text = String(code);
-  const lower = text.toLowerCase();
   const scripts = [];
   let from = 0;
   while (from < text.length) {
-    const open = lower.indexOf('<script', from);
+    const open = findTag(text, '<script', from);
     if (open < 0) break;
     const nameEnd = open + '<script'.length;
     if (!tagBoundary(text[nameEnd])) {
@@ -85,8 +88,8 @@ function inlineScripts(code) {
     }
     const openEnd = tagEnd(text, nameEnd);
     if (openEnd < 0) break;
-    let close = lower.indexOf('</script', openEnd + 1);
-    while (close >= 0 && !tagBoundary(text[close + '</script'.length])) close = lower.indexOf('</script', close + 2);
+    let close = findTag(text, '</script', openEnd + 1);
+    while (close >= 0 && !tagBoundary(text[close + '</script'.length])) close = findTag(text, '</script', close + 2);
     if (close < 0) break;
     const closeEnd = tagEnd(text, close + '</script'.length);
     if (closeEnd < 0) break;

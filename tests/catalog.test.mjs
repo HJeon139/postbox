@@ -147,6 +147,7 @@ test('#328 sandbox pages name the script, line and column of inline JavaScript s
     "SyntaxError: Unexpected token ';' (script 1, line 3, column 18)",
   ]);
   assert.deepEqual(scriptSyntaxErrors('<script>const broken = (1;</script\t\n ignored>'), ["SyntaxError: Unexpected token ';' (script 1, line 1, column 18)"]);
+  assert.deepEqual(scriptSyntaxErrors('<p>İ</p><ScRiPt>const broken = (1;</sCrIpT>'), ["SyntaxError: Unexpected token ';' (script 1, line 1, column 18)"]);
   assert.deepEqual(scriptSyntaxErrors('<script type="application/json">{not JavaScript}</script><script>const ok = true;</script>'), []);
 });
 
