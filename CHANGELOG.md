@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.42.2 (2026-10-28)
+
+### Fixes
+
+- **server:** a summary that keeps an old mention doesn't call what it kept the last N
+- **server:** the pointer to a mention a summary gave names the call that reads it whole
+- **server:** the skip a turn's summary names reaches the newest mention it left out
+- **server:** cap the mentions a summary keeps, and quote a seen mention's start
+- **server:** a turn's summary keeps every mention of the agent, and says what it left out
+
 ## 0.42.1 (2026-10-28)
 
 ### Fixes
