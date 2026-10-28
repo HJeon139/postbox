@@ -55,7 +55,7 @@ const OTHER = { id: 'pr_two', folder: '/tmp/pb-test-other' };
 
 test('#208: two Claude Code personas in one project each get a memory folder of their own, per project, in Postbox’s data folder', async () => {
   const { spawnImpl, runs } = fakeSpawn();
-  const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: `${DATA}/workspaces`, memoryRoot: `${DATA}/memory`, spawnImpl });
+  const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: `${DATA}/workspaces`, spawnImpl });
   for (const [p, pr] of [
     [ALPHA, PROJECT],
     [BETA, PROJECT],
@@ -77,7 +77,7 @@ test('#208: an Agent SDK persona gets its own memory folder too, in the SDK’s 
       })();
     },
   };
-  const adapter = new AgentSdkAdapter({ sdk, workRoot: `${DATA}/workspaces`, memoryRoot: `${DATA}/memory` });
+  const adapter = new AgentSdkAdapter({ sdk, workRoot: `${DATA}/workspaces` });
   await adapter.deliver({}, { kind: 'user', text: 'Hi' }, ctxFor(ALPHA, PROJECT));
   await adapter.deliver({}, { kind: 'user', text: 'Hi' }, ctxFor(BETA, PROJECT));
   assert.deepEqual(
@@ -88,7 +88,7 @@ test('#208: an Agent SDK persona gets its own memory folder too, in the SDK’s 
 
 test('#208: on a host, the persona’s memory folder is in Postbox’s folder there, never a path on this computer', async () => {
   const d = createFakeDaemon({ lines: LINES });
-  const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: `${DATA}/workspaces`, memoryRoot: `${DATA}/memory` });
+  const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: `${DATA}/workspaces` });
   const ctx = remoteCtx(d);
   ctx.persona = { ...ctx.persona, id: 'pe_alpha' };
   ctx.project = { ...ctx.project, id: 'pr_one' };

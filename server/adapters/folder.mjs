@@ -3,7 +3,7 @@
 // decides what it may change there.
 
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /**
  * The agent’s folder, made if it’s missing. A folder that can’t be made fails the turn with its reason: a CLI
@@ -25,3 +25,10 @@ export async function agentFolder(persona, project, workRoot) {
   }
   return dir;
 }
+
+/**
+ * Where personas’ own memory folders go on this computer (#208, setup.mjs’s memoryFolder): `memory` in the data
+ * folder, beside the workspaces at workRoot.
+ * @param {string} workRoot
+ */
+export const memoryRootFor = (workRoot) => join(dirname(workRoot), 'memory');

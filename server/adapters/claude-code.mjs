@@ -35,10 +35,11 @@ import { createInterface } from 'node:readline';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
-import { agentFolder } from './folder.mjs';
+import { agentFolder, memoryRootFor } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
-import { effortOf, recorderFor } from './setup.mjs';
+import { hostMemoryRoot } from './remote-turn.mjs';
+import { effortOf, fromContext, recorderFor } from './setup.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
 export { CLAUDE_CODE_CAPABILITIES, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from './claude-code-remote.mjs';
@@ -193,8 +194,7 @@ export class ClaudeCodeAdapter {
       guide,
       addDirs,
       fork,
-      allowOnce: ctx.allowOnce ?? [],
-      rules: ctx.rules ?? {},
+      ...fromContext(ctx, ctx.remote ? hostMemoryRoot(ctx.remote) : memoryRootFor(this.workRoot)),
       ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
     });
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
