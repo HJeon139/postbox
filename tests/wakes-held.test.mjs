@@ -82,10 +82,21 @@ test('#439 a card whose target you write to is retired, and its own wake and the
   await f.wake(f.gamma, 'alpha', HANDOFF);
   // The person writes to the card's target, beta, which then has a turn without the card.
   f.rt.sendMessage(f.t.id, { text: '@beta the review is done, thanks' });
-  await settle(f.rt);
+  // The card’s wake waits for beta’s turn on your message to end, and settle can return in the gap between the two.
+  const toBeta = () => f.adapter.calls.filter((c) => c.handle === 'beta').map((c) => `${c.message?.from ?? 'you'}: ${c.message?.text}`);
+  const yours = () => toBeta().findIndex((x) => /the review is done/.test(x));
+  const after = () =>
+    yours() >= 0 &&
+    toBeta()
+      .slice(yours() + 1)
+      .some((x) => x.startsWith('@alpha'));
+  for (let i = 0; i < 20 && !after(); i++) await settle(f.rt);
   assert.equal(f.store.item(f.t.id, f.card.id).status, 'retired');
   assert.ok(Number.isFinite(f.store.item(f.t.id, f.card.id).retiredAt), 'it says when, for the hostwakes checks (#451)');
-  assert.equal(got(f, 'beta', 'alpha to beta').length, 2, 'the card’s own wake reaches beta too, after the first');
+  // Your message goes first, and the card’s own wake reaches beta after it: the wake you never allowed doesn’t go
+  // ahead. It carries alpha’s latest post by then, as a queued wake does (#374).
+  assert.ok(yours() > 0, `beta’s turns, in order: ${toBeta().join(' | ')}`);
+  assert.ok(after(), `beta’s turns, in order: ${toBeta().join(' | ')}`);
   assert.equal(got(f, 'alpha', HANDOFF).length, 1, 'gamma’s held hand-off goes on to alpha');
   assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0, 'your message started the counts again');
 });
