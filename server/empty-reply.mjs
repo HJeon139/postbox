@@ -10,13 +10,25 @@
  */
 const ASKED = new Set(['user', 'agent']);
 
+/** Postbox’s tools that only read or ask: a turn that called nothing else still owes its reply. */
+const READS = new Set(['read_conversation', 'read_message', 'corpus_search', 'permission_prompt']);
+
 /**
- * Whether a turn that owes a reply ended with none: no text, and nothing else of its own in the thread (a block, an
- * app, a card, a message it sent another agent, which carries fromTurnId).
+ * Marks a turn that answered through one of Postbox’s tools that act, such as a reaction or a term, which leave no
+ * item of the turn’s own. server/mcp.mjs and a host’s calls (remote/turns-tools.mjs) both call it.
+ * @param {any} turn  the turn the call came from, or null @param {string} name @param {any} r  the tool’s result
+ */
+export function noteAnswer(turn, name, r) {
+  if (turn && !READS.has(name) && (r?.ok !== false || r?.waiting)) turn.answered = true;
+}
+
+/**
+ * Whether a turn that owes a reply ended with none: no text, no call that acted (noteAnswer), and nothing else of its
+ * own in the thread (a block, an app, a card, a message it sent another agent, which carries fromTurnId).
  * @param {any} turn @param {any[]} items  the thread’s
  */
 export function endedWithoutReply(turn, items) {
-  if (!ASKED.has(turn.kind) || turn.said.trim()) return false;
+  if (!ASKED.has(turn.kind) || turn.said.trim() || turn.answered) return false;
   return !items.some((it) => (it.turnId === turn.id || it.fromTurnId === turn.id) && (it.kind !== 'agent' || it.text?.trim()));
 }
 
