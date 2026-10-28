@@ -46,7 +46,20 @@ const cardOpenAt = (cards, at) => cards.some((c) => (c.at ?? Infinity) <= at && 
  */
 export function wakeCalls(f) {
   const turns = agentTurns(f);
-  const startsOf = (handle) => turns.filter((t) => t.handle === handle && Number.isFinite(t.at)).map((t) => /** @type {number} */ (t.at));
+  // The sender’s next turn counts as the refusal’s only if the person did nothing in between (28 October rerun: the
+  // person asked @critic 11 s after its refused wake, and that turn read as @critic told of the refusal).
+  const acts = personActs(f);
+  const personBetween = (from, to) => acts.some((t) => t > from && t <= to);
+  // When each turn started: its stream’s file says when its process started. A turn’s first item can come after a
+  // call made in that same turn (28 October rerun: @developer’s refused call at 01:09:03, its turn’s first item at
+  // 01:09:06), so items are only the fallback, for an agent with no recorded streams.
+  const streamStarts = (handle) =>
+    (f.streams ?? []).filter((s) => s.handle === handle && Number.isFinite(s.started)).map((s) => /** @type {number} */ (s.started));
+  const startsOf = (handle) => {
+    const fromStreams = streamStarts(handle);
+    const all = fromStreams.length ? fromStreams : turns.filter((t) => t.handle === handle && Number.isFinite(t.at)).map((t) => /** @type {number} */ (t.at));
+    return all.sort((a, b) => a - b);
+  };
   const cards = hopCards(f);
   const posted = itemsOf(f).filter((it) => it.kind === 'agent' && typeof it.text === 'string' && Number.isFinite(it.at));
   return (f.streams ?? [])
@@ -79,10 +92,19 @@ export function wakeCalls(f) {
     .map((c) => ({ ...c, applied: postedFor(c, posted) }))
     .map((c) => ({
       ...c,
-      senderNext: Number.isFinite(c.at) ? (startsOf(c.from).find((t) => t > /** @type {number} */ (c.at)) ?? null) : null,
+      senderNext: Number.isFinite(c.at) ? (startsOf(c.from).find((t) => t > /** @type {number} */ (c.at) && !personBetween(c.at, t)) ?? null) : null,
       targetNext: Number.isFinite(c.at) ? (startsOf(c.to).find((t) => t > /** @type {number} */ (c.at)) ?? null) : null,
     }));
 }
+
+/** When the person acted: a message, or an answer or Allow (a voice line). A turn that follows one may be theirs. */
+const personActs = (f) =>
+  itemsOf(f)
+    .filter((it) => (it.kind === 'user' || it.kind === 'voice') && Number.isFinite(it.at))
+    .map((it) => /** @type {number} */ (it.at));
+
+/** When the facts were read: checks run during the run, so now, unless the facts say (a replay, a test). */
+const factsAt = (f) => (Number.isFinite(f.now) ? f.now : Date.now());
 
 /** Whether Postbox posted this call’s message as its sender’s, taking the message so no later call can claim it. */
 function postedFor(c, posted) {
@@ -121,11 +143,12 @@ export const HOSTWAKE_CHECKS = [
     issue: 439,
     run: (f) =>
       refused(f)
-        .filter((c) => c.at !== null && (c.senderNext === null || c.senderNext > c.at + SILENT_MS) && c.targetNext === null)
+        // Judged only once SILENT_MS have passed since the call: run during the run, a window not over yet proves nothing.
+        .filter((c) => c.at !== null && c.at + SILENT_MS <= factsAt(f) && (c.senderNext === null || c.senderNext > c.at + SILENT_MS) && c.targetNext === null)
         .map((c) => ({
           key: `${c.from}:${c.to}:${c.at}`,
           title: `@${c.from}’s hand-off to @${c.to} was refused and lost`,
-          evidence: `A wake card was waiting, so the wake was refused; @${c.from} had no turn for 3 minutes after, and @${c.to} never had one.`,
+          evidence: `A wake card was waiting, so the wake was refused; for 3 minutes after, @${c.from} started no turn but ones you started, and @${c.to} never had one.`,
         })),
   },
 ];
