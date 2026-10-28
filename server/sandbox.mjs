@@ -54,19 +54,60 @@ function inline(rel, closer) {
 }
 const css = () => `<style>${inline('workbench.css', '</style')}</style>`;
 const syntaxCache = new WeakMap();
+const tagBoundary = (char) => !char || char === '>' || char === '/' || /\s/.test(char);
+
+/** The closing angle bracket of an HTML tag, ignoring one inside a quoted attribute. */
+function tagEnd(text, from) {
+  let quote = '';
+  for (let i = from; i < text.length; i++) {
+    const char = text[i];
+    if (quote) {
+      if (char === quote) quote = '';
+    } else if (char === '"' || char === "'") quote = char;
+    else if (char === '>') return i;
+  }
+  return -1;
+}
+
+/** Inline script attributes and bodies, following script raw-text end tags without treating the regexp as an HTML parser. */
+function inlineScripts(code) {
+  const text = String(code);
+  const lower = text.toLowerCase();
+  const scripts = [];
+  let from = 0;
+  while (from < text.length) {
+    const open = lower.indexOf('<script', from);
+    if (open < 0) break;
+    const nameEnd = open + '<script'.length;
+    if (!tagBoundary(text[nameEnd])) {
+      from = nameEnd;
+      continue;
+    }
+    const openEnd = tagEnd(text, nameEnd);
+    if (openEnd < 0) break;
+    let close = lower.indexOf('</script', openEnd + 1);
+    while (close >= 0 && !tagBoundary(text[close + '</script'.length])) close = lower.indexOf('</script', close + 2);
+    if (close < 0) break;
+    const closeEnd = tagEnd(text, close + '</script'.length);
+    if (closeEnd < 0) break;
+    scripts.push({ attributes: text.slice(nameEnd, openEnd), body: text.slice(openEnd + 1, close) });
+    from = closeEnd + 1;
+  }
+  return scripts;
+}
 
 /** Syntax errors in an app’s inline JavaScript, with the script and source position. */
 export function scriptSyntaxErrors(code) {
   const errors = [];
   let script = 0;
-  for (const match of String(code).matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+  for (const { attributes, body } of inlineScripts(code)) {
     script++;
-    const type = match[1].match(/\btype\s*=\s*["']([^"']+)["']/i)?.[1]?.toLowerCase();
+    const type = attributes.match(/\btype\s*=\s*["']([^"']+)["']/i)?.[1]?.toLowerCase();
     if (type && !['text/javascript', 'application/javascript'].includes(type)) continue;
     // App code is capped at 600,000 characters and parsed once per cached version, so this synchronous pass stays
     // bounded while recovering diagnostics the sandboxed browser hides (#328).
     try {
-      new vm.Script(match[2], { filename: `app-script-${script}.js` });
+      new vm.Script(body, { filename: `app-script-${script}.js` });
     } catch (error) {
       const lines = String(error.stack ?? '').split('\n');
       const line = Number(lines[0]?.match(/:(\d+)$/)?.[1]) || 1;
