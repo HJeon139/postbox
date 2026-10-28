@@ -8,6 +8,7 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 import { LIMITS } from '../shared/limits.mjs';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -52,11 +53,44 @@ function inline(rel, closer) {
   return text;
 }
 const css = () => `<style>${inline('workbench.css', '</style')}</style>`;
+const syntaxCache = new WeakMap();
+
+/** Syntax errors in an app’s inline JavaScript, with the script and source position. */
+export function scriptSyntaxErrors(code) {
+  const errors = [];
+  let script = 0;
+  for (const match of String(code).matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    script++;
+    const type = match[1].match(/\btype\s*=\s*["']([^"']+)["']/i)?.[1]?.toLowerCase();
+    if (type && !['text/javascript', 'application/javascript'].includes(type)) continue;
+    try {
+      new vm.Script(match[2], { filename: `app-script-${script}.js` });
+    } catch (error) {
+      const lines = String(error.stack ?? '').split('\n');
+      const line = Number(lines[0]?.match(/:(\d+)$/)?.[1]) || 1;
+      const column = Math.max(1, (lines[2]?.indexOf('^') ?? 0) + 1);
+      errors.push(`${error.name}: ${error.message} (script ${script}, line ${line}, column ${column})`);
+    }
+  }
+  return errors;
+}
+
+function versionSyntaxErrors(version) {
+  if (!syntaxCache.has(version)) syntaxCache.set(version, scriptSyntaxErrors(version.code));
+  return syntaxCache.get(version);
+}
 
 /** The page for one version of an agent-written app. */
 export function sandboxPage({ origin, app, version, theme, check }) {
   // The kit can’t import /shared/ (the page loads no files), so the limits it enforces come with the page.
-  const init = { appId: app.id, version: version.v, title: app.title, check: !!check, limits: { eventBytes: LIMITS.eventBytes } };
+  const init = {
+    appId: app.id,
+    version: version.v,
+    title: app.title,
+    check: !!check,
+    limits: { eventBytes: LIMITS.eventBytes },
+    syntaxErrors: versionSyntaxErrors(version),
+  };
   const html = `<!doctype html>
 <html lang="en" data-theme="${theme}" class="stage pb-sandbox">
 <head>
