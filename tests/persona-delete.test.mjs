@@ -148,3 +148,54 @@ test('#208: attaching a terminal session names around a persona still being dele
     await s.done();
   }
 });
+
+test('#208: an agent being deleted can’t be added to a conversation, and the purge takes every session it has', async () => {
+  const s = await setup();
+  try {
+    await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
+    // From another tab, an old picker, or the API: refused while the delete can still be undone.
+    assert.throws(
+      () => s.rt.createThread({ projectId: 'p1', title: 'Late', personaIds: [s.alpha.id] }),
+      (e) => e.status === 409 && /being deleted/.test(e.message),
+    );
+    const room = s.rt.createThread({ projectId: 'p1', title: 'Room', personaIds: [s.beta.id] });
+    assert.throws(
+      () => s.rt.ensureSession(room.id, s.alpha.id),
+      (e) => e.status === 409,
+    );
+    // A session it had that this delete didn’t take (deleted on its own before, or restored) goes too.
+    const stray = s.rt.putSession({
+      ...Object.values(s.store.state.sessions).find((se) => se.personaId === s.alpha.id),
+      id: 'se_stray',
+      threadId: room.id,
+      deleting: null,
+    });
+    await purgePersona(s.rt, s.alpha.id);
+    assert.equal(s.store.state.sessions[stray.id], undefined, 'no session is left with no persona');
+    assert.deepEqual(
+      Object.values(s.store.state.sessions).filter((se) => se.personaId === s.alpha.id),
+      [],
+    );
+  } finally {
+    await s.done();
+  }
+});
+
+test('#208: Undo during the purge says it’s too late, and the persona isn’t brought back half-gone', async () => {
+  const s = await setup();
+  try {
+    let release = () => {};
+    const slow = { name: 'slow', deliver: async () => {}, forget: () => new Promise((r) => (release = r)) };
+    s.rt.adapters.register(slow);
+    await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
+    const purging = purgePersona(s.rt, s.alpha.id);
+    await new Promise((r) => setTimeout(r, 10));
+    // The purge waits on a backend’s forget: Undo now must not answer 200 and then lose.
+    await assert.rejects(sessionRoute(s.rt, `/api/personas/${s.alpha.id}/undo-delete`, 'POST', {}), (e) => e.status === 409 && /too late/.test(e.message));
+    release();
+    await purging;
+    assert.equal(s.store.state.personas[s.alpha.id], undefined);
+  } finally {
+    await s.done();
+  }
+});
