@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.43.0 (2026-10-28)
+
+### Features
+
+- **server:** agents cancel their own scheduled wakes with cancel_wake
+
+### Fixes
+
+- **remote:** a host call Postbox waits on is applied once, though the daemon sends it again
+- **adapters:** cancel_wake is a quiet Postbox tool, with its own step label
+
 ## 0.42.3 (2026-10-28)
 
 ### Fixes
