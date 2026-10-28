@@ -63,6 +63,8 @@ export function scriptSyntaxErrors(code) {
     script++;
     const type = match[1].match(/\btype\s*=\s*["']([^"']+)["']/i)?.[1]?.toLowerCase();
     if (type && !['text/javascript', 'application/javascript'].includes(type)) continue;
+    // App code is capped at 600,000 characters and parsed once per cached version, so this synchronous pass stays
+    // bounded while recovering diagnostics the sandboxed browser hides (#328).
     try {
       new vm.Script(match[2], { filename: `app-script-${script}.js` });
     } catch (error) {
