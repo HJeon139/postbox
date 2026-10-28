@@ -16,6 +16,7 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
+import { endedWithoutReply } from '../server/empty-reply.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
@@ -84,4 +85,18 @@ test('#485: the empty reply keeps the turn’s raw ending, and the agent hears o
     (store.state.sessions[se.id].context ?? []).some((c) => /your last turn .* ended without a reply/i.test(c)),
     JSON.stringify(store.state.sessions[se.id].context),
   );
+});
+
+test('#485: only a turn that owes a reply is held to it; a block or a message to another agent is a reply', () => {
+  const turn = (kind, said = '') => ({ id: 'tu_1', kind, said });
+  const steps = [{ kind: 'agent', turnId: 'tu_1', text: '' }];
+  // A message from the person or another agent, answered with steps only.
+  assert.equal(endedWithoutReply(turn('user'), steps), true);
+  assert.equal(endedWithoutReply(turn('agent'), steps), true);
+  assert.equal(endedWithoutReply(turn('user', '\n\n'), steps), true, 'whitespace isn’t a reply');
+  // Turns that may end quietly: an event (a block answered or dismissed, a review), a scheduled wake, a lint pass.
+  for (const kind of ['event', 'wake', 'lint', 'app-check']) assert.equal(endedWithoutReply(turn(kind), steps), false, kind);
+  // What else counts as its reply: a block, or a message it sent another agent.
+  assert.equal(endedWithoutReply(turn('user'), [...steps, { kind: 'block', turnId: 'tu_1' }]), false);
+  assert.equal(endedWithoutReply(turn('user'), [...steps, { kind: 'agent', fromTurnId: 'tu_1', text: '@beta over to you' }]), false);
 });

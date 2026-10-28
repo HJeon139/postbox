@@ -324,15 +324,21 @@ export function setStreamTap(rt, tap) {
   return () => taps.delete(rt);
 }
 
+/** How much of a turn’s raw stream its context keeps, for a reply that ends empty (#485): its last lines, each bounded. */
+const RAW_TAIL = 12;
+const RAW_LINE = 1000;
+
 /**
- * What one turn writes each raw line to.
+ * What one turn writes each raw line to. The last few also go in the turn’s ctx.rawTail, when it has one.
  * @param {any} ctx  the turn’s context @param {string|undefined} dir  POSTBOX_*_RECORD @param {string} backend
  * @returns {(line: string) => void}
  */
 export function recorderFor(ctx, dir, backend) {
   const file = dir ? join(dir, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
+  const tail = Array.isArray(ctx.rawTail) ? ctx.rawTail : null;
   return (line) => {
     if (file) appendFileSync(file, `${line}\n`);
+    if (tail && tail.push(line.slice(0, RAW_LINE)) > RAW_TAIL) tail.shift();
     for (const tap of taps.values()) tap(ctx, line, backend);
   };
 }

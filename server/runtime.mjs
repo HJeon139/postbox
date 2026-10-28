@@ -39,6 +39,7 @@ import { bringToConversation } from './bring.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
+import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
@@ -623,6 +624,7 @@ export class Runtime {
       checkpoint: null,
       pending: [],
       said: '',
+      rawTail: [],
       startedAt: Date.now(),
       // This turn’s own MCP token: a call that carries another turn’s, such as a stopped one’s, is refused (#126).
       token: randomUUID(),
@@ -661,7 +663,8 @@ export class Runtime {
       currentStep: 'Thinking',
       finishedAt: null,
     });
-    const ctx = this.turnContext(se, turn);
+    // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
+    const ctx = Object.assign(this.turnContext(se, turn), { rawTail: turn.rawTail });
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
       if (!hostId) refuseHere(this, se, persona);
@@ -952,6 +955,8 @@ export class Runtime {
     const se = this.s.sessions[turn.sessionId];
     if (!se) return;
     const items = this.store.items(turn.threadId);
+    // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
+    if (!err && endedWithoutReply(turn, items)) err = emptyReply(this, se, turn);
     for (const it of items)
       if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
     if (turn.checkpoint && !err)
@@ -989,6 +994,7 @@ export class Runtime {
         retry: turn.retry ?? null,
         asked: askedOf(turn),
         ...(err.remote ? { remote: err.remote } : {}),
+        ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
       });
       this.updateSession(se.id, {
         state: 'failed',
