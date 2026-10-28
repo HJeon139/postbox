@@ -27,6 +27,8 @@ test('#484 a mention of the agent is in its summary, though 44 newer items pass 
   const s = summary(f);
   assert.ok(s.includes(MENTION), 'the mention is kept');
   assert.match(s, /left out/, 'and the cap still left the oldest of the rest out');
+  // The mention is older than what was left out, so the summary doesn’t call what it kept the last N.
+  assert.match(s, /\(40 kept, mentions of you first; 5 items are left out: 5 messages from other agents/);
 });
 
 test('#484 a mention of the agent is in its summary, though newer long items pass the character cap', () => {

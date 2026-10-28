@@ -77,7 +77,10 @@ function leftOut(kept, left, items, handle) {
   // Counted as read_conversation counts, which lists a system line only if it’s a wake.
   const after = items.slice(newest + 1).filter((i) => i.kind !== 'system' || i.variant === 'wake').length;
   const read = newest < 0 ? 'read_conversation has them' : `read_conversation with skip: ${after} has them`;
-  return `(the last ${kept.length}; ${left.length} earlier ${left.length === 1 ? 'item is' : 'items are'} left out: ${named}, and ${read})`;
+  // A mention kept ahead of newer items left out means what’s kept isn’t the last N, so the line doesn't say it is.
+  const gap = kept.some((e) => e.item && items.indexOf(e.item) < newest);
+  const which = gap ? `${kept.length} kept, mentions of you first; ${left.length}` : `the last ${kept.length}; ${left.length} earlier`;
+  return `(${which} ${left.length === 1 ? 'item is' : 'items are'} left out: ${named}, and ${read})`;
 }
 
 const KINDS = {
