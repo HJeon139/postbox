@@ -98,3 +98,7 @@ test('readReceived reads on from where it got to: a second read parses only what
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('host-wake-said-sent is filed against #439, whose fix makes wake_agent wait for Postbox’s answer on a host', () => {
+  assert.equal(check('host-wake-said-sent').issue, 439);
+});

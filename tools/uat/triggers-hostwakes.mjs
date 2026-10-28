@@ -170,12 +170,13 @@ const where = (f, h) => (placeOf(f, h) === 'local' ? 'this computer' : placeOf(f
 
 /**
  * The defects, as checks (tools/uat/checks-remote.mjs): a refused wake that its host sender was told was sent, and a
- * refused hand-off that nobody resent. issue: null until the host part is filed; #439 is the dropped wake itself.
+ * refused hand-off that nobody resent. Both are #439’s: its fix holds the wake, and makes wake_agent wait for Postbox’s
+ * answer on a host, so the agent there hears what became of it.
  */
 export const HOSTWAKE_CHECKS = [
   {
     id: 'host-wake-said-sent',
-    issue: null,
+    issue: 439,
     run: (f) =>
       hostRun(f)
         ? refused(f)
