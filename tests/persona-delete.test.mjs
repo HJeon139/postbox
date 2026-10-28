@@ -13,7 +13,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { memoryRootFor } from '../server/adapters/folder.mjs';
 import { memoryFolder } from '../server/adapters/setup.mjs';
-import { purgePersona, rearmPersonaDeletes } from '../server/persona-delete.mjs';
+import { deletePersona, purgePersona, rearmPersonaDeletes } from '../server/persona-delete.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { sessionRoute } from '../server/session-routes.mjs';
 import { Store } from '../server/store.mjs';
@@ -115,6 +115,34 @@ test('#208: a delete still pending when Postbox stopped finishes after a restart
     assert.equal(s.store.state.personas[s.alpha.id], undefined, 'it finished');
     assert.equal(existsSync(join(memoryRootFor(s.workRoot), s.alpha.id)), false, 'its memory is gone');
     assert.ok(rt.createPersona({ handle: 'alpha', backend: 'claude-code' }), 'the name is free again');
+  } finally {
+    await s.done();
+  }
+});
+
+test('#208: attaching a terminal session names around a persona still being deleted', async () => {
+  const s = await setup();
+  try {
+    // A Claude Code session in /work/site, as tests/claude-code.test.mjs’s attachSetup writes one.
+    const id = '11111111-2222-3333-4444-555555555555';
+    await mkdir(join(s.data, 'projects', '-work-site'), { recursive: true });
+    const line = (o) => `${JSON.stringify({ sessionId: id, cwd: '/work/site', timestamp: new Date().toISOString(), ...o })}\n`;
+    await writeFile(
+      join(s.data, 'projects', '-work-site', `${id}.jsonl`),
+      line({ type: 'user', turnOrigin: 'human', message: { role: 'user', content: 'Fix the header' } }) +
+        line({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Fixed.' }], stop_reason: 'end_turn' } }),
+    );
+    const rt = new Runtime({
+      store: s.store,
+      adapters: s.rt.adapters,
+      corpus: s.rt.corpus,
+      config: { ...s.rt.config, claudeProjectsRoot: join(s.data, 'projects') },
+    });
+    const old = rt.createPersona({ handle: 'site', backend: 'claude-code' });
+    deletePersona(rt, old.id);
+    const { personaId } = await rt.attachClaudeSession({ claudeSessionId: id, projectId: 'p1' });
+    rt.stopMirrors();
+    assert.equal(s.store.state.personas[personaId].handle, 'site-2', 'it moves on to the next name, as for a taken one');
   } finally {
     await s.done();
   }

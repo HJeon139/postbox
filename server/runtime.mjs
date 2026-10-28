@@ -273,6 +273,10 @@ export class Runtime {
   personaByHandle(handle) {
     return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired && !p.deleting);
   }
+  /** Whether a persona being deleted holds this name: it keeps it until its Undo window ends, so Undo never makes two (#208). */
+  deletingHandle(handle) {
+    return Object.values(this.s.personas).some((p) => p.deleting && p.handle.toLowerCase() === String(handle).toLowerCase());
+  }
   thread(id) {
     const t = this.s.threads[id];
     if (!t) throw httpError(404, 'That thread doesn’t exist. It may have been deleted.');
@@ -2367,7 +2371,7 @@ export class Runtime {
         .replace(/^[^a-z]+/, '')
         .slice(0, 20) || 'terminal';
     let name = base.length >= 2 ? base : `cc-${base}`;
-    for (let n = 2; this.personaByHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
+    for (let n = 2; this.personaByHandle(name) || this.deletingHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
     const p = this.createPersona({
       handle: name,
       backend: 'claude-code',
@@ -2532,9 +2536,7 @@ export class Runtime {
       .trim();
     if (!/^[a-z][a-z0-9_-]{1,23}$/i.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
-    // One being deleted keeps its name until its Undo window ends, so Undo can never make two (#208).
-    if (Object.values(this.s.personas).some((p) => p.deleting && p.handle.toLowerCase() === handle.toLowerCase()))
-      throw httpError(409, `@${handle} is being deleted. Undo that, or wait 10 seconds for the name to be free.`);
+    if (this.deletingHandle(handle)) throw httpError(409, `@${handle} is being deleted. Undo that, or wait 10 seconds for the name to be free.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
