@@ -56,6 +56,9 @@ export const SENDING = Object.freeze({
   message: 50_000,
 });
 
+/** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
+export const GLIMPSE_CHARS = 160;
+
 /** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
 export const HOP_LIMIT = 10;
 /** Wakes in a row between the same two agents before the next waits for your Allow (#372): a hand-off and its answer. */

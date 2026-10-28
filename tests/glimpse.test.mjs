@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { GLIMPSE_CHARS } from '../shared/limits.mjs';
+import { glimpseOf } from '../shared/text.mjs';
+
+test('#478 a long thinking stream keeps its latest whole sentences within the glimpse bound', () => {
+  const old = 'This earlier investigation no longer belongs in the working row. '.repeat(8);
+  const latest = 'The implementation now passes its focused checks. I am reading the final report before review.';
+  const glimpse = glimpseOf(old + latest);
+
+  assert.equal(glimpse, latest);
+  assert.ok(glimpse.length <= GLIMPSE_CHARS);
+  assert.ok(!glimpse.startsWith('…'));
+  assert.ok(!glimpse.endsWith('…'));
+});
+
+test('#478 an overlong latest sentence stops at a whole word without an ellipsis', () => {
+  const glimpse = glimpseOf(`The ${'carefully '.repeat(40)}written conclusion is ready.`);
+
+  assert.ok(glimpse.length <= GLIMPSE_CHARS);
+  assert.match(glimpse, /^The carefully /);
+  assert.doesNotMatch(glimpse, /\s$/);
+  assert.doesNotMatch(glimpse, /…/);
+  assert.equal(glimpseOf('x'.repeat(GLIMPSE_CHARS + 1)), '', 'one overlong word is not cut into a fragment');
+});

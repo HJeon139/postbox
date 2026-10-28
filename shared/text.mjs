@@ -1,5 +1,6 @@
 // Small text helpers shared by the server and the browser.
 
+import { GLIMPSE_CHARS } from './limits.mjs';
 import { renderMarkdown, TABLE_SEP } from './markdown.mjs';
 import { stripTags } from './markdown-inline.mjs';
 
@@ -59,6 +60,26 @@ export function unaddressed(text, handles, { lastSpeaker = null } = {}) {
 export function finishedSentences(text, spoken, done = false) {
   const r = pieces(text, spoken, done);
   return { sentences: r.pieces.map((s) => s.replace(/\s+/g, ' ')), spoken: r.spoken };
+}
+
+/**
+ * The latest one or two sentences an agent has streamed, bounded at a whole word and without an ellipsis (#478).
+ * @param {string} text @param {number} [max]
+ */
+export function glimpseOf(text, max = GLIMPSE_CHARS) {
+  const sentences = finishedSentences(String(text ?? ''), 0, true)
+    .sentences.map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const latest = sentences.at(-1) ?? '';
+  if (latest.length > max) {
+    const words = latest
+      .slice(0, max + 1)
+      .replace(/\s+\S*$/, '')
+      .trim();
+    return words.length <= max ? words : '';
+  }
+  const previous = sentences.at(-2);
+  return previous && previous.length + latest.length + 1 <= max ? `${previous} ${latest}` : latest;
 }
 
 /** The finished pieces of text after spoken, as written: sentences, and code blocks whole. @param {string} text @param {number} spoken @param {boolean} done */

@@ -9,7 +9,7 @@ import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
-import { formatDuration, parseMentions } from '../shared/text.mjs';
+import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
@@ -857,7 +857,7 @@ export class Runtime {
           }));
         if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
         // A line of what it’s thinking or writing right now; cleared when the turn ends.
-        if (typeof patch.glimpse === 'string') allowed.glimpse = patch.glimpse.slice(0, 200);
+        if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
         rt.updateSession(turn.sessionId, allowed);
       },
       compaction({ kept, total, summary }) {
