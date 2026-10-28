@@ -17,6 +17,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { endedWithoutReply } from '../server/empty-reply.mjs';
+import { handleMcp } from '../server/mcp.mjs';
 import { readMessage } from '../server/read-message.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
@@ -129,4 +130,26 @@ test('#485: a reply that wrote its report and then failed still reaches the othe
     (sent.context ?? []).some((c) => c.includes('#451 is ready at 41f3a0f') && c.includes('this reply failed')),
     JSON.stringify(sent.context),
   );
+});
+
+test('#485: a turn that answers only with a Postbox call that acts, such as a reaction, isn’t marked failed', async () => {
+  const { store, rt, adapter, t } = blocksSetup();
+  const se = rt.sessionsIn(t.id)[0];
+  const call = (name, args) =>
+    handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, rt.turns.get(se.id)?.token ?? null);
+  adapter.next.push(async () => {
+    const asked = store.items(t.id).find((i) => i.kind === 'user');
+    const r = await call('react', { id: asked.id, emoji: '👍' });
+    assert.equal(r.result.isError, false, JSON.stringify(r.result));
+  });
+  rt.sendMessage(t.id, { text: '@critic thanks, that’s all' });
+  await settleBlocks(rt);
+  assert.equal(store.state.sessions[se.id].needs, null, 'its reaction was its answer');
+  // A turn that only read is still held to a reply.
+  adapter.next.push(async () => {
+    await call('read_conversation', {});
+  });
+  rt.sendMessage(t.id, { text: '@critic what did I just say?' });
+  await settleBlocks(rt);
+  assert.equal(store.state.sessions[se.id].needs?.kind, 'failed', 'reading isn’t answering');
 });
