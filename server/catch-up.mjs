@@ -74,7 +74,9 @@ function leftOut(kept, left, items, handle) {
   }
   const named = [...kinds].map(([kind, n]) => `${n} ${KINDS[kind][n === 1 ? 0 : 1]}`).join(', ');
   const newest = Math.max(-1, ...left.map((e) => (e.item ? items.indexOf(e.item) : -1)));
-  const read = newest < 0 ? 'read_conversation has them' : `read_conversation with skip: ${items.length - 1 - newest} has them`;
+  // Counted as read_conversation counts, which lists a system line only if it’s a wake.
+  const after = items.slice(newest + 1).filter((i) => i.kind !== 'system' || i.variant === 'wake').length;
+  const read = newest < 0 ? 'read_conversation has them' : `read_conversation with skip: ${after} has them`;
   return `(the last ${kept.length}; ${left.length} earlier ${left.length === 1 ? 'item is' : 'items are'} left out: ${named}, and ${read})`;
 }
 

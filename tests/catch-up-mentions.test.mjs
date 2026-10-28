@@ -103,3 +103,17 @@ test('#484 a mention past the mentions’ cap, left out of the summary, comes in
   await settle(f.rt);
   assert.equal(f.adapter.calls.filter((c) => c.handle === 'alpha').at(-1).message.text, first.text);
 });
+
+test('#484 the skip a summary names reaches its newest left-out mention, though system lines read_conversation drops come after', () => {
+  const f = fresh();
+  for (let i = 0; i < 50; i++) say(f, `@alpha note ${i + 1}: ${'the tally needs another look. '.repeat(33)}`);
+  // Lines read_conversation doesn’t list, after the cut: a lint line and a schedule line, as the runtime adds them.
+  for (let i = 0; i < 5; i++) f.rt.addItem(f.t.id, { kind: 'system', variant: i % 2 ? 'schedule' : 'lint', text: `line ${i}` });
+  const s = summary(f);
+  const skip = Number(/read_conversation with skip: (\d+)/.exec(s)?.[1]);
+  const kept = [...s.matchAll(/@alpha note (\d+):/g)].map((m) => Number(m[1]));
+  const newestLeft = Math.min(...kept) - 1;
+  assert.ok(newestLeft > 0, `some were left out: ${s.slice(0, 300)}`);
+  const read = f.rt.readConversation(f.store.state.sessions[f.alpha.id], { skip, limit: 200 });
+  assert.match(read, new RegExp(`@alpha note ${newestLeft}:`), `skip: ${skip} reads note ${newestLeft}`);
+});
