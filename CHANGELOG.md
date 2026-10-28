@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.41.13 (2026-10-28)
+
+### Fixes
+
+- **blocks:** keep raw fallback open on updates
+- **activity:** keep expanded steps through updates
+- **review:** keep unfinished comments through updates
+
 ## 0.41.12 (2026-10-27)
 
 ### Fixes
