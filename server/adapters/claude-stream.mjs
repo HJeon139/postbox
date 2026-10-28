@@ -2,7 +2,7 @@
 // into Postbox’s turn context: reply text, activity steps, ring state, context use, subagents and
 // compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
 
-import { glimpseOf } from '../../shared/text.mjs';
+import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
@@ -536,7 +536,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           if (st.current) st.streamed.add(st.current);
           ctx.text(d.text);
           st.wroteText = true;
-          st.said = glimpseOf(st.said + d.text);
+          st.said = appendGlimpseSource(st.said, d.text);
           glimpse(st.said);
         } else if (d.type === 'thinking_delta' && d.thinking && blk) {
           if (st.current) st.thoughtMessages.add(st.current);

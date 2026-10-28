@@ -62,6 +62,9 @@ export function finishedSentences(text, spoken, done = false) {
   return { sentences: r.pieces.map((s) => s.replace(/\s+/g, ' ')), spoken: r.spoken };
 }
 
+/** Keeps the raw tail needed to form a glimpse across streamed text pieces (#478). */
+export const appendGlimpseSource = (source, piece) => `${source ?? ''}${piece ?? ''}`.slice(-GLIMPSE_SOURCE_CHARS);
+
 /**
  * The latest one or two sentences an agent has streamed, bounded at a whole word and without an ellipsis (#478).
  * Only a bounded tail is scanned on each streaming update; its first partial sentence is discarded.
