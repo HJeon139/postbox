@@ -52,6 +52,8 @@ const APPS = {
   // A long list that runs under its opaque sticky footer, as the corpus explorer’s does: hidden there, not overlapped.
   sticky: `<ul style="margin:0;padding:12px;color:var(--text)">${Array.from({ length: 80 }, (_, i) => `<li>Passage ${i + 1}, about hope after loss</li>`).join('')}</ul>
 <div style="position:sticky;bottom:0;background:var(--sunk);color:var(--text);padding:10px 14px">Nothing selected</div>`,
+  // #327: a class from Postbox’s shell stylesheet changes the app’s own layout.
+  collision: `<div class="app" style="color:var(--text)"><p class="title">App content</p><p>Should stay in one column</p></div>`,
   // #89: a row of filter buttons in class="bar", which Postbox’s stylesheet makes a 4 px progress bar.
   bar: `<p style="color:var(--text);margin:8px">Filter the frames:</p><div class="bar">${['All', 'Intro', 'Method', 'Results', 'Limits', 'Next']
     .map((t) => `<button class="btn" type="button">${t}</button>`)
@@ -206,7 +208,14 @@ test('#194 an overlap there both times the check looks is reported, and one that
   expect(twice[0].message).toMatch(/“Still label” is drawn over “Stays here”/);
 });
 
-// ── #89: controls you can’t see or click ────────────────────────────────────────────────
+// ── #327 and #89: Postbox styles and controls you can’t see or click ─────────────────────
+
+test('#327 an app class that Postbox’s shell also defines is reported with the prefix fix', () => {
+  expect(says('collision')).toContain(
+    'class-collision: The class .app is also defined by Postbox’s stylesheet, so its shell styles change this app. Give the app’s class a prefix of its own, such as app-app.',
+  );
+  expect(says('collision')).toContain('class-collision: The class .title is also defined by Postbox’s stylesheet');
+});
 
 test('#89 the .bar row is control-hidden once at each width, and says why: div.bar, a class of Postbox’s own stylesheet', () => {
   const bar = found('bar').filter((p) => p.code === 'control-hidden');
