@@ -28,7 +28,7 @@ export function deletePersona(rt, id) {
 /** Undo: the persona stays, with the sessions its delete took. @param {any} rt @param {string} id */
 export function undoDeletePersona(rt, id) {
   const p = rt.persona(id);
-  if (!p?.deleting) throw httpError(409, 'It’s too late to undo: that agent is already deleted.');
+  if (!p?.deleting || p.purging) throw httpError(409, 'It’s too late to undo: that agent is already deleted.');
   clearTimeout(rt.timers.get(`delp:${id}`));
   rt.timers.delete(`delp:${id}`);
   for (const sid of p.deletingSessions ?? []) if (rt.s.sessions[sid]?.deleting) rt.undoDelete(sid);
@@ -37,15 +37,21 @@ export function undoDeletePersona(rt, id) {
 }
 
 /**
- * The end of the window: its sessions are purged (each one’s own timer may have run first), each backend forgets it,
+ * The end of the window: it’s marked purging first, so an Undo while a backend forgets it says it’s too late rather
+ * than bringing back a persona with its sessions gone. Then every session it has goes, not only those its delete took
+ * (one deleted on its own before, or restored meanwhile), so none is left with no persona; each backend forgets it;
  * and the persona is removed.
  * @param {any} rt @param {string} id
  */
 export async function purgePersona(rt, id) {
   rt.timers.delete(`delp:${id}`);
   const p = rt.s.personas[id];
-  if (!p?.deleting) return;
-  for (const sid of p.deletingSessions ?? []) rt.purgeSession(sid);
+  if (!p?.deleting || p.purging) return;
+  rt.store.emit('persona', { ...p, purging: true });
+  for (const se of Object.values(rt.s.sessions).filter((x) => x.personaId === id)) {
+    if (!se.deleting) rt.deleteSession(se.id);
+    rt.purgeSession(se.id);
+  }
   for (const name of rt.adapters.names()) {
     const adapter = rt.adapters.get(name);
     if (typeof adapter.forget !== 'function') continue;

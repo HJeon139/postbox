@@ -407,6 +407,8 @@ export class Runtime {
     if (existing) return existing;
     const p = this.persona(personaId);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
+    // It would outlive its persona, and a turn there would make its memory again (#208).
+    if (p.deleting) throw httpError(409, `@${p.handle} is being deleted. Undo that first to add it to a conversation.`);
     const se = this.putSession({
       id: newId('se'),
       personaId,
@@ -2739,6 +2741,8 @@ export class Runtime {
   /** Deletes after DELETE_UNDO_MS unless undone. The persona always stays. */
   deleteSession(sessionId) {
     this.stop(sessionId, { silent: true });
+    // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.
+    this.remote.cancel(sessionId);
     const se = this.session(sessionId);
     const until = Date.now() + DELETE_UNDO_MS;
     this.updateSession(sessionId, { deleting: until });
