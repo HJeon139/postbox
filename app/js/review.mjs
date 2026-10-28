@@ -114,7 +114,7 @@ export function renderReview(b, item, ctx, kit) {
       review: !done,
       onPin: (anchor) => {
         if (!done) {
-          d.composing = anchor;
+          startComment(d, anchor);
           rerender();
         }
       },
