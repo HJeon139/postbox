@@ -34,8 +34,9 @@ import {
   updateApp,
 } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
-import { act, answerDelivered, CATCH_UP_CHARS, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
+import { act, answerDelivered, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
+import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
@@ -76,7 +77,7 @@ import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, r
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
-import { reactionLines, settleThread, threadCatchUp, threadLines } from './thread-summary.mjs';
+import { settleThread, threadCatchUp } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -104,7 +105,6 @@ const MAX_JOBS = 50;
 const STOP_WATCHDOG_MS = 15000;
 /** The model a real backend uses when a persona doesn’t name one. */
 export const DEFAULT_MODEL = 'claude-opus-5-5';
-const CATCH_UP_ITEMS = 40;
 const count = (n) => n.toLocaleString('en-US');
 /**
  * An item’s text cut to n characters for an agent’s history. A cut says how much was kept and gives the id
@@ -576,6 +576,8 @@ export class Runtime {
     // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
     // (#120, message.attach): it sends the agent nothing, and replays what the host has.
     const slash = message.slash === true || typeof message.attach === 'string';
+    // A queued mention its last summary already gave it comes as a pointer, not as new (#484).
+    message = pointerIfSeen(this, se, message);
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
@@ -1576,35 +1578,9 @@ export class Runtime {
   // a delivery starts with what came after it, from you and from the other agents, and an agent joining later
   // gets the recent history the same way. read_conversation reads further back.
 
-  /** The catch-up text for a session, or null, and moves its marker to the end of the conversation. */
+  /** The catch-up text for a session, or null, and moves its marker to the end of the conversation (server/catch-up.mjs). */
   catchUp(se, excludeId = null) {
-    if (!se) return null;
-    const items = this.store.items(se.threadId);
-    const t = this.s.threads[se.threadId];
-    const at = se.seenItem ? items.findIndex((i) => i.id === se.seenItem) : -1;
-    this.updateSession(se.id, { seenItem: items.at(-1)?.id ?? null });
-    // A session from before markers were kept, alone in its conversation, already saw everything addressed to it.
-    if (se.seenItem === undefined && (t?.members?.length ?? 0) <= 1 && se.startedAt < (items.at(-1)?.at ?? 0)) return null;
-    // Its first catch-up in a topic thread starts with the message the thread is about, unless it holds it already.
-    const root = se.seenItem === null ? this.topicRootLine(se, t) : null;
-    const lines = items
-      .slice(at + 1)
-      .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
-      .map((i) => this.describeItem(i, se))
-      .filter(Boolean)
-      // Its topic and side threads with something new, each a line it may read (#228); the person’s new reactions (#251).
-      .concat(threadLines(this, se, items[at]?.at ?? 0), reactionLines(this, se, se.threadId));
-    if (!lines.length) return root && `[Postbox] ${root}`;
-    const kept = [];
-    let size = 0;
-    for (const line of lines.reverse()) {
-      if (kept.length >= CATCH_UP_ITEMS || size + line.length > CATCH_UP_CHARS) break;
-      kept.unshift(line);
-      size += line.length;
-    }
-    const dropped = lines.length - kept.length;
-    const where = t?.kind === 'room' ? 'this room' : t?.kind === 'topic' ? 'this thread' : 'this conversation';
-    return `[Postbox] ${root ? `${root}\n\n` : ''}What happened in ${where} since your last turn${dropped ? ` (the last ${kept.length}; ${dropped} earlier ${dropped === 1 ? 'item is' : 'items are'} left out, and read_conversation has them)` : ''}:\n\n${kept.join('\n\n')}`;
+    return catchUp(this, se, excludeId);
   }
 
   /**

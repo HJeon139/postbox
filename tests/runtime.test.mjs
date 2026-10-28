@@ -1739,7 +1739,7 @@ test('a long history is capped, says so, and read_conversation has the rest', as
   for (let i = 0; i < 60; i++) store.emit('item.add', { threadId: t.id, item: { id: `old${i}`, kind: 'user', text: `message ${i}`, at: i } });
   const se = rt.ensureSession(t.id, b.id);
   const ctx = rt.catchUp(se);
-  assert.match(ctx, /the last 40; 20 earlier items are left out, and read_conversation has them/);
+  assert.match(ctx, /the last 40; 20 earlier items are left out: 20 messages from the person, and read_conversation with skip: 40 has them/);
   assert.ok(ctx.includes('message 59') && !ctx.includes('message 19\n'));
   const r = rt.toolsFor(se.id).read_conversation({ limit: 5, skip: 0 });
   assert.match(r.message, /You: message 59/);
