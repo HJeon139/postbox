@@ -147,6 +147,56 @@ test('a refused wake is seen though another agent woke its target meanwhile, as 
   );
 });
 
+/** The 28 October rerun (uat-runs/2026-10-28T01-06-14-hostwakes): its refused calls, and when the turns after them began. */
+function rerun(now) {
+  const at = (hms) => Date.parse(`2026-10-28T${hms}Z`);
+  const stream = (handle, started, calls = []) => ({
+    handle,
+    started: at(started),
+    events: calls.flatMap(([t, to, result, message]) => wakeStream(handle, at(t), to, result, message).events),
+  });
+  return {
+    at,
+    f: {
+      now: at(now),
+      threads: ['th1'],
+      state: {
+        items: {
+          th1: [
+            { kind: 'hop', from: 'researcher', to: 'developer', at: at('01:07:17'), pair: 2, status: 'open' },
+            { kind: 'user', text: '@critic, what happened to your hand-off to researcher?', at: at('01:08:35') },
+            turn('critic', at('01:08:39')),
+            turn('developer', at('01:09:06')),
+          ],
+        },
+      },
+      // critic’s refused call at 01:08:24, then the turn the person started at 01:08:35; developer’s refused call at
+      // 01:09:03, in the turn that started at 01:08:59, whose first item came at 01:09:06.
+      streams: [
+        stream('critic', '01:08:16.405', [['01:08:24', 'researcher', SENT, 'Task: count the lines in work/*.txt and post the total.']]),
+        stream('critic', '01:08:35.998'),
+        stream('developer', '01:08:59.610', [['01:09:03', 'critic', REFUSED, 'Task: list the files in work/ and post their names.']]),
+      ],
+      hosts: { hosts: [{ id: 'h1', label: 'host1' }], placement: { researcher: 'local', critic: 'host1', developer: 'local' } },
+    },
+  };
+}
+
+test('a turn the person started isn’t the host sender told of its refusal, as in the 28 October rerun', () => {
+  const { f } = rerun('01:12:00');
+  assert.deepEqual(T['refused-wake-told-in-turn'].run(f), [], '@critic’s turn at 01:08:36 followed the person’s question');
+});
+
+test('a refused hand-off is judged lost only 3 minutes on, by turns that started after the call', () => {
+  assert.deepEqual(check('refused-wake-lost').run(rerun('01:09:10').f), [], 'during the run, 3 minutes hadn’t passed');
+  assert.deepEqual(
+    check('refused-wake-lost')
+      .run(rerun('01:12:10').f)
+      .map((x) => x.title),
+    ['@critic’s hand-off to @researcher was refused and lost', '@developer’s hand-off to @critic was refused and lost'],
+  );
+});
+
 test('outside host mode, the host check says nothing', () => {
   assert.deepEqual(check('host-wake-said-sent').run({ ...facts(), hosts: undefined }), []);
   assert.equal(T['refused-wake-told-in-turn'].recorded({ ...facts(), hosts: undefined }), false);
