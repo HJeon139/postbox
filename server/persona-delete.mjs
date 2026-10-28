@@ -54,3 +54,13 @@ export async function purgePersona(rt, id) {
   }
   rt.store.emit('remove', { kind: 'persona', id });
 }
+
+/**
+ * Deletes still pending when Postbox stopped (engineering-practices.md: re-arm timers from stored state, #24): each
+ * finishes when its window ends, or now if it’s over. index.mjs calls this beside rt.rearmDeletions().
+ * @param {any} rt
+ */
+export function rearmPersonaDeletes(rt) {
+  for (const p of Object.values(rt.s.personas))
+    if (p.deleting) rt.timers.set(`delp:${p.id}`, setTimeout(() => purgePersona(rt, p.id), Math.max(0, p.deleting - Date.now())).unref());
+}

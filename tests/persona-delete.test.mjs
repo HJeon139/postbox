@@ -13,7 +13,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { memoryRootFor } from '../server/adapters/folder.mjs';
 import { memoryFolder } from '../server/adapters/setup.mjs';
-import { purgePersona } from '../server/persona-delete.mjs';
+import { purgePersona, rearmPersonaDeletes } from '../server/persona-delete.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { sessionRoute } from '../server/session-routes.mjs';
 import { Store } from '../server/store.mjs';
@@ -92,6 +92,29 @@ test('#208: Undo keeps the persona, the sessions its delete took, and its memory
     assert.ok(s.store.state.personas[s.alpha.id]);
     assert.ok(existsSync(join(alphaDir, 'MEMORY.md')), 'its memory is kept');
     await assert.rejects(sessionRoute(s.rt, `/api/personas/${s.alpha.id}/undo-delete`, 'POST', {}), (e) => e.status === 409);
+  } finally {
+    await s.done();
+  }
+});
+
+test('#208: a delete still pending when Postbox stopped finishes after a restart, and its name stays taken until then', async () => {
+  const s = await setup();
+  try {
+    await s.remember(s.alpha);
+    await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
+    // The name is held while it can still be undone, so Undo can never make two agents with one name.
+    assert.throws(
+      () => s.rt.createPersona({ handle: 'alpha', backend: 'claude-code' }),
+      (e) => e.status === 409 && /being deleted/.test(e.message),
+    );
+    // A restart: the stored state survives, the timer doesn’t. The window has passed by the time Postbox is back.
+    const rt = new Runtime({ store: s.store, adapters: s.rt.adapters, corpus: s.rt.corpus, config: s.rt.config });
+    s.store.emit('persona', { ...s.store.state.personas[s.alpha.id], deleting: Date.now() - 1 });
+    rearmPersonaDeletes(rt);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(s.store.state.personas[s.alpha.id], undefined, 'it finished');
+    assert.equal(existsSync(join(memoryRootFor(s.workRoot), s.alpha.id)), false, 'its memory is gone');
+    assert.ok(rt.createPersona({ handle: 'alpha', backend: 'claude-code' }), 'the name is free again');
   } finally {
     await s.done();
   }
