@@ -63,12 +63,18 @@ const findTag = (text, tag, from) => {
 /** The closing angle bracket of an HTML tag, ignoring one inside a quoted attribute. */
 function tagEnd(text, from) {
   let quote = '';
+  let value = false;
   for (let i = from; i < text.length; i++) {
     const char = text[i];
     if (quote) {
       if (char === quote) quote = '';
-    } else if (char === '"' || char === "'") quote = char;
-    else if (char === '>') return i;
+    } else if (char === '=') value = true;
+    else if (value && /\s/.test(char)) continue;
+    else {
+      if (value && (char === '"' || char === "'")) quote = char;
+      value = false;
+      if (char === '>') return i;
+    }
   }
   return -1;
 }
