@@ -40,14 +40,15 @@ export function undoDeletePersona(rt, id) {
  * The end of the window: it’s marked purging first, so an Undo while a backend forgets it says it’s too late rather
  * than bringing back a persona with its sessions gone. Then every session it has goes, not only those its delete took
  * (one deleted on its own before, or restored meanwhile), so none is left with no persona; each backend forgets it;
- * and the persona is removed.
+ * and the persona is removed. A purge a restart cut short starts again from the top (rearmPersonaDeletes).
  * @param {any} rt @param {string} id
  */
 export async function purgePersona(rt, id) {
   rt.timers.delete(`delp:${id}`);
   const p = rt.s.personas[id];
-  if (!p?.deleting || p.purging) return;
-  rt.store.emit('persona', { ...p, purging: true });
+  if (!p?.deleting) return;
+  // Not when it’s already purging: a restart can cut a purge short, and each step below is safe to repeat.
+  if (!p.purging) rt.store.emit('persona', { ...p, purging: true });
   for (const se of Object.values(rt.s.sessions).filter((x) => x.personaId === id)) {
     if (!se.deleting) rt.deleteSession(se.id);
     rt.purgeSession(se.id);
