@@ -24,6 +24,8 @@ const SILENT_MS = 3 * MINUTE;
 const hostRun = (f) => Boolean(f.hosts?.hosts?.length);
 const itemsOf = (f) => (f.threads ?? []).flatMap((t) => f.state?.items?.[t] ?? []);
 const handleOf = (s) => String(s ?? '').replace(/^@/, '');
+/** wake_agent’s answer when #439’s fix holds a wake on the waiting card (server/wake-cards.mjs). */
+const HELD = /^Postbox is holding your message to @/;
 
 /**
  * Every hop card, a wake past a limit’s or one asking to add an agent, since either refuses other wakes while it waits:
@@ -39,9 +41,12 @@ export function hopCards(f) {
     .map((it) => {
       const yes = it.join ? `Added @${it.to} to this conversation for @${it.from}` : `Allowed: @${it.from} wakes @${it.to}`;
       const no = it.join ? `Didn’t add @${it.to} to this conversation` : `Didn’t allow @${it.from} to wake @${it.to}`;
-      const allowedAt = said(it, yes);
-      // A card retired because its target got a turn another way (#439’s fix) records when, with no line.
-      const answeredAt = allowedAt ?? said(it, no) ?? (Number.isFinite(it.retiredAt) ? it.retiredAt : null);
+      // A card retired because its target got a turn another way (#439’s fix) records when, with no line. Its wake may
+      // raise the same card again, so an Allow line after it is the new card’s, not its own.
+      const retiredAt = it.status === 'retired' && Number.isFinite(it.retiredAt) ? it.retiredAt : null;
+      const allowedAt = retiredAt === null ? said(it, yes) : null;
+      const declinedAt = retiredAt === null && allowedAt === null ? said(it, no) : null;
+      const answeredAt = retiredAt ?? allowedAt ?? declinedAt;
       return {
         from: it.from,
         to: it.to,
@@ -51,6 +56,7 @@ export function hopCards(f) {
         pair: it.pair ?? null,
         status: it.status,
         allowedAt,
+        declinedAt,
         answeredAt,
       };
     });
@@ -60,8 +66,8 @@ export function hopCards(f) {
  * Whether a hop card was waiting at this time: opened before it, and not yet answered. An answered card with no line
  * saying when isn’t taken as waiting: read as open for good, it would make every later refusal look like #439’s.
  */
-const cardOpenAt = (cards, at, call) =>
-  cards.some((c) => !raisedBy(c, call) && (c.at ?? Infinity) <= at && (c.status === 'open' || (c.answeredAt ?? -Infinity) > at));
+const cardAt = (cards, at, call) =>
+  cards.find((c) => !raisedBy(c, call) && (c.at ?? Infinity) <= at && (c.status === 'open' || (c.answeredAt ?? -Infinity) > at)) ?? null;
 /**
  * Whether this call raised the card: its own wake, which the card holds, not one the card refused. Matched by who, to
  * whom, what and roughly when, since a host stamps its call by its own clock (SKEW_MS), so it can read as after its card.
@@ -105,13 +111,15 @@ export function wakeCalls(f) {
                   text: resultText(results.get(b.id)),
                   message: String(b.input?.message ?? ''),
                   onHost: onHost(f, s.handle),
-                  cardOpen: Number.isFinite(at) && cardOpenAt(cards, at, { from: s.handle, to, message: String(b.input?.message ?? ''), at }),
+                  card: Number.isFinite(at) ? cardAt(cards, at, { from: s.handle, to, message: String(b.input?.message ?? ''), at }) : null,
                 };
               }),
           );
       })
+      .map((c) => ({ ...c, cardOpen: c.card !== null, held: HELD.test(c.text) }))
       .sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity))
-      .map((c) => ({ ...c, applied: receivedFor(c, received, c.at - SKEW_MS, c.at + APPLIED_MS) !== null }))
+      // A wake Postbox said it holds wasn’t applied at once, though an Allow soon after delivers it within the window.
+      .map((c) => ({ ...c, applied: !c.held && receivedFor(c, received, c.at - SKEW_MS, c.at + APPLIED_MS) !== null }))
       // Once every call has claimed what it sent, a refused one whose message Postbox sent its target later was delivered
       // then. The record is written when Postbox accepts a wake, a busy target’s queued one included (sendWake,
       // server/side-threads.mjs), so this assumes what #439’s acceptance asks: a held wake is recorded, and posted, only
@@ -120,6 +128,10 @@ export function wakeCalls(f) {
       .map((c) => ({
         ...c,
         senderNext: Number.isFinite(c.at) ? (startsOf(c.from).find((t) => t > /** @type {number} */ (c.at) && !personBetween(c.at, t)) ?? null) : null,
+        // Not allowing a card tells each wake held on it (#439’s fix), in a turn that follows the person’s answer.
+        toldOfDecline: Number.isFinite(c.card?.declinedAt)
+          ? (startsOf(c.from).find((t) => t > c.card.declinedAt && t <= c.card.declinedAt + APPLIED_MS) ?? null)
+          : null,
         targetNext: Number.isFinite(c.at) ? (startsOf(c.to).find((t) => t > /** @type {number} */ (c.at)) ?? null) : null,
         targetTurns: Number.isFinite(c.at) ? startsOf(c.to).filter((t) => t > /** @type {number} */ (c.at)) : [],
       }))
@@ -199,7 +211,12 @@ export const HOSTWAKE_CHECKS = [
         ? refused(f)
             // Judged only once SILENT_MS have passed since the call: run during the run, a window not over yet proves nothing.
             .filter(
-              (c) => c.at !== null && c.at + SILENT_MS <= factsAt(f) && (c.senderNext === null || c.senderNext > c.at + SILENT_MS) && c.deliveredAt === null,
+              (c) =>
+                c.at !== null &&
+                c.at + SILENT_MS <= factsAt(f) &&
+                (c.senderNext === null || c.senderNext > c.at + SILENT_MS) &&
+                c.deliveredAt === null &&
+                c.toldOfDecline === null,
             )
             .map((c) => ({
               key: `${c.from}:${c.to}:${c.at}`,
@@ -244,6 +261,15 @@ export const HOSTWAKE_TRIGGERS = {
       wakeCalls(f)
         .filter((c) => !c.onHost && /wasn’t sent/.test(c.text))
         .map((c) => ({ at: c.at, evidence: `@${c.from}’s wake of @${c.to} answered: “${c.text.slice(0, 100)}”.` })),
+  },
+  'wake-held-on-card': {
+    issue: 439,
+    says: 'a wake that needed a card while one waited was held on it, and wake_agent said so',
+    recorded: (f) => !!f.state && Array.isArray(f.streams),
+    run: (f) =>
+      wakeCalls(f)
+        .filter((c) => c.held)
+        .map((c) => ({ at: c.at, evidence: `@${c.from}’s wake of @${c.to} is held (${where(f, c.from)}): “${c.text.slice(0, 100)}”.` })),
   },
   'held-wake-delivered-after-allow': {
     issue: 439,

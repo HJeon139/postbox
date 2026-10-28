@@ -23,7 +23,7 @@ From here to phase 3’s Allow, don’t write to developer, and no step wakes it
 
 ## Phase 2: Hand-offs while the card waits
 
-- triggers: local-wake-told-in-turn, refused-wake-told-in-turn
+- triggers: local-wake-told-in-turn, refused-wake-told-in-turn, wake-held-on-card
 - steps: 12
 
 The card stays open and no agent works during this phase’s waits, so you’ll be told the card still waits on you: leave it, and ask for the same wait again; the second time it goes ahead.
@@ -41,4 +41,4 @@ Allow the card from phase 1. Then wait 120 seconds without writing (a wait of 12
 
 On `main`, expect phase 1’s trigger and `local-wake-told-in-turn` to be seen, and `refused-wake-told-in-turn` and `held-wake-delivered-after-allow` not: a host sender hears of its refusal only at its next turn, and a refused wake is dropped (#439). The checks `host-wake-said-sent` and `refused-wake-lost` report those two defects as findings.
 
-With #439’s fix, a wake that needs a card while one waits is held on it, and each sender hears so as `wake_agent`’s own result, on a host too. There, expect phase 1’s trigger and `held-wake-delivered-after-allow`, and no finding from `host-wake-said-sent` or `refused-wake-lost`. `local-wake-told-in-turn` (which reads “wasn’t sent”) and `refused-wake-told-in-turn` have nothing to fire on, since no wake is refused: phase 2 then ends at its step cap with a coverage gap, which is the fix working, not a defect.
+With #439’s fix, a wake that needs a card while one waits is held on it, and each sender hears so as `wake_agent`’s own result, on a host too. There, expect phase 1’s trigger, `wake-held-on-card` in phase 2 (`wake_agent` answers “Postbox is holding your message…”), and `held-wake-delivered-after-allow`, and no finding from `host-wake-said-sent` or `refused-wake-lost`. `local-wake-told-in-turn` (which reads “wasn’t sent”) and `refused-wake-told-in-turn` have nothing to fire on, since no wake is refused.
