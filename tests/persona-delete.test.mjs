@@ -199,3 +199,20 @@ test('#208: Undo during the purge says it’s too late, and the persona isn’t 
     await s.done();
   }
 });
+
+test('#208: a purge a restart cut short finishes when Postbox starts again', async () => {
+  const s = await setup();
+  try {
+    await s.remember(s.alpha);
+    await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
+    // Saved mid-purge: it had started (purging), its window long over, and it never removed the persona.
+    s.store.emit('persona', { ...s.store.state.personas[s.alpha.id], deleting: Date.now() - 1, purging: true });
+    const rt = new Runtime({ store: s.store, adapters: s.rt.adapters, corpus: s.rt.corpus, config: s.rt.config });
+    rearmPersonaDeletes(rt);
+    for (let i = 0; i < 500 && s.store.state.personas[s.alpha.id]; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(s.store.state.personas[s.alpha.id], undefined, 'it finished');
+    assert.equal(existsSync(join(memoryRootFor(s.workRoot), s.alpha.id)), false, 'its memory is gone');
+  } finally {
+    await s.done();
+  }
+});
