@@ -289,3 +289,32 @@ test('#485: a turn that only schedules or cancels a wake, or defines a term, sti
   for (const name of ['schedule_wake', 'cancel_wake', 'define_term']) noteAnswer(turn, name, { ok: true });
   assert.equal(endedWithoutReply(turn, []), true);
 });
+
+test('#485: a second Retry doesn’t wake again the agents the first failure woke', async () => {
+  // Critic’s P2 on 47aa466: the first retry fails too, waking no one new, and its item carried no list.
+  const { store, rt, adapter, t } = blocksSetup();
+  const other = rt.createPersona({ handle: 'researcher' });
+  rt.ensureSession(t.id, other.id);
+  const fails = (text) => async (c) => {
+    c.text(text);
+    throw new Error('Claude Code exited with code 1.');
+  };
+  adapter.next.push(fails('#451 is ready. @researcher please record it.'));
+  adapter.next.push(async (c) => c.text('Recorded.'));
+  rt.sendMessage(t.id, { text: '@critic watch the checks' });
+  await settleBlocks(rt);
+  const woken = () => adapter.calls.filter((x) => x.message.kind === 'agent' && x.message.from === '@critic').length;
+  const lastFailed = () =>
+    store
+      .items(t.id)
+      .filter((i) => i.kind === 'agent' && i.status === 'failed')
+      .at(-1);
+  adapter.next.push(fails('#451 is ready again. @researcher please record it.'));
+  await rt.retry(t.id, lastFailed().id);
+  await settleBlocks(rt);
+  assert.deepEqual(lastFailed().wokeOnFailure, ['researcher'], 'the second failure keeps the list');
+  adapter.next.push(async (c) => c.text('#451 is ready at 41f3a0f. @researcher please record it.'));
+  await rt.retry(t.id, lastFailed().id);
+  await settleBlocks(rt);
+  assert.equal(woken(), 1, 'researcher is woken once in all');
+});
