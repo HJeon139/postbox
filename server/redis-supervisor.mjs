@@ -3,7 +3,7 @@
 // password and its config, append-only file and log under the data folder. It has no TCP listener (`port 0`): Postbox
 // reaches it on a Unix socket in a folder only the person can open (SR-1):
 //
-//   <data>/redis/redis.conf     written at each start (0600): socket, password, AOF everysec, the two modules
+//   <data>/redis/redis.conf     written at each start (0600): socket, password, AOF fsynced per write, the two modules
 //   <data>/redis/run/redis.sock the socket, in a 0700 folder; a data folder too long for a socket path uses a 0700
 //                               folder in the system’s temporary folder instead, named by a hash of the data folder
 //   <data>/redis/data/          the append-only files: the store itself
@@ -154,8 +154,11 @@ export class RedisSupervisor extends EventEmitter {
       `user owner on ${hashed(this.ownerPassword)} resetchannels resetkeys -@all +ping +shutdown`,
       ...((this.fixture = RedisSupervisor.fixtureUser) ? [`user fixture on ${hashed(this.fixturePassword)} ~* &* +@all`] : []),
       `dir ${q(join(dir, 'data'))}`,
+      // Each write is fsynced before Redis acknowledges it, during an AOF rewrite too (#525; designs/architecture.md,
+      // “The store”): an emit or commit that resolved is on disk. An fsync that fails stops Redis rather than reply.
       'appendonly yes',
-      'appendfsync everysec',
+      'appendfsync always',
+      'no-appendfsync-on-rewrite no',
       `appenddirname ${q('appendonly')}`,
       'save ""',
       'logfile ""',

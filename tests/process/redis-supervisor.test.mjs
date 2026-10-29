@@ -38,7 +38,7 @@ function until(sup, pred, what) {
   });
 }
 
-test('the child runs on its private socket, with no port, AOF everysec, both modules, and its files in the data folder', async () => {
+test('the child runs on its private socket, with no port, AOF fsynced on every write, both modules, and its files in the data folder', async () => {
   const dataDir = join(tmp, 'runs');
   const sup = new RedisSupervisor({ home: HOME, dataDir });
   RedisSupervisor.fixtureUser = true;
@@ -52,7 +52,8 @@ test('the child runs on its private socket, with no port, AOF everysec, both mod
     assert.equal(conf.port, '0');
     assert.equal(conf.unixsocket, sup.socket);
     assert.equal(conf.appendonly, 'yes');
-    assert.equal(conf.appendfsync, 'everysec');
+    assert.equal(conf.appendfsync, 'always', 'each write is fsynced before Redis acknowledges it');
+    assert.equal(conf['no-appendfsync-on-rewrite'], 'no', 'and while it rewrites its AOF too');
     assert.equal(conf.dir, join(dataDir, 'redis', 'data'));
     assert.deepEqual(await c.call('FT._LIST'), [], 'the search module is loaded');
     assert.equal(await c.call('JSON.SET', 'doc', '$', '{"n":1}'), 'OK');

@@ -9,7 +9,6 @@
 
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { onDisk } from '../redis-on-disk.mjs';
 import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -27,7 +26,6 @@ async function stopRedis() {
   const sup = /** @type {any} */ (app.store).redis.sup;
   const home = sup.home;
   await app.store.flush();
-  await onDisk(app.store);
   sup.home = join(app.root, 'no-redis-here');
   sup.child.kill('SIGKILL');
   await expect.poll(() => /** @type {any} */ (app.store.status).cause, { message: 'the store to be down for good' }).toBe('binary-missing');

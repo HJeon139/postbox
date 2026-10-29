@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
-import { onDisk } from './redis-on-disk.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -75,7 +74,6 @@ test('ST-3: a turn running when Redis dies stops with the store named, nothing e
   await until(() => agent.calls.length === 1 && rt.turns.has(se.id), 'the turn to start');
   const turn = rt.turns.get(se.id);
   await store.flush();
-  await onDisk(store);
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
 
   // Redis dies under the running turn.
@@ -116,7 +114,6 @@ test('ST-3: a turn running when Redis dies stops with the store named, nothing e
 test('ST-3: while Redis can’t start, a write is refused with 503 and its cause, the page reads, and Retry brings it back', async () => {
   const { store } = app;
   await store.flush();
-  await onDisk(store);
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
   const sup = /** @type {any} */ (store).redis.sup;
   const home = sup.home;

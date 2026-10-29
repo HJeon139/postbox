@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { consistent, gate, open, tmp, until } from './store-fixture.mjs';
+import { admin, consistent, gate, open, tmp, until } from './store-fixture.mjs';
 
 /** A store with a conversation and one item, written. */
 async function withItem() {
@@ -108,5 +108,26 @@ test('a commit survives a SIGKILL of Redis the moment it resolves, every time', 
     assert.equal(s.failed, null);
   }
   assert.equal(s.state.items.t[0].text, 'a01234567');
+  assert.deepEqual((await consistent(s)).fresh.state, s.state);
+});
+
+test('an emit is on disk once its flush resolves: Redis fsyncs each write before it acknowledges it', async () => {
+  const s = await withItem();
+  const c = await admin(s);
+  try {
+    for (let i = 0; i < 20; i++) {
+      const [e] = append(String(i));
+      s.emit(e.type, e.data);
+      await s.flush();
+      // WAITAOF answers for the asking connection's own last write, so the fixture writes once the emit's flush has
+      // resolved, then asks with a 1 ms timeout: the AOF is fsynced past the fixture's write, and so past the emit.
+      await c.call('SET', 'fixture:probe', String(i));
+      const [local] = await c.call('WAITAOF', 1, 0, 1);
+      assert.equal(local, 1, `emit ${i}: on disk when Redis acknowledged it, without waiting for a later fsync`);
+    }
+  } finally {
+    await c.call('DEL', 'fixture:probe');
+    c.close();
+  }
   assert.deepEqual((await consistent(s)).fresh.state, s.state);
 });
