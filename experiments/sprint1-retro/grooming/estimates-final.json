@@ -1,0 +1,234 @@
+[
+ {
+  "item": "#468",
+  "round2": [
+   2,
+   2,
+   3
+  ],
+  "revote": null,
+  "team": 2
+ },
+ {
+  "item": "#439",
+  "round2": [
+   5,
+   5,
+   5
+  ],
+  "revote": null,
+  "team": 5
+ },
+ {
+  "item": "#208",
+  "round2": [
+   "?",
+   "?",
+   "?"
+  ],
+  "revote": null,
+  "team": "?"
+ },
+ {
+  "item": "#400",
+  "round2": [
+   5,
+   8,
+   8
+  ],
+  "revote": null,
+  "team": 8
+ },
+ {
+  "item": "app-check",
+  "round2": [
+   5,
+   5,
+   5
+  ],
+  "revote": null,
+  "team": 5
+ },
+ {
+  "item": "#472-step2",
+  "round2": [
+   5,
+   5,
+   5
+  ],
+  "revote": null,
+  "team": 5
+ },
+ {
+  "item": "#469",
+  "round2": [
+   8,
+   8,
+   8
+  ],
+  "revote": null,
+  "team": 8
+ },
+ {
+  "item": "#331",
+  "round2": [
+   3,
+   5,
+   3
+  ],
+  "revote": null,
+  "team": 3
+ },
+ {
+  "item": "#382",
+  "round2": [
+   5,
+   5,
+   5
+  ],
+  "revote": null,
+  "team": 5
+ },
+ {
+  "item": "#212",
+  "round2": [
+   5,
+   5,
+   5
+  ],
+  "revote": null,
+  "team": 5
+ },
+ {
+  "item": "#427",
+  "round2": [
+   3,
+   3,
+   3
+  ],
+  "revote": null,
+  "team": 3
+ },
+ {
+  "item": "#95-slice1",
+  "round2": [
+   13,
+   13,
+   13
+  ],
+  "revote": null,
+  "team": 13
+ },
+ {
+  "item": "#458-cancel",
+  "round2": null,
+  "revote": [
+   3,
+   3,
+   5
+  ],
+  "team": 3
+ },
+ {
+  "item": "#466-retry",
+  "round2": null,
+  "revote": [
+   5,
+   5,
+   8
+  ],
+  "team": 5
+ },
+ {
+  "item": "#466-recovery",
+  "round2": null,
+  "revote": [
+   5,
+   5,
+   8
+  ],
+  "team": 5
+ },
+ {
+  "item": "#472-step4",
+  "round2": [
+   "?",
+   "?",
+   13
+  ],
+  "revote": [
+   "?",
+   "?",
+   "?"
+  ],
+  "team": "?"
+ },
+ {
+  "item": "#424-keys",
+  "round2": null,
+  "revote": [
+   3,
+   3,
+   3
+  ],
+  "team": 3
+ },
+ {
+  "item": "#424-scheduler",
+  "round2": null,
+  "revote": [
+   8,
+   8,
+   13
+  ],
+  "team": 8
+ },
+ {
+  "item": "#464",
+  "round2": [
+   8,
+   5,
+   13
+  ],
+  "revote": [
+   8,
+   8,
+   8
+  ],
+  "team": 8
+ },
+ {
+  "item": "#404",
+  "round2": [
+   3,
+   3,
+   8
+  ],
+  "revote": [
+   3,
+   5,
+   5
+  ],
+  "team": 5
+ },
+ {
+  "item": "#417-app",
+  "round2": null,
+  "revote": [
+   3,
+   3,
+   5
+  ],
+  "team": 3
+ },
+ {
+  "item": "#417-files",
+  "round2": null,
+  "revote": [
+   8,
+   8,
+   8
+  ],
+  "team": 8
+ }
+]

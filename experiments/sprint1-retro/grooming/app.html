@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Backlog grooming</title>
+<style>
+  body { margin: 0; padding: 12px; font: 14px/1.45 system-ui, sans-serif; color: var(--text); background: var(--bg); }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .gr-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .gr-stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 92px; }
+  .gr-stat b { display: block; font-size: 18px; }
+  .gr-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-bottom: 10px; }
+  .gr-filters label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }
+  .gr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .gr-chips button[aria-pressed="true"] { outline: 2px solid var(--accent); }
+  .gr-group h2 { font-size: 14px; margin: 16px 0 6px; display: flex; gap: 8px; align-items: baseline; }
+  .gr-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; background: var(--panel); }
+  .gr-card.gr-picked { border-color: var(--accent); }
+  .gr-head { display: flex; gap: 8px; align-items: baseline; }
+  .gr-num { font-family: ui-monospace, monospace; color: var(--dim); flex: none; }
+  .gr-title { font-weight: 600; overflow-wrap: anywhere; }
+  .gr-meta { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+  .gr-note { color: var(--dim); font-size: 13px; margin: 2px 0 6px; }
+  .gr-ctl { display: flex; flex-wrap: wrap; gap: 8px; }
+  .gr-ctl label { display: flex; gap: 4px; align-items: center; font-size: 12px; color: var(--dim); }
+  .gr-bar { border-bottom: 1px solid var(--line); padding: 8px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .gr-over { color: var(--alert); font-weight: 600; }
+  .gr-sugg { color: var(--accent); }
+</style>
+</head>
+<body>
+<h1>Backlog grooming</h1>
+<div class="dim small">118 open issues on HJeon139/postbox, read 27 October 2026. Readiness, type, epic and points are the researcher’s suggestions; priority and milestone come from GitHub labels.</div>
+<div class="gr-stats" id="stats"></div>
+<div class="gr-chips" id="readyChips" role="group" aria-label="Readiness"></div>
+<div class="gr-filters">
+  <label>Search <input class="input" id="q" type="search" placeholder="Title, note or #number"></label>
+  <label>Type <select class="select" id="fType"></select></label>
+  <label>Epic <select class="select" id="fEpic"></select></label>
+  <label>Priority <select class="select" id="fPrio"></select></label>
+  <label>Sprint capacity (points) <input class="input" id="cap" type="number" min="1" max="200" value="21"></label>
+</div>
+<div class="gr-bar">
+  <span id="sprintSum"></span>
+  <span class="dim small" id="changed"></span>
+  <button class="btn sm ghost" id="reset">Clear my decisions</button>
+  <button class="btn sm" id="send">Send decisions to the room</button>
+</div>
+<div id="list"></div>
+<script>
+const ORDER = ['Needs decision', 'Needs refinement', 'Ready', 'In progress', 'Blocked', 'Close candidate'];
+const HELP = {
+  'Needs decision': 'Waiting on the product owner before anyone can build it.',
+  'Needs refinement': 'Missing acceptance criteria, a repro or a design.',
+  'Ready': 'Meets the Definition of Ready: clear, testable, decided.',
+  'In progress': 'Claimed or on a branch. Check the claim is live.',
+  'Blocked': 'Waits on another issue.',
+  'Close candidate': 'Not reproduced, superseded or fixed elsewhere.'
+};
+const DECISIONS = [['', 'No decision'], ['sprint', 'Pull into next sprint'], ['backlog', 'Keep in backlog'], ['refine', 'Send to refinement'], ['decide', 'Needs my decision'], ['close', 'Close']];
+let rows = [], state = { d: {}, ready: '', q: '', type: '', epic: '', prio: '', cap: 21 };
+const $ = (id) => document.getElementById(id);
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v); } for (const c of kids) if (c != null) e.append(c); return e; };
+const dec = (n) => state.d[n] || {};
+const save = () => postbox.saveState(state);
+
+function fillSelect(id, values, key) {
+  const s = $(id); s.replaceChildren(el('option', { value: '' }, 'All'), ...values.map((v) => el('option', { value: v }, v)));
+  s.value = state[key]; s.onchange = () => { state[key] = s.value; save(); render(); };
+}
+function stats() {
+  const by = (r) => r.ready; const box = $('stats'); box.replaceChildren();
+  const add = (label, val) => box.append(el('div', { class: 'gr-stat' }, el('b', {}, String(val)), el('span', { class: 'small dim' }, label)));
+  add('open issues', rows.length);
+  add('Ready points', rows.filter((r) => r.ready === 'Ready').reduce((a, r) => a + r.points, 0));
+  add('P1', rows.filter((r) => r.prio === 'P1').length);
+  add('unlabeled', rows.filter((r) => r.prio === '—').length);
+  add('decided by you', Object.values(state.d).filter((x) => x.decision).length);
+  const chips = $('readyChips'); chips.replaceChildren();
+  for (const k of ['', ...ORDER]) {
+    const count = k ? rows.filter((r) => by(r) === k).length : rows.length;
+    chips.append(el('button', { class: 'chip', 'aria-pressed': String(state.ready === k), onclick: () => { state.ready = k; save(); render(); } }, `${k || 'All'} (${count})`));
+  }
+}
+function match(r) {
+  const q = state.q.trim().toLowerCase();
+  return (!state.ready || r.ready === state.ready) && (!state.type || r.type === state.type) && (!state.epic || r.epic === state.epic) && (!state.prio || r.prio === state.prio)
+    && (!q || `#${r.n} ${r.title} ${r.note}`.toLowerCase().includes(q));
+}
+function card(r) {
+  const d = dec(r.n);
+  const set = (k, v) => { state.d[r.n] = { ...dec(r.n), [k]: v }; save(); render(); };
+  const sel = (label, opts, val, k) => { const s = el('select', { class: 'select', 'aria-label': `${label} for #${r.n}` }); for (const [v, t] of opts) s.append(el('option', { value: v }, t)); s.value = val ?? ''; s.onchange = () => set(k, s.value); return el('label', {}, label, s); };
+  const prioOpts = [['', `Keep (${r.prio})`], ...['P0', 'P1', 'P2', 'P3'].map((p) => [p, p])];
+  const ptOpts = [['', `Keep (${r.points})`], ...[1, 2, 3, 5, 8, 13].map((p) => [String(p), String(p)])];
+  return el('div', { class: `gr-card${d.decision === 'sprint' ? ' gr-picked' : ''}` },
+    el('div', { class: 'gr-head' }, el('span', { class: 'gr-num' }, `#${r.n}`), el('span', { class: 'gr-title' }, r.title)),
+    el('div', { class: 'gr-meta' },
+      el('span', { class: 'pill' }, r.type), el('span', { class: 'pill' }, r.epic), el('span', { class: 'pill' }, r.prio),
+      r.suggest ? el('span', { class: 'pill gr-sugg', title: 'Suggested priority' }, `suggest ${r.suggest}`) : null,
+      el('span', { class: 'pill' }, `${r.points} pts`), r.ms !== '—' ? el('span', { class: 'pill' }, r.ms) : null,
+      el('span', { class: 'small dim' }, `updated ${r.updated} · ${r.comments} comments`)),
+    el('div', { class: 'gr-note' }, r.note),
+    el('div', { class: 'gr-ctl' }, sel('Decision', DECISIONS, d.decision, 'decision'), sel('Priority', prioOpts, d.prio, 'prio'), sel('Points', ptOpts, d.points, 'points')));
+}
+function render() {
+  stats();
+  const list = $('list'); list.replaceChildren();
+  for (const g of ORDER) {
+    const items = rows.filter((r) => r.ready === g && match(r));
+    if (!items.length) continue;
+    const pts = items.reduce((a, r) => a + r.points, 0);
+    items.sort((a, b) => (a.prio + a.n).localeCompare(b.prio + b.n));
+    list.append(el('section', { class: 'gr-group' }, el('h2', {}, `${g} · ${items.length}`, el('span', { class: 'small dim' }, `${pts} pts · ${HELP[g]}`)), ...items.map(card)));
+  }
+  if (!list.children.length) list.append(el('p', { class: 'dim' }, 'No issues match these filters.'));
+  const picked = rows.filter((r) => dec(r.n).decision === 'sprint');
+  const pts = picked.reduce((a, r) => a + Number(dec(r.n).points || r.points), 0);
+  const sum = $('sprintSum'); sum.replaceChildren(`Sprint: ${picked.length} issues, `, el('span', { class: pts > state.cap ? 'gr-over' : '' }, `${pts} of ${state.cap} points`));
+  const n = Object.values(state.d).filter((x) => x.decision || x.prio || x.points).length;
+  $('changed').textContent = n ? `${n} issues changed` : 'No changes yet';
+  $('send').disabled = !n;
+}
+async function main() {
+  const ready = await postbox.ready;
+  rows = JSON.parse(await postbox.file('issues.json'));
+  const saved = await postbox.restoreState(); if (saved && saved.d) state = { ...state, ...saved };
+  fillSelect('fType', [...new Set(rows.map((r) => r.type))].sort(), 'type');
+  fillSelect('fEpic', [...new Set(rows.map((r) => r.epic))].sort(), 'epic');
+  fillSelect('fPrio', ['P1', 'P2', 'P3', '—'], 'prio');
+  $('q').value = state.q; $('q').oninput = (e) => { state.q = e.target.value; save(); render(); };
+  $('cap').value = state.cap; $('cap').oninput = (e) => { state.cap = Number(e.target.value) || 0; save(); render(); };
+  $('reset').onclick = () => { state.d = {}; save(); render(); };
+  $('send').onclick = () => {
+    const out = Object.entries(state.d).filter(([, x]) => x.decision || x.prio || x.points).map(([n, x]) => ({ n: Number(n), ...x }));
+    const count = (k) => out.filter((x) => x.decision === k).length;
+    postbox.send('groom', { decisions: out, capacity: state.cap }, `Grooming decisions on ${out.length} issues: ${count('sprint')} into the sprint, ${count('close')} to close, ${count('refine')} to refine, ${count('decide')} to decide.`);
+    $('changed').textContent = `Sent ${out.length} decisions`;
+  };
+  render();
+}
+main();
+</script>
+</body>
+</html>

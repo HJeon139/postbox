@@ -1,0 +1,20 @@
+[
+  { "item": "#468", "card": 2, "driver": "Client only, cause located: keep the typed text in the review's draft state; one browser spec where an agent comments mid-typing. Smaller than #430." },
+  { "item": "#439", "card": 5, "driver": "Server wake semantics: queue instead of drop, retire a stale card, deliver after Allow; carries #326's two tests; the guide's wording on refusals changes too." },
+  { "item": "#208", "card": "?", "driver": "Two memory choices are still open (Uses your setup; on delete). The Codex per-run memories switch and Kiro's KIRO_HOME behavior are also unverified, and only real runs can settle them." },
+  { "item": "#400", "card": 8, "driver": "Security change in agy's PreToolUse hook: map unticked tools and canPublish onto every agy tool name, plus a real Antigravity run. Below #423 because the hook already exists." },
+  { "item": "app-check", "card": 5, "driver": "Rebasing 16 files (+418/-99) onto a main that's 86 commits ahead, conflicts likely in the app-check paths; four issues to close, each with browser specs in both runs." },
+  { "item": "#466+#458+#467", "card": 13, "driver": "Three behaviors sharing one schedule ID: transient retry, a recovery turn after a started tool call, cancel. Network failures to verify on SSH and Kiro. If it reads bigger, cut #458 (cancel) out first." },
+  { "item": "#472-step2", "card": 5, "driver": "New notify_agent MCP tool, catch-up delivery, per-sender fold cap in shared/limits.mjs, reuse of askToAdd, plus guide and tool description. Server and agent contract, like #445." },
+  { "item": "#469", "card": 8, "driver": "Design reversal: intent.md principle 7 and its rows, bring.mjs's offersBring rule, the owner wake through the limits, and #216's update_block across scopes. Wide test surface." },
+  { "item": "#472-step4", "card": "?", "driver": "Depends on #470's spike: whether each backend (local and remote) can take input mid-turn decides between one universal path and per-backend work. Estimate after the spike." },
+  { "item": "#331", "card": 5, "driver": "Guide rule, an acknowledgement lint in server/checks.mjs, possibly letting a turn end with only a reaction (unchecked), and a three-backend UAT scenario with real runs." },
+  { "item": "#382", "card": 5, "driver": "A start_thread tool over the existing startTopic, a guide line within the 9,000-character limit, and the outcome post (a notify after #472). Lands after #469." },
+  { "item": "#212", "card": 5, "driver": "New amend_message tool, a marked edit with a diff in the client, and one notice to other agents. Server, client and guide together." },
+  { "item": "#427", "card": 3, "driver": "Branch has 5 commits (+344/-59, 10 files); finish, rebase and browser specs. Client UI, review risk low." },
+  { "item": "#424", "card": 8, "driver": "Model-backed scheduler on every backend's low-cost model, with a fake for tests and a fallback; principle-6 limits (never answers an open ask, visible decision, undo); new keys on top of #427." },
+  { "item": "#95-slice1", "card": 13, "driver": "Pinned Chromium download with consent needs an architecture.md decision against zero runtime dependencies; a new view_app tool; sandbox and security review. Near split: cut the decision out from the tool." },
+  { "item": "#464", "card": 5, "driver": "Install or upgrade the versioned host bundle on demand, reusing install.mjs's verified atomic install; needs a real remote host run across a version bump." },
+  { "item": "#404", "card": 3, "driver": "Three small gaps: a server-side refusal of local rules for a remote persona with a test, the UAT runner's ssh using Postbox's hardening, and a SECURITY.md fix." },
+  { "item": "#417", "card": 8, "driver": "Three parts: read_message returns app code and check, screenshots readable by remote agents, read_attachment within REMOTE_LIMITS. Part 3 leans on #85; split there if needed." }
+]

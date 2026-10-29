@@ -1,0 +1,92 @@
+[
+  {
+    "item": "#468",
+    "card": 3,
+    "driver": "Known client-state cause plus a focused browser regression test; larger than the unit-only 1 anchor but near the client/browser 3 anchor."
+  },
+  {
+    "item": "#439",
+    "card": 5,
+    "driver": "Persistent queue behavior, stale-card retirement, migrated unit coverage, and a browser spec cross server and client behavior."
+  },
+  {
+    "item": "#208",
+    "card": "?",
+    "driver": "The person's choices about sharing their own setup memory and deleting persona memory change the storage, migration, and deletion contract."
+  },
+  {
+    "item": "#400",
+    "card": 8,
+    "driver": "Extends the security-sensitive Antigravity hook across modes and tool classes, needs UI copy, fail-closed tests, and real Antigravity denial runs."
+  },
+  {
+    "item": "app-check",
+    "card": 5,
+    "driver": "Seven existing commits reduce implementation effort, but rebasing an 86-commit-old branch and proving four UI/check defects still requires broad verification."
+  },
+  {
+    "item": "#466+#458+#467",
+    "card": "split",
+    "driver": "Cut into cancellation by schedule ID, plain network-error classification, retry before any tool starts, and recovery after a started tool; together they exceed the 13 anchor."
+  },
+  {
+    "item": "#472-step2",
+    "card": 5,
+    "driver": "A new idle-notification contract touches catch-up, folding, the add-agent card, guide text, and server tests, but does not yet require mid-turn backend transport."
+  },
+  {
+    "item": "#469",
+    "card": 8,
+    "driver": "Changes the thread memory contract, owner wake behavior, bring-to-conversation rules, intent.md, and browser/server coverage across a central workflow."
+  },
+  {
+    "item": "#472-step4",
+    "card": 13,
+    "driver": "Universal mid-turn delivery spans backend capability differences, state transitions, pair-limit accounting, fallback behavior, and real-backend verification."
+  },
+  {
+    "item": "#331",
+    "card": 3,
+    "driver": "Primarily an agent-guide and check change built on reactions and notification semantics supplied elsewhere, with focused behavioral verification."
+  },
+  {
+    "item": "#382",
+    "card": 5,
+    "driver": "Adds a tool and its validated server behavior, agent-guide contract, outcome posting, and end-to-end thread coverage."
+  },
+  {
+    "item": "#212",
+    "card": 5,
+    "driver": "Agent-owned amendment needs ownership validation, persisted marked revisions, diff presentation, client behavior, and browser coverage."
+  },
+  {
+    "item": "#427",
+    "card": 3,
+    "driver": "Five commits already implement the queued-message UI; remaining work is integration, review fixes, and both browser runs."
+  },
+  {
+    "item": "#424",
+    "card": 5,
+    "driver": "Composer key semantics, visible queue states, and scheduler behavior cross client and server, but reuse the notification and interrupt mechanisms built earlier."
+  },
+  {
+    "item": "#95-slice1",
+    "card": 13,
+    "driver": "Introduces an optional pinned browser, download consent and persistence, sandbox screenshot capture, a new agent tool, an architecture decision, and browser/process verification."
+  },
+  {
+    "item": "#464",
+    "card": 13,
+    "driver": "Safe remote self-update and reconnect requires standing consent, version negotiation, bounded retries, coexistence with old turns, integration tests, and remote-host verification."
+  },
+  {
+    "item": "#404",
+    "card": 8,
+    "driver": "Three separate security follow-ups span permission-rule placement, hardened UAT SSH arguments, and remote argv exposure, with server tests and documentation."
+  },
+  {
+    "item": "#417",
+    "card": "split",
+    "driver": "Cut app source/check retrieval from historical attachment transfer; screenshot access also depends on #95, and the combined cross-host protocol and limits exceed the 13 anchor."
+  }
+]

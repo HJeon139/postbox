@@ -1,0 +1,52 @@
+[
+  {
+    "item": "#458-cancel",
+    "card": 5,
+    "driver": "A durable schedule ID must cross tool output, persisted schedule state, cancellation validation, guide text, and tests rather than only adding a cancel control."
+  },
+  {
+    "item": "#466-retry",
+    "card": 8,
+    "driver": "Transient classification spans backend and SSH errors, while safe retry needs stable identity, bounded backoff, visible pending state, and real failure/reconnection verification."
+  },
+  {
+    "item": "#466-recovery",
+    "card": 8,
+    "driver": "A recovery turn is a new persisted delivery path that must record started calls, avoid duplicate recovery, explain interruption, and verify side effects before continuing."
+  },
+  {
+    "item": "#472-step4",
+    "card": "?",
+    "driver": "The #470 spike determines which primary backends support mid-turn input and therefore whether this is one universal path or several adapter-specific mechanisms."
+  },
+  {
+    "item": "#424-keys",
+    "card": 3,
+    "driver": "After #427 and #472 step 4 provide the mechanisms, this is focused composer key routing, restoration of an edited waiting message, and browser coverage."
+  },
+  {
+    "item": "#424-scheduler",
+    "card": 13,
+    "driver": "A model-backed decision on every primary backend adds structured output, low-cost model selection, open-ask safety, visible decisions, undo, a deterministic fake, and fallback behavior."
+  },
+  {
+    "item": "#464",
+    "card": 8,
+    "driver": "The existing atomic installer and versioned daemon lifecycle remove the hardest mechanism work; remaining effort spans classification, consent UI, one bounded install-and-reconnect path, fallback, and remote verification."
+  },
+  {
+    "item": "#404",
+    "card": 5,
+    "driver": "Each fix is small and specified, but the bundle crosses permission-rule behavior, SSH hardening, tests, and security documentation, making it broader than the client-only 3 anchor."
+  },
+  {
+    "item": "#417-app",
+    "card": 5,
+    "driver": "Returning owned app code and check status needs bounded multipart tool output, authorization checks, remote-agent coverage, and a real two-host review run."
+  },
+  {
+    "item": "#417-files",
+    "card": 8,
+    "driver": "Historical files and screenshots require bounded cross-host transfer, attachment ownership and limits, dependency integration with #85 and #95, and real two-host verification."
+  }
+]

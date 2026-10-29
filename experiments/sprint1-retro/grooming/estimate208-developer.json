@@ -1,0 +1,3 @@
+[
+  { "item": "#208", "card": "split", "driver": "Bigger than #423 as one change: five surfaces (Claude Code and Agent SDK, Codex, Kiro, remote hosts, the persona sheet and delete lifecycle), each needing a real run. Cut into (a) Claude Code and Agent SDK: autoMemoryDirectory per persona and project in the --settings overlay, local and on a host, deleted with the persona after Undo, real two-agent run before and after, ~8, and it closes the P0 leak alone; (b) Codex memories off per turn and Kiro's KIRO_HOME or memory.mode, after the two checks, ~5; (c) the persona sheet's memory line for every backend, ~2. Antigravity's memory isn't in the scope, which is worth a line on the issue." }
+]

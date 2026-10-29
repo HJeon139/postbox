@@ -1,0 +1,3 @@
+[
+  { "item": "#208", "card": "split", "driver": "Bigger than #423: four backends, remote hosts, the delete-after-Undo lifecycle, a persona sheet line, and two backend behaviors still unverified. Cut it in two: (1) Claude Code and the Agent SDK through autoMemoryDirectory, local and on a host, plus delete with the persona and the sheet line, about 8; (2) Codex memories off per turn and Kiro's KIRO_HOME and memory.mode, after the two checks, about 5." }
+]

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Urgency board</title>
+<style>
+  body { margin: 0; padding: 12px; font: 14px/1.45 system-ui, sans-serif; color: var(--text); background: var(--bg); }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .ub-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; }
+  .ub-bar button[aria-pressed="true"] { outline: 2px solid var(--accent); }
+  .ub-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; align-items: start; }
+  .ub-col { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .ub-col h2 { font-size: 13px; margin: 0 0 8px; color: var(--dim); text-transform: uppercase; letter-spacing: .03em; }
+  .ub-note { position: relative; border-radius: 4px; padding: 8px 10px 8px 14px; margin-bottom: 8px; background: var(--bg); border: 1px solid var(--line); }
+  .ub-note::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; border-radius: 4px 0 0 4px; background: var(--ub-c); }
+  .ub-nums { font-family: ui-monospace, monospace; font-size: 12px; color: var(--dim); }
+  .ub-title { font-weight: 600; margin: 2px 0 6px; }
+  .ub-votes { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+  .ub-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
+  .ub-rank { font-weight: 700; font-size: 12px; }
+  .ub-why p { margin: 4px 0; font-size: 13px; overflow-wrap: anywhere; }
+  .ub-why b { text-transform: capitalize; }
+  .ub-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--dim); margin-bottom: 8px; }
+  .ub-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--ub-c); margin-right: 4px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<h1>Urgency board: picks from developer, critic and gpt</h1>
+<div class="dim small">11 notes covering 17 issues. A vote shows who picked it and how urgent they rated it. Rank is by votes, then by how many voters said Now.</div>
+<div class="ub-bar" role="group" aria-label="Group notes by">
+  <span class="small dim">Group by</span>
+  <button class="chip" data-g="impact">Impact</button>
+  <button class="chip" data-g="func">Shared functionality</button>
+  <button class="chip" data-g="comp">Component</button>
+</div>
+<div class="ub-legend" id="legend"></div>
+<div class="ub-cols" id="cols"></div>
+<script>
+const IMPACTS = ['Data loss', 'Trust boundary', 'Core loop', 'Unblocks others', 'Supervision'];
+const color = (i) => `var(--s${IMPACTS.indexOf(i) + 1})`;
+const W = { Now: 3, Next: 2, Soon: 1 };
+let notes = [], group = 'impact';
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k === 'style') e.style.cssText = v; else e.setAttribute(k, v); } for (const c of kids) if (c != null) e.append(c); return e; };
+function score(n) { const v = Object.values(n.votes); return [v.length, v.filter((x) => x === 'Now').length, v.reduce((a, x) => a + W[x], 0)]; }
+function cmp(a, b) { const x = score(a), y = score(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return y[i] - x[i]; return 0; }
+function render() {
+  document.querySelectorAll('[data-g]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.g === group)));
+  const leg = document.getElementById('legend'); leg.replaceChildren(...IMPACTS.map((i) => el('span', {}, el('span', { class: 'ub-sw', style: `--ub-c:${color(i)}` }), i)));
+  const ranked = [...notes].sort(cmp); const rank = new Map(ranked.map((n, i) => [n.id, i + 1]));
+  const keys = group === 'impact' ? IMPACTS : [...new Set(ranked.map((n) => n[group]))];
+  const cols = document.getElementById('cols'); cols.replaceChildren();
+  for (const k of keys) {
+    const items = ranked.filter((n) => n[group] === k); if (!items.length) continue;
+    cols.append(el('section', { class: 'ub-col', 'aria-label': k }, el('h2', {}, `${k} · ${items.length}`), ...items.map((n) => {
+      const why = el('div', { class: 'ub-why' });
+      const btn = el('button', { class: 'btn sm ghost', 'aria-expanded': 'false' }, 'Show reasons');
+      btn.onclick = () => {
+        const open = btn.getAttribute('aria-expanded') !== 'true';
+        btn.setAttribute('aria-expanded', String(open)); btn.textContent = open ? 'Hide reasons' : 'Show reasons';
+        why.replaceChildren(...(open ? Object.entries(n.why).map(([a, t]) => el('p', {}, el('b', {}, a), `${n.votes[a] ? ` (${n.votes[a]})` : ' (not a pick)'}: ${t}`)) : []));
+      };
+      return el('article', { class: 'ub-note', style: `--ub-c:${color(n.impact)}` },
+        el('div', { class: 'ub-top' }, el('span', { class: 'ub-nums' }, n.issues.map((i) => `#${i}`).join(' · '), ` · ${n.prio}`), el('span', { class: 'ub-rank' }, `Rank ${rank.get(n.id)} of ${notes.length}`)),
+        el('div', { class: 'ub-title' }, n.title),
+        el('div', { class: 'ub-votes' }, ...['developer', 'critic', 'gpt'].filter((a) => n.votes[a]).map((a) => el('span', { class: 'pill' }, `${a}: ${n.votes[a]}`))),
+        el('div', { class: 'small dim' }, group === 'comp' ? n.func : n.comp), btn, why);
+    })));
+  }
+}
+async function main() {
+  await postbox.ready;
+  notes = JSON.parse(await postbox.file('notes.json'));
+  const s = await postbox.restoreState(); if (s && s.group) group = s.group;
+  document.querySelectorAll('[data-g]').forEach((b) => { b.onclick = () => { group = b.dataset.g; postbox.saveState({ group }); render(); }; });
+  render();
+}
+main();
+</script>
+</body>
+</html>

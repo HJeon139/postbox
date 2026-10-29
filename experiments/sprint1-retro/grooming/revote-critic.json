@@ -1,0 +1,12 @@
+[
+  { "item": "#458-cancel", "card": 3, "driver": "schedule_wake returns an ID, plus a cancel tool and its line in the guide; server and contract with unit tests, and no real backend needed." },
+  { "item": "#466-retry", "card": 5, "driver": "Classifying failures per backend (ssh, EADDRNOTAVAIL, ENOTFOUND, ECONNRESET), retry with backoff, and Kiro's plain-words error; checking a real network drop on SSH and Kiro is the cost." },
+  { "item": "#466-recovery", "card": 5, "driver": "Detecting that a tool call had started, from each adapter's stream, and composing the recovery turn's notice; every backend's stream shape to read." },
+  { "item": "#472-step4", "card": "?", "driver": "Unchanged: whether each backend, local and remote, takes input mid-turn is what #470's spike answers. gpt's 13 is plausible if the answer is 'only the universal path', but that's the spike's job to settle." },
+  { "item": "#424-keys", "card": 3, "driver": "Client keys and edit-back-to-composer on top of #427's queue UI and #472's modes; browser specs in both runs. The size of #430." },
+  { "item": "#424-scheduler", "card": 8, "driver": "A model call on each primary backend's low-cost model, plus structured output, a fake, a fallback, never answering an open ask, and a visible decision with undo. A real run on each backend." },
+  { "item": "#464", "card": 8, "driver": "Moved up from 5: gpt and developer are right that installing on a host without asking needs a standing-consent setting and a security review, on top of reusing install.mjs and a real version-bump run." },
+  { "item": "#404", "card": 5, "driver": "Moved up from 3: each fix is small, but all three are security changes, and AGENTS.md has each reviewed as one. That review cost is in the scale. Not 8, since nothing new has to be designed." },
+  { "item": "#417-app", "card": 3, "driver": "read_message returning an app's code in parts (like #109) and its check status; it's served from Postbox's side, so being on a host adds little. Tests and one remote check." },
+  { "item": "#417-files", "card": 8, "driver": "File and screenshot carrying to a host within REMOTE_LIMITS, a new read_attachment tool, a two-host real run; it depends on #85 and #95 landing first, so schedule it after them." }
+]
