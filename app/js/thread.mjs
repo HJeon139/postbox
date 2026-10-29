@@ -21,6 +21,7 @@ import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
+import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -112,11 +113,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (i < 0) return;
     const old = nodes.get(id);
     // Keep focus inside a block that’s being edited.
-    const hadFocus = old?.contains(document.activeElement) ? document.activeElement : null;
     const n = render(list[i], list[i - 1]);
-    old?.replaceWith(n);
+    const focusedId = replaceTranscriptItem(old, n);
     nodes.set(id, n);
-    if (hadFocus?.id) document.getElementById(hadFocus.id)?.focus();
+    if (focusedId) document.getElementById(focusedId)?.focus();
   };
   const all = () => {
     el.replaceChildren();
@@ -1493,7 +1493,7 @@ export function mountComposer(threadId, { side = false } = {}) {
         .map((x) => ({ thread: x }));
     const members = new Set(sessionsOf(threadId).map((x) => x.personaId));
     return Object.values(S().personas)
-      .filter((p) => !p.retired && p.handle.toLowerCase().startsWith(mention.query))
+      .filter((p) => !p.retired && !p.deleting && p.handle.toLowerCase().startsWith(mention.query))
       .sort((a, b) => members.has(b.id) - members.has(a.id) || a.handle.localeCompare(b.handle))
       .slice(0, 6)
       .map((p) => ({ p, se: sessionsOf(threadId).find((x) => x.personaId === p.id) }));

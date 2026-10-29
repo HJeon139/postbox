@@ -14,6 +14,7 @@
 //   mapper (the reply is rebuilt whole), nothing is sent to it, and no fallback starts another.
 // server/adapters/claude-code.mjs runs the turn; this module holds what only a host needs.
 
+import { olderThan } from '../../shared/versions.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
 import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
@@ -44,16 +45,6 @@ export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
 export const REMOTE_CLAUDE_MIN = '2.1.187';
 /** The oldest claude with `--permission-prompts none` (the CLI reference), for a host with denyPrompts on (D2). */
 export const DENY_PROMPTS_MIN = '2.1.259';
-
-/** a < b, for x.y.z versions; null if either has no x.y.z. @param {string} a @param {string} b */
-function olderThan(a, b) {
-  const parts = (v) => /(\d+)\.(\d+)\.(\d+)/.exec(String(v))?.slice(1).map(Number) ?? null;
-  const pa = parts(a);
-  const pb = parts(b);
-  if (!pa || !pb) return null;
-  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] < pb[i];
-  return false;
-}
 
 /**
  * Why a remote turn can’t start on this host’s claude, or null if it can: missing, a version it couldn’t read, or older

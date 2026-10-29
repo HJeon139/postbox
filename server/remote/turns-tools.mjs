@@ -1,8 +1,8 @@
 // Postbox’s tools for a remote turn (#120, server/remote/turns.mjs, the header): the daemon’s `tool` is applied as the
 // laptop’s MCP server applies a call (server/mcp.mjs), through the same tools, from toolsFor and reactTool, and
 // answered with `reply`. Each call is an identity, (turn, id), which the daemon sends again after every hello until
-// Postbox has answered it: a queued tool’s reply is kept on the session, so a repeat gets the same answer and is never
-// applied twice.
+// Postbox has answered it: the reply is kept on the session, so a repeat gets the same answer and is never applied
+// twice.
 
 import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
@@ -14,6 +14,8 @@ import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn,
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
 
+/** A search only reads, and its answer can be long, so a repeat runs it again rather than its reply being kept. */
+const REPEATABLE = new Set(['corpus_search']);
 const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
@@ -41,16 +43,15 @@ export async function onTool(rts, hostId, m) {
   // An urgent note for the agent comes first, as on the laptop (server/mcp.mjs, #229), in an answer it waits for: a
   // queued call’s reply never reaches it (the shim answered at once), so its note waits for the next.
   const text = (TOOL_QUEUED.has(m.name) ? r.text : withUrgent(rts.rt, live.sessionId, r.text)).slice(0, REMOTE_LIMITS.replyChars);
-  // A queued call’s agent already has its answer (the shim’s), so its reply is kept for the daemon’s repeats, and
-  // a failure goes to the agent at its next turn instead.
-  if (TOOL_QUEUED.has(m.name)) {
-    const now = rts.rt.s.sessions[live.sessionId];
-    if (now?.remoteTurn) {
-      const replies = [...(now.remoteTurn.replies ?? []), { turn: m.turn, id: m.id, ok: r.ok, text: text.slice(0, KEPT_REPLY_CHARS) }].slice(-KEPT_REPLIES);
-      updateRemote(rts, now.id, { replies });
-    }
-    if (!r.ok) rts.rt.tellAgent(live.sessionId, `Your ${m.name} call from the host didn’t go through: ${text.slice(0, 1000)}`);
+  // The reply is kept for the daemon’s repeats, which come after a hello until one is heard: a link that drops
+  // before it lands mustn’t post a hand-off, or schedule a wake, twice (#439).
+  const now = rts.rt.s.sessions[live.sessionId];
+  if (now?.remoteTurn && !REPEATABLE.has(m.name)) {
+    const replies = [...(now.remoteTurn.replies ?? []), { turn: m.turn, id: m.id, ok: r.ok, text: text.slice(0, KEPT_REPLY_CHARS) }].slice(-KEPT_REPLIES);
+    updateRemote(rts, now.id, { replies });
   }
+  // A queued call’s agent already has its answer (the shim’s), so a failure goes to it at its next turn instead.
+  if (TOOL_QUEUED.has(m.name) && !r.ok) rts.rt.tellAgent(live.sessionId, `Your ${m.name} call from the host didn’t go through: ${text.slice(0, 1000)}`);
   send(link, 'reply', { turn: m.turn, id: m.id, ok: r.ok, text: text || (r.ok ? 'Done.' : 'It failed.') });
 }
 

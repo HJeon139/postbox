@@ -91,12 +91,46 @@ export const shimServer = ({ command, args, timeout }) => ({
  * How it was checked: a real turn (claude 2.1.296, the person’s setup, outside the repo) with a project server,
  * a claude.ai connector and a plugin server denied by name. Its init no longer listed any of the three in
  * `mcp_servers`, and none of their tools (tests/fixtures/claude-code/host-mcp-init.jsonl). Isolated personas
- * load no other server, so they need no denylist.
+ * load no other server, so they need no denylist. memoryDir: the persona’s memory folder (memoryFolder), on every turn.
+ * @param {any} persona @param {string|null} [memoryDir]
  */
-export function settingsFor(persona) {
+export function settingsFor(persona, memoryDir = null) {
   const { usesHostSetup, mcpOff } = setupOf(persona);
-  return { ...SETTINGS_OVERLAY, ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}) };
+  return {
+    ...SETTINGS_OVERLAY,
+    ...(memoryDir ? { autoMemoryDirectory: memoryDir } : {}),
+    ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}),
+  };
 }
+
+/**
+ * The folder a persona keeps its auto memory in for a project (#208): `<root>/<persona id>/<project id>`, passed as
+ * `autoMemoryDirectory` in the overlay. Claude Code keys auto memory by working folder (~/.claude/projects/<project>/
+ * memory/, code.claude.com/docs/en/memory), and every persona in a project runs in the project’s folder, so without it
+ * two personas, and the person’s own sessions there, shared one memory (reproduced with two real agents, 26 October
+ * 2026). “Uses your setup” doesn’t include the person’s memory: that setting is for tooling (decided 27 October), so
+ * every persona gets one. Keyed by id, so a new persona with an old one’s name starts clean. The project’s shared
+ * folder stays as it was, for the person’s own sessions: nothing is copied or deleted.
+ * @param {string} root  where memory folders go: Postbox’s data folder’s, or its folder on a host
+ * @param {{ id?: string, handle: string }} persona @param {{ id?: string } | null | undefined} project
+ */
+export const memoryFolder = (root, persona, project) => `${personaMemory(root, persona)}/${part(project?.id || 'no-project')}`;
+
+/** A persona’s memory folders for every project, which deleting it removes (server/persona-delete.mjs). */
+export const personaMemory = (root, persona) => `${root}/${part(persona.id || persona.handle)}`;
+// Ids are Postbox’s own (newId); anything else in one is replaced, so it stays one folder under root.
+const part = (v) => String(v).replace(/[^\w-]/g, '_');
+
+/**
+ * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation
+ * (#66), and the persona’s own memory folder under `memoryRoot` (#208).
+ * @param {any} ctx @param {string} memoryRoot
+ */
+export const fromContext = (ctx, memoryRoot) => ({
+  allowOnce: ctx.allowOnce ?? [],
+  rules: ctx.rules ?? {},
+  memoryDir: memoryFolder(memoryRoot, ctx.persona, ctx.project),
+});
 
 /**
  * Deny rules for tools that publish outside Postbox, passed as `--disallowedTools` / `disallowedTools`.
