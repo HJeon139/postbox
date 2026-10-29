@@ -1,7 +1,5 @@
-// Deterministic checks the UAT runs alongside the tester. Each looks for one kind of defect in what the run
-// collected and names the GitHub issue it reproduces, so a run’s report says which known issues it caught.
-// They’re pure functions over `facts` (gathered by tools/uat-run.mjs, or for a recorded room by server/telemetry.mjs),
-// so tests can feed them fixtures. They ship with Postbox, so a recorded room runs the same checks (designs/telemetry-persona.md, R8).
+// Deterministic checks the UAT and recorded rooms run alongside the tester. Each finds one defect in `facts`, names
+// its issue, and stays pure so tests can feed it fixtures (designs/telemetry-persona.md, R8).
 //
 // facts = {
 //   state,           Postbox’s /api/state at the time
@@ -36,6 +34,7 @@ import { asksInProse, blockUseTally } from './block-use.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
+import { THREAD_CHECKS } from './room-checks-threads.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 
@@ -820,6 +819,7 @@ export const CHECKS = [
   },
   // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): server/room-checks-backends.mjs.
   ...BACKEND_CHECKS,
+  ...THREAD_CHECKS,
   ...TELEMETRY_CHECKS,
   ...NEEDS_CHECKS,
   {

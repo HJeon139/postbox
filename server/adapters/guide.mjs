@@ -201,8 +201,15 @@ const isReview = (event) =>
  * @param {(a: any) => string|null} [pathOf]  where an attachment can be read on disk
  */
 export function formatMessage(message, pathOf = () => null) {
-  // Context that waited for this turn (a topic thread’s brief, something shared back) comes first.
   const body = message.messages?.length ? formatQueuedMessages(message.messages, pathOf, formatMessage) : formatBody(message, pathOf);
+  if (message.taskContext)
+    return [
+      message.taskContext,
+      '[Postbox] Your task in this topic or side thread is the request below. Answer it here.',
+      body,
+      ...(message.context ?? []),
+    ].join('\n\n');
+  // Context that waited for a room turn (a topic thread’s brief, something shared back) comes first.
   return message.context?.length ? `${message.context.join('\n\n')}\n\n${body}` : body;
 }
 

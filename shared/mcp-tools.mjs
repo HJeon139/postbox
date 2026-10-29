@@ -130,8 +130,13 @@ export const TOOL_DEFS = [
   },
   {
     name: 'schedule_wake',
-    description: 'Ask to be woken later, with a note to yourself.',
+    description: 'Ask to be woken later, with a note to yourself. It says the wake’s id: if you finish its work before then, cancel it with cancel_wake.',
     inputSchema: { type: 'object', properties: { in_minutes: { type: 'number' }, note: { type: 'string' } }, required: ['in_minutes'] },
+  },
+  {
+    name: 'cancel_wake',
+    description: 'Cancel a wake you scheduled, by the id schedule_wake gave you, once its work is done, so it doesn’t wake you for nothing.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
   },
   {
     name: 'wake_agent',
@@ -157,7 +162,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_message',
-    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. For an app, also returns its current version and recorded browser check, which may stay pending indefinitely without an open browser. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
+    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. Your history cuts a message that @-mentions you at ${count(READING.mention)} instead. For an app, also returns its current version and recorded browser check, which may stay pending indefinitely without an open browser. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
     inputSchema: {
       type: 'object',
       properties: {

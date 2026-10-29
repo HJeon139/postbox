@@ -2,12 +2,13 @@
 // into Postbox’s turn context: reply text, activity steps, ring state, context use, subagents and
 // compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
 
+import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
 const QUIET =
-  /^(?:mcp__postbox__(?:show_block|update_block|review_block|show_app|update_app|retire_app|define_term|propose_agent|schedule_wake|wake_agent|bring_to_conversation|permission_prompt|read_conversation|read_message|react)|ToolSearch|SubagentHandback)$/;
+  /^(?:mcp__postbox__(?:show_block|update_block|review_block|show_app|update_app|retire_app|define_term|propose_agent|schedule_wake|cancel_wake|wake_agent|bring_to_conversation|permission_prompt|read_conversation|read_message|react)|ToolSearch|SubagentHandback)$/;
 /** Whether a tool call shows as what it makes rather than as a step (the Kiro CLI adapter shares this). */
 export const isQuietTool = (name) => QUIET.test(String(name ?? ''));
 // How Postbox answers a call the person declined on a permission card (server/runtime.mjs): that’s their
@@ -43,15 +44,6 @@ const clip = (s, n) => {
 const base = (p) => String(p ?? '').replace(/^.*\//, '');
 /** The first sentence of a message, such as a refusal’s reason. */
 const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
-/** The latest stretch of streaming text, for a one-line glimpse of what the agent is on. */
-const tailOf = (s, n = 160) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (t.length <= n) return t;
-  const cut = t.slice(-n);
-  return `…${cut.slice(cut.indexOf(' ') + 1)}`;
-};
 /** The text of a tool result, for the reason a step failed. */
 const resultText = (content) =>
   typeof content === 'string'
@@ -132,6 +124,8 @@ export function describeTool(name, input = {}) {
       return 'Proposing a teammate';
     case 'mcp__postbox__schedule_wake':
       return 'Scheduling a wake-up';
+    case 'mcp__postbox__cancel_wake':
+      return 'Canceling a wake-up';
     case 'mcp__postbox__wake_agent':
       return `Waking @${clip(String(i.handle ?? '').replace(/^@/, ''), 24)}`;
     case 'mcp__postbox__permission_prompt':
@@ -206,15 +200,17 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     ctx.status(patch);
   };
   const pushSubagents = () => status({ subagents: [...st.subagents.values()] });
-  // A short, temporary line of what the agent is thinking or writing, at most a few times a second.
+  // The latest whole sentences of what the agent is thinking or writing, at most a few times a second.
   const glimpse = (text, { force = false } = {}) => {
-    const t = tailOf(text);
+    if (!force && now() - st.glimpseAt < 400) {
+      st.pending = text;
+      return;
+    }
+    const t = glimpseOf(text);
+    st.pending = null;
     if (!t || t === st.glimpse) return;
-    st.pending = t;
-    if (!force && now() - st.glimpseAt < 400) return;
     st.glimpseAt = now();
     st.glimpse = t;
-    st.pending = null;
     ctx.status({ glimpse: t });
   };
   const flushGlimpse = () => {
@@ -443,7 +439,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         if (b.type === 'tool_use') doing(sub, describeTool(b.name, b.input));
         else if (b.type === 'thinking' && b.thinking) doing(sub, firstSentence(b.thinking, 120), true);
         else if (b.type === 'text' && b.text?.trim()) {
-          sub.said = tailOf(firstSentence(b.text, 400), 160);
+          sub.said = glimpseOf(firstSentence(b.text, 400));
           sub.since = false;
         }
       }
@@ -544,7 +540,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           if (st.current) st.streamed.add(st.current);
           ctx.text(d.text);
           st.wroteText = true;
-          st.said = (st.said + d.text).slice(-400);
+          st.said = appendGlimpseSource(st.said, d.text);
           glimpse(st.said);
         } else if (d.type === 'thinking_delta' && d.thinking && blk) {
           if (st.current) st.thoughtMessages.add(st.current);

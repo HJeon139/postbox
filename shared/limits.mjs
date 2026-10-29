@@ -43,6 +43,11 @@ export const LIMITS = Object.freeze({
 export const READING = Object.freeze({
   /** One item in the history at the start of a turn and in read_conversation, before it’s cut. */
   item: 2000,
+  /**
+   * A message that @-mentions the agent, in that history, before it’s cut (#499). Agents asked for one cut at item to be
+   * sent again rather than read the rest. Under half the summary’s cap on mentions (MENTION_CHARS), so two fit whole.
+   */
+  mention: 15_000,
   /** What one read_message call returns of a long item. */
   part: 40_000,
 });
@@ -55,6 +60,11 @@ export const SENDING = Object.freeze({
   /** A message to another agent with wake_agent, and a post to the conversation with bring_to_conversation. */
   message: 50_000,
 });
+
+/** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
+export const GLIMPSE_CHARS = 160;
+/** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
+export const GLIMPSE_SOURCE_CHARS = 2000;
 
 /** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
 export const HOP_LIMIT = 10;
