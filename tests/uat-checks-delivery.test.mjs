@@ -100,6 +100,14 @@ test('unlabeled-repeat stays silent on a resend that says it’s one', () => {
   assert.deepEqual(found(f, 'unlabeled-repeat'), []);
 });
 
+test('unlabeled-repeat stays silent on a topic thread’s first turn, which gives its starting message on purpose', () => {
+  // The line server/runtime.mjs’s topicRootLine writes for an agent’s first turn in a topic thread (envelope item 2).
+  for (const who of ['your message', '@critic’s message']) {
+    const f = repeatRoom(`[Postbox] You’re answering in the thread “Release checklist” (thread th_topic). This thread started from ${who}: ${DRAFT}`);
+    assert.deepEqual(found(f, 'unlabeled-repeat'), [], who);
+  }
+});
+
 test('unlabeled-repeat stays silent on a message that only quotes the start of another', () => {
   // The p0 run’s @critic restated the person’s request in its own words: its start matched, its whole didn’t.
   const f = repeatRoom(`[Postbox] @critic: ${DRAFT.slice(0, 80)} Post the full list first, then six rounds with @critic.`);
