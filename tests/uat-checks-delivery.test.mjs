@@ -38,6 +38,22 @@ test('delivery-dropped stays silent when a catch-up line carried the mention', (
   assert.deepEqual(found(mentionRoom({ delivered: true }), 'delivery-dropped'), []);
 });
 
+test('delivery-dropped tells apart two mentions of one agent that begin alike, and catches the second dropped', () => {
+  // Two rounds of a review, each opening with the same sentence: well past the first 60 letters and digits.
+  const opening = '@researcher Round review of the release checklist from critic, items one through fourteen, follows here. ';
+  const r = room();
+  r.agent('researcher');
+  r.agent('critic');
+  r.add({ id: 'it_first', at: s(10), kind: 'agent', handle: 'critic', sessionId: 'se_critic', text: `${opening}I accept items 7 and 12a.` });
+  r.add({ id: 'it_second', at: s(15), kind: 'agent', handle: 'critic', sessionId: 'se_critic', text: `${opening}Now fix items 12b and 14.` });
+  r.turn('researcher', s(20), { prompt: `[Postbox] What happened in this room since your last turn:\n\n@critic: ${opening}I accept items 7 and 12a.` });
+  r.turn('researcher', s(40), { prompt: '[Postbox] What happened in this room since your last turn:\n\nYou: are we done?' });
+  assert.deepEqual(
+    found(r.f, 'delivery-dropped').map((x) => x.key),
+    ['delivery-dropped:researcher:it_second'],
+  );
+});
+
 test('delivery-dropped waits for two turns before it calls a mention dropped', () => {
   const f = mentionRoom({ delivered: false });
   f.streams.pop();

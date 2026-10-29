@@ -71,7 +71,9 @@ export function addressed(f) {
   /** @type {Map<string, (typeof out)[number] & { due: number }>} */
   const one = new Map();
   for (const a of out) {
-    const k = `${a.to}:${headOf(a.text) ?? a.itemId}`;
+    // Keyed by the item it delivers: two messages to one agent that begin alike stay two. Only a card with no item of
+    // its own is matched by its text.
+    const k = a.itemId ? `${a.to}:item:${a.itemId}` : `${a.to}:text:${headOf(a.text) ?? a.cardId}`;
     const had = one.get(k);
     if (!had) one.set(k, { ...a, due: a.from });
     else one.set(k, { ...had, itemId: had.itemId ?? a.itemId, from: Math.min(had.from, a.from), due: Math.max(had.due, a.from) });
@@ -126,9 +128,14 @@ export function inputsOf(f, handle) {
   return out.filter((x) => Number.isFinite(x.at) && x.text).map((x) => ({ ...x, key: plain(x.text) }));
 }
 
+/**
+ * How much of a text’s start an input must hold to hold it: enough to tell apart two messages that begin alike. A
+ * catch-up line or a pointer that cuts a message shorter than this gives its item’s id (server/runtime.mjs’s
+ * clipItem, server/catch-up.mjs), which holds matches instead.
+ */
+const HOLD = 200;
 /** Whether an input holds this delivery: its item’s id, or the start of its text. */
-export const holds = (input, a) =>
-  (!!a.itemId && input.text.includes(a.itemId)) || (!!headOf(a.text) && input.key.includes(/** @type {string} */ (headOf(a.text))));
+export const holds = (input, a) => (!!a.itemId && input.text.includes(a.itemId)) || (!!headOf(a.text) && input.key.includes(plain(a.text).slice(0, HOLD)));
 
 /** A turn produced output once its model wrote something: an assistant message, or a streamed piece of one. */
 export const hasOutput = (events) =>
