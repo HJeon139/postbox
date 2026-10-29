@@ -7,7 +7,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { DEFAULT_MODEL as ADAPTERS_DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { DEFAULT_MODEL, HOP_LIMIT, Runtime } from '../server/runtime.mjs';
+import { DEFAULT_MODEL, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -216,36 +216,31 @@ test('an invalid block is stored with its fallback, never rendered as given', as
   assert.equal(result.ok, false);
 });
 
-test(`after ${HOP_LIMIT} agent wakes in a row, the next one waits for your confirm`, async () => {
-  const { rt, store, t, b } = setup();
+/**
+ * A wake-limit card as Postbox stored one before #492 removed the limits, still open: its Allow must still deliver the
+ * wake it holds. @returns {any}
+ */
+const storedLimitCard = (rt, t, from, to, wake) =>
+  rt.addItem(t.id, { kind: 'hop', fromSessionId: from.id, from: from.handle, to, reason: wake.text?.slice(0, 200), ...wake, status: 'open', n: 11 });
+
+test('#492 a wake-limit card stored before the limits went still delivers its wake when you allow it', async () => {
+  const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
-  await settle(rt);
-  const r = rt.agentWake(alpha.id, 'beta', 'check again');
-  assert.equal(r.waiting, true);
-  const hop = store.items(t.id).find((i) => i.kind === 'hop');
-  assert.equal(hop.status, 'open');
-  // One request waits at a time: a further wake is held on it, and the agent is told which card it waits for (#439).
-  const again = rt.agentWake(alpha.id, 'beta', 'and again');
-  assert.deepEqual([again.ok, again.waiting], [false, true]);
-  assert.match(again.message, /holding your message to @beta: @alpha’s request to wake @beta/);
-  assert.equal(store.items(t.id).filter((i) => i.kind === 'hop').length, 1, 'only one request waits at a time');
+  const hop = storedLimitCard(rt, t, alpha, 'beta', { text: 'check again' });
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
   assert.equal(store.item(t.id, hop.id).status, 'allowed');
+  assert.ok(adapter.calls.some((c) => c.handle === 'beta' && c.message.text === 'check again'));
 });
 
 test('a wake you allow delivers its whole message, not the card’s preview (#108)', async () => {
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
-  await settle(rt);
   const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
-  assert.equal(rt.agentWake(alpha.id, 'beta', long).waiting, true);
-  const hop = store.items(t.id).find((i) => i.kind === 'hop');
-  assert.ok(hop.reason.length <= 200, 'the card keeps a short preview');
+  const hop = storedLimitCard(rt, t, alpha, 'beta', { text: long });
+  assert.ok(store.item(t.id, hop.id).reason.length <= 200, 'the card keeps a short preview');
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
   const woke = adapter.calls.filter((c) => c.handle === 'beta' && c.message.kind === 'agent' && c.message.from === '@alpha').at(-1);
@@ -254,14 +249,11 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
 });
 
 test('a wake request stored before #108, with only a preview, still delivers that preview when allowed', async () => {
-  const { rt, store, t, b, adapter } = setup();
+  const { rt, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
-  await settle(rt);
-  rt.agentWake(alpha.id, 'beta', 'the whole message');
-  const hop = store.items(t.id).find((i) => i.kind === 'hop');
-  rt.patchItem(t.id, hop.id, { text: undefined, reason: 'the preview' });
+  const hop = storedLimitCard(rt, t, alpha, 'beta', { text: undefined });
+  rt.patchItem(t.id, hop.id, { reason: 'the preview' });
   rt.act(t.id, hop.id, 'confirm');
   await settle(rt);
   const woke = adapter.calls.filter((c) => c.handle === 'beta' && c.message.kind === 'agent' && c.message.from === '@alpha').at(-1);

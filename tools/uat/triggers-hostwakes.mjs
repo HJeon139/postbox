@@ -1,7 +1,7 @@
 // The triggers of tests/uat/e2e/scenarios/hostwakes.md: a hand-off between agents while a wake card waits for the person.
-// A wake past the chain limit (HOP_LIMIT, shared/limits.mjs) raises a card; until #492 so did two agents waking each
-// other in turn after a hand-off and its answer, which the scenario’s phases were built on. While
-// that card is open a wake that needs a second card is refused (server/side-threads.mjs, askToWake). An agent here gets
+// Until #492 removed the wake limits, a wake past one raised a card (two agents waking each other in turn after a
+// hand-off and its answer, or 10 wakes in a row), which the scenario’s phases are built on; these read a run from then.
+// While that card was open, a wake that needed a second card was refused (askToWake, before #439). An agent here gets
 // the refusal as wake_agent’s own result. An agent on a host gets the shim’s answer at once, and the refusal reaches it
 // only at its next turn (server/remote/turns-tools.mjs, tellAgent), so nothing tells it its hand-off was lost.
 //

@@ -7,7 +7,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { brokenMapApp, dashboardApp, explorerApp, layoutApp, practiceApp, walkthroughApp } from '../mock/apps.mjs';
-import { HOP_LIMIT } from '../side-threads.mjs';
 import { citationFix, fasterParser } from './mock-ledger.mjs';
 
 // POSTBOX_MOCK_SPEED scales every pause: 1 is a natural pace, 0.2 is fast. It’s read on each pause, so a demo can change it.
@@ -172,7 +171,7 @@ const HANDLERS = {
     if (m.kind === 'app-check') return;
     if (m.kind === 'agent') {
       await a.think(300);
-      return a.say(`Thanks ${m.from}, noted.`);
+      return a.say(`Thanks ${String(m.from).replace('@', '')}, noted.`);
     }
     const text = m.text ?? m.note ?? '';
     if (has(text, /every (kind of )?block|catalog|tour/)) return catalogTour(a);
@@ -270,7 +269,7 @@ const HANDLERS = {
     if (m.kind === 'app-check') return;
     if (m.kind === 'agent') {
       await a.think(300);
-      return a.say(`Thanks ${m.from}, noted.`);
+      return a.say(`Thanks ${String(m.from).replace('@', '')}, noted.`);
     }
     const text = m.text ?? '';
     // Asked about what another agent wrote, which its history cut: it reads the whole of it first (#109).
@@ -286,7 +285,7 @@ const HANDLERS = {
     await a.think(500);
     await a.say(
       m.kind === 'agent'
-        ? `Thanks ${m.from}. I’ve noted that.`
+        ? `Thanks ${String(m.from).replace('@', '')}. I’ve noted that.`
         : 'I’m a new agent running on the mock backend, so my replies are scripted. To use a real model, pick Claude Code or the Agent SDK for an agent in the new-agent sheet.',
     );
   },
@@ -608,7 +607,7 @@ async function researcherReply(m, a, mem) {
   await a.think(700);
   if (/loop|again|ping/i.test(m.text)) {
     mem.pings = (mem.pings ?? 0) + 1;
-    return a.say(`Checked. ${mem.pings <= HOP_LIMIT ? '@indexer can you confirm the edition list once more?' : 'That settles it.'}`);
+    return a.say(`Checked. ${mem.pings <= 10 ? '@indexer can you confirm the edition list once more?' : 'That settles it.'}`);
   }
   await a.tool('read books/emma.txt', 400);
   await a.say(

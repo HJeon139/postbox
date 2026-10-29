@@ -66,15 +66,11 @@ export const GLIMPSE_CHARS = 160;
 /** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
 export const GLIMPSE_SOURCE_CHARS = 2000;
 
-/** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
-export const HOP_LIMIT = 10;
 /**
  * Agent wakes in a row, without you, after which the room shows the count with a hint to Stop agents going nowhere
- * (#492), in place of a pair limit: E2’s replay found no loop past 2 wakes, and ordinary hand-offs run longer.
+ * (#492), in place of the wake limits: E2’s replay found no loop past 2 wakes, and ordinary hand-offs run longer.
  */
 export const CHAIN_HINT = 6;
-/** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
-export const HELD_WAKES = 20;
 
 /** @typedef {keyof typeof LIMITS} LimitName */
 

@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { HOP_LIMIT } from '../server/side-threads.mjs';
 import { collect, tierA } from '../server/telemetry-record.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
@@ -62,24 +61,25 @@ test('#372 a turn in an old side thread that mentions two agents posts its messa
 test('#372 a turn in an old side thread whose wake waits on a card is still told side threads are gone', async () => {
   const { store, rt, adapter, t, alpha } = three();
   const old = oldSide(rt, t);
-  rt.putThread({ ...store.state.threads[t.id], hops: 10 });
+  // A persona the conversation doesn’t have: its wake waits on a card that asks you to add it (no limit raises one, #492).
+  rt.createPersona({ handle: 'delta' });
   const h = held();
   adapter.next.push(h.step);
   rt.deliver(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
   await sleep(5);
-  const r = rt.agentWake(alpha.id, 'beta', 'Status?');
-  assert.equal(r.waiting, true, 'past the wake limit, it waits on the card');
+  const r = rt.agentWake(alpha.id, 'delta', 'Status?');
+  assert.equal(r.waiting, true, 'it waits on the card asking to add delta');
   assert.equal(store.state.sessions[alpha.id].toldSideThreadsGone, true);
   h.release();
   await settle(rt);
 });
 
-test('#372 a woken agent is told its reply reaches the waker only by an @-mention, and wake_agent names the chain limit', async () => {
+test('#372 a woken agent is told its reply reaches the waker only by an @-mention, and wake_agent names no wake limit (#492)', async () => {
   const { formatMessage } = await import('../server/adapters/guide.mjs');
   const { TOOL_DEFS } = await import('../server/mcp.mjs');
   assert.match(
     formatMessage({ kind: 'agent', from: '@alpha', text: 'Check the totals.' }),
     /^\[Postbox\] @alpha wrote to you\. Your reply posts here; it reaches @alpha only if you @-mention them/,
   );
-  assert.match(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, new RegExp(`After ${HOP_LIMIT} agent wakes in a row, the person must allow`));
+  assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, /in a row/);
 });
