@@ -39,6 +39,7 @@ CI runs every spec on each pull request, normally and with the server’s events
 **Do**
 - Use ES modules (`.mjs`), and import built-ins with the `node:` prefix.
 - Keep runtime dependencies at zero. Anything heavy is an `optionalDependency` that Postbox works without (the Agent SDK, `kokoro-js`), loaded with a dynamic `import()` inside `try`.
+  - The one exception is Redis 8, the store’s server (designs/508/design.md, “Storage: a Redis 8 server that Postbox bundles and runs”). It isn’t an npm package: Postbox’s CI builds 8.10.3 from the official source tarball (`.github/workflows/redis.yml`), and Postbox downloads the build for its platform at first start, keeping it only if its SHA-256 matches the pin in `server/redis-build.mjs`. Postbox takes Redis 8 under the AGPLv3 and offers the matching source tarball in every release that carries a build. It talks to Redis as a separate process over its protocol, so Postbox’s own license is unaffected. Postbox runs only where there’s a build: macOS on Apple silicon, Linux on arm64 and Linux on x64.
 - Spawn processes with an argument array, never through a shell. Handle the child’s `error` event, and give long work an `AbortSignal` or a kill path. Stop is SIGINT, then SIGKILL.
 - Call `unref()` on timers that shouldn’t keep the process alive. A test suite that waits on a 10-second timer has a bug.
 - Write files atomically: write a temporary file, then `rename`. Never overwrite a file the person owns that you couldn’t parse.
