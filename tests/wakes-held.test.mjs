@@ -4,10 +4,15 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { HOP_LIMIT } from '../shared/limits.mjs';
 import { TOOL_ROUTES } from '../shared/remote-protocol.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
-/** The fixture's room with @gamma, and a pair card from @alpha's third wake of @beta in a row, left open. */
+/**
+ * The fixture's room with @gamma, and a card from @alpha's wake of @beta past the chain limit (HOP_LIMIT), left open.
+ * While it waits the count stays at the limit, so any other agent's wake needs a card too. Until #492 this was the
+ * pair limit's card, after a hand-off and its answer.
+ */
 async function cardOpen() {
   const f = setup();
   f.rt.ensureSession(f.t.id, f.c.id);
@@ -17,13 +22,10 @@ async function cardOpen() {
     await settle(f.rt);
     return r;
   };
-  await wake(f.alpha, 'beta');
-  await wake(f.beta, 'alpha');
-  assert.equal((await wake(f.alpha, 'beta')).waiting, true, 'the third wake in a row raised the card');
+  // All while the chain runs: one that ends starts the count again (#492).
+  for (let i = 0; i < HOP_LIMIT; i++) f.rt.agentWake(...(i % 2 ? [f.beta.id, 'alpha'] : [f.alpha.id, 'beta']), `hand-off ${i + 1}`);
+  assert.equal((await wake(f.alpha, 'beta')).waiting, true, 'the wake past the chain limit raised the card');
   const card = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
-  // gamma and alpha reach their own pair's limit while the card waits: gamma's hand-off needs a second card.
-  await wake(gamma, 'alpha');
-  await wake(f.alpha, 'gamma');
   return { ...f, gamma, wake, card };
 }
 
@@ -101,14 +103,19 @@ test('#439 a card whose target you write to is retired, and its own wake and the
   assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0, 'your message started the counts again');
 });
 
-test('#439 a card another agent’s wake retires keeps its own hand-off: it goes back through the limits, onto a fresh card', async () => {
+test('#439 a card another agent’s wake retires keeps its own hand-off: it goes back through the limits', async () => {
   const f = await cardOpen();
-  // gamma’s first wake of beta is under its own limits, so it goes, and beta has a turn without the card.
+  // You write to gamma, not the card's target, which starts the counts again; gamma's wake of beta is then under the
+  // limit, so it goes, and beta has a turn without the card.
+  f.rt.sendMessage(f.t.id, { text: '@gamma tell beta the line count' });
+  await settle(f.rt);
+  assert.equal(f.store.item(f.t.id, f.card.id).status, 'open', 'writing to another agent leaves the card');
   await f.wake(f.gamma, 'beta', 'the line count is 42');
   assert.equal(f.store.item(f.t.id, f.card.id).status, 'retired');
-  // alpha and beta are still at their pair’s limit, so alpha’s hand-off waits for the person again rather than vanishing.
-  const fresh = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
-  assert.deepEqual([fresh?.from, fresh?.to, fresh?.text], ['alpha', 'beta', 'alpha to beta']);
+  // alpha's hand-off goes back through the limits, which it's now under, so it reaches beta rather than vanishing.
+  for (let i = 0; i < 20 && got(f, 'beta', 'alpha to beta').length < 1; i++) await settle(f.rt);
+  assert.equal(got(f, 'beta', 'alpha to beta').length, 1);
+  assert.equal(f.store.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 0);
 });
 
 test('#439 stopping the held wake’s target drops it, so allowing the card doesn’t undo the Stop, and its agent is told', async () => {

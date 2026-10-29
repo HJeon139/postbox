@@ -76,7 +76,18 @@ import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
-import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
+import {
+  agentWake,
+  archiveForks,
+  bumpSideLink,
+  dropWakes,
+  endChain,
+  recordAgentMessage,
+  resolveHop,
+  sideSession,
+  threadPersona,
+  wakeAgent,
+} from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
@@ -679,7 +690,7 @@ export class Runtime {
       () => this.endTurn(turn, null),
       (err) => this.endTurn(turn, err),
     );
-    turn.exited.then(() => this.turnExited(turn));
+    turn.exited.then(() => this.turnExited(turn)).then(() => endChain(this, turn.threadId));
   }
 
   turnContext(se0, turn) {
@@ -1091,7 +1102,7 @@ export class Runtime {
   /**
    * An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
    * A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
-   * agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The wake limit stops a loop.
+   * agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The chain limit stops a runaway one.
    * Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
    * One the failed reply a retry answers already woke isn’t woken again (#485).
    * @param {any} se @param {any} turn @param {string} text  what the woken agents are sent
@@ -2079,7 +2090,7 @@ export class Runtime {
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
     const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
-    this.putThread({ ...this.s.threads[threadId], hops: 0, pairRuns: null });
+    this.putThread({ ...this.s.threads[threadId], hops: 0 });
     if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
     this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
     return { item };
