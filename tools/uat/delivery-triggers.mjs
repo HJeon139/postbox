@@ -143,7 +143,7 @@ export const DELIVERY_TRIGGERS = {
   },
   'edit-while-waiting': {
     issue: 484,
-    requirements: ['DL-7'],
+    requirements: ['DL-7', 'AT-6'],
     says: 'an item changed while its delivery waited, and arrived once',
     recorded: reads,
     run: editWhileWaiting,
