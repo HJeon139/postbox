@@ -73,3 +73,9 @@ test('#451 a held hand-off whose card you allowed, and that never reached its ta
   f.now = s(1000);
   assert.equal(check('refused-wake-lost').run(f).length, 1);
 });
+
+test('#451 a held answer after an urgent note is still a hold: withUrgent puts the note first (server/mcp.mjs)', () => {
+  const f = held({ answer: 'allow', at: s(400) });
+  f.streams = [wakeStream('developer', s(100), 'critic', `[Postbox] URGENT: a subagent needs you.\n\n${HELD}`)];
+  assert.equal(HOSTWAKE_TRIGGERS['wake-held-on-card'].run(f).length, 1);
+});

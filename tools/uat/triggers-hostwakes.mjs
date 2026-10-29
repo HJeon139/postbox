@@ -24,8 +24,11 @@ const SILENT_MS = 3 * MINUTE;
 const hostRun = (f) => Boolean(f.hosts?.hosts?.length);
 const itemsOf = (f) => (f.threads ?? []).flatMap((t) => f.state?.items?.[t] ?? []);
 const handleOf = (s) => String(s ?? '').replace(/^@/, '');
-/** wake_agent’s answer when #439’s fix holds a wake on the waiting card (server/wake-cards.mjs). */
-const HELD = /^Postbox is holding your message to @/;
+/**
+ * wake_agent’s answer when #439’s fix holds a wake on the waiting card (server/wake-cards.mjs). Not anchored: an urgent
+ * note for the agent can come first (withUrgent, server/mcp.mjs).
+ */
+const HELD = /Postbox is holding your message to @/;
 
 /**
  * Every hop card, a wake past a limit’s or one asking to add an agent, since either refuses other wakes while it waits:
