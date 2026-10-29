@@ -5,6 +5,8 @@
 // review block from @researcher near its start (bigroom.md, phase 3), and a decision whose id the run links to
 // (bigroom.md, phase 2). Its first day uses a word no later day does, for the search phase (bigroom.md, phase 4).
 
+import { Store } from '../../server/store.mjs';
+
 /** The word only the first day uses. */
 export const FIRST_DAY_WORD = 'zephyrine';
 const TOPICS = ['packaging', 'the changelog', 'CI on the oldest runtime', 'the migration guide', 'deprecation warnings', 'the security scan', 'release notes'];
@@ -77,11 +79,57 @@ export function bigRoomItems({ count = 1000, start = Date.UTC(2026, 8, 1, 9), se
 
 /**
  * Writes the room’s items into a conversation of a loaded store, as `item.add` events, before Postbox serves it.
+ * sessions: each agent’s session in that conversation, so its items are its own and it can revise its review block.
  * @param {{ emit: (type: string, data: any) => any }} store  @param {string} threadId
  * @param {Parameters<typeof bigRoomItems>[0]} [opts]
+ * @param {Record<string, { sessionId: string, personaId?: string }>} [sessions]
  */
-export function seedBigRoom(store, threadId, opts) {
+export function seedBigRoom(store, threadId, opts, sessions = {}) {
   const room = bigRoomItems(opts);
-  for (const item of room.items) store.emit('item.add', { threadId, item });
+  for (const item of room.items) {
+    const se = item.handle ? sessions[item.handle] : null;
+    store.emit('item.add', { threadId, item: se ? { ...item, sessionId: se.sessionId, ...(se.personaId ? { personaId: se.personaId } : {}) } : item });
+  }
   return room.landmarks;
+}
+
+/**
+ * Seeds the room into a conversation in a run’s data folder while its Postbox is down, with the agents’ sessions the
+ * page made there, and says where its decision is, for the tester (bigroom.md’s phase 2: “the run gives it to you”).
+ * @param {string} data  @param {string} threadId  @param {string[]} agents  the scenario’s; the mention is of the first
+ */
+export async function seedBigRoomData(data, threadId, agents) {
+  const store = await new Store(data).load();
+  /** @type {Record<string, { sessionId: string, personaId?: string }>} */
+  const sessions = {};
+  for (const se of Object.values(store.state.sessions ?? {}))
+    if (se?.threadId === threadId && !se.archived && !sessions[se.handle]) sessions[se.handle] = { sessionId: se.id, personaId: se.personaId };
+  const landmarks = seedBigRoom(store, threadId, { handles: agents }, sessions);
+  await store.flush();
+  return {
+    landmarks,
+    /** @param {string} origin */
+    note: (origin) =>
+      `The room was seeded with about 1,000 generated items before you arrived. Its first decision is at ${origin}/#/t/${threadId}?at=${landmarks.decision}.`,
+  };
+}
+
+/**
+ * `- seed: big-room` in a run (tools/uat-run.mjs): once the page has started the conversation, stops Postbox, seeds the
+ * room into its store, starts it again on the same data, and opens the room. Returns the note for the tester.
+ * @param {{ postbox: { origin: string, restart: (o?: { whileDown?: () => Promise<void> }) => Promise<number> }, data: string,
+ *   threadId: string, agents: string[], page: { goto: (url: string) => Promise<any> }, log: (line: string) => void }} o
+ */
+export async function openBigRoom({ postbox, data, threadId, agents, page, log }) {
+  /** @type {Awaited<ReturnType<typeof seedBigRoomData>> | null} */
+  let seeded = null;
+  await postbox.restart({
+    whileDown: async () => {
+      seeded = await seedBigRoomData(data, threadId, agents);
+    },
+  });
+  if (!seeded) throw new Error('Postbox restarted without seeding the big room.');
+  await page.goto(`${postbox.origin}/#/t/${threadId}`);
+  log(`Seeded the big room into ${threadId}: ${JSON.stringify(/** @type {any} */ (seeded).landmarks)}.`);
+  return /** @type {any} */ (seeded).note(postbox.origin);
 }

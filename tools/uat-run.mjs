@@ -32,11 +32,13 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
+import { openBigRoom } from './uat/big-room.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { goToNeedsStep } from './uat/driver-needs.mjs';
+import { faultSetup } from './uat/fault-run.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS, hostMode } from './uat/hosts-options.mjs';
@@ -124,6 +126,8 @@ async function main() {
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
   const paths = await runPaths(dir);
   const canaries = makeWorkspace(scenario, paths, dir);
+  // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
+  const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -158,6 +162,7 @@ async function main() {
       POSTBOX_AGY_RECORD: paths.agyStreams,
       POSTBOX_CODEX_RECORD: paths.codexStreams,
       ...tm.telemetryEnv(scenario, dir, opt),
+      ...faults?.env,
     },
     log,
   });
@@ -204,6 +209,9 @@ async function main() {
     const mainThread = /#\/t\/([^/]+)/.exec(hash)?.[1];
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
+    // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
+    if (scenario.seed === 'big-room')
+      scenario.summary += `\n\n${await openBigRoom({ postbox, data: paths.data, threadId: mainThread, agents: scenario.agents, page, log })}`;
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
@@ -328,6 +336,7 @@ async function main() {
       if (goal.end === 'now') break;
       if (goal.phase !== phase) log(`phase ${phase + 1} → ${goal.phase + 1}: ${goal.note}`);
       phase = goal.phase;
+      faults?.arm(phase, log);
       const fresh = [...midTurn.splice(0), ...newFindings()];
       // Stop’s question about background jobs (#126) can be a dialog, which isn’t an item: say it’s there.
       const jobsAsk = await d.jobsAsk();

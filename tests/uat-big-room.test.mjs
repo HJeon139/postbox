@@ -2,11 +2,14 @@
 // landmarks delivery.md and bigroom.md name.
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { CATCH_UP_ITEMS } from '../server/catch-up.mjs';
 import { Store } from '../server/store.mjs';
 import { parseMentions } from '../shared/text.mjs';
-import { bigRoomItems, FIRST_DAY_WORD, seedBigRoom } from '../tools/uat/big-room.mjs';
+import { bigRoomItems, FIRST_DAY_WORD, seedBigRoom, seedBigRoomData } from '../tools/uat/big-room.mjs';
 
 const HANDLES = ['researcher', 'critic', 'developer'];
 
@@ -51,4 +54,44 @@ test('seeding writes the room into a store’s conversation', () => {
   const landmarks = seedBigRoom(store, 'th_big');
   assert.equal(store.items('th_big').length, 1000);
   assert.equal(store.items('th_big')[0].id, landmarks.mention);
+});
+
+/** A conversation the page started: a room and its agents' sessions in it. @param {Store} store */
+function startRoom(store) {
+  store.emit('thread', { id: 'th_big', kind: 'room', title: 'The release, in a long room', members: ['se_r', 'se_c'] });
+  store.emit('session', { id: 'se_r', threadId: 'th_big', handle: 'researcher', personaId: 'pe_r' });
+  store.emit('session', { id: 'se_c', threadId: 'th_big', handle: 'critic', personaId: 'pe_c' });
+}
+
+test('an agent’s seeded items and its review block are its session’s, so it can revise the block', () => {
+  const store = new Store(null);
+  startRoom(store);
+  const landmarks = seedBigRoom(
+    store,
+    'th_big',
+    { handles: ['researcher', 'critic'] },
+    { researcher: { sessionId: 'se_r', personaId: 'pe_r' }, critic: { sessionId: 'se_c', personaId: 'pe_c' } },
+  );
+  const review = store.item('th_big', landmarks.review);
+  assert.equal(review.sessionId, 'se_r');
+  assert.equal(review.personaId, 'pe_r');
+  const byAgents = store.items('th_big').filter((it) => it.handle);
+  assert.ok(byAgents.length > 100);
+  assert.ok(byAgents.every((it) => it.sessionId === (it.handle === 'researcher' ? 'se_r' : 'se_c')));
+});
+
+test('seeding a run’s data folder while Postbox is down writes the room for the next start to load', async () => {
+  const data = mkdtempSync(join(tmpdir(), 'pb-big-room-'));
+  try {
+    const before = await new Store(data).load();
+    startRoom(before);
+    await before.flush();
+    const seeded = await seedBigRoomData(data, 'th_big', ['researcher', 'critic']);
+    const after = await new Store(data).load();
+    assert.equal(after.items('th_big').length, 1000);
+    assert.equal(after.item('th_big', seeded.landmarks.review).sessionId, 'se_r');
+    assert.match(seeded.note('http://127.0.0.1:4310'), new RegExp(`http://127\\.0\\.0\\.1:4310/#/t/th_big\\?at=${seeded.landmarks.decision}`));
+  } finally {
+    rmSync(data, { recursive: true, force: true });
+  }
 });

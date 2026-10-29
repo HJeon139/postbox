@@ -1,7 +1,8 @@
 // The fault launcher (#508, tools/uat/fault-launcher.mjs) in front of a stand-in CLI: the turn it fails passes the
 // first session event through and nothing after it, and exits 1; a turn it doesn’t fail passes everything. The
 // stand-in writes the first line of a recorded Claude Code turn that carries its init (tests/fixtures/claude-code/
-// background-failed.jsonl), then, a moment later, an assistant message.
+// background-failed.jsonl), then, a moment later, an assistant message. The last test arms it as the runner does, through
+// tools/uat/fault-run.mjs.
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -10,6 +11,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { faultSetup } from '../../tools/uat/fault-run.mjs';
+import { parseScenario } from '../../tools/uat/scenario.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'pb-fault-launcher-'));
@@ -65,4 +68,20 @@ test('the faulted turn passes its session event through, then fails before any a
 test('a turn without a fault passes the whole stream through and exits as the CLI did', async () => {
   const r = await turn({});
   assert.deepEqual(r, { code: 0, types: ['system', 'assistant'] });
+});
+
+test('a fault the runner arms as its phase starts fails the next turn, and none after the phase ends', async () => {
+  const s = parseScenario(
+    '# T\n- agents: researcher\n\n## Phase 1: A\n\nText.\n\n## Phase 2: B\n- fault: fail-before-output researcher 1\n\nText.\n\n## Phase 3: C\n\nText.',
+  );
+  const f = faultSetup({ scenario: s, root: ROOT, dir: join(dir, 'run'), env: {} });
+  assert.ok(f);
+  const env = { ...f.env, POSTBOX_UAT_REAL_BIN: cli };
+  f.arm(0);
+  assert.deepEqual(await turn(env), { code: 0, types: ['system', 'assistant'] });
+  f.arm(1);
+  assert.deepEqual(await turn(env), { code: 1, types: ['system'] });
+  assert.deepEqual(await turn(env), { code: 0, types: ['system', 'assistant'] }, 'only its first turn');
+  f.arm(2);
+  assert.deepEqual(await turn(env), { code: 0, types: ['system', 'assistant'] });
 });
