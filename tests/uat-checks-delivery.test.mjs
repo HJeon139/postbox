@@ -60,6 +60,72 @@ test('delivery-dropped waits for two turns before it calls a mention dropped', (
   assert.deepEqual(found(f, 'delivery-dropped'), []);
 });
 
+/** @developer’s answer to @critic, which Postbox held on @critic’s open card waking @developer. */
+const REPLY =
+  'I can’t settle the version number yet, because I don’t have one to propose. @critic, send me the version you want and the file it should live in.';
+
+/**
+ * @critic’s card to wake @developer waits on the person; @developer’s reply mentioning @critic is held on it, and @critic
+ * takes two turns while it waits. Postbox recorded this in the delivery run of 29 October 2026.
+ */
+function heldOnOpenCard() {
+  const r = room();
+  r.agent('developer');
+  r.agent('critic');
+  r.add({
+    id: 'it_card',
+    at: s(1),
+    kind: 'hop',
+    from: 'critic',
+    fromSessionId: 'se_critic',
+    to: 'developer',
+    text: '@developer which version: 2.0.0 or 2.0?',
+    status: 'open',
+  });
+  r.add({ id: 'it_reply', at: s(5), kind: 'agent', handle: 'developer', sessionId: 'se_developer', text: REPLY });
+  r.patch('it_card', { held: [{ fromSessionId: 'se_developer', from: 'developer', to: 'critic', text: REPLY, itemId: 'it_reply', at: s(5) }] });
+  r.turn('critic', s(10), { prompt: '[Postbox] What happened in this room since your last turn:\n\nYou: how is the changelog?' });
+  r.turn('critic', s(30), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+  return r;
+}
+
+/** The person allows the card, and @critic’s next two turns hold the held reply, or don’t. */
+function allowHeld(r, { delivered }) {
+  r.patch('it_card', { status: 'allowed' });
+  r.add({ id: 'it_allowed', at: s(50), kind: 'voice', text: 'Allowed: @critic wakes @developer' });
+  r.turn('critic', s(51), {
+    prompt: delivered ? `[Postbox] @developer’s message, held until now:\n\n${REPLY}` : '[Postbox] You: Allowed: @critic wakes @developer',
+  });
+  r.turn('critic', s(70), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+}
+
+test('delivery-dropped doesn’t count a mention held on an open card as due, mid-run or once it’s allowed and delivered', () => {
+  const r = heldOnOpenCard();
+  // A live check, run between steps while the card still waits: @critic’s two turns came while the mention was held.
+  assert.deepEqual(found(r.f, 'delivery-dropped'), [], 'before the Allow');
+  allowHeld(r, { delivered: true });
+  assert.deepEqual(found(r.f, 'delivery-dropped'), [], 'after the Allow');
+});
+
+test('delivery-dropped doesn’t call a mention dropped while the card it’s held on is still open at the end of the run', () => {
+  const r = heldOnOpenCard();
+  r.turn('critic', s(80), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+  r.turn('critic', s(100), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+  assert.deepEqual(found(r.f, 'delivery-dropped'), []);
+});
+
+test('delivery-dropped fires for a mention held on a card that its agent’s next two turns after the Allow don’t hold', () => {
+  const r = heldOnOpenCard();
+  allowHeld(r, { delivered: false });
+  const out = found(r.f, 'delivery-dropped');
+  assert.deepEqual(
+    out.map((x) => x.key),
+    ['delivery-dropped:critic:it_reply'],
+  );
+  // Due from the Allow, not from when @developer posted it.
+  assert.match(out[0].evidence, new RegExp(new Date(s(50)).toISOString().replace(/[.]/g, '\\.')));
+});
+
 /** Claude Code’s compaction summary, hand-written in its shape: it retells the conversation, a mention included. */
 const SUMMARY = (text) =>
   `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary request and intent: ${text}`;

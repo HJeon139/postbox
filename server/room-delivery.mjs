@@ -45,10 +45,72 @@ export function timeAfter(events, seq) {
   return null;
 }
 
+/** A wake held on a card, as cardHistory keys it: from whom, to whom, and the start of its text. */
+export const heldKey = (w) => `${w.fromSessionId ?? w.from}:${w.to}:${headOf(w.text) ?? w.text}`;
+
+/** How close to a card’s retiring the wakes it sent on are raised again, or held on another card. */
+const MOVE_MS = 1000;
+/** A card’s own wake, in the shape of a held one, for heldKey. */
+const ownOf = (card) => ({ fromSessionId: card.fromSessionId, from: card.from, to: card.to, text: card.text ?? card.reason, itemId: card.itemId, at: card.at });
+
+/**
+ * Each card’s history from the events: the card as added, the statuses it went through, when it was settled (null
+ * while open), and every wake held on it, with whether a later patch took it off while the card was still open.
+ * Retiring a card sends its own wake and those held on it on (server/wake-cards.mjs’s retireStale), and one that
+ * still needs a card raises the next card, or is held on it: movedTo names the card that took a wake over, and
+ * movedFrom the card it came from, its own wake’s (own) as a held one’s.
+ * @param {any[]} events
+ */
+export function cardHistory(events) {
+  /** @typedef {{ w: any, removedOpen: boolean, movedTo: string|null, movedFrom: string|null }} Wake */
+  /** @type {Map<string, { card: any, statuses: string[], settled: number|null, own: Wake, held: Map<string, Wake> }>} */
+  const cards = new Map();
+  /** The wakes of retired cards not yet taken over, by heldKey: each with its card and when it was retired. */
+  /** @type {Map<string, { h: Wake, cardId: string, at: number }>} */
+  const pending = new Map();
+  /** A wake raised again, or held, at `at`: the retired card’s that it is, if one was sent on just then. */
+  const takeOver = (k, at, cardId, h) => {
+    const p = pending.get(k);
+    if (!p || p.cardId === cardId || !Number.isFinite(at) || Math.abs(at - p.at) > MOVE_MS) return;
+    pending.delete(k);
+    p.h.movedTo = cardId;
+    h.movedFrom = p.cardId;
+  };
+  for (const e of events ?? []) {
+    if (e.type === 'item.add' && e.data?.item?.kind === 'hop') {
+      const card = e.data.item;
+      const own = { w: ownOf(card), removedOpen: false, movedTo: null, movedFrom: null };
+      cards.set(card.id, { card, statuses: [card.status], settled: null, own, held: new Map() });
+      takeOver(heldKey(own.w), card.at, card.id, own);
+    }
+    const c = e.type === 'item.patch' ? cards.get(e.data?.id) : null;
+    if (!c) continue;
+    const p = e.data.patch ?? {};
+    if (typeof p.status === 'string') c.statuses.push(p.status);
+    // A patch carries no time: a retired card’s says when; otherwise the next item added is the closest record.
+    if (typeof p.status === 'string' && p.status !== 'open' && c.settled === null)
+      c.settled = Number.isFinite(p.retiredAt) ? p.retiredAt : timeAfter(events, e.seq);
+    if (p.status === 'retired' && Number.isFinite(p.retiredAt))
+      for (const h of [c.own, ...c.held.values()]) pending.set(heldKey(h.w), { h, cardId: c.card.id, at: p.retiredAt });
+    if (!Array.isArray(p.held)) continue;
+    const now = new Set(p.held.map(heldKey));
+    for (const w of p.held)
+      if (!c.held.has(heldKey(w))) {
+        const h = { w, removedOpen: false, movedTo: null, movedFrom: null };
+        c.held.set(heldKey(w), h);
+        takeOver(heldKey(w), w.at, c.card.id, h);
+      }
+    const open = c.statuses.at(-1) === 'open';
+    for (const [k, h] of c.held) if (!now.has(k) && open) h.removedOpen = true;
+  }
+  return cards;
+}
+
 /**
  * Every delivery the room owes an agent: a message that @-mentions it (not its own), and each wake a card settled
  * by Allow or by retiring, its own and those held on it. `from` is when it could first reach the agent, and `due`
- * when it had to: its agent’s turns count from then.
+ * when it had to: its agent’s turns count from then. A message held on a card is due once the card settles, and not
+ * while it’s open (heldUntil).
  * @param {any} f
  * @returns {{ to: string, itemId: string|null, text: string, from: number, due: number, how: 'mention'|'wake'|'held', cardId: string|null }[]}
  */
@@ -78,7 +140,47 @@ export function addressed(f) {
     if (!had) one.set(k, { ...a, due: a.from });
     else one.set(k, { ...had, itemId: had.itemId ?? a.itemId, from: Math.min(had.from, a.from), due: Math.max(had.due, a.from) });
   }
-  return [...one.values()];
+  // A message whose wake waits on a card isn’t due until the card settles, and isn’t due at all while it’s still open:
+  // its agent’s turns meanwhile came while Postbox held it.
+  const held = heldUntil(f, items);
+  const due = [];
+  for (const a of one.values()) {
+    const until = a.itemId ? held.get(`${a.to}:${a.itemId}`) : undefined;
+    if (until === null) continue;
+    due.push(until === undefined ? a : { ...a, due: Math.max(a.due, until) });
+  }
+  return due;
+}
+
+/**
+ * When each message whose wake waited on a card stopped waiting, by its agent and item: when the last card it waited
+ * on settled, or null while one is still open. Read from the history, where a card’s held list shows every wake that
+ * waited on it, and from the state, for a run whose history is cut. A wake taken off a card while it still waited
+ * stopped waiting on it then, at a time the history doesn’t give: that card doesn’t count.
+ * @param {any} f  @param {any[]} items
+ * @returns {Map<string, number|null>}
+ */
+function heldUntil(f, items) {
+  /** @type {Map<string, number|null>} */
+  const until = new Map();
+  /** @param {any} w  @param {number|null} settled */
+  const note = (w, settled) => {
+    if (typeof w?.itemId !== 'string' || typeof w.to !== 'string') return;
+    const k = `${w.to}:${w.itemId}`;
+    const had = until.get(k);
+    until.set(k, had === null || settled === null ? null : Math.max(had ?? settled, settled));
+  };
+  for (const c of cardHistory(f.events).values()) {
+    const open = c.statuses.at(-1) === 'open';
+    // Settled with nothing added since, so the history can’t say when: the state’s card says, as below.
+    if (!open && c.settled === null) continue;
+    for (const h of [c.own, ...c.held.values()]) if (!h.removedOpen) note(h.w, open ? null : c.settled);
+  }
+  for (const card of items.filter((it) => it.kind === 'hop')) {
+    const settled = card.status === 'open' ? null : (card.retiredAt ?? settledAt(f, card.id) ?? card.at);
+    for (const w of [card, ...(card.held ?? [])]) note(w, settled);
+  }
+  return until;
 }
 
 /** When the person settled a card, from the history: the item added after its status patch. */

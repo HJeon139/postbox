@@ -6,69 +6,9 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { needsYouNow } from '../shared/needs.mjs';
 import { clip } from '../shared/text.mjs';
-import { headOf, holds, inputsOf, notCheckableAll, recorded, timeAfter, turnsOf, unreadable } from './room-delivery.mjs';
+import { cardHistory, heldKey, holds, inputsOf, notCheckableAll, recorded, turnsOf, unreadable } from './room-delivery.mjs';
 
 const ANSWERED = new Set(['allowed', 'declined']);
-const heldKey = (w) => `${w.fromSessionId ?? w.from}:${w.to}:${headOf(w.text) ?? w.text}`;
-
-/** How close to a card’s retiring the wakes it sent on are raised again, or held on another card. */
-const MOVE_MS = 1000;
-/** A card’s own wake, in the shape of a held one, for heldKey. */
-const ownOf = (card) => ({ fromSessionId: card.fromSessionId, from: card.from, to: card.to, text: card.text ?? card.reason, itemId: card.itemId, at: card.at });
-
-/**
- * Each card’s history from the events: the card as added, the statuses it went through, when it was settled (null
- * while open), and every wake held on it, with whether a later patch took it off while the card was still open.
- * Retiring a card sends its own wake and those held on it on (server/wake-cards.mjs’s retireStale), and one that
- * still needs a card raises the next card, or is held on it: movedTo names the card that took a wake over, and
- * movedFrom the card it came from, its own wake’s (own) as a held one’s.
- * @param {any[]} events
- */
-export function cardHistory(events) {
-  /** @typedef {{ w: any, removedOpen: boolean, movedTo: string|null, movedFrom: string|null }} Wake */
-  /** @type {Map<string, { card: any, statuses: string[], settled: number|null, own: Wake, held: Map<string, Wake> }>} */
-  const cards = new Map();
-  /** The wakes of retired cards not yet taken over, by heldKey: each with its card and when it was retired. */
-  /** @type {Map<string, { h: Wake, cardId: string, at: number }>} */
-  const pending = new Map();
-  /** A wake raised again, or held, at `at`: the retired card’s that it is, if one was sent on just then. */
-  const takeOver = (k, at, cardId, h) => {
-    const p = pending.get(k);
-    if (!p || p.cardId === cardId || !Number.isFinite(at) || Math.abs(at - p.at) > MOVE_MS) return;
-    pending.delete(k);
-    p.h.movedTo = cardId;
-    h.movedFrom = p.cardId;
-  };
-  for (const e of events ?? []) {
-    if (e.type === 'item.add' && e.data?.item?.kind === 'hop') {
-      const card = e.data.item;
-      const own = { w: ownOf(card), removedOpen: false, movedTo: null, movedFrom: null };
-      cards.set(card.id, { card, statuses: [card.status], settled: null, own, held: new Map() });
-      takeOver(heldKey(own.w), card.at, card.id, own);
-    }
-    const c = e.type === 'item.patch' ? cards.get(e.data?.id) : null;
-    if (!c) continue;
-    const p = e.data.patch ?? {};
-    if (typeof p.status === 'string') c.statuses.push(p.status);
-    // A patch carries no time: a retired card’s says when; otherwise the next item added is the closest record.
-    if (typeof p.status === 'string' && p.status !== 'open' && c.settled === null)
-      c.settled = Number.isFinite(p.retiredAt) ? p.retiredAt : timeAfter(events, e.seq);
-    if (p.status === 'retired' && Number.isFinite(p.retiredAt))
-      for (const h of [c.own, ...c.held.values()]) pending.set(heldKey(h.w), { h, cardId: c.card.id, at: p.retiredAt });
-    if (!Array.isArray(p.held)) continue;
-    const now = new Set(p.held.map(heldKey));
-    for (const w of p.held)
-      if (!c.held.has(heldKey(w))) {
-        const h = { w, removedOpen: false, movedTo: null, movedFrom: null };
-        c.held.set(heldKey(w), h);
-        takeOver(heldKey(w), w.at, c.card.id, h);
-      }
-    const open = c.statuses.at(-1) === 'open';
-    for (const [k, h] of c.held) if (!now.has(k) && open) h.removedOpen = true;
-  }
-  return cards;
-}
-
 /**
  * ask-dropped: a held wake, or a card, that left the state with no answer from the person and never reached its
  * target. The turn it went on in, the target’s first after its card settled, may have no line in the transcript
