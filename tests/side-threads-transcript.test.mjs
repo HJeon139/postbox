@@ -150,7 +150,9 @@ test('#135: a turn a scheduled wake started says so on its replies', async () =>
   adapter.next.push(async (c) => c.text('Checked the totals again.'));
   const sc = rt.schedule(alpha.id, { inMs: 60000, note: 'Check the totals again.' });
   // Due now, as the timer fires it.
-  rt.arm({ ...sc, at: Date.now() });
+  // The stored schedule is what arming reads (#466), so it’s made due there.
+  store.emit('schedule', { ...sc, at: Date.now() });
+  rt.arm(sc);
   await settle(rt);
   const reply = store.items(t.id).findLast((x) => x.kind === 'agent');
   assert.equal(reply.text, 'Checked the totals again.');

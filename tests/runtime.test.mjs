@@ -820,8 +820,8 @@ test('a wake an archived agent scheduled doesn’t wake it, or stop the server (
   const se = rt.sessionsIn(t.id)[0];
   const sc = rt.schedule(se.id, { inMs: 60000, note: 'later' });
   rt.archiveThread(t.id);
-  // Due now, as at a startup after it was due.
-  rt.arm({ ...sc, at: Date.now() });
+  store.emit('schedule', { ...sc, at: Date.now() }); // Due now, as at a startup after it was due, where arming reads it (#466).
+  rt.arm(sc);
   await sleep(20);
   assert.equal(Object.keys(store.state.schedules).length, 0);
   assert.equal(store.items(t.id).filter((i) => i.variant === 'wake').length, 0);
