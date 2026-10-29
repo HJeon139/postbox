@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.1 (2026-10-29)
+
+### Fixes
+
+- **review:** use preview width for detailed drafts
+
 ## 0.44.0 (2026-10-29)
 
 ### Features
