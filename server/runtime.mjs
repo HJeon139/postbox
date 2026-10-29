@@ -72,6 +72,7 @@ import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere,
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
+import { sessionPatch } from './session-patch.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
@@ -364,7 +365,7 @@ export class Runtime {
   updateSession(id, patch) {
     const se = this.s.sessions[id];
     if (!se) return;
-    this.putSession({ ...se, ...patch, updatedAt: Date.now() });
+    this.store.emit('session.patch', sessionPatch(se, { ...patch, updatedAt: Date.now() }));
   }
   /** threadId: where it happened, when that isn’t the session’s own thread (a turn in a side thread, #110). */
   notify(level, se, title, text, threadId = null) {
