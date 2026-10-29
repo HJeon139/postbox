@@ -4,6 +4,7 @@
 //   opacity 0, and text under an opaque sticky footer aren’t reported.
 // - #89: controls you can’t see or click (control-hidden): a row of buttons clipped by Postbox’s own .bar class, and a
 //   button under an overlay. Controls in a scroll box, and a checkbox hidden for screen readers, aren’t reported.
+// - #328: syntax and runtime errors name where they happened.
 // Every app goes up in one conversation, which a page opened before the tests checks; each test reads what the check
 // found for its apps. Moved from tools/checks/app-check.mjs (#303).
 
@@ -52,6 +53,11 @@ const APPS = {
   // A long list that runs under its opaque sticky footer, as the corpus explorer’s does: hidden there, not overlapped.
   sticky: `<ul style="margin:0;padding:12px;color:var(--text)">${Array.from({ length: 80 }, (_, i) => `<li>Passage ${i + 1}, about hope after loss</li>`).join('')}</ul>
 <div style="position:sticky;bottom:0;background:var(--sunk);color:var(--text);padding:10px 14px">Nothing selected</div>`,
+  // #327: a class from Postbox’s shell stylesheet changes the app’s own layout.
+  collision: `<div class="app" style="color:var(--text)"><p class="title">App content</p><p>Should stay in one column</p></div>`,
+  // #328: both a parse failure and a runtime exception keep their source position.
+  syntax: `<script>\nconst broken = (1;\n</script>`,
+  runtime: `<script>\nconst value = null;\nvalue.missing();\n</script>`,
   // #89: a row of filter buttons in class="bar", which Postbox’s stylesheet makes a 4 px progress bar.
   bar: `<p style="color:var(--text);margin:8px">Filter the frames:</p><div class="bar">${['All', 'Intro', 'Method', 'Results', 'Limits', 'Next']
     .map((t) => `<button class="btn" type="button">${t}</button>`)
@@ -120,7 +126,10 @@ test.beforeAll(async ({ browser }) => {
   const tools = rt.toolsFor(rt.sessionsIn(t.id)[0].id);
   for (const [id, code] of Object.entries(APPS)) tools.show_app({ id, title: id, code });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
-  page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
+  page.on('pageerror', (e) => {
+    // #328 deliberately runs these two broken scripts so their check reports can be asserted below.
+    if (!["Unexpected token ';'", "Cannot read properties of null (reading 'missing')"].includes(e.message)) errors.push(`exception: ${e.message}`);
+  });
   page.on('console', (m) => m.type() === 'error' && errors.push(`console.error: ${m.text()}`));
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
@@ -145,6 +154,11 @@ const clean = (id) => finished(id) && app.rt.s.apps[id].check.status === 'passed
 
 test('the page threw no exceptions and logged no errors while it checked the apps', () => {
   expect(errors).toEqual([]);
+});
+
+test('#328 syntax and runtime errors name where they happened', () => {
+  expect.soft(says('syntax')).toMatch(/script-error: SyntaxError: Unexpected token ';' \(script 1, line 2, column \d+\)/);
+  expect.soft(says('runtime')).toMatch(/script-error: TypeError: Cannot read properties of null .* \(line \d+, column \d+\)/);
 });
 
 // ── #194: text out of its box, and text over text ───────────────────────────────────────
@@ -206,7 +220,14 @@ test('#194 an overlap there both times the check looks is reported, and one that
   expect(twice[0].message).toMatch(/“Still label” is drawn over “Stays here”/);
 });
 
-// ── #89: controls you can’t see or click ────────────────────────────────────────────────
+// ── #327 and #89: Postbox styles and controls you can’t see or click ─────────────────────
+
+test('#327 an app class that Postbox’s shell also defines is reported with the prefix fix', () => {
+  expect(says('collision')).toContain(
+    'class-collision: The class .app is also defined by Postbox’s stylesheet, so its shell styles change this app. Give the app’s class a prefix of its own, such as app-app.',
+  );
+  expect(says('collision')).toContain('class-collision: The class .title is also defined by Postbox’s stylesheet');
+});
 
 test('#89 the .bar row is control-hidden once at each width, and says why: div.bar, a class of Postbox’s own stylesheet', () => {
   const bar = found('bar').filter((p) => p.code === 'control-hidden');

@@ -2,6 +2,97 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.43.3 (2026-10-29)
+
+### Fixes
+
+- **apps:** keep every on-screen app running
+- **apps:** parse apostrophes in unquoted attributes
+- **apps:** ignore duplicate browser checks
+- **apps:** pause unused frames and queue one check
+- **apps:** preserve visible apps during checks
+- **apps:** preserve Unicode offsets while scanning scripts
+- **apps:** scan malformed script end tags safely
+- **apps:** check every pending app safely
+- **apps:** locate sandbox script errors
+- **apps:** report stylesheet class collisions
+
+## 0.43.2 (2026-10-29)
+
+### Fixes
+
+- **uat:** the verifier's prompt counts its three readings
+- **uat:** the verifier reads what a wake's answer means, and judges a finding's own claim
+- **uat:** the verifier can search a run's records, and is told what they hold
+- **uat:** the runner's flag reactions use the inline buttons
+
+## 0.43.1 (2026-10-29)
+
+### Fixes
+
+- **remote:** a rejection nothing handled on a host is logged, and its daemon keeps serving
+- **server:** a rejection nothing handled is logged, and Postbox keeps running
+
+## 0.43.0 (2026-10-28)
+
+### Features
+
+- **server:** agents cancel their own scheduled wakes with cancel_wake
+
+### Fixes
+
+- **remote:** a host call Postbox waits on is applied once, though the daemon sends it again
+- **adapters:** cancel_wake is a quiet Postbox tool, with its own step label
+
+## 0.42.3 (2026-10-28)
+
+### Fixes
+
+- **server:** two mentions at their bound both fit a turn's summary
+- **server:** a message that mentions an agent reaches its summary whole, up to 16,000 characters
+
+## 0.42.2 (2026-10-28)
+
+### Fixes
+
+- **server:** a summary that keeps an old mention doesn't call what it kept the last N
+- **server:** the pointer to a mention a summary gave names the call that reads it whole
+- **server:** the skip a turn's summary names reaches the newest mention it left out
+- **server:** cap the mentions a summary keeps, and quote a seen mention's start
+- **server:** a turn's summary keeps every mention of the agent, and says what it left out
+
+## 0.42.1 (2026-10-28)
+
+### Fixes
+
+- **server:** your message to a card's target goes before the card's own wake
+- **remote:** a host call Postbox waits on is applied once, though the daemon sends it again
+- **app:** a retired wake card says its message went on, or asks again
+- **server:** a retired wake card records when it was retired
+- **server:** a retired wake card's own hand-off goes on, as its held wakes do
+- **server:** Stop and archive reach a wake held on a card
+- **server:** retire a wake card whose target got a turn another way
+- **server:** hold a wake that needs a card while one waits, and settle it with that card
+
+## 0.42.0 (2026-10-28)
+
+### Features
+
+- **agents:** subagents collapse into the agent's ring, with a toggle to list them (#477)
+
+### Fixes
+
+- **agents:** a subagent's row shows its step, not its narration or thoughts (#476)
+- **agents:** a ring's +N no longer runs under the agent's name (#475)
+
+## 0.41.13 (2026-10-28)
+
+### Fixes
+
+- **blocks:** keep raw fallback open on updates
+- **activity:** keep expanded steps through updates
+- **review:** keep unfinished comments through updates
+
 ## 0.41.12 (2026-10-27)
 
 ### Fixes
