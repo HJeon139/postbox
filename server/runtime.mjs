@@ -79,7 +79,7 @@ import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, r
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
-import { settleThread, threadCatchUp } from './thread-summary.mjs';
+import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -580,8 +580,8 @@ export class Runtime {
     // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
     // (#120, message.attach): it sends the agent nothing, and replays what the host has.
     const slash = message.slash === true || typeof message.attach === 'string';
-    // A queued mention its last summary already gave it comes as a pointer, not as new (#484).
-    message = pointerIfSeen(this, se, message);
+    // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
+    if (where === se.threadId) message = pointerIfSeen(this, se, message);
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
@@ -590,12 +590,8 @@ export class Runtime {
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
-    // And before that, what happened in the conversation since this agent last took part: a room is shared
-    // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
-    // …and in the topic or side thread it answers in, what was said there since it last took part (#228).
-    const there = slash || where === se.threadId ? null : threadCatchUp(this, this.s.sessions[sessionId], where, message.itemId);
-    const catchUp = [slash ? null : this.catchUp(this.s.sessions[sessionId], message.itemId), there].filter(Boolean);
-    if (catchUp.length) message = { ...message, context: [...catchUp, ...(message.context ?? [])] };
+    // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
+    message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
     const persona = this.persona(se.personaId);
     const adapter = this.adapters.get(persona?.backend ?? 'mock');
     const abort = new AbortController();
@@ -614,6 +610,7 @@ export class Runtime {
       // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
       backend: persona?.backend ?? 'mock',
       threadId: where,
+      promptFirst: firstPromptSection(message, where !== se.threadId),
       segment: null,
       first: null,
       steps: [],
@@ -982,6 +979,7 @@ export class Runtime {
           turnId: turn.id,
           text: '',
           status: 'failed',
+          ...replyMarks(turn),
         }).id;
       this.patchItem(turn.threadId, target, {
         status: 'failed',
@@ -1149,6 +1147,7 @@ export class Runtime {
         handle: this.s.sessions[sessionId].handle,
         turnId: turn.id,
         text: '',
+        ...replyMarks(turn),
         ...ended,
       });
     }
