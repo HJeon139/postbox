@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import { readState } from '../server/store-redis.mjs';
 import { apply } from '../shared/state.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
@@ -250,4 +251,25 @@ test('an item emitted while a commit adds one to the same conversation comes aft
   );
   assert.equal(s.itemOf('t', 'a'), s.state.items.t[0], 'the item index follows');
   assert.deepEqual((await open(s.dir ?? '')).state, s.state);
+});
+
+// Review finding 5 on #525 (gpt’s regression): startup read `seq`, then the documents, in separate commands, so a
+// commit between them gave documents of seq 2 labeled seq 1.
+test('startup reads documents that match the seq it reports, though another write lands while it reads', async () => {
+  const s = await open(await tmp());
+  s.emit('session', { id: 'counter', n: 0 });
+  await s.flush();
+  const client = /** @type {any} */ (s).client;
+  const call = client.call.bind(client);
+  let once = true;
+  client.call = async (...a) => {
+    const r = await call(...a);
+    if (once && a[0] === 'GET' && a[1] === 'seq') {
+      once = false;
+      await s.commit([{ type: 'session.patch', data: { id: 'counter', patch: { n: 1 } } }], 'read-race');
+    }
+    return r;
+  };
+  const r = await readState(client);
+  assert.equal(r.state.seq, r.state.sessions.counter.n + 1, 'n=0 is seq 1; n=1 is seq 2');
 });

@@ -141,9 +141,22 @@ async function docs(c, keys) {
 
 /**
  * The state the documents hold, its seq, and the items’ positions. No replay: documents are the truth.
+ *
+ * The documents take many commands to read, and another process may write between them (review finding 5 on #525).
+ * Every write moves `seq` in the same script as its documents, so a read that finds the same `seq` after as before saw
+ * no write; one that doesn’t is read again, a few times, and then refused rather than returning a mix.
  * @param {import('./redis-client.mjs').RedisClient} c
  */
 export async function readState(c) {
+  for (let tries = 0; tries < 10; tries++) {
+    const got = await readOnce(c);
+    if (Number((await c.call('GET', 'seq')) ?? 0) === got.state.seq) return got;
+  }
+  throw storeError('ESEQ', 'The store’s Redis kept changing while Postbox read it; start Postbox again.');
+}
+
+/** One read of the state, which another write may have landed in the middle of. @param {import('./redis-client.mjs').RedisClient} c */
+async function readOnce(c) {
   const s = emptyState();
   s.seq = Number((await c.call('GET', 'seq')) ?? 0);
   const settings = await c.call('JSON.GET', 'settings', '$');
