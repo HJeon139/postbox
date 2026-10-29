@@ -85,7 +85,7 @@ if opId ~= '' then redis.call('HSET', 'ops', opId, last) end
 return {'ok', tostring(last)}
 `;
 
-/** @type {Map<string, { sup: RedisSupervisor, ready: Promise<RedisSupervisor>, users: number }>} */
+/** @type {Map<string, { sup: RedisSupervisor, ready: Promise<RedisSupervisor>, users: number, canceled: boolean }>} */
 const running = new Map();
 
 /**
@@ -96,13 +96,18 @@ export function redisFor(dataDir, { home } = {}) {
   let r = running.get(dataDir);
   if (!r) {
     const sup = new RedisSupervisor({ home: home ?? '', dataDir });
-    const ready = (async () => {
+    const entry = { sup, ready: Promise.resolve(sup), users: 0, canceled: false };
+    entry.ready = (async () => {
       sup.home = home ?? (await redisHome({ dataDir }));
+      // stopRedis() came while the build was being found or downloaded: this start never begins.
+      if (entry.canceled) throw storeError('ESTOREDOWN', 'Postbox stopped the store’s Redis before it started.');
       return sup.start();
     })();
-    r = { sup, ready, users: 0 };
+    r = entry;
     running.set(dataDir, r);
-    ready.catch(() => running.delete(dataDir));
+    entry.ready.catch(() => {
+      if (running.get(dataDir) === entry) running.delete(dataDir);
+    });
   }
   r.users++;
   return r;
@@ -114,6 +119,26 @@ export async function releaseRedis(dataDir) {
   if (!r || --r.users > 0) return;
   running.delete(dataDir);
   await r.sup.stop();
+}
+
+/**
+ * Stops every data folder’s child this process started or is starting, for a Postbox that exits before its start
+ * finished (SR-6, a clean shutdown). A start under way is stopped: before it spawns, it halts at its next step and lets
+ * go of its claim (RedisSupervisor.stop()); after, its child is stopped. Resolves once each child is gone, without
+ * waiting on whatever else the start awaits. A claim not yet let go of goes when the process exits.
+ */
+export async function stopRedis() {
+  const all = [...running.values()];
+  running.clear();
+  await Promise.all(
+    all.map((r) => {
+      r.canceled = true;
+      const { child } = r.sup;
+      const stopped = r.sup.stop();
+      if (!child || child.exitCode !== null || child.signalCode !== null) return stopped;
+      return Promise.race([stopped, new Promise((ok) => child.once('exit', ok))]);
+    }),
+  );
 }
 
 /**
