@@ -117,7 +117,7 @@ test('a damaged archive is refused with the reason', async () => {
 
 test('the build workflow archives each build as ustar, without macOS’s ._ files, so this reader takes it', () => {
   const yml = readFileSync(new URL('../.github/workflows/redis.yml', import.meta.url), 'utf8');
-  assert.match(yml, /COPYFILE_DISABLE=1 tar --format=ustar -czf "redis-\$VERSION-\$TARGET\.tar\.gz"/);
+  assert.match(yml, /COPYFILE_DISABLE=1 tar --format=ustar -czf "redis-\$VERSION-\$POSTBOX_TARGET\.tar\.gz"/);
 });
 
 test('POSTBOX_REDIS_HOME names a Redis to use instead of the download, and nothing is fetched', async () => {

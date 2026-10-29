@@ -13,8 +13,9 @@ test('every supported platform has a build in the pinned manifest, and nothing e
   assert.deepEqual(Object.keys(REDIS.targets).sort(), ['darwin-arm64', 'linux-arm64', 'linux-x64']);
   for (const [target, entry] of Object.entries(REDIS.targets)) {
     assert.equal(entry.asset, `redis-${REDIS.version}-${target}.tar.gz`);
-    // Filled in from the release the build workflow makes; until then the downloader refuses (ENOPIN).
-    assert.ok(entry.sha256 === null || /^[0-9a-f]{64}$/.test(entry.sha256), target);
+    // Copied from the redis-v8.10.3 release’s .sha256 assets (workflow run 40812333929); a null would make the
+    // downloader refuse that platform (ENOPIN), so every supported platform must have one.
+    assert.match(String(entry.sha256), /^[0-9a-f]{64}$/, target);
   }
 });
 
