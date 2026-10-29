@@ -2045,7 +2045,7 @@ export class Runtime {
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
     const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
-    this.putThread({ ...this.s.threads[threadId], hops: 0, pairRuns: null });
+    this.putThread({ ...this.s.threads[threadId], hops: 0 });
     if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
     this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
     return { item };

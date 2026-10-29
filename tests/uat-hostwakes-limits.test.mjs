@@ -1,11 +1,14 @@
 // What tests/uat/e2e/scenarios/hostwakes.md relies on in the real wake logic (server/side-threads.mjs): a message from
-// the person clears the counts of wakes in a row, so only a pair’s third wake since it reaches the open card’s check.
+// the person clears the count of wakes in a row, so a hand-off right after it goes though a card waits. Since #492 there
+// is no pair limit, so a card comes only from the chain limit (HOP_LIMIT), and a hand-off between two agents after the
+// person’s message goes too: the scenario’s phases, built on the pair card, need reworking for that (#492).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { HOP_LIMIT } from '../shared/limits.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
-/** The fixture's room with @gamma, and a pair card from @alpha's third wake of @beta in a row, left open (phase 1). */
+/** The fixture's room with @gamma, and a card from @alpha's wake of @beta past the chain limit, left open (phase 1). */
 async function cardOpen() {
   const f = setup();
   f.rt.ensureSession(f.t.id, f.c.id);
@@ -15,9 +18,8 @@ async function cardOpen() {
     await settle(f.rt);
     return r;
   };
-  await wake(f.alpha, 'beta');
-  await wake(f.beta, 'alpha');
-  assert.equal((await wake(f.alpha, 'beta')).waiting, true, 'the third wake in a row raised the card');
+  for (let i = 0; i < HOP_LIMIT; i++) await (i % 2 ? wake(f.beta, 'alpha') : wake(f.alpha, 'beta'));
+  assert.equal((await wake(f.alpha, 'beta')).waiting, true, 'the wake past the chain limit raised the card');
   return { ...f, gamma, wake };
 }
 
@@ -28,12 +30,11 @@ test('a message from the person clears the counts, so a hand-off right after it 
   assert.equal((await wake(gamma, 'alpha')).ok, true, 'the first wake since the message never reaches the card check');
 });
 
-test('as phase 2 plays it, a hand-off that is a pair’s third wake since the person’s message is held on the waiting card (#439)', async () => {
-  // Each hand-off follows one message from the person: a request, its answer, then the hand-off, all between two agents.
+test('#492 a pair’s third wake since the person’s message goes too, though a card waits: there’s no pair limit', async () => {
   const { rt, t, alpha, gamma, wake } = await cardOpen();
   rt.sendMessage(t.id, { text: '@gamma ask @alpha, then hand it the line count' });
   await settle(rt);
   assert.equal((await wake(gamma, 'alpha')).ok, true);
   assert.equal((await wake(alpha, 'gamma')).ok, true);
-  assert.match((await wake(gamma, 'alpha')).message, /^Postbox is holding your message to @alpha: .* is waiting for the person/);
+  assert.equal((await wake(gamma, 'alpha')).ok, true);
 });

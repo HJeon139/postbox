@@ -3,7 +3,7 @@
 // another while it does is held on it, and settled with it (#439). Moved from server/side-threads.mjs, whose agentWake
 // raises them. Functions take the Runtime first (architecture.md, “What a move may change”).
 
-import { HELD_WAKES, HOP_LIMIT, PAIR_LIMIT } from '../shared/limits.mjs';
+import { HELD_WAKES } from '../shared/limits.mjs';
 import { clip, httpError } from './helpers.mjs';
 
 /** The card for a wake past the limit (#108), which waits for the person’s Allow. */
@@ -11,8 +11,6 @@ export function askToWake(rt, from, parent, p, wake) {
   const open = openCard(rt, parent);
   if (open) return holdOnCard(rt, open, parent, from, p, wake);
   const n = (parent.hops ?? 0) + 1;
-  // Under the limit, it’s the pair’s: these two agents have woken each other PAIR_LIMIT times in a row (#372).
-  const pair = n <= HOP_LIMIT ? PAIR_LIMIT : null;
   // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
   const it = rt.addItem(parent.id, {
     kind: 'hop',
@@ -23,11 +21,9 @@ export function askToWake(rt, from, parent, p, wake) {
     ...wake,
     status: 'open',
     n,
-    pair,
   });
   needsCard(rt, from, parent, it, `@${from.handle} wants to wake @${p.handle}`);
-  const why = pair ? `They’ve woken each other ${pair} times in a row.` : `That would be agent wake ${n} since your last message.`;
-  rt.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, why);
+  rt.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${n} since your last message.`);
   return { ok: false, waiting: true, message: `Waiting for the person to allow waking @${p.handle}.` };
 }
 
@@ -112,7 +108,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
   rt.addItem(threadId, { kind: 'voice', text: voice });
   const from = rt.s.sessions[it.fromSessionId];
   if (from) rt.updateSession(from.id, { needs: null, state: rt.turns.has(from.id) ? from.state : 'idle' });
-  rt.putThread({ ...rt.s.threads[threadId], hops: 0, pairRuns: null });
+  rt.putThread({ ...rt.s.threads[threadId], hops: 0 });
   // Added: it joins with a note on why, as an agent the person adds does, and the wake goes on (#228).
   const p = it.join && allow ? rt.personaByHandle(it.to) : null;
   if (p) {

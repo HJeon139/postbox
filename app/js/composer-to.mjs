@@ -2,6 +2,7 @@
 // message wakes the agents it @-mentions, and only them (#107); one that @-mentions no one goes to the next speaker,
 // and one that names an agent without its @ may not reach it (#134).
 
+import { CHAIN_HINT } from '/shared/limits.mjs';
 import { parseMentions, unaddressed } from '/shared/text.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { handles } from './agent-markdown.mjs';
@@ -28,6 +29,19 @@ export function nextSpeaker(threadId) {
   return se ? { handle: se.handle, agent: se, last: se === last } : null;
 }
 
+/**
+ * How many agent wakes have chained since your last message, once that reaches CHAIN_HINT, with a hint to Stop agents
+ * going nowhere (#492): there’s no limit between two agents, and the chain limit is further off. The count is the
+ * conversation’s, in its topic and side threads too.
+ * @param {string} threadId
+ */
+function chainLine(threadId) {
+  const t = S().threads[threadId];
+  const n = (t?.kind === 'topic' || t?.kind === 'side' ? S().threads[t.parentId] : t)?.hops ?? 0;
+  if (n < CHAIN_HINT) return null;
+  return h('span.chain', `Agents have woken each other ${n} times since your last message. If they’re going nowhere, Stop them.`);
+}
+
 /** The agent a draft names without its @ (“critic: …”), when the message wouldn’t reach it: the UAT tester’s rule. */
 const named = (threadId, draft) => unaddressed(draft, handles(), { lastSpeaker: nextSpeaker(threadId)?.handle ?? null })[0] ?? null;
 
@@ -38,7 +52,7 @@ export const addressSig = (threadId, draft) => JSON.stringify([parseMentions(dra
  * The hint’s first part. A draft that @-mentions agents: “Wakes @critic, not @researcher (last speaker)”, since the
  * agent it would otherwise go to isn’t woken, and reads it at its next turn (#107). Otherwise “Did you mean @critic?”,
  * a button that adds the @, when the draft opens with an agent’s name and “:” or “,”; then “Replying to @researcher”,
- * in a room or a topic or side thread.
+ * in a room or a topic or side thread. Then, once agents have chained enough wakes, how many (chainLine, #492).
  * @param {string} threadId @param {string} draft @param {{ room: boolean, addAt: () => void }} opts
  */
 export function addressLine(threadId, draft, { room, addAt }) {
@@ -53,12 +67,14 @@ export function addressLine(threadId, draft, { room, addAt }) {
         wakes.flatMap((x, i) => [i ? ', ' : '', h('b', `@${x}`)]),
         ...not,
       ),
+      chainLine(threadId),
     ];
   }
   const name = named(threadId, draft);
   return [
     name ? h('button.btn.sm.ghost.did-you-mean', { type: 'button', onclick: addAt }, 'Did you mean ', h('b', `@${name}`), '?') : null,
     room && next ? h('span', 'Replying to ', h('b', `@${next.handle}`), mockMarker(next.agent), next.last ? ' (last speaker)' : '') : null,
+    chainLine(threadId),
   ];
 }
 

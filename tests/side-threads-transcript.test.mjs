@@ -5,7 +5,6 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { PAIR_LIMIT } from '../server/side-threads.mjs';
 import { collect, tierA } from '../server/telemetry-record.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
@@ -39,8 +38,6 @@ test('#135, #372: a turn another agent started says so on its replies, and the w
   // An answer that @-mentions alpha wakes it, and alpha’s reply says beta woke it.
   adapter.next.push(async (c) => c.text('@alpha the gap is in row 4.'));
   adapter.next.push(async (c) => c.text('Sent the fix.'));
-  // The person writing starts the pair’s count again, so this is the pair’s first wake, not its third (#372).
-  rt.putThread({ ...store.state.threads[t.id], pairRuns: null });
   rt.agentWake(alpha.id, 'beta', 'Where is it?');
   await settle(rt);
   const next = said('alpha').at(-1);
@@ -49,22 +46,17 @@ test('#135, #372: a turn another agent started says so on its replies, and the w
   assert.notEqual(next.turnId, said('alpha')[0].turnId);
 });
 
-test('#114, #372: two agents mentioning each other in turn stop after a hand-off and its answer, and the card asks you', async () => {
-  const { store, rt, adapter, t, alpha } = setup();
-  // The issue’s conversation: the person asks @alpha for a fix, and alpha and beta wake each other by @-mentions. A
-  // hand-off and its answer go; the pair’s third wake in a row waits for the person, who allows it (#372).
+test('#114, #492: two agents mentioning each other in turn go on without a card, and the room counts the chain', async () => {
+  const { store, rt, adapter, t } = setup();
+  // The issue’s conversation: the person asks @alpha for a fix, and alpha and beta wake each other by @-mentions. Until
+  // #492 the pair’s third wake in a row waited for the person; now each goes, and the chain count says how many.
   const say = (text) => adapter.next.push(async (c) => c.text(text));
   say('On it. @beta can you check the fix?');
   say('@alpha one more gap in the totals.');
   say('Fixed. @beta check again, please.');
   say('All good now.');
   rt.sendMessage(t.id, { text: '@alpha fix the arithmetic gap' });
-  await settle(rt);
-  const card = store.items(t.id).find((x) => x.kind === 'hop' && x.status === 'open');
-  assert.ok(card, `the pair’s wake ${PAIR_LIMIT + 1} in a row waits for the person`);
-  assert.deepEqual([card.from, card.to, card.pair, card.n], ['alpha', 'beta', PAIR_LIMIT, PAIR_LIMIT + 1]);
-  rt.resolveHop(t.id, card.id, true);
-  await settle(rt);
+  for (let i = 0; i < 20 && store.items(t.id).filter((x) => x.kind === 'agent').length < 4; i++) await settle(rt);
   const agents = store.items(t.id).filter((x) => x.kind === 'agent');
   assert.deepEqual(
     agents.map((x) => [x.handle, x.text]),
@@ -76,16 +68,12 @@ test('#114, #372: two agents mentioning each other in turn stop after a hand-off
     ],
     'each turn’s message once',
   );
-  // The wake you allowed is the message of the turn that asked for it (#135), and your Allow started the count again.
-  const allowed = agents.findLast((x) => x.handle === 'alpha');
-  assert.deepEqual([allowed.sessionId, allowed.turnId, allowed.hop], [alpha.id, card.fromTurnId, 1]);
-  // What the conversation shows besides the messages: the card with your answer to it, and no side thread.
-  const lines = store.items(t.id).filter((x) => !['user', 'agent', 'block', 'shared'].includes(x.kind));
+  // Nothing besides the messages: no card, no side thread.
   assert.deepEqual(
-    lines.map((x) => (x.kind === 'system' ? `system ${x.variant}` : x.kind)),
-    ['hop', 'voice'],
+    store.items(t.id).filter((x) => !['user', 'agent', 'block', 'shared'].includes(x.kind)),
+    [],
   );
-  assert.match(lines[1].text, /^Allowed: @alpha wakes @beta$/);
+  assert.equal(store.state.threads[t.id].hops, 3, 'three agent wakes since your message');
   assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0);
 });
 

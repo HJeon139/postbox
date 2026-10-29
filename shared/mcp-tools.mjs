@@ -3,7 +3,7 @@
 // (server/remote/host/) serves the same list, so an agent on another host sees exactly these tools and limits.
 // So this file imports only node: modules and shared/, as host code must (#120); tests/host-imports.test.mjs checks it.
 
-import { HOP_LIMIT, limitText as n, PAIR_LIMIT, PALETTES, READING, SENDING } from './limits.mjs';
+import { HOP_LIMIT, limitText as n, PALETTES, READING, SENDING } from './limits.mjs';
 import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
 
@@ -140,7 +140,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'wake_agent',
-    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. Your message posts where you are, the conversation or a topic thread, and the agent answers there from its one session in this conversation; its reply wakes you only if it @-mentions you. If it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, or ${PAIR_LIMIT} in a row between the same two agents, the person must allow the next one; while that waits, a further one is held and goes with their answer.`,
+    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. Your message posts where you are, the conversation or a topic thread, and the agent answers there from its one session in this conversation; its reply wakes you only if it @-mentions you. If it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, the person must allow the next one; while that waits, a further one is held and goes with their answer.`,
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
