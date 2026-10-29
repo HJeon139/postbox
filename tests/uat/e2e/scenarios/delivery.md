@@ -17,10 +17,12 @@ Ask @critic and @developer to settle the version number between them, by mention
 
 ## Phase 2: A mention past the catch-up cap (A2)
 
-- triggers: mention-past-cap, edit-while-waiting
+- triggers: mention-past-cap
 - steps: 6
 
-The seeded room already holds a mention of @researcher as the oldest of more than 40 items since its last turn. Ask @researcher what it was asked for in this room and by whom, without saying where. While @critic is working on something you gave it, edit a message that mentions @critic, then ask @critic what the message says now.
+The seeded room already holds a mention of @researcher as the oldest of more than 40 items since its last turn. Ask @researcher what it was asked for in this room and by whom, without saying where.
+
+Baselines on `main`: #484’s dropped mention was fixed on `main` by #500 and #502, so there this phase shows `mention-past-cap` firing with `delivery-dropped` silent; the check’s firing is shown by its failing-first unit tests.
 
 ## Phase 3: A turn that fails before any output (A2)
 
@@ -63,3 +65,12 @@ Ask @developer to schedule a wake for itself in two minutes. The runner drops th
 - steps: 5
 
 Compact @critic’s session from its quick panel. Then ask @critic what you asked it in phase 5, and where it would look if it isn’t sure.
+
+## Phase 8: Changes while a delivery waits (A2)
+
+- triggers: edit-while-waiting
+- steps: 8
+
+Give @critic a long job. While it works, send it a second message, which waits in the queue, and change it with the queued message’s Edit before @critic is free. Sent messages have no Edit, so use the queued one. Then, while @critic is busy again, ask @researcher to revise its review block “release-plan.md”. When @critic is free, ask it to quote your second message as it reached it, and which revision of the review it was told about.
+
+This phase confirms DL-7 and AT-6. It has no baseline on `main`: queued messages aren’t items there, and revisions aren’t delivered as amendments until A2.

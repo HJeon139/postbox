@@ -105,11 +105,16 @@ test('#508’s delivery and bigroom scenarios parse: the big-room seed, phase 3�
   const bigroom = read('bigroom');
   assert.equal(delivery.seed, 'big-room');
   assert.equal(bigroom.seed, 'big-room');
-  assert.deepEqual([delivery.phases.length, bigroom.phases.length], [7, 4]);
+  assert.deepEqual([delivery.phases.length, bigroom.phases.length], [8, 4]);
   assert.deepEqual(
     delivery.phases.map((p) => p.fault),
-    [null, null, 'fail-before-output researcher 1', null, null, null, null],
+    [null, null, 'fail-before-output researcher 1', null, null, null, null, null],
   );
+  // Phase 2 is the mention past the cap alone; the edit while a delivery waits is phase 8’s, with a review revised.
+  assert.deepEqual(delivery.phases[1].triggers, ['mention-past-cap']);
+  assert.match(delivery.phases[1].text, /Baselines on `main`/);
+  assert.deepEqual(delivery.phases[7].triggers, ['edit-while-waiting']);
+  assert.match(delivery.phases[7].text, /queued message’s Edit[\s\S]*release-plan\.md/);
   assert.equal(faultSetup({ scenario: delivery, root: ROOT, dir: runDir(), env: {} })?.env.POSTBOX_CLAUDE_BIN, LAUNCHER);
   assert.equal(faultSetup({ scenario: bigroom, root: ROOT, dir: runDir(), env: {} }), null);
   assert.equal(delivery.phases[5].host, 'developer');
@@ -117,4 +122,5 @@ test('#508’s delivery and bigroom scenarios parse: the big-room seed, phase 3�
   assert.match(delivery.phases[5].hostText, /drops the host’s link/);
   // Phases 1 to 3 use the triggers this step adds (tools/uat/delivery-triggers.mjs); the rest come with later steps.
   assert.deepEqual(unknownTriggers({ phases: delivery.phases.slice(0, 3) }), []);
+  assert.deepEqual(unknownTriggers({ phases: delivery.phases.slice(7) }), []);
 });
