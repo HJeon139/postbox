@@ -1,8 +1,10 @@
 // Plain summaries and details for Claude permission cards, shared by local, SDK and remote prompts.
 
-const clip = (value, n) => {
-  const text = String(value ?? '');
-  return text.length > n ? `${text.slice(0, n - 1)}…` : text;
+const clip = (s, n) => {
+  const t = String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 const base = (path) => String(path ?? '').replace(/^.*\//, '');
 
