@@ -115,3 +115,19 @@ test('#466 a Postbox tool a scheduled turn called through MCP counts as a tool t
   assert.deepEqual(f.store.state.schedules[sc.id]?.recoveryTools, ['define_term']);
   f.rt.cancelSchedule(sc.id);
 });
+
+test('#466 a scheduled wake queued behind a turn you stop is settled, not left running', async () => {
+  const f = setup();
+  const h = held();
+  f.adapter.next.push(h.step);
+  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Work on it.' });
+  await new Promise((r) => setTimeout(r, 5));
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check later.' });
+  clearTimeout(f.rt.timers.get(sc.id));
+  fireScheduledWake(f.rt, sc);
+  f.rt.stop(f.alpha.id);
+  h.release();
+  await settle(f.rt);
+  assert.equal(f.store.state.schedules[sc.id], undefined, 'nothing is left running for a restart to fire');
+  assert.equal(f.store.item(sc.threadId, sc.itemId).status, 'canceled');
+});

@@ -75,6 +75,7 @@ import { cancelWake } from './schedule-tools.mjs';
 import {
   armWake,
   cancelWakeSchedule,
+  dropScheduledWake,
   prepareScheduledRetry,
   rearmWakes,
   recordedTools,
@@ -1181,6 +1182,7 @@ export class Runtime {
     this.clearSummaryPending(turn.threadId);
     for (const p of turn.pending) {
       if (p.summarizeTo && p.threadId) this.clearSummaryPending(p.threadId);
+      dropScheduledWake(this, p.message);
       if (se) queue.rememberStoppedMessages(this, sessionId, p.message);
     }
     // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).

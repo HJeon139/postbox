@@ -191,3 +191,9 @@ export function rearmWakes(rt) {
     armWake(rt, pending);
   }
 }
+
+/** A scheduled wake waiting behind a turn you stopped goes with it (#466): it’s settled, not left running. */
+export function dropScheduledWake(rt, message) {
+  const sc = typeof message?.scheduledWakeId === 'string' ? rt.s.schedules[message.scheduledWakeId] : null;
+  if (sc) finishSchedule(rt, sc, 'canceled');
+}
