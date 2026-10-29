@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { buildInfo } from '../server/build-info.mjs';
 import { dataFolder, lockData, moveData, postboxHome } from '../server/home.mjs';
+import { checkPlatform } from '../server/redis-platform.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -30,8 +31,9 @@ Options:
  * it on Ctrl-C.
  * @param {string[]} argv  the flags, without node and the script
  * @param {typeof import('../server/index.mjs').start} start  passed in: server/index.mjs runs this while it’s still loading
+ * @param {{ platform: string, arch: string }} [host]  where it runs; tests pass another
  */
-export async function main(argv, start) {
+export async function main(argv, start, host = { platform: process.platform, arch: process.arch }) {
   let values;
   try {
     ({ values } = parseArgs({
@@ -69,6 +71,13 @@ export async function main(argv, start) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     console.error(`--port takes a port number from 1 to 65535, not “${values.port}”.`);
     process.exit(2);
+  }
+  // Postbox’s store is a Redis 8 build it has only for some platforms: refuse the others before anything is written
+  // or downloaded (designs/508/design.md, “Storage: a Redis 8 server that Postbox bundles and runs”).
+  const where = checkPlatform(host);
+  if (!where.ok) {
+    console.error(where.message);
+    process.exit(1);
   }
   const { dataDir, from } = dataFolder({ data: values.data, root: ROOT });
   let release;
