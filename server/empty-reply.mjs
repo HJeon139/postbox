@@ -10,8 +10,11 @@
  */
 const ASKED = new Set(['user', 'agent']);
 
-/** Postbox’s tools that only read or ask: a turn that called nothing else still owes its reply. */
-const READS = new Set(['read_conversation', 'read_message', 'corpus_search', 'permission_prompt']);
+/**
+ * Postbox’s tools that answer no one: they read, ask, or keep something for later (a wake, a term). A turn that called
+ * nothing else still owes its reply.
+ */
+const READS = new Set(['read_conversation', 'read_message', 'corpus_search', 'permission_prompt', 'schedule_wake', 'cancel_wake', 'define_term']);
 
 /**
  * Marks a turn that answered through one of Postbox’s tools that act, such as a reaction or a term, which leave no
@@ -28,7 +31,7 @@ export function noteAnswer(turn, name, r) {
  * @param {any} turn @param {any[]} items  the thread’s
  */
 export function endedWithoutReply(turn, items) {
-  if (!ASKED.has(turn.kind) || turn.said.trim() || turn.answered) return false;
+  if (!ASKED.has(turn.kind) || turn.slash || turn.said.trim() || turn.answered) return false;
   return !items.some((it) => (it.turnId === turn.id || it.fromTurnId === turn.id) && (it.kind !== 'agent' || it.text?.trim()));
 }
 

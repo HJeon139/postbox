@@ -625,6 +625,10 @@ export class Runtime {
       pending: [],
       said: '',
       rawTail: [],
+      // A skill or command, or a host turn attached again: it may end with nothing to say, as /compact does (#485).
+      slash,
+      // Agents the failed reply this retries already woke: its mentions don’t wake them again (#485).
+      woken: Array.isArray(message.woken) ? message.woken : [],
       startedAt: Date.now(),
       // This turn’s own MCP token: a call that carries another turn’s, such as a stopped one’s, is refused (#126).
       token: randomUUID(),
@@ -1008,8 +1012,11 @@ export class Runtime {
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
       // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
       // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
-      if (turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost')
-        this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`);
+      // The item keeps whom they woke, so its Retry doesn’t wake them again.
+      if (turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost') {
+        const woke = this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`);
+        if (woke.length) this.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
+      }
       // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
       // queued messages wait, as before, for you to see the failure.
       this.takePending(se, turn, 'wakes');
@@ -1089,17 +1096,22 @@ export class Runtime {
    * A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
    * agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The wake limit stops a loop.
    * Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
+   * One the failed reply a retry answers already woke isn’t woken again (#485).
    * @param {any} se @param {any} turn @param {string} text  what the woken agents are sent
+   * @returns {string[]} the handles it woke, or that wait to be
    */
   wakeMentions(se, turn, text) {
     let said = turn.first;
+    const woke = [];
     for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
-      if (h.toLowerCase() === se.handle.toLowerCase()) continue;
+      if (h.toLowerCase() === se.handle.toLowerCase() || turn.woken.includes(h)) continue;
       // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
       const r = this.agentWake(se.id, h, text, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
       if (r.itemId) said = r.itemId;
-      if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
+      if (r.ok || r.waiting) woke.push(h);
+      else this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
     }
+    return woke;
   }
 
   /**
@@ -1476,7 +1488,7 @@ export class Runtime {
     return askedAgain(this, threadId, it, (asked) => {
       this.patchItem(threadId, itemId, { status: 'retried' });
       this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-      this.deliver(it.sessionId, { ...asked.message, retry: true }, { summarizeTo: asked.summarizeTo, threadId });
+      this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
     });
   }
 
@@ -1646,9 +1658,10 @@ export class Runtime {
       case 'agent':
         // A reply that wrote its text and then failed still reaches the others, marked: it had been dropped, so a
         // report written before the turn failed reached no one (#485).
+        // One retried since says so too: the retry’s reply follows it.
         if (!i.text) return null;
-        return i.status === 'failed'
-          ? `@${i.handle} (this reply failed: ${clipText(i.error || 'unknown', 200)}): ${text(i.text)}`
+        return i.status === 'failed' || i.status === 'retried'
+          ? `@${i.handle} (this reply ${i.status === 'retried' ? 'failed and was retried' : 'failed'}: ${clipText(i.error || 'unknown', 200)}): ${text(i.text)}`
           : `@${i.handle}: ${text(i.text)}`;
       case 'block': {
         if (!i.valid) return null;
