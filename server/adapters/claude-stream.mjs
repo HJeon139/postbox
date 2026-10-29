@@ -5,6 +5,8 @@
 import { contentBlocks } from './claude-content.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
+export { describePermission } from './claude-permission.mjs';
+
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
 const QUIET =
@@ -721,31 +723,4 @@ export function forkPointMissing(result, also = '') {
   if (result && !result.is_error) return false;
   const said = [...(Array.isArray(result?.errors) ? result.errors : []), also].map(String).join('\n');
   return /No message found with message\.uuid/.test(said);
-}
-
-/** What a tool call would do, for the permission card: a short summary (“run a command”) and the detail. */
-export function describePermission(name, input = {}) {
-  const i = input ?? {};
-  switch (name) {
-    case 'Bash':
-      return { summary: i.description ? `run a command: ${clip(i.description, 80)}` : 'run a command', detail: String(i.command ?? '') };
-    case 'Write':
-      return { summary: `write ${base(i.file_path)}`, detail: String(i.file_path ?? '') };
-    case 'Edit':
-    case 'MultiEdit':
-      return { summary: `edit ${base(i.file_path)}`, detail: String(i.file_path ?? '') };
-    case 'NotebookEdit':
-      return { summary: `edit ${base(i.notebook_path)}`, detail: String(i.notebook_path ?? '') };
-    case 'WebFetch':
-      return { summary: `fetch ${clip(String(i.url ?? '').replace(/^https?:\/\//, ''), 60)}`, detail: String(i.url ?? '') };
-    case 'WebSearch':
-      return { summary: `search the web for “${clip(i.query, 60)}”`, detail: String(i.query ?? '') };
-    default:
-      return {
-        summary: `use ${String(name)
-          .replace(/^mcp__([^_]+(?:_[^_]+)*)__(.+)$/, '$2 from $1')
-          .replace(/_/g, ' ')}`,
-        detail: JSON.stringify(i, null, 2).slice(0, 4000),
-      };
-  }
 }
