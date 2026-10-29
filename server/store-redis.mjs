@@ -16,8 +16,15 @@ import { COLLECTIONS, KIND, Positions, upcast } from './store-docs.mjs';
 export const STREAM_KEEP = 20000;
 
 // ARGV: opId, the seq the batch follows, the number of events, the stream’s length to keep, then each event’s seq and
-// line, then the writes as store-docs.mjs’s writesFor() makes them, flattened. Every write is checked before any runs,
-// so a bad batch writes nothing.
+// line, then the writes as store-docs.mjs’s writesFor() makes them, flattened.
+//
+// All or nothing. Redis doesn’t undo what a script wrote before a runtime error (review finding 2 on #525: RedisJSON
+// refused a deeply nested app after the settings were set), so nothing real changes until nothing can fail. First,
+// every write’s shape, every score and every event’s seq is checked, and every document is set into a staging key under
+// redis.pcall, so RedisJSON’s own checks (nesting, size, syntax) and an out-of-memory refusal run there; on any
+// error the staging keys are deleted and the error returned. Only then are the documents renamed into place and the
+// rest written: RENAME, DEL, ZADD with a checked score, XADD with a checked id and SET can’t fail on keys of the right
+// type, and Redis checks memory only before a script’s first write.
 const WRITE = `
 local opId, prev, n, keep = ARGV[1], tonumber(ARGV[2]), tonumber(ARGV[3]), ARGV[4]
 if opId ~= '' then
@@ -26,29 +33,52 @@ if opId ~= '' then
 end
 local cur = tonumber(redis.call('GET', 'seq') or '0')
 if cur ~= prev then return {'seq', tostring(cur)} end
+local last = cur
+for k = 0, n - 1 do
+  local s = tonumber(ARGV[5 + 2 * k])
+  if not s or s <= last or s % 1 ~= 0 then return redis.error_reply('EWRITE event seq ' .. tostring(ARGV[5 + 2 * k]) .. ' after ' .. last) end
+  last = s
+end
 local arity = { S = 3, D = 2, Z = 4, ZN = 4, R = 3 }
 local first = 5 + 2 * n
 local j = first
 while j <= #ARGV do
-  local a = arity[ARGV[j]]
-  if not a then return redis.error_reply('EWRITE unknown write ' .. ARGV[j]) end
+  local op = ARGV[j]
+  local a = arity[op]
+  if not a or j + a - 1 > #ARGV then return redis.error_reply('EWRITE unknown write ' .. tostring(op)) end
+  if (op == 'Z' or op == 'ZN') and not tonumber(ARGV[j + 2]) then return redis.error_reply('EWRITE score ' .. ARGV[j + 2]) end
   j = j + a
 end
+local staged = {}
+j = first
+while j <= #ARGV do
+  if ARGV[j] == 'S' then
+    local tmp = 'stage:' .. #staged
+    local r = redis.pcall('JSON.SET', tmp, '$', ARGV[j + 2])
+    if type(r) == 'table' and r.err then
+      if #staged > 0 then redis.call('DEL', unpack(staged)) end
+      redis.call('DEL', tmp)
+      return r
+    end
+    staged[#staged + 1] = tmp
+  end
+  j = j + arity[ARGV[j]]
+end
+local k = 0
 j = first
 while j <= #ARGV do
   local op = ARGV[j]
-  if op == 'S' then redis.call('JSON.SET', ARGV[j + 1], '$', ARGV[j + 2])
+  if op == 'S' then
+    redis.call('RENAME', staged[k + 1], ARGV[j + 1])
+    k = k + 1
   elseif op == 'D' then redis.call('DEL', ARGV[j + 1])
   elseif op == 'Z' then redis.call('ZADD', ARGV[j + 1], ARGV[j + 2], ARGV[j + 3])
   elseif op == 'ZN' then redis.call('ZADD', ARGV[j + 1], 'NX', ARGV[j + 2], ARGV[j + 3])
   else redis.call('ZREM', ARGV[j + 1], ARGV[j + 2]) end
   j = j + arity[op]
 end
-local last = cur
-for k = 0, n - 1 do
-  local s = ARGV[5 + 2 * k]
-  redis.call('XADD', 'events', 'MAXLEN', '~', keep, s .. '-0', 'e', ARGV[6 + 2 * k])
-  last = tonumber(s)
+for e = 0, n - 1 do
+  redis.call('XADD', 'events', 'MAXLEN', '~', keep, ARGV[5 + 2 * e] .. '-0', 'e', ARGV[6 + 2 * e])
 end
 redis.call('SET', 'seq', last)
 if opId ~= '' then redis.call('HSET', 'ops', opId, last) end

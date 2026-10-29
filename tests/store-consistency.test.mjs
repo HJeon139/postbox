@@ -170,3 +170,30 @@ test('two stores on one Redis keep every transition consistent: a stale one catc
   const { fresh } = await consistent(a);
   assert.deepEqual(fresh.state, a.state);
 });
+
+// Review finding 2 on #525 (gpt’s regression): Redis doesn’t roll a script back after a runtime error, so a batch whose
+// later document RedisJSON refuses (nesting past its limit) must not have changed an earlier one.
+test('a commit Redis rejects part way leaves every document unchanged', async () => {
+  const s = await open(await tmp());
+  s.emit('settings', { theme: 'dark' });
+  await s.flush();
+  let deep = {};
+  for (let i = 0; i < 200; i++) deep = { next: deep };
+  await assert.rejects(
+    s.commit(
+      [
+        { type: 'settings', data: { theme: 'light' } },
+        { type: 'app', data: { id: 'a', state: deep } },
+      ],
+      'depth',
+    ),
+    /recursion/,
+  );
+  const c = await raw(s);
+  const saved = JSON.parse(await c.call('JSON.GET', 'settings', '$'))[0].d;
+  assert.deepEqual(saved, s.state.settings);
+  assert.equal(await c.call('EXISTS', 'app:a'), 0);
+  assert.equal(await c.call('HGET', 'ops', 'depth'), null);
+  c.close();
+  await consistent(s);
+});
