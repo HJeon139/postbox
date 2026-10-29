@@ -1006,6 +1006,8 @@ export class Runtime {
         stopAsk: null,
       });
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+      // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
+      if (turn.said.trim()) this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`);
       // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
       // queued messages wait, as before, for you to see the failure.
       this.takePending(se, turn, 'wakes');
@@ -1076,19 +1078,26 @@ export class Runtime {
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
-    // An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
-    // A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
-    // agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The wake limit stops a loop.
-    // Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
+    this.wakeMentions(se, turn, turn.said);
+    this.takePending(se, turn, true);
+  }
+
+  /**
+   * An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
+   * A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
+   * agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The wake limit stops a loop.
+   * Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
+   * @param {any} se @param {any} turn @param {string} text  what the woken agents are sent
+   */
+  wakeMentions(se, turn, text) {
     let said = turn.first;
     for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
       if (h.toLowerCase() === se.handle.toLowerCase()) continue;
       // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
-      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
+      const r = this.agentWake(se.id, h, text, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
       if (r.itemId) said = r.itemId;
       if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
     }
-    this.takePending(se, turn, true);
   }
 
   /**
