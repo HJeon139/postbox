@@ -7,7 +7,8 @@
 //   once writes reopen. Your own messages can’t be posted meanwhile (the page’s write is refused with the cause), so
 //   only what Postbox itself would start waits here;
 // - keeps what an agent’s stream or a timer would write from throwing out of its listener, which would end Postbox:
-//   a backend’s session id is kept and saved once writes reopen, and the rest waits or is dropped where it’s redundant.
+//   a backend’s session id is kept, the latest per session, and saved once writes reopen, and the rest waits or is
+//   dropped where it’s redundant.
 // The waits are in memory: a restart while the store is down starts again from what Redis holds, as any restart does.
 // Records of who was told what (design step A2) replace this with records that go back to waiting.
 
@@ -44,18 +45,31 @@ export function whenWritable(rt, fn, { first = false } = {}) {
 
 /**
  * Saves what an adapter keeps for its session, such as the backend’s own session id. While the store can’t be written,
- * it’s saved once it can, before any turn that waited, so the next turn resumes that session.
+ * the saves for a session merge into one, the latest value per field winning (gpt’s outage review, finding 2: queued
+ * one by one in front of what waited, they replayed newest first), which is written once it can, before any turn that
+ * waited, so the next turn resumes that session.
  * @param {Runtime} rt @param {string} sessionId @param {Record<string, any>} patch
  */
 export function saveBackendState(rt, sessionId, patch) {
+  const waiting = rt.backendWait.get(sessionId);
+  if (waiting) return void Object.assign(waiting, patch);
+  if (rt.store.writable) return writeBackendState(rt, sessionId, patch);
+  const merged = { ...patch };
+  rt.backendWait.set(sessionId, merged);
   whenWritable(
     rt,
     () => {
-      const se = rt.s.sessions[sessionId];
-      if (se) rt.updateSession(sessionId, { backendState: { ...(se.backendState ?? {}), ...patch } });
+      rt.backendWait.delete(sessionId);
+      writeBackendState(rt, sessionId, merged);
     },
     { first: true },
   );
+}
+
+/** @param {Runtime} rt @param {string} sessionId @param {Record<string, any>} patch */
+function writeBackendState(rt, sessionId, patch) {
+  const se = rt.s.sessions[sessionId];
+  if (se) rt.updateSession(sessionId, { backendState: { ...(se.backendState ?? {}), ...patch } });
 }
 
 /** Runs what waited for writes, in order, while they stay open. @param {Runtime} rt */

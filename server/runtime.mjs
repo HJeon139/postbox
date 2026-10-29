@@ -241,6 +241,8 @@ export class Runtime {
     // While the store can’t be written, no turn runs or starts, and what would write waits (ST-3, server/store-outage.mjs).
     /** @type {(() => void)[]} */
     this.storeWait = [];
+    /** @type {Map<string, Record<string, any>>} a backend’s state saved meanwhile, per session, merged (saveBackendState) */
+    this.backendWait = new Map();
     watchStore(this);
   }
 
