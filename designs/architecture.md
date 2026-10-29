@@ -45,8 +45,8 @@ flowchart LR
 
 - **Keys.** `<kind>:<id>` documents `{ v, d }` (thread, session, app, item and the rest), each collection’s order in `order:<collection>`, a conversation’s items in `thread:<id>:items` scored by position, `settings`, `seq`, `ops` (operation id to seq) and the `events` stream, whose entry ids are the events’ seqs.
 - **Writes.** One Lua script per batch checks that Redis is at the seq the batch follows and, for a commit, that its operation id hasn’t run, then writes every document and stream entry, or none. `emit` applies and broadcasts at once and writes one batch per tick; `commit` writes first and applies and broadcasts after the reply. A second writer is refused (`ESEQ`), and a commit given as a function of the state runs again after catching up.
-- **Durability.** `appendfsync everysec`: a committed write survives a process crash; a power cut can lose up to a second.
-- **Down.** While the child isn’t answering, writes fail closed and the page stays readable; its status names the cause.
+- **Durability.** `appendfsync everysec`: a write survives a crash of Postbox or of Redis; a power cut can lose up to the last second of emits. A commit is acknowledged only after `WAITAOF 1 0` says the local append-only file holds it on disk, which waits for everysec’s next fsync (up to about a second); a WAITAOF that times out (5 s) or fails is a lost reply, and the store reads Redis back before it writes again.
+- **Down.** While the child isn’t answering, or the store’s connection to it dropped, writes fail closed and the page stays readable; its status names the cause.
 - **Schema.** Documents carry `v` and are lifted to the current shape on read, never migrated; events are upcast as before.
 - **The old log** is imported once at the first start on Redis (`server/store-import.mjs`), beside a dated backup, and renamed `*.migrated`.
 
