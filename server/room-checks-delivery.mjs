@@ -4,7 +4,7 @@
 // names the requirements it serves beside its issue. Part of server/room-checks.mjs’s CHECKS, kept apart for size.
 
 import { clip } from '../shared/text.mjs';
-import { addressed, headOf, holds, inputsOf, labeled, notCheckableAll, plain, recorded, turnsOf, unreadable } from './room-delivery.mjs';
+import { addressed, backendOf, headOf, holds, inputsOf, labeled, notCheckableAll, plain, recorded, turnsOf, unreadable } from './room-delivery.mjs';
 
 /** A turn’s stream starts a moment after Postbox builds its prompt, which is when the marker moves. */
 const MARKER_TO_SPAWN_MS = 30_000;
@@ -46,16 +46,44 @@ function droppedDeliveries(f) {
 }
 
 /**
+ * Whom a prompt that holds a delivery’s whole text gives it to, when other deliveries to that agent hold the same
+ * text: the item it names, if it names one; otherwise the delivery whose window it falls in, from when that one
+ * could reach the agent to when the next with the same text could. One in a later one’s window that names neither
+ * could be either: `unsure`.
+ * @param {ReturnType<typeof addressed>[number]} a  @param {ReturnType<typeof addressed>} all  @param {{ at: number, kind: string, text: string, key: string }[]} got
+ */
+function ownPrompts(a, all, got) {
+  const text = plain(a.text);
+  const same = all.filter((b) => b !== a && b.to === a.to && b.itemId !== a.itemId && plain(b.text).includes(text));
+  const ids = same.map((b) => b.itemId).filter((id) => typeof id === 'string');
+  const next = same.filter((b) => b.from > a.from).sort((x, y) => x.from - y.from)[0];
+  const end = next ? next.from - 1000 : Infinity;
+  const mine = [];
+  const unsure = [];
+  for (const x of got) {
+    if (x.kind !== 'prompt' || x.at < a.from - 1000 || !x.key.includes(text)) continue;
+    if (a.itemId && x.text.includes(a.itemId)) mine.push(x);
+    else if (ids.some((id) => x.text.includes(id))) continue;
+    else if (x.at < end) mine.push(x);
+    else unsure.push(x);
+  }
+  return { mine, unsure, next };
+}
+
+/**
  * unlabeled-repeat: the same delivery, whole, in two of an agent’s prompts, the later one without a resend label.
- * Tool results don’t count: an agent may read a message again with read_message, and that’s its own doing. A turn
- * since it was due with no line in the transcript may have held a copy: when that could make two, the check says it
- * couldn’t check it there.
+ * Tool results don’t count: an agent may read a message again with read_message, and that’s its own doing. A prompt
+ * counts for a delivery only from when it could reach the agent, and, when another delivery holds the same text, only
+ * when it names its item or falls in its own window (ownPrompts); one that could be either’s makes it unverified, not
+ * a finding. A turn since it was due with no line in the transcript may have held a copy: when that could make two,
+ * the check says it couldn’t check it there.
  */
 function unlabeledRepeats(f) {
   const out = [];
   const inputs = new Map();
   const unread = new Map();
-  for (const a of addressed(f)) {
+  const all = addressed(f);
+  for (const a of all) {
     if (!inputs.has(a.to)) inputs.set(a.to, inputsOf(f, a.to));
     const head = headOf(a.text);
     if (!head) continue;
@@ -65,21 +93,39 @@ function unlabeledRepeats(f) {
       continue;
     }
     // In full: every letter and digit of it, in order. A pointer to it, or a message that quotes its start, isn’t.
-    const all = plain(a.text);
-    const whole = got.filter((x) => x.kind === 'prompt' && x.key.includes(all));
-    const bare = whole.slice(1).find((x) => !labeled(x.text, a.text));
+    const { mine, unsure, next } = ownPrompts(a, all, got);
+    const bare = mine.slice(1).find((x) => !labeled(x.text, a.text));
     if (!bare) {
+      if (unsure.length && mine.length + unsure.length >= 2) {
+        out.push(sameText(f, a, head, next, unsure[0]));
+        continue;
+      }
       const blind = turnsOf(f, a.to).filter((t) => t.started >= a.from - 1000 && !recorded(got, t));
-      if (whole.length + blind.length >= 2 && blind.length) unreadable(unread, a.to, blind[0]);
+      if (mine.length + blind.length >= 2 && blind.length) unreadable(unread, a.to, blind[0]);
       continue;
     }
     out.push({
       key: `unlabeled-repeat:${a.to}:${a.itemId ?? head}`,
       title: `@${a.to} was given the same message twice, and the second time didn’t say it was a repeat`,
-      evidence: `The ${said(a)} (“${clip(a.text, 100)}”) was in ${whole.length} of @${a.to}’s prompts, first at ${new Date(whole[0].at).toISOString()}, again at ${new Date(bare.at).toISOString()} with no resend label.`,
+      evidence: `The ${said(a)} (“${clip(a.text, 100)}”) was in ${mine.length} of @${a.to}’s prompts, first at ${new Date(mine[0].at).toISOString()}, again at ${new Date(bare.at).toISOString()} with no resend label.`,
     });
   }
   return [...notCheckableAll(f, 'unlabeled-repeat', unread), ...out];
+}
+
+/** What unlabeled-repeat says of a delivery it can’t tell from a later one with the same text: unverified, not a defect. */
+function sameText(f, a, head, next, x) {
+  const name = a.itemId ?? head;
+  const other = next.itemId ? `${next.itemId}` : 'a later delivery';
+  return {
+    key: `unlabeled-repeat:unverified:${a.to}:${name}`,
+    issue: null,
+    title: `unlabeled-repeat isn’t checkable for ${a.itemId ?? 'a delivery'} to @${a.to}: another item has the same text`,
+    evidence: `The ${said(a)} (“${clip(a.text, 100)}”) came whole again in @${a.to}’s prompt at ${new Date(x.at).toISOString()}, which names no item, after ${other} with the same text could reach it: it may be that one’s delivery or this one’s again, so the check can’t tell.`,
+    verdict: 'measurement',
+    note: `Not a defect: unlabeled-repeat couldn’t tell ${name} from ${other} for @${a.to}, so this run doesn’t verify it there.`,
+    unverified: { check: 'unlabeled-repeat', handle: a.to, backend: backendOf(f, a.to), item: a.itemId ?? null },
+  };
 }
 
 /**

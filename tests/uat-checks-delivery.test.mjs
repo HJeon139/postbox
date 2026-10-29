@@ -124,6 +124,59 @@ test('unlabeled-repeat stays silent on a message that only quotes the start of a
   assert.deepEqual(found(f, 'unlabeled-repeat'), []);
 });
 
+test('two separate addressed items with identical text and distinct ids, delivered once each, are not repeats', () => {
+  // gpt’s regression (#523 review): each prompt names the item it delivers.
+  const r = room();
+  r.agent('critic');
+  const text = '@critic please review the latest changes and report blocking problems.';
+  r.add({ id: 'it_first', at: s(1), kind: 'user', text });
+  r.turn('critic', s(2), { prompt: `Message it_first: ${text}` });
+  r.add({ id: 'it_second', at: s(20), kind: 'user', text });
+  r.turn('critic', s(21), { prompt: `Message it_second: ${text}` });
+  assert.deepEqual(runChecks(r.f, { only: ['unlabeled-repeat'] }), [], 'each item was delivered exactly once');
+});
+
+test('unlabeled-repeat doesn’t count a prompt from before the item existed', () => {
+  const r = room();
+  r.agent('researcher');
+  r.turn('researcher', s(1), { prompt: `@critic said: ${DRAFT}` });
+  r.add({ id: 'it_draft', at: s(10), kind: 'user', text: DRAFT });
+  r.turn('researcher', s(20), { prompt: DRAFT });
+  assert.deepEqual(found(r.f, 'unlabeled-repeat'), []);
+});
+
+test('unlabeled-repeat says it couldn’t tell two same-text items apart when their prompts name neither', () => {
+  // The second prompt may be the second item’s delivery, or the first item’s again: not a finding, unverified.
+  const r = room();
+  r.agent('critic');
+  const text = '@critic please review the latest changes and report blocking problems.';
+  r.add({ id: 'it_first', at: s(1), kind: 'user', text });
+  r.turn('critic', s(2), { prompt: text });
+  r.add({ id: 'it_second', at: s(20), kind: 'user', text });
+  r.turn('critic', s(21), { prompt: text });
+  const out = found(r.f, 'unlabeled-repeat');
+  assert.deepEqual(
+    out.map((x) => [x.key, !!x.unverified]),
+    [['unlabeled-repeat:unverified:critic:it_first', true]],
+  );
+  assert.match(out[0].evidence, /it_second/);
+});
+
+test('unlabeled-repeat still fires for an item given twice by its id beside a same-text one given once', () => {
+  const r = room();
+  r.agent('critic');
+  const text = '@critic please review the latest changes and report blocking problems.';
+  r.add({ id: 'it_first', at: s(1), kind: 'user', text });
+  r.turn('critic', s(2), { prompt: `Message it_first: ${text}` });
+  r.add({ id: 'it_second', at: s(20), kind: 'user', text });
+  r.turn('critic', s(21), { prompt: `Message it_second: ${text}` });
+  r.turn('critic', s(40), { prompt: `Message it_first: ${text}` });
+  assert.deepEqual(
+    found(r.f, 'unlabeled-repeat').map((x) => x.key),
+    ['unlabeled-repeat:critic:it_first'],
+  );
+});
+
 /** @researcher’s marker moves as its turn’s prompt is built; the turn then writes something, or nothing. */
 function markerRoom({ output }) {
   const r = room();
