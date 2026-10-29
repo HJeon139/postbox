@@ -401,6 +401,7 @@ Postbox uses [semantic versioning](https://semver.org/), from [Conventional Comm
 
 ## Known limits
 
+- **A power cut can lose the last few milliseconds of live updates.** The store’s Redis syncs each change to disk before it answers Postbox (`appendfsync always`; on macOS with `F_FULLFSYNC`, which asks the drive to empty its cache too), so an action Postbox said was saved survives a crash of Postbox or Redis and a power cut. Live updates, such as an agent’s streamed text, show on the page at once and reach disk a few milliseconds later, so a power cut can take what arrived in those last milliseconds. A drive that says it has flushed when it hasn’t can lose more.
 - **Each open tab holds one connection.** Browsers allow 6 connections per host over HTTP/1.1, so with about six Postbox tabs open, new requests wait. Postbox closes its stream when a tab is put away, but it doesn’t yet share one stream across tabs.
 - **The pre-display check is approximate.** It finds overflow, missing labels and alt text, positive tabindex, low contrast and script errors. It doesn’t yet detect every keyboard trap or verify that saved state restores correctly.
 - **Semantic search is a stub.** It uses a small table of related words until your own index is connected. Lexical search (BM25) is real.
