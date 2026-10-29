@@ -5,9 +5,19 @@
 // the same data, as Ctrl-C and a start without --fresh would.
 
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { sleep } from '../browser.mjs';
 import { untilGone } from './until-gone.mjs';
+
+/** Whether nothing listens on this port here. @param {number} port */
+export const portFree = (port) =>
+  new Promise((ok) => {
+    const s = createServer()
+      .once('error', () => ok(false))
+      .once('listening', () => s.close(() => ok(true)))
+      .listen(port, '127.0.0.1');
+  });
 
 /**
  * @typedef {{ root: string, port: number, data: string, env: Record<string, string>, log: (line: string) => void,
