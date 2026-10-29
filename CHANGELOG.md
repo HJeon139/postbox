@@ -2,6 +2,25 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.4 (2026-10-29)
+
+### Fixes
+
+- **uat:** a retired wake card stops waiting when it was retired
+- **uat:** file host-wake-said-sent against #439
+- **uat:** readReceived reads on from where it got to in the store's log
+- **uat:** host-wake-said-sent's evidence claims only what it checked
+- **uat:** count a card asking to add an agent, which refuses wakes too
+- **uat:** a card isn't counted against the wake_agent call that raised it
+- **uat:** match a wake's target without case, as Postbox does
+- **uat:** refused-wake-lost judges host-mode runs only
+- **uat:** a declined wake card no longer reads as waiting for good
+- **uat:** match hostwakes calls on what the target received, not on what's posted
+- **uat:** judge a hostwakes hand-off lost by whether Postbox delivered it
+- **uat:** count a held hand-off as delivered only when Postbox posts its message
+- **uat:** don't count the person's turns as a hostwakes sender told of its refusal
+- **uat:** tell a refused wake_agent call by the message Postbox didn't post
+
 ## 0.44.3 (2026-10-29)
 
 ### Fixes
