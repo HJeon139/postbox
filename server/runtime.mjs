@@ -555,7 +555,7 @@ export class Runtime {
   deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
-    message = prepareScheduledRetry(this, message);
+    message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
     if (this.turns.has(sessionId)) {

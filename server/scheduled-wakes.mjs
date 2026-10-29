@@ -46,11 +46,18 @@ export function fireScheduledWake(rt, schedule) {
   rt.deliver(sc.sessionId, { kind: 'wake', note: sc.recoveryNote ?? sc.note, scheduledWakeId: sc.id });
 }
 
-/** A manual Retry takes ownership from the armed timer and uses the schedule’s current recovery note. */
-export function prepareScheduledRetry(rt, message) {
+/**
+ * A manual Retry takes ownership from the armed timer and uses the schedule’s current recovery note. One whose schedule
+ * you canceled or that finished still sends the recovery its line kept, not the instruction a tool already acted on.
+ * @param {any} rt @param {any} message @param {string} threadId  where the schedule’s line is
+ */
+export function prepareScheduledRetry(rt, message, threadId) {
   if (message?.retry !== true || typeof message.scheduledWakeId !== 'string') return message;
   const sc = rt.s.schedules[message.scheduledWakeId];
-  if (!sc) return message;
+  if (!sc) {
+    const line = rt.store.items(threadId).find((i) => i.kind === 'system' && i.scheduleId === message.scheduledWakeId);
+    return line?.recoveryNote ? { ...message, note: line.recoveryNote } : message;
+  }
   clearTimeout(rt.timers.get(sc.id));
   rt.timers.delete(sc.id);
   rt.store.emit('schedule', { ...sc, running: true });
@@ -109,7 +116,15 @@ export function settleScheduledWake(rt, turn, err) {
     ...(tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(turn, tools) } : {}),
   };
   rt.store.emit('schedule', next);
-  if (next.itemId) rt.patchItem(next.threadId, next.itemId, { status: 'pending', at: next.at, retryAttempt: attempt, retryStopped: false });
+  // The line keeps the recovery too, for a Retry after you cancel the schedule (prepareScheduledRetry).
+  if (next.itemId)
+    rt.patchItem(next.threadId, next.itemId, {
+      status: 'pending',
+      at: next.at,
+      retryAttempt: attempt,
+      retryStopped: false,
+      ...(next.recoveryNote ? { recoveryNote: next.recoveryNote } : {}),
+    });
   armWake(rt, next);
 }
 

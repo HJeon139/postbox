@@ -1,0 +1,35 @@
+// #466, from the review of #522’s fix at d1811486: a Stop of a scheduled wake’s turn is the end of that wake, a Retry
+// after you cancel a tool-aware recovery still sends the recovery rather than the original instruction, and one tool
+// call reported through both toolUse and activity is one entry in the recovery.
+
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
+import { settle, setup } from './side-threads-fixture.mjs';
+
+const networkError = (code = 'ECONNRESET') => Object.assign(new Error(`network failed: ${code}`), { code });
+const fire = async (f, sc) => {
+  clearTimeout(f.rt.timers.get(sc.id));
+  fireScheduledWake(f.rt, sc);
+  await settle(f.rt);
+};
+
+test('#466 Retry after you cancel a tool-aware recovery sends the recovery, not the original instruction', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Deploy production.' });
+  f.adapter.next.push(async (ctx) => {
+    ctx.toolUse({ id: 'tool-1', name: 'Deploy production', input: {} });
+    throw networkError();
+  });
+  await fire(f, sc);
+  assert.match(f.store.state.schedules[sc.id]?.recoveryNote ?? '', /Deploy production/, 'a recovery is armed');
+  f.rt.cancelSchedule(sc.id);
+  const failed = f.store.items(sc.threadId).findLast((item) => item.kind === 'agent' && item.status === 'failed');
+  f.adapter.next.push(async (ctx) => ctx.text('Checked first.'));
+  f.rt.retry(sc.threadId, failed.id);
+  await settle(f.rt);
+  const sent = f.adapter.calls.at(-1).message.note;
+  assert.notEqual(sent, 'Deploy production.', 'the original instruction isn’t replayed');
+  assert.match(sent, /Do not repeat them until you have checked their effects/);
+  assert.equal(f.store.state.schedules[sc.id], undefined, 'and the canceled wake isn’t armed again');
+});
