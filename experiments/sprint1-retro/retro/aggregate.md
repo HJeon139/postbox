@@ -123,3 +123,26 @@ Seven blind answers to `PROMPT.md`, each written before its author read the othe
 11. **Product fixes:**
     - open: #526 (cards), with an interim rule to resend a hand-off that “woke no one” as soon as its card is answered; #481 (one announcement); #489 (Kiro tools); #493 (load-sensitive tests); #417 (remote file access); the UAT runner’s empty `shots/`, and a `longchain` scenario (tester to file); polite @-mention loops bounded only by #492’s backstop of 50 until #538;
     - fixed this sprint: #484 (summaries dropped mentions; E4: 3.9%), #499 (mentions cut at 2,000 characters), #510 (an unhandled rejection stopped the server), with #439, #504, #485 and #503.
+
+## Where each theme’s count comes from
+
+The section of each blind answer (`<handle>.md`, §1–§5 as in `PROMPT.md`) that raised the theme, so the counts can be checked.
+
+| # | Theme | Sources |
+|---|---|---|
+| 1 | Wake cards | researcher §1; critic §1; tester §1; developer §3; claude-ssh §1, §4; kiro-ssh-x86 §2, §4; gpt §4 |
+| 2 | Separate review and testing | critic §1; developer §1; gpt §1, §3; tester §3; claude-ssh §1, §3; kiro-ssh-x86 §3 |
+| 3 | Merge conflicts | researcher §3; critic §3; developer §2; gpt §2; claude-ssh §3 |
+| 4 | Roles, tools and hosts | researcher §1; critic §1; gpt §1, §4; claude-ssh §1; kiro-ssh-x86 §1 |
+| 5 | The integrator’s finds | critic §3; developer §3; tester §3; claude-ssh §3; kiro-ssh-x86 §2, §3 |
+| 6 | Load | developer §1; gpt §1; tester §1; kiro-ssh-x86 §4 |
+| 7 | Estimation | researcher §2; critic §2; gpt §2 |
+| 8 | Repeated announcements | critic §4; claude-ssh §4; kiro-ssh-x86 §4 |
+| 9 | Worktrees and git | developer §1; tester §1; claude-ssh §3 |
+| 10 | No time box or owner | tester §2; claude-ssh §2; kiro-ssh-x86 §3 |
+| 11 | Heads ready before their gate | developer §3; gpt §3 |
+| 12 | Reviews crossing pushes | critic §3 |
+| 13 | Decisions changed while built | developer §2 |
+| 14 | Ceilings and commit rules at the gate | claude-ssh §3 |
+| 15 | Rules arriving late | gpt §1 |
+| 16 | Status not matching the code | gpt §3 |

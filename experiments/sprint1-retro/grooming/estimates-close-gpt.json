@@ -1,0 +1,62 @@
+[
+  {
+    "item": "#504",
+    "card": 8,
+    "driver": "Runtime prompt-order semantics, several turn kinds, browser coverage, and integrator-driven marker corrections before PR #511 merged."
+  },
+  {
+    "item": "#510",
+    "card": 3,
+    "driver": "A bounded process-failure fix with regression coverage and gate work, but no new cross-backend mechanism."
+  },
+  {
+    "item": "#503",
+    "card": 5,
+    "driver": "Claude stream normalization, fixture-backed tests, module extraction for ceilings, and two integrator correction rounds."
+  },
+  {
+    "item": "#484",
+    "card": 5,
+    "driver": "Catch-up mention preservation crossed runtime summarization behavior and needed review repair for the skip count."
+  },
+  {
+    "item": "#499",
+    "card": 3,
+    "driver": "A focused mention-delivery correction with tests across the existing wake path."
+  },
+  {
+    "item": "#483",
+    "card": 5,
+    "driver": "UAT verification changed harness behavior and evidence contracts across several scenario and tool files."
+  },
+  {
+    "item": "#478",
+    "card": 5,
+    "driver": "Client sentence rendering, browser evidence, and review correction for joined sentences made it larger than a narrow UI fix."
+  },
+  {
+    "item": "#486",
+    "card": 3,
+    "driver": "A localized layout change plus a browser spec, with extra work to make the 375-pixel measurement deterministic."
+  },
+  {
+    "item": "#475 #476 #477",
+    "card": 5,
+    "driver": "Three related agent-polish fixes bundled across UI and tests, including cleanup after an accidental node_modules link."
+  },
+  {
+    "item": "#485",
+    "card": 8,
+    "driver": "Empty and failed reply semantics spanned local and remote paths, red and stress runs, integrator edge cases, and repeated main merges."
+  },
+  {
+    "item": "#492",
+    "card": 8,
+    "driver": "Wake policy was rebuilt through three decisions, restored a 50-wake backstop, added chain-reset state, and required unit, browser, stress, and real-agent validation."
+  },
+  {
+    "item": "hostwakes UAT scenario",
+    "card": 8,
+    "driver": "A broad real-agent scenario with triggers, verification, documentation, remote behavior, and costly UAT evidence rather than a single code path."
+  }
+]

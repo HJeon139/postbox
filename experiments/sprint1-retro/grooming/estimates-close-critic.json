@@ -1,0 +1,14 @@
+[
+  { "item": "#504", "card": 8, "driver": "runtime context order plus a new check, four review rounds (follow-up turns, the system mark, placeholders, a merge) and two real-agent runs on two backends" },
+  { "item": "#510", "card": 3, "driver": "two small handlers, but process and daemon tests that start real processes; two short rounds" },
+  { "item": "#503", "card": 3, "driver": "one helper across six readers plus a move at a ceiling; one regression in the move, two merges of main" },
+  { "item": "#484", "card": 5, "driver": "the catch-up moved to its own module, with new caps, a pointer and skip counting; an integrator round on skip" },
+  { "item": "#499", "card": 2, "driver": "one bound and a description, with one fix to the bound after review" },
+  { "item": "#483", "card": 3, "driver": "runner click, verifier tools and prompt, a browser spec built from a run's item ids" },
+  { "item": "#478", "card": 5, "driver": "a small feature, but three review rounds: the glued sentences, a mapper test, CJK and long tokens" },
+  { "item": "#486", "card": 2, "driver": "CSS and one spec, plus fixing a flaky narrow-width check" },
+  { "item": "#475 #476 #477", "card": 3, "driver": "three client polish fixes with specs, one wording decision for the person" },
+  { "item": "#485", "card": 8, "driver": "empty-reply guard, posting a result's text, waking from failed replies, Retry de-duplication, raw shapes; six review rounds, host-turn cases" },
+  { "item": "#492", "card": 8, "driver": "built three times as the decision changed: no pair limit, no limits, then a resetting backstop; card machinery and many tests touched" },
+  { "item": "hostwakes", "card": 8, "driver": "a scenario and triggers checked by replay, six real runs on a remote test host, reworked after #439 merged" }
+]

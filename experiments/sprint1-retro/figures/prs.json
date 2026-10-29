@@ -1,0 +1,146 @@
+[
+ {
+  "createdAt": "2026-10-26T21:06:40Z",
+  "headRefName": "uat/hostwakes",
+  "mergedAt": "2026-10-29T08:40:33Z",
+  "number": 451,
+  "state": "MERGED",
+  "title": "A host-mode UAT for a hand-off while a wake card waits"
+ },
+ {
+  "createdAt": "2026-10-28T13:34:26Z",
+  "headRefName": "fix/468-488-keep-state",
+  "mergedAt": "2026-10-28T18:51:50Z",
+  "number": 494,
+  "state": "MERGED",
+  "title": "Keep review drafts and activity details open through live updates"
+ },
+ {
+  "createdAt": "2026-10-28T13:38:03Z",
+  "headRefName": "fix/app-check",
+  "mergedAt": "2026-10-29T01:41:01Z",
+  "number": 495,
+  "state": "MERGED",
+  "title": "fix(apps): make pre-display checks reliable"
+ },
+ {
+  "createdAt": "2026-10-28T16:23:46Z",
+  "headRefName": "fix/208-memory-per-persona",
+  "mergedAt": "2026-10-29T02:17:33Z",
+  "number": 496,
+  "state": "MERGED",
+  "title": "Each Claude Code and Agent SDK persona keeps its own memory, and can be deleted with Undo"
+ },
+ {
+  "createdAt": "2026-10-28T16:24:21Z",
+  "headRefName": "fix/439-held-wakes",
+  "mergedAt": "2026-10-28T21:36:14Z",
+  "number": 497,
+  "state": "MERGED",
+  "title": "fix(server): hold a wake that needs a card while one waits, and settle it with that card"
+ },
+ {
+  "createdAt": "2026-10-28T16:26:45Z",
+  "headRefName": "fix/458-cancel-wake",
+  "mergedAt": "2026-10-28T23:03:11Z",
+  "number": 498,
+  "state": "MERGED",
+  "title": "feat(server): agents cancel their own scheduled wakes with cancel_wake"
+ },
+ {
+  "createdAt": "2026-10-28T16:28:39Z",
+  "headRefName": "fix/484-catch-up",
+  "mergedAt": "2026-10-28T22:03:50Z",
+  "number": 500,
+  "state": "MERGED",
+  "title": "fix(server): a turn\u2019s summary keeps every mention of the agent, and says what it left out"
+ },
+ {
+  "createdAt": "2026-10-28T16:45:26Z",
+  "headRefName": "fix/agents-section-polish",
+  "mergedAt": "2026-10-28T19:20:31Z",
+  "number": 501,
+  "state": "MERGED",
+  "title": "Agents section: each subagent once, a plain step line, and a +N that fits"
+ },
+ {
+  "createdAt": "2026-10-28T16:47:15Z",
+  "headRefName": "fix/499-whole-mentions",
+  "mergedAt": "2026-10-28T22:29:53Z",
+  "number": 502,
+  "state": "MERGED",
+  "title": "fix(server): a message that mentions an agent reaches its summary whole, up to 15,000 characters"
+ },
+ {
+  "createdAt": "2026-10-28T19:02:54Z",
+  "headRefName": "fix/483-uat-verifier",
+  "mergedAt": "2026-10-29T01:12:56Z",
+  "number": 505,
+  "state": "MERGED",
+  "title": "fix(uat): the UAT verifier searches a run\u2019s records, and the runner\u2019s flags land"
+ },
+ {
+  "createdAt": "2026-10-28T21:22:25Z",
+  "headRefName": "fix/478-glimpse",
+  "mergedAt": "2026-10-29T07:43:08Z",
+  "number": 509,
+  "state": "MERGED",
+  "title": "fix(threads): show readable sentence-boundary thinking glimpses"
+ },
+ {
+  "createdAt": "2026-10-28T21:25:58Z",
+  "headRefName": "fix/504-thread-request-first",
+  "mergedAt": "2026-10-29T08:11:50Z",
+  "number": 511,
+  "state": "MERGED",
+  "title": "Put a topic thread\u2019s request before room context"
+ },
+ {
+  "createdAt": "2026-10-28T21:30:04Z",
+  "headRefName": "fix/486-review-width",
+  "mergedAt": "2026-10-29T02:46:08Z",
+  "number": 512,
+  "state": "MERGED",
+  "title": "Let review previews fill wide blocks"
+ },
+ {
+  "createdAt": "2026-10-28T21:44:22Z",
+  "headRefName": "fix/503-content-blocks",
+  "mergedAt": "2026-10-29T17:03:30Z",
+  "number": 513,
+  "state": "MERGED",
+  "title": "Normalize Claude message content after compaction"
+ },
+ {
+  "createdAt": "2026-10-28T21:52:26Z",
+  "headRefName": "fix/510-unhandled-rejection",
+  "mergedAt": "2026-10-29T00:45:20Z",
+  "number": 514,
+  "state": "MERGED",
+  "title": "fix(server): a rejection nothing handled is logged, and Postbox keeps running"
+ },
+ {
+  "createdAt": "2026-10-28T23:48:20Z",
+  "headRefName": "fix/466-wake-retry",
+  "mergedAt": null,
+  "number": 522,
+  "state": "OPEN",
+  "title": "Recover scheduled wakes safely after network failures"
+ },
+ {
+  "createdAt": "2026-10-29T05:22:49Z",
+  "headRefName": "fix/485-empty-reply",
+  "mergedAt": "2026-10-29T17:38:19Z",
+  "number": 536,
+  "state": "MERGED",
+  "title": "fix(runtime): never post an empty reply, and let a failed reply reach other agents"
+ },
+ {
+  "createdAt": "2026-10-29T18:27:13Z",
+  "headRefName": "fix/492-no-pair-limit",
+  "mergedAt": null,
+  "number": 541,
+  "state": "OPEN",
+  "title": "fix(server): no wake limit between two agents; the chain limit is a backstop of 50 that resets when a chain ends"
+ }
+]

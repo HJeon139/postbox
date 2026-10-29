@@ -1,0 +1,14 @@
+[
+  { "item": "#504", "card": 5, "driver": "Context order in turnContext plus a recorded turn.context event, a UAT scenario and check, two review rounds (follow-ups, slash and attach turns) and a merge conflict with #500's move; like #445 in spread." },
+  { "item": "#510", "card": 3, "driver": "Two small handlers (command and host daemon) and a sweep refactor, but each needed a real-process test; one review round; smaller than #445." },
+  { "item": "#503", "card": 5, "driver": "One helper used in six places, a move out of a file at its ceiling first, a recorded-fixture test, and two merges of main with a ceiling to keep." },
+  { "item": "#484", "card": 5, "driver": "A move of catchUp, mentions kept ahead of the caps, a left-out summary and a pointer, then an integrator round with three more fixes (skip count, read_message pointer, wording)." },
+  { "item": "#499", "card": 2, "driver": "One bound and one call site on top of #484, plus a follow-up so two mentions fit; small, but a second round." },
+  { "item": "#483", "card": 3, "driver": "A driver fix with a browser spec, the verifier's Grep and prompt, and a recheck on a recorded run; no integrator round." },
+  { "item": "#478", "card": 5, "driver": "A shared glimpse helper, a streaming fix the first version broke, CSS clamp and browser specs at two widths, and an integrator round for CJK and long tokens." },
+  { "item": "#486", "card": 2, "driver": "CSS for one view and a browser spec, with one flaky narrow check to steady and a merge of main." },
+  { "item": "#475 #476 #477", "card": 3, "driver": "Three small client fixes in one PR, each with a browser spec; like #430 times one bundle." },
+  { "item": "#485", "card": 8, "driver": "No reproduction, so guards across the stream mapper and runtime, failed-reply wakes and Retry, host turns that resume, then integrator and critic rounds and three merges of main; like #449." },
+  { "item": "#492", "card": 8, "driver": "The wake gate, a composer line, a chain reset, and every test built on the limit cards, built three times as the decision changed, plus a merge of main; real-agent run." },
+  { "item": "hostwakes UAT", "card": 8, "driver": "A host-mode scenario, five triggers and two checks with replay tests from six real runs on the test host, rebuilt against #439's fix after an integrator review." }
+]
