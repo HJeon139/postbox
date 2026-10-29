@@ -1012,11 +1012,10 @@ export class Runtime {
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
       // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
       // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
-      // The item keeps whom they woke, so its Retry doesn’t wake them again.
-      if (turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost') {
-        const woke = this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`);
-        if (woke.length) this.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
-      }
+      // The item keeps whom they woke, with those the failures before it woke, so no Retry wakes them again.
+      const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
+      const woke = wakes ? this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
+      if (woke.length || turn.woken.length) this.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
       // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
       // queued messages wait, as before, for you to see the failure.
       this.takePending(se, turn, 'wakes');
