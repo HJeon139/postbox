@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.43.2 (2026-10-29)
+
+### Fixes
+
+- **uat:** the verifier's prompt counts its three readings
+- **uat:** the verifier reads what a wake's answer means, and judges a finding's own claim
+- **uat:** the verifier can search a run's records, and is told what they hold
+- **uat:** the runner's flag reactions use the inline buttons
+
 ## 0.43.1 (2026-10-29)
 
 ### Fixes
