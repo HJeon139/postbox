@@ -71,8 +71,9 @@ test('#189 a subagent with no reported context says so, and its activity still s
   const rings = page.locator('.rail .agent-row .agent-sub.subagent pb-ring');
   await expect(rings).toHaveCount(2);
   for (const ring of await rings.all()) {
-    await expect(ring.locator('svg')).toHaveAttribute('aria-label', /context unknown/);
-    await expect(ring.locator('svg')).not.toHaveAttribute('aria-label', /0%/);
+    // The ring’s labeled SVG; what moves is an overlay of its own beside it, hidden from assistive tech (#463).
+    await expect(ring.locator('svg[role="img"]')).toHaveAttribute('aria-label', /context unknown/);
+    await expect(ring.locator('svg[role="img"]')).not.toHaveAttribute('aria-label', /0%/);
   }
   // A subagent thinking or generating draws no arc, which would read as an amount, but its dot still moves.
   const marks = await rings.evaluateAll((els) =>
