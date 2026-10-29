@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.43.3 (2026-10-29)
+
+### Fixes
+
+- **apps:** keep every on-screen app running
+- **apps:** parse apostrophes in unquoted attributes
+- **apps:** ignore duplicate browser checks
+- **apps:** pause unused frames and queue one check
+- **apps:** preserve visible apps during checks
+- **apps:** preserve Unicode offsets while scanning scripts
+- **apps:** scan malformed script end tags safely
+- **apps:** check every pending app safely
+- **apps:** locate sandbox script errors
+- **apps:** report stylesheet class collisions
+
 ## 0.43.2 (2026-10-29)
 
 ### Fixes
