@@ -14,6 +14,7 @@ import { apply, emptyState } from '../shared/state.mjs';
 import { storeError } from './redis-client.mjs';
 import { catchUp, commit } from './store-commit.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
+import { Hold } from './store-hold.mjs';
 import { importLegacy } from './store-import.mjs';
 import { readState, redisFor, releaseRedis, streamAfter, writeBatch } from './store-redis.mjs';
 
@@ -51,7 +52,8 @@ export class Store {
     this.inflight = null;
     this.scheduled = false;
     this.commits = Promise.resolve();
-    this.held = null; // emits made while a commit waits on Redis
+    /** @type {Hold | null} emits made while a commit waits on Redis (server/store-hold.mjs) */
+    this.hold = null;
     this.waiting = 0; // commits not yet answered
     this.ops = new Map(); // in memory only: opId → seq
     /** @type {import('./redis-client.mjs').RedisClient | null} */
@@ -114,13 +116,14 @@ export class Store {
     if (!this.writable) throw this.refuse();
     roundEventCosts(type, data);
     const refs = this.redis ? touched(this.state, type, data) : [];
+    this.hold?.save(this.state, refs);
     apply(this.state, type, data);
     this.track(type, data, refs);
     const ev = { seq: 0, type, data };
     // The reducer keeps an event’s objects in the state, where later events change them in place, so the backlog
     // keeps each event as JSON: a reconnecting browser gets it as it was emitted, not as the state is now.
     const json = JSON.stringify(data);
-    if (this.held) this.held.push({ ev, json, refs });
+    if (this.hold) this.hold.emits.push({ ev, json, refs });
     else this.publish(ev, json, refs);
     return ev;
   }
@@ -169,12 +172,15 @@ export class Store {
     return e && e.t === t && this.state.items[t]?.includes(e.it) ? e.it : undefined;
   };
 
-  /** Takes what waits to be written: its events and the writes for its documents as they are now. */
-  take() {
+  /**
+   * Takes what waits to be written: its events and the writes for its documents as they are now, or as they are in
+   * `s`, the state before held emits (server/store-hold.mjs).
+   */
+  take(s = this.state, itemOf = this.itemOf) {
     const events = this.lines.splice(0);
     const dirty = [...this.dirty.values()];
     this.dirty.clear();
-    return { events, dirty, writes: writesFor(this.state, dirty, this.itemOf, (t, id) => this.positions.score(t, id)) };
+    return { events, dirty, writes: writesFor(s, dirty, itemOf, (t, id) => this.positions.score(t, id)) };
   }
 
   /** Puts a batch that wasn’t written back in front of what waits. */
@@ -187,7 +193,7 @@ export class Store {
 
   /** Writes what waits, one batch at a time. A failed batch waits for the next start of the child. */
   pump() {
-    if (this.inflight || this.held || this.failed || !this.lines.length || !this.client?.connected) return;
+    if (this.inflight || this.hold || this.failed || !this.lines.length || !this.client?.connected) return;
     const batch = this.take();
     const client = this.client;
     this.inflight = writeBatch(client, { prev: this.confirmed, events: batch.events, writes: batch.writes })
@@ -210,7 +216,7 @@ export class Store {
   /** Waits for every event emitted so far to reach Redis, or for the store to be unable to write it. */
   async flush() {
     if (!this.redis) return;
-    while (this.inflight || this.scheduled || (this.lines.length && this.client?.connected && !this.failed && !this.held)) {
+    while (this.inflight || this.scheduled || (this.lines.length && this.client?.connected && !this.failed && !this.hold)) {
       this.pump();
       await (this.inflight ?? new Promise((ok) => setImmediate(ok)));
     }
@@ -235,8 +241,8 @@ export class Store {
 
   /** Publishes the emits a commit held, after its own events. */
   release() {
-    const held = this.held ?? [];
-    this.held = null;
+    const held = this.hold?.emits ?? [];
+    this.hold = null;
     for (const h of held) this.publish(h.ev, h.json, h.refs);
     this.pump();
   }

@@ -4,10 +4,12 @@
 // failed write changes nothing anyone can see; a repeated opId writes nothing and returns the earlier seq.
 //
 // Commits run one at a time. Emits made while one waits are applied at once, so the server reads its own writes, but
-// they’re numbered and broadcast after the commit’s events, and written after it.
+// they’re numbered and broadcast after the commit’s events, and written after it; the commit stages from the state
+// before them, and its events are applied to the state before them too (server/store-hold.mjs has the rule).
 
 import { apply, map } from '../shared/state.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
+import { Hold } from './store-hold.mjs';
 import { streamAfter, writeBatch } from './store-redis.mjs';
 
 /** @typedef {{ type: string, data: any }[] | ((state: any) => { type: string, data: any }[])} Events */
@@ -18,7 +20,7 @@ import { streamAfter, writeBatch } from './store-redis.mjs';
  */
 export function commit(store, events, opId) {
   if (store.redis) {
-    store.held ??= [];
+    store.hold ??= new Hold();
     store.waiting++;
   }
   const run = store.commits.then(() => commitNow(store, events, opId)).finally(() => store.redis && --store.waiting === 0 && store.release());
@@ -33,11 +35,9 @@ export function commit(store, events, opId) {
  */
 async function commitNow(store, events, opId) {
   for (let attempt = 0; ; attempt++) {
-    const list = typeof events === 'function' ? events(store.state) : events;
-    for (const e of list) roundEventCosts(e.type, e.data);
-    if (!store.redis) return inMemory(store, list, opId);
+    if (!store.redis) return inMemory(store, listOf(events, store.state), opId);
     try {
-      return await writeOnce(store, list, opId);
+      return await writeOnce(store, events, opId);
     } catch (e) {
       if (e.code !== 'ESEQ' || attempt >= 20) throw e;
       await store.catchUp();
@@ -45,13 +45,24 @@ async function commitNow(store, events, opId) {
   }
 }
 
-/** @param {import('./store.mjs').Store} store @param {{ type: string, data: any }[]} events @param {string} opId */
-async function writeOnce(store, events, opId) {
-  await (store.inflight ?? null);
+/** A commit’s events, run on the state if they’re a function of it, with their costs rounded. @param {Events} events @param {any} s */
+function listOf(events, s) {
+  const list = typeof events === 'function' ? events(s) : events;
+  for (const e of list) roundEventCosts(e.type, e.data);
+  return list;
+}
+
+/** @param {import('./store.mjs').Store} store @param {Events} given @param {string} opId */
+async function writeOnce(store, given, opId) {
+  while (store.inflight) await store.inflight;
   if (!store.writable) throw store.refuse();
+  // Everything is read from the state before the held emits: the commit comes before them.
+  const hold = /** @type {Hold} */ (store.hold);
+  const before = hold.view(store.state);
+  const events = listOf(given, before);
   // What emits left unwritten goes first, in the same script.
-  const pending = store.take();
-  const staged = stage(store.state, events, store.positions);
+  const pending = store.take(before, hold.itemOf(before, store.itemOf));
+  const staged = stage(before, events, store.positions);
   const first = store.state.seq + 1;
   const lines = events.map((e, i) => ({ seq: first + i, line: JSON.stringify({ seq: first + i, type: e.type, data: e.data }) }));
   let r;
@@ -70,7 +81,11 @@ async function writeOnce(store, events, opId) {
   }
   store.confirmed = r.seq;
   store.positions.merge(staged.positions);
-  for (const e of events) applyWritten(store, e, null);
+  const written = () => {
+    for (const e of events) applyWritten(store, e, null);
+  };
+  if (hold.meets(staged.dirty.map((x) => x.ref))) hold.rebase(store, written);
+  else written();
   return r;
 }
 
@@ -101,15 +116,20 @@ export async function catchUp(store) {
   if (seq <= store.confirmed) return;
   const theirs = await streamAfter(c, store.confirmed, seq);
   if (!theirs) throw Object.assign(new Error('The store’s events stream was trimmed past this store; restart Postbox to read it again.'), { code: 'ESEQ' });
-  for (const ev of theirs) {
-    const mine = store.lines[0];
-    if (mine?.seq === ev.seq && mine.line === JSON.stringify(ev)) store.lines.shift();
-    else if (store.state.seq >= ev.seq) {
-      store.failed = Object.assign(new Error('Another process wrote to the store’s Redis while this one had changes to write.'), { code: 'ESEQ' });
-      return;
-    } else applyWritten(store, ev, store.positions);
-    store.confirmed = ev.seq;
-  }
+  const written = () => {
+    for (const ev of theirs) {
+      const mine = store.lines[0];
+      if (mine?.seq === ev.seq && mine.line === JSON.stringify(ev)) store.lines.shift();
+      else if (store.state.seq >= ev.seq) {
+        store.failed = Object.assign(new Error('Another process wrote to the store’s Redis while this one had changes to write.'), { code: 'ESEQ' });
+        return;
+      } else applyWritten(store, ev, store.positions);
+      store.confirmed = ev.seq;
+    }
+  };
+  // Emits held behind a commit come after these too (server/store-hold.mjs).
+  if (store.hold?.emits.length) store.hold.rebase(store, written);
+  else written();
 }
 
 /** @param {import('./store.mjs').Store} store @param {{ type: string, data: any }[]} events @param {string} opId */

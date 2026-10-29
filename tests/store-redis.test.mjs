@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import { apply } from '../shared/state.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -188,4 +189,65 @@ test('a cost needing 17 significant digits is rounded to 12 places when made, so
   const b = await open(dir);
   assert.deepEqual(b.state.work.t1, want, 'after a restart, read back from the documents');
   assert.deepEqual(b.state, a.state);
+});
+
+// Review finding 1 on #525 (gpt’s regression): a commit’s events come first everywhere, in the server’s state as in the
+// stream, so an emit that changes the same record while the commit waits wins on the server and in the browser alike.
+test('an emit that changes what a waiting commit changes leaves the server, the browser and Redis in one order', async () => {
+  const s = await open(await tmp());
+  s.emit('session', { id: 'se', n: 0 });
+  await s.flush();
+  const browser = structuredClone(s.state);
+  s.subscribe((e) => {
+    apply(browser, e.type, e.data);
+    browser.seq = e.seq;
+  });
+  const client = /** @type {any} */ (s).client;
+  const call = client.call.bind(client);
+  let release = () => {};
+  let entered = () => {};
+  const gate = new Promise((ok) => (release = ok));
+  const arrived = new Promise((ok) => (entered = ok));
+  let intercept = true;
+  client.call = async (...a) => {
+    if (intercept && a[0] === 'EVAL') {
+      intercept = false;
+      entered();
+      await gate;
+    }
+    return call(...a);
+  };
+  const p = s.commit([{ type: 'session.patch', data: { id: 'se', patch: { n: 1 } } }], 'overlap');
+  await arrived;
+  s.emit('session.patch', { id: 'se', patch: { n: 2 } });
+  assert.equal(s.state.sessions.se.n, 2, 'the emit is applied at once');
+  release();
+  await p;
+  await s.flush();
+  assert.deepEqual(s.state.sessions.se, browser.sessions.se);
+  assert.equal(s.state.sessions.se.n, 2);
+  assert.deepEqual((await open(s.dir ?? '')).state, s.state, 'Redis holds what the server and browser hold');
+});
+
+test('an item emitted while a commit adds one to the same conversation comes after it, on the server as in the stream', async () => {
+  const s = await open(await tmp());
+  s.emit('thread', { id: 't', members: [] });
+  s.emit('item.add', { threadId: 't', item: { id: 'a', text: 'before' } });
+  await s.flush();
+  const p = s.commit([{ type: 'item.add', data: { threadId: 't', item: { id: 'c', text: 'commit' } } }], 'op-list');
+  s.emit('item.add', { threadId: 't', item: { id: 'e', text: 'emit' } });
+  s.emit('item.patch', { threadId: 't', id: 'a', patch: { text: 'patched' } });
+  assert.deepEqual(
+    s.state.items.t.map((it) => it.id),
+    ['a', 'e'],
+    'applied at once',
+  );
+  await p;
+  await s.flush();
+  assert.deepEqual(
+    s.state.items.t.map((it) => `${it.id}:${it.text}`),
+    ['a:patched', 'c:commit', 'e:emit'],
+  );
+  assert.equal(s.itemOf('t', 'a'), s.state.items.t[0], 'the item index follows');
+  assert.deepEqual((await open(s.dir ?? '')).state, s.state);
 });
