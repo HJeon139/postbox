@@ -24,6 +24,7 @@ import { Corpus } from './corpus.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { listen as listenServer } from './listen.mjs';
+import { liveStreams, storeLine } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { rearmPersonaDeletes } from './persona-delete.mjs';
@@ -35,6 +36,7 @@ import { decodePath, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { clearStore, newId, Store } from './store.mjs';
+import { retry } from './store-recover.mjs';
 import { recordingOff, watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
 
@@ -182,35 +184,24 @@ export async function start({
     if (!isLoopback(req.socket?.remoteAddress)) throw httpError(403, '! commands run only from this computer.');
   };
 
-  const streams = new Set();
+  // The pages’ live updates: the store’s events, and its status line (server/live-streams.mjs).
+  const { streams, stop: stopStreams } = liveStreams(store);
   let offlineUntil = 0;
-  // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
-  // with it in CI to show they wait for the page to hear a change, not for a fixed time.
-  const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
-  store.subscribe((ev) => {
-    const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
-    const send = () => {
-      for (const res of streams) res.write(line);
-    };
-    if (lag > 0) setTimeout(send, lag).unref();
-    else send();
-  });
-  const keepAlive = setInterval(() => {
-    for (const res of streams) res.write(': keep-alive\n\n');
-  }, 15000);
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
   const handle = async (req, res) => {
     try {
       await route(req, res);
     } catch (e) {
-      const status = e.status ?? 500;
+      // A write while the store can’t take one is refused with its cause, which the page’s status line shows (ST-3).
+      const status = e.code === 'ESTOREDOWN' ? 503 : (e.status ?? 500);
       if (status === 500) console.error(e);
       if (!res.headersSent)
         send(res, status, {
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
           fieldErrors: e.fieldErrors,
           code: e.code,
+          cause: status === 503 ? store.status.cause : undefined,
           // What to do about a host’s failure (#120): the page shows it under the error.
           next: e.status ? e.next : undefined,
         });
@@ -492,6 +483,8 @@ export async function start({
       store.emit('settings', patch);
       return send(res, 200, store.state.settings);
     }
+    // Retry, from the page’s status line when the store is down (ST-3): start its Redis again, or read it back now.
+    if (path === '/api/store/retry' && req.method === 'POST') return send(res, 200, { store: await retry(store) });
     if (demo && path === '/api/demo/offline' && req.method === 'POST') {
       // Drops every live connection and refuses new ones for a while, to show reconnecting.
       offlineUntil = Date.now() + Math.min(60000, Number(body.ms) || 5000);
@@ -509,7 +502,7 @@ export async function start({
   async function stream(req, res, url) {
     const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-    res.write('retry: 1500\n\n');
+    res.write(`retry: 1500\n\n${storeLine(store.status)}`);
     const backlog = await store.backlog(since); // from memory, or after a restart from the store’s events stream
     // Too far behind: the browser refetches the whole state, then resumes from its sequence number.
     if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
@@ -549,7 +542,7 @@ export async function start({
   }
 
   async function close() {
-    clearInterval(keepAlive);
+    stopStreams();
     for (const r of streams) r.destroy();
     for (const t of rt.timers.values()) clearTimeout(t);
     rt.stopMirrors();

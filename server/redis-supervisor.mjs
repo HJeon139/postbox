@@ -212,8 +212,9 @@ export class RedisSupervisor extends EventEmitter {
     setTimeout(() => this.restart(), wait).unref();
   }
 
+  /** Starts the child again, after it died or from the page’s Retry; one already starting or running is left alone. */
   async restart() {
-    if (this.stopping) return;
+    if (this.stopping || this.status.state === 'starting' || this.status.state === 'running') return;
     try {
       await this.start();
     } catch (e) {

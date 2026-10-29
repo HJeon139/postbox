@@ -10,6 +10,8 @@
 // and are numbered after it. Only then do writes open again, and what waited is written. A catch-up that fails is tried
 // again after a backoff while the child runs; a child that stops again starts it over.
 
+import { attach, changed } from './store-status.mjs';
+
 const RETRY_MS = 250; // the first wait before a failed catch-up is tried again
 const RETRY_MAX = 30000; // the longest
 
@@ -33,6 +35,7 @@ export function onStatus(store, s) {
 /** Closes writes until the store has read Redis back, and reads it back now if the child runs. @param {Store} store */
 export function closeWrites(store) {
   store.reconciling = true;
+  changed(store);
   if (store.redis?.sup.status.state === 'running') reconcile(store);
 }
 
@@ -61,7 +64,7 @@ async function once(store) {
   try {
     if (!store.client?.connected) {
       store.client?.close();
-      store.client = await sup.client();
+      attach(store, await sup.client());
     }
     // A write or commit sent before the reply was lost settles first: its outcome is what catch-up reads.
     await store.inflight;
@@ -90,6 +93,7 @@ function open(store, failed) {
   store.rc.backoff = 0;
   if (store.hold && !store.waiting) store.release();
   else store.pump();
+  changed(store);
 }
 
 /** Stops a catch-up waiting to be tried again. @param {Store} store */
@@ -106,4 +110,23 @@ export function reconcilingStatus(store) {
     cause: 'reconciling',
     message: 'The store’s Redis is back, and Postbox is reading back what it holds before it saves changes again.',
   };
+}
+
+/**
+ * Retry, from the page’s status line: starts the child again when it’s down, reads Redis back now rather than after a
+ * backoff, or tries a failed write again now. A write refused because another process took its seq (ESEQ) waits for
+ * Postbox to start again, so Retry leaves it. Resolves to the status after.
+ * @param {import('./store.mjs').Store} store
+ */
+export async function retry(store) {
+  if (!store.redis || store.closed) return store.status;
+  const sup = store.redis.sup;
+  if (sup.status.state === 'down') await sup.restart();
+  else if (store.reconciling) {
+    stopReconciling(store);
+    store.rc.backoff = 0;
+    await reconcile(store);
+  } else if (store.failed && store.failed.code !== 'ESEQ') store.pump(true);
+  changed(store);
+  return store.status;
 }

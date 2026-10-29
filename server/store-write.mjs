@@ -11,6 +11,7 @@
 
 import { closeWrites } from './store-recover.mjs';
 import { writeBatch } from './store-redis.mjs';
+import { changed } from './store-status.mjs';
 
 const RETRY_MS = 250; // the first wait before a failed write is tried again
 const RETRY_MAX = 30000; // the longest
@@ -32,6 +33,7 @@ export function pump(store, retrying) {
         store.failed = e;
         if (e.code !== 'ESEQ') retryLater(store);
         console.error(`Couldn’t write to the store: ${e.message}`);
+        changed(store);
       },
     )
     .finally(() => {
@@ -60,6 +62,7 @@ export function recovered(store) {
   store.retry = null;
   store.backoff = 0;
   store.failed = null;
+  changed(store);
 }
 
 /** The status while writes fail, or null. @param {import('./store.mjs').Store} store */

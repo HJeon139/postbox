@@ -79,6 +79,8 @@ export class RedisClient {
     this.buf = Buffer.alloc(0);
     this.socket = null;
     this.closed = false;
+    /** @type {(() => void) | null} told when the connection drops */
+    this.ondrop = null;
   }
 
   /** Connects, and authenticates when there’s a password. */
@@ -120,6 +122,7 @@ export class RedisClient {
     this.socket = null;
     const waiting = this.pending.splice(0);
     for (const w of waiting) w.fail(storeError('ESTOREDOWN', 'The connection to the store’s Redis closed before it answered.'));
+    this.ondrop?.();
   }
 
   get connected() {

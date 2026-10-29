@@ -37,6 +37,8 @@ export const client = {
   seq: 0,
   connection: 'connecting',
   attempts: 0,
+  // Whether the server can save changes, or why not (ST-3): { state: 'running' } or { state: 'down', cause, message }.
+  store: { state: 'running' },
   listeners: new Set(),
   on(fn) {
     this.listeners.add(fn);
@@ -50,9 +52,10 @@ export const client = {
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
-  const { seq, state, config } = await r.json();
+  const { seq, state, config, store } = await r.json();
   client.state = ownState(state);
   client.config = config;
+  client.store = store ?? { state: 'running' };
   client.seq = seq;
   client.emit({ type: 'load' });
 }
@@ -89,6 +92,11 @@ export function connect() {
       } else client.emit({ type: t, data });
     });
   }
+  // The store’s status line, unnumbered: each time it can’t save, or can again (app/js/store-line.mjs).
+  es.addEventListener('store', (e) => {
+    client.store = JSON.parse(e.data);
+    client.emit({ type: 'store' });
+  });
   es.addEventListener('resync', async () => {
     await load();
     connect();

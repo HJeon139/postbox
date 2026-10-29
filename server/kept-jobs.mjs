@@ -15,7 +15,7 @@ export function keptJobs(rt) {
 /** Checks on the jobs Postbox kept running, until none is left: one whose process group is gone has ended. */
 export function watchKept(rt) {
   if (rt.keptPoll) return;
-  rt.keptPoll = setInterval(() => rt.pollKept(), KEPT_POLL_MS);
+  rt.keptPoll = setInterval(() => rt.store.writable && rt.pollKept(), KEPT_POLL_MS);
   rt.keptPoll.unref?.();
 }
 export async function pollKept(rt) {

@@ -20,6 +20,7 @@ import { importLegacy } from './store-import.mjs';
 import { broadcast } from './store-publish.mjs';
 import { onStatus, reconcilingStatus, stopReconciling } from './store-recover.mjs';
 import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
+import { attach } from './store-status.mjs';
 import { failedStatus, pump, recovered } from './store-write.mjs';
 
 export { emptyState };
@@ -71,6 +72,8 @@ export class Store {
     /** @type {import('./store-recover.mjs').Reconciler} */
     this.rc = { run: null, again: false, timer: null, backoff: 0 };
     this.closed = false;
+    this.watchers = new Set(); // told when writes close or reopen, and what they last heard (server/store-status.mjs)
+    this.seen = '';
   }
 
   async load() {
@@ -78,10 +81,11 @@ export class Store {
     await mkdir(this.dir, { recursive: true });
     this.redis = redisFor(this.dir, { home: this.redisHome });
     const sup = await this.redis.ready;
-    this.client = await sup.client();
+    const client = await sup.client();
+    attach(this, client);
     sup.on('status', (s) => this.onStatus(s));
-    await importLegacy(this.dir, this.client);
-    const { state, positions } = await readState(this.client);
+    await importLegacy(this.dir, client);
+    const { state, positions } = await readState(client);
     this.state = state;
     this.positions = positions;
     this.confirmed = state.seq;

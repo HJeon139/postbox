@@ -97,6 +97,7 @@ const WRITE_ROUTES = {
   ],
   'POST ^\\/api\\/schedules\\/([^/]+)\\/cancel$': ['/api/schedules/sc_none/cancel'],
   'PUT /api/settings': ['/api/settings'],
+  'POST /api/store/retry': ['/api/store/retry'],
   'POST /api/demo/offline': ['/api/demo/offline'],
   'POST /api/demo/speed': ['/api/demo/speed'],
 };

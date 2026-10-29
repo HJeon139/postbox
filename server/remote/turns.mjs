@@ -105,7 +105,7 @@ export class RemoteTurns {
     // The manager emits 'status' with (hostId, status) when a host’s connection changes.
     this.onStatus = (/** @type {string} */ hostId, /** @type {any} */ status) => onHostStatus(this, hostId, status);
     hosts?.on?.('status', this.onStatus);
-    this.tickTimer = hosts ? setInterval(() => this.tick(), tickMs) : null;
+    this.tickTimer = hosts ? setInterval(() => rt.store.writable && this.tick(), tickMs) : null;
     this.tickTimer?.unref?.();
   }
 

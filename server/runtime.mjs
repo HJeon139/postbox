@@ -78,6 +78,7 @@ import { clearSummaryPending, shareText, shareToConversation, summarizeBack, sum
 import { runShell } from './shell.mjs';
 import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
 import { newId } from './store.mjs';
+import { guardContext, heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
 import { settleThread, threadCatchUp } from './thread-summary.mjs';
@@ -237,6 +238,10 @@ export class Runtime {
     archiveForks(this);
     // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
     restoreArchives(this);
+    // While the store can’t be written, no turn runs or starts, and what would write waits (ST-3, server/store-outage.mjs).
+    /** @type {(() => void)[]} */
+    this.storeWait = [];
+    watchStore(this);
   }
 
   get s() {
@@ -575,6 +580,8 @@ export class Runtime {
     }
     // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
     if (this.closing) return;
+    // The store can’t be written: the turn starts once it can (ST-3).
+    if (heldTurn(this, sessionId, () => this.deliver(sessionId, asked.message, { summarizeTo, threadId }))) return;
     const where = threadId && threadId !== se.threadId && this.s.threads[threadId] ? threadId : se.threadId;
     this.answerDelivered(where, message);
     // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
@@ -662,7 +669,7 @@ export class Runtime {
       currentStep: 'Thinking',
       finishedAt: null,
     });
-    const ctx = this.turnContext(se, turn);
+    const ctx = guardContext(this.turnContext(se, turn));
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
       if (!hostId) refuseHere(this, se, persona);
@@ -719,10 +726,7 @@ export class Runtime {
       room: rt.roomOf(turn.threadId, se0),
       /** What the adapter saved for this session last time, such as its own session id. */
       state: { ...(se0.backendState ?? {}) },
-      saveState(patch) {
-        const s = se();
-        if (s) rt.updateSession(s.id, { backendState: { ...(s.backendState ?? {}), ...patch } });
-      },
+      saveState: (patch) => saveBackendState(rt, turn.sessionId, patch),
       /** Where an attachment can be read on disk, or null. */
       pathOf: (a) => rt.attachmentPath(turn.threadId, a),
       /**
@@ -1184,6 +1188,7 @@ export class Runtime {
    * then the queue.
    */
   turnExited(turn) {
+    if (!this.store.writable) return whenWritable(this, () => this.turnExited(turn));
     this.settleJobs(turn);
     const ex = this.exiting.get(turn.sessionId);
     if (ex?.turn !== turn) return;
@@ -1192,7 +1197,8 @@ export class Runtime {
     if (!se) return;
     // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
     // A remote turn Postbox stopped because it hung says so instead (#120).
-    const stoppedBy = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id ? se.remoteTurn.message : 'Stopped by you';
+    const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
+    const stoppedBy = turn.stopReason === 'store' ? STORE_STOPPED : hung ? se.remoteTurn.message : 'Stopped by you';
     if (se.state === 'stopping' || se.currentStep === 'Stopping')
       this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
     else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
@@ -2177,23 +2183,24 @@ export class Runtime {
           cut = true;
         }
         if (!timer) {
-          timer = setTimeout(flush, COMMAND_FLUSH_MS);
+          timer = setTimeout(() => whenWritable(this, flush), COMMAND_FLUSH_MS);
           timer.unref?.();
         }
       },
-      onExit: ({ code = null, signal = null, error }) => {
-        flush({ final: true });
-        this.shellRuns.delete(it.id);
-        if (!this.store.item(threadId, it.id)) return;
-        this.patchItem(threadId, it.id, {
-          status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
-          exitCode: typeof code === 'number' ? code : null,
-          signal: signal ?? null,
-          ms: Date.now() - startedAt,
-          ...(cut ? { paused: false } : {}),
-          ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
-        });
-      },
+      onExit: ({ code = null, signal = null, error }) =>
+        whenWritable(this, () => {
+          flush({ final: true });
+          this.shellRuns.delete(it.id);
+          if (!this.store.item(threadId, it.id)) return;
+          this.patchItem(threadId, it.id, {
+            status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
+            exitCode: typeof code === 'number' ? code : null,
+            signal: signal ?? null,
+            ms: Date.now() - startedAt,
+            ...(cut ? { paused: false } : {}),
+            ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
+          });
+        }),
     });
     Object.assign(run, { stop: handle.stop, kill: handle.kill, done: handle.done });
     return { item: it };
@@ -2365,7 +2372,7 @@ export class Runtime {
     const se = this.s.sessions[sessionId];
     const file = se?.backendState?.transcript;
     if (!file || this.mirrors.has(sessionId)) return;
-    const timer = setInterval(() => this.pollMirror(sessionId), 1500);
+    const timer = setInterval(() => this.store.writable && this.pollMirror(sessionId), 1500);
     timer.unref?.();
     this.mirrors.set(sessionId, { tail: new TranscriptTail(file), timer, agentItem: null, steps: [] });
   }
@@ -2374,9 +2381,9 @@ export class Runtime {
   rearmDeletions() {
     const wait = (until) => Math.max(0, until - Date.now());
     for (const se of Object.values(this.s.sessions))
-      if (se.deleting) this.timers.set(`del:${se.id}`, setTimeout(() => this.purgeSession(se.id), wait(se.deleting)).unref());
+      if (se.deleting) this.timers.set(`del:${se.id}`, setTimeout(() => whenWritable(this, () => this.purgeSession(se.id)), wait(se.deleting)).unref());
     for (const t of Object.values(this.s.threads))
-      if (t.deleting) this.timers.set(`delt:${t.id}`, setTimeout(() => this.purgeThread(t.id), wait(t.deleting)).unref());
+      if (t.deleting) this.timers.set(`delt:${t.id}`, setTimeout(() => whenWritable(this, () => this.purgeThread(t.id)), wait(t.deleting)).unref());
   }
 
   rearmMirrors() {
@@ -2709,7 +2716,7 @@ export class Runtime {
     this.timers.set(
       `del:${sessionId}`,
       // Unref’d, like every runtime timer: the HTTP server keeps the process alive, and a test shouldn’t wait.
-      setTimeout(() => this.purgeSession(sessionId), DELETE_UNDO_MS).unref(),
+      setTimeout(() => whenWritable(this, () => this.purgeSession(sessionId)), DELETE_UNDO_MS).unref(),
     );
     return { until, handle: se.handle };
   }
@@ -2730,7 +2737,7 @@ export class Runtime {
       }
     this.putThread({ ...t, deleting: until });
     clearTimeout(this.timers.get(`delt:${threadId}`));
-    this.timers.set(`delt:${threadId}`, setTimeout(() => this.purgeThread(threadId), DELETE_UNDO_MS).unref());
+    this.timers.set(`delt:${threadId}`, setTimeout(() => whenWritable(this, () => this.purgeThread(threadId)), DELETE_UNDO_MS).unref());
     return { until, title: t.title };
   }
 
@@ -2817,16 +2824,17 @@ export class Runtime {
     this.timers.set(
       sc.id,
       setTimeout(
-        () => {
-          this.timers.delete(sc.id);
-          if (!this.s.schedules[sc.id]) return;
-          this.store.emit('schedule', { id: sc.id, removed: true });
-          if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'done' });
-          // An archived agent isn’t woken: deliver() would refuse it, here outside any request (#101).
-          if (!this.s.sessions[sc.sessionId] || this.s.sessions[sc.sessionId].archived) return;
-          this.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
-          this.deliver(sc.sessionId, { kind: 'wake', note: sc.note });
-        },
+        () =>
+          whenWritable(this, () => {
+            this.timers.delete(sc.id);
+            if (!this.s.schedules[sc.id]) return;
+            this.store.emit('schedule', { id: sc.id, removed: true });
+            if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'done' });
+            // An archived agent isn’t woken: deliver() would refuse it, here outside any request (#101).
+            if (!this.s.sessions[sc.sessionId] || this.s.sessions[sc.sessionId].archived) return;
+            this.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
+            this.deliver(sc.sessionId, { kind: 'wake', note: sc.note });
+          }),
         Math.max(0, sc.at - Date.now()),
       ).unref(),
     );
