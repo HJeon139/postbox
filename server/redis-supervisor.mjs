@@ -8,6 +8,7 @@
 //                               folder in the system’s temporary folder instead, named by a hash of the data folder
 //   <data>/redis/data/          the append-only files: the store itself
 //   <data>/redis/logs/redis.log the child’s log, appended
+//   <data>/redis/claims/        which supervisor may run it: one live claim at a time (server/redis-owner.mjs, SR-6)
 //
 // It restarts the child if it dies, and stops it when Postbox stops or exits. Its status names why it isn’t running
 // (socket, owned, binary-missing, corrupt-aof, died), and writes fail closed meanwhile (server/store.mjs).
@@ -19,7 +20,7 @@ import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, rmdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { RedisClient, storeError } from './redis-client.mjs';
-import { clearLeftover } from './redis-owner.mjs';
+import { claimRedis, clearLeftover } from './redis-owner.mjs';
 import { hashed, privateDir, privately, privateTree, STORE_COMMANDS, socketFor, writePrivate } from './redis-private.mjs';
 
 /** @typedef {'socket' | 'owned' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
@@ -92,6 +93,8 @@ export class RedisSupervisor extends EventEmitter {
     this.stopping = false;
     this.restarts = 0;
     this.killOnExit = () => this.child?.kill('SIGTERM');
+    /** Lets go of this supervisor’s claim on the data folder’s Redis (claimRedis), while it holds one. @type {(() => void) | null} */
+    this.unclaim = null;
   }
 
   /** @param {RedisStatus} s */
@@ -118,16 +121,41 @@ export class RedisSupervisor extends EventEmitter {
       throw this.down('binary-missing', e.message);
     }
     if (!this.socket) throw this.down('socket', 'no socket path fits');
-    try {
-      await privateDir(join(this.socket, '..'));
-    } catch (e) {
-      throw this.down('socket', e.message);
+    // The data folder’s Redis is this supervisor’s alone from before the leftover check until it stops (SR-6): another
+    // start that claims it meanwhile refuses before it touches the socket, the config or the append-only files. A
+    // restart keeps the claim it has.
+    if (!this.unclaim) {
+      const { release, why } = await claimRedis(this.dataDir);
+      if (!release) throw this.down('owned', why);
+      // A Postbox that exits without stopping it leaves no claim behind; one that’s killed leaves a dead process’s.
+      process.on('exit', release);
+      this.unclaim = () => {
+        process.off('exit', release);
+        this.unclaim = null;
+        release();
+      };
     }
-    const why = await clearLeftover({ dataDir: this.dataDir, socket: this.socket });
-    if (why) throw this.down('owned', why);
-    this.set({ state: 'starting' });
-    const conf = await this.writeConf(files.modules);
-    return this.run(files.server, conf);
+    try {
+      try {
+        await privateDir(join(this.socket, '..'));
+      } catch (e) {
+        throw this.down('socket', e.message);
+      }
+      const why = await clearLeftover({ dataDir: this.dataDir, socket: this.socket });
+      if (why) throw this.down('owned', why);
+      this.set({ state: 'starting' });
+      const conf = await this.writeConf(files.modules);
+      // Stopped meanwhile: its claim goes with the stop, so no child may start without one.
+      if (this.stopping) {
+        this.set({ state: 'stopped' });
+        throw storeError('ESTOREDOWN', 'Postbox stopped the store’s Redis before it started.');
+      }
+      return await this.run(files.server, conf);
+    } catch (e) {
+      // A start that failed holds nothing: another Postbox may take the folder, and Retry claims it again.
+      this.unclaim?.();
+      throw e;
+    }
   }
 
   /** @param {string[]} modules */
@@ -249,6 +277,7 @@ export class RedisSupervisor extends EventEmitter {
     this.stopping = true;
     const child = this.child;
     if (!child || child.exitCode !== null || child.signalCode !== null) {
+      this.unclaim?.();
       if (this.status.state !== 'down') this.set({ state: 'stopped' });
       return;
     }
@@ -257,6 +286,7 @@ export class RedisSupervisor extends EventEmitter {
     const t = setTimeout(() => child.kill('SIGKILL'), 5000);
     await gone;
     clearTimeout(t);
+    this.unclaim?.();
     // A private folder in the temporary folder, for a long data folder’s socket, goes once it’s empty.
     const folder = dirname(/** @type {string} */ (this.socket));
     if (folder !== join(this.dataDir, 'redis', 'run')) await rmdir(folder).catch(() => {});

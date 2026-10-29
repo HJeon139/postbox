@@ -11,10 +11,17 @@
 //
 // Postbox never signals a pid it didn’t start: a leftover goes only by SHUTDOWN from someone who knows its owner’s
 // password, which only a process that can read the data folder has.
+//
+// That check alone races: two Postboxes starting at once could both find nothing on the socket, then both write the
+// config and start a Redis on the same append-only files (review finding SR-6 on #525). So a start first claims the
+// data folder’s Redis (claimRedis), and holds the claim from before that check until its supervisor stops.
 
+import { randomBytes } from 'node:crypto';
+import { linkSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RedisClient } from './redis-client.mjs';
+import { bootId, startTime } from './remote/host/proc.mjs';
 
 /** How long each probe of a leftover may take, and how long it gets to exit. */
 const PROBE_MS = 2000;
@@ -77,4 +84,119 @@ export async function clearLeftover({ dataDir, socket }) {
     await new Promise((ok) => setTimeout(ok, 50));
   }
   return `The Redis an earlier Postbox left running didn’t stop within ${EXIT_MS / 1000} s of being asked. Stop it, then Retry.`;
+}
+
+// Claims: <data>/redis/claims/<pid>-<random>, one file per supervisor that wants the data folder’s Redis, holding its
+// pid and, where the system gives them, its boot ID and start time. Each is written whole beside its name and linked
+// into place, so nobody reads half of one. A claim takes effect only once its writer has listed the folder and found no
+// other live claim: of two starts, whichever lists second sees the first’s claim, which was made before the first
+// listed, so they can’t both go on. When both see each other, both take theirs back and try again after a random wait;
+// one that still finds another after that refuses. Nothing is ever removed but a claim of one’s own, or one whose
+// process is gone (a crashed Postbox’s): a dead process’s claim never comes back to life, so removing it can’t race.
+// No lock file is replaced, so there’s no stale-lock takeover to get wrong (server/home.mjs’s lockData has that
+// window, and the store is reached without it: tests, scripts and any embedding call the supervisor directly).
+
+const CLAIM_TRIES = 8;
+/** Claims this process holds, by name: another supervisor here on the same folder is live too. */
+const mine = new Set();
+/** This process’s boot ID and start time, read once. @type {{ bootId: string | null, startTime: number | null } | undefined} */
+let self;
+
+/** Whether a claim’s process still runs: its pid is alive and, where both were read, its boot and start time match. */
+function claimLive(r) {
+  const pid = Number(r?.pid);
+  if (!Number.isInteger(pid) || pid <= 0 || !alive(pid)) return false;
+  if (typeof r.startTime === 'number') {
+    const st = startTime(pid);
+    if (st !== null && st !== r.startTime) return false; // the pid is in use again, by another process
+  }
+  if (typeof r.bootId === 'string') {
+    const b = bootId();
+    if (b !== null && b !== r.bootId) return false;
+  }
+  return true;
+}
+
+/**
+ * The pids of the live claims in a claims folder other than `name`; claims of processes that are gone are removed.
+ * @param {string} dir @param {string} name
+ */
+function liveClaims(dir, name) {
+  /** @type {number[]} */
+  const live = [];
+  for (const n of readdirSync(dir)) {
+    if (n === name || n.startsWith('.')) continue;
+    /** @type {any} */
+    let r = null;
+    try {
+      r = JSON.parse(readFileSync(join(dir, n), 'utf8'));
+    } catch (e) {
+      if (e.code === 'ENOENT') continue;
+    }
+    if (Number(r?.pid) === process.pid ? mine.has(n) : claimLive(r)) live.push(Number(r.pid));
+    else
+      try {
+        unlinkSync(join(dir, n));
+      } catch {}
+  }
+  return live;
+}
+
+/**
+ * Claims a data folder’s Redis for this supervisor: resolves with a release once no other live process claims it, or
+ * with why not, for the start to refuse as owned.
+ * @param {string} dataDir
+ * @returns {Promise<{ release: () => void, why?: undefined } | { why: string, release?: undefined }>}
+ */
+export async function claimRedis(dataDir) {
+  const dir = join(dataDir, 'redis', 'claims');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  self ??= { bootId: bootId(), startTime: startTime(process.pid) };
+  const name = `${process.pid}-${randomBytes(6).toString('hex')}`;
+  const path = join(dir, name);
+  const tmp = join(dir, `.${name}`);
+  writeFileSync(tmp, JSON.stringify({ pid: process.pid, ...self }), { mode: 0o600, flag: 'wx' });
+  /** @type {number[]} */
+  let others = [];
+  let held = false;
+  try {
+    for (let t = 0; t < CLAIM_TRIES; t++) {
+      if (t) await new Promise((ok) => setTimeout(ok, 20 + Math.random() * 100));
+      linkSync(tmp, path);
+      mine.add(name);
+      others = liveClaims(dir, name);
+      if (!others.length) {
+        held = true;
+        let released = false;
+        return {
+          release() {
+            if (released) return;
+            released = true;
+            mine.delete(name);
+            try {
+              unlinkSync(path);
+            } catch {}
+          },
+        };
+      }
+      mine.delete(name);
+      unlinkSync(path);
+    }
+  } finally {
+    // A claim that didn’t take, through an error too, never stays behind.
+    if (!held && mine.delete(name))
+      try {
+        unlinkSync(path);
+      } catch {}
+    try {
+      unlinkSync(tmp);
+    } catch {}
+  }
+  const pid = others[0];
+  return {
+    why:
+      pid === process.pid
+        ? 'This Postbox already runs it, from another part of this process. Stop that first, then Retry.'
+        : `Another Postbox (process ${pid}) runs it, or is starting it. Stop that process if it’s a Postbox using this data folder, then Retry.`,
+  };
 }

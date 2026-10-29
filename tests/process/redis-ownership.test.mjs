@@ -3,8 +3,8 @@
 // alone; anything it can’t tell is refused with the reason. These run real processes, like the other specs here.
 
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { fork, spawn } from 'node:child_process';
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -116,4 +116,105 @@ test('SR-6: something else answering on the store’s socket is ambiguous: the s
     await sup.stop();
     await new Promise((ok) => other.close(ok));
   }
+});
+
+/** A start in its own process that waits before writing the config (redis-owner-race-child.mjs). */
+function gatedStart(dataDir) {
+  const child = fork(fileURLToPath(new URL('./redis-owner-race-child.mjs', import.meta.url)), [dataDir], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+  /** @type {any[]} */
+  const seen = [];
+  /** @type {(() => void)[]} */
+  const waits = [];
+  child.on('message', (m) => {
+    seen.push(m);
+    for (const w of waits) w();
+  });
+  /** The first message of one of these kinds. @param {string[]} kinds @returns {Promise<any>} */
+  const wait = (kinds) =>
+    new Promise((ok, fail) => {
+      const timer = setTimeout(() => fail(new Error(`timed out waiting for ${kinds}: saw ${JSON.stringify(seen)}`)), 20000);
+      const check = () => {
+        const m = seen.find((x) => kinds.includes(x.kind));
+        if (m) {
+          clearTimeout(timer);
+          ok(m);
+        }
+      };
+      waits.push(check);
+      check();
+    });
+  const stop = () =>
+    new Promise((ok) => {
+      if (child.exitCode !== null || child.signalCode !== null) return ok(undefined);
+      child.once('exit', ok);
+      child.send('stop');
+    });
+  return { child, wait, stop };
+}
+
+/** What a start that refuses mustn’t touch: the config, the owner’s record, the socket and the append-only files. */
+function footprint(dataDir, socket) {
+  const redis = join(dataDir, 'redis');
+  const conf = statSync(join(redis, 'redis.conf'));
+  const aof = join(redis, 'data', 'appendonly');
+  return {
+    conf: [readFileSync(join(redis, 'redis.conf'), 'utf8'), conf.ino, conf.mtimeMs],
+    owner: readFileSync(join(redis, 'owner.json'), 'utf8'),
+    socket: statSync(socket).ino,
+    aof: readdirSync(aof).map((n) => [n, statSync(join(aof, n)).ino]),
+  };
+}
+
+test('SR-6: of two starts on one data folder at once, one runs Redis and the other refuses as owned, touching nothing', async () => {
+  const dataDir = join(tmp, 'sr6-race');
+  const both = [gatedStart(dataDir), gatedStart(dataDir)];
+  /** @type {ReturnType<typeof gatedStart>[]} */
+  const late = [];
+  try {
+    // Each gets past the ownership check (and stops before the config) or refuses; with the check racing, both got past.
+    const first = await Promise.all(both.map((s) => s.wait(['checked', 'failed'])));
+    const kinds = first.map((m) => m.kind).sort();
+    assert.deepEqual(kinds, ['checked', 'failed'], `both got past the ownership check before either started Redis: ${JSON.stringify(first)}`);
+    const winner = both[first.findIndex((m) => m.kind === 'checked')];
+    const loser = first.find((m) => m.kind === 'failed');
+    assert.equal(loser.code, 'ESTOREDOWN');
+    assert.equal(loser.cause, 'owned');
+    winner.child.send('go');
+    const ready = await winner.wait(['ready', 'failed']);
+    assert.equal(ready.kind, 'ready', JSON.stringify(ready));
+    const before = footprint(dataDir, ready.socket);
+    // One more start while it runs refuses too, and leaves the running one’s files and Redis alone.
+    late.push(gatedStart(dataDir));
+    const third = await late[0].wait(['checked', 'failed']);
+    assert.equal(third.kind, 'failed', `a start got past the ownership check while another ran Redis: ${JSON.stringify(third)}`);
+    assert.equal(third.cause, 'owned');
+    await new Promise((ok) => setTimeout(ok, 200));
+    assert.deepEqual(footprint(dataDir, ready.socket), before);
+    assert.ok(alive(ready.pid), 'the running Redis still runs');
+  } finally {
+    await Promise.all([...both, ...late].map((s) => s.stop()));
+  }
+});
+
+test('SR-6: claims left by processes that are gone (or whose pid is another process’s now) are cleared, and a stop leaves none', async () => {
+  const dataDir = join(tmp, 'sr6-stale-claims');
+  const claims = join(dataDir, 'redis', 'claims');
+  mkdirSync(claims, { recursive: true });
+  const gone = spawn(process.execPath, ['-e', '']);
+  await new Promise((ok) => gone.once('exit', ok));
+  writeFileSync(join(claims, `${gone.pid}-dead`), JSON.stringify({ pid: gone.pid }));
+  // A live pid with another start time: a Postbox that died, its number reused since.
+  writeFileSync(join(claims, `${process.ppid}-reused`), JSON.stringify({ pid: process.ppid, startTime: 1 }));
+  writeFileSync(join(claims, 'garbled'), 'not a claim');
+  const sup = new RedisSupervisor({ home: HOME, dataDir });
+  await sup.start();
+  try {
+    assert.deepEqual(
+      readdirSync(claims).map((n) => n.split('-')[0]),
+      [String(process.pid)],
+    );
+  } finally {
+    await sup.stop();
+  }
+  assert.deepEqual(readdirSync(claims), [], 'the stop took its claim back');
 });
