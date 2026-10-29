@@ -2,7 +2,10 @@
 
 const NETWORK_CODE = /\b(EADDRNOTAVAIL|ENOTFOUND|ECONNRESET)\b/;
 
-/** Keeps a portable network code from Kiro’s structured run error or process error. */
+/**
+ * Keeps a portable network code from Kiro’s structured run error or process error.
+ * @param {string} message @param {any} [cause]  an Error, or the text it failed with
+ */
 export function kiroError(message, cause = null) {
   const code = cause?.code ?? NETWORK_CODE.exec(String(cause?.message ?? cause ?? message))?.[1];
   const why = code ? Object.assign(cause instanceof Error ? cause : new Error(code), { code }) : cause instanceof Error ? cause : null;
