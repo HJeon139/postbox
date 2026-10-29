@@ -13,7 +13,7 @@ import { newProbes } from './probes.mjs';
 import { presetFindings } from './regressions.mjs';
 import { writeReport } from './report.mjs';
 import { reviewFindings } from './review.mjs';
-import { readStreams, readTranscripts, userSetup } from './run-files.mjs';
+import { readStreams, transcriptsFor, userSetup } from './run-files.mjs';
 import { readRun, runsRoot, writeJsonAtomic } from './runs.mjs';
 import { isTargeted, parseScenario, phaseCap } from './scenario.mjs';
 import { gapFinding, phaseGoals } from './triggers.mjs';
@@ -96,7 +96,7 @@ export async function recheck(dir, { root, opt, review }) {
       ...userSetup(join(dir, 'workspace')),
       ...(hostsRec ? { hosts: hostsRec } : {}),
     };
-    facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
+    facts.transcripts = transcriptsFor(dir, facts);
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
     facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
     facts.ui.reviewRawRows = await page.evaluate(

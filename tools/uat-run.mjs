@@ -51,7 +51,7 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
+import { keeper, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
@@ -196,6 +196,7 @@ async function main() {
     ...userSetup(paths.workspace),
     ...(hr ? { hosts: hr.record } : {}),
   };
+  run.keep = keeper(dir, facts, paths.workspace);
   let unwatch = () => {};
   try {
     await page.size(1440, 1000, { theme: 'light' });
