@@ -131,3 +131,24 @@ test('#466 a scheduled wake queued behind a turn you stop is settled, not left r
   assert.equal(f.store.state.schedules[sc.id], undefined, 'nothing is left running for a restart to fire');
   assert.equal(f.store.item(sc.threadId, sc.itemId).status, 'canceled');
 });
+
+test('#466 a scheduled wake queued behind a turn when Postbox shuts down comes back due after the restart', async () => {
+  const f = setup();
+  const h = held();
+  f.adapter.next.push(h.step);
+  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'Work on it.' });
+  await new Promise((r) => setTimeout(r, 5));
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check later.' });
+  clearTimeout(f.rt.timers.get(sc.id));
+  fireScheduledWake(f.rt, sc);
+  // As close() stops each turn when Postbox quits.
+  f.rt.stop(f.alpha.id, { silent: true, by: 'shutdown' });
+  h.release();
+  await settle(f.rt);
+  rearmWakes(f.rt);
+  const again = f.store.state.schedules[sc.id];
+  assert.ok(again, 'the wake is still saved, so the restart brings it back');
+  f.adapter.next.push(async (ctx) => ctx.text('Checked.'));
+  await fire(f, again);
+  assert.equal(f.adapter.calls.at(-1).message.note, 'Check later.');
+});

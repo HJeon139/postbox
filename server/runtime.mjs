@@ -1182,7 +1182,8 @@ export class Runtime {
     this.clearSummaryPending(turn.threadId);
     for (const p of turn.pending) {
       if (p.summarizeTo && p.threadId) this.clearSummaryPending(p.threadId);
-      dropScheduledWake(this, p.message);
+      // A shutdown leaves it due, for the restart to bring back (rearmWakes), as it does a scheduled turn of its own.
+      if (by !== 'shutdown') dropScheduledWake(this, p.message);
       if (se) queue.rememberStoppedMessages(this, sessionId, p.message);
     }
     // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
