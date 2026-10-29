@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.3 (2026-10-29)
+
+### Fixes
+
+- **threads:** distinguish missing thread tasks
+- **threads:** cover every kind of thread turn
+- **threads:** put a topic request before room context
+
 ## 0.44.2 (2026-10-29)
 
 ### Fixes
