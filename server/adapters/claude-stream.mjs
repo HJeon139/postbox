@@ -2,6 +2,7 @@
 // into Postbox’s turn context: reply text, activity steps, ring state, context use, subagents and
 // compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
 
+import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
 import { replyText } from './claude-reply.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
@@ -44,15 +45,6 @@ const clip = (s, n) => {
 const base = (p) => String(p ?? '').replace(/^.*\//, '');
 /** The first sentence of a message, such as a refusal’s reason. */
 const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
-/** The latest stretch of streaming text, for a one-line glimpse of what the agent is on. */
-const tailOf = (s, n = 160) => {
-  const t = String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (t.length <= n) return t;
-  const cut = t.slice(-n);
-  return `…${cut.slice(cut.indexOf(' ') + 1)}`;
-};
 /** The text of a tool result, for the reason a step failed. */
 const resultText = (content) =>
   typeof content === 'string'
@@ -210,15 +202,17 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     ctx.status(patch);
   };
   const pushSubagents = () => status({ subagents: [...st.subagents.values()] });
-  // A short, temporary line of what the agent is thinking or writing, at most a few times a second.
+  // The latest whole sentences of what the agent is thinking or writing, at most a few times a second.
   const glimpse = (text, { force = false } = {}) => {
-    const t = tailOf(text);
+    if (!force && now() - st.glimpseAt < 400) {
+      st.pending = text;
+      return;
+    }
+    const t = glimpseOf(text);
+    st.pending = null;
     if (!t || t === st.glimpse) return;
-    st.pending = t;
-    if (!force && now() - st.glimpseAt < 400) return;
     st.glimpseAt = now();
     st.glimpse = t;
-    st.pending = null;
     ctx.status({ glimpse: t });
   };
   const flushGlimpse = () => {
@@ -447,7 +441,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         if (b.type === 'tool_use') doing(sub, describeTool(b.name, b.input));
         else if (b.type === 'thinking' && b.thinking) doing(sub, firstSentence(b.thinking, 120), true);
         else if (b.type === 'text' && b.text?.trim()) {
-          sub.said = tailOf(firstSentence(b.text, 400), 160);
+          sub.said = glimpseOf(firstSentence(b.text, 400));
           sub.since = false;
         }
       }
@@ -547,7 +541,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         if (d.type === 'text_delta' && d.text) {
           if (st.current) st.streamed.add(st.current);
           reply.write(d.text);
-          st.said = (st.said + d.text).slice(-400);
+          st.said = appendGlimpseSource(st.said, d.text);
           glimpse(st.said);
         } else if (d.type === 'thinking_delta' && d.thinking && blk) {
           if (st.current) st.thoughtMessages.add(st.current);

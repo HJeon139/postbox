@@ -1,0 +1,113 @@
+// The integrator's review of PR #451: cases where the hostwakes checks (tools/uat/triggers-hostwakes.mjs) would file a
+// false finding against #439, in this scenario or in any other run, each on facts shaped as a run records them.
+
+import assert from 'node:assert/strict';
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { readReceived } from '../tools/uat/run-files.mjs';
+import { check, SENT, s, turn, wakeStream } from './uat-hostwakes-fixture.mjs';
+
+const HOSTS = { hosts: [{ id: 'h1', label: 'host1' }], placement: { researcher: 'local', critic: 'host1', developer: 'local' } };
+/** A conversation’s items, a wake_agent call of developer’s, and what Postbox sent, read four minutes on. */
+const run = (items, call, received = [], hosts = HOSTS) => ({
+  now: s(400),
+  threads: ['th1'],
+  state: { items: { th1: items } },
+  streams: [call],
+  received,
+  hosts,
+});
+const NO_AGENT = 'There’s no agent called @nobody.';
+
+test('a declined card waits no more: a wake made after the Decline that Postbox refused for its own reason isn’t #439', () => {
+  const f = run(
+    [
+      { kind: 'hop', from: 'researcher', to: 'critic', at: s(10), pair: 2, status: 'declined' },
+      { kind: 'voice', text: 'Didn’t allow @researcher to wake @critic', at: s(20) },
+      turn('developer', s(90)),
+    ],
+    wakeStream('developer', s(100), 'nobody', NO_AGENT),
+  );
+  assert.deepEqual(check('refused-wake-lost').run(f), []);
+});
+
+test('outside host mode, refused-wake-lost says nothing either: it runs in every UAT run (withRemote)', () => {
+  const f = run(
+    [{ kind: 'hop', from: 'researcher', to: 'critic', at: s(10), pair: 2, status: 'open' }, turn('developer', s(90))],
+    wakeStream('developer', s(100), 'critic', 'refused'),
+    [],
+    null,
+  );
+  assert.deepEqual(check('refused-wake-lost').run(f), []);
+});
+
+test('a wake to “@Researcher” that Postbox sent researcher was applied: handles match without case, as Postbox matches them', () => {
+  const text = 'Count the lines in work/.';
+  const f = run(
+    [{ kind: 'hop', from: 'developer', to: 'critic', at: s(10), pair: 2, status: 'open' }],
+    wakeStream('critic', s(100), 'Researcher', SENT, text),
+    [{ handle: 'researcher', from: 'critic', at: s(101), text }],
+  );
+  assert.deepEqual(check('host-wake-said-sent').run(f), []);
+});
+
+test('the call that raised a card isn’t refused by it, though the host’s clock runs ahead of this computer’s', () => {
+  // critic’s third wake of researcher raised the card at 100 s here; critic’s host stamped the call 10 s later.
+  const text = 'Here is the task.';
+  const f = run(
+    [{ kind: 'hop', from: 'critic', to: 'researcher', at: s(100), pair: 2, status: 'open', text }],
+    wakeStream('critic', s(110), 'researcher', SENT, text),
+  );
+  assert.deepEqual(check('host-wake-said-sent').run(f), []);
+});
+
+test('a card asking to add an agent refuses other wakes too, so a hand-off it refused is seen', () => {
+  const f = run(
+    [{ kind: 'hop', join: true, from: 'researcher', to: 'editor', at: s(10), status: 'open', text: 'Join us.' }],
+    wakeStream('critic', s(100), 'researcher', SENT, 'Here is the task.'),
+  );
+  assert.equal(check('host-wake-said-sent').run(f).length, 1);
+});
+
+test('host-wake-said-sent’s evidence says only what the check found: Postbox didn’t send the message on', () => {
+  const f = run(
+    [{ kind: 'hop', from: 'developer', to: 'critic', at: s(10), pair: 2, status: 'open' }],
+    wakeStream('critic', s(100), 'researcher', SENT, 'Task.'),
+  );
+  const [found] = check('host-wake-said-sent').run(f);
+  assert.match(found.evidence, /Postbox didn’t send it to @researcher within a minute: a wake card was waiting/);
+  assert.doesNotMatch(found.evidence, /started a turn/, 'turns are what refused-wake-lost reads, not this check');
+});
+
+test('readReceived reads on from where it got to: a second read parses only what the log gained', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-received-'));
+  const line = (seq, at) =>
+    `${JSON.stringify({ seq, type: 'session', data: { id: 'se_c', handle: 'critic', agentMessages: [{ dir: 'from', other: 'researcher', text: `m${at}`, at }] } })}\n`;
+  try {
+    writeFileSync(join(dir, 'events-1.jsonl'), line(1, 1));
+    assert.equal(readReceived(dir).length, 1);
+    appendFileSync(join(dir, 'events-1.jsonl'), line(2, 2));
+    // Nothing known passed in: what comes back is what this read parsed, the appended line alone.
+    assert.deepEqual(
+      readReceived(dir).map((r) => r.text),
+      ['m2'],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('host-wake-said-sent is filed against #439, whose fix makes wake_agent wait for Postbox’s answer on a host', () => {
+  assert.equal(check('host-wake-said-sent').issue, 439);
+});
+
+test('a retired card waits until it was retired: a refusal before counts, a wake after doesn’t', () => {
+  // #439’s fix retires a card whose target got a turn another way, and records when (retiredAt), with no line.
+  const card = { kind: 'hop', from: 'researcher', to: 'developer', at: s(10), pair: 2, status: 'retired', retiredAt: s(50) };
+  const before = run([card], wakeStream('critic', s(30), 'researcher', SENT, 'Task.'));
+  assert.equal(check('host-wake-said-sent').run(before).length, 1, 'refused while it waited');
+  const after = run([card], wakeStream('critic', s(100), 'researcher', SENT, 'Task.'));
+  assert.deepEqual(check('host-wake-said-sent').run(after), [], 'after it was retired, nothing waited');
+});
