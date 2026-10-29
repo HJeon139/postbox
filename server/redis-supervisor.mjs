@@ -10,18 +10,19 @@
 //   <data>/redis/logs/redis.log the child’s log, appended
 //
 // It restarts the child if it dies, and stops it when Postbox stops or exits. Its status names why it isn’t running
-// (socket, binary-missing, corrupt-aof, died), and writes fail closed meanwhile (server/store.mjs).
+// (socket, owned, binary-missing, corrupt-aof, died), and writes fail closed meanwhile (server/store.mjs).
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, rmdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { RedisClient, storeError } from './redis-client.mjs';
+import { clearLeftover } from './redis-owner.mjs';
 import { hashed, privateDir, privately, privateTree, STORE_COMMANDS, socketFor, writePrivate } from './redis-private.mjs';
 
-/** @typedef {'socket' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
+/** @typedef {'socket' | 'owned' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
 /** @typedef {{ state: 'idle' | 'starting' | 'running' | 'stopped' } | { state: 'down', cause: DownCause, message: string }} RedisStatus */
 
 /**
@@ -51,6 +52,7 @@ function causeOf(log) {
 const MESSAGES = {
   socket: () =>
     'The store’s Redis couldn’t open its private socket. Check that the data folder’s redis/run folder (or the private folder Postbox made for it in the temporary folder) belongs to you and isn’t a link, then Retry.',
+  owned: (_, detail) => `Postbox didn’t start the store’s Redis: it found one already running on this data folder. ${detail}`,
   'binary-missing': (s) => `The store’s Redis isn’t where Postbox keeps it (${s.home}). Start Postbox again to download it.`,
   'corrupt-aof': (s) =>
     `The store’s append-only file in ${join(s.dataDir, 'redis', 'data')} is damaged, so Redis won’t load it. Restore the data folder from its backup, or repair it with redis-check-aof, then Retry.`,
@@ -100,7 +102,7 @@ export class RedisSupervisor extends EventEmitter {
 
   /** @param {DownCause} cause @param {string} [detail] */
   down(cause, detail) {
-    const message = MESSAGES[cause](this) + (detail && cause === 'died' ? ` (${detail})` : '');
+    const message = MESSAGES[cause](this, detail) + (detail && cause === 'died' ? ` (${detail})` : '');
     this.set({ state: 'down', cause, message });
     return storeError('ESTOREDOWN', message);
   }
@@ -121,33 +123,11 @@ export class RedisSupervisor extends EventEmitter {
     } catch (e) {
       throw this.down('socket', e.message);
     }
-    await this.shutDownLeftover();
+    const why = await clearLeftover({ dataDir: this.dataDir, socket: this.socket });
+    if (why) throw this.down('owned', why);
     this.set({ state: 'starting' });
     const conf = await this.writeConf(files.modules);
     return this.run(files.server, conf);
-  }
-
-  /** A child an earlier Postbox left running on this data folder holds its files: ask it, as its owner, to shut down. */
-  async shutDownLeftover() {
-    const old = await readFile(join(this.dataDir, 'redis', 'owner.json'), 'utf8')
-      .then(JSON.parse)
-      .catch(() => null);
-    const pass = typeof old?.secret === 'string' ? old.secret : null;
-    const path = this.socket;
-    if (!path || !pass) return;
-    const c = await new RedisClient({ path, user: 'owner', password: pass }).connect().catch(() => null);
-    if (!c) return;
-    await c.call('SHUTDOWN').catch(() => {}); // the connection closes as it exits
-    c.close();
-    const listening = () =>
-      new RedisClient({ path })
-        .connect()
-        .then((x) => {
-          x.close();
-          return true;
-        })
-        .catch(() => false);
-    for (let i = 0; i < 100 && (await listening()); i++) await new Promise((ok) => setTimeout(ok, 50));
   }
 
   /** @param {string[]} modules */
@@ -274,6 +254,9 @@ export class RedisSupervisor extends EventEmitter {
     const t = setTimeout(() => child.kill('SIGKILL'), 5000);
     await gone;
     clearTimeout(t);
+    // A private folder in the temporary folder, for a long data folder’s socket, goes once it’s empty.
+    const folder = dirname(/** @type {string} */ (this.socket));
+    if (folder !== join(this.dataDir, 'redis', 'run')) await rmdir(folder).catch(() => {});
     this.set({ state: 'stopped' });
   }
 }
