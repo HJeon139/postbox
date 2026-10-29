@@ -348,11 +348,11 @@ export function keepShape(ctx, event) {
   const tail = Array.isArray(ctx.rawTail) ? ctx.rawTail : null;
   if (!tail) return;
   let e = event;
-  if (typeof e === 'string')
+  if (typeof event === 'string')
     try {
-      e = JSON.parse(e);
+      e = JSON.parse(event);
     } catch {
-      e = { unparsed: e.length };
+      e = { unparsed: event.length };
     }
   // Too long whole (a result’s usage, say), only its top-level fields, so the line still parses.
   let line = JSON.stringify(shapeOf(e));
