@@ -306,7 +306,7 @@ test('the scenarios parse into phases the tester works through', () => {
   for (const name of ['scifact', 'hotpotqa', 'codex', 'diagnosis', ...EXIT]) assert.ok(names.includes(name), name);
   for (const name of names) {
     // uat-run.mjs --recheck reads a scenario’s name back from its run folder as word characters.
-    assert.match(name, /^\w+$/, name);
+    assert.match(name, /^[\w-]+$/, name);
     const s = parseScenario(readFileSync(new URL(`${name}.md`, dir), 'utf8'));
     assert.ok(s.phases.length >= 2 && s.phases.length <= (LONGER[name] ?? 3), name);
     assert.ok(

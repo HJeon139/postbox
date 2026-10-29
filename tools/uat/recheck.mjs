@@ -44,7 +44,7 @@ export async function recheck(dir, { root, opt, review }) {
   const saved = JSON.parse(readFileSync(join(dir, 'findings.json'), 'utf8'));
   // Its record before the report is rewritten: the minutes it took are only in the first report.
   const record = readRun(dir);
-  const name = existsSync(join(dir, 'run.json')) && record?.scenario ? record.scenario : dir.replace(/^.*-(\w+)$/, '$1');
+  const name = existsSync(join(dir, 'run.json')) && record?.scenario ? record.scenario : dir.replace(/^.*-([\w-]+)$/, '$1');
   // A host-mode run’s hosts (#120), with what its checks read, and a --phases run’s phases: its phases as played.
   const hostsRec = readHosts(dir);
   const parsed = selectPhases(parseScenario(readFileSync(join(root, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8')), recordedPhases(record));

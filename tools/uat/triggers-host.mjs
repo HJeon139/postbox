@@ -5,6 +5,7 @@
 
 import { ASKING } from '../../shared/catalog.mjs';
 import { agentTurns, hostIdOf, itemsUnderTest, labelOf, onHost, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
+import { HOSTWAKE_TRIGGERS } from './triggers-hostwakes.mjs';
 
 const MINUTE = 60_000;
 const hostRun = (f) => Boolean(f.hosts?.hosts?.length);
@@ -160,4 +161,6 @@ export const HOST_TRIGGERS = {
             })),
         ),
   },
+  // A hand-off between machines while a wake card waits (tests/uat/e2e/scenarios/hostwakes.md).
+  ...HOSTWAKE_TRIGGERS,
 };

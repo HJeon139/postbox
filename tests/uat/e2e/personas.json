@@ -23,5 +23,19 @@
     "tools": ["shell", "web.fetch"],
     "instructions": "Say what you ran and what it printed. Keep changes small, and say which files you changed.",
     "examples": [["Write a script that counts lines in text files", "A tested script, with what it printed"]]
+  },
+  {
+    "handle": "alpha",
+    "description": "Writes small changes and clear status notes for another agent to review.",
+    "tools": ["shell"],
+    "instructions": "Keep each task in the conversation or thread where it was asked. Hand completed work to the named reviewer.",
+    "examples": []
+  },
+  {
+    "handle": "beta",
+    "description": "Reviews code and writing, answering the request in the conversation or thread where it arrived.",
+    "tools": ["shell"],
+    "instructions": "Answer the direct request first. Treat other conversation updates as background and put their work in that conversation.",
+    "examples": []
   }
 ]

@@ -1,5 +1,6 @@
 // Small text helpers shared by the server and the browser.
 
+import { GLIMPSE_CHARS, GLIMPSE_SOURCE_CHARS } from './limits.mjs';
 import { renderMarkdown, TABLE_SEP } from './markdown.mjs';
 import { stripTags } from './markdown-inline.mjs';
 
@@ -61,6 +62,31 @@ export function finishedSentences(text, spoken, done = false) {
   return { sentences: r.pieces.map((s) => s.replace(/\s+/g, ' ')), spoken: r.spoken };
 }
 
+/** Keeps the raw tail needed to form a glimpse across streamed text pieces (#478). */
+export const appendGlimpseSource = (source, piece) => `${source ?? ''}${piece ?? ''}`.slice(-GLIMPSE_SOURCE_CHARS);
+
+/**
+ * The latest one or two sentences an agent has streamed, starting at a sentence boundary and bounded for display (#478).
+ * Only a bounded tail is scanned on each streaming update; its first partial sentence is discarded.
+ * @param {string} text @param {number} [max]
+ */
+export function glimpseOf(text, max = GLIMPSE_CHARS) {
+  const raw = String(text ?? '');
+  let source = raw.slice(-GLIMPSE_SOURCE_CHARS);
+  if (source.length < raw.length) {
+    const firstEnd = nextEnd(source, 0);
+    source = firstEnd < 0 ? '' : source.slice(firstEnd).trimStart();
+  }
+  const sentences = finishedSentences(source, 0, true)
+    .sentences.map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const latest = sentences.at(-1) ?? '';
+  if (latest.length > max) return `${latest.slice(0, Math.max(0, max - 1))}…`;
+  const previous = sentences.at(-2);
+  const separator = previous && /[。！？]$/.test(previous) ? '' : ' ';
+  return previous && previous.length + latest.length + separator.length <= max ? `${previous}${separator}${latest}` : latest;
+}
+
 /** The finished pieces of text after spoken, as written: sentences, and code blocks whole. @param {string} text @param {number} spoken @param {boolean} done */
 function pieces(text, spoken, done) {
   const rest = text.slice(spoken);
@@ -81,7 +107,7 @@ function pieces(text, spoken, done) {
   return { pieces: out, spoken: spoken + consumed };
 }
 
-const END = /[.!?]+["”’)\]*_`~]*(?=\s|$)|\n+/g;
+const END = /[.!?]+["”’)\]*_`~]*(?=\s|$)|[。！？]+["”’)\]*_`~]*|\n+/g;
 // Not an end: the last dot of single letters and dots (e.g., i.e.), or a numbered list item’s marker.
 const NOT_END = /(?:^|[^\w.])(?:\w\.){2,}["”’)\]*_`~]*$|^\s*\d{1,9}[.)]$/;
 /** Where the sentence that starts at rest[from] ends, or -1 when it hasn’t yet. @param {string} rest @param {number} from */
