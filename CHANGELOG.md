@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.2 (2026-10-29)
+
+### Fixes
+
+- **threads:** keep CJK and long tokens in glimpses
+- **threads:** retain spaces across streamed glimpses
+- **threads:** bound glimpse sentence scans
+- **threads:** show whole-sentence thinking glimpses
+
 ## 0.44.1 (2026-10-29)
 
 ### Fixes
