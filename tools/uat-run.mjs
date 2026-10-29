@@ -26,7 +26,6 @@
 // (tools/uat/triggers.mjs). Every finding gets a verdict: the verifier’s after the run, or yours (tools/uat-verdict.mjs).
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,7 +40,7 @@ import { goToNeedsStep } from './uat/driver-needs.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
-import { HOST_OPTIONS, hostMode } from './uat/hosts-options.mjs';
+import { HOST_OPTIONS } from './uat/hosts-options.mjs';
 import { createHostRun, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
@@ -52,13 +51,14 @@ import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
 import { keeper, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
+import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
-import { compatBackends, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
+import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
-import { phaseGoals, unknownTriggers } from './uat/triggers.mjs';
+import { phaseGoals } from './uat/triggers.mjs';
 import { sendThenStop, settle as settleTurns, stopThroughPage, WAIT_MAX_S, watchBudget } from './uat/turns.mjs';
 import { makeWorkspace } from './uat/workspace.mjs';
 
@@ -105,21 +105,7 @@ const REVIEW = { root: ROOT, testerModel: opt['tester-model'] };
 // ── Run ────────────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
-  const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
-  // Host mode (#120): agents on other machines over ssh (--host), Claude Code only (tools/uat/hosts-options.mjs).
-  const { hosts, placement, scenario } = hostMode(opt, name, parseScenario(readFileSync(scenarioFile, 'utf8')));
-  const other = compatBackends(scenario);
-  if (other.length && !opt.compat && !opt.release)
-    throw new Error(
-      `This scenario puts agents on ${other.join(' and ')}, so it’s a compatibility run, which runs only when asked: it uses that harness’s credits, and a regular pass is Claude only. Pass --compat to run it.`,
-    );
-  // A release-only backend (none today: tools/uat/scenario.mjs) runs only in a release run; otherwise Postbox starts
-  // without it, so the tester can’t put an agent on it from a sheet either.
-  const gate = releaseGate(scenario, { release: opt.release });
-  if (gate.error) throw new Error(gate.error);
-  const unknown = unknownTriggers(scenario);
-  if (unknown.length) throw new Error(`This scenario names triggers that don’t exist: ${unknown.join(', ')}. See tools/uat/triggers.mjs.`);
+  const { name, hosts, placement, scenario, gate } = runScenario(opt, ROOT);
   const steps = stepCap(scenario, opt.steps);
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
