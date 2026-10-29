@@ -72,7 +72,16 @@ import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere,
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
-import { armWake, cancelWakeSchedule, prepareScheduledRetry, rearmWakes, recordScheduledTool, scheduleWake, settleScheduledWake } from './scheduled-wakes.mjs';
+import {
+  armWake,
+  cancelWakeSchedule,
+  prepareScheduledRetry,
+  rearmWakes,
+  recordedTools,
+  recordScheduledTool,
+  scheduleWake,
+  settleScheduledWake,
+} from './scheduled-wakes.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
@@ -2902,7 +2911,7 @@ export class Runtime {
     };
     // Where the turn speaks: its session’s thread, or the side thread it answers in (#110).
     const threadId = () => turn?.threadId ?? se().threadId;
-    return {
+    return recordedTools(rt, turn, {
       /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
       show_block({ block }, given = {}) {
         // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
@@ -3076,7 +3085,7 @@ export class Runtime {
       corpus_search(args) {
         return { ok: true, results: hostTool(rt, 'corpus.search', args) };
       },
-    };
+    });
   }
 }
 

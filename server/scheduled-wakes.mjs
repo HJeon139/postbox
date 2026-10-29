@@ -66,8 +66,9 @@ export function prepareScheduledRetry(rt, message, threadId) {
 }
 
 /**
- * A tool start for the recovery, once per call: Claude Code reports one through both toolUse and activity, by its id.
- * Saved on the schedule as it starts, so a restart in the middle of the turn still knows (rearmWakes).
+ * A tool start for the recovery, once per call: Claude Code reports one through both toolUse and activity, by its id,
+ * and a Postbox tool through MCP too, under its bare name. Saved on the schedule as it starts, so a restart in the middle
+ * of the turn still knows (rearmWakes).
  */
 const addTool = (rt, turn, name, id) => {
   const scheduleId = turn.asked?.message?.scheduledWakeId;
@@ -75,7 +76,7 @@ const addTool = (rt, turn, name, id) => {
   turn.scheduledToolIds ??= new Set();
   if (id != null && turn.scheduledToolIds.has(id)) return;
   if (id != null) turn.scheduledToolIds.add(id);
-  const clipped = name.slice(0, TOOL_NAME_CHARS);
+  const clipped = name.replace(/^mcp__[\w-]+__/, '').slice(0, TOOL_NAME_CHARS);
   turn.scheduledTools ??= [];
   if (turn.scheduledTools.includes(clipped) || turn.scheduledTools.length >= TOOL_LIMIT) return;
   turn.scheduledTools.push(clipped);
@@ -87,6 +88,26 @@ const addTool = (rt, turn, name, id) => {
 export function recordScheduledTool(rt, turn, call, ledger = true) {
   if (ledger) rt.ledger.toolUse(turn, call);
   addTool(rt, turn, call?.name, call?.id);
+}
+
+/** Postbox’s tools that only read, which can’t have changed anything a recovery must check. */
+const READS = new Set(['read_conversation', 'read_message', 'corpus_search']);
+
+/**
+ * A turn’s Postbox tools (toolsFor), each recorded as it starts for a scheduled wake’s recovery (#466). Every backend calls
+ * them, through MCP, from a host or in the turn, and some, as Kiro does for its quiet ones, report no tool start of
+ * their own. @param {any} rt @param {any} turn @param {Record<string, Function>} tools
+ */
+export function recordedTools(rt, turn, tools) {
+  if (!turn) return tools;
+  for (const [name, fn] of Object.entries(tools))
+    if (!READS.has(name))
+      // Called on the tools, as the runtime calls them: show_app calls this.show_block.
+      tools[name] = (...args) => {
+        addTool(rt, turn, name, null);
+        return fn.apply(tools, args);
+      };
+  return tools;
 }
 
 /** Whether a structured error says the network was unavailable. #467 can add Kiro’s code without message matching. */

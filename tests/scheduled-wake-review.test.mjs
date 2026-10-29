@@ -103,3 +103,15 @@ test('#466 a scheduled wake still running on a host at a restart is left to that
   assert.equal(f.rt.timers.has(sc.id), false, 'no second turn is armed');
   assert.equal(f.store.state.schedules[sc.id], undefined);
 });
+
+test('#466 a Postbox tool a scheduled turn called through MCP counts as a tool that started, on every backend', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Hand off and report.' });
+  f.adapter.next.push(async (ctx) => {
+    ctx.tools.define_term({ term: 'tally', definition: 'The total.' });
+    throw networkError();
+  });
+  await fire(f, sc);
+  assert.deepEqual(f.store.state.schedules[sc.id]?.recoveryTools, ['define_term']);
+  f.rt.cancelSchedule(sc.id);
+});
