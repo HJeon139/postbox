@@ -40,6 +40,8 @@ function roomEvents() {
   ROOMS.forEach((room, r) => {
     const t = `th_room${r}`;
     add('thread', { id: t, title: room.about, members: [`se_${r}`] });
+    // Costs as the room copy has them: sums needing 17 significant digits, which RedisJSON parses to a neighbor.
+    add('work.add', { convId: t, entry: { id: `w_${r}`, kind: 'turn', costUsd: 1.6202103999999997 + r, ms: 1234 } });
     add('session', { id: `se_${r}`, threadId: t, handle: 'researcher', state: 'idle' });
     for (const it of room.items) add('item.add', { threadId: t, item: structuredClone(it) });
   });
@@ -53,6 +55,8 @@ function roomEvents() {
   add('boilerplate', { id: 'bp1', name: 'one' });
   add('boilerplate', { id: 'bp2', name: 'two' });
   add('boilerplate', { id: 'bp1', name: 'one again' });
+  add('work.add', { convId: 'th_room2', entry: { id: 'w_sum', kind: 'turn', costUsd: 0.1 + 0.2, tokens: { input: 7 } } });
+  add('work.patch', { convId: 'th_room2', id: 'w_sum', patch: { summaryCostUsd: 0.0015241999999999999 } });
   return evs;
 }
 
@@ -63,6 +67,13 @@ function todaysState(evs) {
     apply(s, ev.type, structuredClone(ev.data));
     s.seq = ev.seq;
   }
+  return s;
+}
+
+/** The state with its costs rounded to 12 places, as the import writes them (#525); everything else exact. @param {any} s */
+function costsRounded(s) {
+  const r = (v) => (typeof v === 'number' ? Math.round(v * 1e12) / 1e12 : v);
+  for (const list of Object.values(s.work ?? {})) for (const e of list) for (const k of ['costUsd', 'summaryCostUsd']) if (k in e) e[k] = r(e[k]);
   return s;
 }
 
@@ -86,7 +97,10 @@ async function oldFolder(cut) {
 test('importing a recorded room gives the state the old store loaded, and its log’s events in the stream', async () => {
   const { dir, evs } = await oldFolder(20);
   const s = await open(dir);
-  assert.deepEqual(s.state, todaysState(evs));
+  const want = costsRounded(todaysState(evs));
+  assert.notDeepEqual(want, todaysState(evs), 'the room has costs that need rounding');
+  assert.deepEqual(s.state, want);
+  assert.equal(s.state.work.th_room2.at(-1).costUsd, 0.3);
   assert.equal(s.state.threads.torn, undefined, 'the torn last line is dropped');
   assert.deepEqual(Object.keys(s.state.boilerplates), ['bp2', 'bp1']);
   assert.deepEqual(
@@ -94,7 +108,7 @@ test('importing a recorded room gives the state the old store loaded, and its lo
     evs.slice(20).map((e) => e.seq),
   );
   const again = await open(dir);
-  assert.deepEqual(again.state, todaysState(evs), 'and the same after a restart, from the documents alone');
+  assert.deepEqual(again.state, want, 'and the same after a restart, from the documents alone');
 });
 
 test('the old files are renamed *.migrated beside a dated backup of them', async () => {

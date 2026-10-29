@@ -207,7 +207,7 @@ test('a recorded turn’s commands: exactly as they ran, failures with their exi
   assert.deepEqual([commit.files.length, commit.added, commit.deleted], [3, 3, 1], 'files and lines as git show counts them');
   const [turn] = of('turn');
   assert.equal(turn.toolCalls, 9);
-  assert.equal(turn.costUsd, 0.0059721999999999996, 'the process’s last running total, not the sum of its results');
+  assert.equal(turn.costUsd, 0.0059722, 'the process’s last running total, not the sum of its results, to 12 places (#525)');
   assert.equal(turn.tokens.cacheRead, 235850);
 });
 

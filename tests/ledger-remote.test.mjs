@@ -132,7 +132,7 @@ test('a remote turn’s commands, commit and effort still record from the stream
   const [turn] = of('turn');
   assert.deepEqual(turn.host, HOST);
   assert.equal(turn.toolCalls, 9);
-  assert.equal(turn.costUsd, 0.0059721999999999996);
+  assert.equal(turn.costUsd, 0.0059722, 'the last running total, to 12 places as the store keeps costs (#525)');
   assert.equal(turn.tokens.cacheRead, 235850);
 });
 

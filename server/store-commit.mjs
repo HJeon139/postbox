@@ -7,7 +7,7 @@
 // they’re numbered and broadcast after the commit’s events, and written after it.
 
 import { apply, map } from '../shared/state.mjs';
-import { Positions, refKey, touched, writesFor } from './store-docs.mjs';
+import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { streamAfter, writeBatch } from './store-redis.mjs';
 
 /** @typedef {{ type: string, data: any }[] | ((state: any) => { type: string, data: any }[])} Events */
@@ -34,6 +34,7 @@ export function commit(store, events, opId) {
 async function commitNow(store, events, opId) {
   for (let attempt = 0; ; attempt++) {
     const list = typeof events === 'function' ? events(store.state) : events;
+    for (const e of list) roundEventCosts(e.type, e.data);
     if (!store.redis) return inMemory(store, list, opId);
     try {
       return await writeOnce(store, list, opId);

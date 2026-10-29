@@ -165,3 +165,27 @@ test('a document is read in the current shape, and one from a newer Postbox is r
   c.close();
   await assert.rejects(new Store(dir).load(), (e) => e.code === 'ENEWER' && /newer Postbox/.test(e.message));
 });
+
+test('a cost needing 17 significant digits is rounded to 12 places when made, so a restart can’t change what a browser saw', async () => {
+  const dir = await tmp();
+  const a = await open(dir);
+  const seen = [];
+  a.subscribe((ev) => seen.push(JSON.parse(JSON.stringify(ev.data))));
+  const cost = 0.1 + 0.2; // 0.30000000000000004: RedisJSON 8.10.3 parses it to a neighboring double
+  a.emit('work.add', { convId: 't1', entry: { id: 'w1', kind: 'turn', costUsd: cost, ms: 1.5 } });
+  a.emit('work.add', { convId: 't1', entry: { id: 'w2', kind: 'turn', costUsd: null } });
+  a.emit('work.patch', { convId: 't1', id: 'w1', patch: { summaryCostUsd: 1.6202103999999997 } });
+  await a.commit([{ type: 'work.patch', data: { convId: 't1', id: 'w2', patch: { costUsd: 0.9778642000000001 } } }], 'op-cost');
+  const want = [
+    { id: 'w1', kind: 'turn', costUsd: 0.3, ms: 1.5, summaryCostUsd: 1.6202104 },
+    { id: 'w2', kind: 'turn', costUsd: 0.9778642 },
+  ];
+  assert.deepEqual(a.state.work.t1, want, 'in memory');
+  assert.equal(seen[0].entry.costUsd, 0.3, 'and as the browser was told');
+  assert.equal(seen[2].patch.summaryCostUsd, 1.6202104);
+  assert.equal(seen[3].patch.costUsd, 0.9778642);
+  await a.flush();
+  const b = await open(dir);
+  assert.deepEqual(b.state.work.t1, want, 'after a restart, read back from the documents');
+  assert.deepEqual(b.state, a.state);
+});

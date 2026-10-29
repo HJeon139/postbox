@@ -101,6 +101,36 @@ function removed(s, d) {
   ];
 }
 
+/**
+ * Costs are kept to 12 decimal places (#525). A sum of costs can need 17 significant digits, and RedisJSON 8.10.3 parses
+ * such a double to its neighbor, so a restart would change a cost the browser already saw. Rounded where the store takes
+ * an event in (emit, commit) and where the import takes the old state in, memory, the stream, the documents and every
+ * browser hold the same value. 12 places keep a cost under $1,000 to 15 significant digits, which parse exactly.
+ */
+export const COST_PLACES = 12;
+const COST_KEYS = ['costUsd', 'summaryCostUsd'];
+
+/** A cost rounded to COST_PLACES; anything that isn’t a finite number is left as it is. @param {any} v */
+export const roundCost = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10 ** COST_PLACES) / 10 ** COST_PLACES : v);
+
+/** Rounds, in place, the costs of a work entry or patch. @param {any} o */
+function roundCostsOf(o) {
+  if (o && typeof o === 'object') for (const k of COST_KEYS) if (k in o) o[k] = roundCost(o[k]);
+}
+
+/** Rounds, in place, the costs an event carries, before the store applies it. @param {string} type @param {any} d */
+export function roundEventCosts(type, d) {
+  if (type === 'work.add') roundCostsOf(d?.entry);
+  else if (type === 'work.patch') roundCostsOf(d?.patch);
+  return d;
+}
+
+/** Rounds, in place, every cost in a state: the old store’s, as the import takes it in. @param {any} s */
+export function roundStateCosts(s) {
+  for (const list of Object.values(s.work ?? {})) for (const e of list) roundCostsOf(e);
+  return s;
+}
+
 /** A key for de-duplicating refs within one write. @param {Ref} r */
 export const refKey = (r) => (r.c === 'settings' ? 'settings' : r.c === 'itemlist' ? `itemlist:${r.t}` : r.c === 'items' ? `item:${r.id}` : `${r.c}:${r.id}`);
 

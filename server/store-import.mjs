@@ -8,7 +8,7 @@
 import { copyFile, mkdir, readdir, readFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState, ownState } from '../shared/state.mjs';
-import { COLLECTIONS, writesFor } from './store-docs.mjs';
+import { COLLECTIONS, roundStateCosts, writesFor } from './store-docs.mjs';
 import { writeBatch } from './store-redis.mjs';
 
 /** @param {string} code @param {string} message */
@@ -43,7 +43,9 @@ export async function readOld(dir, files) {
       events.push({ seq: ev.seq, line });
     }
   }
-  return { state, events };
+  // The documents hold costs rounded as the store rounds them when it takes an event in; the old log keeps its events
+  // as they were.
+  return { state: roundStateCosts(state), events };
 }
 
 /** Every document of a state, as writesFor() takes them, with items numbered in list order. @param {any} s */

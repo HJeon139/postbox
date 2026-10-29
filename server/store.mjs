@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
 import { storeError } from './redis-client.mjs';
 import { catchUp, commit } from './store-commit.mjs';
-import { Positions, refKey, touched, writesFor } from './store-docs.mjs';
+import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { importLegacy } from './store-import.mjs';
 import { readState, redisFor, releaseRedis, streamAfter, writeBatch } from './store-redis.mjs';
 
@@ -112,6 +112,7 @@ export class Store {
   /** Applies a change and broadcasts it, then writes it. The shared reducer is the only place state changes. */
   emit(type, data) {
     if (!this.writable) throw this.refuse();
+    roundEventCosts(type, data);
     const refs = this.redis ? touched(this.state, type, data) : [];
     apply(this.state, type, data);
     this.track(type, data, refs);
