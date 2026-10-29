@@ -59,7 +59,6 @@ export const STORE_COMMANDS = [
   'json.set',
   'json.get',
   'json.mget',
-  'waitaof',
   'flushdb',
 ];
 

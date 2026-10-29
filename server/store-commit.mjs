@@ -3,30 +3,22 @@
 // with the events in one script, and only once Redis has replied are the events applied to the state and broadcast. A
 // failed write changes nothing anyone can see; a repeated opId writes nothing and returns the earlier seq.
 //
-// A commit is acknowledged only once Redis has synced it to its append-only file (the person’s decision on #525): after
-// the script, `WAITAOF 1 0 WAITAOF_MS` waits for the local fsync, and only then are its events applied and broadcast.
-// Emits stay on appendfsync everysec, so a power cut can take up to the last second of them, but no commit anyone saw.
-// Redis doesn’t fsync early for WAITAOF: it waits for everysec’s next fsync, up to about a second. A WAITAOF that times
-// out, says the local AOF doesn’t hold it, or fails is a lost reply: the commit is in Redis’s memory, maybe not on
-// disk, so the commit is refused (ESTOREDOWN), writes close and reconciliation reads Redis back (server/store-recover.mjs);
-// a retry with its opId then finds it done.
+// Redis replies only once the commit is on disk: its append-only file is fsynced before each reply (appendfsync
+// always, server/redis-supervisor.mjs; the person’s decision on #525). So a commit applied and broadcast after its reply
+// is on disk, as is one a retry finds done (its opId) or reconciliation reads back: Redis fsyncs a write before anyone
+// can see it, and stops rather than reply when an fsync fails.
 //
 // Commits run one at a time. Emits made while one waits are applied at once, so the server reads its own writes, but
 // they’re numbered and broadcast after the commit’s events, and written after it; the commit stages from the state
 // before them, and its events are applied to the state before them too (server/store-hold.mjs has the rule).
 
 import { apply, map } from '../shared/state.mjs';
-import { storeError } from './redis-client.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
 import { closeWrites } from './store-recover.mjs';
 import { streamAfter, writeBatch } from './store-redis.mjs';
 
 /** @typedef {{ type: string, data: any }[] | ((state: any) => { type: string, data: any }[])} Events */
-
-// How long a commit waits for its local fsync: everysec’s next fsync comes within a second, and Redis may hold the
-// write itself back for up to 2 s while a slow fsync runs; past 5 s the disk is in trouble.
-export const WAITAOF_MS = 5000;
 
 /**
  * @param {import('./store.mjs').Store} store @param {Events} events @param {string} opId
@@ -94,14 +86,6 @@ async function writeOnce(store, given, opId) {
     if (e.code === 'ESTOREDOWN') closeWrites(store);
     throw e;
   }
-  try {
-    await synced(/** @type {any} */ (store.client));
-  } catch (e) {
-    // In Redis, maybe not on disk: as a lost reply, nothing is applied until catch-up has read it back.
-    store.untake(pending);
-    closeWrites(store);
-    throw e;
-  }
   if (r.duplicate) {
     // It ran before: maybe its reply was lost when Redis stopped. Its events are in the stream; catch up to them.
     store.untake(pending);
@@ -116,20 +100,6 @@ async function writeOnce(store, given, opId) {
   if (hold.meets(staged.dirty.map((x) => x.ref))) hold.rebase(store, written);
   else written();
   return r;
-}
-
-/**
- * Waits until Redis has synced this connection’s writes to its local append-only file, or throws ESTOREDOWN.
- * @param {import('./redis-client.mjs').RedisClient} c
- */
-async function synced(c) {
-  let local;
-  try {
-    [local] = await c.call('WAITAOF', 1, 0, WAITAOF_MS);
-  } catch (e) {
-    throw storeError('ESTOREDOWN', `Postbox couldn’t confirm the store’s Redis saved this change to disk: ${e.message}`, e);
-  }
-  if (local < 1) throw storeError('ESTOREDOWN', `The store’s Redis didn’t save this change to disk within ${WAITAOF_MS / 1000} s.`);
 }
 
 /**

@@ -1,7 +1,7 @@
-// A commit is acknowledged only once Redis has synced it to its append-only file (server/store-commit.mjs, WAITAOF;
-// the person’s decision on #525): emits stay on appendfsync everysec, but a commit’s events are applied and broadcast
-// only after `WAITAOF 1 0` says the local AOF holds them on disk. A WAITAOF that times out or finds it not synced is a
-// lost reply: writes close, and reconciliation reads the commit back.
+// What the store saves is on disk when it says so (the person’s decision on #525): the store’s Redis fsyncs its
+// append-only file before each reply (appendfsync always, server/redis-supervisor.mjs), and a commit is applied and
+// broadcast only once Redis has replied (server/store-commit.mjs). So a commit that resolved survives Redis being
+// killed, and an emit whose flush resolved is on disk.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -19,76 +19,46 @@ async function withItem() {
 /** @param {string} text */
 const append = (text) => [{ type: 'item.text', data: { threadId: 't', id: 'i', text } }];
 
-/** Holds the store’s next WAITAOF at a gate, and keeps its arguments. @param {any} s */
-function holdWaitaof(s) {
-  const g = gate();
-  const call = s.client.call.bind(s.client);
-  const seen = [];
-  let once = true;
-  s.client.call = async (/** @type {any[]} */ ...a) => {
-    if (once && a[0] === 'WAITAOF') {
-      once = false;
-      seen.push(a);
-      await g.wait();
-    }
-    return call(...a);
-  };
-  return { ...g, seen };
-}
-
-test('a commit is applied and broadcast only after WAITAOF says Redis synced it to disk', async () => {
+test('a commit is applied and broadcast only once Redis has replied, and sends nothing after its script', async () => {
   const s = await withItem();
   const heard = [];
   s.subscribe((ev) => heard.push(ev.seq));
-  const w = holdWaitaof(s);
+  const client = /** @type {any} */ (s).client;
+  const call = client.call.bind(client);
+  const g = gate();
+  const sent = [];
+  let held = false;
+  client.call = async (/** @type {any[]} */ ...a) => {
+    sent.push(a[0]);
+    const reply = await call(...a);
+    if (!held && a[0] === 'EVAL') {
+      held = true;
+      await g.wait(); // Redis has run the script; its reply waits here
+    }
+    return reply;
+  };
   let done = false;
-  const p = s.commit(append('b'), 'synced').then((r) => {
+  const p = s.commit(append('b'), 'replied').then((r) => {
     done = true;
     return r;
   });
-  await Promise.race([w.hit, p]);
+  await Promise.race([g.hit, p]);
   try {
-    assert.equal(w.seen.length, 1, 'the commit waited on WAITAOF');
-    const [cmd, local, replicas, timeout] = w.seen[0];
-    assert.deepEqual([cmd, local, replicas], ['WAITAOF', 1, 0], 'the local AOF, no replicas');
-    assert.ok(Number(timeout) > 1000, 'longer than appendfsync everysec’s second');
+    const c = await admin(s);
+    const seq = Number(await c.call('GET', 'seq'));
+    c.close();
+    assert.equal(seq, 3, 'Redis holds the commit');
     assert.equal(done, false);
-    assert.equal(s.state.items.t[0].text, 'a', 'not applied before it is on disk');
-    assert.deepEqual(heard, [], 'not broadcast before it is on disk');
+    assert.equal(s.state.items.t[0].text, 'a', 'not applied before its reply');
+    assert.deepEqual(heard, [], 'not broadcast before its reply');
   } finally {
-    w.go();
+    g.go();
   }
   const r = await p;
   assert.equal(r.duplicate, false);
   assert.equal(s.state.items.t[0].text, 'ab');
   assert.deepEqual(heard, [r.seq]);
-});
-
-test('a WAITAOF that finds the commit not synced is a lost reply: writes close, and reconciliation reads it back once', async () => {
-  const s = await withItem();
-  const client = /** @type {any} */ (s).client;
-  const call = client.call.bind(client);
-  let once = true;
-  client.call = async (/** @type {any[]} */ ...a) => {
-    if (once && a[0] === 'WAITAOF') {
-      once = false;
-      await call(...a);
-      return [0, 0]; // timed out before the local fsync
-    }
-    return call(...a);
-  };
-  const heard = [];
-  s.subscribe((ev) => heard.push(ev.seq));
-  await assert.rejects(s.commit(append('b'), 'unsynced'), (e) => e.code === 'ESTOREDOWN');
-  assert.equal(s.writable, false, 'writes close');
-  assert.equal(/** @type {any} */ (s.status).cause, 'reconciling');
-  await until(() => s.writable);
-  assert.equal(s.state.items.t[0].text, 'ab', 'read back from Redis, once');
-  assert.deepEqual(heard, [3]);
-  const again = await s.commit(append('b'), 'unsynced');
-  assert.equal(again.duplicate, true, 'its retry finds its opId');
-  assert.equal(s.state.items.t[0].text, 'ab');
-  assert.deepEqual((await consistent(s)).fresh.state, s.state);
+  assert.deepEqual(sent, ['EVAL'], 'nothing after the script: its reply already means on disk');
 });
 
 test('a commit survives a SIGKILL of Redis the moment it resolves, every time', async () => {

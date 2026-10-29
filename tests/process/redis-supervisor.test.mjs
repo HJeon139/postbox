@@ -93,8 +93,7 @@ test('a child that dies is reported, restarted, and keeps what it had written', 
   await sup.start();
   try {
     const c = await sup.client();
-    await c.call('SET', 'kept', 'yes');
-    await c.call('WAITAOF', 1, 0, 2000);
+    await c.call('SET', 'kept', 'yes'); // on disk when it answers: appendfsync always
     c.close();
     const seen = [];
     sup.on('status', (s) => seen.push(s.state === 'down' ? `down:${s.cause}` : s.state));

@@ -180,7 +180,6 @@ test('SR-3: Postbox’s user runs exactly what the store sends, and is refused t
     assert.deepEqual(await c.call('JSON.MGET', 'doc', '$'), ['[{"n":1}]']);
     assert.equal(await c.call('DEL', 'doc'), 1);
     assert.equal(await c.call('EVAL', "redis.pcall('JSON.SET', 'k', '$', '1'); return redis.call('DEL', 'k')", 0), 1);
-    assert.ok(Array.isArray(await c.call('WAITAOF', 1, 0, 2000)));
     assert.equal(await c.call('FLUSHDB'), 'OK', 'the importer’s reset, at startup');
 
     const admin = await sup.fixtureClient();
@@ -254,8 +253,7 @@ test('SR-5: after a start, the store’s folders are 0700 and its data, logs and
   RedisSupervisor.fixtureUser = false;
   try {
     const c = await sup.client();
-    await c.call('SET', 'k', 'v');
-    await c.call('WAITAOF', 1, 0, 2000);
+    await c.call('SET', 'k', 'v'); // on disk when it answers: appendfsync always
     c.close();
     const admin = await sup.fixtureClient();
     await admin.call('BGREWRITEAOF'); // a rewrite makes new files: they’re private too
