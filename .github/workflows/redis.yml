@@ -181,7 +181,8 @@ jobs:
       - name: Archive it, with its SHA-256
         run: |
           cd dist
-          tar -czf "redis-$VERSION-$TARGET.tar.gz" "redis-$VERSION-$TARGET"
+          # ustar, which Postbox unpacks in Node (server/redis-unpack.mjs), without macOS's ._ files.
+          COPYFILE_DISABLE=1 tar --format=ustar -czf "redis-$VERSION-$TARGET.tar.gz" "redis-$VERSION-$TARGET"
           if [ "$RUNNER_OS" = macOS ]; then shasum -a 256 "redis-$VERSION-$TARGET.tar.gz"; else sha256sum "redis-$VERSION-$TARGET.tar.gz"; fi > "redis-$VERSION-$TARGET.tar.gz.sha256"
           cat "redis-$VERSION-$TARGET.tar.gz.sha256"
       - uses: actions/upload-artifact@v4

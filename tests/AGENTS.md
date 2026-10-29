@@ -15,6 +15,11 @@ The root `AGENTS.md` applies here too.
 
 A test that must run a real process (npm, git, an installed postbox) goes in `tests/process/*.test.mjs` instead, which `npm run test:process` runs without the guard, and `npm run check` runs too. It writes only to temp folders it makes and removes, and to nothing else it doesn’t put back (`npm pack` writes and removes `server/build-commit.txt` in the clone). It reads none of your own config: the install test gives npm an empty config file of its own. It runs on a port of its own, with a timeout on every process it starts, and stays a few seconds long.
 
+## The store’s Redis
+
+The store is a Redis 8 child process (server/redis-supervisor.mjs; #508’s design, “Storage: a Redis 8 server that Postbox bundles and runs”). Postbox downloads its own pinned build at first start; for development and tests, `POSTBOX_REDIS_HOME` names a Redis 8 build with the JSON and search modules instead, either a Postbox package (`bin/redis-server`, `modules/rejson.so`, `modules/redisearch.so`) or a Redis 8 source tree built with `make BUILD_WITH_MODULES=yes` (`src/redis-server`, `modules/redisjson/rejson.so`, `modules/redisearch/redisearch.so`). `npm run check` and the browser specs need it set: `POSTBOX_REDIS_HOME=/path/to/redis-8.10.3 npm run check`.
+- Specs of the child itself (it starts, dies, restarts, exits) run real processes, so they’re in `tests/process/`.
+
 ## Browser specs
 
 Browser checks are Playwright Test specs in `tests/browser/*.spec.mjs` (designs/architecture.md, “Browser checks on Playwright Test”, #303):
