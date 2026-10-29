@@ -2,6 +2,14 @@
 
 Node with zero runtime dependencies, apart from the store’s Redis 8 child. The store is JSON documents and an event stream in that child (designs/architecture.md, “The store”). The root `AGENTS.md` applies here too.
 
+## The store’s Redis
+
+From #508’s requirements, 4.3, “Store security”, and designs/architecture.md, “The store” (its “Private” and “Leftovers” points):
+- Never give an agent, a guide, a tool result, an error an agent can see, a remote host or a log the store’s socket path or a Redis password. Never add a store folder to an agent’s workspace.
+- Postbox’s Redis user runs only `STORE_COMMANDS` (server/redis-private.mjs). A new command the store sends, from Lua too, is added there with its caller, and the SR-3 spec in tests/process/redis-security.test.mjs with it. Never add one for a test: tests use the fixture user.
+- Files under `<data>/redis/` are written 0600, through `writePrivate`, and folders made 0700.
+- Postbox never signals a process it didn’t start; a leftover Redis goes only by its owner’s `SHUTDOWN` (server/redis-owner.mjs).
+
 ## Node
 
 These come from designs/engineering-practices.md, “Node”:
