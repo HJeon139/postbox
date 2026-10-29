@@ -1,6 +1,6 @@
 {
   "name": "postbox",
-  "version": "0.44.6",
+  "version": "0.44.7",
   "description": "A chat room for directing several AI agents, where agents reply with software they write.",
   "license": "Apache-2.0",
   "type": "module",

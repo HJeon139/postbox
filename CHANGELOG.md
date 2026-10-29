@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.7 (2026-10-29)
+
+### Fixes
+
+- **server:** the chain limit stays as a backstop at 50, and a chain that ends starts its count again
+- **server:** no chain limit either; no wake waits on a card for a limit
+- **server:** no wake limit between two agents; the composer shows the chain's count instead
+
 ## 0.44.6 (2026-10-29)
 
 ### Fixes
