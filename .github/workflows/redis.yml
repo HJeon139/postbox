@@ -5,13 +5,17 @@
 # builds came from goes in the same release.
 #
 # The version, the tarball’s URL and its SHA-256 come from server/redis-build.mjs, the pin Postbox itself checks, so
-# there is one place to change them. Push the tag redis-v<version> to build and release; run it by hand to build only.
+# there is one place to change them. Push the tag redis-v<version> to build and release. A branch push that changes the
+# pin, this workflow or the bundling tool builds only, and so does a run by hand (which GitHub allows only once this file
+# is on the default branch).
 # After a release, copy each build’s .sha256 into server/redis-build.mjs’s targets.
 name: redis
 
 on:
   push:
     tags: ['redis-v*']
+    branches-ignore: [main]
+    paths: [.github/workflows/redis.yml, server/redis-build.mjs, tools/redis-bundle-libs.mjs]
   workflow_dispatch:
 
 permissions:
@@ -45,7 +49,7 @@ jobs:
           " >> "$GITHUB_OUTPUT"
       # A tag that names another version than the pin would release builds under the wrong name.
       - name: The tag names the pinned version
-        if: github.event_name == 'push'
+        if: startsWith(github.ref, 'refs/tags/redis-v')
         env:
           TAG: ${{ github.ref_name }}
           VERSION: ${{ steps.pin.outputs.version }}
@@ -196,7 +200,7 @@ jobs:
   release:
     name: Attach the builds and the source to the release
     needs: [source, build]
-    if: github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/redis-v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # The one job that writes: it makes the release and uploads its assets.
