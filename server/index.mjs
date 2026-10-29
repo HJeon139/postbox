@@ -561,6 +561,7 @@ export async function start({
     await stopHosts(hosts, stopWake);
     narrator?.stop();
     if (server.listening) await new Promise((ok) => server.close(ok));
+    await rt.ledger.idle();
     await store.close();
   }
   if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
