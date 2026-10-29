@@ -19,7 +19,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
-import { endedWithoutReply } from '../server/empty-reply.mjs';
+import { endedWithoutReply, noteAnswer } from '../server/empty-reply.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { readMessage } from '../server/read-message.mjs';
 import { Runtime } from '../server/runtime.mjs';
@@ -34,19 +34,20 @@ const SILENT = LINES.map((l) => {
   return e.type === 'result' ? JSON.stringify({ ...e, result: '' }) : l;
 });
 
-/** A claude that plays the recorded stream, its results’ text blanked, then exits 0. */
-const spawnImpl = () => {
+/** A claude that plays a recorded stream (by default this one, its results’ text blanked), then exits 0. */
+const playing = (lines) => () => {
   const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), pid: 1 });
   setImmediate(() => {
-    for (const l of SILENT) child.stdout.write(`${l}\n`);
+    for (const l of lines) child.stdout.write(`${l}\n`);
     child.stdout.end();
     setTimeout(() => child.emit('close', 0), 5);
   });
   return child;
 };
 
-function setup() {
+function setup(lines = SILENT) {
   const store = new Store(null);
+  const spawnImpl = playing(lines);
   const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-485/workspaces', spawnImpl }));
   const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
@@ -86,7 +87,16 @@ test('#485: the empty reply keeps the turn’s raw ending, and the agent hears o
     .at(-1);
   assert.equal(last.rawEnding?.backend, 'claude-code');
   assert.ok(last.rawEnding.lines.length > 0 && last.rawEnding.lines.length <= 12);
-  assert.equal(last.rawEnding.lines.at(-1), SILENT.at(-1).slice(0, 1000), 'its last line is the stream’s last event, bounded');
+  // Each line’s shape only (integrator review of PR #536): its kinds and sizes, never its text, which can hold a file
+  // or a secret a tool printed. The stream’s last event is its result, with its text blanked.
+  const end = JSON.parse(last.rawEnding.lines.at(-1));
+  assert.equal(end.type, 'result');
+  assert.equal(end.result, 0, 'a string is kept as its length');
+  const text = LINES.flatMap((l) =>
+    (JSON.parse(l).message?.content ?? []).flatMap((b) => [b.text, typeof b.content === 'string' ? b.content : null]).filter((x) => x?.length > 30),
+  );
+  assert.ok(text.length, 'the stream has text to leave out');
+  for (const x of text) assert.ok(!last.rawEnding.lines.some((l) => l.includes(x.slice(0, 30))), `kept: ${x.slice(0, 30)}`);
   assert.ok(
     last.rawEnding.lines.every((l) => l.length <= 1000),
     'each line is bounded',
@@ -221,4 +231,61 @@ test('#485: a failed reply’s @-mentions still wake their agents, with the mess
   assert.match(woke.message.text, /#451 is ready at 41f3a0f\. @researcher please record it\./);
   // It wakes from the failed reply itself, which isn’t posted again.
   assert.equal(store.items(t.id).filter((i) => i.kind === 'agent' && i.text?.includes('#451 is ready')).length, 1);
+});
+
+test('#485: a slash command that prints nothing, such as /compact, isn’t an empty reply', async () => {
+  // Integrator review of PR #536: tests/fixtures/claude-code/compact.jsonl, as recorded, ends with result '' and no text.
+  const lines = readFileSync(new URL('fixtures/claude-code/compact.jsonl', import.meta.url), 'utf8')
+    .split('\n')
+    .filter(Boolean);
+  const { store, rt, t, se } = setup(lines);
+  rt.runAgentCommand(t.id, { sessionId: se.id, text: '/compact' });
+  await settle(rt);
+  assert.equal(store.state.sessions[se.id].needs ?? null, null, 'no Retry, nothing for the person');
+  assert.ok(!store.items(t.id).some((i) => i.kind === 'agent' && i.status === 'failed'));
+});
+
+test('#485: Retry doesn’t wake again the agents a failed reply already woke', async () => {
+  // Integrator review of PR #536: the failed reply woke researcher; the retried one mentions it too.
+  const { store, rt, adapter, t } = blocksSetup();
+  const other = rt.createPersona({ handle: 'researcher' });
+  rt.ensureSession(t.id, other.id);
+  adapter.next.push(async (c) => {
+    c.text('#451 is ready. @researcher please record it.');
+    throw new Error('Claude Code exited with code 1.');
+  });
+  adapter.next.push(async (c) => c.text('Recorded.'));
+  rt.sendMessage(t.id, { text: '@critic watch the checks' });
+  await settleBlocks(rt);
+  const failed = store.items(t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
+  assert.deepEqual(failed.wokeOnFailure, ['researcher']);
+  const woken = () => adapter.calls.filter((x) => x.message.kind === 'agent' && x.message.from === '@critic').length;
+  assert.equal(woken(), 1);
+  adapter.next.push(async (c) => c.text('#451 is ready at 41f3a0f. @researcher please record it.'));
+  await rt.retry(t.id, failed.id);
+  await settleBlocks(rt);
+  assert.ok(
+    store.items(t.id).some((i) => i.kind === 'agent' && i.status === 'done' && i.text?.includes('41f3a0f')),
+    'the retry answered',
+  );
+  assert.equal(woken(), 1, 'researcher isn’t woken a second time for the same hand-off');
+  // The failed text still reads as failed, next to the retry’s reply.
+  const researcher = rt.sessionsIn(t.id).find((x) => x.handle === 'researcher');
+  assert.match(readMessage(rt, researcher, { id: failed.id }).message, /^@critic \(this reply failed and was retried: /);
+});
+
+test('#485: a result that repeats streamed Markdown as plain text isn’t posted again', async () => {
+  // Integrator review of PR #536: “**the**” streamed, “the” in the result.
+  const { replyText } = await import('../server/adapters/claude-reply.mjs');
+  let out = '';
+  const r = replyText({ text: (d) => (out += d) }, { wroteText: false });
+  r.write('**The answer** is `42`, and _here_ is why it holds for every case.');
+  r.fromResult({ type: 'result', result: 'The answer is 42, and here is why it holds for every case.' });
+  assert.equal(out, '**The answer** is `42`, and _here_ is why it holds for every case.');
+});
+
+test('#485: a turn that only schedules or cancels a wake, or defines a term, still owes its reply', () => {
+  const turn = { id: 'tu_1', kind: 'user', said: '' };
+  for (const name of ['schedule_wake', 'cancel_wake', 'define_term']) noteAnswer(turn, name, { ok: true });
+  assert.equal(endedWithoutReply(turn, []), true);
 });
