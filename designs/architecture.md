@@ -2,9 +2,9 @@
 
 Decided on 21 October 2026, after Stage 2. Each section states the decision, what it rests on, and what would make us revisit it. [intent.md](intent.md) records the product decisions; this file records the engineering ones.
 
-## 1. The store: an event log with snapshots, not a database
+## 1. The store: a Redis 8 server Postbox runs, with documents and an event stream
 
-**Decision.** Postbox keeps its data as an append-only event log in JSON Lines, plus periodic snapshots of the state, in its data folder. Every read comes from an in-memory projection of that log. Binary files go to a separate content-addressed blob store. All of this sits behind one small storage interface (`server/store.mjs`).
+**Decision** (revised 28 October 2026, #508’s design, “Storage: a Redis 8 server that Postbox bundles and runs”). Postbox keeps its data in a Redis 8 child process it downloads, verifies, starts and stops itself, under its data folder: each record a JSON document, and every change one entry in an `events` stream, written together. Every read still comes from an in-memory projection, which startup reads from the documents. Binary files go to a separate content-addressed blob store. All of it sits behind one small storage interface (`server/store.mjs`). Until then Postbox kept an append-only JSON Lines log plus snapshots; this section’s revisit line named Redis Streams for the day Postbox needed transactions across files, and #508’s delivery records need exactly that.
 
 **What the design needs from a store**
 
@@ -15,41 +15,44 @@ Decided on 21 October 2026, after Stage 2. Each section states the decision, wha
 | Durable across restarts | “The conversation survives a page reload: keep it in the app’s own store.” |
 | Cheap writes during streaming | A reply streams as many small text events per second. |
 | Binary attachments | Pasted images, uploads and files added to the corpus. |
-| No schema to maintain, no relational queries | One person, one machine, one process. Every read is “all of it” at startup, then live events. |
+| No schema to maintain, no relational queries | Key/value or document, never a relational schema: an earlier Postbox on SQLite was stopped by schema migrations. Every read is “all of it” at startup, then live events. |
+| Transactions across records, and more than one writer later | A turn’s records and marker written together before an adapter starts (#508); a second Postbox process is likely within a year. |
 
 **Options considered**
 
-| Option | Fit | Why not now |
+| Option | Fit | Outcome |
 |---|---|---|
-| One JSON file, rewritten whole (Stage 2) | Simple | Each write serializes the entire state. That’s fine at tens of kilobytes; after months of use it blocks the event loop on every streaming reply. |
-| **Event log (JSONL) + snapshots** | Matches the event model exactly. Appends are cheap and crash-tolerant. No schema beyond the event types. No dependencies. | **Chosen.** |
-| Redis (Streams + AOF) | Streams are a good log, and AOF is itself an append-only file | Adds a server to install and run, a network hop and a runtime dependency, for one user in one process. It earns its place only with several server processes or users. |
-| SQLite (`node:sqlite`, built into Node 22) | Transactions and durability in one file, still schema-light: one events table and one snapshot table holding JSON | Still marked experimental in Node 22, and it prints a warning. It’s the first candidate if we need transactions across files or queries. |
-| A document or relational database (Postgres and so on) | — | Schema and operations work with no payoff for this use case. |
+| One JSON file, rewritten whole (Stage 2) | Simple | Each write serializes the entire state; it blocks the event loop on every streaming reply after months of use. |
+| Event log (JSONL) + snapshots | Matches the event model; appends are cheap | Chosen until 28 October 2026. No transaction across files, and a multi-line append isn’t atomic. |
+| SQLite (`node:sqlite`) | Transactions in one file | Rejected: a relational schema is its natural shape, which stopped an earlier Postbox; synchronous writes; a single writer by nature. |
+| **Redis 8, bundled and run by Postbox** | Atomic multi-key writes (Lua), a sequenced stream, JSON documents, search, a path to several processes | **Chosen.** A native binary to download, verify and supervise: the one exception to zero runtime dependencies (engineering-practices.md). |
 
 **How it works**
 
 ```mermaid
 flowchart LR
-  E["emit(type, data)"] --> R["reducer: shared/state.mjs"]
+  E["emit: optimistic"] --> R["reducer: shared/state.mjs"]
+  C["commit: authoritative"] --> W
   R --> M[("in-memory state")]
-  E --> L["events-&lt;seq&gt;.jsonl (append)"]
-  E --> SSE[server-sent events]
-  M -->|every 5,000 events| SN["snapshot.json (atomic write)"]
-  SN -->|then| ROT["start a new log segment, delete segments the snapshot covers"]
+  E --> SSE["server-sent events"]
+  E -->|"one script per tick"| W["Lua script: check seq and ops, write documents, append to the stream"]
+  W --> DB[("Redis: documents, events stream, ops")]
+  W -->|"after the reply"| R
   subgraph Startup
-    SN2[snapshot.json] --> REPLAY["replay log lines with seq greater than the snapshot's"] --> M2[("state")]
+    DB --> RD["read the documents"] --> M2[("state")]
   end
 ```
 
-- **Writes** are batched and appended in order. A crash can lose at most the last few milliseconds of events. A truncated last line is detected on startup and dropped.
-- **Snapshots** are written to a temporary file and renamed, so a crash mid-write leaves the old snapshot intact. A new log segment starts after each snapshot, and segments the snapshot fully covers are deleted.
-- **Schema.** Events carry plain JSON. If an event’s shape ever changes, the reducer upgrades old events as it reads them (an “upcaster”), so there are no migrations to run.
-- **Stage 2 data** in `store.json` is read once as the first snapshot, then renamed `store.json.migrated`.
+- **Keys.** `<kind>:<id>` documents `{ v, d }` (thread, session, app, item and the rest), each collection’s order in `order:<collection>`, a conversation’s items in `thread:<id>:items` scored by position, `settings`, `seq`, `ops` (operation id to seq) and the `events` stream, whose entry ids are the events’ seqs.
+- **Writes.** One Lua script per batch checks that Redis is at the seq the batch follows and, for a commit, that its operation id hasn’t run, then writes every document and stream entry, or none. `emit` applies and broadcasts at once and writes one batch per tick; `commit` writes first and applies and broadcasts after the reply. A second writer is refused (`ESEQ`), and a commit given as a function of the state runs again after catching up.
+- **Durability.** `appendfsync everysec`: a committed write survives a process crash; a power cut can lose up to a second.
+- **Down.** While the child isn’t answering, writes fail closed and the page stays readable; its status names the cause.
+- **Schema.** Documents carry `v` and are lifted to the current shape on read, never migrated; events are upcast as before.
+- **The old log** is imported once at the first start on Redis (`server/store-import.mjs`), beside a dated backup, and renamed `*.migrated`.
 
-**Attachments.** Files are stored by the SHA-256 of their contents under `blobs/ab/cdef…`, so identical files are kept once and corruption is detectable. The log holds only metadata: `{ id, name, type, size, sha256 }`. Files are served with `X-Content-Type-Options: nosniff` and a `sandbox` content-security policy. Only PNG, JPEG, GIF and WebP images are shown inline; everything else downloads. Large content never enters the log, so snapshots stay small.
+**Attachments.** Files are stored by the SHA-256 of their contents under `blobs/ab/cdef…`, so identical files are kept once and corruption is detectable. The store holds only metadata: `{ id, name, type, size, sha256 }`. Files are served with `X-Content-Type-Options: nosniff` and a `sandbox` content-security policy. Only PNG, JPEG, GIF and WebP images are shown inline; everything else downloads. Large content never enters Redis.
 
-**Revisit when** Postbox runs as more than one server process, serves more than one person, or needs queries across history (for example, search). Then move the same interface onto SQLite or Redis Streams, or Postgres for many users.
+**Revisit when** more than one Postbox process writes to one store as a supported mode: `emit`’s optimistic writes then need a per-key check instead of the global seq.
 
 ## 2. How agent data reaches the store
 

@@ -1,6 +1,6 @@
 # The server and the agent backends: server/
 
-Node with zero runtime dependencies. The store is an event log with snapshots (designs/architecture.md, “The store”). The root `AGENTS.md` applies here too.
+Node with zero runtime dependencies, apart from the store’s Redis 8 child. The store is JSON documents and an event stream in that child (designs/architecture.md, “The store”). The root `AGENTS.md` applies here too.
 
 ## Node
 

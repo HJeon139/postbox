@@ -12,7 +12,7 @@ import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
 import { storeError } from './redis-client.mjs';
-import { commit } from './store-commit.mjs';
+import { catchUp, commit } from './store-commit.mjs';
 import { Positions, refKey, touched, writesFor } from './store-docs.mjs';
 import { importLegacy } from './store-import.mjs';
 import { readState, redisFor, releaseRedis, streamAfter, writeBatch } from './store-redis.mjs';
@@ -87,6 +87,9 @@ export class Store {
     }
     this.client = (await this.redis?.sup.client().catch(() => null)) ?? null;
     this.failed = null;
+    // A batch whose reply was lost when the child stopped may be in Redis already.
+    await (this.inflight ?? null);
+    await this.catchUp().catch((e) => console.error(`Couldn’t read the store back: ${e.message}`));
     this.pump();
   }
 
@@ -216,11 +219,17 @@ export class Store {
   /**
    * Writes events as one transaction, then applies and broadcasts them: if the write fails, nothing was applied or
    * seen. A repeated opId writes nothing and returns the seq it ended at the first time (server/store-commit.mjs).
-   * @param {{ type: string, data: any }[]} events  @param {string} [opId]
+   * @param {import('./store-commit.mjs').Events} events  or a function of the state that gives them, run again if
+   *   another process wrote first  @param {string} [opId]
    * @returns {Promise<{ seq: number, duplicate: boolean }>}
    */
   commit(events, opId) {
     return commit(this, events, opId ?? '');
+  }
+
+  /** Applies what another process, or a write whose reply was lost, put in Redis past what this store knows. */
+  catchUp() {
+    return catchUp(this);
   }
 
   /** Publishes the emits a commit held, after its own events. */
