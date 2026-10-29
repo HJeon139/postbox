@@ -31,6 +31,7 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { clip } from '../shared/text.mjs';
+import { contentBlocks } from './adapters/claude-content.mjs';
 import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from './adapters/setup.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
@@ -420,7 +421,7 @@ export const CHECKS = [
         const declined = new Set(
           events
             .filter((e) => e.type === 'user')
-            .flatMap((e) => e.message?.content ?? [])
+            .flatMap((e) => contentBlocks(e.message?.content))
             .filter((b) => b.type === 'tool_result' && /The person didn’t allow/.test(typeof b.content === 'string' ? b.content : JSON.stringify(b.content)))
             .map((b) => b.tool_use_id),
         );
@@ -497,7 +498,7 @@ export const CHECKS = [
       const posts = f.streams.flatMap(({ handle, events }) =>
         events
           .filter((e) => e.type === 'assistant')
-          .flatMap((e) => e.message?.content ?? [])
+          .flatMap((e) => contentBlocks(e.message?.content))
           .filter((b) => b.type === 'tool_use' && b.name === 'Bash' && /\/mcp\?session=/.test(b.input?.command ?? ''))
           .map(() => handle),
       );
