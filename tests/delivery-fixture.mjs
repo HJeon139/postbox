@@ -21,7 +21,7 @@ export const ROOM = 'th_room';
 /** A room with nothing in it yet, and what builds it up. */
 export function room() {
   const f = {
-    state: { items: { [ROOM]: [] }, sessions: {}, threads: { [ROOM]: { id: ROOM, kind: 'room', title: 'The release', members: [] } } },
+    state: { items: { [ROOM]: [] }, personas: {}, sessions: {}, threads: { [ROOM]: { id: ROOM, kind: 'room', title: 'The release', members: [] } } },
     threads: [ROOM],
     events: [],
     streams: [],
@@ -32,12 +32,16 @@ export function room() {
   const line = (at, content, flags = {}) => JSON.stringify({ type: 'user', ...flags, timestamp: new Date(at).toISOString(), message: { content } });
   return {
     f,
-    /** An agent in the room, with a transcript. */
-    agent(handle) {
+    /**
+     * An agent in the room, on a backend: its persona (state.personas, as server/room-checks-backends.mjs reads it),
+     * and its transcript when it runs on Claude Code, the only backend a run records one of (tools/uat/run-files.mjs).
+     */
+    agent(handle, { backend = 'claude-code' } = {}) {
       const id = `se_${handle}`;
-      f.state.sessions[id] = { id, handle, threadId: ROOM, state: 'idle', needs: null, archived: false };
+      f.state.personas[`pe_${handle}`] = { id: `pe_${handle}`, handle, backend };
+      f.state.sessions[id] = { id, handle, personaId: `pe_${handle}`, threadId: ROOM, state: 'idle', needs: null, archived: false };
       f.state.threads[ROOM].members.push(id);
-      f.transcripts.push({ handle, lines: [] });
+      if (backend === 'claude-code') f.transcripts.push({ handle, lines: [] });
       return id;
     },
     /** An item posted, as the state holds it and the history recorded it. */
@@ -62,6 +66,8 @@ export function room() {
     /** A turn: its stream, its prompt and its tool results. output: false for one that wrote nothing. */
     turn(handle, started, { prompt = /** @type {string|null} */ (null), results = /** @type {string[]} */ ([]), output = true, ms = 8000 } = {}) {
       f.streams.push({ handle, started, ended: started + ms, events: [{ type: 'system', subtype: 'init' }, ...(output ? [{ type: 'assistant' }] : [])] });
+      // An agent on another backend takes its turns all the same; no transcript records what they began with.
+      if (!f.transcripts.some((t) => t.handle === handle)) return;
       if (prompt !== null) lines(handle).push(line(started + 5, prompt));
       for (const r of results) lines(handle).push(line(started + 1000, [{ type: 'tool_result', content: r }]));
     },

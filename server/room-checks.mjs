@@ -1183,6 +1183,8 @@ export function runChecks(facts, { only = null, checks = CHECKS } = {}) {
           evidence: x.evidence,
           ...(x.verdict ? { verdict: x.verdict, note: x.note } : {}),
           ...(x.counts ? { counts: x.counts } : {}),
+          // A check it couldn’t make, for an agent on a backend whose inputs it can’t read: the report lists it.
+          ...(x.unverified ? { unverified: x.unverified } : {}),
           // The requirements it serves (#508’s requirements.md), beside its issue, for a coverage table per requirement.
           ...(c.requirements ? { requirements: c.requirements } : {}),
         }));
@@ -1201,14 +1203,17 @@ export function runChecks(facts, { only = null, checks = CHECKS } = {}) {
 export const LIVE_INPUTS = ['state', 'threads', 'streams', 'kiroStreams', 'agyStreams', 'codexStreams', 'events', 'transcripts'];
 
 /**
- * The checks whose inputs these facts have, run; and the rest, with the inputs they’d need.
+ * The checks whose inputs these facts have, run; and the rest, with the inputs they’d need. What a check said it
+ * couldn’t check, for an agent whose inputs it can’t read, is kept apart (unverified): it isn’t a finding.
  * @param {any} facts  @param {string[]} [have]
- * @returns {{ findings: ReturnType<typeof runChecks>, ran: string[], notRun: { check: string, missing: string[] }[] }}
+ * @returns {{ findings: ReturnType<typeof runChecks>, unverified: ReturnType<typeof runChecks>, ran: string[], notRun: { check: string, missing: string[] }[] }}
  */
 export function liveChecks(facts, have = LIVE_INPUTS) {
   const can = CHECKS.filter((c) => c.inputs.every((i) => have.includes(i)));
+  const all = runChecks(facts, { only: can.map((c) => c.id) });
   return {
-    findings: runChecks(facts, { only: can.map((c) => c.id) }),
+    findings: all.filter((x) => !x.unverified),
+    unverified: all.filter((x) => x.unverified),
     ran: can.map((c) => c.id),
     notRun: CHECKS.filter((c) => !can.includes(c)).map((c) => ({ check: c.id, missing: c.inputs.filter((i) => !have.includes(i)) })),
   };

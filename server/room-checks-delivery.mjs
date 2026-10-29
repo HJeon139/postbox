@@ -4,7 +4,7 @@
 // names the requirements it serves beside its issue. Part of server/room-checks.mjs’s CHECKS, kept apart for size.
 
 import { clip } from '../shared/text.mjs';
-import { addressed, headOf, holds, inputsOf, labeled, plain, turnsOf } from './room-delivery.mjs';
+import { addressed, headOf, holds, inputsOf, labeled, notCheckableAll, plain, turnsOf } from './room-delivery.mjs';
 
 /** A turn’s stream starts a moment after Postbox builds its prompt, which is when the marker moves. */
 const MARKER_TO_SPAWN_MS = 30_000;
@@ -14,12 +14,16 @@ const said = (a) => `${a.how === 'mention' ? 'mention' : a.how === 'held' ? 'wak
 /** delivery-dropped: due to an agent, and in none of its prompts or tool results by the end of its next two turns. */
 function droppedDeliveries(f) {
   const inputs = new Map();
+  const unread = new Map();
   const out = [];
   for (const a of addressed(f)) {
     if (!inputs.has(a.to)) inputs.set(a.to, inputsOf(f, a.to));
     const got = inputs.get(a.to);
-    // No transcript of the agent: what reached it can’t be read, so nothing is claimed.
-    if (!got) continue;
+    // No transcript of the agent: what reached it can’t be read, so the check says it didn’t check it.
+    if (!got) {
+      unread.set(a.to, (unread.get(a.to) ?? 0) + 1);
+      continue;
+    }
     const next = turnsOf(f, a.to).filter((t) => t.started > a.due);
     if (next.length < 2) continue;
     if (got.some((x) => x.at >= a.from - 1000 && x.at <= next[1].ended && holds(x, a))) continue;
@@ -29,7 +33,7 @@ function droppedDeliveries(f) {
       evidence: `The ${said(a)} (“${clip(a.text, 100)}”) was due to @${a.to} from ${new Date(a.due).toISOString()}, and none of its prompts or tool results held it by the end of its next two turns.`,
     });
   }
-  return out;
+  return [...notCheckableAll(f, 'delivery-dropped', unread), ...out];
 }
 
 /**
@@ -39,13 +43,18 @@ function droppedDeliveries(f) {
 function unlabeledRepeats(f) {
   const out = [];
   const inputs = new Map();
+  const unread = new Map();
   for (const a of addressed(f)) {
     if (!inputs.has(a.to)) inputs.set(a.to, inputsOf(f, a.to));
     const head = headOf(a.text);
     if (!head) continue;
+    if (!inputs.get(a.to)) {
+      unread.set(a.to, (unread.get(a.to) ?? 0) + 1);
+      continue;
+    }
     // In full: every letter and digit of it, in order. A pointer to it, or a message that quotes its start, isn’t.
     const all = plain(a.text);
-    const whole = (inputs.get(a.to) ?? []).filter((x) => x.kind === 'prompt' && x.key.includes(all));
+    const whole = inputs.get(a.to).filter((x) => x.kind === 'prompt' && x.key.includes(all));
     const bare = whole.slice(1).find((x) => !labeled(x.text, a.text));
     if (!bare) continue;
     out.push({
@@ -54,7 +63,7 @@ function unlabeledRepeats(f) {
       evidence: `The ${said(a)} (“${clip(a.text, 100)}”) was in ${whole.length} of @${a.to}’s prompts, first at ${new Date(whole[0].at).toISOString()}, again at ${new Date(bare.at).toISOString()} with no resend label.`,
     });
   }
-  return out;
+  return [...notCheckableAll(f, 'unlabeled-repeat', unread), ...out];
 }
 
 /**

@@ -6,7 +6,7 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { needsYouNow } from '../shared/needs.mjs';
 import { clip } from '../shared/text.mjs';
-import { headOf, holds, inputsOf } from './room-delivery.mjs';
+import { headOf, holds, inputsOf, notCheckableAll } from './room-delivery.mjs';
 
 const ANSWERED = new Set(['allowed', 'declined']);
 const heldKey = (w) => `${w.fromSessionId ?? w.from}:${w.to}:${headOf(w.text) ?? w.text}`;
@@ -38,9 +38,12 @@ export function cardHistory(events) {
 /** ask-dropped: a held wake, or a card, that left the state with no answer from the person and never reached its target. */
 function droppedAsks(f) {
   const live = new Set((f.threads ?? []).flatMap((t) => (f.state?.items?.[t] ?? []).map((it) => it.id)));
+  const unread = new Map();
   const reached = (w, since) => {
     const got = inputsOf(f, w.to);
-    // No transcript of the target: whether it got the wake can’t be read, so the wake isn’t called dropped.
+    // No transcript of the target: whether it got the wake can’t be read, so the wake isn’t called dropped, and the
+    // check says it didn’t check it.
+    if (!got) unread.set(w.to, (unread.get(w.to) ?? 0) + 1);
     return !got || got.some((x) => x.at >= since && holds(x, { itemId: w.itemId ?? null, text: w.text ?? '' }));
   };
   const out = [];
@@ -65,7 +68,7 @@ function droppedAsks(f) {
       });
     }
   }
-  return out;
+  return [...notCheckableAll(f, 'ask-dropped', unread), ...out];
 }
 
 /**

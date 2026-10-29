@@ -60,12 +60,6 @@ test('delivery-dropped waits for two turns before it calls a mention dropped', (
   assert.deepEqual(found(f, 'delivery-dropped'), []);
 });
 
-test('delivery-dropped claims nothing for an agent with no transcript, whose prompts can’t be read', () => {
-  const f = mentionRoom({ delivered: false });
-  f.transcripts = f.transcripts.filter((t) => t.handle !== 'researcher');
-  assert.deepEqual(found(f, 'delivery-dropped'), []);
-});
-
 /** Claude Code’s compaction summary, hand-written in its shape: it retells the conversation, a mention included. */
 const SUMMARY = (text) =>
   `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary request and intent: ${text}`;
