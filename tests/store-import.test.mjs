@@ -173,7 +173,7 @@ test('an import cut short after its first batch of events runs again from the st
   assert.equal(await client.call('GET', 'seq'), '1001');
   const a = await admin(s);
   assert.equal(await a.call('XLEN', 'events'), 1001);
-  assert.equal(await a.call('EXISTS', 'import'), 0, 'the import is no longer marked in progress');
+  assert.equal(await a.call('EXISTS', 'importing'), 0, 'the import is no longer marked in progress');
   a.close();
   assert.equal((await open(dir)).state.settings.value, 1001);
 });
