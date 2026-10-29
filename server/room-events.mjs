@@ -18,6 +18,8 @@ export function keepEvent(seq, type, data) {
         state: data.state ?? null,
         finishedAt: data.finishedAt ?? null,
         updatedAt: data.updatedAt ?? null,
+        // The session’s catch-up marker, when the event carries it: marker-before-output reads where it moved (#508).
+        ...(Object.hasOwn(data, 'seenItem') ? { seenItem: data.seenItem ?? null } : {}),
         ...(Object.hasOwn(data, 'stopAsk') ? { stopAsk: data.stopAsk ? { at: data.stopAsk.at ?? null, jobs: data.stopAsk.jobs ?? null } : null } : {}),
         ...(Array.isArray(data.jobs) ? { jobs: data.jobs.slice(0, 50).map(jobOf) } : {}),
         // A turn on a remote host (#120): which host, its turn there, and Postbox’s own turn, for the host-mode checks.

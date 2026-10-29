@@ -1,0 +1,141 @@
+// What the delivery checks and triggers read (#508, designs/508/testing-strategy.md, “Triggers, checks and seeds to
+// add”): what was addressed to each agent, what reached it, and its turns. Every one reads only what `main` already
+// records, so it can catch a defect there before the step that fixes it:
+//   addressed   items that @-mention an agent, allowed wake cards, and the wakes held on a card (#439)
+//   inputs      each agent’s prompts and tool results, from its Claude Code transcript (facts.transcripts)
+//   turns       each agent turn’s raw stream (facts.streams), and whether it produced any output
+// An item “reached” an agent when an input of its holds the item’s id, or the start of its text, letters and digits
+// only: a catch-up line or a held note reformats the text around it, never the words.
+
+import { parseMentions } from '../shared/text.mjs';
+
+/** Letters and digits only, lowercase: the form texts are matched in. */
+export const plain = (s) =>
+  String(s ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+/** How much of a text’s start identifies it, and the least that’s worth matching. */
+const HEAD = 60;
+const MIN_HEAD = 16;
+/** The start of a text that identifies it, or null for one too short to tell from others. */
+export const headOf = (text) => {
+  const p = plain(text);
+  return p.length >= MIN_HEAD ? p.slice(0, HEAD) : null;
+};
+
+/** What says a delivery is a repeat (decision 8.2), and what points back to one rather than giving it again (#484). */
+export const RESEND_LABEL = /\b(resent|resend|sent (?:it |this )?again|a repeat of|check what ran|gave you in full)\b/i;
+
+/** Whether a prompt labels the message it repeats: the label comes in the 400 characters before the message. */
+export function labeled(prompt, text) {
+  const at = prompt.indexOf(String(text).trim().slice(0, 30));
+  return at >= 0 && RESEND_LABEL.test(prompt.slice(Math.max(0, at - 400), at));
+}
+
+const itemsOf = (f) => (f.threads ?? []).flatMap((t) => (f.state?.items?.[t] ?? []).map((it) => ({ ...it, threadId: t })));
+const handlesIn = (f, threadId) =>
+  (f.state?.threads?.[threadId]?.members ?? []).map((id) => f.state.sessions?.[id]?.handle).filter((h) => typeof h === 'string');
+
+/** When the event after seq added an item: the closest record of when a patch, which carries no time, happened. */
+export function timeAfter(events, seq) {
+  for (const e of events ?? []) if (e.seq > seq && e.type === 'item.add' && Number.isFinite(e.data?.item?.at)) return e.data.item.at;
+  return null;
+}
+
+/**
+ * Every delivery the room owes an agent: a message that @-mentions it (not its own), and each wake a card settled
+ * by Allow or by retiring, its own and those held on it. `from` is when it could first reach the agent, and `due`
+ * when it had to: its agent’s turns count from then.
+ * @param {any} f
+ * @returns {{ to: string, itemId: string|null, text: string, from: number, due: number, how: 'mention'|'wake'|'held', cardId: string|null }[]}
+ */
+export function addressed(f) {
+  const out = [];
+  const items = itemsOf(f);
+  for (const it of items) {
+    if ((it.kind !== 'user' && it.kind !== 'agent') || typeof it.text !== 'string' || !Number.isFinite(it.at)) continue;
+    for (const to of parseMentions(it.text, handlesIn(f, it.threadId)))
+      if (to !== it.handle) out.push({ to, itemId: it.id, text: it.text, from: it.at, how: 'mention', cardId: null });
+  }
+  for (const card of items.filter((it) => it.kind === 'hop' && (it.status === 'allowed' || it.status === 'retired'))) {
+    const settled = card.retiredAt ?? settledAt(f, card.id) ?? card.at;
+    const own = { to: card.to, itemId: card.itemId ?? null, text: card.text ?? card.reason ?? '', from: settled, how: 'wake', cardId: card.id };
+    const held = (card.held ?? []).map((w) => ({ to: w.to, itemId: w.itemId ?? null, text: w.text ?? '', from: settled, how: 'held', cardId: card.id }));
+    if (card.status === 'allowed' || !card.join) out.push(own, ...held);
+  }
+  // A wake for a mention is the mention’s delivery: one record each. It may reach the agent from the earlier of the
+  // two (a catch-up can give it while its card waits), and its turns count from the later (when its card let it go).
+  /** @type {Map<string, (typeof out)[number] & { due: number }>} */
+  const one = new Map();
+  for (const a of out) {
+    const k = `${a.to}:${headOf(a.text) ?? a.itemId}`;
+    const had = one.get(k);
+    if (!had) one.set(k, { ...a, due: a.from });
+    else one.set(k, { ...had, itemId: had.itemId ?? a.itemId, from: Math.min(had.from, a.from), due: Math.max(had.due, a.from) });
+  }
+  return [...one.values()];
+}
+
+/** When the person settled a card, from the history: the item added after its status patch. */
+export function settledAt(f, cardId) {
+  const p = (f.events ?? []).find(
+    (e) => e.type === 'item.patch' && e.data?.id === cardId && typeof e.data?.patch?.status === 'string' && e.data.patch.status !== 'open',
+  );
+  return p ? timeAfter(f.events, p.seq) : null;
+}
+
+const textOf = (content) =>
+  typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content
+          .map((c) => (typeof c?.text === 'string' ? c.text : typeof c?.content === 'string' ? c.content : Array.isArray(c?.content) ? textOf(c.content) : ''))
+          .join('\n')
+      : '';
+
+/**
+ * What reached an agent, in order: each prompt its turns began with, and each tool result, read from its Claude Code
+ * transcripts. Null when this run has no transcript of it, so a check can’t tell what it got.
+ * @param {any} f  @param {string} handle
+ * @returns {{ at: number, kind: 'prompt'|'result', text: string, key: string }[] | null}
+ */
+export function inputsOf(f, handle) {
+  const mine = (f.transcripts ?? []).filter((t) => t.handle === handle);
+  if (!mine.length) return null;
+  const out = [];
+  for (const t of mine)
+    for (const line of t.lines ?? []) {
+      let e;
+      try {
+        e = typeof line === 'string' ? JSON.parse(line) : line;
+      } catch {
+        continue; // a transcript’s last line can be half written
+      }
+      if (e?.type !== 'user' || e.isSidechain || !e.message) continue;
+      const at = Date.parse(e.timestamp);
+      const c = e.message.content;
+      const results = Array.isArray(c) ? c.filter((b) => b?.type === 'tool_result') : [];
+      if (results.length) for (const r of results) out.push({ at, kind: 'result', text: textOf(r.content) });
+      else out.push({ at, kind: 'prompt', text: textOf(c) });
+    }
+  return out.filter((x) => Number.isFinite(x.at) && x.text).map((x) => ({ ...x, key: plain(x.text) }));
+}
+
+/** Whether an input holds this delivery: its item’s id, or the start of its text. */
+export const holds = (input, a) =>
+  (!!a.itemId && input.text.includes(a.itemId)) || (!!headOf(a.text) && input.key.includes(/** @type {string} */ (headOf(a.text))));
+
+/** A turn produced output once its model wrote something: an assistant message, or a streamed piece of one. */
+export const hasOutput = (events) =>
+  (events ?? []).some((e) => e?.type === 'assistant' || (e?.type === 'stream_event' && e.event?.type === 'content_block_delta'));
+
+/**
+ * An agent’s turns, oldest first, from their raw streams.
+ * @param {any} f  @param {string} handle
+ * @returns {{ started: number, ended: number, output: boolean }[]}
+ */
+export const turnsOf = (f, handle) =>
+  (f.streams ?? [])
+    .filter((s) => s.handle === handle && Number.isFinite(s.started))
+    .map((s) => ({ started: s.started, ended: Number.isFinite(s.ended) ? s.ended : s.started, output: hasOutput(s.events) }))
+    .sort((a, b) => a.started - b.started);

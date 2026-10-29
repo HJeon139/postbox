@@ -32,7 +32,9 @@ import { toPlainText } from '../shared/markdown.mjs';
 import { clip } from '../shared/text.mjs';
 import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from './adapters/setup.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
+import { ASK_CHECKS } from './room-checks-asks.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
+import { DELIVERY_CHECKS } from './room-checks-delivery.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 
@@ -789,6 +791,8 @@ export const CHECKS = [
   ...BACKEND_CHECKS,
   ...TELEMETRY_CHECKS,
   ...NEEDS_CHECKS,
+  ...ASK_CHECKS,
+  ...DELIVERY_CHECKS,
   {
     // Two processes in one Claude Code session (#126): a turn that started while the session’s previous turn was still
     // making requests, or a stopped turn whose process went on calling Postbox’s tools after Stop. Claude Code turns
@@ -1179,6 +1183,8 @@ export function runChecks(facts, { only = null, checks = CHECKS } = {}) {
           evidence: x.evidence,
           ...(x.verdict ? { verdict: x.verdict, note: x.note } : {}),
           ...(x.counts ? { counts: x.counts } : {}),
+          // The requirements it serves (#508’s requirements.md), beside its issue, for a coverage table per requirement.
+          ...(c.requirements ? { requirements: c.requirements } : {}),
         }));
       } catch (e) {
         return [{ check: c.id, issue: null, key: `${c.id}-error`, title: `The ${c.id} check failed`, evidence: e.message }];
