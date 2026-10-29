@@ -327,18 +327,49 @@ export function setStreamTap(rt, tap) {
 /** How much of a turn’s raw stream its context keeps, for a reply that ends empty (#485): its last lines, each bounded. */
 const RAW_TAIL = 12;
 const RAW_LINE = 1000;
+/** The fields whose words a line’s shape keeps: what kind of event it is, and how it ended. */
+const SHAPE_WORDS = new Set(['type', 'subtype', 'name', 'stop_reason', 'status', 'kind', 'operationType', 'sessionUpdate', 'terminal_reason']);
+
+/** A value’s shape: other strings become their length, so no reply, file or secret a tool printed is kept. */
+const shapeOf = (/** @type {unknown} */ v, depth = 0, key = '') => {
+  if (typeof v === 'string') return SHAPE_WORDS.has(key) ? v.slice(0, 60) : v.length;
+  if (Array.isArray(v)) return depth > 3 ? `[${v.length}]` : v.slice(0, 8).map((x) => shapeOf(x, depth + 1));
+  if (!v || typeof v !== 'object') return v;
+  if (depth > 3) return '{…}';
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shapeOf(x, depth + 1, k)]));
+};
 
 /**
- * What one turn writes each raw line to. The last few also go in the turn’s ctx.rawTail, when it has one.
+ * Keeps an event’s shape in the turn’s ctx.rawTail, when it has one, for an empty reply’s diagnosis (#485). The item
+ * that keeps it is saved and sent to every page, so it holds kinds and sizes, never text.
+ * @param {any} ctx @param {unknown} event  a parsed event, or a raw line
+ */
+export function keepShape(ctx, event) {
+  const tail = Array.isArray(ctx.rawTail) ? ctx.rawTail : null;
+  if (!tail) return;
+  let e = event;
+  if (typeof e === 'string')
+    try {
+      e = JSON.parse(e);
+    } catch {
+      e = { unparsed: e.length };
+    }
+  // Too long whole (a result’s usage, say), only its top-level fields, so the line still parses.
+  let line = JSON.stringify(shapeOf(e));
+  if (line.length > RAW_LINE) line = JSON.stringify(shapeOf(e, 3));
+  if (tail.push(line.slice(0, RAW_LINE)) > RAW_TAIL) tail.shift();
+}
+
+/**
+ * What one turn writes each raw line to. The last few go in the turn’s ctx.rawTail too, as shapes (keepShape).
  * @param {any} ctx  the turn’s context @param {string|undefined} dir  POSTBOX_*_RECORD @param {string} backend
  * @returns {(line: string) => void}
  */
 export function recorderFor(ctx, dir, backend) {
   const file = dir ? join(dir, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
-  const tail = Array.isArray(ctx.rawTail) ? ctx.rawTail : null;
   return (line) => {
     if (file) appendFileSync(file, `${line}\n`);
-    if (tail && tail.push(line.slice(0, RAW_LINE)) > RAW_TAIL) tail.shift();
+    keepShape(ctx, line);
     for (const tap of taps.values()) tap(ctx, line, backend);
   };
 }
