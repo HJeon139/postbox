@@ -19,6 +19,7 @@ A test that must run a real process (npm, git, an installed postbox) goes in `te
 
 The store is a Redis 8 child process (server/redis-supervisor.mjs; #508’s design, “Storage: a Redis 8 server that Postbox bundles and runs”). Postbox downloads its own pinned build at first start; for development and tests, `POSTBOX_REDIS_HOME` names a Redis 8 build with the JSON and search modules instead, either a Postbox package (`bin/redis-server`, `modules/rejson.so`, `modules/redisearch.so`) or a Redis 8 source tree built with `make BUILD_WITH_MODULES=yes` (`src/redis-server`, `modules/redisjson/rejson.so`, `modules/redisearch/redisearch.so`). `npm run check` and the browser specs need it set: `POSTBOX_REDIS_HOME=/path/to/redis-8.10.3 npm run check`.
 - Specs of the child itself (it starts, dies, restarts, exits) run real processes, so they’re in `tests/process/`.
+- A unit test that opens a store on a data folder (`new Store(dir).load()`) starts that folder’s Redis child, as Postbox does, so the whole suite runs on the store Postbox has. `tests/guard.mjs` allows exactly that: spawning the `redis-server` of `POSTBOX_REDIS_HOME`, and connecting to 127.0.0.1 on a port one of those children was given in its config. Nothing else. A store with no data folder (`new Store(null)`) stays in memory.
 
 ## Browser specs
 

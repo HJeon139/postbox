@@ -7,7 +7,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
@@ -33,7 +33,7 @@ import { KNOWN_TOOLS, seed, toBoilerplate } from './seed.mjs';
 import { decodePath, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
-import { newId, Store } from './store.mjs';
+import { clearStore, newId, Store } from './store.mjs';
 import { recordingOff, watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
 
@@ -107,10 +107,8 @@ export async function start({
   const mediaDir = join(dataDir, 'media');
   await mkdir(mediaDir, { recursive: true });
   process.env.POSTBOX_MEDIA = mediaDir;
-  if (fresh)
-    for (const n of await readdir(dataDir).catch(() => []))
-      if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
-  const store = await new Store(dataDir).load();
+  if (fresh) await clearStore(dataDir);
+  const store = await new Store(dataDir).load(); // its Redis child starts before Postbox listens, and stops in close()
   const blobs = new Blobs(join(dataDir, 'blobs'));
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
@@ -293,6 +291,7 @@ export async function start({
       return send(res, 200, {
         seq: store.state.seq,
         state: store.state,
+        store: store.status, // whether it can save, or why not (#508’s design, “Storage”, decision 7)
         config: {
           origin,
           hopLimit: HOP_LIMIT,
@@ -349,7 +348,7 @@ export async function start({
         res.writeHead(503, { 'retry-after': '1' });
         return res.end();
       }
-      return stream(req, res, url);
+      return await stream(req, res, url);
     }
 
     const body = req.method === 'POST' || req.method === 'PATCH' || req.method === 'PUT' ? (path === '/api/files' ? null : await json(req)) : null;
@@ -505,11 +504,11 @@ export async function start({
     throw httpError(404, `There’s nothing at ${path}.`);
   }
 
-  function stream(req, res, url) {
+  async function stream(req, res, url) {
     const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     res.write('retry: 1500\n\n');
-    const backlog = store.since(since);
+    const backlog = await store.backlog(since); // from memory, or after a restart from the store’s events stream
     // Too far behind: the browser refetches the whole state, then resumes from its sequence number.
     if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
     else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
@@ -560,7 +559,7 @@ export async function start({
     await stopHosts(hosts, stopWake);
     narrator?.stop();
     if (server.listening) await new Promise((ok) => server.close(ok));
-    await store.flush();
+    await store.close();
   }
   if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));

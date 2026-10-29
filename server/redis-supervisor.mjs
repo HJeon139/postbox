@@ -180,6 +180,9 @@ export class RedisSupervisor extends EventEmitter {
           ready = true;
           clearTimeout(timer);
           this.restarts = 0;
+          // Once it runs, the child never keeps Postbox running: it’s killed when Postbox’s process exits.
+          child.unref();
+          for (const pipe of [child.stdout, child.stderr]) /** @type {any} */ (pipe)?.unref?.();
           this.set({ state: 'running' });
           ok(this);
         }

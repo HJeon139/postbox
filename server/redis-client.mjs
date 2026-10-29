@@ -90,6 +90,8 @@ export class RedisClient {
       socket.once('error', (e) => fail(storeError('ESTOREDOWN', `Couldn’t reach the store’s Redis on port ${this.port}: ${e.message}`, e)));
     });
     this.socket = socket;
+    // An idle connection doesn’t keep Postbox running; one waiting on a reply does.
+    socket.unref();
     socket.on('data', (chunk) => this.read(/** @type {Buffer} */ (chunk)));
     socket.on('error', () => {}); // close follows, and fails what’s pending
     socket.on('close', () => this.drop());
@@ -107,6 +109,7 @@ export class RedisClient {
       if (!r) break;
       pos = r.end;
       const waiter = this.pending.shift();
+      if (!this.pending.length) this.socket?.unref();
       if (r.value instanceof Error) waiter?.fail(r.value);
       else waiter?.ok(r.value);
     }
@@ -130,6 +133,7 @@ export class RedisClient {
   call(...args) {
     if (!this.socket || this.closed) return Promise.reject(storeError('ESTOREDOWN', 'The store’s Redis isn’t connected.'));
     return new Promise((ok, fail) => {
+      if (!this.pending.length) this.socket?.ref();
       this.pending.push({ ok, fail });
       /** @type {net.Socket} */ (this.socket).write(encode(args));
     });

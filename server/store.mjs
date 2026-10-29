@@ -1,168 +1,237 @@
-// Postbox’s store: an append-only event log (JSON Lines) plus periodic snapshots, with all reads served
-// from an in-memory projection. See designs/architecture.md, “The store”.
+// Postbox’s store: an in-memory projection of every event, kept in a Redis 8 child process that Postbox runs
+// (designs/508/design.md, “Storage: a Redis 8 server that Postbox bundles and runs”; designs/architecture.md, “The
+// store”). Documents are the truth and the `events` stream the sequence, written together (server/store-redis.mjs).
 //
-// Every change goes through emit(), which applies it with the shared reducer, numbers it, appends it to
-// the log and tells subscribers. A browser that reconnects asks for everything after the last number it
-// saw, so nothing is lost or duplicated.
-//
-//   <dir>/snapshot.json          the state as of some sequence number (written atomically)
-//   <dir>/events-<from>.jsonl    events after that, one per line; a new segment starts at each snapshot
+// emit() is optimistic: it applies an event with the shared reducer, numbers it and tells subscribers at once, and the
+// write follows, one script per tick. commit() is authoritative: its events are written first, and applied and
+// broadcast only once Redis has replied; a repeated opId writes nothing twice. While Redis is down, both refuse
+// (ESTOREDOWN) and the state stays readable. A store with no data folder (tests) keeps everything in memory.
 
 import { randomBytes } from 'node:crypto';
-import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, truncate, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { apply, emptyState, ownState } from '../shared/state.mjs';
+import { apply, emptyState } from '../shared/state.mjs';
+import { storeError } from './redis-client.mjs';
+import { commit } from './store-commit.mjs';
+import { Positions, refKey, touched, writesFor } from './store-docs.mjs';
+import { importLegacy } from './store-import.mjs';
+import { readState, redisFor, releaseRedis, streamAfter, writeBatch } from './store-redis.mjs';
 
 export { emptyState };
 
 const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
-const SNAPSHOT_EVERY = 5000; // events between snapshots
+
+/** Removes a data folder’s store, for a fresh start: the Redis data and any old log, snapshot or store.json. */
+export async function clearStore(dataDir) {
+  for (const n of await readdir(dataDir).catch(() => []))
+    if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
+  await rm(join(dataDir, 'redis', 'data'), { recursive: true, force: true });
+}
 
 export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8) || Date.now().toString(36)}`;
 
 export class Store {
-  /** @param {string|null} dir  the data folder; null keeps everything in memory (tests) */
-  constructor(dir, { snapshotEvery = SNAPSHOT_EVERY } = {}) {
+  /**
+   * @param {string|null} dir  the data folder; null keeps everything in memory (tests)
+   * @param {{ redisHome?: string }} [o]  a Redis to run instead of POSTBOX_REDIS_HOME or the download
+   */
+  constructor(dir, { redisHome } = {}) {
     this.dir = dir;
-    this.snapshotEvery = snapshotEvery;
+    this.redisHome = redisHome;
     this.state = emptyState();
     this.events = [];
     this.listeners = new Set();
-    this.queue = []; // lines waiting to be appended
-    this.writing = null; // the append in progress
-    this.segment = 'events-1.jsonl'; // the current log file; load() picks the real one
-    this.sinceSnapshot = 0;
+    this.positions = new Positions();
+    /** @type {Map<string, { t: string, it: any }>} item id → its conversation and the item */
+    this.index = new Map();
+    /** @type {Map<string, { ref: import('./store-docs.mjs').Ref, seq: number }>} documents to write */
+    this.dirty = new Map();
+    this.lines = []; // events to append
+    this.confirmed = 0; // the seq Redis holds
+    this.inflight = null;
+    this.scheduled = false;
+    this.commits = Promise.resolve();
+    this.held = null; // emits made while a commit waits on Redis
+    this.waiting = 0; // commits not yet answered
+    this.ops = new Map(); // in memory only: opId → seq
+    /** @type {import('./redis-client.mjs').RedisClient | null} */
+    this.client = null;
+    /** @type {ReturnType<typeof redisFor> | null} the data folder’s child, once load() started it; null in memory */
+    this.redis = null;
+    this.failed = null;
   }
 
   async load() {
     if (!this.dir) return this;
     await mkdir(this.dir, { recursive: true });
-    const snapPath = join(this.dir, 'snapshot.json');
-    try {
-      this.state = ownState({ ...emptyState(), ...JSON.parse(await readFile(snapPath, 'utf8')) });
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw new Error(`Couldn’t read the snapshot at ${snapPath}: ${e.message}`);
-      // Stage 2 kept everything in one store.json; read it once as the first snapshot.
-      const legacy = join(this.dir, 'store.json');
-      try {
-        this.state = ownState({ ...emptyState(), ...JSON.parse(await readFile(legacy, 'utf8')) });
-        await this.writeSnapshot();
-        await rename(legacy, `${legacy}.migrated`);
-      } catch (le) {
-        if (le.code !== 'ENOENT') throw new Error(`Couldn’t read the old store at ${legacy}: ${le.message}`);
-      }
-    }
-    // Replay the log after the snapshot. A torn last line (a crash mid-write) is dropped.
-    for (const seg of await this.segments()) {
-      const path = join(this.dir, seg.name);
-      const text = await readFile(path, 'utf8');
-      let offset = 0;
-      for (const line of text.split('\n')) {
-        const end = offset + Buffer.byteLength(line) + 1;
-        if (line.trim()) {
-          let ev;
-          try {
-            ev = JSON.parse(line);
-          } catch {
-            await truncate(path, offset);
-            console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
-            break;
-          }
-          if (ev.seq > this.state.seq) {
-            apply(this.state, ev.type, ev.data);
-            this.state.seq = ev.seq;
-            this.sinceSnapshot++;
-          }
-        }
-        offset = end;
-      }
-    }
-    this.segment = (await this.segments()).at(-1)?.name ?? `events-${this.state.seq + 1}.jsonl`;
+    this.redis = redisFor(this.dir, { home: this.redisHome });
+    const sup = await this.redis.ready;
+    this.client = await sup.client();
+    sup.on('status', (s) => this.onStatus(s));
+    await importLegacy(this.dir, this.client);
+    const { state, positions } = await readState(this.client);
+    this.state = state;
+    this.positions = positions;
+    this.confirmed = state.seq;
+    for (const [t, list] of Object.entries(state.items)) for (const it of list) this.index.set(it.id, { t, it });
     return this;
   }
 
-  /** A path in the data folder. Only the disk-backed paths call this, after checking there is one. */
-  at(name) {
-    return join(/** @type {string} */ (this.dir), name);
+  /** The child went down or came back: drop the connection, or open a new one and write what waited. */
+  async onStatus(s) {
+    if (s.state !== 'running') {
+      this.client?.close();
+      this.client = null;
+      if (s.state === 'down') console.error(`The store is read-only for now: ${s.message}`);
+      return;
+    }
+    this.client = (await this.redis?.sup.client().catch(() => null)) ?? null;
+    this.failed = null;
+    this.pump();
   }
 
-  async segments() {
-    if (!this.dir) return [];
-    return (await readdir(this.dir))
-      .filter((n) => /^events-\d+\.jsonl$/.test(n))
-      .map((name) => ({ name, from: Number(name.slice(7, -6)) }))
-      .sort((a, b) => a.from - b.from);
+  /** Whether a write can be accepted now. */
+  get writable() {
+    return !this.redis || (!!this.client?.connected && this.redis?.sup.status.state === 'running' && !this.failed);
   }
 
-  /** Applies a change and broadcasts it. The shared reducer is the only place state changes. */
+  /** The child’s status, for the page: running, or down with its cause and what to do. */
+  get status() {
+    return this.redis ? this.redis.sup.status : { state: 'running' };
+  }
+
+  refuse() {
+    const s = this.redis?.sup.status;
+    const why = this.failed?.message ?? (s?.state === 'down' ? s.message : 'The store’s Redis isn’t answering.');
+    return storeError('ESTOREDOWN', `Postbox can’t save changes right now, so it didn’t make this one. ${why}`);
+  }
+
+  /** Applies a change and broadcasts it, then writes it. The shared reducer is the only place state changes. */
   emit(type, data) {
-    const ev = { seq: this.state.seq + 1, type, data };
+    if (!this.writable) throw this.refuse();
+    const refs = this.redis ? touched(this.state, type, data) : [];
+    apply(this.state, type, data);
+    this.track(type, data, refs);
+    const ev = { seq: 0, type, data };
     // The reducer keeps an event’s objects in the state, where later events change them in place, so the backlog
     // keeps each event as JSON: a reconnecting browser gets it as it was emitted, not as the state is now.
-    const line = JSON.stringify(ev);
-    apply(this.state, type, data);
-    this.state.seq = ev.seq;
-    this.events.push({ seq: ev.seq, line });
-    if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
-    for (const fn of this.listeners) fn(ev);
-    if (this.dir) {
-      this.queue.push(line + '\n');
-      this.sinceSnapshot++;
-      this.pump();
-    }
+    const json = JSON.stringify(data);
+    if (this.held) this.held.push({ ev, json, refs });
+    else this.publish(ev, json, refs);
     return ev;
   }
 
-  /** Appends queued lines in order, one write at a time. */
+  /** Numbers an applied event, tells subscribers, and queues its write. */
+  publish(ev, json, refs) {
+    ev.seq = ++this.state.seq;
+    const line = `{"seq":${ev.seq},"type":${JSON.stringify(ev.type)},"data":${json}}`;
+    this.events.push({ seq: ev.seq, line });
+    if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
+    for (const fn of this.listeners) fn(ev);
+    if (!this.redis) return;
+    this.lines.push({ seq: ev.seq, line });
+    this.positions.place(refs);
+    for (const ref of refs) this.mark(ref, ev.seq);
+    this.schedule();
+  }
+
+  /** @param {import('./store-docs.mjs').Ref} ref @param {number} seq */
+  mark(ref, seq) {
+    const k = refKey(ref);
+    const had = this.dirty.get(k);
+    // A collection keeps first-insertion order, so its first seq places it; a boilerplate moves to the end.
+    this.dirty.set(k, { ref, seq: had && !('move' in ref && ref.move) ? had.seq : seq });
+  }
+
+  /** Keeps the item index current. */
+  track(type, d, refs) {
+    if (type === 'item.add') this.index.set(d.item.id, { t: d.threadId, it: d.item });
+    if (type === 'item.move' && d.stub) this.index.set(d.stub.id, { t: d.threadId, it: d.stub });
+    for (const r of refs) if (r.c === 'itemlist') for (const id of r.ids) this.index.delete(id);
+  }
+
+  schedule() {
+    if (this.scheduled) return;
+    this.scheduled = true;
+    setImmediate(() => {
+      this.scheduled = false;
+      this.pump();
+    });
+  }
+
+  /** The item in conversation t now, for writing it. @param {string} t @param {string} id */
+  itemOf = (t, id) => {
+    const e = this.index.get(id);
+    return e && e.t === t && this.state.items[t]?.includes(e.it) ? e.it : undefined;
+  };
+
+  /** Takes what waits to be written: its events and the writes for its documents as they are now. */
+  take() {
+    const events = this.lines.splice(0);
+    const dirty = [...this.dirty.values()];
+    this.dirty.clear();
+    return { events, dirty, writes: writesFor(this.state, dirty, this.itemOf, (t, id) => this.positions.score(t, id)) };
+  }
+
+  /** Puts a batch that wasn’t written back in front of what waits. */
+  untake({ events, dirty }) {
+    this.lines.unshift(...events);
+    const later = [...this.dirty.entries()];
+    this.dirty = new Map(dirty.map((x) => [refKey(x.ref), x]));
+    for (const [k, v] of later) if (!this.dirty.has(k)) this.dirty.set(k, v);
+  }
+
+  /** Writes what waits, one batch at a time. A failed batch waits for the next start of the child. */
   pump() {
-    if (this.writing || !this.queue.length) return;
-    const chunk = this.queue.splice(0).join('');
-    const file = this.at(this.segment);
-    this.writing = appendFile(file, chunk)
-      .catch((e) => console.error(`Couldn’t append to the event log: ${e.message}`))
-      .then(async () => {
-        if (this.sinceSnapshot >= this.snapshotEvery) await this.snapshot();
-        this.writing = null;
+    if (this.inflight || this.held || this.failed || !this.lines.length || !this.client?.connected) return;
+    const batch = this.take();
+    const client = this.client;
+    this.inflight = writeBatch(client, { prev: this.confirmed, events: batch.events, writes: batch.writes })
+      .then(
+        (r) => {
+          this.confirmed = r.seq;
+        },
+        (e) => {
+          this.untake(batch);
+          if (e.code === 'ESEQ') this.failed = e;
+          console.error(`Couldn’t write to the store: ${e.message}`);
+        },
+      )
+      .finally(() => {
+        this.inflight = null;
         this.pump();
       });
   }
 
-  /** Writes a snapshot, starts a new log segment, and deletes segments the snapshot covers. */
-  async snapshot() {
-    await this.writeSnapshot();
-    const old = await this.segments();
-    this.segment = `events-${this.state.seq + 1}.jsonl`;
-    this.sinceSnapshot = 0;
-    for (const seg of old) if (seg.name !== this.segment) await rm(this.at(seg.name), { force: true });
-  }
-
-  async writeSnapshot() {
-    const path = this.at('snapshot.json');
-    const tmp = `${path}.${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(this.state));
-    const fh = await open(tmp, 'r+');
-    await fh.sync();
-    await fh.close();
-    await rename(tmp, path);
-  }
-
-  /** Waits for every queued event to reach the disk. */
+  /** Waits for every event emitted so far to reach Redis, or for the store to be unable to write it. */
   async flush() {
-    if (!this.dir) return;
-    while (this.writing || this.queue.length) {
+    if (!this.redis) return;
+    while (this.inflight || this.scheduled || (this.lines.length && this.client?.connected && !this.failed && !this.held)) {
       this.pump();
-      await this.writing;
+      await (this.inflight ?? new Promise((ok) => setImmediate(ok)));
     }
-    try {
-      const fh = await open(this.at(this.segment), 'r+');
-      await fh.sync();
-      await fh.close();
-    } catch {
-      /* nothing written yet */
-    }
+    await this.commits;
   }
 
-  /** Events after `seq`, or null when they’re no longer kept and the client must refetch the state. */
+  /**
+   * Writes events as one transaction, then applies and broadcasts them: if the write fails, nothing was applied or
+   * seen. A repeated opId writes nothing and returns the seq it ended at the first time (server/store-commit.mjs).
+   * @param {{ type: string, data: any }[]} events  @param {string} [opId]
+   * @returns {Promise<{ seq: number, duplicate: boolean }>}
+   */
+  commit(events, opId) {
+    return commit(this, events, opId ?? '');
+  }
+
+  /** Publishes the emits a commit held, after its own events. */
+  release() {
+    const held = this.held ?? [];
+    this.held = null;
+    for (const h of held) this.publish(h.ev, h.json, h.refs);
+    this.pump();
+  }
+
+  /** Events after `seq` kept in memory, or null when they’re no longer kept and the client must refetch the state. */
   since(seq) {
     if (seq >= this.state.seq) return [];
     const first = this.events[0]?.seq ?? this.state.seq + 1;
@@ -170,16 +239,41 @@ export class Store {
     return this.events.filter((e) => e.seq > seq).map((e) => JSON.parse(e.line));
   }
 
+  /** Events after `seq`, from memory or else from the stream; null when the stream was trimmed past them. */
+  async backlog(seq) {
+    const kept = this.since(seq);
+    if (kept || !this.client?.connected) return kept;
+    const first = this.events[0]?.seq ?? this.state.seq + 1;
+    const older = await streamAfter(this.client, seq, first - 1);
+    return older && [...older, ...this.events.map((e) => JSON.parse(e.line))];
+  }
+
+  /** Kept for callers of the log-and-snapshot store: documents are always current, so it only waits for writes. */
+  snapshot() {
+    return this.flush();
+  }
+
   subscribe(fn) {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
 
+  /** The bytes the store’s append-only files take. */
   async size() {
     if (!this.dir) return 0;
+    const dir = join(this.dir, 'redis', 'data', 'appendonly');
     let total = 0;
-    for (const n of await readdir(this.dir)) if (n === 'snapshot.json' || /^events-/.test(n)) total += (await stat(join(this.dir, n))).size;
+    for (const n of await readdir(dir).catch(() => [])) total += (await stat(join(dir, n))).size;
     return total;
+  }
+
+  /** Writes what waits, then lets go of the child; the last store on a data folder stops it. */
+  async close() {
+    if (!this.redis || !this.dir) return;
+    await this.flush();
+    this.client?.close();
+    this.client = null;
+    await releaseRedis(this.dir);
   }
 
   // Read helpers

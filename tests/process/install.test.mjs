@@ -90,7 +90,14 @@ let prefix = '';
 let cwd = '';
 let packed = { filename: '', files: [{ path: '' }] };
 let bin = '';
-const runEnv = () => ({ PATH, HOME: home, POSTBOX_BACKENDS: 'mock' });
+// The store’s Redis comes from POSTBOX_REDIS_HOME, as in every suite, until the pinned builds have checksums
+// (tests/AGENTS.md, “The store’s Redis”); its data still goes under HOME/.postbox.
+const runEnv = () => ({
+  PATH,
+  HOME: home,
+  POSTBOX_BACKENDS: 'mock',
+  ...(process.env.POSTBOX_REDIS_HOME ? { POSTBOX_REDIS_HOME: process.env.POSTBOX_REDIS_HOME } : {}),
+});
 before(async () => {
   tmp = await mkdtemp(join(tmpdir(), 'pb-test-install-'));
   [home, prefix, cwd] = ['home', 'prefix', 'cwd'].map((d) => join(tmp, d));
