@@ -4,8 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fireScheduledWake } from '../server/scheduled-wakes.mjs';
-import { settle, setup } from './side-threads-fixture.mjs';
+import { fireScheduledWake, rearmWakes } from '../server/scheduled-wakes.mjs';
+import { held, settle, setup } from './side-threads-fixture.mjs';
 
 const networkError = (code = 'ECONNRESET') => Object.assign(new Error(`network failed: ${code}`), { code });
 const fire = async (f, sc) => {
@@ -45,4 +45,23 @@ test('#466 one tool call reported through toolUse and activity is one entry in t
   await fire(f, sc);
   assert.equal(f.store.state.schedules[sc.id]?.recoveryTools?.length, 1, JSON.stringify(f.store.state.schedules[sc.id]?.recoveryTools));
   f.rt.cancelSchedule(sc.id);
+});
+
+test('#466 Stop ends a running scheduled wake: no schedule, timer or turn comes back after a restart', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the run.' });
+  const h = held();
+  f.adapter.next.push(h.step);
+  clearTimeout(f.rt.timers.get(sc.id));
+  fireScheduledWake(f.rt, sc);
+  await new Promise((r) => setTimeout(r, 5));
+  f.rt.stop(f.alpha.id);
+  h.release();
+  await settle(f.rt);
+  assert.equal(f.store.state.schedules[sc.id], undefined, 'the schedule is settled');
+  assert.equal(f.store.item(sc.threadId, sc.itemId).status, 'canceled');
+  rearmWakes(f.rt);
+  assert.equal(f.rt.timers.has(sc.id), false, 'a restart arms nothing');
+  await settle(f.rt);
+  assert.equal(f.adapter.calls.length, 1, 'and no second turn runs');
 });

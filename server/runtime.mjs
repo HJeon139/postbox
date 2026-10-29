@@ -1134,6 +1134,8 @@ export class Runtime {
     turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
     turn.closed = true;
     this.turns.delete(sessionId);
+    // Your Stop ends a scheduled wake’s turn for good, so a restart doesn’t run it again; a shutdown leaves it due (#466).
+    if (by !== 'shutdown') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
     this.endWork(turn, 'stopped');
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
