@@ -218,3 +218,66 @@ test('SR-6: claims left by processes that are gone (or whose pid is another proc
   }
   assert.deepEqual(readdirSync(claims), [], 'the stop took its claim back');
 });
+
+/** What a promise settles with: null once it resolves, or its error. @param {Promise<unknown>} p */
+const settled = (p) =>
+  p.then(
+    () => null,
+    (e) => e,
+  );
+
+/** Makes a supervisor’s start pause just before it writes the config, as a slow disk or a busy event loop could. */
+function pauseBeforeConf(sup) {
+  let enter, go;
+  const hit = new Promise((ok) => (enter = ok));
+  const gate = new Promise((ok) => (go = ok));
+  const write = sup.writeConf.bind(sup);
+  sup.writeConf = async (...a) => {
+    enter();
+    await gate;
+    return write(...a);
+  };
+  return { hit, go };
+}
+
+test('SR-6: a stop during an unfinished start keeps the claim until that start can no longer write or spawn', async () => {
+  const dataDir = join(tmp, 'sr6-stop-mid-start');
+  const claims = join(dataDir, 'redis', 'claims');
+  const first = new RedisSupervisor({ home: HOME, dataDir });
+  const next = new RedisSupervisor({ home: HOME, dataDir });
+  const { hit, go } = pauseBeforeConf(first);
+  const starting = settled(first.start());
+  try {
+    await hit;
+    const stopping = first.stop();
+    // Another start meanwhile either refuses (the stopped start still holds the folder) or runs; either way the
+    // stopped start may not touch its files once it goes on.
+    const nextError = await settled(next.start());
+    if (nextError) assert.equal(nextError.code, 'ESTOREDOWN');
+    const paths = ['redis.conf', 'owner.json'].map((n) => join(dataDir, 'redis', n));
+    const before = nextError ? null : paths.map((p) => readFileSync(p, 'utf8'));
+    go();
+    const stopped = await starting;
+    await stopping;
+    assert.equal(stopped?.code, 'ESTOREDOWN');
+    const later = before ? paths.map((p) => readFileSync(p, 'utf8')) : null;
+    assert.ok(!before || later.every((v, i) => v === before[i]), 'the stopped start overwrote the new live owner config or owner credential');
+    // The stopped start leaves nothing behind: no child, no claim.
+    assert.equal(first.child, null, 'the stopped start left a Redis child');
+    assert.equal(first.unclaim, null, 'the stopped start still holds its claim');
+    if (nextError) {
+      assert.deepEqual(readdirSync(claims), [], 'a claim outlived the stopped start');
+      // Refused while the stopped start cleaned up; once it has, the same start succeeds.
+      await next.start();
+      assert.equal(next.status.state, 'running');
+      assert.ok(alive(/** @type {any} */ (next.child).pid));
+    }
+    assert.equal(readdirSync(claims).length, 1, 'only the running start holds a claim');
+  } finally {
+    go();
+    await starting;
+    await first.stop();
+    await next.stop();
+  }
+  assert.deepEqual(readdirSync(claims), [], 'both stops took their claims back');
+});

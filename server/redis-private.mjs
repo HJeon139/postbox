@@ -65,6 +65,46 @@ export const STORE_COMMANDS = [
 /** A password as redis.conf takes it: its SHA-256, so the file doesn’t hold it. @param {string} p */
 export const hashed = (p) => `#${createHash('sha256').update(p).digest('hex')}`;
 
+/** A value in redis.conf, quoted. @param {string} v */
+const q = (v) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
+/**
+ * The text of a data folder’s redis.conf: its socket, its users, its append-only files and the two modules.
+ * @param {{ socket: string, dataDir: string, passwords: { postbox: string, owner: string, fixture: string | null }, modules: string[] }} o
+ *   dataDir: the data folder’s redis folder; passwords.fixture: tests only (RedisSupervisor.fixtureUser), else null
+ */
+export function redisConf({ socket, dataDir, passwords, modules }) {
+  const lines = [
+    'port 0',
+    `unixsocket ${q(socket)}`,
+    'unixsocketperm 600',
+    // Redis 8’s defaults, written rather than assumed (SR-4): no runtime change to protected settings, no DEBUG, and no
+    // MODULE command, so the modules are the two loaded below at start and no others.
+    'protected-mode yes',
+    'enable-protected-configs no',
+    'enable-debug-command no',
+    'enable-module-command no',
+    // No default user: a connection that hasn’t logged in gets NOAUTH (SR-3). Postbox’s user starts from nothing and
+    // gets the store’s commands on its keys; the owner may only shut the child down.
+    'user default off resetpass nocommands resetkeys resetchannels',
+    `user postbox on ${hashed(passwords.postbox)} resetchannels ~* -@all ${STORE_COMMANDS.map((c) => `+${c}`).join(' ')}`,
+    `user owner on ${hashed(passwords.owner)} resetchannels resetkeys -@all +ping +shutdown`,
+    ...(passwords.fixture ? [`user fixture on ${hashed(passwords.fixture)} ~* &* +@all`] : []),
+    `dir ${q(join(dataDir, 'data'))}`,
+    // Each write is fsynced before Redis acknowledges it, during an AOF rewrite too (#525; designs/architecture.md,
+    // “The store”): an emit or commit that resolved is on disk. An fsync that fails stops Redis rather than reply.
+    'appendonly yes',
+    'appendfsync always',
+    'no-appendfsync-on-rewrite no',
+    `appenddirname ${q('appendonly')}`,
+    'save ""',
+    'logfile ""',
+    'daemonize no',
+    ...modules.map((m) => `loadmodule ${q(m)}`),
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
 /**
  * Writes a file only the person can read (0600), whatever mode an earlier one had: a new file beside it, renamed over
  * it, so a link put in its place is replaced rather than followed (SR-2, SR-5).

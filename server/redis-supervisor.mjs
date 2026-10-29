@@ -21,7 +21,7 @@ import { mkdir, rmdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { RedisClient, storeError } from './redis-client.mjs';
 import { claimRedis, clearLeftover } from './redis-owner.mjs';
-import { hashed, privateDir, privately, privateTree, STORE_COMMANDS, socketFor, writePrivate } from './redis-private.mjs';
+import { privateDir, privately, privateTree, redisConf, socketFor, writePrivate } from './redis-private.mjs';
 
 /** @typedef {'socket' | 'owned' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
 /** @typedef {{ state: 'idle' | 'starting' | 'running' | 'stopped' } | { state: 'down', cause: DownCause, message: string }} RedisStatus */
@@ -39,9 +39,6 @@ export function redisFiles(home) {
     if (existsSync(join(home, server))) return { server: join(home, server), modules: [join(home, json), join(home, search)] };
   throw Object.assign(new Error(`There’s no Redis server in ${home} (bin/redis-server or src/redis-server).`), { code: 'ENOENT' });
 }
-
-/** A value in redis.conf, quoted. @param {string} v */
-const q = (v) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
 /** Why the child stopped, from what it logged. @param {string} log @returns {DownCause} */
 function causeOf(log) {
@@ -95,6 +92,10 @@ export class RedisSupervisor extends EventEmitter {
     this.killOnExit = () => this.child?.kill('SIGTERM');
     /** Lets go of this supervisor’s claim on the data folder’s Redis (claimRedis), while it holds one. @type {(() => void) | null} */
     this.unclaim = null;
+    /** The start under way, which a stop waits for before the claim goes. @type {Promise<unknown> | null} */
+    this.starting = null;
+    /** The stop under way, which a new start waits for. @type {Promise<void> | null} */
+    this.stopped = null;
   }
 
   /** @param {RedisStatus} s */
@@ -112,7 +113,30 @@ export class RedisSupervisor extends EventEmitter {
 
   /** Starts the child and resolves once it accepts connections; rejects with ESTOREDOWN and the cause. */
   async start() {
+    while (this.stopped) await this.stopped;
     this.stopping = false;
+    const p = this.begin();
+    this.starting = p;
+    try {
+      return await p;
+    } finally {
+      if (this.starting === p) this.starting = null;
+    }
+  }
+
+  /**
+   * Before each step of a start that writes or spawns: a stop asked meanwhile ends the start there, before the step.
+   * The start then lets go of its claim itself, and the stop waits for that (SR-6): until then the folder is still this
+   * supervisor’s, so another start can’t take it while this one could still write its config or start a child.
+   */
+  halt() {
+    if (!this.stopping) return;
+    this.set({ state: 'stopped' });
+    throw storeError('ESTOREDOWN', 'Postbox stopped the store’s Redis before it started.');
+  }
+
+  /** start(), once no stop is under way. */
+  async begin() {
     let files;
     try {
       files = redisFiles(this.home);
@@ -136,20 +160,18 @@ export class RedisSupervisor extends EventEmitter {
       };
     }
     try {
+      this.halt();
       try {
         await privateDir(join(this.socket, '..'));
       } catch (e) {
         throw this.down('socket', e.message);
       }
+      this.halt();
       const why = await clearLeftover({ dataDir: this.dataDir, socket: this.socket });
       if (why) throw this.down('owned', why);
+      this.halt();
       this.set({ state: 'starting' });
       const conf = await this.writeConf(files.modules);
-      // Stopped meanwhile: its claim goes with the stop, so no child may start without one.
-      if (this.stopping) {
-        this.set({ state: 'stopped' });
-        throw storeError('ESTOREDOWN', 'Postbox stopped the store’s Redis before it started.');
-      }
       return await this.run(files.server, conf);
     } catch (e) {
       // A start that failed holds nothing: another Postbox may take the folder, and Retry claims it again.
@@ -161,46 +183,28 @@ export class RedisSupervisor extends EventEmitter {
   /** @param {string[]} modules */
   async writeConf(modules) {
     const dir = join(this.dataDir, 'redis');
+    this.halt();
     await mkdir(join(dir, 'data'), { recursive: true, mode: 0o700 });
+    this.halt();
     await mkdir(join(dir, 'logs'), { recursive: true, mode: 0o700 });
+    this.halt();
     await privateTree(dir);
     const conf = join(dir, 'redis.conf');
-    const lines = [
-      'port 0',
-      `unixsocket ${q(/** @type {string} */ (this.socket))}`,
-      'unixsocketperm 600',
-      // Redis 8’s defaults, written rather than assumed (SR-4): no runtime change to protected settings, no DEBUG, and no
-      // MODULE command, so the modules are the two loaded below at start and no others.
-      'protected-mode yes',
-      'enable-protected-configs no',
-      'enable-debug-command no',
-      'enable-module-command no',
-      // No default user: a connection that hasn’t logged in gets NOAUTH (SR-3). Postbox’s user starts from nothing and
-      // gets the store’s commands on its keys; the owner may only shut the child down.
-      'user default off resetpass nocommands resetkeys resetchannels',
-      `user postbox on ${hashed(this.password)} resetchannels ~* -@all ${STORE_COMMANDS.map((c) => `+${c}`).join(' ')}`,
-      `user owner on ${hashed(this.ownerPassword)} resetchannels resetkeys -@all +ping +shutdown`,
-      ...((this.fixture = RedisSupervisor.fixtureUser) ? [`user fixture on ${hashed(this.fixturePassword)} ~* &* +@all`] : []),
-      `dir ${q(join(dir, 'data'))}`,
-      // Each write is fsynced before Redis acknowledges it, during an AOF rewrite too (#525; designs/architecture.md,
-      // “The store”): an emit or commit that resolved is on disk. An fsync that fails stops Redis rather than reply.
-      'appendonly yes',
-      'appendfsync always',
-      'no-appendfsync-on-rewrite no',
-      `appenddirname ${q('appendonly')}`,
-      'save ""',
-      'logfile ""',
-      'daemonize no',
-      ...modules.map((m) => `loadmodule ${q(m)}`),
-    ];
-    await writePrivate(conf, `${lines.join('\n')}\n`);
+    this.fixture = RedisSupervisor.fixtureUser;
+    const passwords = { postbox: this.password, owner: this.ownerPassword, fixture: this.fixture ? this.fixturePassword : null };
+    const text = redisConf({ socket: /** @type {string} */ (this.socket), dataDir: dir, passwords, modules });
+    this.halt();
+    await writePrivate(conf, text);
     // What a later start needs to shut this child down if Postbox doesn’t: the owner’s password, never Postbox’s user’s.
+    this.halt();
     await writePrivate(join(dir, 'owner.json'), `${JSON.stringify({ pid: process.pid, secret: this.ownerPassword })}\n`);
     return conf;
   }
 
   /** Spawns the child and waits for its ready line. @param {string} server @param {string} conf */
   run(server, conf) {
+    // Nothing between this check and the spawn waits, so a stop can’t come between them.
+    this.halt();
     const log = createWriteStream(join(this.dataDir, 'redis', 'logs', 'redis.log'), { flags: 'a', mode: 0o600 });
     const child = privately(() => spawn(server, [conf], { stdio: ['ignore', 'pipe', 'pipe'] }));
     this.child = child;
@@ -273,20 +277,34 @@ export class RedisSupervisor extends EventEmitter {
   }
 
   /** Stops the child: SIGINT, which Redis takes as a clean shutdown that writes its AOF, then SIGKILL. */
-  async stop() {
+  stop() {
     this.stopping = true;
+    const p = this.end().finally(() => {
+      if (this.stopped === p) this.stopped = null;
+    });
+    this.stopped = p;
+    return p;
+  }
+
+  /** stop(), once `stopping` is set. */
+  async end() {
     const child = this.child;
-    if (!child || child.exitCode !== null || child.signalCode !== null) {
-      this.unclaim?.();
+    const running = child && child.exitCode === null && child.signalCode === null;
+    if (running) {
+      const gone = new Promise((ok) => child.once('exit', ok));
+      child.kill('SIGINT');
+      const t = setTimeout(() => child.kill('SIGKILL'), 5000);
+      await gone;
+      clearTimeout(t);
+    }
+    // A start still under way keeps the claim until it can no longer write or spawn: it halts at its next step (a child
+    // it started is the one just stopped) and lets go of the claim itself. Only then does a stop let go of one.
+    await this.starting?.catch(() => {});
+    this.unclaim?.();
+    if (!running) {
       if (this.status.state !== 'down') this.set({ state: 'stopped' });
       return;
     }
-    const gone = new Promise((ok) => child.once('exit', ok));
-    child.kill('SIGINT');
-    const t = setTimeout(() => child.kill('SIGKILL'), 5000);
-    await gone;
-    clearTimeout(t);
-    this.unclaim?.();
     // A private folder in the temporary folder, for a long data folder’s socket, goes once it’s empty.
     const folder = dirname(/** @type {string} */ (this.socket));
     if (folder !== join(this.dataDir, 'redis', 'run')) await rmdir(folder).catch(() => {});
