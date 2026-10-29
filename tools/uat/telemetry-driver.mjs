@@ -6,10 +6,6 @@
 
 import { js, sleep } from '../browser.mjs';
 
-/** A reaction in the open React menu, by its emoji: the item's icon says it (#263), or its text, as before icons. */
-export const reactItem = (emoji) =>
-  `[...document.querySelectorAll('[role=menuitemcheckbox],[role=menuitem]')].find((b) => b.querySelector('img')?.alt === ${js(emoji)} || b.textContent.trim().startsWith(${js(emoji)}))`;
-
 /** The page’s helpers: evaluate, click what an expression finds, find by text, and wait for an expression. */
 function helpers(page) {
   const ev = (expr) => page.evaluate(expr);
@@ -52,10 +48,14 @@ function roomActions({ ev, click, byText }) {
       await click(byText('', '[role=menuitem]', label), `“${label}” in the ⋯ menu`);
     },
     header: () => ev(`document.querySelector('#recording-badge')?.textContent ?? ''`),
-    /** Reacts to an item, by its id, from its React menu. */
+    /**
+     * Reacts to an item, by its id, with its inline button for that emoji (app/js/reactions.mjs, #320), as a person
+     * does. A button already pressed is yours already: clicking it would take it back.
+     */
     async react(key, emoji) {
-      await click(`document.querySelector(${js(`[data-key="${key}"] button[aria-label="React to this message"]`)})`, `the React button on ${key}`);
-      await click(reactItem(emoji), `${emoji} in the React menu`);
+      const button = `document.querySelector(${js(`[data-reactions="${key}"] button.react-btn[data-emoji="${emoji}"]`)})`;
+      if (await ev(`${button}?.getAttribute('aria-pressed') === 'true'`)) return;
+      await click(button, `the ${emoji} button on ${key}`);
     },
   };
 }

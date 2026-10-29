@@ -8,6 +8,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { connect, createServer } from 'node:net';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { HOST_ENTRY, takeDaemonLock } from '../../server/remote/host/daemon.mjs';
 import { bootId, sameProcess, startTime } from '../../server/remote/host/proc.mjs';
 import { gone, HARNESS, makeHost, NO_UNIX, read, realDaemon, sleep, TURN, until } from './host.mjs';
@@ -110,8 +111,8 @@ test('stop: a tool shell the harness leaves behind when SIGINT ends it goes too,
 // ── host serve and daemon.pid ──
 
 /** `host serve` as attach starts it, with its stderr kept. */
-function serve(h) {
-  const child = spawn(process.execPath, [HOST_ENTRY, 'serve'], { env: h.env, stdio: ['ignore', 'ignore', 'pipe'] });
+function serve(h, node = []) {
+  const child = spawn(process.execPath, [...node, HOST_ENTRY, 'serve'], { env: h.env, stdio: ['ignore', 'ignore', 'pipe'] });
   let err = '';
   child.stderr.on('data', (b) => (err += b));
   /** @type {Promise<number | null>} */
@@ -259,6 +260,23 @@ test('serve: one paused while it removes a dead daemon’s daemon.pid keeps daem
   } finally {
     if (a.held) a.release();
     s?.stop();
+    rmSync(h.home, { recursive: true, force: true });
+  }
+});
+
+test('#510 serve: a rejection nothing handled is logged with its stack, and the daemon keeps serving', { skip: NO_UNIX }, async () => {
+  const h = makeServeHost();
+  // tests/process/reject-on-signal.mjs makes a timer callback reject on SIGUSR2, as in the Postbox server’s own test.
+  const s = serve(h, ['--import', fileURLToPath(new URL('../process/reject-on-signal.mjs', import.meta.url))]);
+  try {
+    await until(() => answers(h.p.socket), 'the daemon to serve', 5000);
+    s.child.kill('SIGUSR2');
+    await until(() => s.err.includes('the #510 test’s rejection'), 'the rejection in its log', 5000);
+    assert.match(s.err, /reject-on-signal\.mjs:\d+/, 'with its stack');
+    assert.equal(s.child.exitCode, null, s.err);
+    assert.equal(await answers(h.p.socket), true, 'it still serves');
+  } finally {
+    s.stop();
     rmSync(h.home, { recursive: true, force: true });
   }
 });

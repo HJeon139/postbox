@@ -118,5 +118,17 @@
     }));
   }
 
+  const KIT_CLASSES = new Set(['btn', 'sm', 'ghost', 'chip', 'on', 'pill', 'field', 'label', 'input', 'select', 'dim', 'small', 'mono', 'seg', 'tbl', 'katex']);
+  function classCollisions() {
+    const names = new Set();
+    for (const el of document.body.querySelectorAll('[class]'))
+      for (const name of ours(el)) if (!KIT_CLASSES.has(name) && !name.startsWith('pb-')) names.add(name);
+    return [...names].slice(0, 5).map((name) => ({
+      code: 'class-collision',
+      message: `The class .${name} is also defined by Postbox’s stylesheet, so its shell styles change this app. Give the app’s class a prefix of its own, such as app-${name}.`,
+    }));
+  }
+
   window.__pbCheck.controlHidden = guard('control-hidden', controlHidden);
+  window.__pbCheck.classCollisions = guard('class-collision', classCollisions);
 })();
