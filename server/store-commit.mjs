@@ -96,13 +96,15 @@ async function writeOnce(store, given, opId) {
  * @param {import('./store.mjs').Store} store @param {{ type: string, data: any }} e @param {Positions | null} positions
  */
 export function applyWritten(store, e, positions) {
+  // Its line is taken before the reducer keeps its objects in the state, where later events change them.
+  const seq = store.state.seq + 1;
+  const line = JSON.stringify({ seq, type: e.type, data: e.data });
   const refs = touched(store.state, e.type, e.data);
   apply(store.state, e.type, e.data);
   store.track(e.type, e.data, refs);
   positions?.place(refs);
-  const ev = { seq: ++store.state.seq, type: e.type, data: e.data };
-  store.events.push({ seq: ev.seq, line: JSON.stringify(ev) });
-  for (const fn of store.listeners) fn(ev);
+  store.state.seq = seq;
+  store.broadcast(seq, line);
 }
 
 /**

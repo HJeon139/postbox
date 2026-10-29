@@ -16,12 +16,11 @@ import { catchUp, commit } from './store-commit.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
 import { importLegacy } from './store-import.mjs';
+import { broadcast } from './store-publish.mjs';
 import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
 import { failedStatus, pump, recovered } from './store-write.mjs';
 
 export { emptyState };
-
-const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
 
 /** Removes a data folder’s store, for a fresh start: the Redis data and any old log, snapshot or store.json. */
 export async function clearStore(dataDir) {
@@ -137,14 +136,17 @@ export class Store {
   publish(ev, json, refs) {
     ev.seq = ++this.state.seq;
     const line = `{"seq":${ev.seq},"type":${JSON.stringify(ev.type)},"data":${json}}`;
-    this.events.push({ seq: ev.seq, line });
-    if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
-    for (const fn of this.listeners) fn(ev);
+    this.broadcast(ev.seq, line);
     if (!this.redis) return;
     this.lines.push({ seq: ev.seq, line });
     this.positions.place(refs);
     for (const ref of refs) this.mark(ref, ev.seq);
     this.schedule();
+  }
+
+  /** Keeps an event for replay and tells subscribers, from its line (server/store-publish.mjs). @param {number} seq @param {string} line */
+  broadcast(seq, line) {
+    broadcast(this, seq, line);
   }
 
   /** @param {import('./store-docs.mjs').Ref} ref @param {number} seq */
