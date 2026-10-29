@@ -202,3 +202,23 @@ test('#485: a result whose text was streamed isn’t posted again, in every reco
     }
   }
 });
+
+test('#485: a failed reply’s @-mentions still wake their agents, with the message marked as from a failed turn', async () => {
+  // The person’s choice, 29 October 2026: in #485, developer’s report asked two agents to act, and neither heard.
+  const { store, rt, adapter, t } = blocksSetup();
+  const other = rt.createPersona({ handle: 'researcher' });
+  rt.ensureSession(t.id, other.id);
+  adapter.next.push(async (c) => {
+    c.text('#451 is ready at 41f3a0f. @researcher please record it.');
+    throw new Error('Claude Code exited with code 1.');
+  });
+  adapter.next.push(async (c) => c.text('Recorded.'));
+  rt.sendMessage(t.id, { text: '@critic watch the checks' });
+  await settleBlocks(rt);
+  const woke = adapter.calls.find((x) => x.message.kind === 'agent' && x.message.from === '@critic');
+  assert.ok(woke, 'researcher was woken');
+  assert.match(woke.message.text, /^\(This reply failed before it finished: Claude Code exited with code 1\.[^)]*\)/);
+  assert.match(woke.message.text, /#451 is ready at 41f3a0f\. @researcher please record it\./);
+  // It wakes from the failed reply itself, which isn’t posted again.
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'agent' && i.text?.includes('#451 is ready')).length, 1);
+});
