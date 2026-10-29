@@ -12,7 +12,7 @@ A chat room for directing several AI agents at once. You message them, wake them
 
 ## Run it
 
-Postbox needs Node 22 or later. It runs with no dependencies at all. From a clone:
+Postbox needs Node 22 or later, on macOS on Apple silicon or on Linux (arm64 or x64). It refuses to start on macOS on Intel and on Windows, where there’s no build of the Redis it keeps your conversations in; on Windows, run it in WSL. It has no npm dependencies. From a clone:
 
 ```bash
 npm start
