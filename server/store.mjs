@@ -37,11 +37,13 @@ export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url
 export class Store {
   /**
    * @param {string|null} dir  the data folder; null keeps everything in memory (tests)
-   * @param {{ redisHome?: string }} [o]  a Redis to run instead of POSTBOX_REDIS_HOME or the download
+   * @param {{ redisHome?: string, shapes?: import('./store-docs.mjs').Shapes }} [o]  a Redis to run instead of
+   *   POSTBOX_REDIS_HOME or the download; the shape to read documents in, for a test of a later one (ST-1)
    */
-  constructor(dir, { redisHome } = {}) {
+  constructor(dir, { redisHome, shapes } = {}) {
     this.dir = dir;
     this.redisHome = redisHome;
+    this.shapes = shapes;
     this.state = emptyState();
     this.events = [];
     this.listeners = new Set();
@@ -85,7 +87,7 @@ export class Store {
     attach(this, client);
     sup.on('status', (s) => this.onStatus(s));
     await importLegacy(this.dir, client);
-    const { state, positions } = await readState(client);
+    const { state, positions } = await readState(client, this.shapes);
     this.state = state;
     this.positions = positions;
     this.confirmed = state.seq;

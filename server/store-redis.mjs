@@ -10,7 +10,7 @@ import { emptyState, ownState } from '../shared/state.mjs';
 import { storeError } from './redis-client.mjs';
 import { RedisSupervisor } from './redis-supervisor.mjs';
 import { redisHome } from './redis-unpack.mjs';
-import { COLLECTIONS, KIND, Positions, upcast } from './store-docs.mjs';
+import { COLLECTIONS, KIND, Positions, SHAPES, upcast } from './store-docs.mjs';
 
 /** Entries kept in the events stream before it’s trimmed (approximately; “Observability and calibration”). */
 export const STREAM_KEEP = 20000;
@@ -128,13 +128,16 @@ export async function writeBatch(c, { opId = '', prev, events, writes }) {
   return { seq: Number(seq), duplicate: kind === 'dup' };
 }
 
-/** JSON.MGET in slices, so no reply is huge. @param {import('./redis-client.mjs').RedisClient} c @param {string[]} keys */
-async function docs(c, keys) {
+/**
+ * JSON.MGET in slices, so no reply is huge.
+ * @param {import('./redis-client.mjs').RedisClient} c @param {string[]} keys @param {import('./store-docs.mjs').Shapes} shapes
+ */
+async function docs(c, keys, shapes) {
   const out = [];
   for (let i = 0; i < keys.length; i += 500) {
     const slice = keys.slice(i, i + 500);
     const got = await c.call('JSON.MGET', ...slice, '$');
-    for (const [k, raw] of got.entries()) out.push(raw === null ? undefined : upcast(JSON.parse(raw)[0], slice[k]));
+    for (const [k, raw] of got.entries()) out.push(raw === null ? undefined : upcast(JSON.parse(raw)[0], slice[k], shapes));
   }
   return out;
 }
@@ -145,28 +148,32 @@ async function docs(c, keys) {
  * The documents take many commands to read, and another process may write between them (review finding 5 on #525).
  * Every write moves `seq` in the same script as its documents, so a read that finds the same `seq` after as before saw
  * no write; one that doesn’t is read again, a few times, and then refused rather than returning a mix.
- * @param {import('./redis-client.mjs').RedisClient} c
+ * @param {import('./redis-client.mjs').RedisClient} c @param {import('./store-docs.mjs').Shapes} [shapes]  the shape to read in
  */
-export async function readState(c) {
+export async function readState(c, shapes = SHAPES) {
   for (let tries = 0; tries < 10; tries++) {
-    const got = await readOnce(c);
+    const got = await readOnce(c, shapes);
     if (Number((await c.call('GET', 'seq')) ?? 0) === got.state.seq) return got;
   }
   throw storeError('ESEQ', 'The store’s Redis kept changing while Postbox read it; start Postbox again.');
 }
 
-/** One read of the state, which another write may have landed in the middle of. @param {import('./redis-client.mjs').RedisClient} c */
-async function readOnce(c) {
+/**
+ * One read of the state, which another write may have landed in the middle of.
+ * @param {import('./redis-client.mjs').RedisClient} c @param {import('./store-docs.mjs').Shapes} shapes
+ */
+async function readOnce(c, shapes) {
   const s = emptyState();
   s.seq = Number((await c.call('GET', 'seq')) ?? 0);
   const settings = await c.call('JSON.GET', 'settings', '$');
-  if (settings) Object.assign(s.settings, upcast(JSON.parse(settings)[0], 'settings'));
+  if (settings) Object.assign(s.settings, upcast(JSON.parse(settings)[0], 'settings', shapes));
   const orders = await Promise.all(COLLECTIONS.map((col) => c.call('ZRANGE', `order:${col}`, 0, -1)));
   for (const [i, col] of COLLECTIONS.entries()) {
     const ids = orders[i];
     const values = await docs(
       c,
       ids.map((id) => `${KIND[col]}:${id}`),
+      shapes,
     );
     for (const [k, id] of ids.entries()) if (values[k] !== undefined) s[col][id] = values[k];
   }
@@ -179,6 +186,7 @@ async function readOnce(c) {
     const items = await docs(
       c,
       ids.map((id) => `item:${id}`),
+      shapes,
     );
     s.items[t] = items.filter((it) => it !== undefined);
     for (const [k, id] of ids.entries()) positions.set(t, id, Number(flat[2 * k + 1]));

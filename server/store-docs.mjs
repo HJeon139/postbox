@@ -10,8 +10,15 @@ import { map } from '../shared/state.mjs';
 /** The shape of every document written now. A newer one is refused on read; an older one is lifted by UPCAST. */
 export const DOC_V = 1;
 
-/** @type {Record<number, (d: any) => any>} each lifts a document of shape v to v + 1 */
+/** @type {Record<number, (d: any, key: string) => any>} each lifts a document of shape v to v + 1; key: its Redis key */
 const UPCAST = {};
+
+/**
+ * @typedef {{ v: number, up: Record<number, (d: any, key: string) => any> }} Shapes  the shape documents are read in, and the
+ *   steps that lift older ones to it
+ */
+/** What this Postbox reads. A store takes others only in tests, which add a shape of their own (ST-1). @type {Shapes} */
+export const SHAPES = Object.freeze({ v: DOC_V, up: UPCAST });
 
 /** The key prefix of each collection’s documents. */
 export const KIND = Object.freeze({
@@ -170,14 +177,16 @@ export function writesFor(s, dirty, itemOf, scoreOf) {
 }
 
 /**
- * A document’s value in the current shape. A document from a newer Postbox is refused, since this one can’t read it.
- * @param {{ v: number, d: any }} raw @param {string} key
+ * A document’s value in the current shape, lifted one step at a time from the shape it was written in. Only the value
+ * read is lifted: the document in Redis stays as it was until something changes it, and is then written in the
+ * current shape. A document from a newer Postbox is refused, since this one can’t read it.
+ * @param {{ v: number, d: any }} raw @param {string} key @param {Shapes} [shapes]
  */
-export function upcast(raw, key) {
+export function upcast(raw, key, shapes = SHAPES) {
   let { v, d } = raw;
-  if (v > DOC_V)
-    throw Object.assign(new Error(`${key} was written by a newer Postbox (shape ${v}); this one reads up to ${DOC_V}. Update Postbox.`), { code: 'ENEWER' });
-  while (v < DOC_V) d = UPCAST[v++](d);
+  if (v > shapes.v)
+    throw Object.assign(new Error(`${key} was written by a newer Postbox (shape ${v}); this one reads up to ${shapes.v}. Update Postbox.`), { code: 'ENEWER' });
+  while (v < shapes.v) d = shapes.up[v++](d, key);
   return d;
 }
 
