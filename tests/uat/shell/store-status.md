@@ -8,10 +8,10 @@ Postbox keeps everything in its own Redis store (#508’s requirements, ST-3; de
 
 ## Expected functionality
 
-- While the store is down, one line names the cause: another program has its port, its Redis is missing, its file is damaged, it stopped and is starting again, it refused a write, or it’s reading back what it holds. It says agents don’t start new turns until then.
+- While the store is down, one line names the cause: another program has its port, its Redis is missing, its file is damaged, it stopped and is starting again, it refused a write, or it’s reading back what it holds after it restarted or Postbox’s connection to it dropped. It says agents don’t start new turns until then.
 - Nothing covers the page: conversations stay readable, the composer sits above the line, and a message you send is refused with a toast saying why.
 - An agent working when the store went down stops; once the store is back, its reply reads “Stopped at <time>: Postbox couldn’t save changes”.
-- Retry asks Postbox to start its store again, or to read it back now. The line goes once Postbox can save again, and a screen reader hears “Postbox can save changes again.”
+- Retry asks Postbox to start its store again, or to reconnect and read it back now. The line goes once Postbox can save again, and a screen reader hears “Postbox can save changes again.”
 
 ## Steps to reproduce
 
