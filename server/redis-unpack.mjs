@@ -72,17 +72,18 @@ export async function unpackRedisBuild({ path, sha256, dataDir, version, target 
   const entries = readTar(tar, `redis-${version}-${target}`);
   const part = join(parent, `.${target}.${randomBytes(6).toString('hex')}.part`);
   try {
-    await mkdir(part, { recursive: true });
+    await mkdir(part, { recursive: true, mode: 0o700 });
     for (const e of entries) {
       const to = join(part, e.path);
-      if (e.dir) await mkdir(to, { recursive: true });
+      if (e.dir) await mkdir(to, { recursive: true, mode: 0o700 });
       else {
-        await mkdir(join(to, '..'), { recursive: true });
+        await mkdir(join(to, '..'), { recursive: true, mode: 0o700 });
         await writeFile(to, e.body, { flag: 'wx' });
-        await chmod(to, e.mode & 0o111 ? 0o755 : 0o644);
+        // Private to the person (SR-5): executables and modules (Redis loads none without its execute bit) 0700, the rest 0600.
+        await chmod(to, e.mode & 0o111 && (e.path.startsWith('bin/') || e.path.endsWith('.so')) ? 0o700 : 0o600);
       }
     }
-    await writeFile(join(part, '.sha256'), `${sha256}\n`);
+    await writeFile(join(part, '.sha256'), `${sha256}\n`, { mode: 0o600 });
     await rm(home, { recursive: true, force: true });
     await rename(part, home);
     return home;

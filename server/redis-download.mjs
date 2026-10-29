@@ -106,7 +106,7 @@ export async function fetchRedisBuild({
     throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: ${e.cause?.message ?? e.message}. Check the network, then start Postbox again.`, e);
   }
   if (!res.ok || !res.body) throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: the server answered ${res.status}. Start Postbox again later.`);
-  await mkdir(dir, { recursive: true });
+  await mkdir(dir, { recursive: true, mode: 0o700 });
   const part = join(dir, `.${entry.asset}.${randomBytes(6).toString('hex')}.part`);
   try {
     const got = await save(res, part, url, maxBytes);

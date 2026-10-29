@@ -54,6 +54,8 @@ const BUILD = [
   { name: 'redis-8.10.3-darwin-arm64/bin/redis-server', body: '#!fake server', mode: 0o755 },
   { name: 'redis-8.10.3-darwin-arm64/modules/rejson.so', body: 'json', mode: 0o755 },
   { name: 'redis-8.10.3-darwin-arm64/modules/redisearch.so', body: 'search', mode: 0o755 },
+  { name: 'redis-8.10.3-darwin-arm64/lib/', type: '5', mode: 0o755 },
+  { name: 'redis-8.10.3-darwin-arm64/lib/libssl.3.dylib', body: 'ssl', mode: 0o755 },
   { name: 'redis-8.10.3-darwin-arm64/LICENSE.txt', body: 'AGPLv3' },
 ];
 
@@ -66,13 +68,25 @@ async function archive(name, entries) {
   return { path, sha256: createHash('sha256').update(bytes).digest('hex'), dataDir, version: '8.10.3', target: 'darwin-arm64' };
 }
 
-test('a verified build unpacks into redis/<version>/<target> under the data folder, with its executable bits', async () => {
+test('a verified build unpacks into redis/<version>/<target> under the data folder, private to the person (SR-5)', async () => {
   const a = await archive('good', BUILD);
   const home = await unpackRedisBuild(a);
   assert.equal(home, join(a.dataDir, 'redis', '8.10.3', 'darwin-arm64'));
   assert.equal(await readFile(join(home, 'bin', 'redis-server'), 'utf8'), '#!fake server');
-  assert.equal((await stat(join(home, 'bin', 'redis-server'))).mode & 0o777, 0o755);
-  assert.equal((await stat(join(home, 'LICENSE.txt'))).mode & 0o111, 0);
+  const mode = async (p) => (await stat(join(home, p))).mode & 0o777;
+  // Executables and modules (Redis loads no module without its execute bit) are 0700; libraries and the rest, 0600.
+  assert.deepEqual(
+    {
+      home: await mode('.'),
+      bin: await mode('bin'),
+      server: await mode('bin/redis-server'),
+      module: await mode('modules/rejson.so'),
+      lib: await mode('lib/libssl.3.dylib'),
+      license: await mode('LICENSE.txt'),
+      version: (await stat(join(home, '..'))).mode & 0o777,
+    },
+    { home: 0o700, bin: 0o700, server: 0o700, module: 0o700, lib: 0o600, license: 0o600, version: 0o700 },
+  );
   assert.deepEqual((await readdir(join(home, 'modules'))).sort(), ['redisearch.so', 'rejson.so']);
 });
 

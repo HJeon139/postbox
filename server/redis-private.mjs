@@ -1,8 +1,8 @@
 // What keeps the store’s Redis private (#508’s requirements, 4.3, “Store security”; design, “Store security”): where
-// its socket goes (SR-1), and who may run what on it (SR-3). server/redis-supervisor.mjs writes these into its config.
+// its socket goes (SR-1), who may run what on it (SR-3), and its files’ modes (SR-5). server/redis-supervisor.mjs writes these into its config.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { chmod, lstat, mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -78,5 +78,33 @@ export async function writePrivate(path, text) {
     await rename(part, path);
   } finally {
     await rm(part, { force: true });
+  }
+}
+
+/**
+ * Makes a folder and everything in it private (SR-5): folders 0700; a file its owner may run (the server, a module:
+ * Redis loads none without its execute bit) 0700; any other file, the data, logs and config among them, 0600. Links are
+ * left as they are, never followed. Run at each start, so an install an earlier version left readable is fixed too.
+ * @param {string} dir
+ */
+export async function privateTree(dir) {
+  const st = await lstat(dir).catch(() => null);
+  if (!st || st.isSymbolicLink()) return;
+  if (st.isDirectory()) {
+    if ((st.mode & 0o777) !== 0o700) await chmod(dir, 0o700);
+    for (const name of await readdir(dir)) await privateTree(join(dir, name));
+  } else if (st.isFile()) {
+    const mode = st.mode & 0o100 ? 0o700 : 0o600;
+    if ((st.mode & 0o777) !== mode) await chmod(dir, mode);
+  }
+}
+
+/** Runs fn with a umask that leaves what it creates private: the child inherits it, so Redis’s AOF files are 0600. */
+export function privately(fn) {
+  const old = process.umask(0o077);
+  try {
+    return fn();
+  } finally {
+    process.umask(old);
   }
 }

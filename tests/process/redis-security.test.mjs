@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -228,6 +228,48 @@ test('SR-2: no password is on a command line or in a log, the config holds only 
     }
     assert.match(conf, /^user postbox on #[0-9a-f]{64} /m);
     for (const f of ['redis.conf', 'owner.json']) assert.equal(statSync(join(dataDir, 'redis', f)).mode & 0o777, 0o600, f);
+  } finally {
+    await sup.stop();
+  }
+});
+
+/** Every entry under a folder, with its mode, links not followed. @param {string} dir @returns {[string, number, string][]} */
+const modes = (dir) =>
+  readdirSync(dir, { recursive: true, withFileTypes: true }).map((e) => {
+    const p = join(e.parentPath, e.name);
+    const st = lstatSync(p);
+    return [p.slice(dir.length + 1), st.mode & 0o777, st.isDirectory() ? 'dir' : st.isSocket() ? 'socket' : st.isSymbolicLink() ? 'link' : 'file'];
+  });
+
+test('SR-5: after a start, the store’s folders are 0700 and its data, logs and config 0600, an earlier install’s included', async () => {
+  const dataDir = join(tmp, 'sr5');
+  // As an earlier version left it: readable by others.
+  mkdirSync(join(dataDir, 'redis', 'data', 'appendonly'), { recursive: true, mode: 0o755 });
+  mkdirSync(join(dataDir, 'redis', 'logs'), { recursive: true, mode: 0o755 });
+  writeFileSync(join(dataDir, 'redis', 'logs', 'redis.log'), '', { mode: 0o644 });
+  chmodSync(join(dataDir, 'redis'), 0o755);
+  RedisSupervisor.fixtureUser = true;
+  const sup = new RedisSupervisor({ home: HOME, dataDir });
+  await sup.start();
+  RedisSupervisor.fixtureUser = false;
+  try {
+    const c = await sup.client();
+    await c.call('SET', 'k', 'v');
+    await c.call('WAITAOF', 1, 0, 2000);
+    c.close();
+    const admin = await sup.fixtureClient();
+    await admin.call('BGREWRITEAOF'); // a rewrite makes new files: they’re private too
+    for (let i = 0; i < 100 && /aof_rewrite_in_progress:1/.test(String(await admin.call('INFO', 'persistence'))); i++)
+      await new Promise((ok) => setTimeout(ok, 50));
+    admin.close();
+    const root = join(dataDir, 'redis');
+    const all = [['.', statSync(root).mode & 0o777, 'dir'], ...modes(root)];
+    assert.ok(
+      all.some(([p]) => p.endsWith('.aof')),
+      'an AOF to check',
+    );
+    const wrong = all.filter(([, mode, kind]) => (kind === 'dir' ? mode !== 0o700 : kind === 'file' ? mode !== 0o600 : kind === 'link'));
+    assert.deepEqual(wrong, [], 'folders 0700, files 0600, no links');
   } finally {
     await sup.stop();
   }

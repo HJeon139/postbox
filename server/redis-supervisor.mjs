@@ -19,7 +19,7 @@ import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RedisClient, storeError } from './redis-client.mjs';
-import { hashed, privateDir, STORE_COMMANDS, socketFor, writePrivate } from './redis-private.mjs';
+import { hashed, privateDir, privately, privateTree, STORE_COMMANDS, socketFor, writePrivate } from './redis-private.mjs';
 
 /** @typedef {'socket' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
 /** @typedef {{ state: 'idle' | 'starting' | 'running' | 'stopped' } | { state: 'down', cause: DownCause, message: string }} RedisStatus */
@@ -153,8 +153,9 @@ export class RedisSupervisor extends EventEmitter {
   /** @param {string[]} modules */
   async writeConf(modules) {
     const dir = join(this.dataDir, 'redis');
-    await mkdir(join(dir, 'data'), { recursive: true });
-    await mkdir(join(dir, 'logs'), { recursive: true });
+    await mkdir(join(dir, 'data'), { recursive: true, mode: 0o700 });
+    await mkdir(join(dir, 'logs'), { recursive: true, mode: 0o700 });
+    await privateTree(dir);
     const conf = join(dir, 'redis.conf');
     const lines = [
       'port 0',
@@ -189,8 +190,8 @@ export class RedisSupervisor extends EventEmitter {
 
   /** Spawns the child and waits for its ready line. @param {string} server @param {string} conf */
   run(server, conf) {
-    const log = createWriteStream(join(this.dataDir, 'redis', 'logs', 'redis.log'), { flags: 'a' });
-    const child = spawn(server, [conf], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const log = createWriteStream(join(this.dataDir, 'redis', 'logs', 'redis.log'), { flags: 'a', mode: 0o600 });
+    const child = privately(() => spawn(server, [conf], { stdio: ['ignore', 'pipe', 'pipe'] }));
     this.child = child;
     process.on('exit', this.killOnExit);
     let seen = '';
