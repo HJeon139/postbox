@@ -5,10 +5,10 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { appendFile, mkdtemp, readdir, readFile, realpath, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
+import { existsSync } from 'node:fs';
+import { appendFile, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { RedisSupervisor, redisFiles } from '../../server/redis-supervisor.mjs';
@@ -38,18 +38,17 @@ function until(sup, pred, what) {
   });
 }
 
-test('the child runs on a port Postbox picks, on 127.0.0.1, with AOF everysec, both modules, and its files in the data folder', async () => {
+test('the child runs on its private socket, with no port, AOF everysec, both modules, and its files in the data folder', async () => {
   const dataDir = join(tmp, 'runs');
   const sup = new RedisSupervisor({ home: HOME, dataDir });
   await sup.start();
   try {
     assert.equal(sup.status.state, 'running');
-    assert.ok(sup.port > 0);
     const c = await sup.client();
     const flat = await c.call('CONFIG', 'GET', '*');
     const conf = Object.fromEntries(flat.flatMap((v, i) => (i % 2 ? [] : [[v, flat[i + 1]]])));
-    assert.equal(conf.bind, '127.0.0.1');
-    assert.equal(conf.port, String(sup.port));
+    assert.equal(conf.port, '0');
+    assert.equal(conf.unixsocket, sup.socket);
     assert.equal(conf.appendonly, 'yes');
     assert.equal(conf.appendfsync, 'everysec');
     assert.equal(conf.dir, join(dataDir, 'redis', 'data'));
@@ -71,18 +70,19 @@ test('a missing binary fails the start with the cause named, and nothing is spaw
   assert.equal(sup.status.cause, 'binary-missing');
 });
 
-test('a port another process holds fails the start as port-taken', async () => {
-  const blocker = createServer();
-  await new Promise((ok) => blocker.listen(0, '127.0.0.1', ok));
-  const port = /** @type {import('node:net').AddressInfo} */ (blocker.address()).port;
-  const sup = new RedisSupervisor({ home: HOME, dataDir: join(tmp, 'taken'), port });
+test('a socket folder that’s a link fails the start as socket, and nothing is spawned', async () => {
+  const sup = new RedisSupervisor({ home: HOME, dataDir: join(tmp, 'linked') });
+  const folder = dirname(/** @type {string} */ (sup.socket));
+  await mkdir(dirname(folder), { recursive: true });
+  await mkdir(join(tmp, 'elsewhere'));
+  await symlink(join(tmp, 'elsewhere'), folder);
   try {
     await assert.rejects(sup.start(), (e) => e.code === 'ESTOREDOWN');
-    assert.equal(sup.status.cause, 'port-taken');
-    assert.match(sup.status.message, new RegExp(`port ${port}`));
+    assert.equal(sup.status.cause, 'socket');
+    assert.equal(sup.child, null);
   } finally {
     await sup.stop();
-    blocker.close();
+    await rm(folder, { force: true });
   }
 });
 
@@ -129,17 +129,14 @@ test('a corrupt append-only file fails the start as corrupt-aof, and isn’t res
   }
 });
 
-test('stop() shuts the child down cleanly: it exits, its port is free, and its status is stopped', async () => {
+test('stop() shuts the child down cleanly: it exits, its socket is gone, and its status is stopped', async () => {
   const sup = new RedisSupervisor({ home: HOME, dataDir: join(tmp, 'stops') });
   await sup.start();
-  const { port } = sup;
   const child = sup.child;
   await sup.stop();
   assert.equal(sup.status.state, 'stopped');
   assert.notEqual(child?.exitCode ?? child?.signalCode, null);
-  const probe = createServer();
-  await new Promise((ok, fail) => probe.once('error', fail).listen(port, '127.0.0.1', ok));
-  probe.close();
+  assert.equal(existsSync(/** @type {string} */ (sup.socket)), false);
   assert.match(await readFile(join(tmp, 'stops', 'redis', 'logs', 'redis.log'), 'utf8'), /ready to exit, bye bye/i);
 });
 

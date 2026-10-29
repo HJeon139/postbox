@@ -1,4 +1,4 @@
-// A small Redis client: RESP2 over one TCP connection to the store’s Redis on 127.0.0.1 (designs/508/design.md,
+// A small Redis client: RESP2 over one connection to the store’s Redis on its private Unix socket (designs/508/design.md,
 // “Storage: a Redis 8 server that Postbox bundles and runs”). Postbox keeps zero npm dependencies, and it needs only
 // commands, pipelining and errors with a code: call() sends at once, and replies come back in the order sent, so
 // several calls in flight are a pipeline. When the connection drops, every call waiting on it fails with ESTOREDOWN.
@@ -68,10 +68,9 @@ export function decode(buf, pos) {
 }
 
 export class RedisClient {
-  /** @param {{ port: number, password?: string, host?: string }} o */
-  constructor({ port, password, host = '127.0.0.1' }) {
-    this.port = port;
-    this.host = host;
+  /** @param {{ path: string, password?: string }} o  path: the Unix socket */
+  constructor({ path, password }) {
+    this.path = path;
     this.password = password;
     /** @type {{ ok: (v: any) => void, fail: (e: Error) => void }[]} */
     this.pending = [];
@@ -85,11 +84,11 @@ export class RedisClient {
 
   /** Connects, and authenticates when there’s a password. */
   async connect() {
-    const socket = net.createConnection({ port: this.port, host: this.host });
-    socket.setNoDelay(true);
+    const socket = net.createConnection({ path: this.path });
     await new Promise((ok, fail) => {
       socket.once('connect', ok);
-      socket.once('error', (e) => fail(storeError('ESTOREDOWN', `Couldn’t reach the store’s Redis on port ${this.port}: ${e.message}`, e)));
+      // The socket’s path stays out of the message: it can reach an agent as a refused write’s reason (SR-7).
+      socket.once('error', (e) => fail(storeError('ESTOREDOWN', `Couldn’t reach the store’s Redis (${/** @type {any} */ (e).code ?? 'error'}).`, e)));
     });
     this.socket = socket;
     // An idle connection doesn’t keep Postbox running; one waiting on a reply does.

@@ -1,24 +1,27 @@
 // The store’s Redis 8 child process (designs/508/design.md, “Storage: a Redis 8 server that Postbox bundles and
-// runs”, decisions 1, 3 and 7). Postbox starts it before it listens, on a port it picks, bound to 127.0.0.1, with a
-// password and its config, append-only file and log under the data folder:
+// runs”, decisions 1, 3 and 7; requirements 4.3, “Store security”). Postbox starts it before it listens, with a
+// password and its config, append-only file and log under the data folder. It has no TCP listener (`port 0`): Postbox
+// reaches it on a Unix socket in a folder only the person can open (SR-1):
 //
-//   <data>/redis/redis.conf     written at each start (0600): port, password, AOF everysec, the two modules
+//   <data>/redis/redis.conf     written at each start (0600): socket, password, AOF everysec, the two modules
+//   <data>/redis/run/redis.sock the socket, in a 0700 folder; a data folder too long for a socket path uses a 0700
+//                               folder in the system’s temporary folder instead, named by a hash of the data folder
 //   <data>/redis/data/          the append-only files: the store itself
 //   <data>/redis/logs/redis.log the child’s log, appended
 //
 // It restarts the child if it dies, and stops it when Postbox stops or exits. Its status names why it isn’t running
-// (port-taken, binary-missing, corrupt-aof, died), and writes fail closed meanwhile (server/store.mjs).
+// (socket, binary-missing, corrupt-aof, died), and writes fail closed meanwhile (server/store.mjs).
 
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { chmod, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { RedisClient, storeError } from './redis-client.mjs';
 
-/** @typedef {'port-taken' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
+/** @typedef {'socket' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
 /** @typedef {{ state: 'idle' | 'starting' | 'running' | 'stopped' } | { state: 'down', cause: DownCause, message: string }} RedisStatus */
 
 /**
@@ -35,29 +38,47 @@ export function redisFiles(home) {
   throw Object.assign(new Error(`There’s no Redis server in ${home} (bin/redis-server or src/redis-server).`), { code: 'ENOENT' });
 }
 
-/** A free port on 127.0.0.1, from the system. */
-const freePort = () =>
-  new Promise((ok, fail) => {
-    const s = createServer().once('error', fail);
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = /** @type {import('node:net').AddressInfo} */ (s.address());
-      s.close(() => ok(port));
-    });
-  });
+/** The longest socket path every supported platform takes: macOS’s sun_path holds 104 bytes with its NUL. */
+const SOCKET_MAX = 100;
+
+/**
+ * Where a data folder’s Redis listens: <data>/redis/run/redis.sock, or, when that’s too long for a socket path, a
+ * folder in the system’s temporary folder named by a hash of the data folder. Null when neither fits.
+ * @param {string} dataDir @param {string} [tmp]
+ */
+export function socketFor(dataDir, tmp = tmpdir()) {
+  const inData = join(dataDir, 'redis', 'run', 'redis.sock');
+  if (Buffer.byteLength(inData) <= SOCKET_MAX) return inData;
+  const hash = createHash('sha256').update(resolve(dataDir)).digest('hex').slice(0, 16);
+  const inTmp = join(tmp, `postbox-redis-${hash}`, 'redis.sock');
+  return Buffer.byteLength(inTmp) <= SOCKET_MAX ? inTmp : null;
+}
+
+/**
+ * Makes a folder only the person can open, or refuses one that isn’t theirs or is a link.
+ * @param {string} dir
+ */
+export async function privateDir(dir) {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const st = await lstat(dir);
+  if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`${dir} isn’t a plain folder`);
+  if (process.getuid && st.uid !== process.getuid()) throw new Error(`${dir} belongs to another user`);
+  if ((st.mode & 0o777) !== 0o700) await chmod(dir, 0o700);
+}
 
 /** A value in redis.conf, quoted. @param {string} v */
 const q = (v) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
 /** Why the child stopped, from what it logged. @param {string} log @returns {DownCause} */
 function causeOf(log) {
-  if (/Address already in use|Could not create server TCP listening socket/i.test(log)) return 'port-taken';
+  if (/Failed opening Unix socket|Could not create server TCP listening socket/i.test(log)) return 'socket';
   if (/Bad file format reading the append only file|Unrecoverable error reading the append only file|AOF.*(corrupt|format)/i.test(log)) return 'corrupt-aof';
   return 'died';
 }
 
 const MESSAGES = {
-  'port-taken': (s) =>
-    `The store’s Redis couldn’t listen on port ${s.port}: another program has it. Close that program, or let Postbox pick a port, then Retry.`,
+  socket: () =>
+    'The store’s Redis couldn’t open its private socket. Check that the data folder’s redis/run folder (or the private folder Postbox made for it in the temporary folder) belongs to you and isn’t a link, then Retry.',
   'binary-missing': (s) => `The store’s Redis isn’t where Postbox keeps it (${s.home}). Start Postbox again to download it.`,
   'corrupt-aof': (s) =>
     `The store’s append-only file in ${join(s.dataDir, 'redis', 'data')} is damaged, so Redis won’t load it. Restore the data folder from its backup, or repair it with redis-check-aof, then Retry.`,
@@ -66,15 +87,15 @@ const MESSAGES = {
 
 export class RedisSupervisor extends EventEmitter {
   /**
-   * @param {{ home: string, dataDir: string, port?: number, restartMs?: number, readyMs?: number }} o
-   *   port: a fixed port (otherwise one is picked at each start); restartMs: the first wait before a restart
+   * @param {{ home: string, dataDir: string, restartMs?: number, readyMs?: number }} o
+   *   restartMs: the first wait before a restart
    */
-  constructor({ home, dataDir, port, restartMs = 250, readyMs = 15000 }) {
+  constructor({ home, dataDir, restartMs = 250, readyMs = 15000 }) {
     super();
     this.home = home;
     this.dataDir = dataDir;
-    this.fixedPort = port;
-    this.port = port ?? 0;
+    /** The Unix socket it listens on; never told to agents or hosts (SR-7). */
+    this.socket = socketFor(dataDir);
     this.restartMs = restartMs;
     this.readyMs = readyMs;
     this.password = randomBytes(24).toString('hex');
@@ -110,8 +131,13 @@ export class RedisSupervisor extends EventEmitter {
     } catch (e) {
       throw this.down('binary-missing', e.message);
     }
+    if (!this.socket) throw this.down('socket', 'no socket path fits');
+    try {
+      await privateDir(join(this.socket, '..'));
+    } catch (e) {
+      throw this.down('socket', e.message);
+    }
     await this.shutDownLeftover();
-    this.port = this.fixedPort ?? (await freePort());
     this.set({ state: 'starting' });
     const conf = await this.writeConf(files.modules);
     return this.run(files.server, conf);
@@ -120,15 +146,15 @@ export class RedisSupervisor extends EventEmitter {
   /** A child an earlier Postbox left running on this data folder holds its files: ask it to shut down. */
   async shutDownLeftover() {
     const old = await readFile(join(this.dataDir, 'redis', 'redis.conf'), 'utf8').catch(() => '');
-    const port = Number(old.match(/^port (\d+)$/m)?.[1]);
     const pass = old.match(/^requirepass "([0-9a-f]+)"$/m)?.[1];
-    if (!port || !pass) return;
-    const c = await new RedisClient({ port, password: pass }).connect().catch(() => null);
+    const path = this.socket;
+    if (!path || !pass) return;
+    const c = await new RedisClient({ path, password: pass }).connect().catch(() => null);
     if (!c) return;
     await c.call('SHUTDOWN').catch(() => {}); // the connection closes as it exits
     c.close();
     const listening = () =>
-      new RedisClient({ port })
+      new RedisClient({ path })
         .connect()
         .then((x) => {
           x.close();
@@ -145,8 +171,9 @@ export class RedisSupervisor extends EventEmitter {
     await mkdir(join(dir, 'logs'), { recursive: true });
     const conf = join(dir, 'redis.conf');
     const lines = [
-      'bind 127.0.0.1',
-      `port ${this.port}`,
+      'port 0',
+      `unixsocket ${q(/** @type {string} */ (this.socket))}`,
+      'unixsocketperm 600',
       'protected-mode yes',
       `requirepass ${q(this.password)}`,
       `dir ${q(join(dir, 'data'))}`,
@@ -226,7 +253,7 @@ export class RedisSupervisor extends EventEmitter {
 
   /** A new connection to the child, authenticated. */
   client() {
-    return new RedisClient({ port: this.port, password: this.password }).connect();
+    return new RedisClient({ path: /** @type {string} */ (this.socket), password: this.password }).connect();
   }
 
   /** Stops the child: SIGINT, which Redis takes as a clean shutdown that writes its AOF, then SIGKILL. */

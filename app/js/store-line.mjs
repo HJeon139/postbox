@@ -9,7 +9,7 @@ import { say } from './ui.mjs';
 
 /** What each cause means for you, first: the server’s message after it says what happened and what to do. */
 const LEAD = {
-  'port-taken': 'Postbox can’t save changes: another program has its store’s port.',
+  socket: 'Postbox can’t save changes: its store couldn’t open its private socket.',
   'binary-missing': 'Postbox can’t save changes: its store’s Redis is missing.',
   'corrupt-aof': 'Postbox can’t save changes: its store’s file is damaged.',
   died: 'Postbox can’t save changes: its store stopped, and Postbox is starting it again.',

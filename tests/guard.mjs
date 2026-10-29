@@ -4,8 +4,8 @@
 //
 // One exception: the store (server/store.mjs) is a Redis 8 child process, and a store opened on a data folder starts
 // that folder’s child, so the suite can run on the store Postbox really has (#508’s design, “Storage”). A test may
-// spawn exactly the redis-server of POSTBOX_REDIS_HOME, and connect to 127.0.0.1 on a port one of those children was
-// given in its config file. Nothing else: no other binary, host or port (tests/AGENTS.md, “The store’s Redis”).
+// spawn exactly the redis-server of POSTBOX_REDIS_HOME, and connect to the Unix socket one of those children was given
+// in its config file. Nothing else: no other binary, host, port or socket (tests/AGENTS.md, “The store’s Redis”).
 
 import childProcess from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
@@ -26,23 +26,24 @@ const redisServer = (() => {
   const found = ['bin/redis-server', 'src/redis-server'].map((p) => join(home, p)).find((p) => existsSync(p));
   return found ? realpathSync(found) : null;
 })();
-/** Ports the Redis children were given. */
-const redisPorts = new Set();
+/** The Unix sockets the Redis children were given. */
+const redisSockets = new Set();
 const realSpawn = childProcess.spawn;
 const realConnect = net.Socket.prototype.connect;
 
-/** Whether this spawn starts the store’s Redis, and if so, notes its port from its config file. */
+/** Whether this spawn starts the store’s Redis, and if so, notes its socket from its config file. */
 function isRedis(cmd, args) {
   if (!redisServer || typeof cmd !== 'string' || !existsSync(cmd) || realpathSync(cmd) !== redisServer) return false;
-  const port = Number(readFileSync(String(args?.[0]), 'utf8').match(/^port (\d+)$/m)?.[1]);
-  if (port) redisPorts.add(port);
+  const conf = readFileSync(String(args?.[0]), 'utf8');
+  const socket = conf.match(/^unixsocket "((?:[^"\\]|\\.)*)"$/m)?.[1]?.replace(/\\(.)/g, '$1');
+  if (socket) redisSockets.add(socket);
   return true;
 }
 
-/** Whether a connect call goes to one of those children. */
+/** Whether a connect call goes to one of those children’s sockets, and nowhere else. */
 function toRedis(args) {
-  const o = typeof args[0] === 'object' && args[0] !== null ? args[0] : { port: args[0], host: typeof args[1] === 'string' ? args[1] : undefined };
-  return redisPorts.has(Number(o.port)) && ['127.0.0.1', 'localhost', undefined].includes(o.host);
+  const o = typeof args[0] === 'object' && args[0] !== null ? args[0] : { path: args[0] };
+  return typeof o.path === 'string' && redisSockets.has(o.path) && o.port === undefined && o.host === undefined;
 }
 
 globalThis.fetch = refuse('fetch a URL');
