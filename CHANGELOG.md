@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.5 (2026-10-29)
+
+### Fixes
+
+- **adapters:** preserve permission summary whitespace
+- **checks:** normalize remaining Claude blocks
+- **adapters:** normalize Claude message content blocks
+
 ## 0.44.4 (2026-10-29)
 
 ### Fixes

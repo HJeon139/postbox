@@ -10,7 +10,10 @@ import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { contentBlocks } from './claude-content.mjs';
 import { describeTool } from './claude-stream.mjs';
+
+export { contentBlocks };
 
 export const projectsRoot = () => join(homedir(), '.claude', 'projects');
 
@@ -146,7 +149,7 @@ export function entriesToItems(entries) {
     }
     if (e.type === 'assistant') {
       agent ??= out[out.push({ kind: 'agent', text: '', steps: [] }) - 1];
-      for (const b of e.message?.content ?? []) {
+      for (const b of contentBlocks(e.message?.content)) {
         if (b.type === 'text' && b.text?.trim()) agent.text += (agent.text ? '\n\n' : '') + b.text;
         if (b.type === 'tool_use') agent.steps.push({ id: b.id, label: describeTool(b.name, b.input), state: 'running' });
       }
