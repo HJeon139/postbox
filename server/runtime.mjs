@@ -1007,7 +1007,9 @@ export class Runtime {
       });
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
       // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
-      if (turn.said.trim()) this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`);
+      // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
+      if (turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost')
+        this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`);
       // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
       // queued messages wait, as before, for you to see the failure.
       this.takePending(se, turn, 'wakes');
