@@ -453,7 +453,7 @@ sequenceDiagram
 |---|---|---|
 | `compact_boundary` (`server/adapters/claude-stream.mjs:514`) | Claude Code | The next envelope says earlier messages may have been summarized, and points to `read_conversation`. |
 | Missing session, agent restarted fresh | Kiro, Antigravity | The marker resets, so recent background is sent again. |
-| None yet | Codex | It keeps its own thread. Codex 0.164.0 has `thread/compact/start` in its stable schema, so #425 can be wired up now; until then, no signal. |
+| A `contextCompaction` thread item (the older `thread/compacted` notification is deprecated), in Codex 0.164.0’s app-server schema | Codex | Codex compacts its own thread when its context fills, without Postbox asking: two rollouts on 29 October 2026 hold a `compaction` item. The adapter reads the item, with the same effect as Claude Code’s `compact_boundary`. Separately, #425 wires the person’s `/compact` to `thread/compact/start`. |
 | None yet | Agent SDK | No signal recorded yet |
 
 Other signals are added only when a recorded turn shows one.
@@ -650,7 +650,7 @@ flowchart TD
 2. **Its phase’s triggers fire.** In a real-agent run of `delivery.md` or `bigroom.md`, the phases that name the step record each of their triggers, which proves the code path ran.
 3. **Its phase’s checks stay silent,** on every backend in the step’s scope. `delivery.md` runs four times, with the agent under test on Claude Code, Codex, Kiro and Antigravity (DL-8); phase 7 runs on Claude Code only until #425 is wired.
 
-**Test infrastructure comes first in each step.** The triggers, checks, the `big-room` seed and `tools/uat/fault-launcher.mjs` that a step’s phase needs are built at the start of that step and run against `main` before the step’s code. On `main` today, `delivery.md` phase 1 should record `ask-dropped` (#439) and phase 2 `delivery-dropped` (#484); if they don’t, the check is wrong, not the room.
+**Test infrastructure comes first in each step.** The triggers, checks, the `big-room` seed and `tools/uat/fault-launcher.mjs` that a step’s phase needs are built at the start of that step and run against `main` before the step’s code. Where a check can still fire depends on the baseline. On `d59e5e4b` (v0.42.0, the last release before #497 and #500), `delivery.md` phase 1 should record `ask-dropped` (#439) and phase 2 `delivery-dropped` (#484). On `main`, both are fixed, so those checks stay silent while the phases’ triggers fire, and the checks’ unit tests, written to fail first, show they can fire (`testing-strategy.md`, “Baselines on `main`”). A check that fires on `main` for a defect `main` no longer has is wrong, not the room.
 
 | Step | Contents | Depends on | Decides: specs, failing first | Confirms: scenario phase, triggers, checks silent |
 |---|---|---|---|---|

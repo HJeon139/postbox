@@ -238,7 +238,7 @@ Plain English and sentence case, with curly quotes and American spelling everywh
 | UI tools are exposed once, through an MCP server inside Postbox. A tool call needs the token of the agent’s running turn, which Postbox gives only the backend process it started | Claude Code sessions can only gain tools through MCP, and the Agent SDK accepts MCP natively, so both share one definition and one validator. The token is required since 23 October 2026 (#54): with the session id alone, any process on the computer could act as an agent. Not a breaking change: `/mcp` without a turn token was never a supported interface, as the person decided on 23 October 2026. |
 | UI tools never block; your answer arrives as a new message | MCP calls time out, and a reply may come hours later. The event shape is the same for every backend. |
 | The adapter starts and stops agents and reads their status | Tool calls, subagents, compactions and context use come from the backend. Nothing else touches the model. |
-| Stage 2 ships a mock agent, the adapter interface, the MCP server and the app check; real adapters and narration come in Stage 3 | The app runs offline with no dependencies beyond Node. |
+| Stage 2 ships a mock agent, the adapter interface, the MCP server and the app check; real adapters and narration come in Stage 3 | The app runs offline with no dependencies beyond Node. (Stage 2’s reason, kept as history. From #525, first start downloads Postbox’s Redis 8 build and needs the network; see the Scope and order row on Redis.) |
 
 ### Scope and order
 

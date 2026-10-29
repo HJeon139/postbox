@@ -2,7 +2,7 @@
 
 Two targeted scenarios, plus the triggers, checks, seeds and runner changes they need. They follow `tests/uat/e2e/README.md`: **a run confirms a fix; it doesn’t decide it.** Each phase names the deterministic test that decides its step (layer 1 or 2) and the requirements it confirms (layer 3). A requirement counts as confirmed in a run when its phase’s triggers fired and its checks stayed silent.
 
-Requirement ids, and the trigger and check each requirement names, are from `requirements.md`, “Acceptance, test first” (revision 4.1, approved). Step names (A1–A4, B1–B3) are from `design.md`, “Rollout” (revision 11).
+Requirement ids, and the trigger and check each requirement names, are from `requirements.md`, “Acceptance, test first” (revision 4.3, approved). Step names (A1–A4, B1–B3) are from `design.md`, “Rollout” (revision 11.2).
 
 ---
 
@@ -29,10 +29,10 @@ Ask @critic and @developer to settle the version number between them, by mention
 
 ## Phase 2: A mention past the catch-up cap (A2)
 
-- triggers: mention-past-cap, edit-while-waiting
+- triggers: mention-past-cap
 - steps: 6
 
-The seeded room already holds a mention of @researcher as the oldest of more than 40 items since its last turn. Ask @researcher what it was asked for in this room and by whom, without saying where. While @critic is working on something you gave it, edit a message that mentions @critic, then ask @critic what the message says now.
+The seeded room already holds a mention of @researcher as the oldest of more than 40 items since its last turn. Ask @researcher what it was asked for in this room and by whom, without saying where.
 
 ## Phase 3: A turn that fails before any output (A2)
 
@@ -76,6 +76,12 @@ Ask @developer to schedule a wake for itself in two minutes. The runner drops th
 - steps: 5
 
 Compact @critic’s session from its quick panel. Then ask @critic what you asked it in phase 5, and where it would look if it isn’t sure.
+## Phase 8: Changes while a delivery waits (A2)
+
+- triggers: edit-while-waiting
+- steps: 8
+
+Give @critic a long job. While it works, send it a second message, which waits in the queue, and change it with the queued message’s Edit before @critic is free. Sent messages have no Edit, so use the queued one. Then, while @critic is busy again, ask @researcher to revise its review block “release-plan.md”. When @critic is free, ask it to quote your second message as it reached it, and which revision of the review it was told about.
 ```
 
 **What decides each phase, and what it confirms**
@@ -83,13 +89,16 @@ Compact @critic’s session from its quick panel. Then ask @critic what you aske
 | Phase | Decides (layer 1 or 2, written first, failing on `main`) | Confirms | Checks watched |
 |---|---|---|---|
 | 1 | #439’s and #326’s node tests: two held wakes behind one card; Allow delivers both | AT-1, AT-2, AT-3, AT-4 | `ask-dropped`, `needs-mismatch` |
-| 2 | #484’s cases, including the oversized oldest mention; INV-9 | DL-1, DL-2, DL-4, DL-5, DL-7 | `delivery-dropped`, `unlabeled-repeat`, `wake-text-clipped`, `thread-request-first` |
+| 2 | #484’s cases, including the oversized oldest mention; INV-9 | DL-1, DL-2, DL-4, DL-5 | `delivery-dropped`, `unlabeled-repeat`, `wake-text-clipped`, `thread-request-first` |
 | 3 | The outcome matrix from recorded failing turns (conformance) | DL-3, DL-2 (labeled) | `marker-before-output`, `unlabeled-repeat` |
 | 4 | The urgent-note test: delivered when the tool result returns | MD-2, DL-2 | `delivery-dropped`, `unlabeled-repeat` |
 | 5 | A3’s record tests: Edit, Remove, no superseding of the person’s messages | AT-6, DL-6 | `queued-superseded` |
 | 6 | #458’s and #466’s tests | SW-1, SW-2 | `delivery-dropped` |
 | 7 | A recorded `compact_boundary` replayed through the Claude Code adapter (conformance) | CX-4 | `context-loss-unannounced` |
+| 8 | A2’s amendment tests: a queued message edited before delivery arrives once, edited; a revised block reaches its reviewer once, as an amendment | DL-7, AT-6 | `unlabeled-repeat`, `delivery-dropped` |
 | All | — | CX-1 | `thread-leak` |
+
+**Baselines on `main`.** A phase confirms a step by running on the step’s branch. The last release before #497 and #500 is `d59e5e4b` (v0.42.0), where phases 1 and 2 still show #439’s and #484’s defects. Running it on `main` first shows its check fires only while `main` still has the defect. #484’s dropped mention was fixed on `main` by #500 and #502, so on `main` phase 2 now shows `mention-past-cap` firing with `delivery-dropped` silent, and the check’s firing is shown by its failing-first unit tests. Phase 8 has no baseline on `main`: queued messages aren’t items there, and revisions aren’t delivered as amendments until A2.
 
 **Backends (DL-8).** The scenario runs four times, differing only in its header: all on Claude Code (a regular run), then with `--compat` and `- backends: researcher=codex`, `researcher=kiro-cli` and `researcher=antigravity-cli`. Phase 3’s fault applies to whichever backend @researcher runs on. Phase 7 runs on Claude Code only, until Codex’s compaction is wired up (#425); Kiro and Antigravity report a fresh session rather than a compaction, which the design’s marker reset covers.
 
@@ -164,7 +173,7 @@ Each one carries the requirement ids it serves, beside today’s `issue` field, 
 | `held-behind-card` | AT-1 | two deliveries were held, open at once, behind cards |
 | `held-released` | AT-1, AT-2 | answering a card delivered every delivery it held |
 | `mention-past-cap` | DL-1, DL-5 | an addressed item older than the catch-up cap reached its agent |
-| `edit-while-waiting` | DL-7 | an item changed while its delivery waited, and arrived once |
+| `edit-while-waiting` | DL-7, AT-6 | a delivery changed while it waited (a queued message edited, or a block revised) and reached its agent once, in its changed form |
 | `fail-before-output` | DL-3 | a turn failed with no output and its deliveries went back to waiting |
 | `resend-labeled` | DL-2, DL-3 | a resend reached the agent with its label |
 | `urgent-note-delivered` | MD-2 | a delivery reached a working agent on a Postbox tool result, and the turn went on |

@@ -226,7 +226,7 @@ flowchart TD
 | CX-1 | Spec | Nothing from a thread enters another agent’s envelope unless it reads it or the person sends it | none | *thread-leak* | **Not in rev 6** |
 | CX-2 | Spec | `read_conversation` reaches the first item, locally and on a host | none | none | Covered |
 | CX-3 | Spec + conformance | #515: a tool turned off mid-session shows as off in a resumed Claude session’s next turn | none | none | Covered |
-| CX-4 | Conformance | A recorded `compact_boundary` makes the next envelope say context may have been summarized | *compaction* | *context-loss-unannounced* | **Not in rev 6** |
+| CX-4 | Conformance | A recorded Claude Code `compact_boundary`, and a recorded Codex `contextCompaction` item, each make the next envelope say context may have been summarized | *compaction* | *context-loss-unannounced* | **Not in rev 6** |
 | MS-1 | Spec | The metrics script’s counts on a copied room match a hand count on a small fixture | none | none | Covered |
 | MS-2 | Review rule | Every step’s “done when” names a spec that fails on `main` first | none | none | **Not in rev 6** |
 | MS-3 | Spec | A tuning value in `shared/limits.mjs` without a calibration report fails the check | none | none | **Not in rev 6** |
