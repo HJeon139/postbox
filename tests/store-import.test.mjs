@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import { importLegacy } from '../server/store-import.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
@@ -146,4 +147,29 @@ test('Stage 2’s store.json is imported as the first snapshot', async () => {
   assert.ok(s.state.threads.old);
   const names = await readdir(dir);
   assert.ok(names.includes('store.json.migrated'));
+});
+
+// Review finding 3 on #525 (gpt’s regression): an import cut short after its first batch of events left Redis at seq
+// 1000 of 1001, which the next start took for another store’s events (EIMPORT). The import marks itself in progress, so
+// a start after it was cut short clears what it wrote and imports again.
+test('an import cut short after its first batch of events runs again from the start', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pb-store-import-'));
+  dirs.push(dir);
+  const s = await open(dir);
+  const rows = Array.from({ length: 1001 }, (_, i) => JSON.stringify({ seq: i + 1, type: 'settings', data: { value: i + 1 } }));
+  await writeFile(join(dir, 'events-1.jsonl'), `${rows.join('\n')}\n`);
+  const client = /** @type {any} */ (s.client);
+  const orig = client.call.bind(client);
+  let n = 0;
+  client.call = async (...a) => {
+    if (a[0] === 'EVAL' && Number(a[5]) > 0 && ++n === 2) throw new Error('simulated disconnect');
+    return orig(...a);
+  };
+  await assert.rejects(importLegacy(dir, client), /simulated disconnect/);
+  client.call = orig;
+  await assert.doesNotReject(importLegacy(dir, client));
+  assert.equal(await client.call('GET', 'seq'), '1001');
+  assert.equal(await client.call('XLEN', 'events'), 1001);
+  assert.equal(await client.call('EXISTS', 'import'), 0, 'the import is no longer marked in progress');
+  assert.equal((await open(dir)).state.settings.value, 1001);
 });

@@ -2,8 +2,14 @@
 // step). The old store was a JSON Lines log, events-<from>.jsonl, after a snapshot.json (or Stage 2’s store.json).
 // At the first start on Redis, Postbox reads them as the old store did, dropping a torn last line, writes every
 // document, the log’s events and the seq into Redis, copies the old files into backups/store-<when>/ and renames them
-// *.migrated. A crash part way leaves Redis without the seq, so the next start imports again from the start; a store
-// that already holds the snapshot’s seq is left alone. Downgrading means restoring the backup (“Rollback”).
+// *.migrated. A store that already holds the snapshot’s seq is left alone. Downgrading means restoring the backup
+// (“Rollback”).
+//
+// The import marks itself in progress in Redis (the `importing` key, holding the backup’s folder) from before its first
+// write until after it sets `seq`. A start that finds the mark clears whatever Redis holds and imports again from the
+// start, into the same backup: the import is quick (209 ms for the UAT room), and nothing else writes before it
+// finishes, since Postbox imports before it reads the store. Without the mark, a crash after the first batch of events
+// left Redis part way along the log, which the next start refused (review finding 3 on #525).
 
 import { copyFile, mkdir, readdir, readFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -69,24 +75,30 @@ function everything(s) {
  */
 export async function importLegacy(dir, c, { now = new Date() } = {}) {
   const files = await oldFiles(dir);
-  if (!files.length) return false;
+  const marked = await c.call('GET', 'importing');
+  if (!files.length) {
+    if (marked)
+      throw fail('EIMPORT', `An import into the store’s Redis was cut short, and the old files it read are gone from ${dir}. Restore them from ${marked}.`);
+    return false;
+  }
   const { state, events } = await readOld(dir, files);
   const have = Number((await c.call('GET', 'seq')) ?? 0);
-  if (have >= state.seq) return false;
-  if (have > 0)
+  if (!marked && have >= state.seq) return false;
+  if (!marked && have > 0)
     throw fail(
       'EIMPORT',
       `The store’s Redis holds events up to ${have}, but the old log in ${dir} goes to ${state.seq}. Postbox won’t mix them; move one aside.`,
     );
-  const backup = join(dir, 'backups', `store-${now.toISOString().slice(0, 19).replace(/:/g, '-')}`);
+  const backup = marked ?? join(dir, 'backups', `store-${now.toISOString().slice(0, 19).replace(/:/g, '-')}`);
   await mkdir(backup, { recursive: true });
   for (const f of files) await copyFile(join(dir, f), join(backup, f));
-  await c.call('FLUSHDB'); // what a start that crashed part way wrote
+  await c.call('FLUSHDB'); // what an import cut short wrote
+  await c.call('SET', 'importing', backup);
   const writes = everything(state);
   for (let i = 0; i < writes.length; i += 2000) await writeBatch(c, { prev: 0, events: [], writes: writes.slice(i, i + 2000) });
   let prev = 0;
   for (let i = 0; i < events.length; i += 1000) prev = (await writeBatch(c, { prev, events: events.slice(i, i + 1000), writes: [] })).seq;
-  if (prev !== state.seq) await c.call('SET', 'seq', state.seq);
+  await c.call('EVAL', "redis.call('SET', 'seq', ARGV[1]); redis.call('DEL', 'importing')", 0, state.seq);
   for (const f of files) await rename(join(dir, f), join(dir, `${f}.migrated`));
   return true;
 }
