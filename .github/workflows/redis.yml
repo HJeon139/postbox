@@ -95,8 +95,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     # The search module is C++ and Rust, and takes most of this.
     timeout-minutes: 120
+    # Not TARGET: the JSON module's Makefile reads TARGET from the environment as a make goal, and fails with
+    # “No rule to make target 'linux-x64'”.
     env:
-      TARGET: ${{ matrix.target }}
+      POSTBOX_TARGET: ${{ matrix.target }}
       VERSION: ${{ needs.source.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -118,6 +120,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ca-certificates wget dpkg-dev gcc g++ libc6-dev libssl-dev make git cmake \
             python3 python3-pip python3-venv python3-dev unzip rsync clang automake autoconf libtool
+          # On Linux the search module links C and Rust with LTO, which needs clang and lld from the same LLVM as rustc.
+          # Its pinned Rust (modules/redisearch/src/rust-toolchain.toml, 1.94.0) uses LLVM 21, and Ubuntu 24.04 ships
+          # clang 18, so clang-21 and lld-21 come from apt.llvm.org; the build picks clang-<rustc's LLVM> when present.
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          echo 'deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main' | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-21 lld-21
           rustup update stable
       - name: Install the toolchain (macOS)
         if: runner.os == 'macOS'
@@ -148,7 +157,7 @@ jobs:
       - name: Package the build
         run: |
           src="$RUNNER_TEMP/build/redis-$VERSION"
-          out="redis-$VERSION-$TARGET"
+          out="redis-$VERSION-$POSTBOX_TARGET"
           mkdir -p "dist/$out/bin" "dist/$out/modules"
           cp "$src/src/redis-server" "dist/$out/bin/"
           cp "$src/modules/redisjson/rejson.so" "$src/modules/redisearch/redisearch.so" "dist/$out/modules/"
@@ -158,7 +167,7 @@ jobs:
       # A build that needs a library only this runner has would fail on the person’s computer instead.
       - name: It needs only the system’s libraries
         run: |
-          cd "dist/redis-$VERSION-$TARGET"
+          cd "dist/redis-$VERSION-$POSTBOX_TARGET"
           if [ "$RUNNER_OS" = macOS ]; then
             shopt -s nullglob
             files=(bin/redis-server modules/*.so lib/*.dylib)
@@ -173,7 +182,7 @@ jobs:
       - name: JSON and search work in the packaged build
         run: |
           cli="$RUNNER_TEMP/build/redis-$VERSION/src/redis-cli"
-          cd "dist/redis-$VERSION-$TARGET"
+          cd "dist/redis-$VERSION-$POSTBOX_TARGET"
           ./bin/redis-server --port 6390 --bind 127.0.0.1 --save '' --appendonly no \
             --loadmodule "$PWD/modules/rejson.so" --loadmodule "$PWD/modules/redisearch.so" &
           for _ in $(seq 50); do "$cli" -p 6390 ping 2>/dev/null | grep -q PONG && break; sleep 0.2; done
@@ -186,9 +195,9 @@ jobs:
         run: |
           cd dist
           # ustar, which Postbox unpacks in Node (server/redis-unpack.mjs), without macOS's ._ files.
-          COPYFILE_DISABLE=1 tar --format=ustar -czf "redis-$VERSION-$TARGET.tar.gz" "redis-$VERSION-$TARGET"
-          if [ "$RUNNER_OS" = macOS ]; then shasum -a 256 "redis-$VERSION-$TARGET.tar.gz"; else sha256sum "redis-$VERSION-$TARGET.tar.gz"; fi > "redis-$VERSION-$TARGET.tar.gz.sha256"
-          cat "redis-$VERSION-$TARGET.tar.gz.sha256"
+          COPYFILE_DISABLE=1 tar --format=ustar -czf "redis-$VERSION-$POSTBOX_TARGET.tar.gz" "redis-$VERSION-$POSTBOX_TARGET"
+          if [ "$RUNNER_OS" = macOS ]; then shasum -a 256 "redis-$VERSION-$POSTBOX_TARGET.tar.gz"; else sha256sum "redis-$VERSION-$POSTBOX_TARGET.tar.gz"; fi > "redis-$VERSION-$POSTBOX_TARGET.tar.gz.sha256"
+          cat "redis-$VERSION-$POSTBOX_TARGET.tar.gz.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: redis-${{ matrix.target }}
