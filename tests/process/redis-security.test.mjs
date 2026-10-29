@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -202,5 +202,33 @@ test('SR-3: Postbox’s user runs exactly what the store sends, and is refused t
   } finally {
     await sup.stop();
     RedisSupervisor.fixtureUser = false;
+  }
+});
+
+test('SR-2: no password is on a command line or in a log, the config holds only hashes, and stored copies are 0600', async () => {
+  const dataDir = join(tmp, 'sr2');
+  // An earlier version left these readable by others: the start makes them private again.
+  mkdirSync(join(dataDir, 'redis'), { recursive: true });
+  for (const f of ['redis.conf', 'owner.json']) writeFileSync(join(dataDir, 'redis', f), '', { mode: 0o644 });
+  const sup = new RedisSupervisor({ home: HOME, dataDir });
+  await sup.start();
+  try {
+    const secrets = [sup.password, sup.ownerPassword];
+    const pid = /** @type {number} */ (sup.child?.pid);
+    const argv = execFileSync('ps', ['-o', 'args=', '-p', String(pid)], { encoding: 'utf8' });
+    const mine = execFileSync('ps', ['-o', 'args=', '-p', String(process.pid)], { encoding: 'utf8' });
+    const conf = readFileSync(join(dataDir, 'redis', 'redis.conf'), 'utf8');
+    const c = await sup.client();
+    await c.call('SET', 'k', 'v');
+    c.close();
+    await sup.stop();
+    const log = readFileSync(join(dataDir, 'redis', 'logs', 'redis.log'), 'utf8');
+    for (const secret of secrets) {
+      for (const [where, text] of Object.entries({ argv, mine, conf, log })) assert.ok(!text.includes(secret), `not in ${where}`);
+    }
+    assert.match(conf, /^user postbox on #[0-9a-f]{64} /m);
+    for (const f of ['redis.conf', 'owner.json']) assert.equal(statSync(join(dataDir, 'redis', f)).mode & 0o777, 0o600, f);
+  } finally {
+    await sup.stop();
   }
 });

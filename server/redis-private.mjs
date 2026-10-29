@@ -1,8 +1,8 @@
 // What keeps the store’s Redis private (#508’s requirements, 4.3, “Store security”; design, “Store security”): where
 // its socket goes (SR-1), and who may run what on it (SR-3). server/redis-supervisor.mjs writes these into its config.
 
-import { createHash } from 'node:crypto';
-import { chmod, lstat, mkdir } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { chmod, lstat, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -65,3 +65,18 @@ export const STORE_COMMANDS = [
 
 /** A password as redis.conf takes it: its SHA-256, so the file doesn’t hold it. @param {string} p */
 export const hashed = (p) => `#${createHash('sha256').update(p).digest('hex')}`;
+
+/**
+ * Writes a file only the person can read (0600), whatever mode an earlier one had: a new file beside it, renamed over
+ * it, so a link put in its place is replaced rather than followed (SR-2, SR-5).
+ * @param {string} path @param {string} text
+ */
+export async function writePrivate(path, text) {
+  const part = `${path}.${randomBytes(4).toString('hex')}.part`;
+  try {
+    await writeFile(part, text, { mode: 0o600, flag: 'wx' });
+    await rename(part, path);
+  } finally {
+    await rm(part, { force: true });
+  }
+}

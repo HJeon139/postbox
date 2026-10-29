@@ -16,10 +16,10 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RedisClient, storeError } from './redis-client.mjs';
-import { hashed, privateDir, STORE_COMMANDS, socketFor } from './redis-private.mjs';
+import { hashed, privateDir, STORE_COMMANDS, socketFor, writePrivate } from './redis-private.mjs';
 
 /** @typedef {'socket' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
 /** @typedef {{ state: 'idle' | 'starting' | 'running' | 'stopped' } | { state: 'down', cause: DownCause, message: string }} RedisStatus */
@@ -181,9 +181,9 @@ export class RedisSupervisor extends EventEmitter {
       'daemonize no',
       ...modules.map((m) => `loadmodule ${q(m)}`),
     ];
-    await writeFile(conf, `${lines.join('\n')}\n`, { mode: 0o600 });
+    await writePrivate(conf, `${lines.join('\n')}\n`);
     // What a later start needs to shut this child down if Postbox doesn’t: the owner’s password, never Postbox’s user’s.
-    await writeFile(join(dir, 'owner.json'), `${JSON.stringify({ pid: process.pid, secret: this.ownerPassword })}\n`, { mode: 0o600 });
+    await writePrivate(join(dir, 'owner.json'), `${JSON.stringify({ pid: process.pid, secret: this.ownerPassword })}\n`);
     return conf;
   }
 
