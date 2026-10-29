@@ -9,7 +9,7 @@ import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
-import { formatDuration, parseMentions } from '../shared/text.mjs';
+import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
@@ -42,6 +42,7 @@ import { addDataset, reloadDatasets } from './datasets.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
+import { sendLint } from './lint-delivery.mjs';
 import * as queue from './message-queue.mjs';
 import {
   allowAlways,
@@ -92,11 +93,7 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-const DELETE_UNDO_MS = 10000;
-/** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
-const LINT_SETTLE_MS = 1500;
-/** …and at most, while an app of the agent’s is still being checked. */
-const LINT_WAIT_MAX_MS = 12000;
+export const DELETE_UNDO_MS = 10000;
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
 const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
@@ -273,7 +270,11 @@ export class Runtime {
     );
   }
   personaByHandle(handle) {
-    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
+    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired && !p.deleting);
+  }
+  /** Whether a persona being deleted holds this name: it keeps it until its Undo window ends, so Undo never makes two (#208). */
+  deletingHandle(handle) {
+    return Object.values(this.s.personas).some((p) => p.deleting && p.handle.toLowerCase() === String(handle).toLowerCase());
   }
   thread(id) {
     const t = this.s.threads[id];
@@ -405,6 +406,8 @@ export class Runtime {
     if (existing) return existing;
     const p = this.persona(personaId);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
+    // It would outlive its persona, and a turn there would make its memory again (#208).
+    if (p.deleting) throw httpError(409, `@${p.handle} is being deleted. Undo that first to add it to a conversation.`);
     const se = this.putSession({
       id: newId('se'),
       personaId,
@@ -859,7 +862,7 @@ export class Runtime {
           }));
         if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
         // A line of what it’s thinking or writing right now; cleared when the turn ends.
-        if (typeof patch.glimpse === 'string') allowed.glimpse = patch.glimpse.slice(0, 200);
+        if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
         rt.updateSession(turn.sessionId, allowed);
       },
       compaction({ kept, total, summary }) {
@@ -1856,26 +1859,7 @@ export class Runtime {
   }
 
   sendLint(turnId) {
-    const e = this.lints.get(turnId);
-    if (!e || e.sent || e.timer) return;
-    const wait = this.config.lintSettleMs ?? LINT_SETTLE_MS;
-    const until = Date.now() + LINT_WAIT_MAX_MS;
-    const send = () => {
-      e.timer = null;
-      // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
-      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending' && !a.retired);
-      if (wait > 0 && checking && Date.now() < until) {
-        e.timer = setTimeout(send, wait);
-        e.timer.unref?.();
-        return;
-      }
-      e.sent = true;
-      const se = this.s.sessions[e.sessionId];
-      if (se && !se.deleting && !se.archived) this.deliver(e.sessionId, lintMessage(e.problems), { threadId: e.threadId });
-    };
-    if (wait <= 0) return send();
-    e.timer = setTimeout(send, wait);
-    e.timer.unref?.();
+    return sendLint(this, turnId);
   }
 
   /**
@@ -2345,7 +2329,7 @@ export class Runtime {
         .replace(/^[^a-z]+/, '')
         .slice(0, 20) || 'terminal';
     let name = base.length >= 2 ? base : `cc-${base}`;
-    for (let n = 2; this.personaByHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
+    for (let n = 2; this.personaByHandle(name) || this.deletingHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
     const p = this.createPersona({
       handle: name,
       backend: 'claude-code',
@@ -2510,6 +2494,7 @@ export class Runtime {
       .trim();
     if (!/^[a-z][a-z0-9_-]{1,23}$/i.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
+    if (this.deletingHandle(handle)) throw httpError(409, `@${handle} is being deleted. Undo that, or wait 10 seconds for the name to be free.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
@@ -2712,6 +2697,8 @@ export class Runtime {
   /** Deletes after DELETE_UNDO_MS unless undone. The persona always stays. */
   deleteSession(sessionId) {
     this.stop(sessionId, { silent: true });
+    // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.
+    this.remote.cancel(sessionId);
     const se = this.session(sessionId);
     const until = Date.now() + DELETE_UNDO_MS;
     this.updateSession(sessionId, { deleting: until });
@@ -2780,9 +2767,11 @@ export class Runtime {
   }
 
   undoDelete(sessionId) {
+    const se = this.session(sessionId);
+    // Its persona’s delete would take it again (persona-delete.mjs): Undo that instead.
+    if (this.s.personas[se.personaId]?.deleting) throw httpError(409, `@${se.handle} is being deleted. Undo that first.`);
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.delete(`del:${sessionId}`);
-    const _se = this.session(sessionId);
     this.updateSession(sessionId, { deleting: null });
   }
 

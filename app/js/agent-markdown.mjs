@@ -7,7 +7,7 @@ import { client } from './client.mjs';
 const S = () => client.state;
 export const handles = () =>
   Object.values(S().personas)
-    .filter((p) => !p.retired)
+    .filter((p) => !p.retired && !p.deleting)
     .map((p) => p.handle);
 const glossaryOf = (threadId) => {
   const t = S().threads[threadId];
