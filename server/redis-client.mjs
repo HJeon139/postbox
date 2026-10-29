@@ -68,9 +68,10 @@ export function decode(buf, pos) {
 }
 
 export class RedisClient {
-  /** @param {{ path: string, password?: string }} o  path: the Unix socket */
-  constructor({ path, password }) {
+  /** @param {{ path: string, user?: string, password?: string }} o  path: the Unix socket */
+  constructor({ path, user, password }) {
     this.path = path;
+    this.user = user;
     this.password = password;
     /** @type {{ ok: (v: any) => void, fail: (e: Error) => void }[]} */
     this.pending = [];
@@ -96,7 +97,13 @@ export class RedisClient {
     socket.on('data', (chunk) => this.read(/** @type {Buffer} */ (chunk)));
     socket.on('error', () => {}); // close follows, and fails what’s pending
     socket.on('close', () => this.drop());
-    if (this.password) await this.call('AUTH', this.password);
+    if (this.password)
+      try {
+        await (this.user ? this.call('AUTH', this.user, this.password) : this.call('AUTH', this.password));
+      } catch (e) {
+        this.close();
+        throw e;
+      }
     return this;
   }
 

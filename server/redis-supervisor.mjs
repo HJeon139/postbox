@@ -13,13 +13,13 @@
 // (socket, binary-missing, corrupt-aof, died), and writes fail closed meanwhile (server/store.mjs).
 
 import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createWriteStream, existsSync } from 'node:fs';
-import { chmod, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { RedisClient, storeError } from './redis-client.mjs';
+import { hashed, privateDir, STORE_COMMANDS, socketFor } from './redis-private.mjs';
 
 /** @typedef {'socket' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
 /** @typedef {{ state: 'idle' | 'starting' | 'running' | 'stopped' } | { state: 'down', cause: DownCause, message: string }} RedisStatus */
@@ -36,34 +36,6 @@ export function redisFiles(home) {
   ])
     if (existsSync(join(home, server))) return { server: join(home, server), modules: [join(home, json), join(home, search)] };
   throw Object.assign(new Error(`There’s no Redis server in ${home} (bin/redis-server or src/redis-server).`), { code: 'ENOENT' });
-}
-
-/** The longest socket path every supported platform takes: macOS’s sun_path holds 104 bytes with its NUL. */
-const SOCKET_MAX = 100;
-
-/**
- * Where a data folder’s Redis listens: <data>/redis/run/redis.sock, or, when that’s too long for a socket path, a
- * folder in the system’s temporary folder named by a hash of the data folder. Null when neither fits.
- * @param {string} dataDir @param {string} [tmp]
- */
-export function socketFor(dataDir, tmp = tmpdir()) {
-  const inData = join(dataDir, 'redis', 'run', 'redis.sock');
-  if (Buffer.byteLength(inData) <= SOCKET_MAX) return inData;
-  const hash = createHash('sha256').update(resolve(dataDir)).digest('hex').slice(0, 16);
-  const inTmp = join(tmp, `postbox-redis-${hash}`, 'redis.sock');
-  return Buffer.byteLength(inTmp) <= SOCKET_MAX ? inTmp : null;
-}
-
-/**
- * Makes a folder only the person can open, or refuses one that isn’t theirs or is a link.
- * @param {string} dir
- */
-export async function privateDir(dir) {
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  const st = await lstat(dir);
-  if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`${dir} isn’t a plain folder`);
-  if (process.getuid && st.uid !== process.getuid()) throw new Error(`${dir} belongs to another user`);
-  if ((st.mode & 0o777) !== 0o700) await chmod(dir, 0o700);
 }
 
 /** A value in redis.conf, quoted. @param {string} v */
@@ -87,6 +59,12 @@ const MESSAGES = {
 
 export class RedisSupervisor extends EventEmitter {
   /**
+   * Tests only: children started while it’s set also have a `fixture` user with every command, for specs that set up
+   * failures (CONFIG SET maxmemory) or read Redis’s stats. Postbox never sets it, so its Redis has no such user.
+   */
+  static fixtureUser = false;
+
+  /**
    * @param {{ home: string, dataDir: string, restartMs?: number, readyMs?: number }} o
    *   restartMs: the first wait before a restart
    */
@@ -98,7 +76,13 @@ export class RedisSupervisor extends EventEmitter {
     this.socket = socketFor(dataDir);
     this.restartMs = restartMs;
     this.readyMs = readyMs;
+    /** Postbox’s user’s password, new for each supervisor; only the store holds it (SR-2). */
     this.password = randomBytes(24).toString('hex');
+    /** The owner’s: the supervisor’s own user, which may only shut the child down, for a later start’s cleanup. */
+    this.ownerPassword = randomBytes(24).toString('hex');
+    /** Test-only (RedisSupervisor.fixtureUser): a user with every command, for specs that set up failures. */
+    this.fixturePassword = randomBytes(24).toString('hex');
+    this.fixture = false;
     /** @type {import('node:child_process').ChildProcess | null} */
     this.child = null;
     /** @type {RedisStatus} */
@@ -143,13 +127,15 @@ export class RedisSupervisor extends EventEmitter {
     return this.run(files.server, conf);
   }
 
-  /** A child an earlier Postbox left running on this data folder holds its files: ask it to shut down. */
+  /** A child an earlier Postbox left running on this data folder holds its files: ask it, as its owner, to shut down. */
   async shutDownLeftover() {
-    const old = await readFile(join(this.dataDir, 'redis', 'redis.conf'), 'utf8').catch(() => '');
-    const pass = old.match(/^requirepass "([0-9a-f]+)"$/m)?.[1];
+    const old = await readFile(join(this.dataDir, 'redis', 'owner.json'), 'utf8')
+      .then(JSON.parse)
+      .catch(() => null);
+    const pass = typeof old?.secret === 'string' ? old.secret : null;
     const path = this.socket;
     if (!path || !pass) return;
-    const c = await new RedisClient({ path, password: pass }).connect().catch(() => null);
+    const c = await new RedisClient({ path, user: 'owner', password: pass }).connect().catch(() => null);
     if (!c) return;
     await c.call('SHUTDOWN').catch(() => {}); // the connection closes as it exits
     c.close();
@@ -180,7 +166,12 @@ export class RedisSupervisor extends EventEmitter {
       'enable-protected-configs no',
       'enable-debug-command no',
       'enable-module-command no',
-      `requirepass ${q(this.password)}`,
+      // No default user: a connection that hasn’t logged in gets NOAUTH (SR-3). Postbox’s user starts from nothing and
+      // gets the store’s commands on its keys; the owner may only shut the child down.
+      'user default off resetpass nocommands resetkeys resetchannels',
+      `user postbox on ${hashed(this.password)} resetchannels ~* -@all ${STORE_COMMANDS.map((c) => `+${c}`).join(' ')}`,
+      `user owner on ${hashed(this.ownerPassword)} resetchannels resetkeys -@all +ping +shutdown`,
+      ...((this.fixture = RedisSupervisor.fixtureUser) ? [`user fixture on ${hashed(this.fixturePassword)} ~* &* +@all`] : []),
       `dir ${q(join(dir, 'data'))}`,
       'appendonly yes',
       'appendfsync everysec',
@@ -191,6 +182,8 @@ export class RedisSupervisor extends EventEmitter {
       ...modules.map((m) => `loadmodule ${q(m)}`),
     ];
     await writeFile(conf, `${lines.join('\n')}\n`, { mode: 0o600 });
+    // What a later start needs to shut this child down if Postbox doesn’t: the owner’s password, never Postbox’s user’s.
+    await writeFile(join(dir, 'owner.json'), `${JSON.stringify({ pid: process.pid, secret: this.ownerPassword })}\n`, { mode: 0o600 });
     return conf;
   }
 
@@ -256,9 +249,15 @@ export class RedisSupervisor extends EventEmitter {
     }
   }
 
-  /** A new connection to the child, authenticated. */
+  /** A new connection to the child, as Postbox’s user. */
   client() {
-    return new RedisClient({ path: /** @type {string} */ (this.socket), password: this.password }).connect();
+    return new RedisClient({ path: /** @type {string} */ (this.socket), user: 'postbox', password: this.password }).connect();
+  }
+
+  /** Test-only: a connection with every command, when RedisSupervisor.fixtureUser was set before the start. */
+  fixtureClient() {
+    if (!this.fixture) return Promise.reject(new Error('Set RedisSupervisor.fixtureUser before the start.'));
+    return new RedisClient({ path: /** @type {string} */ (this.socket), user: 'fixture', password: this.fixturePassword }).connect();
   }
 
   /** Stops the child: SIGINT, which Redis takes as a clean shutdown that writes its AOF, then SIGKILL. */

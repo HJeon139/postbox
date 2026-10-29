@@ -11,6 +11,7 @@ import { after, test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { readState } from '../server/store-redis.mjs';
 import { apply } from '../shared/state.mjs';
+import { admin } from './redis-fixture-user.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -92,7 +93,7 @@ test('commit applies and broadcasts only after Redis replies, and a repeated opI
   assert.deepEqual(again, { seq: 2, duplicate: true });
   assert.equal(s.state.sessions.se.handle, 'h');
   assert.equal(s.state.seq, 2);
-  const c = await raw(s);
+  const c = await admin(s);
   assert.equal(await c.call('XLEN', 'events'), 2);
   assert.equal(await c.call('HGET', 'ops', 'op-1'), '2');
   c.close();
@@ -147,7 +148,7 @@ test('a browser resumes after a restart from its Last-Event-ID out of the stream
     (await b.backlog(2)).map((e) => e.seq),
     [3, 4, 5],
   );
-  const c = await raw(b);
+  const c = await admin(b);
   await c.call('XTRIM', 'events', 'MINID', '4-0');
   c.close();
   assert.equal(await b.backlog(2), null);

@@ -17,6 +17,7 @@ import { dataFolder, holdsStore, moveData } from '../server/home.mjs';
 import { Store } from '../server/store.mjs';
 import { importLegacy } from '../server/store-import.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+import { admin } from './redis-fixture-user.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -170,8 +171,10 @@ test('an import cut short after its first batch of events runs again from the st
   client.call = orig;
   await assert.doesNotReject(importLegacy(dir, client));
   assert.equal(await client.call('GET', 'seq'), '1001');
-  assert.equal(await client.call('XLEN', 'events'), 1001);
-  assert.equal(await client.call('EXISTS', 'import'), 0, 'the import is no longer marked in progress');
+  const a = await admin(s);
+  assert.equal(await a.call('XLEN', 'events'), 1001);
+  assert.equal(await a.call('EXISTS', 'import'), 0, 'the import is no longer marked in progress');
+  a.close();
   assert.equal((await open(dir)).state.settings.value, 1001);
 });
 

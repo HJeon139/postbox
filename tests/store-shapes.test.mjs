@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { DOC_V } from '../server/store-docs.mjs';
-import { open, raw, tmp } from './store-fixture.mjs';
+import { admin, open, tmp } from './store-fixture.mjs';
 
 /** A test-only shape 2: a conversation’s `name` becomes its `title`. Every other document is the same in both. */
 const SHAPE_2 = {
@@ -32,7 +32,7 @@ test('ST-1: a document written in an older shape reads in the current one, with 
   older.emit('thread', { id: 't', name: 'Written by an older Postbox', members: [] });
   older.emit('item.add', { threadId: 't', item: { id: 'i', text: 'hello' } });
   await older.flush();
-  const c = await raw(older);
+  const c = await admin(older);
   // As the older Postbox left it: shape 1.
   const doc = await c.call('JSON.GET', 'thread:t', '$');
   assert.equal(JSON.parse(doc)[0].v, 1);

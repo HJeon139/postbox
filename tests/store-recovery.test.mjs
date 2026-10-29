@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { retry } from '../server/store-recover.mjs';
-import { consistent, gate, holdCatchUp, loseReply, open, raw, tmp, until } from './store-fixture.mjs';
+import { admin, consistent, gate, holdCatchUp, loseReply, open, tmp, until } from './store-fixture.mjs';
 
 /** A store with a conversation and one item, written. */
 async function withItem() {
@@ -79,10 +79,9 @@ test('emits held behind a commit whose reply was lost are published after catch-
 
 /** Kills only the store’s own connection to its child, from another connection, while nothing is in flight. @param {any} s */
 async function dropIdle(s) {
-  const c = await raw(s);
+  const c = await admin(s);
   try {
-    const id = await s.client.call('CLIENT', 'ID');
-    assert.equal(await c.call('CLIENT', 'KILL', 'ID', id), 1);
+    assert.equal(await c.call('CLIENT', 'KILL', 'USER', 'postbox'), 1, 'the store’s connection is Postbox’s user’s only one');
   } finally {
     c.close();
   }

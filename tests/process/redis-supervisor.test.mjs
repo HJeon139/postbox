@@ -41,10 +41,12 @@ function until(sup, pred, what) {
 test('the child runs on its private socket, with no port, AOF everysec, both modules, and its files in the data folder', async () => {
   const dataDir = join(tmp, 'runs');
   const sup = new RedisSupervisor({ home: HOME, dataDir });
+  RedisSupervisor.fixtureUser = true;
   await sup.start();
+  RedisSupervisor.fixtureUser = false;
   try {
     assert.equal(sup.status.state, 'running');
-    const c = await sup.client();
+    const c = await sup.fixtureClient();
     const flat = await c.call('CONFIG', 'GET', '*');
     const conf = Object.fromEntries(flat.flatMap((v, i) => (i % 2 ? [] : [[v, flat[i + 1]]])));
     assert.equal(conf.port, '0');

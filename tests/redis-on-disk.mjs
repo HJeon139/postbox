@@ -3,9 +3,11 @@
 // write back while a background fsync runs, for up to 2 s, so a SIGKILL right after a write can lose it, and the store
 // then finds Redis behind it (ESEQ). Those tests are about the outage, not about that (#508’s requirements, ST-4).
 
+import { admin } from './redis-fixture-user.mjs';
+
 /** @param {any} store  a Store on a data folder */
 export async function onDisk(store) {
-  const c = await store.redis.sup.client();
+  const c = await admin(store);
   try {
     for (let i = 0; i < 400; i++) {
       const info = String(await c.call('INFO', 'persistence'));

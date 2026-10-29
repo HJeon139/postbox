@@ -9,6 +9,8 @@ import { after } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 
+export { admin } from './redis-fixture-user.mjs';
+
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
 const dirs = [];

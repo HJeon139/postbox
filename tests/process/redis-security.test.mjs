@@ -10,6 +10,7 @@ import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { encode } from '../../server/redis-client.mjs';
 import { RedisSupervisor } from '../../server/redis-supervisor.mjs';
 
 const HOME = process.env.POSTBOX_REDIS_HOME;
@@ -91,5 +92,115 @@ test('SR-4: Redis 8’s protections are written into the config, and modules loa
     assert.equal(conf.match(/^loadmodule /gm)?.length, 2, 'the two modules, and no others');
   } finally {
     await sup.stop();
+  }
+});
+
+/** The reply to one command on a raw connection to a socket, as text: what an unauthenticated client gets. */
+const rawReply = (path, ...args) =>
+  new Promise((ok, fail) => {
+    const s = connect({ path });
+    s.once('error', fail);
+    s.once('connect', () => s.write(encode(args)));
+    s.once('data', (d) => {
+      s.destroy();
+      ok(d.toString());
+    });
+  });
+
+/** Whether a call is refused by the ACL, as NOPERM or ERR. */
+const refused = (p) =>
+  p.then(
+    (v) => assert.fail(`it ran, and answered ${JSON.stringify(v)}`),
+    (e) => assert.match(String(e.message), /^(NOPERM|ERR|WRONGPASS)/, e.message),
+  );
+
+test('SR-3: the default user is off, an unauthenticated connection gets NOAUTH, and the default user can’t log in', async () => {
+  RedisSupervisor.fixtureUser = true;
+  const sup = new RedisSupervisor({ home: HOME, dataDir: join(tmp, 'sr3-default') });
+  await sup.start();
+  try {
+    const path = /** @type {string} */ (sup.socket);
+    assert.match(await rawReply(path, 'GET', 'seq'), /^-NOAUTH/);
+    assert.match(await rawReply(path, 'AUTH', 'default', ''), /^-WRONGPASS/);
+    assert.match(await rawReply(path, 'AUTH', 'anything'), /^-WRONGPASS/);
+    const admin = await sup.fixtureClient();
+    const def = await admin.call('ACL', 'GETUSER', 'default');
+    assert.equal(def[def.indexOf('flags') + 1].includes('off'), true, 'the default user is off');
+    admin.close();
+  } finally {
+    await sup.stop();
+    RedisSupervisor.fixtureUser = false;
+  }
+});
+
+/** What turns store access into more, refused to Postbox’s user directly and from Lua (SR-3). */
+const DANGEROUS = [
+  ['REPLICAOF', '127.0.0.1', '1'],
+  ['SLAVEOF', '127.0.0.1', '1'],
+  ['MIGRATE', '127.0.0.1', '1', 'seq', '0', '100'],
+  ['CONFIG', 'SET', 'maxmemory', '1'],
+  ['CONFIG', 'GET', '*'],
+  ['MODULE', 'LIST'],
+  ['DEBUG', 'SLEEP', '0'],
+  ['ACL', 'SETUSER', 'postbox', '+@all'],
+  ['ACL', 'LIST'],
+  ['FAILOVER'],
+  ['CLUSTER', 'INFO'],
+  ['SYNC'],
+  ['PSYNC', '?', '-1'],
+  ['SHUTDOWN', 'NOSAVE'],
+  ['KEYS', '*'],
+  ['SCRIPT', 'FLUSH'],
+  ['FUNCTION', 'FLUSH'],
+  ['CLIENT', 'LIST'],
+  ['SAVE'],
+  ['BGREWRITEAOF'],
+];
+
+test('SR-3: Postbox’s user runs exactly what the store sends, and is refused the rest, directly and from Lua, with no side effect', async () => {
+  RedisSupervisor.fixtureUser = true;
+  const sup = new RedisSupervisor({ home: HOME, dataDir: join(tmp, 'sr3-acl') });
+  await sup.start();
+  try {
+    const c = await sup.client();
+    // What the store sends today (server/store-redis.mjs, store-commit.mjs, store-import.mjs), and its Lua’s calls.
+    assert.equal(await c.call('PING'), 'PONG');
+    assert.equal(await c.call('SET', 'seq', '1'), 'OK');
+    assert.equal(await c.call('GET', 'seq'), '1');
+    assert.equal(await c.call('HSET', 'ops', 'op', '1'), 1);
+    assert.equal(await c.call('HGET', 'ops', 'op'), '1');
+    assert.equal(await c.call('ZADD', 'order:x', '1', 'a'), 1);
+    assert.deepEqual(await c.call('ZRANGE', 'order:x', 0, -1), ['a']);
+    assert.equal(await c.call('ZREM', 'order:x', 'a'), 1);
+    assert.match(await c.call('XADD', 'events', 'MAXLEN', '~', 10, '1-0', 'e', '{}'), /^1-0$/);
+    assert.equal((await c.call('XRANGE', 'events', '-', '+')).length, 1);
+    assert.equal(await c.call('JSON.SET', 'stage:1', '$', '{"n":1}'), 'OK');
+    assert.equal(await c.call('RENAME', 'stage:1', 'doc'), 'OK');
+    assert.equal(await c.call('JSON.GET', 'doc', '$'), '[{"n":1}]');
+    assert.deepEqual(await c.call('JSON.MGET', 'doc', '$'), ['[{"n":1}]']);
+    assert.equal(await c.call('DEL', 'doc'), 1);
+    assert.equal(await c.call('EVAL', "redis.pcall('JSON.SET', 'k', '$', '1'); return redis.call('DEL', 'k')", 0), 1);
+    assert.ok(Array.isArray(await c.call('WAITAOF', 1, 0, 2000)));
+    assert.equal(await c.call('FLUSHDB'), 'OK', 'the importer’s reset, at startup');
+
+    const admin = await sup.fixtureClient();
+    const before = { maxmemory: await admin.call('CONFIG', 'GET', 'maxmemory'), role: String(await admin.call('INFO', 'replication')).match(/role:\w+/)?.[0] };
+    for (const cmd of DANGEROUS) {
+      await refused(c.call(...cmd));
+      const lua = `return redis.call(${cmd.map((a) => `'${a}'`).join(', ')})`;
+      await refused(c.call('EVAL', lua, 0));
+    }
+    assert.equal(await c.call('PING'), 'PONG', 'the connection is still Postbox’s');
+    assert.deepEqual(
+      { maxmemory: await admin.call('CONFIG', 'GET', 'maxmemory'), role: String(await admin.call('INFO', 'replication')).match(/role:\w+/)?.[0] },
+      before,
+      'nothing changed',
+    );
+    assert.equal(sup.child?.exitCode, null, 'it’s still running');
+    admin.close();
+    c.close();
+  } finally {
+    await sup.stop();
+    RedisSupervisor.fixtureUser = false;
   }
 });

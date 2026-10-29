@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+import { admin } from './redis-fixture-user.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -132,7 +133,7 @@ test('a commit Redis refuses leaves the state, the clients and Redis unchanged, 
   const s = await open(await tmp());
   s.emit('thread', { id: 't', members: [] });
   await s.flush();
-  const c = await raw(s);
+  const c = await admin(s);
   const before = { seq: await c.call('GET', 'seq'), len: await c.call('XLEN', 'events') };
   // Out of memory, as a full disk refuses: Redis refuses the script before it writes anything.
   await c.call('CONFIG', 'SET', 'maxmemory-policy', 'noeviction');
@@ -189,7 +190,7 @@ test('a commit Redis rejects part way leaves every document unchanged', async ()
     ),
     /recursion/,
   );
-  const c = await raw(s);
+  const c = await admin(s);
   const saved = JSON.parse(await c.call('JSON.GET', 'settings', '$'))[0].d;
   assert.deepEqual(saved, s.state.settings);
   assert.equal(await c.call('EXISTS', 'app:a'), 0);
@@ -204,7 +205,7 @@ test('an optimistic write Redis refuses makes the store refuse new writes until 
   const s = await open(await tmp());
   s.emit('settings', { theme: 'dark' });
   await s.flush();
-  const c = await raw(s);
+  const c = await admin(s);
   await c.call('CONFIG', 'SET', 'maxmemory', '1');
   const client = /** @type {any} */ (s).client;
   const call = client.call.bind(client);
@@ -246,7 +247,7 @@ test('flush() returns while writes fail, and a retry later writes what waited', 
   const s = await open(await tmp());
   s.emit('settings', { theme: 'dark' });
   await s.flush();
-  const c = await raw(s);
+  const c = await admin(s);
   await c.call('CONFIG', 'SET', 'maxmemory', '1');
   s.emit('settings', { theme: 'auto' });
   await s.flush();
