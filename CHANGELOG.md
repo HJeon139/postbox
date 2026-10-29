@@ -2,6 +2,37 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.43.3 (2026-10-29)
+
+### Fixes
+
+- **apps:** keep every on-screen app running
+- **apps:** parse apostrophes in unquoted attributes
+- **apps:** ignore duplicate browser checks
+- **apps:** pause unused frames and queue one check
+- **apps:** preserve visible apps during checks
+- **apps:** preserve Unicode offsets while scanning scripts
+- **apps:** scan malformed script end tags safely
+- **apps:** check every pending app safely
+- **apps:** locate sandbox script errors
+- **apps:** report stylesheet class collisions
+
+## 0.43.2 (2026-10-29)
+
+### Fixes
+
+- **uat:** the verifier's prompt counts its three readings
+- **uat:** the verifier reads what a wake's answer means, and judges a finding's own claim
+- **uat:** the verifier can search a run's records, and is told what they hold
+- **uat:** the runner's flag reactions use the inline buttons
+
+## 0.43.1 (2026-10-29)
+
+### Fixes
+
+- **remote:** a rejection nothing handled on a host is logged, and its daemon keeps serving
+- **server:** a rejection nothing handled is logged, and Postbox keeps running
+
 ## 0.43.0 (2026-10-28)
 
 ### Features
