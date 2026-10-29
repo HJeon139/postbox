@@ -3,7 +3,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
-import { settle, setup } from './side-threads-fixture.mjs';
+import { THREAD_CHECKS } from '../server/room-checks-threads.mjs';
+import { held, settle, setup } from './side-threads-fixture.mjs';
 
 /** A room with a topic on alpha’s first reply, while beta has not taken a turn. */
 async function roomAndTopic() {
@@ -102,6 +103,28 @@ test('#504 slash commands, host reattachments and Postbox notices in a topic are
     assert.equal(item.promptFirst, first);
     assert.equal(f.adapter.calls.at(-1).message.taskContext, undefined);
   }
+});
+
+test('#504 failed and stopped topic turns without text keep their prompt marker', async () => {
+  const failed = await roomAndTopic();
+  failed.adapter.next.push(async () => {
+    throw new Error('Backend failed.');
+  });
+  failed.rt.sendMessage(failed.topic.id, { text: '@beta check this sentence.' });
+  await settle(failed.rt);
+  assert.equal(failed.store.items(failed.topic.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'thread-task');
+  assert.deepEqual(THREAD_CHECKS[0].run({ state: failed.store.state, threads: [failed.t.id, failed.topic.id] }), []);
+
+  const stopped = await roomAndTopic();
+  const waiting = held();
+  stopped.adapter.next.push(waiting.step);
+  stopped.rt.sendMessage(stopped.topic.id, { text: '@beta check another sentence.' });
+  for (let i = 0; i < 20 && !stopped.rt.turns.has(stopped.beta.id); i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(stopped.rt.stop(stopped.beta.id), true);
+  waiting.release();
+  await settle(stopped.rt);
+  assert.equal(stopped.store.items(stopped.topic.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'thread-task');
+  assert.deepEqual(THREAD_CHECKS[0].run({ state: stopped.store.state, threads: [stopped.t.id, stopped.topic.id] }), []);
 });
 
 test('#504 a turn in the room keeps the existing context order', async () => {

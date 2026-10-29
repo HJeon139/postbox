@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { THREAD_CHECKS } from '../server/room-checks-threads.mjs';
+import { firstPromptSection } from '../server/thread-summary.mjs';
 
 const check = THREAD_CHECKS[0];
 const facts = (promptFirst) => ({
@@ -19,8 +20,10 @@ const facts = (promptFirst) => ({
   },
 });
 
-test('#504 thread-request-first flags a topic turn without a first prompt section', () => {
-  assert.deepEqual(check.run(facts()), [
+test('#504 thread-request-first flags a direct topic request whose task context is missing', () => {
+  const first = firstPromptSection({ kind: 'user' }, true);
+  assert.equal(first, 'missing');
+  assert.deepEqual(check.run(facts(first)), [
     {
       key: 'turn-topic',
       title: 'A thread turn did not put its request first',

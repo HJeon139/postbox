@@ -20,7 +20,10 @@ export function lineOf(rt, t) {
 }
 
 export function firstPromptSection(message, inThread) {
-  return typeof message.attach === 'string' ? 'attach' : message.slash === true ? 'slash' : message.taskContext ? 'thread-task' : inThread ? 'system' : 'room';
+  if (typeof message.attach === 'string') return 'attach';
+  if (message.slash === true) return 'slash';
+  const direct = message.kind === 'user' || message.kind === 'agent' || message.kind === 'event';
+  return inThread && direct ? (message.taskContext ? 'thread-task' : 'missing') : inThread ? 'system' : 'room';
 }
 
 export function turnContext(rt, se, where, message, slash) {

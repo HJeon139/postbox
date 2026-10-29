@@ -976,6 +976,7 @@ export class Runtime {
           turnId: turn.id,
           text: '',
           status: 'failed',
+          ...replyMarks(turn),
         }).id;
       this.patchItem(turn.threadId, target, {
         status: 'failed',
@@ -1143,6 +1144,7 @@ export class Runtime {
         handle: this.s.sessions[sessionId].handle,
         turnId: turn.id,
         text: '',
+        ...replyMarks(turn),
         ...ended,
       });
     }
