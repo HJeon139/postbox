@@ -3,7 +3,7 @@
 // the phase that names the fault arms it, through the file the launcher reads at each start.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { armed } from '../tools/uat/fault-launcher.mjs';
 import { faultSetup } from '../tools/uat/fault-run.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
+import { unknownTriggers } from '../tools/uat/triggers.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const LAUNCHER = join(ROOT, 'tools', 'uat', 'fault-launcher.mjs');
@@ -96,4 +97,24 @@ test('the phase that names the fault arms it, and the next phase disarms it', ()
   assert.equal(armed(env)?.agent, 'researcher', 'arming the same phase again leaves it armed');
   f.arm(2);
   assert.equal(armed(env), null);
+});
+
+test('#508’s delivery and bigroom scenarios parse: the big-room seed, phase 3’s fault, and the triggers that exist', () => {
+  const read = (name) => parseScenario(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8'));
+  const delivery = read('delivery');
+  const bigroom = read('bigroom');
+  assert.equal(delivery.seed, 'big-room');
+  assert.equal(bigroom.seed, 'big-room');
+  assert.deepEqual([delivery.phases.length, bigroom.phases.length], [7, 4]);
+  assert.deepEqual(
+    delivery.phases.map((p) => p.fault),
+    [null, null, 'fail-before-output researcher 1', null, null, null, null],
+  );
+  assert.equal(faultSetup({ scenario: delivery, root: ROOT, dir: runDir(), env: {} })?.env.POSTBOX_CLAUDE_BIN, LAUNCHER);
+  assert.equal(faultSetup({ scenario: bigroom, root: ROOT, dir: runDir(), env: {} }), null);
+  assert.equal(delivery.phases[5].host, 'developer');
+  assert.deepEqual(delivery.phases[5].hostTriggers, ['wake-scheduled', 'wake-after-drop']);
+  assert.match(delivery.phases[5].hostText, /drops the host’s link/);
+  // Phases 1 to 3 use the triggers this step adds (tools/uat/delivery-triggers.mjs); the rest come with later steps.
+  assert.deepEqual(unknownTriggers({ phases: delivery.phases.slice(0, 3) }), []);
 });
