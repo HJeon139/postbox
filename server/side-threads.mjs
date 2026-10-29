@@ -3,11 +3,15 @@
 // add an agent the conversation doesn’t have, and the lines of side threads from before #372. Functions take the
 // Runtime first (architecture.md, “What a move may change”).
 
+import { HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
-import { askToAdd, dropHeld } from './wake-cards.mjs';
+import { askToAdd, askToWake, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
+// Agent wakes in a row, without you, before the next waits for your Allow (shared/limits.mjs: wake_agent’s description
+// on a host names it too).
+export { HOP_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 
@@ -15,10 +19,15 @@ export { resolveHop } from './wake-cards.mjs';
  * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message) or by wake_agent. It
  * reaches the persona’s one session in the conversation, which answers there; a busy one takes the wake when its turn
  * ends, as any message to a busy agent waits. A persona the conversation doesn’t have needs the
- * person: a card asks to add it. No limit holds a wake back (#492): the room shows how many have chained since you
- * last acted (hops), with a hint to Stop agents going nowhere.
+ * person: a card asks to add it. After HOP_LIMIT wakes in a row without you, the next one waits for your confirm.
  */
-export function agentWake(rt, fromSessionId, handle, text, { replyIn = undefined, fromTurnId = rt.turns.get(fromSessionId)?.id, itemId = null } = {}) {
+export function agentWake(
+  rt,
+  fromSessionId,
+  handle,
+  text,
+  { confirmed = false, replyIn = undefined, fromTurnId = rt.turns.get(fromSessionId)?.id, itemId = null } = {},
+) {
   const from = rt.s.sessions[fromSessionId];
   const p = rt.personaByHandle(handle);
   if (!from || !p) return { ok: false, message: `There’s no agent called @${handle}.` };
@@ -37,6 +46,8 @@ export function agentWake(rt, fromSessionId, handle, text, { replyIn = undefined
   // A card keeps the mention’s message, so Allow wakes from it rather than posting it again.
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId };
   if (!target) return askToAdd(rt, from, parent, p, card);
+  // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.
+  if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
   rt.putThread({ ...rt.s.threads[parent.id], hops: hop });
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114, telemetry) goes on the
@@ -88,6 +99,23 @@ export function deliverWake(rt, threadId, q) {
   }
   // No reply-back (#372): the reply posts where the wake was, and wakes the waker only if it @-mentions it.
   rt.deliver(target.id, { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId }, { threadId });
+  retireStale(rt, threadId, target, `@${q.from} woke it`);
+}
+
+/**
+ * When the last agent working in a conversation ends its turn with nothing left to answer, the chain of wakes has ended,
+ * as when an agent acks a hand-off without waking anyone, so its count starts again (#492): separate chains don’t add up
+ * to the chain limit. A wake waiting on a card keeps it, until you answer the card.
+ * @param {any} rt @param {string} threadId  where the turn that ended spoke
+ */
+export function endChain(rt, threadId) {
+  const conv = rt.lineage(threadId).at(-1);
+  if (!rt.s.threads[conv]?.hops) return;
+  if (rt.sessionsIn(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
+  const threads = Object.values(rt.s.threads).filter((t) => rt.lineage(t.id).at(-1) === conv);
+  if (threads.some((t) => (t.queue ?? []).some((q) => q.kind === 'wake'))) return;
+  if (rt.store.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
+  rt.putThread({ ...rt.s.threads[conv], hops: 0 });
 }
 
 /**

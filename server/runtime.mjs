@@ -75,7 +75,18 @@ import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
-import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
+import {
+  agentWake,
+  archiveForks,
+  bumpSideLink,
+  dropWakes,
+  endChain,
+  recordAgentMessage,
+  resolveHop,
+  sideSession,
+  threadPersona,
+  wakeAgent,
+} from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
@@ -83,10 +94,12 @@ import { firstPromptSection, settleThread, turnContext } from './thread-summary.
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
 export { httpError } from './helpers.mjs';
+export { HOP_LIMIT } from './side-threads.mjs';
 export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
@@ -482,14 +495,15 @@ export class Runtime {
     }
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
-    if (busy.length && !sendNow) {
-      const q = { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() };
-      this.putThread({ ...this.s.threads[threadId], queue: [...(this.s.threads[threadId].queue ?? []), q] });
-      return { queued: q };
-    }
+    const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() } : null;
+    if (q) this.putThread({ ...this.s.threads[threadId], queue: [...(this.s.threads[threadId].queue ?? []), q] });
     // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
-    for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
-    return this.postAndDeliver(threadId, { text, attachments }, targets);
+    else for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
+    const sent = q ? { queued: q } : this.postAndDeliver(threadId, { text, attachments }, targets);
+    // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
+    // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
+    for (const { se } of targets) retireStale(this, threadId, se, 'you wrote to it', { byPerson: true });
+    return sent;
   }
 
   postAndDeliver(threadId, { text, attachments }, targets) {
@@ -669,7 +683,7 @@ export class Runtime {
       () => this.endTurn(turn, null),
       (err) => this.endTurn(turn, err),
     );
-    turn.exited.then(() => this.turnExited(turn));
+    turn.exited.then(() => this.turnExited(turn)).then(() => endChain(this, turn.threadId));
   }
 
   turnContext(se0, turn) {
@@ -1067,7 +1081,7 @@ export class Runtime {
 
     // An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
     // A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
-    // agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The wake limit stops a loop.
+    // agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The chain limit stops a runaway one.
     // Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
     let said = turn.first;
     for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {

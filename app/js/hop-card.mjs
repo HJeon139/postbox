@@ -1,6 +1,6 @@
-// The wake card: it asks to add an agent the conversation doesn’t have, when another agent wakes it (#228). Until #492 a
-// wake past a limit raised one too (#108, #372), and those stored still show. And focusComposer, which it and the
-// transcript use, so the two modules don't import each other.
+// The wake-limit card (#108): after 50 agent wakes in one chain (#320, #492), the next one waits for your Allow. The same
+// card asks to add an agent the conversation doesn’t have, when another agent wakes it (#228). And focusComposer, which
+// it and the transcript use, so the two modules don't import each other.
 
 import { api } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
@@ -32,7 +32,7 @@ export function hopBlock(it, ctx) {
           : it.pair
             ? // A card the pair limit raised, before #492 removed it, as the conversation keeps it.
               `@${it.from} and @${it.to} have woken each other ${it.pair} times in a row, so the next one waits for you.`
-            : `That would have been agent wake ${it.n} since your last message, past the limit Postbox kept then.`,
+            : `That would be agent wake ${it.n} in this chain, past the limit of ${it.n - 1}, so it waits for you.`,
       ),
       it.reason ? h('p.dim.small', `@${it.from}’s reason: “${it.reason}”`) : null,
       open && it.held?.length ? heldLine(it.held) : null,

@@ -6,7 +6,7 @@
 - project: Hand-offs
 - conversation: Across machines
 
-**Retired by #492:** there are no wake limits now, so no wake raises a card or is held on one, and this scenario’s phases can’t happen. It stays for runs of a build from before #492; its checks still read such a run.
+**Needs rework since #492:** there is no pair limit now, so phase 1’s third wake in a row no longer raises a card, and phase 2’s hand-offs go rather than wait on it. A card now comes only from the chain limit (`HOP_LIMIT`, 50 wakes in one chain). Until the phases are rebuilt on that, a run of this scenario won’t reach its triggers.
 
 A run with one host (`--host`, once), Claude Code only: @critic runs there, and @researcher and @developer on this computer. Phase 1’s card is researcher’s wake of developer; phase 2’s two hand-offs are between critic and researcher, one each way, so developer, the card’s target, takes no part until phase 3 allows the card. Postbox stops two agents waking each other after a hand-off and its answer: their third wake in a row raises a card for the person (`PAIR_LIMIT`, `shared/limits.mjs`). While one such card waits, a wake that needs a second card is held on it until the person answers (`askToWake`, `server/wake-cards.mjs`, #439); before #439’s fix it was refused. This run makes that happen from a host and from this computer, and checks what each sender is told, when, and whether the work it handed off is lost. Watch for an agent that says it handed work on when it didn’t, an agent left idle with work it was never given, and a refusal that names no card.
 

@@ -126,8 +126,8 @@ test('#228: an agent approved from a proposal in a topic thread joins the conver
 
 test('#228: your message in a topic thread starts the wake count again on the conversation, where wakes count', async () => {
   const { store, rt, t, alpha, topic } = await withTopic();
+  // While beta answers, the chain runs (a chain that ends starts the count again by itself, #492).
   rt.agentWake(alpha.id, 'beta', 'One.');
-  await settle(rt);
   assert.equal(store.state.threads[t.id].hops, 1);
   rt.sendMessage(topic.id, { text: '@alpha carry on' });
   assert.equal(store.state.threads[t.id].hops, 0);

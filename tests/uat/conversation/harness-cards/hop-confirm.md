@@ -2,7 +2,7 @@
 
 ![Wake-limit confirm](../../screenshots/hop-confirm.png)
 
-**Where:** Only on a card stored before #492, which removed the wake limits: until then, after ten agent-to-agent wakes in a row (three until #320). A new wake raises no such card; the composer counts the chain instead (#492).
+**Where:** After 50 agent-to-agent wakes in one chain (three until #320, ten until #492). A chain ends when you act or no agent is left working on it.
 
 ## Why it exists
 

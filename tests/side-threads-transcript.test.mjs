@@ -73,14 +73,19 @@ test('#114, #492: two agents mentioning each other in turn go on without a card,
     store.items(t.id).filter((x) => !['user', 'agent', 'block', 'shared'].includes(x.kind)),
     [],
   );
-  assert.equal(store.state.threads[t.id].hops, 3, 'three agent wakes since your message');
+  assert.deepEqual(
+    agents.filter((x) => x.hop).map((x) => x.hop),
+    [1, 2, 3],
+    'three agent wakes in the chain',
+  );
+  assert.equal(store.state.threads[t.id].hops, 0, 'and beta’s last answer, which woke no one, ended it');
   assert.equal(Object.values(store.state.threads).filter((x) => x.kind === 'side').length, 0);
 });
 
 test('#114: with no line per wake, a telemetry report still counts the room’s wake chains, from each wake’s message', async () => {
   const { store, rt, t, alpha, beta } = setup();
+  // Both while the chain runs: once it ends, the next wake starts a chain of its own (#492).
   rt.agentWake(alpha.id, 'beta', 'Check the totals.');
-  await settle(rt);
   rt.agentWake(beta.id, 'alpha', 'One more gap, please look again.');
   await settle(rt);
   const conv = store.state.threads[t.id];
