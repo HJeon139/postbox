@@ -12,7 +12,8 @@ const MARKER_TO_SPAWN_MS = 30_000;
 const said = (a) => `${a.how === 'mention' ? 'mention' : a.how === 'held' ? 'wake held on a card' : 'allowed wake'}${a.itemId ? ` ${a.itemId}` : ''}`;
 
 /**
- * delivery-dropped: due to an agent, and in none of its prompts or tool results by the end of its next two turns.
+ * delivery-dropped: due to an agent, and in none of its prompts or tool results by the end of its next two turns,
+ * both ended: a turn still running may yet read it.
  * One of those turns with no line in the transcript (stopped before Claude Code wrote its prompt) may have held it,
  * so the check says it couldn’t check it there.
  */
@@ -28,8 +29,9 @@ function droppedDeliveries(f) {
       unreadable(unread, a.to);
       continue;
     }
+    // Two turns that have ended: one still running may yet read it.
     const next = turnsOf(f, a.to).filter((t) => t.started > a.due);
-    if (next.length < 2) continue;
+    if (next.length < 2 || next[0].running || next[1].running) continue;
     if (got.some((x) => x.at >= a.from - 1000 && x.at <= next[1].ended && holds(x, a))) continue;
     const blind = next.slice(0, 2).find((t) => !recorded(got, t));
     if (blind) {
@@ -153,7 +155,8 @@ function markersBeforeOutput(f) {
     const handle = f.state?.sessions?.[id]?.handle;
     if (!handle) continue;
     const turn = turnsOf(f, handle).find((t) => t.started >= e.data.updatedAt - 1000 && t.started <= e.data.updatedAt + MARKER_TO_SPAWN_MS);
-    if (!turn || turn.output) continue;
+    // A turn still running may write yet: only one that ended with nothing counts.
+    if (!turn || turn.running || turn.output) continue;
     out.push({
       key: `marker-before-output:${id}:${e.seq}`,
       title: `@${handle}’s catch-up marker moved in a turn that produced no output`,

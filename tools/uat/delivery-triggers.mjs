@@ -90,7 +90,7 @@ function failBeforeOutput(f) {
   const out = [];
   for (const a of addressed(f)) {
     const turns = turnsOf(f, a.to);
-    const failed = turns.find((t) => t.started > a.due && !t.output);
+    const failed = turns.find((t) => t.started > a.due && !t.running && !t.output);
     const i = failed ? turns.indexOf(failed) : -1;
     const next = turns[i + 1];
     if (!failed || !next) continue;

@@ -316,10 +316,11 @@ export const notCheckableAll = (f, check, unread) =>
 
 /**
  * Whether an agent’s transcript holds a line of this turn: Claude Code writes the prompt a turn begins with as it
- * starts, so a turn with none was stopped before it did, or its transcript wasn’t recorded.
- * @param {{ at: number }[]} inputs  from inputsOf  @param {{ started: number, ended: number }} turn
+ * starts, so a turn with none was stopped before it did, or its transcript wasn’t recorded. A turn still running isn’t
+ * judged: it may not have written its prompt yet, so it counts as recorded.
+ * @param {{ at: number }[]} inputs  from inputsOf  @param {{ started: number, ended: number, running?: boolean }} turn
  */
-export const recorded = (inputs, turn) => inputs.some((x) => x.at >= turn.started - 1000 && x.at <= turn.ended);
+export const recorded = (inputs, turn) => !!turn.running || inputs.some((x) => x.at >= turn.started - 1000 && x.at <= turn.ended);
 
 /** Whether an input holds this delivery: its item’s id, or the start of its text. */
 export const holds = (input, a) => (!!a.itemId && input.text.includes(a.itemId)) || (!!headOf(a.text) && input.key.includes(plain(a.text).slice(0, HOLD)));
@@ -328,13 +329,23 @@ export const holds = (input, a) => (!!a.itemId && input.text.includes(a.itemId))
 export const hasOutput = (events) =>
   (events ?? []).some((e) => e?.type === 'assistant' || (e?.type === 'stream_event' && e.event?.type === 'content_block_delta'));
 
+/** A session is in a turn while it works, or waits on the person mid-turn (finishedAt null: the turn hasn’t ended). */
+const BUSY = new Set(['think', 'tool', 'gen']);
+const inTurn = (se) => (se.finishedAt === undefined ? BUSY.has(se.state) : se.finishedAt === null && se.state !== 'idle');
+
 /**
- * An agent’s turns, oldest first, from their raw streams.
+ * An agent’s turns, oldest first, from their raw streams. A turn is running when its stream has no end, or when it
+ * is the agent’s newest, its stream has no result line yet and the agent’s session is in a turn: a live check reads
+ * the stream’s file mid-turn, whose last write isn’t its end. A running turn’s `ended` is Infinity, so what a check
+ * judges at a turn’s end (its output, what it carried) waits until it ends.
  * @param {any} f  @param {string} handle
- * @returns {{ started: number, ended: number, output: boolean }[]}
+ * @returns {{ started: number, ended: number, output: boolean, running: boolean }[]}
  */
-export const turnsOf = (f, handle) =>
-  (f.streams ?? [])
-    .filter((s) => s.handle === handle && Number.isFinite(s.started))
-    .map((s) => ({ started: s.started, ended: Number.isFinite(s.ended) ? s.ended : s.started, output: hasOutput(s.events) }))
-    .sort((a, b) => a.started - b.started);
+export const turnsOf = (f, handle) => {
+  const streams = (f.streams ?? []).filter((s) => s.handle === handle && Number.isFinite(s.started)).sort((a, b) => a.started - b.started);
+  const busy = Object.values(f.state?.sessions ?? {}).some((se) => se?.handle === handle && inTurn(se));
+  return streams.map((s, i) => {
+    const running = !Number.isFinite(s.ended) || (busy && i === streams.length - 1 && !(s.events ?? []).some((e) => e?.type === 'result'));
+    return { started: s.started, ended: running ? Infinity : s.ended, output: hasOutput(s.events), running };
+  });
+};

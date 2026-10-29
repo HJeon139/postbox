@@ -46,6 +46,17 @@ test('ask-dropped stays silent when the held wake went on and arrived', () => {
   assert.deepEqual(found(heldRoom({ arrives: true }), 'ask-dropped'), []);
 });
 
+test('ask-dropped doesn’t judge a held wake while the turn due to carry it is still running', () => {
+  for (const recorded of [true, false]) {
+    const f = heldRoom({ arrives: false });
+    const turn = /** @type {any} */ (f.streams.at(-1));
+    turn.ended = turn.started + 5;
+    Object.assign(f.state.sessions.se_researcher, { state: 'gen', finishedAt: null });
+    if (!recorded) f.transcripts.find((t) => t.handle === 'researcher').lines.length = 0;
+    assert.deepEqual(found(f, 'ask-dropped'), [], `transcript line: ${recorded}`);
+  }
+});
+
 /**
  * A card from @critic to @developer with @researcher’s wake of @critic held on it, retired when @developer was woken
  * another way. Retiring sends each wake on (server/wake-cards.mjs’s retireStale): the card’s own raises the next

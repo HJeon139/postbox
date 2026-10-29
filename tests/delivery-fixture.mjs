@@ -19,6 +19,23 @@
 export const T0 = Date.UTC(2026, 9, 28, 23, 6, 0);
 export const ROOM = 'th_room';
 
+/** A user line in a Claude Code transcript. */
+const line = (at, content, flags = {}) => JSON.stringify({ type: 'user', ...flags, timestamp: new Date(at).toISOString(), message: { content } });
+
+/**
+ * The running turn of an agent ends at `at`: its stream gets its result line (and an assistant message, when output),
+ * and its session goes idle. A tool result it read on the way lands in its transcript before then.
+ * @param {any} f  @param {string} handle  @param {number} at  @param {{ output?: boolean, results?: string[] }} [o]
+ */
+function endTurn(f, handle, at, { output = false, results = [] } = {}) {
+  const s = f.streams.filter((x) => x.handle === handle).at(-1);
+  s.ended = at;
+  s.events.push(...(output ? [{ type: 'assistant' }] : []), { type: 'result', subtype: 'success' });
+  Object.assign(f.state.sessions[`se_${handle}`], { state: 'idle', finishedAt: at });
+  const t = f.transcripts.find((x) => x.handle === handle);
+  for (const r of results) t?.lines.push(line(at - 500, [{ type: 'tool_result', content: r }]));
+}
+
 /** A room with nothing in it yet, and what builds it up. */
 export function room() {
   const f = {
@@ -30,7 +47,6 @@ export function room() {
   };
   let seq = 0;
   const lines = (handle) => /** @type {any} */ (f.transcripts.find((t) => t.handle === handle)).lines;
-  const line = (at, content, flags = {}) => JSON.stringify({ type: 'user', ...flags, timestamp: new Date(at).toISOString(), message: { content } });
   return {
     f,
     /**
@@ -68,18 +84,23 @@ export function room() {
      * A turn: its stream, its prompt and its tool results. output: false for one that wrote nothing. Claude Code
      * writes every turn’s prompt to its transcript, so a turn given no prompt still records one that delivers nothing;
      * recorded: false for a turn the transcript has no line of, as when Send now stopped it before Claude Code wrote one.
+     * running: true for a turn still under way when the facts were read, as a mid-run check reads it: its session
+     * working, and its stream’s file last written `ms` after it started, with no result line yet. end() ends it.
      */
     turn(
       handle,
       started,
-      { prompt = /** @type {string|null} */ (null), results = /** @type {string[]} */ ([]), output = true, ms = 8000, recorded = true } = {},
+      { prompt = /** @type {string|null} */ (null), results = /** @type {string[]} */ ([]), output = true, ms = 8000, recorded = true, running = false } = {},
     ) {
       f.streams.push({ handle, started, ended: started + ms, events: [{ type: 'system', subtype: 'init' }, ...(output ? [{ type: 'assistant' }] : [])] });
+      if (running) Object.assign(f.state.sessions[`se_${handle}`], { state: 'gen', finishedAt: null });
       // An agent on another backend takes its turns all the same; no transcript records what they began with.
       if (!recorded || !f.transcripts.some((t) => t.handle === handle)) return;
       lines(handle).push(line(started + 5, prompt ?? '[Postbox] Nothing new in this room since your last turn.'));
       for (const r of results) lines(handle).push(line(started + 1000, [{ type: 'tool_result', content: r }]));
     },
+    /** The running turn of an agent ends at `at` (endTurn). */
+    end: (handle, at, o = {}) => endTurn(f, handle, at, o),
   };
 }
 

@@ -29,6 +29,8 @@ function droppedAsks(f) {
     }
     if (got.some((x) => x.at >= since && holds(x, { itemId: w.itemId ?? null, text: w.text ?? '' }))) return true;
     const due = turnsOf(f, w.to).find((t) => t.started >= (settled ?? since) - 1000);
+    // The turn due to carry it is still running: it may yet, so it isn’t judged until it ends.
+    if (due?.running) return true;
     if (!due || recorded(got, due)) return false;
     unreadable(unread, w.to, due);
     return true;

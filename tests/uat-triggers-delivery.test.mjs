@@ -143,6 +143,16 @@ test('fail-before-output stays silent when no turn failed, or the next turn didn
   assert.deepEqual(fires('fail-before-output', failRoom({ carried: false })), []);
 });
 
+test('fail-before-output doesn’t count a turn still running with no output yet as failed', () => {
+  const r = room();
+  r.agent('researcher');
+  r.add({ id: 'it_ask', at: s(1), kind: 'user', text: DRAFT });
+  r.turn('researcher', s(2), { output: false, ms: 5 });
+  delete r.f.streams[0].ended;
+  r.turn('researcher', s(10), { prompt: `[Postbox] Your last turn failed before any output; resent.\n\n${DRAFT}` });
+  assert.deepEqual(fires('fail-before-output', r.f), []);
+});
+
 /** The person’s request given whole twice: the second labeled as a resend, as a pointer, or bare. */
 function resendRoom(second) {
   const r = room();
