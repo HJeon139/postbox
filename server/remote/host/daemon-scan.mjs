@@ -78,10 +78,12 @@ async function idleFired(d) {
 /** Sweeps every sweepMs (cleanup.mjs); the timer is unref’d, like the others. @param {Daemon} d */
 export function armSweep(d) {
   if (d.closed) return;
-  d.sweepTimer = d.timers.setTimeout(async () => {
+  d.sweepTimer = d.timers.setTimeout(() => {
     d.sweepTimer = null;
     if (d.closed) return;
-    await d.cleanup.sweep().catch((e) => d.log(`The cleanup sweep failed: ${e.message}`));
-    armSweep(d);
+    d.cleanup
+      .sweep()
+      .catch((e) => d.log(`The cleanup sweep failed: ${e.message}`))
+      .then(() => armSweep(d));
   }, d.sweepMs);
 }

@@ -47,7 +47,13 @@ export function toolCall(sh, rpcId, params) {
     p,
     () => {
       if (!settle(sh, id)) return;
-      respond(rpcId, textResult(`Postbox didn’t answer ${name} within ${minutes(TIMINGS.askMax)}, so it ended without a result. Try again.`, true));
+      respond(
+        rpcId,
+        textResult(
+          `Postbox didn’t answer ${name} within ${minutes(TIMINGS.askMax)}, so it ended without a result. Postbox may still apply it once it answers, so check the conversation before you call it again.`,
+          true,
+        ),
+      );
     },
     TIMINGS.askMax,
   );

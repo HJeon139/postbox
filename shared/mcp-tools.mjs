@@ -130,12 +130,17 @@ export const TOOL_DEFS = [
   },
   {
     name: 'schedule_wake',
-    description: 'Ask to be woken later, with a note to yourself.',
+    description: 'Ask to be woken later, with a note to yourself. It says the wake’s id: if you finish its work before then, cancel it with cancel_wake.',
     inputSchema: { type: 'object', properties: { in_minutes: { type: 'number' }, note: { type: 'string' } }, required: ['in_minutes'] },
   },
   {
+    name: 'cancel_wake',
+    description: 'Cancel a wake you scheduled, by the id schedule_wake gave you, once its work is done, so it doesn’t wake you for nothing.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  {
     name: 'wake_agent',
-    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. Your message posts where you are, the conversation or a topic thread, and the agent answers there from its one session in this conversation; its reply wakes you only if it @-mentions you. If it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, or ${PAIR_LIMIT} in a row between the same two agents, the person must allow the next one.`,
+    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. Your message posts where you are, the conversation or a topic thread, and the agent answers there from its one session in this conversation; its reply wakes you only if it @-mentions you. If it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in a row, or ${PAIR_LIMIT} in a row between the same two agents, the person must allow the next one; while that waits, a further one is held and goes with their answer.`,
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
@@ -157,7 +162,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_message',
-    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. For an app, also returns its current version and recorded browser check, which may stay pending indefinitely without an open browser. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
+    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. Your history cuts a message that @-mentions you at ${count(READING.mention)} instead. For an app, also returns its current version and recorded browser check, which may stay pending indefinitely without an open browser. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
     inputSchema: {
       type: 'object',
       properties: {

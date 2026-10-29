@@ -225,8 +225,11 @@ Scenario: ${scenario.title}
 ${scenario.summary}`;
 }
 
-/** One-off structured call, in a fresh session (used to verify findings). */
-export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2 }) {
+/**
+ * One-off structured call, in a fresh session (used to verify findings), in the run’s folder. It can Read and Grep there,
+ * to check a finding against the run’s records (verifyPrompt). run: a fake spawn, in tests.
+ */
+export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2, run = spawn }) {
   return new Promise((resolve, reject) => {
     const args = [
       '-p',
@@ -237,14 +240,14 @@ export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2 }) {
       '--json-schema',
       JSON.stringify(schema),
       '--tools',
-      'Read',
+      'Read,Grep',
       '--setting-sources',
       'project',
       ...signIn(),
       '--max-budget-usd',
       String(budgetUsd),
     ];
-    const child = spawn(process.env.POSTBOX_CLAUDE_BIN ?? 'claude', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = run(process.env.POSTBOX_CLAUDE_BIN ?? 'claude', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
     child.stdout.on('data', (d) => (out += d));
     child.on('error', reject);
