@@ -831,7 +831,7 @@ export class Runtime {
         const s = se();
         // A thought or a subagent’s narration is in the list, but it isn’t a tool call.
         if (kind === 'thought' || kind === 'said') return;
-        if (state === 'running' && !who) recordScheduledTool(rt, turn, { name: label }, false);
+        if (state === 'running' && !who) recordScheduledTool(rt, turn, { id, name: label }, false);
         const calls = [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5);
         // A subagent’s step is its own: it moves its arc, not the agent’s state or step (#189).
         const own = state === 'running' && !(i >= 0 ? turn.steps[i] : step).who;

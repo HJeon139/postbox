@@ -33,3 +33,16 @@ test('#466 Retry after you cancel a tool-aware recovery sends the recovery, not 
   assert.match(sent, /Do not repeat them until you have checked their effects/);
   assert.equal(f.store.state.schedules[sc.id], undefined, 'and the canceled wake isn’t armed again');
 });
+
+test('#466 one tool call reported through toolUse and activity is one entry in the recovery', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Deploy.' });
+  f.adapter.next.push(async (ctx) => {
+    ctx.toolUse({ id: 't1', name: 'Bash', input: { command: 'deploy' } });
+    ctx.activity({ id: 't1', label: 'Run deployment', state: 'running' });
+    throw networkError();
+  });
+  await fire(f, sc);
+  assert.equal(f.store.state.schedules[sc.id]?.recoveryTools?.length, 1, JSON.stringify(f.store.state.schedules[sc.id]?.recoveryTools));
+  f.rt.cancelSchedule(sc.id);
+});

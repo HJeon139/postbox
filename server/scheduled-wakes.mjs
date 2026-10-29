@@ -65,17 +65,21 @@ export function prepareScheduledRetry(rt, message, threadId) {
   return { ...message, note: sc.recoveryNote ?? sc.note };
 }
 
-const addTool = (turn, name) => {
+/** A tool start for the recovery, once per call: Claude Code reports one through both toolUse and activity, by its id. */
+const addTool = (turn, name, id) => {
   if (!turn.asked?.message?.scheduledWakeId || typeof name !== 'string') return;
+  turn.scheduledToolIds ??= new Set();
+  if (id != null && turn.scheduledToolIds.has(id)) return;
+  if (id != null) turn.scheduledToolIds.add(id);
   const clipped = name.slice(0, TOOL_NAME_CHARS);
   turn.scheduledTools ??= [];
   if (!turn.scheduledTools.includes(clipped) && turn.scheduledTools.length < TOOL_LIMIT) turn.scheduledTools.push(clipped);
 };
 
-/** Records a Claude or mock tool start, including what scheduled-wake recovery will need. */
+/** Records a tool start, by toolUse or by activity, including what scheduled-wake recovery will need. */
 export function recordScheduledTool(rt, turn, call, ledger = true) {
   if (ledger) rt.ledger.toolUse(turn, call);
-  addTool(turn, call?.name);
+  addTool(turn, call?.name, call?.id);
 }
 
 /** Whether a structured error says the network was unavailable. #467 can add Kiro’s code without message matching. */
