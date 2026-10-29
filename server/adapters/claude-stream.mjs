@@ -4,6 +4,7 @@
 
 import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
 import { contentBlocks } from './claude-content.mjs';
+import { replyText } from './claude-reply.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
 export { describePermission } from './claude-permission.mjs';
@@ -197,6 +198,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     // running totals.
     key: Math.random().toString(36).slice(2),
   };
+  const reply = replyText(ctx, st);
   const status = (patch) => {
     if (patch.state && patch.state === st.state && Object.keys(patch).length === 1) return;
     if (patch.state) st.state = patch.state;
@@ -541,8 +543,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         const blk = st.blocks.get(ev.index);
         if (d.type === 'text_delta' && d.text) {
           if (st.current) st.streamed.add(st.current);
-          ctx.text(d.text);
-          st.wroteText = true;
+          reply.write(d.text);
           st.said = appendGlimpseSource(st.said, d.text);
           glimpse(st.said);
         } else if (d.type === 'thinking_delta' && d.thinking && blk) {
@@ -586,9 +587,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           thought(b.thinking);
         } else if (b.type === 'text' && b.text && !st.streamed.has(m.id)) {
           // Without partial messages, text arrives whole.
-          if (st.wroteText) ctx.text('\n\n');
-          ctx.text(b.text);
-          st.wroteText = true;
+          reply.whole(b.text);
         }
       }
       // A message that calls no tool, while subagents it started work on in the background: it waits on them (#189).
@@ -618,7 +617,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     }
 
     if (e.type === 'result') {
-      st.result = e;
+      st.result = reply.fromResult(e); // posting a reply no text event carried (#485)
       const usage = (st.model && e.modelUsage?.[st.model]) || Object.values(e.modelUsage ?? {})[0];
       if (usage?.contextWindow && usage.contextWindow !== st.contextWindow) {
         st.contextWindow = usage.contextWindow;

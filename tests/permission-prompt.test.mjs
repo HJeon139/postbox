@@ -53,9 +53,11 @@ for (const [label, backend, capabilities] of [
     const { store, rt, adapter, t, se } = setup(backend, capabilities);
     /** @type {any} */
     let seen = null;
-    adapter.next.push(async () => {
+    adapter.next.push(async (c) => {
       const listed = (await rpc(rt, se, 'tools/list')).result.tools.map((x) => x.name);
       seen = { listed, reply: await rpc(rt, se, 'tools/call', PROMPT) };
+      // It answers, as a real turn does: a turn with no reply ends as a failed one (#485), which isn’t what this checks.
+      c.text('I couldn’t clean the build.');
     });
     rt.sendMessage(t.id, { text: 'clean the build' });
     await settle(rt);
