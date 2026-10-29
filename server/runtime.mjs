@@ -78,7 +78,7 @@ import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, r
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
-import { settleThread, turnContext } from './thread-summary.mjs';
+import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -577,8 +577,8 @@ export class Runtime {
     // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
     // (#120, message.attach): it sends the agent nothing, and replays what the host has.
     const slash = message.slash === true || typeof message.attach === 'string';
-    // A queued mention its last summary already gave it comes as a pointer, not as new (#484).
-    message = pointerIfSeen(this, se, message);
+    // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
+    if (where === se.threadId) message = pointerIfSeen(this, se, message);
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
@@ -607,6 +607,7 @@ export class Runtime {
       // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
       backend: persona?.backend ?? 'mock',
       threadId: where,
+      promptFirst: firstPromptSection(message, where !== se.threadId),
       segment: null,
       first: null,
       steps: [],
@@ -625,7 +626,6 @@ export class Runtime {
       keepJobs: new Set(),
       asked,
     };
-    if (message.taskContext) this.store.emit('turn.context', { turnId: turn.id, sessionId, threadId: where, first: 'thread-task' });
     this.turns.set(sessionId, turn);
     // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
     const hostId = this.remote.hostOf(persona);

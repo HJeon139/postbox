@@ -19,15 +19,19 @@ export function lineOf(rt, t) {
   return null;
 }
 
+export function firstPromptSection(message, inThread) {
+  return typeof message.attach === 'string' ? 'attach' : message.slash === true ? 'slash' : message.taskContext ? 'thread-task' : inThread ? 'system' : 'room';
+}
+
 export function turnContext(rt, se, where, message, slash) {
   if (slash) return message;
   const thread = where === se.threadId ? null : (threadCatchUp(rt, se, where, message.itemId) ?? threadHeader(rt, where));
   const room = rt.catchUp(se, message.itemId);
-  if (!thread) return room ? { ...message, context: [room, ...(message.context ?? [])] } : message;
-  const background = room
-    ? [`[Postbox] Meanwhile in the room (background context; answer room work in the room):\n\n${room}`, ...(message.context ?? [])]
-    : (message.context ?? []);
-  return { ...message, taskContext: thread, context: background };
+  const prior = [room, ...(message.context ?? [])].filter(Boolean);
+  const direct = message.kind === 'user' || message.kind === 'agent' || message.kind === 'event';
+  if (!thread || !direct) return prior.length || thread ? { ...message, context: [...prior, thread].filter(Boolean) } : message;
+  const context = prior.length ? [`[Postbox] Meanwhile in the room and other background context (answer room work in the room):\n\n${prior.join('\n\n')}`] : [];
+  return { ...message, taskContext: thread, context };
 }
 
 /** The header that makes a topic or historical side thread the place this turn must answer. */

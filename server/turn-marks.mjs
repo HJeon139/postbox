@@ -73,4 +73,8 @@ export const wokeOf = (turn) => {
 };
 
 /** What each reply of a turn carries: what woke it, and that a reply to a lint message isn’t linted again, by the turn or by the browser’s diagram check. @param {any} turn */
-export const replyMarks = (turn) => ({ ...(turn.kind === 'lint' ? { lintReply: true } : {}), ...wokeOf(turn) });
+export const replyMarks = (turn) => ({
+  ...(turn.kind === 'lint' ? { lintReply: true } : {}),
+  ...(turn.promptFirst ? { promptFirst: turn.promptFirst } : {}),
+  ...wokeOf(turn),
+});

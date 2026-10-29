@@ -5,8 +5,6 @@ import { test } from 'node:test';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
-const events = (store, type) => store.events.map((event) => JSON.parse(event.line)).filter((event) => event.type === type);
-
 /** A room with a topic on alpha’s first reply, while beta has not taken a turn. */
 async function roomAndTopic() {
   const f = setup();
@@ -43,12 +41,7 @@ test('#504 a topic turn leads with its request and labels the room backlog as ba
   assert.ok(taskAt >= 0 && roomAt > taskAt, 'the thread request leads the room backlog');
   assert.match(prompt.slice(taskAt, roomAt), /Meanwhile in the room.*background.*answer room work in the room/s);
   assert.equal(prompt.split(request).length - 1, 1, 'the request appears once');
-  assert.deepEqual(events(f.store, 'turn.context').at(-1)?.data, {
-    turnId: f.store.items(f.topic.id).find((item) => item.kind === 'agent')?.turnId,
-    sessionId: f.beta.id,
-    threadId: f.topic.id,
-    first: 'thread-task',
-  });
+  assert.equal(f.store.items(f.topic.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'thread-task');
 });
 
 test('#504 a follow-up in the same topic thread still leads with its new request', async () => {
@@ -71,8 +64,44 @@ test('#504 a follow-up in the same topic thread still leads with its new request
   const prompt = formatMessage(call.message);
   assert.equal(call.thread, f.topic.id);
   assert.match(call.message.taskContext, new RegExp(`^\\[Postbox\\] You’re answering in the thread .*thread ${f.topic.id}`));
+  assert.equal(f.store.items(f.topic.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'thread-task');
   assert.ok(prompt.indexOf(request) < prompt.indexOf('@beta review the second parser revision.'), 'the follow-up leads the new room work');
   assert.match(prompt, /Meanwhile in the room.*background.*answer room work in the room/s);
+});
+
+test('#504 a thread request stays whole even when the room summary already gave its source message', async () => {
+  const f = await roomAndTopic();
+  const sent = f.rt.addItem(f.t.id, {
+    kind: 'agent',
+    sessionId: f.alpha.id,
+    personaId: f.alpha.personaId,
+    handle: f.alpha.handle,
+    text: '@beta inspect this exact request in the topic.',
+    status: 'done',
+  });
+  f.rt.updateSession(f.beta.id, { seenItem: sent.id, givenMentions: [sent.id] });
+  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@alpha', text: sent.text, itemId: sent.id }, { threadId: f.topic.id });
+  await settle(f.rt);
+
+  const call = f.adapter.calls.at(-1);
+  assert.equal(call.message.text, sent.text);
+  assert.doesNotMatch(call.message.text, /message above|read_message/);
+  assert.equal(f.store.items(f.topic.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'thread-task');
+});
+
+test('#504 slash commands, host reattachments and Postbox notices in a topic are not mislabeled as direct tasks', async () => {
+  const f = await roomAndTopic();
+  for (const [message, first] of [
+    [{ kind: 'user', text: '/compact', slash: true }, 'slash'],
+    [{ kind: 'user', text: '', attach: 'host-turn-1' }, 'attach'],
+    [{ kind: 'notice', text: 'The prior check finished.' }, 'system'],
+  ]) {
+    f.rt.deliver(f.beta.id, message, { threadId: f.topic.id });
+    await settle(f.rt);
+    const item = f.store.items(f.topic.id).findLast((entry) => entry.kind === 'agent');
+    assert.equal(item.promptFirst, first);
+    assert.equal(f.adapter.calls.at(-1).message.taskContext, undefined);
+  }
 });
 
 test('#504 a turn in the room keeps the existing context order', async () => {
@@ -85,5 +114,5 @@ test('#504 a turn in the room keeps the existing context order', async () => {
   assert.equal(call.thread, f.t.id);
   assert.equal(call.message.taskContext, undefined);
   assert.match(formatMessage(call.message), /^\[Postbox\] What happened in this room since your last turn:/);
-  assert.equal(events(f.store, 'turn.context').length, 0);
+  assert.equal(f.store.items(f.t.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'room');
 });
