@@ -47,7 +47,7 @@ import { createInterface } from 'node:readline';
 import { checkRemoteContext } from './adapter.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
-import { agentGuide, formatMessage } from './guide.mjs';
+import { formatMessage, turnGuide } from './guide.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
@@ -463,8 +463,8 @@ export class KiroCliAdapter {
     const persona = ctx.persona;
     // On a host, its folder there, and the host turn’s copies of attachments; laptop folders don’t cross (the header).
     const cwd = ctx.remote ? ctx.remote.folder : await this.folderFor(persona, ctx.project);
-    const promptOn = (turn = ctx.remote?.turn) => formatMessage(message, attachmentPaths(ctx, turn));
-    const guide = agentGuide({ ...ctx, persona, session, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
+    const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, session, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
+    const promptOn = (turn = ctx.remote?.turn) => formatMessage(turnMessage, attachmentPaths(ctx, turn));
     const folders = ctx.remote ? [cwd] : [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
     // Before anything starts on the host: the turn ID and version the runtime owns. After a Postbox restart,
     // ctx.remote.attach names a turn already there instead, which is replayed from the start and never started again.

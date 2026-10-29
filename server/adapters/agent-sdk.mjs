@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { withAskRules } from '../permission-rules.mjs';
 import { commandsOf, createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
-import { agentGuide, formatMessage } from './guide.mjs';
+import { formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
@@ -193,8 +193,8 @@ export class AgentSdkAdapter {
     const cwd = await this.folderFor(persona, ctx.project);
     // The project’s folder, and the folders the person added for this conversation (#66).
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
-    const guide = agentGuide({ persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
-    const prompt = formatMessage(message, ctx.pathOf);
+    const turned = turnGuide(message, { persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
+    const [guide, prompt] = [turned.guide, formatMessage(turned.message, ctx.pathOf)];
     const resume = Boolean(ctx.state.sdkSessionId);
     const fork = resume ? null : sdkForkPoint(ctx.state);
     const sessionId = ctx.state.sdkSessionId ?? randomUUID();

@@ -11,7 +11,7 @@ import { findCodex } from './codex-models.mjs';
 import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { codexContextPercent } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
-import { agentGuide, formatMessage } from './guide.mjs';
+import { formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 
@@ -210,8 +210,8 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   ctx.state.codexThreadId = id;
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
   // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
-  const guide = agentGuide({ ...ctx, session, brief: session?.brief, toolRules: null });
-  const inputText = formatMessage(message, attachmentPaths(ctx, ctx.remote?.turn));
+  const { guide, message: turnMessage } = turnGuide(message, { ...ctx, session, brief: session?.brief, toolRules: null });
+  const inputText = formatMessage(turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
     threadId: id,
     input: [{ type: 'text', text: inputText }],

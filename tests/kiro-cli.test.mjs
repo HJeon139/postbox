@@ -316,7 +316,7 @@ test('an Isolated turn: its own Kiro home, the agent file written for the turn a
   assert.equal(seen[0].env.KIRO_HOME, join(root, 'home'));
   assert.equal(seen[0].cwd, join(root, 'work', 'kiro'));
   assert.equal(seen[0].agentFile.mcpServers.postbox.url, ctx.mcpUrl);
-  assert.equal(seen[0].args.at(-1), 'Remember heron.');
+  assert.match(seen[0].args.at(-1), /^Remember heron\.\n\n\[Postbox\] What’s current in this room:\n\n/, 'the request, then what changes during a room (#515)');
   assert.deepEqual(readdirSync(join(root, 'home', 'agents')), [], 'the turn’s agent file is gone');
   assert.match(ctx.calls.saved.kiroSessionId, /^sess_/);
   assert.equal(ctx.calls.text, 'OK');
