@@ -162,6 +162,27 @@ test('unlabeled-repeat says it couldn’t tell two same-text items apart when th
   assert.match(out[0].evidence, /it_second/);
 });
 
+test('two same-text items both made before either prompt, given once each naming neither, are both unverified', () => {
+  // gpt’s regression (#523 review, round 3): either prompt could be either item’s, so neither item is a finding.
+  const r = room();
+  r.agent('critic');
+  const text = '@critic please review the latest changes and report blocking problems.';
+  r.add({ id: 'it_first', at: s(1), kind: 'user', text });
+  r.add({ id: 'it_second', at: s(2), kind: 'user', text });
+  r.turn('critic', s(10), { prompt: text });
+  r.turn('critic', s(20), { prompt: text });
+  const out = found(r.f, 'unlabeled-repeat');
+  assert.equal(out.filter((x) => !x.unverified).length, 0, JSON.stringify(out));
+  assert.deepEqual(
+    out.map((x) => [x.key, !!x.unverified]),
+    [
+      ['unlabeled-repeat:unverified:critic:it_first', true],
+      ['unlabeled-repeat:unverified:critic:it_second', true],
+    ],
+  );
+  assert.match(out[1].evidence, /it_first/);
+});
+
 test('unlabeled-repeat still fires for an item given twice by its id beside a same-text one given once', () => {
   const r = room();
   r.agent('critic');
