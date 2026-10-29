@@ -3,6 +3,7 @@
 // so this is plain data and text, with no DOM. A session runs with the model and effort in its snapshot
 // (fixed when it started, or changed by a command), falling back to its persona’s; the server does the same
 // (server/runtime.mjs, personaFor; server/adapters/setup.mjs, modelOf and effortOf).
+import { olderThan } from './versions.mjs';
 
 export const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
@@ -167,12 +168,17 @@ export function factsText(f) {
   return `${backend} · ${model} · ${effort}`;
 }
 
+/** The oldest Claude Code with `autoMemoryDirectory`, a memory folder per agent (#208; Claude Code’s CHANGELOG, 2.1.74). */
+export const MEMORY_CLAUDE_MIN = '2.1.74';
+
 /**
- * The overview’s line when Postbox looked for Claude Code and didn’t find it (#12), or null: what agents run on
- * until it’s installed. It doesn’t show under --demo or POSTBOX_BACKENDS=mock, where Postbox doesn’t look.
+ * The overview’s line when Postbox looked for Claude Code and didn’t find it (#12), or found one too old to keep a
+ * memory per agent (#208), or null: what agents run on until it’s installed, or what to update. It doesn’t show under --demo or POSTBOX_BACKENDS=mock, where Postbox doesn’t look.
  * @param {{ realBackends?: boolean, versions?: { claudeCode?: string|null }, adapters?: string[] }} config
  */
 export function installNote({ realBackends, versions, adapters = [] }) {
+  if (realBackends && versions?.claudeCode && olderThan(versions.claudeCode, MEMORY_CLAUDE_MIN))
+    return `Claude Code ${versions.claudeCode.split(' ')[0]} keeps one memory for every agent in a project. Update it to ${MEMORY_CLAUDE_MIN} or later (claude update), so each agent keeps its own.`;
   if (!realBackends || versions?.claudeCode) return null;
   return adapters.some((a) => a !== 'mock')
     ? 'Claude Code isn’t installed here, so agents run on the Agent SDK or the mock until it is.'

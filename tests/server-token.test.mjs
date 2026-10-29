@@ -75,6 +75,8 @@ const WRITE_ROUTES = {
   'POST /api/claude-sessions/attach': ['/api/claude-sessions/attach'],
   'POST /api/personas': ['/api/personas'],
   'PATCH ^\\/api\\/personas\\/([^/]+)$': ['/api/personas/pe_none'],
+  'DELETE ^\\/api\\/personas\\/([^/]+)$': ['/api/personas/pe_none'],
+  'POST ^\\/api\\/personas\\/([^/]+)\\/undo-delete$': ['/api/personas/pe_none/undo-delete'],
   'POST /api/permissions/rules': ['/api/permissions/rules'],
   'POST /api/permissions/folders': ['/api/permissions/folders'],
   'POST /api/permissions/mode': ['/api/permissions/mode'],
