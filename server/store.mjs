@@ -18,9 +18,8 @@ import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-
 import { Hold } from './store-hold.mjs';
 import { importLegacy } from './store-import.mjs';
 import { broadcast } from './store-publish.mjs';
-import { onStatus, reconcilingStatus, stopReconciling } from './store-recover.mjs';
+import { attach, onStatus, reconcilingStatus, stopReconciling } from './store-recover.mjs';
 import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
-import { attach } from './store-status.mjs';
 import { failedStatus, pump, recovered } from './store-write.mjs';
 
 export { emptyState };

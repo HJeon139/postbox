@@ -4,7 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { consistent, gate, holdCatchUp, loseReply, open, tmp, until } from './store-fixture.mjs';
+import { retry } from '../server/store-recover.mjs';
+import { consistent, gate, holdCatchUp, loseReply, open, raw, tmp, until } from './store-fixture.mjs';
 
 /** A store with a conversation and one item, written. */
 async function withItem() {
@@ -73,5 +74,54 @@ test('emits held behind a commit whose reply was lost are published after catch-
     ['i:ab', 'h:held'],
   );
   assert.deepEqual(seen, [3, 4], 'the commit read back, then the held emit');
+  assert.deepEqual((await consistent(s)).fresh.state, s.state);
+});
+
+/** Kills only the store’s own connection to its child, from another connection, while nothing is in flight. @param {any} s */
+async function dropIdle(s) {
+  const c = await raw(s);
+  try {
+    const id = await s.client.call('CLIENT', 'ID');
+    assert.equal(await c.call('CLIENT', 'KILL', 'ID', id), 1);
+  } finally {
+    c.close();
+  }
+  await until(() => !s.client?.connected || !s.writable);
+}
+
+// gpt’s regression (store outage review, finding 1): an idle connection drop closed writes without saying so, the
+// status stayed running, and Retry did nothing.
+test('an idle Redis connection drop is shown as down and Retry reconnects without a child restart', async () => {
+  const s = await withItem();
+  const pid = /** @type {any} */ (s).redis.sup.child.pid;
+  await dropIdle(s);
+  const before = { writable: s.writable, status: s.status.state, cause: /** @type {any} */ (s.status).cause };
+  await retry(s);
+  assert.deepEqual(
+    { before, afterWritable: s.writable, afterStatus: s.status.state },
+    { before: { writable: false, status: 'down', cause: 'reconciling' }, afterWritable: true, afterStatus: 'running' },
+  );
+  assert.equal(/** @type {any} */ (s).redis.sup.child.pid, pid, 'the child was not restarted');
+  s.emit('item.text', { threadId: 't', id: 'i', text: 'b' });
+  await s.flush();
+  assert.equal(s.failed, null);
+  assert.deepEqual((await consistent(s)).fresh.state, s.state);
+});
+
+test('an idle Redis connection drop reconnects, reads Redis back and reopens writes by itself', async () => {
+  const s = await withItem();
+  const heard = [];
+  s.watchers.add((w, st) => heard.push(`${w}:${st.state}${st.cause ? `:${st.cause}` : ''}`));
+  await dropIdle(s);
+  // Another process writes while the store isn’t connected: catch-up must read it before writes reopen.
+  const other = await open(/** @type {string} */ (s.dir));
+  other.emit('item.text', { threadId: 't', id: 'i', text: 'x' });
+  await other.flush();
+  await until(() => s.writable);
+  assert.deepEqual(heard, ['false:down:reconciling', 'true:running']);
+  assert.equal(s.state.items.t[0].text, 'ax', 'what another process wrote meanwhile was read back');
+  s.emit('item.text', { threadId: 't', id: 'i', text: 'b' });
+  await s.flush();
+  assert.equal(s.failed, null);
   assert.deepEqual((await consistent(s)).fresh.state, s.state);
 });

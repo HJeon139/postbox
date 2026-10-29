@@ -9,8 +9,14 @@
 // the stream, once (a retry with its opId then finds it done). Emits held behind a lost commit stay held through it
 // and are numbered after it. Only then do writes open again, and what waited is written. A catch-up that fails is tried
 // again after a backoff while the child runs; a child that stops again starts it over.
+//
+// The store’s connection dropping is a lost reply too, even with nothing in flight (gpt’s outage review, finding 1): the
+// child may still run, but nothing the store sends reaches it, so writes close, the status says the store is
+// reconciling, and reconciliation reconnects, catches up and reopens. It starts after RETRY_MS rather than at once: a
+// drop usually comes just before the child’s exit is heard, and a connection that keeps dropping isn’t hammered. Retry
+// starts it now.
 
-import { attach, changed } from './store-status.mjs';
+import { changed } from './store-status.mjs';
 
 const RETRY_MS = 250; // the first wait before a failed catch-up is tried again
 const RETRY_MAX = 30000; // the longest
@@ -21,6 +27,29 @@ const RETRY_MAX = 30000; // the longest
  *   the reconciliation running, whether it was asked again while it ran, and the next try of a failed catch-up and
  *   the ms before it
  */
+
+/**
+ * Takes a connection to the child. When it drops, writes close until the store has reconnected and read Redis back; a
+ * connection the store already let go of (closed, or replaced) is ignored.
+ * @param {Store} store @param {import('./redis-client.mjs').RedisClient} c
+ */
+export function attach(store, c) {
+  store.client = c;
+  c.ondrop = () => {
+    if (store.client !== c || store.closed) return;
+    store.reconciling = true;
+    changed(store);
+    later(store, RETRY_MS);
+  };
+}
+
+/** Runs reconciliation after ms, unless a run is already waiting. @param {Store} store @param {number} ms */
+function later(store, ms) {
+  store.rc.timer ??= setTimeout(() => {
+    store.rc.timer = null;
+    reconcile(store);
+  }, ms);
+}
 
 /** The child went down or came back: drop the connection, and close writes. @param {Store} store @param {any} s */
 export function onStatus(store, s) {
@@ -75,10 +104,7 @@ async function once(store) {
     if (e.code === 'ESEQ') return open(store, e);
     console.error(`Couldn’t read the store back: ${e.message}`);
     store.rc.backoff = Math.min(Math.max(store.rc.backoff * 2, RETRY_MS), RETRY_MAX);
-    store.rc.timer ??= setTimeout(() => {
-      store.rc.timer = null;
-      reconcile(store);
-    }, store.rc.backoff);
+    later(store, store.rc.backoff);
     return;
   }
   // The child stopped, or another loss came, while it read: what it read may be stale, so it reads again.
@@ -91,6 +117,7 @@ function open(store, failed) {
   if (failed) store.failed = failed;
   store.reconciling = false;
   store.rc.backoff = 0;
+  stopReconciling(store);
   if (store.hold && !store.waiting) store.release();
   else store.pump();
   changed(store);
@@ -102,20 +129,20 @@ export function stopReconciling(store) {
   store.rc.timer = null;
 }
 
-/** The status while the store reads Redis back, or null. @param {Store} store */
+/** The status while the store reconnects to Redis or reads it back, or null. @param {Store} store */
 export function reconcilingStatus(store) {
   if (!store.reconciling || store.redis?.sup.status.state !== 'running') return null;
   return {
     state: 'down',
     cause: 'reconciling',
-    message: 'The store’s Redis is back, and Postbox is reading back what it holds before it saves changes again.',
+    message: 'Postbox is reading back what the store’s Redis holds, after it restarted or its connection dropped, before it saves changes again.',
   };
 }
 
 /**
- * Retry, from the page’s status line: starts the child again when it’s down, reads Redis back now rather than after a
- * backoff, or tries a failed write again now. A write refused because another process took its seq (ESEQ) waits for
- * Postbox to start again, so Retry leaves it. Resolves to the status after.
+ * Retry, from the page’s status line: starts the child again when it’s down, reconnects and reads Redis back now
+ * rather than after a wait, or tries a failed write again now. A write refused because another process took its seq
+ * (ESEQ) waits for Postbox to start again, so Retry leaves it. Resolves to the status after.
  * @param {import('./store.mjs').Store} store
  */
 export async function retry(store) {
