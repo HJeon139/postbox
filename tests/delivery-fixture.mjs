@@ -7,7 +7,11 @@
 //                                                                       its events cut to the init and, when the turn
 //                                                                       said anything, its first assistant message
 //   { handle, lines }                                                   a Claude Code transcript: each turn’s prompt as
-//                                                                       a user line, each tool result as one too
+//                                                                       a user line, each tool result as one too;
+//                                                                       and the user lines Claude Code writes itself,
+//                                                                       flagged isCompactSummary (a compaction’s
+//                                                                       summary) or isMeta (a caveat or reminder), as
+//                                                                       server/adapters/terminal-mirror.mjs reads them
 // The texts paraphrase the p0 run of 28 October 2026, where a held mention never reached @researcher.
 
 /** 23:06 UTC on 28 October 2026, when the p0 run began. */
@@ -25,7 +29,7 @@ export function room() {
   };
   let seq = 0;
   const lines = (handle) => /** @type {any} */ (f.transcripts.find((t) => t.handle === handle)).lines;
-  const line = (at, content) => JSON.stringify({ type: 'user', timestamp: new Date(at).toISOString(), message: { content } });
+  const line = (at, content, flags = {}) => JSON.stringify({ type: 'user', ...flags, timestamp: new Date(at).toISOString(), message: { content } });
   return {
     f,
     /** An agent in the room, with a transcript. */
@@ -50,6 +54,10 @@ export function room() {
     /** A session’s catch-up marker moving, as Postbox does when it builds a turn’s prompt. */
     marker(handle, seenItem, at) {
       f.events.push({ seq: ++seq, type: 'session', data: { id: `se_${handle}`, seenItem, updatedAt: at } });
+    },
+    /** A user line Claude Code wrote itself, not a prompt: flags { isCompactSummary: true } or { isMeta: true }. */
+    written(handle, at, content, flags) {
+      lines(handle).push(line(at, content, flags));
     },
     /** A turn: its stream, its prompt and its tool results. output: false for one that wrote nothing. */
     turn(handle, started, { prompt = /** @type {string|null} */ (null), results = /** @type {string[]} */ ([]), output = true, ms = 8000 } = {}) {

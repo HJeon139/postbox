@@ -50,6 +50,34 @@ test('delivery-dropped claims nothing for an agent with no transcript, whose pro
   assert.deepEqual(found(f, 'delivery-dropped'), []);
 });
 
+/** Claude Code’s compaction summary, hand-written in its shape: it retells the conversation, a mention included. */
+const SUMMARY = (text) =>
+  `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary request and intent: ${text}`;
+
+test('delivery-dropped doesn’t count a compaction summary or a meta line as the mention reaching its agent', () => {
+  for (const flags of [{ isCompactSummary: true }, { isMeta: true }]) {
+    const f = mentionRoom({ delivered: false });
+    const r = { lines: /** @type {any} */ (f.transcripts.find((t) => t.handle === 'researcher')).lines };
+    r.lines.push(JSON.stringify({ type: 'user', ...flags, timestamp: new Date(s(41)).toISOString(), message: { content: SUMMARY(ROUND_TWO) } }));
+    assert.deepEqual(
+      found(f, 'delivery-dropped').map((x) => x.key),
+      ['delivery-dropped:researcher:it_round2'],
+      JSON.stringify(flags),
+    );
+  }
+});
+
+test('unlabeled-repeat doesn’t count a compaction summary or a meta line as a second prompt', () => {
+  for (const flags of [{ isCompactSummary: true }, { isMeta: true }]) {
+    const r = room();
+    r.agent('researcher');
+    r.add({ id: 'it_draft', at: s(1), kind: 'user', text: DRAFT });
+    r.turn('researcher', s(2), { prompt: DRAFT });
+    r.written('researcher', s(20), SUMMARY(DRAFT), flags);
+    assert.deepEqual(found(r.f, 'unlabeled-repeat'), [], JSON.stringify(flags));
+  }
+});
+
 /** The person’s request, given whole in two of @researcher’s prompts; the second labeled, or not. */
 function repeatRoom(second) {
   const r = room();

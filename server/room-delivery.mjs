@@ -111,7 +111,9 @@ export function inputsOf(f, handle) {
       } catch {
         continue; // a transcript’s last line can be half written
       }
-      if (e?.type !== 'user' || e.isSidechain || !e.message) continue;
+      // A compaction’s summary and a meta line (a caveat, a reminder) are user lines Claude Code writes itself: neither
+      // is a prompt, so neither repeats a message nor delivers one.
+      if (e?.type !== 'user' || e.isSidechain || e.isCompactSummary || e.isMeta || !e.message) continue;
       const at = Date.parse(e.timestamp);
       const c = e.message.content;
       const results = Array.isArray(c) ? c.filter((b) => b?.type === 'tool_result') : [];
