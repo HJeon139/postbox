@@ -1,22 +1,26 @@
 // The scenario a run plays, from its options (moved out of tools/uat-run.mjs, which is at its length ceiling): its file
-// read and parsed, host mode applied, and the run refused before anything starts when it would need --compat or
-// --release, or names a trigger that doesn’t exist.
+// read and parsed, cut to the phases --phases names (tools/uat/phases.mjs), host mode applied, and the run refused
+// before anything starts when it would need --compat or --release, or names a trigger that doesn’t exist in a phase
+// it plays.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostMode } from './hosts-options.mjs';
+import { phasesOf, selectPhases } from './phases.mjs';
 import { compatBackends, parseScenario, releaseGate } from './scenario.mjs';
 import { unknownTriggers } from './triggers.mjs';
 
 /**
  * @param {Record<string, any>} opt  the runner’s options  @param {string} root  the checkout
- * @returns {{ name: string, hosts: any[], placement: Record<string, string>, scenario: any, gate: { error: string|null, env: Record<string, string> } }}
+ * @returns {{ name: string, hosts: any[], placement: Record<string, string>, scenario: any, phases: number[]|null, gate: { error: string|null, env: Record<string, string> } }}
  */
 export function runScenario(opt, root) {
   const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(root, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
   const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
   // Host mode (#120): agents on other machines over ssh (--host), Claude Code only (tools/uat/hosts-options.mjs).
-  const { hosts, placement, scenario } = hostMode(opt, name, parseScenario(readFileSync(scenarioFile, 'utf8')));
+  const parsed = parseScenario(readFileSync(scenarioFile, 'utf8'));
+  const phases = phasesOf(opt, parsed.phases.length);
+  const { hosts, placement, scenario } = hostMode(opt, name, selectPhases(parsed, phases));
   const other = compatBackends(scenario);
   if (other.length && !opt.compat && !opt.release)
     throw new Error(
@@ -28,5 +32,5 @@ export function runScenario(opt, root) {
   if (gate.error) throw new Error(gate.error);
   const unknown = unknownTriggers(scenario);
   if (unknown.length) throw new Error(`This scenario names triggers that don’t exist: ${unknown.join(', ')}. See tools/uat/triggers.mjs.`);
-  return { name, hosts, placement, scenario, gate };
+  return { name, hosts, placement, scenario, phases, gate };
 }

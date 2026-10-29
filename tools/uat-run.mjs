@@ -5,6 +5,7 @@
 //
 //   node tools/uat-run.mjs --scenario scifact
 //   node tools/uat-run.mjs --scenario hotpotqa --steps 30 --budget 6 --tester-model claude-opus-5-5
+//   node tools/uat-run.mjs --scenario delivery --phases 1,2   (only those phases: tools/uat/phases.mjs)
 //
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. --budget caps
 // the tester; --max-cost caps the whole run (agents, tester, verifier and telemetry), stopping it, report and all, before
@@ -70,7 +71,9 @@ const { values: opt } = parseArgs({
     // The most steps: the scenario’s own `- steps: N`, else a targeted scenario’s phase caps added up, else 15.
     steps: { type: 'string' },
     // Start at this phase (1 is the first), to rerun a later one without the earlier ones; the tester sets up what it needs.
-    phase: { type: 'string', default: '1' },
+    phase: { type: 'string' },
+    // Play only these phases, such as 1,2, and check only their triggers (tools/uat/phases.mjs). Not with --phase.
+    phases: { type: 'string' },
     'turn-timeout': { type: 'string', default: '900' },
     budget: { type: 'string', default: '8' },
     // The most the whole run may spend, in dollars (tools/uat/budget.mjs). Unset, only --budget caps the tester.
@@ -105,7 +108,7 @@ const REVIEW = { root: ROOT, testerModel: opt['tester-model'] };
 // ── Run ────────────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const { name, hosts, placement, scenario, gate } = runScenario(opt, ROOT);
+  const { name, hosts, placement, scenario, phases, gate } = runScenario(opt, ROOT);
   const steps = stepCap(scenario, opt.steps);
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -554,7 +557,21 @@ async function main() {
     }
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
     writeJsonAtomic(join(dir, 'run.json'), {
-      ...runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
+      ...runRecord({
+        root: ROOT,
+        dir,
+        scenario,
+        name,
+        opt,
+        started,
+        steps: timeline.length,
+        cap: steps,
+        startPhase: startPhase + 1,
+        phases,
+        tester,
+        facts,
+        coverage,
+      }),
       ...(facts.telemetry ? { telemetry: tm.telemetryBlock(facts.telemetry, all) } : {}),
       ...(facts.budget ? { budget: facts.budget } : {}),
     });

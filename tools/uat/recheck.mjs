@@ -8,6 +8,7 @@ import { driver } from './driver.mjs';
 import { readHistory } from './history.mjs';
 import { readHosts } from './hosts-run.mjs';
 import { forHosts } from './hosts-scenario.mjs';
+import { recordedPhases, selectPhases } from './phases.mjs';
 import { portFree } from './postbox.mjs';
 import { newProbes } from './probes.mjs';
 import { presetFindings } from './regressions.mjs';
@@ -44,9 +45,9 @@ export async function recheck(dir, { root, opt, review }) {
   // Its record before the report is rewritten: the minutes it took are only in the first report.
   const record = readRun(dir);
   const name = existsSync(join(dir, 'run.json')) && record?.scenario ? record.scenario : dir.replace(/^.*-(\w+)$/, '$1');
-  // A host-mode run’s record of its hosts (#120): its phases as it played them, and what its checks read.
+  // A host-mode run’s hosts (#120), with what its checks read, and a --phases run’s phases: its phases as played.
   const hostsRec = readHosts(dir);
-  const parsed = parseScenario(readFileSync(join(root, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8'));
+  const parsed = selectPhases(parseScenario(readFileSync(join(root, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8')), recordedPhases(record));
   const scenario = hostsRec ? forHosts(parsed, hostsRec.placement, hostsRec.hosts) : parsed;
   const port = Number(opt.port);
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);

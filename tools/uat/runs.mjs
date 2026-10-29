@@ -112,10 +112,26 @@ export function reportFacts(md) {
  * A live run’s record, for run.json: what a refit reads without parsing the report. The agents’ model is what their
  * streams say they ran, or the runner’s --agent-model where there is one; their effort is what they were seeded with
  * (facts.agentEffort: one level, several joined by “/”, or null for the backend’s default), else the runner’s --agent-effort.
- * @param {{ root: string, dir: string, scenario: any, name: string, opt: Record<string, unknown>, started: number, steps: number, cap: number, startPhase?: number,
+ * @param {{ root: string, dir: string, scenario: any, name: string, opt: Record<string, unknown>, started: number, steps: number, cap: number, startPhase?: number, phases?: number[]|null,
  *   tester: { spent: number }, facts: any, coverage: any[], now?: number, git?: (args: string[], cwd: string) => string|null }} r
  */
-export function runRecord({ root, dir, scenario, name, opt, started, steps, cap, startPhase = 1, tester, facts, coverage, now = Date.now(), git = gitOut }) {
+export function runRecord({
+  root,
+  dir,
+  scenario,
+  name,
+  opt,
+  started,
+  steps,
+  cap,
+  startPhase = 1,
+  phases = null,
+  tester,
+  facts,
+  coverage,
+  now = Date.now(),
+  git = gitOut,
+}) {
   const agents = agentsSpent(facts.streams ?? []);
   const flag = (k) => (typeof opt[k] === 'string' && opt[k] ? /** @type {string} */ (opt[k]) : null);
   return {
@@ -129,6 +145,8 @@ export function runRecord({ root, dir, scenario, name, opt, started, steps, cap,
     steps,
     stepCap: cap,
     startPhase,
+    // The phases a --phases run played (tools/uat/phases.mjs), so a recheck reads the scenario as it played it.
+    ...(phases ? { phases } : {}),
     minutes: Math.round((now - started) / 60000),
     cost: { agents: Math.round(agents * 100) / 100, tester: Math.round((tester.spent ?? 0) * 100) / 100, kiroCredits: null },
     coverage,
