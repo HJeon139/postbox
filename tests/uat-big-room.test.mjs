@@ -7,9 +7,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { CATCH_UP_ITEMS } from '../server/catch-up.mjs';
+import { liveChecks } from '../server/room-checks.mjs';
 import { Store } from '../server/store.mjs';
 import { parseMentions } from '../shared/text.mjs';
 import { bigRoomItems, FIRST_DAY_WORD, seedBigRoom, seedBigRoomData } from '../tools/uat/big-room.mjs';
+import { setup, turn } from './blocks-fixture.mjs';
 
 const HANDLES = ['researcher', 'critic', 'developer'];
 
@@ -94,4 +96,51 @@ test('seeding a run’s data folder while Postbox is down writes the room for th
   } finally {
     rmSync(data, { recursive: true, force: true });
   }
+});
+
+// The critic’s finding on the harness (#508): the seed’s review block was unanswered, so needs-mismatch fired on every
+// run that used the seed, a finding the seed caused and not Postbox. Seeded and left alone, the room raises nothing.
+test('a freshly seeded big room, with no agent activity, raises no needs-mismatch or other state finding', () => {
+  const store = new Store(null);
+  startRoom(store);
+  seedBigRoom(
+    store,
+    'th_big',
+    { handles: ['researcher', 'critic'] },
+    { researcher: { sessionId: 'se_r', personaId: 'pe_r' }, critic: { sessionId: 'se_c', personaId: 'pe_c' } },
+  );
+  const { findings, ran } = liveChecks({ state: store.state, threads: ['th_big'] }, ['state', 'threads']);
+  assert.ok(ran.includes('needs-mismatch'));
+  assert.deepEqual(
+    findings.filter((x) => x.check === 'needs-mismatch').map((x) => x.key),
+    [],
+  );
+  assert.deepEqual(
+    findings.map((x) => `${x.check}: ${x.title}`),
+    [],
+  );
+});
+
+test('the seeded review is answered as the person’s answer records it, and its agent can still revise it (bigroom.md, phase 3)', async () => {
+  const { rt, store, t, adapter } = setup();
+  const se = Object.values(store.state.sessions).find((s) => s.threadId === t.id);
+  const landmarks = seedBigRoom(store, t.id, { handles: ['critic'] }, { critic: { sessionId: se.id, personaId: se.personaId } });
+  const seeded = store.item(t.id, landmarks.review);
+  assert.equal(seeded.answered, true);
+  assert.equal(seeded.answer.read, true, 'an answer the agent hasn’t read would block its revision');
+  assert.equal(seeded.answer.action, 'submit');
+  const revised = await turn(rt, adapter, t, (tools) =>
+    tools.update_block({ block: { ...seeded.block, content: '# Release plan\n\n1. Freeze.\n2. Tag.\n3. Announce.\n4. Watch.\n' } }),
+  );
+  assert.equal(revised.ok, true, revised.message);
+  assert.match(revised.message, /asks again at the newest point/);
+  const items = store.items(t.id);
+  const now = store.item(t.id, landmarks.review);
+  assert.equal(now.answered, false);
+  assert.equal(now.revision, 2);
+  assert.equal(items.filter((i) => i.id === landmarks.review).length, 1, 'one live copy');
+  assert.ok(
+    items.some((i) => i.kind === 'moved' && i.itemId === landmarks.review),
+    'a stub where it was',
+  );
 });

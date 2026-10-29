@@ -6,6 +6,7 @@
 // (bigroom.md, phase 2). Its first day uses a word no later day does, for the search phase (bigroom.md, phase 4).
 
 import { Store } from '../../server/store.mjs';
+import { buildEvent } from '../../shared/events.mjs';
 
 /** The word only the first day uses. */
 export const FIRST_DAY_WORD = 'zephyrine';
@@ -34,6 +35,19 @@ function filler(rnd, i, at, handles, firstDay) {
     : { id: idOf(i), at, kind: 'user', text: `Note: ${said}` };
 }
 
+/**
+ * The person’s approval of a review, as server/blocks.mjs (act) records it: answered, with the answer on the item, and
+ * the voice line it adds after it. read: the agent has had it in a turn, so it can revise the block (update_block
+ * refuses to reopen a block over an answer it hasn’t read), and nothing is left asking: an unanswered review in a room
+ * nobody has touched is an ask whose agent doesn’t need you, which needs-mismatch reports.
+ * @param {any} block  @param {number} at
+ */
+function approvedOnce(block, at) {
+  const r = buildEvent(block, 'submit', { verdict: 'approve', comments: [] }, { revision: 1 });
+  if (!r.ok) throw new Error(`The seeded review couldn’t be answered: ${r.error}`);
+  return { item: { answered: true, answer: { action: 'submit', values: r.event.values, voice: r.voice, at, revision: 1, read: true } }, voice: r.voice };
+}
+
 const idOf = (i) => `it_big${String(i).padStart(4, '0')}`;
 
 /**
@@ -45,6 +59,23 @@ export function bigRoomItems({ count = 1000, start = Date.UTC(2026, 8, 1, 9), se
   const step = Math.floor((5 * DAY_MS) / count);
   const at = (i) => start + i * step;
   const landmarks = { mention: idOf(0), review: idOf(2), decision: idOf(5) };
+  const review = {
+    id: landmarks.review,
+    at: at(2),
+    kind: 'block',
+    handle: handles[0],
+    valid: true,
+    block: {
+      id: 'release-plan',
+      type: 'review',
+      version: 1,
+      title: 'release-plan.md',
+      fallback: 'The release plan',
+      format: 'markdown',
+      content: '# Release plan\n\n1. Freeze.\n2. Tag.\n3. Announce.\n',
+    },
+  };
+  const answered = approvedOnce(review.block, at(3));
   const items = [
     {
       id: landmarks.mention,
@@ -53,23 +84,8 @@ export function bigRoomItems({ count = 1000, start = Date.UTC(2026, 8, 1, 9), se
       text: `@${handles[0]} what did the 1.9 retro decide about the release train, and who owns the ${FIRST_DAY_WORD} checklist?`,
     },
     filler(rnd, 1, at(1), handles, true),
-    {
-      id: landmarks.review,
-      at: at(2),
-      kind: 'block',
-      handle: handles[0],
-      valid: true,
-      block: {
-        id: 'release-plan',
-        type: 'review',
-        version: 1,
-        title: 'release-plan.md',
-        fallback: 'The release plan',
-        format: 'markdown',
-        content: '# Release plan\n\n1. Freeze.\n2. Tag.\n3. Announce.\n',
-      },
-    },
-    filler(rnd, 3, at(3), handles, true),
+    { ...review, ...answered.item },
+    { id: idOf(3), at: at(3), kind: 'voice', text: answered.voice, blockItemId: landmarks.review },
     filler(rnd, 4, at(4), handles, true),
     { id: landmarks.decision, at: at(5), kind: 'user', text: 'Decision: 2.0 ships on the release train, not on a fixed date.' },
   ];
