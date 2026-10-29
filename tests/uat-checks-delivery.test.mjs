@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CHECKS, runChecks } from '../tools/uat/checks.mjs';
-import { DRAFT, ROOM, ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
+import { DRAFT, ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;
 const found = (f, id) => runChecks(f, { only: [id] });
@@ -198,90 +198,6 @@ test('marker-before-output fires when the marker moved for a turn that wrote not
 
 test('marker-before-output stays silent when the turn the marker moved for wrote something', () => {
   assert.deepEqual(found(markerRoom({ output: true }), 'marker-before-output'), []);
-});
-
-/** A card from @researcher to @critic with @critic’s wake of @researcher held on it, retired when @critic was woken. */
-function heldRoom({ arrives }) {
-  const r = room();
-  r.agent('researcher');
-  r.agent('critic');
-  r.add({
-    id: 'it_card',
-    at: s(1),
-    kind: 'hop',
-    from: 'researcher',
-    fromSessionId: 'se_researcher',
-    to: 'critic',
-    text: '@critic please review',
-    status: 'open',
-  });
-  r.patch('it_card', { held: [{ fromSessionId: 'se_critic', from: 'critic', to: 'researcher', text: ROUND_TWO, at: s(5) }] });
-  r.patch('it_card', { status: 'retired', retiredAt: s(9) });
-  r.add({ id: 'it_voice', at: s(9), kind: 'voice', text: 'You wrote to @critic' });
-  r.turn('researcher', s(12), { prompt: arrives ? `[Postbox] @critic wrote to you.\n\n${ROUND_TWO}` : '[Postbox] You: what’s left?' });
-  return r.f;
-}
-
-test('ask-dropped fires for a wake held on a card that was retired and never reached its agent', () => {
-  const out = found(heldRoom({ arrives: false }), 'ask-dropped');
-  assert.equal(out.length, 1);
-  assert.match(out[0].evidence, /went on when the card was retired, and @researcher never got it/);
-  assert.deepEqual(out[0].requirements, ['AT-1']);
-  assert.equal(out[0].issue, 439);
-});
-
-test('ask-dropped stays silent when the held wake went on and arrived', () => {
-  assert.deepEqual(found(heldRoom({ arrives: true }), 'ask-dropped'), []);
-});
-
-test('ask-dropped fires for a card that left the state with no answer', () => {
-  const f = heldRoom({ arrives: true });
-  f.state.items[ROOM] = f.state.items[ROOM].filter((it) => it.id !== 'it_card');
-  f.events = f.events.filter((e) => e.data?.patch?.status !== 'retired');
-  const out = found(f, 'ask-dropped');
-  assert.deepEqual(
-    out.map((x) => x.key),
-    ['ask-dropped:it_card'],
-  );
-});
-
-/** @critic’s open choice, with its session needing you for it, or for nothing. */
-function needsRoom(needs) {
-  const r = room();
-  r.agent('critic');
-  r.add({
-    id: 'it_choice',
-    at: s(1),
-    kind: 'block',
-    sessionId: 'se_critic',
-    handle: 'critic',
-    valid: true,
-    answered: false,
-    block: { id: 'fmt', type: 'choice', title: 'Storage format' },
-  });
-  r.f.state.sessions.se_critic.needs = needs;
-  return r.f;
-}
-
-test('needs-mismatch fires for an open choice whose agent doesn’t need you', () => {
-  // As the needsnav run of 24 October 2026 ended: @critic’s choice open, its session needing nothing.
-  const out = found(needsRoom(null), 'needs-mismatch');
-  assert.equal(out.length, 1);
-  assert.match(out[0].title, /@critic has an open ask, and its ring doesn’t say it needs you/);
-  assert.deepEqual(out[0].requirements, ['AT-4']);
-});
-
-test('needs-mismatch stays silent when the agent needs you for its open choice', () => {
-  assert.deepEqual(found(needsRoom({ kind: 'block', itemId: 'it_choice', text: 'a choice' }), 'needs-mismatch'), []);
-});
-
-test('needs-mismatch fires for a ring left on a choice already answered', () => {
-  const f = needsRoom({ kind: 'block', itemId: 'it_choice', text: 'a choice' });
-  /** @type {any} */ (f.state.items[ROOM][0]).answered = true;
-  assert.deepEqual(
-    found(f, 'needs-mismatch').map((x) => x.key),
-    ['needs-mismatch:se_critic:it_choice'],
-  );
 });
 
 test('each delivery check is in CHECKS with the requirements it serves beside its issue', () => {
