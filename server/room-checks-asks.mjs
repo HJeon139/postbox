@@ -6,26 +6,29 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { needsYouNow } from '../shared/needs.mjs';
 import { clip } from '../shared/text.mjs';
-import { headOf, holds, inputsOf, notCheckableAll } from './room-delivery.mjs';
+import { headOf, holds, inputsOf, notCheckableAll, recorded, timeAfter, turnsOf, unreadable } from './room-delivery.mjs';
 
 const ANSWERED = new Set(['allowed', 'declined']);
 const heldKey = (w) => `${w.fromSessionId ?? w.from}:${w.to}:${headOf(w.text) ?? w.text}`;
 
 /**
- * Each card’s history from the events: the card as added, the statuses it went through, and every wake held on it,
- * with whether a later patch took it off while the card was still open.
+ * Each card’s history from the events: the card as added, the statuses it went through, when it was settled (null
+ * while open), and every wake held on it, with whether a later patch took it off while the card was still open.
  * @param {any[]} events
  */
 export function cardHistory(events) {
-  /** @type {Map<string, { card: any, statuses: string[], held: Map<string, { w: any, removedOpen: boolean }> }>} */
+  /** @type {Map<string, { card: any, statuses: string[], settled: number|null, held: Map<string, { w: any, removedOpen: boolean }> }>} */
   const cards = new Map();
   for (const e of events ?? []) {
     if (e.type === 'item.add' && e.data?.item?.kind === 'hop')
-      cards.set(e.data.item.id, { card: e.data.item, statuses: [e.data.item.status], held: new Map() });
+      cards.set(e.data.item.id, { card: e.data.item, statuses: [e.data.item.status], settled: null, held: new Map() });
     const c = e.type === 'item.patch' ? cards.get(e.data?.id) : null;
     if (!c) continue;
     const p = e.data.patch ?? {};
     if (typeof p.status === 'string') c.statuses.push(p.status);
+    // A patch carries no time: a retired card’s says when; otherwise the next item added is the closest record.
+    if (typeof p.status === 'string' && p.status !== 'open' && c.settled === null)
+      c.settled = Number.isFinite(p.retiredAt) ? p.retiredAt : timeAfter(events, e.seq);
     if (!Array.isArray(p.held)) continue;
     const now = new Set(p.held.map(heldKey));
     for (const w of p.held) if (!c.held.has(heldKey(w))) c.held.set(heldKey(w), { w, removedOpen: false });
@@ -35,22 +38,33 @@ export function cardHistory(events) {
   return cards;
 }
 
-/** ask-dropped: a held wake, or a card, that left the state with no answer from the person and never reached its target. */
+/**
+ * ask-dropped: a held wake, or a card, that left the state with no answer from the person and never reached its
+ * target. The turn it went on in, the target’s first after its card settled, may have no line in the transcript
+ * (stopped before Claude Code wrote its prompt): then the check says it couldn’t check it there.
+ */
 function droppedAsks(f) {
   const live = new Set((f.threads ?? []).flatMap((t) => (f.state?.items?.[t] ?? []).map((it) => it.id)));
   const unread = new Map();
-  const reached = (w, since) => {
+  const reached = (w, since, settled) => {
     const got = inputsOf(f, w.to);
     // No transcript of the target: whether it got the wake can’t be read, so the wake isn’t called dropped, and the
     // check says it didn’t check it.
-    if (!got) unread.set(w.to, (unread.get(w.to) ?? 0) + 1);
-    return !got || got.some((x) => x.at >= since && holds(x, { itemId: w.itemId ?? null, text: w.text ?? '' }));
+    if (!got) {
+      unreadable(unread, w.to);
+      return true;
+    }
+    if (got.some((x) => x.at >= since && holds(x, { itemId: w.itemId ?? null, text: w.text ?? '' }))) return true;
+    const due = turnsOf(f, w.to).find((t) => t.started >= (settled ?? since) - 1000);
+    if (!due || recorded(got, due)) return false;
+    unreadable(unread, w.to, due);
+    return true;
   };
   const out = [];
   for (const [id, c] of cardHistory(f.events)) {
     const answered = c.statuses.some((s) => ANSWERED.has(s));
     const own = { to: c.card.to, itemId: c.card.itemId, text: c.card.text ?? c.card.reason, at: c.card.at };
-    if (!answered && !live.has(id) && !reached(own, own.at ?? 0))
+    if (!answered && !live.has(id) && !reached(own, own.at ?? 0, c.settled))
       out.push({
         key: `ask-dropped:${id}`,
         title: `@${c.card.from}’s request to wake @${c.card.to} left the room unanswered`,
@@ -60,7 +74,7 @@ function droppedAsks(f) {
       // Settled with its card: Allow or Don’t allow is the person’s answer; retiring sends it on, so it must arrive.
       const cardGone = !answered && !live.has(id);
       const retired = !answered && c.statuses.includes('retired');
-      if (!(h.removedOpen || cardGone || retired) || reached(h.w, h.w.at ?? 0)) continue;
+      if (!(h.removedOpen || cardGone || retired) || reached(h.w, h.w.at ?? 0, retired ? c.settled : null)) continue;
       out.push({
         key: `ask-dropped:${id}:${k}`,
         title: `@${h.w.from}’s wake of @${h.w.to}, held on a card, went without an answer and never arrived`,

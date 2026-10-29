@@ -7,7 +7,8 @@
 //                                                                       its events cut to the init and, when the turn
 //                                                                       said anything, its first assistant message
 //   { handle, lines }                                                   a Claude Code transcript: each turn’s prompt as
-//                                                                       a user line, each tool result as one too;
+//                                                                       a user line, each tool result as one too
+//                                                                       (none for a turn Send now stopped first);
 //                                                                       and the user lines Claude Code writes itself,
 //                                                                       flagged isCompactSummary (a compaction’s
 //                                                                       summary) or isMeta (a caveat or reminder), as
@@ -63,12 +64,20 @@ export function room() {
     written(handle, at, content, flags) {
       lines(handle).push(line(at, content, flags));
     },
-    /** A turn: its stream, its prompt and its tool results. output: false for one that wrote nothing. */
-    turn(handle, started, { prompt = /** @type {string|null} */ (null), results = /** @type {string[]} */ ([]), output = true, ms = 8000 } = {}) {
+    /**
+     * A turn: its stream, its prompt and its tool results. output: false for one that wrote nothing. Claude Code
+     * writes every turn’s prompt to its transcript, so a turn given no prompt still records one that delivers nothing;
+     * recorded: false for a turn the transcript has no line of, as when Send now stopped it before Claude Code wrote one.
+     */
+    turn(
+      handle,
+      started,
+      { prompt = /** @type {string|null} */ (null), results = /** @type {string[]} */ ([]), output = true, ms = 8000, recorded = true } = {},
+    ) {
       f.streams.push({ handle, started, ended: started + ms, events: [{ type: 'system', subtype: 'init' }, ...(output ? [{ type: 'assistant' }] : [])] });
       // An agent on another backend takes its turns all the same; no transcript records what they began with.
-      if (!f.transcripts.some((t) => t.handle === handle)) return;
-      if (prompt !== null) lines(handle).push(line(started + 5, prompt));
+      if (!recorded || !f.transcripts.some((t) => t.handle === handle)) return;
+      lines(handle).push(line(started + 5, prompt ?? '[Postbox] Nothing new in this room since your last turn.'));
       for (const r of results) lines(handle).push(line(started + 1000, [{ type: 'tool_result', content: r }]));
     },
   };

@@ -128,3 +128,83 @@ test('a recorded room’s checks keep what they couldn’t check apart from thei
     ['delivery-dropped:unverified:researcher', 'unlabeled-repeat:unverified:researcher'],
   );
 });
+
+// An agent with a transcript can still have a turn it holds no line of: Send now stopped @critic’s turn about 5s in,
+// with an empty reply, before Claude Code wrote its prompt (a gemini UAT run of 29 October 2026, rebuilt by hand). A
+// delivery due in that turn can’t be read either way, so the check says so for that turn rather than calling it lost.
+
+/** @critic, with a transcript, is mentioned; the turn it starts is stopped with no transcript, and a recorded turn follows. */
+function interruptedRoom({ recorded = false } = {}) {
+  const r = room();
+  r.agent('critic');
+  r.marker('critic', 'it_read', s(1));
+  r.turn('critic', s(1), { prompt: '[Postbox] You: @critic read the last 100 items.' });
+  r.add({ id: 'it_count', at: s(20), kind: 'user', text: `@critic ${DRAFT}` });
+  r.marker('critic', 'it_count', s(20));
+  r.turn('critic', s(20) + 27, { output: false, ms: 5000, recorded });
+  r.turn('critic', s(40), { prompt: '[Postbox] You: are you still there?' });
+  return r;
+}
+
+/** The record a check leaves for a turn it can’t read: visible, not a defect, and naming the turn. */
+function turnNotRecorded(out, check, handle, started) {
+  assert.equal(out.length, 1, JSON.stringify(out));
+  const [x] = out;
+  const at = new Date(started).toISOString();
+  assert.equal(x.key, `${check}:unverified:${handle}:${at}`);
+  assert.equal(x.title, `${check} isn’t checkable for @${handle}: its turn at ${at} has no recorded transcript`);
+  assert.equal(x.issue, null);
+  assert.equal(x.verdict, 'measurement');
+  assert.deepEqual(x.unverified, { check, handle, backend: 'claude-code', turn: at });
+}
+
+test('delivery-dropped says it can’t check a delivery due in a turn with no recorded transcript, rather than calling it lost', () => {
+  turnNotRecorded(found(interruptedRoom().f, 'delivery-dropped'), 'delivery-dropped', 'critic', s(20) + 27);
+});
+
+test('delivery-dropped still finds a delivery lost in recorded turns, beside one interrupted', () => {
+  assert.deepEqual(
+    found(interruptedRoom({ recorded: true }).f, 'delivery-dropped').map((x) => x.key),
+    ['delivery-dropped:critic:it_count'],
+  );
+});
+
+test('ask-dropped says it can’t check a held wake whose next turn has no recorded transcript, rather than calling it lost', () => {
+  // @developer’s wake of @critic, held on a card, goes on when the person writes to @critic; Send now stops that turn.
+  const r = room();
+  r.agent('developer');
+  r.agent('critic');
+  r.turn('critic', s(1), { prompt: '[Postbox] You: @critic read the last 100 items.' });
+  r.add({ id: 'it_card', at: s(2), kind: 'hop', from: 'researcher', to: 'critic', text: 'Please check the changelog wording again.', status: 'open' });
+  r.patch('it_card', { held: [{ fromSessionId: 'se_developer', from: 'developer', to: 'critic', text: ROUND_TWO, at: s(5) }] });
+  r.patch('it_card', { status: 'retired', retiredWhy: 'you wrote to it', retiredAt: s(20) });
+  r.turn('critic', s(20) + 27, { output: false, ms: 5000, recorded: false });
+  r.turn('critic', s(40), { prompt: '[Postbox] You: are you still there?' });
+  turnNotRecorded(
+    found(r.f, 'ask-dropped').filter((x) => x.key.includes('unverified') || x.key.includes('se_developer')),
+    'ask-dropped',
+    'critic',
+    s(20) + 27,
+  );
+});
+
+test('marker-before-output still finds a marker moved in the interrupted turn, filed under #508 for DL-3', () => {
+  const out = found(interruptedRoom().f, 'marker-before-output');
+  assert.equal(out.length, 1, JSON.stringify(out));
+  assert.equal(out[0].issue, 508);
+  assert.deepEqual(out[0].requirements, ['DL-3', 'INV-6']);
+});
+
+test('unlabeled-repeat says it can’t check a delivery given once, then due again in a turn with no recorded transcript', () => {
+  const r = room();
+  r.agent('critic');
+  r.add({ id: 'it_count', at: s(20), kind: 'user', text: `@critic ${DRAFT}` });
+  r.turn('critic', s(21), { prompt: `[Postbox] You: @critic ${DRAFT}` });
+  r.turn('critic', s(40), { output: false, ms: 5000, recorded: false });
+  turnNotRecorded(found(r.f, 'unlabeled-repeat'), 'unlabeled-repeat', 'critic', s(40));
+});
+
+test('unlabeled-repeat stays silent when one turn with no recorded transcript is the only place it could have come', () => {
+  // Given at most once, it can’t have been repeated: an unread turn alone doesn’t make the check unverified.
+  assert.deepEqual(found(interruptedRoom().f, 'unlabeled-repeat'), []);
+});
