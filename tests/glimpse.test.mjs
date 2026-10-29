@@ -35,12 +35,18 @@ test('#478 Claude’s stream mapper keeps sentence boundaries across text deltas
   assert.equal(statuses.filter((status) => status.glimpse).at(-1).glimpse, 'Next I check the tests. Done.');
 });
 
-test('#478 an overlong latest sentence stops at a whole word without an ellipsis', () => {
+test('#478 CJK sentence endings keep the latest complete sentences', () => {
+  const sentence = '这是第一句话。';
+  assert.equal(glimpseOf(sentence.repeat(30)), sentence.repeat(2));
+  assert.equal(glimpseOf('最初的文。次の文！最後の文？'), '次の文！最後の文？');
+});
+
+test('#478 an overlong sentence is bounded with an ellipsis even without word breaks', () => {
   const glimpse = glimpseOf(`The ${'carefully '.repeat(40)}written conclusion is ready.`);
 
-  assert.ok(glimpse.length <= GLIMPSE_CHARS);
+  assert.equal(glimpse.length, GLIMPSE_CHARS);
   assert.match(glimpse, /^The carefully /);
-  assert.doesNotMatch(glimpse, /\s$/);
-  assert.doesNotMatch(glimpse, /…/);
-  assert.equal(glimpseOf('x'.repeat(GLIMPSE_CHARS + 1)), '', 'one overlong word is not cut into a fragment');
+  assert.ok(glimpse.endsWith('…'));
+  assert.equal(glimpseOf('x'.repeat(GLIMPSE_CHARS + 1)), `${'x'.repeat(GLIMPSE_CHARS - 1)}…`);
+  assert.match(glimpseOf(`Short one. Here: https://example.com/${'a'.repeat(200)}`), /^Here: https:\/\/example\.com\/a+…$/);
 });

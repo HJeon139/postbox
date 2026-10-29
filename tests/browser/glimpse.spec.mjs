@@ -32,7 +32,7 @@ function room(title) {
 }
 
 for (const width of [1280, 375])
-  test(`#478 at ${width} px a whole-sentence glimpse uses at most three lines and the view stays at the end`, async ({ page }) => {
+  test(`#478 at ${width} px a sentence-boundary glimpse uses at most three lines and the view stays at the end`, async ({ page }) => {
     await page.setViewportSize({ width, height: 700 });
     const { rt, thread, session } = room(String(width));
     await page.goto(`${app.origin}/#/t/${thread.id}`);
@@ -51,10 +51,12 @@ for (const width of [1280, 375])
         lineHeight: Number.parseFloat(style.lineHeight),
         text: node.textContent ?? '',
         whiteSpace: style.whiteSpace,
+        lines: style.webkitLineClamp,
       };
     });
     expect(first.text.startsWith('…') || first.text.endsWith('…'), 'no ellipsis at either end').toBe(false);
     expect(first.whiteSpace, 'the glimpse wraps').toBe('normal');
+    expect(first.lines, 'a fourth line shows its cut').toBe('3');
     expect(first.height / first.lineHeight, 'at most three lines').toBeLessThanOrEqual(3.05);
     await expect.poll(() => page.evaluate(() => Math.round(document.scrollingElement.scrollHeight - scrollY - innerHeight))).toBeLessThanOrEqual(2);
 

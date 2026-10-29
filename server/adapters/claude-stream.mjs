@@ -200,13 +200,15 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
   const pushSubagents = () => status({ subagents: [...st.subagents.values()] });
   // The latest whole sentences of what the agent is thinking or writing, at most a few times a second.
   const glimpse = (text, { force = false } = {}) => {
+    if (!force && now() - st.glimpseAt < 400) {
+      st.pending = text;
+      return;
+    }
     const t = glimpseOf(text);
+    st.pending = null;
     if (!t || t === st.glimpse) return;
-    st.pending = t;
-    if (!force && now() - st.glimpseAt < 400) return;
     st.glimpseAt = now();
     st.glimpse = t;
-    st.pending = null;
     ctx.status({ glimpse: t });
   };
   const flushGlimpse = () => {
