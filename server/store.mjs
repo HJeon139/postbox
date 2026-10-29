@@ -4,8 +4,9 @@
 //
 // emit() is optimistic: it applies an event with the shared reducer, numbers it and tells subscribers at once, and the
 // write follows, one script per tick. commit() is authoritative: its events are written first, and applied and
-// broadcast only once Redis has replied; a repeated opId writes nothing twice. While Redis is down, both refuse
-// (ESTOREDOWN) and the state stays readable. A store with no data folder (tests) keeps everything in memory.
+// broadcast only once Redis has replied; a repeated opId writes nothing twice. While Redis is down, and after a lost
+// reply or a restart until the store has read Redis back (server/store-recover.mjs), both refuse (ESTOREDOWN) and the
+// state stays readable. A store with no data folder (tests) keeps everything in memory.
 
 import { randomBytes } from 'node:crypto';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
@@ -17,6 +18,7 @@ import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-
 import { Hold } from './store-hold.mjs';
 import { importLegacy } from './store-import.mjs';
 import { broadcast } from './store-publish.mjs';
+import { onStatus, reconcilingStatus, stopReconciling } from './store-recover.mjs';
 import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
 import { failedStatus, pump, recovered } from './store-write.mjs';
 
@@ -65,6 +67,10 @@ export class Store {
     /** @type {ReturnType<typeof setTimeout> | null} the next try of a failed write */
     this.retry = null;
     this.backoff = 0; // ms before that try; doubles to RETRY_MAX
+    this.reconciling = false; // reading Redis back after a lost reply or a restart; writes are closed meanwhile
+    /** @type {import('./store-recover.mjs').Reconciler} */
+    this.rc = { run: null, again: false, timer: null, backoff: 0 };
+    this.closed = false;
   }
 
   async load() {
@@ -83,35 +89,24 @@ export class Store {
     return this;
   }
 
-  /** The child went down or came back: drop the connection, or open a new one and write what waited. */
-  async onStatus(s) {
-    if (s.state !== 'running') {
-      this.client?.close();
-      this.client = null;
-      if (s.state === 'down') console.error(`The store is read-only for now: ${s.message}`);
-      return;
-    }
-    this.client = (await this.redis?.sup.client().catch(() => null)) ?? null;
-    this.recovered();
-    // A batch whose reply was lost when the child stopped may be in Redis already.
-    await (this.inflight ?? null);
-    await this.catchUp().catch((e) => console.error(`Couldn’t read the store back: ${e.message}`));
-    this.pump();
+  /** The child went down or came back: writes close until the store has read Redis back (server/store-recover.mjs). */
+  onStatus(s) {
+    onStatus(this, s);
   }
 
   /** Whether a write can be accepted now. */
   get writable() {
-    return !this.redis || (!!this.client?.connected && this.redis?.sup.status.state === 'running' && !this.failed);
+    return !this.redis || (!!this.client?.connected && this.redis?.sup.status.state === 'running' && !this.failed && !this.reconciling);
   }
 
-  /** The child’s status, for the page: running, or down with its cause and what to do; down too while writes fail. */
+  /** The child’s status, for the page: running, or down with its cause and what to do; down too while writes fail or it reads back. */
   get status() {
-    return this.redis ? (failedStatus(this) ?? this.redis.sup.status) : { state: 'running' };
+    return this.redis ? (reconcilingStatus(this) ?? failedStatus(this) ?? this.redis.sup.status) : { state: 'running' };
   }
 
   refuse() {
     const s = this.redis?.sup.status;
-    const why = this.failed?.message ?? (s?.state === 'down' ? s.message : 'The store’s Redis isn’t answering.');
+    const why = this.failed?.message ?? (s?.state === 'down' ? s.message : (reconcilingStatus(this)?.message ?? 'The store’s Redis isn’t answering.'));
     return storeError('ESTOREDOWN', `Postbox can’t save changes right now, so it didn’t make this one. ${why}`);
   }
 
@@ -211,7 +206,7 @@ export class Store {
   /** Waits for every event emitted so far to reach Redis, or for the store to be unable to write it. */
   async flush() {
     if (!this.redis) return;
-    while (this.inflight || this.scheduled || (this.lines.length && this.client?.connected && !this.failed && !this.hold)) {
+    while (this.inflight || this.scheduled || (this.lines.length && this.client?.connected && !this.failed && !this.hold && !this.reconciling)) {
       this.pump();
       await (this.inflight ?? new Promise((ok) => setImmediate(ok)));
     }
@@ -282,6 +277,8 @@ export class Store {
   async close() {
     if (!this.redis || !this.dir) return;
     await this.flush();
+    this.closed = true;
+    stopReconciling(this);
     const failed = this.failed;
     this.recovered();
     if (this.lines.length)

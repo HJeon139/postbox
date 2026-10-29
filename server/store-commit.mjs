@@ -10,6 +10,7 @@
 import { apply, map } from '../shared/state.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
+import { closeWrites } from './store-recover.mjs';
 import { streamAfter, writeBatch } from './store-redis.mjs';
 
 /** @typedef {{ type: string, data: any }[] | ((state: any) => { type: string, data: any }[])} Events */
@@ -23,7 +24,10 @@ export function commit(store, events, opId) {
     store.hold ??= new Hold();
     store.waiting++;
   }
-  const run = store.commits.then(() => commitNow(store, events, opId)).finally(() => store.redis && --store.waiting === 0 && store.release());
+  // Emits held behind a commit whose reply was lost stay held until reconciliation has read it back (store-recover.mjs).
+  const run = store.commits
+    .then(() => commitNow(store, events, opId))
+    .finally(() => store.redis && --store.waiting === 0 && !store.reconciling && store.release());
   store.commits = run.catch(() => {});
   return run;
 }
@@ -73,6 +77,8 @@ async function writeOnce(store, given, opId) {
     r = await writeBatch(/** @type {any} */ (store.client), { opId, prev: store.confirmed, events: [...pending.events, ...lines], writes });
   } catch (e) {
     store.untake(pending);
+    // The reply was lost, so the commit may be in Redis: no write until catch-up has read it back.
+    if (e.code === 'ESTOREDOWN') closeWrites(store);
     throw e;
   }
   if (r.duplicate) {

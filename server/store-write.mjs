@@ -5,8 +5,11 @@
 // queued, in order. It’s tried again after a backoff (RETRY_MS doubling to RETRY_MAX), and at once when the child starts
 // again; the first write that succeeds ends the failed state, and what waited is written. ESEQ (another process wrote)
 // isn’t retried: only a restart, which reads Redis again, ends it. Queued events were already broadcast, so if Postbox
-// stops while failed they’re lost, and close() logs how many. flush() returns once the store can’t write.
+// stops while failed they’re lost, and close() logs how many. flush() returns once the store can’t write. A batch whose
+// reply was lost (ESTOREDOWN) isn’t a failure: it may be in Redis, so writes close until the store has read Redis back
+// (server/store-recover.mjs).
 
+import { closeWrites } from './store-recover.mjs';
 import { writeBatch } from './store-redis.mjs';
 
 const RETRY_MS = 250; // the first wait before a failed write is tried again
@@ -14,7 +17,7 @@ const RETRY_MAX = 30000; // the longest
 
 /** @param {import('./store.mjs').Store} store @param {boolean} retrying  a failed batch’s retry */
 export function pump(store, retrying) {
-  if (store.inflight || store.hold || (store.failed && !retrying) || !store.lines.length || !store.client?.connected) return;
+  if (store.inflight || store.hold || store.reconciling || (store.failed && !retrying) || !store.lines.length || !store.client?.connected) return;
   const batch = store.take();
   store.inflight = writeBatch(store.client, { prev: store.confirmed, events: batch.events, writes: batch.writes })
     .then(
@@ -24,6 +27,8 @@ export function pump(store, retrying) {
       },
       (e) => {
         store.untake(batch);
+        // The reply was lost, so the batch may be in Redis: read it back before writing again (server/store-recover.mjs).
+        if (e.code === 'ESTOREDOWN') return closeWrites(store);
         store.failed = e;
         if (e.code !== 'ESEQ') retryLater(store);
         console.error(`Couldn’t write to the store: ${e.message}`);
