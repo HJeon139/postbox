@@ -9,6 +9,13 @@ export const explorerApp = ({ withYears = false } = {}) => `
   .xp-main { display: flex; flex-direction: column; min-width: 0; }
   .xp-search { display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); align-items: center; }
   .xp-status { padding: 8px 14px; font-size: 12px; color: var(--dim); border-bottom: 1px solid var(--line); display: flex; gap: 10px; flex-wrap: wrap; }
+  .xp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .xp-select-wrap { position: relative; }
+  .xp-arrow { position: absolute; right: 8px; top: 5px; color: var(--dim); pointer-events: none; }
+  .xp-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .xp-check .xp-box { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--dim); background: var(--sunk); display: grid; place-items: center; flex: none; }
+  .xp-check[aria-checked="true"] .xp-box { border-color: var(--accent); color: var(--accent); }
+  .xp-check[aria-checked="true"] .xp-box::after { content: "✓"; font-size: 12px; }
   .hits { list-style: none; padding: 0; margin: 0; }
   .hit { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
   .hit.sel { background: var(--panel); }
@@ -26,11 +33,11 @@ export const explorerApp = ({ withYears = false } = {}) => `
 <div class="xp">
   <aside class="xp-side" aria-label="Filters">
     <div class="field"><span class="label" id="m-l">Match</span>
-      <div class="chips" role="radiogroup" aria-labelledby="m-l" id="modes"></div></div>
+      <div class="xp-chips" role="radiogroup" aria-labelledby="m-l" id="modes"></div></div>
     ${
       withYears
         ? `<div class="field"><label class="label" for="yr">Published before</label>
-      <div class="select-wrap"><select class="select" id="yr"><option value="">Any year</option><option value="1820">1820</option><option value="1860">1860</option><option value="1900">1900</option></select><span class="i i-down"></span></div></div>`
+      <div class="xp-select-wrap"><select class="select" id="yr"><option value="">Any year</option><option value="1820">1820</option><option value="1860">1860</option><option value="1900">1900</option></select><span class="xp-arrow" aria-hidden="true">⌄</span></div></div>`
         : ''
     }
     <div class="field"><span class="label">Books with matches</span><ul class="books" id="books"></ul></div>
@@ -42,7 +49,7 @@ export const explorerApp = ({ withYears = false } = {}) => `
     </form>
     <div class="xp-status" id="status" role="status"></div>
     <ul class="hits" id="hits"></ul>
-    <div class="xp-foot"><span class="small dim grow" id="count">Nothing selected</span><button class="btn send" id="send" disabled>Send passages</button></div>
+    <div class="xp-foot"><span class="small dim" style="flex:1;min-width:0" id="count">Nothing selected</span><button class="btn" style="border-color:var(--accent)" id="send" disabled>Send passages</button></div>
   </div>
 </div>
 <script>
@@ -70,7 +77,7 @@ export const explorerApp = ({ withYears = false } = {}) => `
       const on = !!S.picked[r.id];
       const pills = (r.lexical ? '<span class="pill">lexical · BM25 ' + r.lexical.score + '</span>' : '') + (r.semantic !== null && r.semantic !== undefined ? '<span class="pill">semantic · ' + r.semantic.toFixed(2) + '</span>' : '');
       return '<li class="hit' + (on ? ' sel' : '') + '" data-anchor="' + (i === 1 ? 'result row 2' : '') + '">' +
-        '<span class="check" role="checkbox" tabindex="0" aria-checked="' + on + '" aria-label="Select passage from ' + esc(r.title) + ', ' + esc(r.chapter) + '" data-id="' + esc(r.id) + '"><span class="box"></span></span>' +
+        '<span class="xp-check" role="checkbox" tabindex="0" aria-checked="' + on + '" aria-label="Select passage from ' + esc(r.title) + ', ' + esc(r.chapter) + '" data-id="' + esc(r.id) + '"><span class="xp-box"></span></span>' +
         '<div><div class="src"><b><i>' + esc(r.title) + '</i></b> · ' + esc(r.chapter) + pills + '</div><p>' + highlight(r.text.length > 420 ? r.text.slice(0, 420) + '…' : r.text, r.lexical && r.lexical.terms) + '</p></div></li>';
     }).join('') : '<li class="empty">No passages match. Try other words, or switch to Semantic.</li>';
     const n = Object.keys(S.picked).length;
@@ -125,9 +132,10 @@ export const practiceApp = () => `
   .opt { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); }
   .opt:hover, .opt[aria-checked="true"] { border-color: var(--accent); }
   .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--dim); margin-top: 1px; display: grid; place-items: center; }
-  .opt[aria-checked="true"] .dot { border-color: var(--on); background: var(--on); }
-  .opt[aria-checked="true"] .dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--on-ink); }
+  .practice-actions { display: flex; align-items: center; gap: 8px; }
+  .practice-dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--dim); margin-top: 1px; display: grid; place-items: center; }
+  .opt[aria-checked="true"] .practice-dot { border-color: var(--on); background: var(--on); }
+  .opt[aria-checked="true"] .practice-dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--on-ink); }
   .feedback { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--good); border-radius: 6px; background: var(--panel); font-size: 13px; }
   .feedback.wrong { border-left-color: var(--alert); }
   .pips { display: flex; gap: 4px; } .pips i { width: 18px; height: 4px; border-radius: 999px; background: var(--line); } .pips i.on { background: var(--accent); }
@@ -138,7 +146,7 @@ export const practiceApp = () => `
   <ol class="trace" id="trace"></ol>
   <div class="options" role="radiogroup" aria-label="Next step" id="opts" style="display:flex;flex-direction:column;gap:8px"></div>
   <div id="fb" role="status"></div>
-  <div class="row-flex"><button class="btn" id="next">Next exercise</button><button class="btn ghost" id="stuck">Tell @researcher I’m stuck</button></div>
+  <div class="practice-actions"><button class="btn" id="next">Next exercise</button><button class="btn ghost" id="stuck">Tell @researcher I’m stuck</button></div>
 </div>
 <script>
   const EX = [
@@ -155,7 +163,7 @@ export const practiceApp = () => `
     const ex = EX[S.i];
     $('pips').innerHTML = EX.map((_, k) => '<i class="' + (k <= S.i ? 'on' : '') + '"></i>').join('') + '<i></i><i></i>';
     $('trace').innerHTML = ex.trace.map(([k, v]) => '<li><span class="label">' + k + '</span><span>' + v + '</span></li>').join('');
-    $('opts').innerHTML = ex.opts.map((o, k) => '<button class="opt" role="radio" aria-checked="' + (S.pick === k) + '" data-k="' + k + '"><span class="dot"></span><span>' + o + '</span></button>').join('');
+    $('opts').innerHTML = ex.opts.map((o, k) => '<button class="opt" role="radio" aria-checked="' + (S.pick === k) + '" data-k="' + k + '"><span class="practice-dot"></span><span>' + o + '</span></button>').join('');
     $('fb').innerHTML = S.pick === null ? '' : '<div class="feedback' + (S.pick === ex.right ? '' : ' wrong') + '"><span>' + (S.pick === ex.right ? '<b>Right.</b> ' : '<b>Not quite.</b> ') + ex.why + '</span></div>';
     $('next').disabled = S.i >= EX.length - 1;
   }
@@ -176,14 +184,14 @@ export const dashboardApp = ({ fixed = false } = {}) => `
   .dash .full { grid-column: 1 / -1; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
   .card h2 { font-size: 14px; margin: 0 0 8px; }
-  ${fixed ? '' : '.wide { width: 980px; }'}
+  ${fixed ? '' : '.dash-wide { width: 980px; }'}
   @media (max-width: 720px) { .dash { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <div class="dash">
   <section class="card full"><h2>Passages per book</h2><div id="bars"></div></section>
   <section class="card"><h2>How passages matched</h2><div id="scatter"></div></section>
   <section class="card"><h2>Themes by book</h2><div id="heat"></div></section>
-  <section class="card full wide"><h2>Index runs</h2><div id="table"></div></section>
+  <section class="card full dash-wide"><h2>Index runs</h2><div id="table"></div></section>
 </div>
 <script>
   postbox.ready.then(async () => {
@@ -223,7 +231,7 @@ export const layoutApp = () => `
   <div id="search" style="display:flex;gap:8px;align-items:center"><input class="input" value="hope after loss" aria-label="Search"><button class="btn">Search</button></div>
   <div class="r"><div class="small dim"><b style="color:var(--text)"><i>Persuasion</i></b> · ch. 23 <span class="pill">lexical · BM25 8.4</span></div><p style="margin:0">…loving longest, when existence or when <mark style="background:var(--mark);color:inherit">hope</mark> is gone.</p></div>
   <div class="r" id="row2"><div class="small dim"><b style="color:var(--text)"><i>Middlemarch</i></b> · ch. 20 <span class="pill">semantic · 0.66</span></div><p style="margin:0">…that roar which lies on the other side of silence.</p></div>
-  <div id="sendrow" style="display:flex;justify-content:flex-end"><button class="btn send">Send 2 passages</button></div>
+  <div id="sendrow" style="display:flex;justify-content:flex-end"><button class="btn" style="border-color:var(--accent)">Send 2 passages</button></div>
 </div>
 <script>
   postbox.ready.then(() => postbox.anchors({ 'search box': document.getElementById('search'), 'result row 2': document.getElementById('row2'), 'send button': document.getElementById('sendrow') }));

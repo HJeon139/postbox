@@ -42,6 +42,7 @@ import { addDataset, reloadDatasets } from './datasets.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
+import { sendLint } from './lint-delivery.mjs';
 import * as queue from './message-queue.mjs';
 import {
   allowAlways,
@@ -93,10 +94,6 @@ export { PERMISSION_MODES, readCapped };
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
 const DELETE_UNDO_MS = 10000;
-/** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
-const LINT_SETTLE_MS = 1500;
-/** …and at most, while an app of the agent’s is still being checked. */
-const LINT_WAIT_MAX_MS = 12000;
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
 const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
@@ -1857,26 +1854,7 @@ export class Runtime {
   }
 
   sendLint(turnId) {
-    const e = this.lints.get(turnId);
-    if (!e || e.sent || e.timer) return;
-    const wait = this.config.lintSettleMs ?? LINT_SETTLE_MS;
-    const until = Date.now() + LINT_WAIT_MAX_MS;
-    const send = () => {
-      e.timer = null;
-      // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
-      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending' && !a.retired);
-      if (wait > 0 && checking && Date.now() < until) {
-        e.timer = setTimeout(send, wait);
-        e.timer.unref?.();
-        return;
-      }
-      e.sent = true;
-      const se = this.s.sessions[e.sessionId];
-      if (se && !se.deleting && !se.archived) this.deliver(e.sessionId, lintMessage(e.problems), { threadId: e.threadId });
-    };
-    if (wait <= 0) return send();
-    e.timer = setTimeout(send, wait);
-    e.timer.unref?.();
+    return sendLint(this, turnId);
   }
 
   /**

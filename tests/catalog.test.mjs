@@ -141,6 +141,19 @@ test('ids must be simple, so they are safe to use anywhere', () => {
   bad({ ...base('code', { code: 'x' }), id: '<script>' }, /isn’t a valid id/);
 });
 
+test('#328 sandbox pages name the script, line and column of inline JavaScript syntax errors', async () => {
+  const { scriptSyntaxErrors } = await import('../server/sandbox.mjs');
+  assert.deepEqual(scriptSyntaxErrors('<script>\nconst ok = 1;\nconst broken = (1;\n</script>'), [
+    "SyntaxError: Unexpected token ';' (script 1, line 3, column 18)",
+  ]);
+  assert.deepEqual(scriptSyntaxErrors('<script>const broken = (1;</script\t\n ignored>'), ["SyntaxError: Unexpected token ';' (script 1, line 1, column 18)"]);
+  assert.deepEqual(scriptSyntaxErrors('<p>İ</p><ScRiPt>const broken = (1;</sCrIpT>'), ["SyntaxError: Unexpected token ';' (script 1, line 1, column 18)"]);
+  assert.deepEqual(scriptSyntaxErrors("<script data-note=don't>const broken = (1;</script>"), [
+    "SyntaxError: Unexpected token ';' (script 1, line 1, column 18)",
+  ]);
+  assert.deepEqual(scriptSyntaxErrors('<script type="application/json">{not JavaScript}</script><script>const ok = true;</script>'), []);
+});
+
 test('every sandbox page is served with a sandbox policy, so it never runs with Postbox’s origin', async () => {
   const { csp, mermaidPage, sandboxPage } = await import('../server/sandbox.mjs');
   const app = { id: 'a1', title: 'T', versions: [{ v: 1, code: '<p>hi</p>', permissions: [] }], current: 1 };
