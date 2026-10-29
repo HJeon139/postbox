@@ -41,5 +41,15 @@ export function attachmentPaths(ctx, turn) {
   };
 }
 
+/**
+ * Where personas’ memory folders go on a host (#208): in Postbox’s folder there, beside its versions, so an update
+ * keeps them. Claude Code makes the folder when it first saves a memory.
+ * @param {import('./adapter.mjs').RemoteContext} remote
+ */
+export function hostMemoryRoot(remote) {
+  const welcome = remote.welcome ?? remote.link?.welcome;
+  return `${hostPaths(welcome.home, remote.version).root}/memory`;
+}
+
 /** What a remote turn’s start carries of its attachments: each one’s name on the host and its bytes. @param {import('./adapter.mjs').RemoteContext} remote */
 export const startAttachments = (remote) => (remote.attachments ?? []).map(({ name, base64 }) => ({ name, base64 }));
