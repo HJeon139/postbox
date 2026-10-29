@@ -55,7 +55,7 @@ flowchart LR
 
 | Backend | A direct attempt at the socket |
 |---|---|
-| Codex | Auto (`workspaceWrite`, network off) and Ask (`readOnly`) run commands in Codex’s sandbox. On macOS (codex-cli 0.164.0, its `:workspace` and `:read-only` profiles) it refuses the connection with `EPERM`; not checked on Linux. Bypass has no sandbox: the connection opens and gets `NOAUTH`. |
+| Codex | Auto (`workspaceWrite`, network off) and Ask (`readOnly`) run commands in Codex’s sandbox. On macOS (codex-cli 0.164.0, its `:workspace` and `:read-only` profiles) it refuses the connection with `EPERM`; not checked on Linux. That isn’t an absolute barrier: a command the sandbox stops can ask to run outside it, and in Auto, Codex’s reviewer decides (in Ask, you do, on a card); one let out reaches the socket and gets `NOAUTH`. Bypass has no sandbox: the connection opens and gets `NOAUTH`. |
 | Claude Code, Agent SDK | No OS sandbox that Postbox sets. A shell command goes through the mode’s approval (Auto’s classifier, Ask’s card, Bypass none); one that runs reaches the socket and gets `NOAUTH`. |
 | Kiro CLI, Antigravity | As Claude Code: the backend’s own tool approval in its mode, no OS sandbox Postbox sets. |
 | Remote hosts | Never given the socket, a connection to it or a password: the store stays on this computer. |
