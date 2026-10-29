@@ -4,6 +4,15 @@ Decided on 21 October 2026, after Stage 2. Each section states the decision, wha
 
 ## 1. The store: an event log with snapshots, not a database
 
+**Decided next** (28 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508); built in the Store step, [#525](https://github.com/HJeon139/postbox/issues/525)). This section’s revisit line has been reached: more than one server process or person is likely within a year, the delivery records in #508 need transactions, and search is coming. So persistence moves onto a Redis 8 server that Postbox bundles and runs. Until #525 merges, the event log below is what runs, and this section is rewritten as the current decision when it does.
+- **Data model:** key/value and JSON documents, never a relational schema. Values carry a small version and are lifted to the current shape on read, never rewritten, so no install runs a migration. SQLite was set aside on this ground: an earlier Postbox used it, and its schema migrations between versions slowed every rollout to existing installs.
+- **Writes:** documents and the `events` stream are written together in one atomic step. Every record transition is atomic in Redis, so nothing assumes a single writer. Streamed text keeps a fast path; lifecycle changes use `commit`, which publishes only after Redis has replied.
+- **Durability:** `appendfsync everysec`. A crash of Postbox or Redis loses nothing committed; a power cut can lose up to one second of writes, a limit the release notes state.
+- **When Redis is down:** writes are refused and the page stays readable, with the cause and Retry. Writes reopen only once Postbox has read back everything Redis holds.
+- **The server:** Redis 8.10.3 with its built-in JSON and search, built by Postbox’s CI for macOS arm64, Linux arm64 and Linux x64 and published with its source under AGPLv3 ([redis-v8.10.3](https://github.com/HJeon139/postbox/releases/tag/redis-v8.10.3)). Postbox downloads its platform’s build on first start, checks its SHA-256 and supervises it as a child process. It refuses to start on an Intel Mac or Windows. This is the one exception to zero runtime dependencies; `engineering-practices.md` records it with #525.
+- **Stays:** the event types, the shared reducer and the stream that browsers resume from. **Goes:** snapshots and log segments; a browser behind the stream’s retention gets `resync`, as today.
+- **Detail:** `designs/508/design.md`, “Storage: a Redis 8 that Postbox bundles and runs”, and requirements ST-1 to ST-4 and PF-9 in `designs/508/requirements.md`.
+
 **Decision.** Postbox keeps its data as an append-only event log in JSON Lines, plus periodic snapshots of the state, in its data folder. Every read comes from an in-memory projection of that log. Binary files go to a separate content-addressed blob store. All of this sits behind one small storage interface (`server/store.mjs`).
 
 **What the design needs from a store**
@@ -76,6 +85,8 @@ flowchart LR
 - **Your actions** come back as HTTP requests and reach the agent as its next message.
 
 ## 3. The front end: plain HTML, CSS and ES modules, no build
+
+**Decided next** (28 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508); built in steps B1 to B3, [#531](https://github.com/HJeon139/postbox/issues/531) to [#533](https://github.com/HJeon139/postbox/issues/533)). The page stops holding every item of every conversation. It holds every conversation’s header and open records, and a contiguous window of items for the conversations it shows, paged from a new items API with a filtered stream. An explicit view state, following the newest item or reading at an anchor, is changed only by the person’s input and re-applied after every change to the DOM. Only the window module reads items. The window’s size is calibrated against a budget the person chose: typing and painting in a large room within 10% of a small one’s. Still no framework and no build step. Detail: `designs/508/design.md`, “Browser”.
 
 **Decision.** Keep the shipped app framework-free with no build step, and add type checking and linting as development-only tools, so the app itself still needs nothing but Node to run.
 
@@ -312,6 +323,11 @@ sequenceDiagram
 **Revisit when** another diagram type becomes common (class, state and ER diagrams only get the count check), or Postbox’s column width or diagram font size changes; then re-measure and refit.
 
 ## 12. A conversation is shared memory
+
+**Decided next** (28 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508); built in Now, [#524](https://github.com/HJeon139/postbox/issues/524), and A2, [#527](https://github.com/HJeon139/postbox/issues/527)).
+- **The turn envelope:** each turn opens with the request it answers and where the reply goes, then what has changed in the room, then the deliveries addressed to the agent, then background, labeled as such. The system prompt holds only what is fixed for a persona, so a resumed session never runs on an old guide (#515).
+- **Deliveries are records:** what was addressed to an agent is a record per recipient, not inferred from a marker. A delivery counts only once the turn carrying it produced output; a turn that fails first sends it again, labeled as a resend, at most three times, after which it waits on the person as an ask. The marker moves only with output.
+- **This section’s revisit line changes:** rooms longer than the caps are handled by a count and a `read_conversation` cursor for what was left out, not by summaries.
 
 **Decision.** Every agent in a conversation can read all of it.
 - **A marker per session:** each session records the last item it was given (`seenItem`).
@@ -584,7 +600,7 @@ flowchart TD
 - **One writer** at a time; a second Postbox gets a clear message and can take over.
 - **Its own lifetime.** It exits after `idleTimeout` with no turn running and no client attached. Postbox closes its own session 2 minutes after nothing needs the host, so back-to-back turns share one. A runner never waits for it.
 - **Restart from disk.** It scans the turn folders: a live runner is running, `exit.json` is finished, neither is interrupted. A runner is live only if its socket answers with its turn’s ID. It signals a process group only when the recorded process ID, boot ID and start time all still match, since a process ID alone can belong to another process after a reboot. A process that has exited and waits only to be reaped (state `Z` in `/proc/<pid>/stat`) counts as gone: in a container whose first process doesn’t reap, a killed daemon stays a zombie for good, and counting it as alive would stop a new one from ever starting.
-- **Version skew.** A new Postbox installs its version beside the old one, and the old daemon retires when its turns are done. `hello` carries the protocol’s version, an integer (2), not Postbox’s package version, which names the code folder; a mismatch is the `version` error, and the person is told to install this Postbox’s version.
+- **Version skew.** A new Postbox installs its version beside the old one, and the old daemon retires when its turns are done. `hello` carries the protocol’s version, an integer (2), not Postbox’s package version, which names the code folder; a mismatch is the `version` error, and the person is told to install this Postbox’s version. **Decided next** (28 October 2026, [#530](https://github.com/HJeon139/postbox/issues/530)): the remote read contract raises the protocol to 3, one version at a time, so a host on protocol 2 is unavailable from Postbox’s update until the host updates; [#464](https://github.com/HJeon139/postbox/issues/464) records that this strands it meanwhile.
 
 **Postbox and the daemon** speak JSON lines over the SSH channel’s stdio. No socket is forwarded and no port opened on either machine.
 

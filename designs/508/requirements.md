@@ -1,6 +1,6 @@
 # Functional requirements behind #508
 
-**Status:** revision 4.1, 28 October 2026 (names aligned with the UAT scenarios): adds “Acceptance, test first”, how each requirement is accepted, test first. Derived from #508, its integrator review, the linked issues and `designs/intent.md` at `main`. It says **what** Postbox must do and where each requirement comes from, not how. Use it to check that any version of the design, including the simplified one proposed in the room, covers every requirement and adds nothing that no requirement asks for.
+**Status:** revision 4.2, 28 October 2026 (storage requirements ST-1 to ST-4 and the PF-9 exception added; names aligned with the UAT scenarios): adds “Acceptance, test first”, how each requirement is accepted, test first. Derived from #508, its integrator review, the linked issues and `designs/intent.md` at `main`. It says **what** Postbox must do and where each requirement comes from, not how. Use it to check that any version of the design, including the simplified one proposed in the room, covers every requirement and adds nothing that no requirement asks for.
 
 **How to read it.** Each requirement has an id, a statement, a check that shows it’s met, and its sources. A requirement whose only source is #508 itself is marked **(design-only)**: nothing upstream asked for it, so it needs the person’s decision before it constrains the design. “Where the sources disagree” lists the places where the sources disagree.
 
@@ -85,7 +85,18 @@ flowchart TD
 | PF-6 | A revised block that asks again appears at the newest point, as its one live copy, with a line where it was. Its reactions, threads, links and work rows still point to it after it moves. | A block revised from far back appears at the bottom, even if its old place isn’t loaded; a reaction and an `m=` link made before the move still reach it. | INT Dynamic UI (append-only blocks row); #92; #168; CR finding 4 |
 | PF-7 | Every app is checked before the person sees it, whether or not a page draws it. | An app in a thread nobody opened is checked. | #336; R508 point 1 |
 | PF-8 | The person can find a message by its words in a long room. | Needed only if loading less of the room breaks the browser’s find-in-page. | D508 changes 5–6; R508 point 3 |
-| PF-9 | No new runtime dependencies. | | ENG “Keep runtime dependencies at zero” |
+| PF-9 | No new runtime dependencies, with one stated exception: the Redis 8 server, which Postbox downloads pinned from its own release, verifies by checksum and supervises. It’s taken under AGPLv3, with its source published beside each build. No npm package is added. | `package.json` gains no runtime dependency; the downloaded build matches its pinned SHA-256. | ENG (“Keep runtime dependencies at zero”); the person’s Redis decisions of 28 October; the redis-v8.10.3 release |
+
+## Storage
+
+From the person’s storage interview of 28 October 2026 and the Redis decisions that followed. Design: `design.md`, “Storage: a Redis 8 that Postbox bundles and runs”.
+
+| Id | Requirement | Check | Sources |
+|---|---|---|---|
+| ST-1 | Postbox’s data model is key/value or documents, never a relational schema. A value’s shape can change between versions without a migration run on existing installs: older values are lifted on read and never rewritten. | A value written by an older version reads correctly after an upgrade, with nothing run at startup. | The person, 28 October: “I must have noSQL or K/V paradigms”, after SQLite’s schema migrations slowed rollouts; storage decisions 4 and 5 |
+| ST-2 | No state change assumes it is the only writer. Every record transition is atomic in the store, so a second Postbox process can be added later without revisiting the lifecycle. | Two Postbox processes against one store keep every transition consistent. | The person: more than one process or person is likely within a year; storage decision 8 |
+| ST-3 | When the store can’t be written, Postbox refuses writes and stops starting turns, while the page stays readable. It says why, offers Retry, and reopens writes only once it has read back everything the store holds. Nothing is written anywhere else meanwhile. | With the store stopped, a write is refused, the page still reads, and the status names the cause with Retry; after a restart, no committed change is lost or applied twice. | Storage decision 7; INT principle 2; gpt’s Store review findings |
+| ST-4 | A committed change survives a crash of Postbox or of the store. A power cut may lose up to one second of writes; that limit is stated in the release notes. | A kill during a commit leaves documents and the event stream consistent. | Storage decision 3 (`appendfsync everysec`) |
 
 ## 6. Agent context
 
@@ -187,7 +198,11 @@ flowchart TD
 | PF-6 | Spec | A block revised from an unloaded page appears at the bottom; reactions and `m=` links still reach it | *move-from-unloaded* | `updated-app-far-up` | Covered |
 | PF-7 | Playwright spec | An app in a conversation nobody opened is checked (#495’s specs) | none | `check-starved` | Covered |
 | PF-8 | Playwright spec | The search box finds a message outside the window and jumps to it | *search-outside-window* | none | Covered |
-| PF-9 | Spec | `package.json` has no new runtime dependency | none | none | Constraint only, no test |
+| PF-9 | Spec | `package.json` has no new runtime dependency | none | none | Store step (checksum of the downloaded build) |
+| ST-1 | Spec | A value written in an older shape reads in the current shape | none | none | Store step |
+| ST-2 | Spec | Two processes against one Redis | none | none | Store step |
+| ST-3 | Spec + Playwright spec | A failed write closes writes; reconciliation reopens them; the page shows the status with Retry | none | none | Store step |
+| ST-4 | Spec | A kill during a commit | none | none | Store step |
 | CX-1 | Spec | Nothing from a thread enters another agent’s envelope unless it reads it or the person sends it | none | *thread-leak* | **Not in rev 6** |
 | CX-2 | Spec | `read_conversation` reaches the first item, locally and on a host | none | none | Covered |
 | CX-3 | Spec + conformance | #515: a tool turned off mid-session shows as off in a resumed Claude session’s next turn | none | none | Covered |
