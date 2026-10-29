@@ -79,3 +79,10 @@ test('#451 a held answer after an urgent note is still a hold: withUrgent puts t
   f.streams = [wakeStream('developer', s(100), 'critic', `[Postbox] URGENT: a subagent needs you.\n\n${HELD}`)];
   assert.equal(HOSTWAKE_TRIGGERS['wake-held-on-card'].run(f).length, 1);
 });
+
+test('#451 a turn after your Decline that another agent woke isn’t the Decline’s notice: the hand-off is still lost', () => {
+  const woken = { ...turn('developer', s(403)), woke: { by: 'critic' } };
+  const f = held({ answer: 'decline', at: s(400), extraItems: [woken] });
+  f.now = s(1000);
+  assert.equal(check('refused-wake-lost').run(f).length, 1);
+});

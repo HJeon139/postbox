@@ -91,6 +91,7 @@ export function wakeCalls(f) {
   const personBetween = (from, to) => acts.some((t) => t > from && t <= to);
   const startsOf = turnStarts(f);
   const cards = hopCards(f);
+  const noticeAfter = declineNotices(f, startsOf);
   const received = [...(f.received ?? [])];
   return (
     (f.streams ?? [])
@@ -131,14 +132,30 @@ export function wakeCalls(f) {
       .map((c) => ({
         ...c,
         senderNext: Number.isFinite(c.at) ? (startsOf(c.from).find((t) => t > /** @type {number} */ (c.at) && !personBetween(c.at, t)) ?? null) : null,
-        // Not allowing a card tells each wake held on it (#439’s fix), in a turn that follows the person’s answer.
-        toldOfDecline: Number.isFinite(c.card?.declinedAt)
-          ? (startsOf(c.from).find((t) => t > c.card.declinedAt && t <= c.card.declinedAt + APPLIED_MS) ?? null)
-          : null,
+        toldOfDecline: noticeAfter(c.from, c.card?.declinedAt),
         targetNext: Number.isFinite(c.at) ? (startsOf(c.to).find((t) => t > /** @type {number} */ (c.at)) ?? null) : null,
         targetTurns: Number.isFinite(c.at) ? startsOf(c.to).filter((t) => t > /** @type {number} */ (c.at)) : [],
       }))
   );
+}
+
+/**
+ * When a sender got the notice that you didn’t allow the card its wake was held on (#439’s fix, settleHeld): a notice
+ * starts a turn of its own, and Postbox keeps no record of it, so it’s the sender’s first turn within a minute of the
+ * Decline that nothing else started: no act of the person’s since, and no agent’s wake (its reply’s woke mark,
+ * server/turn-marks.mjs). Null if none, or if the card wasn’t declined.
+ * @returns {(handle: string, declinedAt: number|null|undefined) => number|null}
+ */
+function declineNotices(f, startsOf) {
+  const acts = personActs(f);
+  const replies = itemsOf(f).filter((it) => it.kind === 'agent' && Number.isFinite(it.at));
+  const agentWoke = (handle, t) => Boolean(replies.find((it) => it.handle === handle && it.at >= t - SKEW_MS)?.woke?.by);
+  return (handle, declinedAt) => {
+    if (!Number.isFinite(declinedAt)) return null;
+    const d = /** @type {number} */ (declinedAt);
+    const quiet = (t) => !acts.some((a) => a > d && a <= t) && !agentWoke(handle, t);
+    return startsOf(handle).find((t) => t > d && t <= d + APPLIED_MS && quiet(t)) ?? null;
+  };
 }
 
 /**
