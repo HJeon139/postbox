@@ -16,16 +16,25 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 /** The person’s Postbox folder: POSTBOX_HOME, else ~/.postbox. */
 export const postboxHome = (env = process.env, home = homedir()) => (env.POSTBOX_HOME ? resolve(env.POSTBOX_HOME) : join(home, '.postbox'));
 
-const STORE_FILE = /^(store\.json|snapshot\.json|events-\d+\.jsonl)$/;
+// The old store’s files, or the same renamed once imported into Redis (server/store-import.mjs).
+const STORE_FILE = /^(store\.json|snapshot\.json|events-\d+\.jsonl)(\.migrated)?$/;
 const LOCK = 'postbox.lock';
 
-/** Whether a folder, or the folder a link leads to, holds conversations: an event log or a snapshot. */
+/**
+ * Whether a folder, or the folder a link leads to, holds conversations: the store’s Redis data (its append-only files,
+ * server/redis-supervisor.mjs), or the old store’s event log or snapshot, imported (*.migrated) or not. The import
+ * renames the old files, so without the Redis data a clone’s data/ would stop counting once Postbox ran on it (review
+ * finding 4 on #525).
+ */
 export function holdsStore(dir) {
-  try {
-    return readdirSync(dir).some((n) => STORE_FILE.test(n));
-  } catch {
-    return false;
-  }
+  const list = (d) => {
+    try {
+      return readdirSync(d);
+    } catch {
+      return [];
+    }
+  };
+  return list(dir).some((n) => STORE_FILE.test(n)) || list(join(dir, 'redis', 'data', 'appendonly')).length > 0;
 }
 
 /** Whether two paths lead to the same folder, through links. */

@@ -9,10 +9,11 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { appendFile, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
+import { dataFolder, holdsStore, moveData } from '../server/home.mjs';
 import { Store } from '../server/store.mjs';
 import { importLegacy } from '../server/store-import.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
@@ -172,4 +173,33 @@ test('an import cut short after its first batch of events runs again from the st
   assert.equal(await client.call('XLEN', 'events'), 1001);
   assert.equal(await client.call('EXISTS', 'import'), 0, 'the import is no longer marked in progress');
   assert.equal((await open(dir)).state.settings.value, 1001);
+});
+
+// Review finding 4 on #525 (gpt’s regression): the import renames the old files *.migrated, and a clone’s data/ that
+// held only those stopped counting as holding conversations, so the next start silently used ~/.postbox instead.
+test('an imported data folder still holds the store: a restart keeps using a clone’s data/, and --move-data moves it', async () => {
+  const s = await open(await mkdtemp(join(tmpdir(), 'pb-store-import-')));
+  const dir = /** @type {string} */ (s.dir);
+  dirs.push(dir);
+  await writeFile(join(dir, 'snapshot.json'), JSON.stringify({ ...emptyState(), seq: 1 }));
+  assert.equal(holdsStore(dir), true);
+  await importLegacy(dir, /** @type {any} */ (s.client));
+  assert.equal(holdsStore(dir), true);
+
+  const root = await mkdtemp(join(tmpdir(), 'pb-store-clone-'));
+  dirs.push(root);
+  const home = join(root, 'home');
+  const clone = join(root, 'data');
+  const old = await oldFolder(20);
+  await rename(old.dir, clone);
+  const first = await new Store(clone).load();
+  first.emit('thread', { id: 'after', members: [] });
+  await first.close();
+  assert.ok(!(await readdir(clone)).includes('snapshot.json'), 'imported');
+  assert.deepEqual(dataFolder({ root, env: {}, home }), { dataDir: clone, from: 'clone', home: join(home, '.postbox') }, 'the restart uses it');
+  const { to } = await moveData({ root, env: {}, home });
+  assert.equal(dataFolder({ root, env: {}, home }).dataDir, to);
+  const moved = await open(to);
+  assert.equal(moved.state.seq, old.evs.length + 1, 'the moved store has the import and what came after');
+  assert.ok(moved.state.threads.after);
 });
